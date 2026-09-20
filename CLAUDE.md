@@ -1,3 +1,14 @@
+## 2026-09-20 — Bound record-query admission before acquiring its snapshot
+
+Cursorless review reads use a transaction-scoped try-lock before context/projection. Busy
+attempts release the transaction and connection before backoff; pool queuing is bounded
+by a monotonic admission deadline. Fence late callbacks before SQL and after try-lock,
+observe abandoned-promise failures, and stop the timer once admission succeeds so the
+accepted transaction is awaited through commit. Cursor paging bypasses creation admission.
+Do not use blocking advisory acquisition after a Serializable snapshot has been fixed: it
+repeatedly materializes stale snapshots and causes serialization retry storms. Retain the
+separate serialization retry budget, fresh authorization and two-snapshot bound.
+
 ## 2026-09-19 — Preserve fixture role timestamps as PostgreSQL text
 
 Driver/test environments do not consistently return role timestamps as JavaScript Date

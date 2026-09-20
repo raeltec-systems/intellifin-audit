@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { and, asc, desc, eq, gt, sql } from 'drizzle-orm';
 import { POPULATION_CHECK_NAMES, adapterLookupColumn, classifyPlanTargets, authorizeActionRole, type ExecutablePlan, type JsonValue } from '@intellifin/domain';
 import { RECORD_REVIEW_FILTERS, type RecordReviewCounts, type RecordReviewFilter, type RecordReviewQuery,
@@ -22,6 +23,9 @@ type Flat = { ordinal: number; key: string | null; disposition: string; duplicat
   captured_status: string | null; found: string | null; inspected: boolean; exception: boolean;
   pending: number; evidence_problem: boolean; evaluation_count: number; unevaluated: boolean };
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+const ADMISSION_BUSY = Symbol('record review admission busy');
+const ADMISSION_EXPIRED = Symbol('record review admission expired');
+const ADMISSION_TIMEOUT_MS = 10000;
 
 function query(input: RecordReviewQuery): Query | null {
   if ((input.search !== undefined && typeof input.search !== 'string') || (input.cursor !== undefined && typeof input.cursor !== 'string')) return null;
@@ -110,11 +114,42 @@ export class PostgresRecordReviewRepository {
   async readPage(input: RecordReviewQuery): Promise<RecordReviewResult> {
     const normalized = query(input);
     if (!normalized) return { status: 'invalid' };
-    // Concurrent creations must not evade the two-snapshot limit. SSI retries take a
-    // fresh authorization/snapshot, with a fixed bound; no process-local cache/lease.
-    for (let attempt = 0; ; attempt++) {
+    const admissionDeadline = performance.now() + ADMISSION_TIMEOUT_MS;
+    // Cheap admission attempts do not consume the bounded SSI retry budget. Every
+    // attempt starts a fresh snapshot and authorizes only after acquiring admission.
+    let serializationRetries = 0;
+    for (;;) {
+      if (!input.cursor && performance.now() >= admissionDeadline) return { status: 'unavailable' };
+      let admissionExpired = false;
+      let admissionTimer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<typeof ADMISSION_EXPIRED>(resolve => {
+        const expire = () => {
+          const remaining = admissionDeadline - performance.now();
+          if (remaining > 0) {
+            admissionTimer = setTimeout(expire, Math.ceil(remaining));
+            return;
+          }
+          admissionExpired = true;
+          resolve(ADMISSION_EXPIRED);
+        };
+        if (!input.cursor) expire();
+      });
       try {
-        return await this.db.transaction(async tx => {
+        const pending = this.db.transaction(async tx => {
+          if (!input.cursor) {
+            // A timed-out attempt may still be queued for a pool connection. It must
+            // finish without reading context or creating a late presentation copy.
+            if (admissionExpired || performance.now() >= admissionDeadline) return ADMISSION_EXPIRED;
+            // This must be the first statement: waiting after context() would retain
+            // a stale Serializable snapshot and repeatedly redo expensive projection.
+            const [admission] = await tx.execute<{ acquired: boolean }>(sql`
+              SELECT pg_try_advisory_xact_lock(hashtextextended(${`record-review:${input.actorId}:${input.runId}`},0)) AS acquired`);
+            if (admissionExpired || performance.now() >= admissionDeadline) return ADMISSION_EXPIRED;
+            if (!admission?.acquired) return ADMISSION_BUSY;
+            // Admission bounds only acquisition. Once accepted, await the coherent
+            // transaction through commit/rollback, even if projection takes longer.
+            clearTimeout(admissionTimer);
+          }
           const context = await this.context(tx, input.runId, input.actorId);
           if (context.status !== 'ready') return context;
           const queryDigest = digest(JSON.stringify([1, context.role, normalized]));
@@ -133,7 +168,6 @@ export class PostgresRecordReviewRepository {
             if (position % normalized.pageSize !== 0 || position >= Math.max(1, stored.rowCount)) return { status: 'invalid' as const };
             header = stored;
           } else {
-            await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`record-review:${input.actorId}:${input.runId}`},0))`);
             const rows = await this.project(tx, input.runId, context.plan);
             const [totals] = await tx.execute<{ observations: number; pending: number }>(sql`
               SELECT (SELECT count(*)::int FROM run_observation WHERE run_id=${input.runId}::uuid) AS observations,
@@ -170,13 +204,26 @@ export class PostgresRecordReviewRepository {
             previousCursor: position > 0 ? cursor(header, Math.max(0,position-normalized.pageSize)) : null,
             pageNumber: Math.floor(position/normalized.pageSize)+1, ...normalized };
         }, { isolationLevel: input.cursor ? 'repeatable read' : 'serializable' });
+        // Promise.race observes even a late rejection from a queued transaction.
+        // The callback fences above prevent any abandoned attempt from projecting.
+        const result = await Promise.race([pending, timeout]);
+        clearTimeout(admissionTimer);
+        if (result === ADMISSION_EXPIRED) return { status: 'unavailable' };
+        if (result !== ADMISSION_BUSY) return result;
+        // Await the completed transaction before backing off: no pool connection or
+        // database transaction is retained while another reader owns admission.
+        const remaining = admissionDeadline - performance.now();
+        if (remaining <= 0) return { status: 'unavailable' };
+        await delay(Math.min(remaining, 25 + Math.random() * 50));
       } catch (error) {
         const code = (error as { code?: string; cause?: { code?: string } }).code ?? (error as { cause?: { code?: string } }).cause?.code;
-        if (!['40001', '40P01'].includes(code ?? '') || attempt >= 7) {
+        if (!['40001', '40P01'].includes(code ?? '') || serializationRetries++ >= 7) {
           // Drizzle errors may embed SQL parameters, including source labels and cursor
           // material. Preserve only a closed-format diagnostic, never the raw cause.
           throw new Error(`Record review read failed (${typeof code === 'string' && /^[A-Z0-9]{5}$/.test(code) ? code : 'unavailable'})`);
         }
+      } finally {
+        clearTimeout(admissionTimer);
       }
     }
   }

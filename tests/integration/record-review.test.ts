@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   observationDigest,
@@ -31,6 +31,7 @@ import {
   explainRecordReviewProjection,
   populationRow,
   populationSnapshot,
+  runReviewSnapshotRow,
   type Database,
   type Sql,
 } from '@intellifin/infrastructure';
@@ -514,6 +515,7 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
   });
 
   it('admits concurrent cursorless reads while retaining at most two actor/run snapshots', async () => {
+    const started = performance.now();
     const results = await Promise.all(Array.from({ length: 8 }, () => repository().readPage({
       runId: seeded.runId,
       actorId: seeded.actorId,
@@ -527,7 +529,246 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
       FROM run_review_snapshot
       WHERE actor_id=${seeded.actorId} AND run_id=${seeded.runId}`;
     expect(snapshots.length).toBeLessThanOrEqual(2);
+    const artifact = fileURLToPath(new URL('../../test-results/record-review-admission-timing.json', import.meta.url));
+    await mkdir(dirname(artifact), { recursive: true });
+    await writeFile(artifact, JSON.stringify({ readers: 8, sourceRows: 1000, elapsedMs: performance.now() - started,
+      scope: 'Focused contention regression; not the measured-capacity gate' }, null, 2));
   });
+
+  it('releases a one-connection pool without projecting while admission is held, independently of other actors and Runs', async () => {
+    const { release, reader } = await heldAdmissionReader();
+    const pending = reader.repository.readPage({ runId: seeded.runId, actorId: seeded.actorId });
+    void pending.catch(() => undefined);
+    try {
+      await barrier(reader.attempted);
+      // This query can finish only after the rejected transaction returns the sole
+      // connection. The admission owner is still held by the explicit barrier.
+      expect(await barrier(reader.client`SELECT 1 AS pool_probe`.execute())).toMatchObject([{ pool_probe: 1 }]);
+      expect(reader.queries.some(query => /user_role|population_row|run_review_snapshot/i.test(query))).toBe(false);
+      expect(reader.queries.find(query => /^\s*select/i.test(query))).toContain('pg_try_advisory_xact_lock');
+      expect(await sql`SELECT snapshot_id FROM run_review_snapshot WHERE run_id=${seeded.runId}`).toHaveLength(0);
+      const otherActor = await repository().readPage({ runId: seeded.runId, actorId: seeded.otherActorId });
+      const otherRun = await repository().readPage({ runId: seeded.otherRunId, actorId: seeded.actorId });
+      expect(otherActor.status).toBe('ready');
+      expect(otherRun.status).toBe('ready');
+      expect(await sql`SELECT snapshot_id FROM run_review_snapshot WHERE run_id=${seeded.runId} AND actor_id=${seeded.actorId}`).toHaveLength(0);
+      await release();
+      expect((await pending).status).toBe('ready');
+    } finally {
+      try {
+        await release();
+        await pending.catch(() => undefined);
+      } finally { await reader.client.end({ timeout: 5 }); }
+    }
+  });
+
+  it('observes role revocation committed while waiting before creating any snapshot', async () => {
+    const [role] = await sql`SELECT role,assigned_at::text AS assigned_at FROM user_role WHERE user_id=${seeded.actorId}`;
+    const { release, reader } = await heldAdmissionReader();
+    const pending = reader.repository.readPage({ runId: seeded.runId, actorId: seeded.actorId });
+    void pending.catch(() => undefined);
+    try {
+      await barrier(reader.attempted);
+      await barrier(reader.client`SELECT 1 AS pool_probe`.execute());
+      await sql`DELETE FROM user_role WHERE user_id=${seeded.actorId}`;
+      await release();
+      expect(await pending).toEqual({ status: 'denied' });
+      expect(await sql`SELECT snapshot_id FROM run_review_snapshot WHERE run_id=${seeded.runId}`).toHaveLength(0);
+      expect(reader.queries.some(query => /population_row/i.test(query))).toBe(false);
+    } finally {
+      try {
+        await release();
+        await pending.catch(() => undefined);
+      } finally {
+        try {
+          await sql`INSERT INTO user_role(user_id,role,assigned_at) VALUES (${seeded.actorId},${role!.role},${role!.assigned_at}::timestamptz)
+            ON CONFLICT (user_id) DO UPDATE SET role=excluded.role,assigned_at=excluded.assigned_at`;
+        } finally { await reader.client.end({ timeout: 5 }); }
+      }
+    }
+  });
+
+  it('rolls back materialized rows and releases admission after a real transaction failure', async () => {
+    for (let i = 0; i < 2; i++) {
+      expect((await repository().readPage({ runId: seeded.runId, actorId: seeded.actorId })).status).toBe('ready');
+    }
+    const prior = await sql`SELECT * FROM run_review_snapshot WHERE run_id=${seeded.runId} ORDER BY snapshot_id`;
+    expect(prior).toHaveLength(2);
+    const priorRows = await sql`SELECT * FROM run_review_snapshot_row
+      WHERE snapshot_id IN (${prior[0]!.snapshot_id},${prior[1]!.snapshot_id}) ORDER BY snapshot_id,position`;
+    const transaction = db.transaction.bind(db);
+    let rolledBackSnapshot: string | undefined;
+    const intercepted = vi.spyOn(db, 'transaction').mockImplementationOnce((callback, config) => transaction(async tx => {
+      await callback(tx);
+      const headers = await tx.query.runReviewSnapshot.findMany({ where: (s, { and, eq }) =>
+        and(eq(s.runId, seeded.runId), eq(s.actorId, seeded.actorId)) });
+      expect(headers.filter(header => prior.some(old => old.snapshot_id === header.snapshotId))).toHaveLength(1);
+      const header = headers.find(header => !prior.some(old => old.snapshot_id === header.snapshotId));
+      expect(header).toBeDefined();
+      rolledBackSnapshot = header!.snapshotId;
+      const materialized = await tx.query.runReviewSnapshotRow.findMany({ where: (r, { eq }) => eq(r.snapshotId, header!.snapshotId) });
+      expect(materialized).toHaveLength(1000);
+      // PostgreSQL aborts the real transaction after the snapshot rows exist.
+      await tx.insert(runReviewSnapshotRow).values(materialized[0]!);
+      throw new Error('Expected PostgreSQL duplicate-key violation');
+    }, config));
+    try {
+      await expect(repository().readPage({ runId: seeded.runId, actorId: seeded.actorId }))
+        .rejects.toThrow(/^Record review read failed \(23505\)$/);
+    } finally {
+      intercepted.mockRestore();
+    }
+    expect(await sql`SELECT * FROM run_review_snapshot WHERE run_id=${seeded.runId} ORDER BY snapshot_id`).toEqual(prior);
+    expect(await sql`SELECT * FROM run_review_snapshot_row
+      WHERE snapshot_id IN (${prior[0]!.snapshot_id},${prior[1]!.snapshot_id}) ORDER BY snapshot_id,position`).toEqual(priorRows);
+    expect(rolledBackSnapshot).toBeDefined();
+    expect(await sql`SELECT snapshot_id FROM run_review_snapshot_row WHERE snapshot_id=${rolledBackSnapshot!}`).toHaveLength(0);
+    await sql.begin(async tx => {
+      const [lock] = await tx`SELECT pg_try_advisory_xact_lock(hashtextextended(${`record-review:${seeded.actorId}:${seeded.runId}`},0)) AS acquired`;
+      expect(lock!.acquired).toBe(true);
+    });
+    expect((await repository().readPage({ runId: seeded.runId, actorId: seeded.actorId })).status).toBe('ready');
+  });
+
+  it('pages an existing cursor while cursorless admission is held', async () => {
+    const first = await repository().readPage({ runId: seeded.runId, actorId: seeded.actorId, pageSize: 25 });
+    expect(first.status).toBe('ready');
+    if (first.status !== 'ready' || !first.nextCursor) throw new Error('Expected a second page cursor');
+    const { release, reader } = await heldAdmissionReader();
+    try {
+      const page = await barrier(reader.repository.readPage({ runId: seeded.runId, actorId: seeded.actorId,
+        pageSize: 25, cursor: first.nextCursor }));
+      expect(page).toMatchObject({ status: 'ready', pageNumber: 2 });
+      if (page.status !== 'ready') throw new Error('Expected the cursor page');
+      expect(page.rows.map(row => row.sourceOrdinal)).toEqual(Array.from({ length: 25 }, (_, index) => index + 26));
+      // Paging still reads current source metadata to report changes/evidence issues;
+      // it must not acquire creation admission or mutate presentation snapshots.
+      expect(reader.queries.some(query => /pg_try_advisory_xact_lock|(?:insert into|delete from)\s+"?run_review_snapshot/i.test(query))).toBe(false);
+      expect(await sql`SELECT snapshot_id FROM run_review_snapshot WHERE run_id=${seeded.runId}`).toHaveLength(1);
+    } finally {
+      try { await release(); } finally { await reader.client.end({ timeout: 5 }); }
+    }
+  });
+
+  it('expires while queued for the only pool connection and never projects after its later release', async () => {
+    const reader = await admissionReader();
+    const occupied = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const held = reader.client.begin(async tx => {
+      await tx`SELECT 1 AS occupied_pool`;
+      occupied.resolve();
+      await release.promise;
+    });
+    const transaction = reader.database.transaction.bind(reader.database);
+    let queued: Promise<unknown> | undefined;
+    const intercepted = vi.spyOn(reader.database, 'transaction').mockImplementationOnce((callback, config) => {
+      const pending = transaction(callback, config);
+      queued = pending;
+      return pending;
+    });
+    try {
+      await barrier(Promise.race([occupied.promise, held]));
+      reader.queries.length = 0;
+      const started = performance.now();
+      expect(await reader.repository.readPage({ runId: seeded.runId, actorId: seeded.actorId }))
+        .toEqual({ status: 'unavailable' });
+      expect(performance.now() - started).toBeGreaterThanOrEqual(10000);
+      expect(performance.now() - started).toBeLessThan(15000);
+      expect(queued).toBeDefined();
+      release.resolve();
+      await barrier(held);
+      await barrier(queued!);
+      expect(reader.queries.some(query => /pg_try_advisory_xact_lock|user_role|population_row|run_review_snapshot/i.test(query))).toBe(false);
+      expect(await sql`SELECT snapshot_id FROM run_review_snapshot WHERE run_id=${seeded.runId}`).toHaveLength(0);
+      expect(await reader.client`SELECT 1 AS pool_probe`).toMatchObject([{ pool_probe: 1 }]);
+    } finally {
+      release.resolve();
+      intercepted.mockRestore();
+      try {
+        await held.catch(() => undefined);
+        await queued?.catch(() => undefined);
+      } finally { await reader.client.end({ timeout: 5 }); }
+    }
+  });
+
+  it('refuses held admission at the monotonic ten-second deadline without leaking errors or projecting', async () => {
+    const { release, reader } = await heldAdmissionReader();
+    const started = performance.now();
+    try {
+      const result = await reader.repository.readPage({ runId: seeded.runId, actorId: seeded.actorId });
+      const elapsed = performance.now() - started;
+      expect(result).toEqual({ status: 'unavailable' });
+      expect(elapsed).toBeGreaterThanOrEqual(10000);
+      expect(elapsed).toBeLessThan(15000);
+      // More than eight failed admissions must not exhaust the SSI retry budget.
+      expect(reader.queries.filter(query => query.includes('pg_try_advisory_xact_lock')).length).toBeGreaterThan(8);
+      expect(reader.queries.some(query => /user_role|population_row|run_review_snapshot/i.test(query))).toBe(false);
+      expect(await sql`SELECT snapshot_id FROM run_review_snapshot WHERE run_id=${seeded.runId}`).toHaveLength(0);
+      expect(await reader.client`SELECT 1 AS pool_probe`).toMatchObject([{ pool_probe: 1 }]);
+    } finally {
+      try { await release(); } finally { await reader.client.end({ timeout: 5 }); }
+    }
+  });
+
+  async function holdAdmission() {
+    const acquired = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const held = sql.begin(async tx => {
+      await tx`SET LOCAL lock_timeout = '5s'`;
+      await tx`SELECT pg_advisory_xact_lock(hashtextextended(${`record-review:${seeded.actorId}:${seeded.runId}`},0))`;
+      acquired.resolve();
+      await release.promise;
+    });
+    try {
+      await barrier(Promise.race([acquired.promise, held]));
+    } catch (error) {
+      release.resolve();
+      await held.catch(() => undefined);
+      throw error;
+    }
+    return async () => { release.resolve(); await held; };
+  }
+
+  async function heldAdmissionReader() {
+    const release = await holdAdmission();
+    try {
+      return { release, reader: await admissionReader() };
+    } catch (error) {
+      await release();
+      throw error;
+    }
+  }
+
+  async function admissionReader() {
+    const attempted = Promise.withResolvers<void>();
+    const queries: string[] = [];
+    const client = createSqlClient(url!, { max: 1, debug: (_connection, query) => {
+      queries.push(query);
+      if (query.includes('pg_try_advisory_xact_lock')) attempted.resolve();
+    } });
+    try {
+      await client`SELECT 1`;
+    } catch (error) {
+      await client.end({ timeout: 5 });
+      throw error;
+    }
+    queries.length = 0;
+    const database = createDb(client);
+    return { client, database, queries, attempted: attempted.promise, repository: new PostgresRecordReviewRepository(database, () => now) };
+  }
+
+  // Timers bound a broken barrier; successful evidence is always a real query or
+  // transaction completing before the owner explicitly releases admission.
+  async function barrier<T>(work: PromiseLike<T>): Promise<T> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([work, new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error('Admission database barrier did not complete')), 5000);
+      })]);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
 
   it('rejects malformed, cross-actor, cross-run and query-mismatched cursors without data', async () => {
     const first = await repository().readPage({ runId: seeded.runId, actorId: seeded.actorId, pageSize: 25 });
