@@ -62,14 +62,14 @@ export default async function RunWorkspacePage({ params, searchParams }: {
   return <div className="ls-stack run-workspace-route">
     <DetailTrail trail={[{ href: '/runs', label: 'Runs' }, { href: `/runs/${id}`, label: run.procedureName }, { href: here, label: 'Auditor Workspace' }]} />
     <LiveGate runId={id} state={run.state} url={`/api/runs/${id}/events`} cursor={cursor} readAt={readAt.toISOString()} href={here}>
-      <RunWorkspaceConversation key={id} runId={id} initial={conversation} controlRefreshKey={readAt.toISOString()} currentInspection={currentInspection}
+      <RunWorkspaceConversation key={id} runId={id} initial={conversation} controlRefreshKey={readAt.toISOString()} currentInspection={currentInspection} questionContext={waits?.question ?? null}
         selectedSourceOrdinal={selected?.status === 'ready' ? selected.row.sourceOrdinal : null} replyToWaitId={waits?.wait?.waitId ?? null}
         header={<header><h1>Auditor Workspace · {run.procedureName}</h1>
           <p>Approved version {run.versionNumber} · {run.period.from} to {run.period.to} · {run.state.toLowerCase().replaceAll('_', ' ')}</p></header>}
         progress={<div role="group" aria-label="Run progress">
           {summary.status === 'ready' ? <p>{summary.counts.fullyInspectedSubjects} of {summary.counts.includedRows} included records inspected · {summary.counts.exceptionRecords ?? 'Unknown'} with exceptions · {summary.counts.pendingAssessments} assessments awaiting confirmation</p>
             : <p>Record coverage is not yet available.</p>}
-          <p className="ls-caption">Read at {utcStamp(readAt)}. {current === null ? 'No committed current action.' : `${planActionWord(current.action)}${currentSubject === null ? '' : ` for ${currentSubject}`}${currentTarget === null ? '' : ` on ${currentTarget}`}, started ${utcStamp(current.startedAt)}.`}</p>
+          <div className="ls-caption run-workspace-current-action" role="region" aria-label="Current action and freshness" tabIndex={0}>Read at {utcStamp(readAt)}. {current === null ? 'No committed current action.' : `${planActionWord(current.action)}${currentSubject === null ? '' : ` for ${currentSubject}`}${currentTarget === null ? '' : ` on ${currentTarget}`}, started ${utcStamp(current.startedAt)}.`}</div>
         </div>}
         controls={<>{run.state === 'AWAITING_AUDITOR'
           ? <p className="ls-caption">Pause is unavailable while an auditor answer is open.</p>

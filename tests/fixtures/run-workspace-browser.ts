@@ -78,6 +78,7 @@ async function seedAgentContext(
     readonly workItemId: string;
     readonly stepExecutionId: string;
     readonly attemptId: string;
+    readonly questionText?: string;
   },
 ): Promise<void> {
   const response = {
@@ -93,7 +94,7 @@ async function seedAgentContext(
     actions: [],
     uncertainty: {
       kind: 'ambiguous',
-      rationale: 'The captured record needs an auditor decision before the next action.',
+      rationale: values.questionText ?? 'The captured record needs an auditor decision before the next action.',
     },
     usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
   };
@@ -136,7 +137,7 @@ async function seedConversation(sql: Sql, auditorId: string): Promise<void> {
  * the frozen plan, real stage checkpoints, a persisted open wait and encrypted conversation
  * content. No browser request or model response is replaced by a test double.
  */
-export async function createRunWorkspaceBrowserFixture(): Promise<RunWorkspaceBrowserFixture> {
+export async function createRunWorkspaceBrowserFixture(options: { readonly questionText?: string; readonly subjectKey?: string; readonly optionLabel?: string } = {}): Promise<RunWorkspaceBrowserFixture> {
   const databaseUrl = process.env['DATABASE_URL'];
   if (!databaseUrl) throw new Error('DATABASE_URL is required for the Run Workspace browser journey.');
   assertThrowawayDatabase(databaseUrl);
@@ -216,7 +217,7 @@ export async function createRunWorkspaceBrowserFixture(): Promise<RunWorkspaceBr
   await sql`INSERT INTO run_work_item(
       work_item_id,run_id,step_id,ordinal,subject_key,registration_id,display_name,state,
       attempts,cycles,diagnostic,evidence_id,observations)
-    VALUES(${workItemId},${runId},${inspectStep.id},1,NULL,${targetRegistrationId},'ProdConsole',
+    VALUES(${workItemId},${runId},${inspectStep.id},1,${options.subjectKey ?? null},${targetRegistrationId},'ProdConsole',
       'AWAITING',1,0,NULL,${evidenceId},0)`;
   await sql`INSERT INTO run_step_execution(
       step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at,
@@ -233,7 +234,7 @@ export async function createRunWorkspaceBrowserFixture(): Promise<RunWorkspaceBr
       runId,
       kind: 'choose-candidate',
       options: [
-        { id: 'candidate-a', label: 'Synthetic candidate A' },
+        { id: 'candidate-a', label: options.optionLabel ?? 'Synthetic candidate A' },
         { id: 'candidate-b', label: 'Synthetic candidate B' },
         { id: 'mark-ambiguous', label: 'ignored persisted label' },
       ],
@@ -243,7 +244,10 @@ export async function createRunWorkspaceBrowserFixture(): Promise<RunWorkspaceBr
   );
   if (!raised.ok) throw new Error(`Run Workspace fixture could not open its persisted wait: ${raised.reason}`);
   const waitId = raised.wait.waitId;
-  await seedAgentContext(sql, { waitId, evidenceId, workItemId, stepExecutionId, attemptId });
+  await seedAgentContext(sql, { waitId, evidenceId, workItemId, stepExecutionId, attemptId, ...(options.questionText ? { questionText: options.questionText } : {}) });
+  // Match the immutable raised choices, as a worker checkpoint must for question provenance.
+  await sql`UPDATE run_agent_work a SET pending_wait=jsonb_build_object('kind',w.kind,'options',w.options)
+    FROM run_wait w WHERE a.run_id=${runId} AND w.wait_id=a.wait_id`;
 
   let roleRevoked = false;
   const readConversationRows = async (): Promise<readonly RunWorkspaceConversationRow[]> => sql`
@@ -267,28 +271,30 @@ export async function createRunWorkspaceBrowserFixture(): Promise<RunWorkspaceBr
   const cleanup = async (): Promise<void> => {
     try {
       await restoreAuditor();
-      await sql`DELETE FROM notification WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_agent_turn WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_agent_work WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_evidence_capture WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_tool_action WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_step_execution WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_session_step WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_workspace WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_wait WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_work_item WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_evidence WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_agent_execution WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_execution WHERE run_id=${runId}`;
-      await sql`DELETE FROM population_row WHERE run_id=${runId}`;
-      await sql`DELETE FROM population_snapshot WHERE run_id=${runId}`;
-      await sql`DELETE FROM population_execution WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_review_snapshot WHERE run_id=${runId}`;
-      await sql`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
-      await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
+      await sql.begin(async transaction => {
+      await transaction`DELETE FROM notification WHERE run_id=${runId}`;
+      await transaction`DELETE FROM run_agent_turn WHERE run_id=${runId}`;
+      await transaction`DELETE FROM run_agent_work WHERE run_id=${runId}`;
+      await transaction`DELETE FROM run_evidence_capture WHERE run_id=${runId}`;
+      await transaction`DELETE FROM run_tool_action WHERE run_id=${runId}`;
+      await transaction`DELETE FROM run_step_execution WHERE run_id=${runId}`;
+      await transaction`DELETE FROM run_session_step WHERE run_id=${runId}`;
+      await transaction`DELETE FROM run_workspace WHERE run_id=${runId}`;
+      await transaction`DELETE FROM run_wait WHERE run_id=${runId}`;
+      await transaction`DELETE FROM run_work_item WHERE run_id=${runId}`;
+      await transaction`DELETE FROM run_evidence WHERE run_id=${runId}`;
+      await transaction`DELETE FROM run_agent_execution WHERE run_id=${runId}`;
+      await transaction`DELETE FROM run_execution WHERE run_id=${runId}`;
+      await transaction`DELETE FROM population_row WHERE run_id=${runId}`;
+      await transaction`DELETE FROM population_snapshot WHERE run_id=${runId}`;
+      await transaction`DELETE FROM population_execution WHERE run_id=${runId}`;
+      await transaction`DELETE FROM run_review_snapshot WHERE run_id=${runId}`;
+      await transaction`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
+      await transaction`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
       // Conversation metadata and content are immutable while the Run exists. Removing
       // the aggregate last lets their ON DELETE CASCADE remove the governed rows together.
-      await sql`DELETE FROM audit_run WHERE run_id=${runId}`;
+      await transaction`DELETE FROM audit_run WHERE run_id=${runId}`;
+      });
       await sql`DELETE FROM procedure_version WHERE procedure_id=${procedureId}`;
       await sql`DELETE FROM procedure WHERE procedure_id=${procedureId}`;
     } finally {

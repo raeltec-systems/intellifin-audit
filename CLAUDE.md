@@ -4112,3 +4112,39 @@ insufficient. Preserve accepted Pause/Stop requests and all independent answer, 
 review permissions. Implementation must prove exact retries and stale-direction fencing;
 approval does not enable an unimplemented permission or authorize deployment. See
 `_bmad-output/implementation-artifacts/decision-aw-manager-transfer-d3.md`.
+
+### Conversational answers retain the question, not the latest wait (2026-09-20)
+
+Capture the server-read question anchor and independent selected record at the first
+nonempty draft. Current-wait/record refresh must preserve an uncertain intake's exact
+payload and key. Resolve only a unique whole option ID or label, optionally prefixed
+`answer:`; no inferred synonyms, conditions or negation stripping. Preserve other
+conversation intents and the existing exact safety phrase rules.
+
+The canonical question digest includes the ordered complete option objects, exact
+question text, raised-event identity, work item, step, supporting evidence and matching
+rationale source. A latest model turn without that evidence/step binding is not the
+question source. Lock the Run and addressed wait; missing/inconsistent provenance makes
+conversational answering unavailable without disabling the existing decision card.
+
+Answer confirmation remains lease-independent in the opener, modal, submit guard and
+invalidation effect. It reuses `answerEscalation` with trusted dependency metadata, never
+chat text as a worker note. Decorate the nested WaitContext's actual audit writer so the
+authoritative event and closed wait share the outer transaction's server timestamp.
+`run_wait.answer_command_id` binds the closure to its exact immutable command, event and
+applied receipt through deferred storage guards. Abort retains the answer handler's
+existing cancellation path; an answer is not a Stop command. Reauthorize historical
+receipt recovery and do not equate it with the current Run state. Aggregate fixture
+cleanup must remove retained answer/raise facts and their Run in one transaction.
+
+
+A definite pre-write conversation refusal must permit draft correction; an unknown delivery
+must retain the exact frozen payload and request key. Represent that distinction explicitly
+instead of inferring it from a broad error code. Render answer-modal source from the current
+read projection, not a cached command: removal of either governed body also removes its
+confirmation/source projection, including when the intake lies on another history page.
+
+For maximum-length workspace context, bound source text separately from its action and make
+scroll regions keyboard-accessible. Test the expanded disclosure as well as the initial and
+populated composer. React function-action forms supply their method; an explicit method on
+those forms causes a browser warning and should be omitted.

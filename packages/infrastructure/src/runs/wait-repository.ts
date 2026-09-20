@@ -1,3 +1,4 @@
+import { readLockedConversationQuestion } from './run-conversation-question.js';
 import { sql } from 'drizzle-orm';
 import { PgBoss } from 'pg-boss';
 import {
@@ -237,6 +238,7 @@ export class PostgresWaitRepository implements WaitRepository {
             if (addressed !== null) currentWait = addressed;
             return addressed;
           },
+          readConversationQuestion: () => readLockedConversationQuestion(tx, runId),
           async readEscalationDetails(waitId: string): Promise<EscalationDetails | null> {
             if (!isUuidText(waitId)) return null;
             const normalizedWaitId = waitId.toLowerCase();
@@ -275,15 +277,18 @@ export class PostgresWaitRepository implements WaitRepository {
             let question: string | null = null;
             if (workItemId !== null) {
               const turnResult = await tx.execute(sql`
-                SELECT response
-                FROM run_agent_turn
-                WHERE run_id = ${runId}
-                  AND work_item_id = ${workItemId}
-                  AND status = 'COMPLETED'
-                ORDER BY sequence DESC
-                LIMIT 1
+                SELECT t.response
+                FROM run_agent_turn t JOIN run_step_execution s
+                  ON s.run_id=t.run_id AND s.step_execution_id=t.step_execution_id
+                WHERE t.run_id = ${runId}
+                  AND t.work_item_id = ${workItemId}
+                  AND t.status = 'COMPLETED'
+                  AND s.plan_step_id = ${eventMetadata?.stepId ?? null}
+                  AND t.snapshot_evidence_id::text IN (SELECT jsonb_array_elements_text(${JSON.stringify(eventMetadata?.supportingEvidenceIds ?? [])}::jsonb))
+                ORDER BY t.sequence DESC
+                LIMIT 2
               `);
-              question = agentQuestion(resultRows(turnResult)[0]?.response);
+              question = resultRows(turnResult).length === 1 ? agentQuestion(resultRows(turnResult)[0]?.response) : null;
             }
 
             return {
@@ -419,7 +424,7 @@ export class PostgresWaitRepository implements WaitRepository {
             // closes by `answer` and a pause by `resume`, and generation 45's CHECK refuses
             // the other pairing outright.
             const closureKind = waitClosureKindFor(lockedWait.kind);
-            const closed = await tx.execute(sql`UPDATE run_wait SET closed_at = ${input.now}::timestamptz, closure_kind = ${closureKind}, answer_option_id = ${input.answerOptionId}, actor = ${input.actor} WHERE wait_id = ${input.waitId} AND run_id = ${runId} AND closed_at IS NULL RETURNING ${WAIT_COLUMNS}`);
+            const closed = await tx.execute(sql`UPDATE run_wait SET closed_at = ${input.now}::timestamptz, closure_kind = ${closureKind}, answer_option_id = ${input.answerOptionId}, actor = ${input.actor}, answer_command_id = ${input.commandId ?? null}::uuid WHERE wait_id = ${input.waitId} AND run_id = ${runId} AND closed_at IS NULL RETURNING ${WAIT_COLUMNS}`);
             const closedWait = parseWait(resultRows(closed)[0] ?? {});
             if (closedWait === null) throw new Error('Escalation wait closed concurrently');
             // Keep the original deadline job. It is the one durable wake for this wait;

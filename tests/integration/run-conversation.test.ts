@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { acquireRunControlLease, releaseRunControlLease, cancelRun, performCancellation, performPause } from '@intellifin/application';
+import { raiseEscalation, answerEscalation, waitTimeoutMs, FIXED_ESCALATION_OPTIONS, type RunConversationQuestionContext, acquireRunControlLease, releaseRunControlLease, cancelRun, performCancellation, performPause } from '@intellifin/application';
 import { DrizzleFrozenExecutionReader } from '../../packages/infrastructure/src/procedures/procedure-repository.js';
 import { withRunExecutionContext } from '../../packages/infrastructure/src/runs/adapter-execution-repository.js';
 
@@ -27,9 +27,11 @@ import {
   createSqlClient,
   CryptoUuidV7Generator,
   PostgresAuditUnitOfWork,
+  PostgresAgentWorkRepository,
   PostgresRunCancellationRepository,
   PostgresRunControlLeaseRepository,
   PostgresRunsUnitOfWork,
+  PostgresWaitRepository,
   DrizzleRoleRepository,
   PostgresProceduresUnitOfWork,
   type Database,
@@ -51,6 +53,22 @@ const OBSERVATION_CHECK_NAMES = [
   'search-completeness',
   'observation-corroboration',
 ] as const;
+
+/** The action boundary treats bounded lock admission as an unknown outcome. After both
+ * transactions settle, only that specific failure may recover the exact request. */
+async function confirmConcurrentExactRequest<T>(confirm: () => Promise<T>): Promise<T[]> {
+  const settled = await Promise.allSettled([confirm(), confirm()]);
+  const results: T[] = [];
+  for (const result of settled) {
+    if (result.status === 'fulfilled') results.push(result.value);
+    else {
+      const error = result.reason as { code?: string; cause?: { code?: string } };
+      expect(error.cause?.code ?? error.code).toBe('55P03');
+      results.push(await confirm());
+    }
+  }
+  return results;
+}
 
 interface SeededConversation {
   readonly procedureId: string;
@@ -235,7 +253,7 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
   });
 
   it('replays a valid wait request after the wait closes, while rejecting an unknown wait', async () => {
-    const request = { runId: seeded.runId, idempotencyKey: ids.next(), text: 'answer: choose the recorded option', selectedSourceOrdinal: null, replyToWaitId: seeded.waitId };
+    const request = { runId: seeded.runId, idempotencyKey: ids.next(), text: 'note: retaining the referenced question', selectedSourceOrdinal: null, replyToWaitId: seeded.waitId };
     const first = await repository().append({ actorId: seeded.readerId, sessionId: seeded.readerSession, request });
     expect(first).toMatchObject({ ok: true, replayed: false });
     if (!first.ok) return;
@@ -824,7 +842,7 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
         request: { ...request, expectedControlEpoch: 99 } })).toMatchObject({ ok: false, code: 'malformed' });
       expect(await repository().confirmResume({ actorId: seeded.pagerId, sessionId: seeded.readerSession, request }))
         .toMatchObject({ ok: false, code: 'denied' });
-      const results = await Promise.all([confirm(), confirm()]);
+      const results = await confirmConcurrentExactRequest(confirm);
       expect(results).toContainEqual({ ok: true, commandId: command.command_id, state: 'applied', replayed: false });
       expect(results).toContainEqual({ ok: true, commandId: command.command_id, state: 'applied', replayed: true });
       expect(await sql`SELECT state,revision FROM audit_run WHERE run_id=${runId}`)
@@ -1160,6 +1178,332 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
     return repository().confirmStop({ actorId: seeded.readerId, sessionId: seeded.readerSession, request: { runId, commandId } });
   }
 
+  async function seedAnswerContext(expiresInMs?: number) {
+    const fixture = await seedDeferredContext();
+    const target = classifyPlanTargets(fixture.plan).agents[0]!;
+    const options = FIXED_ESCALATION_OPTIONS['retry-or-skip'];
+    await sql`UPDATE run_agent_work SET status='WAITING',pending_wait=${JSON.stringify({ kind: 'retry-or-skip', options })}::jsonb WHERE run_id=${fixture.runId}`;
+    await sql`UPDATE run_work_item SET state='AWAITING' WHERE work_item_id=${fixture.exactWorkItemId}`;
+    // Create an authentic initial deadline; immutable question fields are never rewritten.
+    const openedAt = new Date(Date.now() - (expiresInMs === undefined ? 0 : waitTimeoutMs('retry-or-skip') - expiresInMs));
+    const raised = await raiseEscalation({ repository: new PostgresWaitRepository(db), ids, clock: { now: () => openedAt } },
+      { runId: fixture.runId, kind: 'retry-or-skip', stepId: target.stepId, supportingEvidenceIds: [] });
+    if (!raised.ok) throw new Error(raised.reason);
+    const question = await new PostgresWaitRepository(db).transaction(fixture.runId, context => context.readConversationQuestion!());
+    if (!question) throw new Error('Answer fixture question missing');
+    return { ...fixture, waitId: raised.wait.waitId, question };
+  }
+
+  async function proposeAnswer(fixture: Awaited<ReturnType<typeof seedAnswerContext>>, text = 'Retry', writer = repository()) {
+    const request = { runId: fixture.runId, idempotencyKey: ids.next(), text, replyToWaitId: fixture.waitId,
+      questionAnchor: fixture.question.anchor, selectedSourceOrdinal: null };
+    const receipt = await writer.append({ actorId: seeded.readerId, sessionId: seeded.readerSession, request });
+    if (!receipt.ok) throw new Error(receipt.reason);
+    const [command] = await sql`SELECT command_id,message_id,answer_anchor,answer_option_id FROM run_interaction_command WHERE message_id=${receipt.messageId}`;
+    if (!command) throw new Error('Answer proposal missing');
+    return { commandId: String(command.command_id), request, receipt };
+  }
+  const confirmAnswer = (runId: string, commandId: string, actorId = seeded.readerId) => repository().confirmAnswer({
+    actorId, sessionId: seeded.readerSession, request: { runId, commandId },
+  });
+
+  it.each([undefined, null])('replays an authentic pre-0059 note fingerprint with questionAnchor %s', async questionAnchor => {
+    now = new Date(now.getTime() + 61_000);
+    const request = { runId: seeded.runId, idempotencyKey: ids.next(), text: 'A retained note', selectedSourceOrdinal: null, replyToWaitId: null };
+    const originalSemantic = JSON.stringify({ schemaVersion: 1, runId: request.runId, actorId: seeded.readerId,
+      text: request.text, selectedSourceOrdinal: null, replyToWaitId: null });
+    class Pre0059Cipher extends ConversationContentCipher {
+      override fingerprint(_semantic: string) { return super.fingerprint(originalSemantic); }
+    }
+    const oldRepository = new PostgresRunConversationRepository(db, new Pre0059Cipher('11'.repeat(32)), () => now);
+    const original = await oldRepository.append({ actorId: seeded.readerId, sessionId: seeded.readerSession, request });
+    expect(original.ok).toBe(true);
+    if (!original.ok) return;
+    expect(await repository().append({ actorId: seeded.readerId, sessionId: seeded.readerSession,
+      request: { ...request, ...(questionAnchor === undefined ? {} : { questionAnchor }) } }))
+      .toEqual({ ...original, replayed: true });
+  });
+
+  it.each(['pending-options','raised-options','raised-deadline','raised-kind','raised-step','raised-evidence'] as const)
+    ('makes inconsistent %s provenance unavailable without a command or effect', async mode => {
+      const fixture = await seedAnswerContext();
+      try {
+        if (mode === 'pending-options') await sql`UPDATE run_agent_work SET pending_wait=jsonb_set(pending_wait,'{options}',
+          '[{"id":"retry","label":"Changed meaning"}]'::jsonb) WHERE run_id=${fixture.runId}`;
+        else {
+          const patch = mode === 'raised-options' ? { optionIds: ['retry'] } : mode === 'raised-deadline' ? { deadline: '2030-01-01T00:00:00.000Z' }
+            : mode === 'raised-kind' ? { kind: 'choose-candidate' } : mode === 'raised-step' ? { stepId: 'another-step' } : { supportingEvidenceIds: [null] };
+          await sql`UPDATE audit_events SET payload=payload||${JSON.stringify(patch)}::jsonb WHERE event_id=${fixture.question.anchor.raisedEventId}`;
+        }
+        expect(await new PostgresWaitRepository(db).transaction(fixture.runId, context => context.readConversationQuestion!())).toBeNull();
+        expect(await repository().append({ actorId: seeded.readerId, sessionId: seeded.readerSession,
+          request: { runId: fixture.runId, idempotencyKey: ids.next(), text: 'Retry', replyToWaitId: fixture.waitId, questionAnchor: fixture.question.anchor } }))
+          .toMatchObject({ ok: false });
+        expect(await sql`SELECT command_id FROM run_interaction_command WHERE run_id=${fixture.runId}`).toHaveLength(0);
+        expect(await sql`SELECT event_id FROM audit_events WHERE aggregate_id=${fixture.runId} AND event_type='execution.escalation-answered'`).toHaveLength(0);
+        expect(await sql`SELECT closed_at FROM run_wait WHERE wait_id=${fixture.waitId}`).toEqual([{ closed_at: null }]);
+      } finally { await cleanupDeferredContext(fixture); }
+    });
+
+  it('requires readable intake even when only the proposal is on the history page', async () => {
+    const fixture = await seedAnswerContext();
+    try {
+      const proposal = await proposeAnswer(fixture);
+      const [child] = await sql`SELECT sequence FROM run_conversation_message WHERE parent_message_id=${proposal.receipt.messageId}`;
+      // Add 49 visible source events: page one retains the proposal while its intake is on page two.
+      for (let i = 0; i < 49; i++) await appendWorkspaceEvent(fixture.runId);
+      await sql`UPDATE run_conversation_content SET ciphertext=NULL,removed_at=clock_timestamp(),content_epoch=content_epoch+1 WHERE message_id=${proposal.receipt.messageId}`;
+      const read = await repository().read({ runId: fixture.runId, actorId: seeded.readerId });
+      expect(read.messages.some(m => m.messageId === proposal.receipt.messageId)).toBe(false);
+      expect(read.messages.find(m => m.sequence === Number(child!.sequence))?.command)
+        .toMatchObject({ canConfirm: false, reason: expect.stringContaining('removed or unavailable') });
+      expect(read.messages.find(m => m.sequence === Number(child!.sequence))?.command?.answerQuestion).toBeUndefined();
+    } finally { await cleanupDeferredContext(fixture); }
+  });
+
+  it('retains an answer receipt when another question opens in the same outer transaction', async () => {
+    const fixture = await seedAnswerContext();
+    try {
+      const proposal = await proposeAnswer(fixture);
+      await db.transaction(async tx => {
+        expect(await new PostgresRunConversationRepository(tx as unknown as Database, cipher, () => now).confirmAnswer({
+          actorId: seeded.readerId, sessionId: seeded.readerSession, request: { runId: fixture.runId, commandId: proposal.commandId },
+        })).toMatchObject({ ok: true });
+        await new PostgresAgentWorkRepository(tx as unknown as Database).transaction(fixture.runId, async context => {
+          if (!context.checkpoint) throw new Error('Expected the existing worker checkpoint');
+          await context.saveCheckpoint({ ...context.checkpoint, waitId: null }, 'RUNNING');
+        });
+        expect(await raiseEscalation({ repository: new PostgresWaitRepository(tx as unknown as Database), ids, clock: { now: () => new Date() } },
+          { runId: fixture.runId, kind: 'retry-or-skip', stepId: classifyPlanTargets(fixture.plan).agents[0]!.stepId, supportingEvidenceIds: [] })).toMatchObject({ ok: true });
+      });
+      expect(await confirmAnswer(fixture.runId, proposal.commandId)).toMatchObject({ ok: true, replayed: true });
+      expect(await sql`SELECT state FROM audit_run WHERE run_id=${fixture.runId}`).toEqual([{ state: 'AWAITING_AUDITOR' }]);
+    } finally { await cleanupDeferredContext(fixture); }
+  });
+
+  it('answers exactly once without controller ownership and reauthorizes historical recovery', async () => {
+    const fixture = await seedAnswerContext();
+    try {
+      const proposal = await proposeAnswer(fixture, 'answer: RETRY');
+      expect(await sql`SELECT closed_at FROM run_wait WHERE wait_id=${fixture.waitId}`).toEqual([{ closed_at: null }]);
+      expect(await sql`SELECT run_id FROM run_control_lease WHERE run_id=${fixture.runId}`).toHaveLength(0);
+      const results = await confirmConcurrentExactRequest(() => confirmAnswer(fixture.runId, proposal.commandId));
+      expect(results).toContainEqual({ ok: true, commandId: proposal.commandId, state: 'applied', replayed: false });
+      expect(results).toContainEqual({ ok: true, commandId: proposal.commandId, state: 'applied', replayed: true });
+      const [closed] = await sql`SELECT actor,answer_option_id,closure_kind,closed_at::text FROM run_wait WHERE wait_id=${fixture.waitId}`;
+      expect(closed).toMatchObject({ actor: seeded.readerId, answer_option_id: 'retry', closure_kind: 'answer' });
+      const facts = await sql`SELECT payload,occurred_at::text FROM audit_events WHERE aggregate_id=${fixture.runId} AND event_type='execution.escalation-answered'`;
+      expect(facts).toHaveLength(1);
+      expect(facts[0]?.occurred_at).toBe(closed?.closed_at);
+      expect(facts[0]?.payload).toMatchObject({ commandId: proposal.commandId, questionAnchor: fixture.question.anchor, answerOptionId: 'retry' });
+      expect(facts[0]?.payload.recordedNote).toBeUndefined();
+      expect(await repository().append({ actorId: seeded.readerId, sessionId: seeded.readerSession, request: proposal.request }))
+        .toEqual({ ...proposal.receipt, replayed: true });
+      expect(await repository().append({ actorId: seeded.readerId, sessionId: seeded.readerSession, request: { ...proposal.request, text: 'Skip' } }))
+        .toMatchObject({ ok: false, code: 'conflict' });
+      const read = await repository().read({ runId: fixture.runId, actorId: seeded.readerId });
+      expect(read.messages.find(m => m.command?.commandId === proposal.commandId)?.command).toMatchObject({ kind: 'answer', state: 'applied', canConfirm: false });
+      await sql`DELETE FROM user_role WHERE user_id=${seeded.readerId}`;
+      try { expect(await confirmAnswer(fixture.runId, proposal.commandId)).toMatchObject({ ok: false, code: 'denied' }); }
+      finally { await sql`INSERT INTO user_role(user_id,role) VALUES (${seeded.readerId},'auditor')`; }
+      expect(await confirmAnswer(fixture.runId, proposal.commandId)).toMatchObject({ ok: true, replayed: true });
+    } finally { await cleanupDeferredContext(fixture); }
+  });
+
+  it('clarifies unsupported, negated, conditional and ambiguous answers without an executable proposal', async () => {
+    const fixture = await seedAnswerContext();
+    try {
+      for (const text of ['yes', 'do not retry', 'retry if safe', 'retry and skip', 'answer: answer: retry', 'answer: do not retry', 'answer: retry if safe']) {
+        now = new Date(now.getTime() + 61_000);
+        expect(await repository().append({ actorId: seeded.readerId, sessionId: seeded.readerSession,
+          request: { runId: fixture.runId, idempotencyKey: ids.next(), text, replyToWaitId: fixture.waitId, questionAnchor: fixture.question.anchor } }))
+          .toMatchObject({ ok: true });
+      }
+      expect(await sql`SELECT command_id FROM run_interaction_command WHERE run_id=${fixture.runId}`).toHaveLength(0);
+      expect(await sql`SELECT closed_at FROM run_wait WHERE wait_id=${fixture.waitId}`).toEqual([{ closed_at: null }]);
+      const read = await repository().read({ runId: fixture.runId, actorId: seeded.readerId });
+      expect(read.messages.some(m => m.body?.includes('No answer was proposed.'))).toBe(true);
+    } finally { await cleanupDeferredContext(fixture); }
+  });
+
+  it.each(['options', 'deadline'] as const)('rejects a forged initial %s anchor and preserves the immutable question', async mode => {
+    const fixture = await seedAnswerContext();
+    try {
+      if (mode === 'options') {
+        await expect(sql`UPDATE run_wait SET options='[{"id":"retry","label":"Changed meaning"},{"id":"skip","label":"Skip"},{"id":"abort","label":"Abort"}]'::jsonb WHERE wait_id=${fixture.waitId}`)
+          .rejects.toMatchObject({ code: '23514', message: 'Wait identity and question are immutable' });
+      } else {
+        await expect(sql`UPDATE run_wait SET deadline=deadline+interval '1 minute' WHERE wait_id=${fixture.waitId}`)
+          .rejects.toMatchObject({ code: '23514', message: 'Wait identity and question are immutable' });
+      }
+      const questionAnchor = { ...fixture.question.anchor, ...(mode === 'options'
+        ? { questionDigest: fixture.question.anchor.questionDigest === '0'.repeat(64) ? '1'.repeat(64) : '0'.repeat(64) }
+        : { deadline: new Date(Date.parse(fixture.question.anchor.deadline) + 60_000).toISOString() }) };
+      expect(await repository().append({ actorId: seeded.readerId, sessionId: seeded.readerSession,
+        request: { runId: fixture.runId, idempotencyKey: ids.next(), text: 'Retry', replyToWaitId: fixture.waitId, questionAnchor } }))
+        .toMatchObject({ ok: false });
+      expect(await sql`SELECT command_id FROM run_interaction_command WHERE run_id=${fixture.runId}`).toHaveLength(0);
+      expect(await sql`SELECT event_id FROM audit_events WHERE aggregate_id=${fixture.runId} AND event_type='execution.escalation-answered'`).toHaveLength(0);
+      expect(await sql`SELECT closed_at FROM run_wait WHERE wait_id=${fixture.waitId}`).toEqual([{ closed_at: null }]);
+    } finally { await cleanupDeferredContext(fixture); }
+  });
+
+  it.each(['revision','expired','intake-removed','proposal-removed','proposal-corrupt','revoked','other-actor','wrong-run'] as const)
+    ('refuses answer confirmation after %s with no wait effect', async mode => {
+      const fixture = await seedAnswerContext(mode === 'expired' ? 5_000 : undefined);
+      try {
+        class DamagedAnswerCipher extends ConversationContentCipher {
+          override seal(runId: string, messageId: string, content: string): string {
+            return (JSON.parse(content) as { text: string }).text.startsWith('Question for ') ? 'v1.AAAA' : super.seal(runId, messageId, content);
+          }
+        }
+        const proposal = await proposeAnswer(fixture, 'Retry', mode === 'proposal-corrupt'
+          ? new PostgresRunConversationRepository(db, new DamagedAnswerCipher('11'.repeat(32)), () => now) : repository());
+        if (mode === 'revision') await sql`UPDATE audit_run SET procedure_name=procedure_name||' revised' WHERE run_id=${fixture.runId}`;
+        if (mode === 'expired') await new Promise(resolve => setTimeout(resolve, Math.max(0, Date.parse(fixture.question.anchor.deadline) - Date.now()) + 25));
+        if (['intake-removed','proposal-removed'].includes(mode)) {
+          const [child] = await sql`SELECT message_id FROM run_conversation_message WHERE parent_message_id=${proposal.receipt.messageId}`;
+          const id = mode === 'intake-removed' ? proposal.receipt.messageId : String(child!.message_id);
+          await sql`UPDATE run_conversation_content SET ciphertext=NULL,removed_at=clock_timestamp(),content_epoch=content_epoch+1 WHERE message_id=${id}`;
+        }
+        if (['revision','expired','intake-removed','proposal-removed','proposal-corrupt'].includes(mode)) {
+          const read = await repository().read({ runId: fixture.runId, actorId: seeded.readerId });
+          expect(read.status).toBe('ready');
+          expect(read.messages.find(m => m.command?.commandId === proposal.commandId)?.command)
+            .toMatchObject({ canConfirm: false, reason: expect.any(String) });
+        }
+        if (mode === 'revoked') await sql`DELETE FROM user_role WHERE user_id=${seeded.readerId}`;
+        try {
+          expect(await confirmAnswer(mode === 'wrong-run' ? fixture.otherRunId : fixture.runId, proposal.commandId,
+            mode === 'other-actor' ? seeded.pagerId : seeded.readerId)).toMatchObject({ ok: false });
+        } finally { if (mode === 'revoked') await sql`INSERT INTO user_role(user_id,role) VALUES (${seeded.readerId},'auditor')`; }
+        expect(await sql`SELECT event_id FROM audit_events WHERE aggregate_id=${fixture.runId} AND event_type='execution.escalation-answered'`).toHaveLength(0);
+        expect(await sql`SELECT closed_at FROM run_wait WHERE wait_id=${fixture.waitId}`).toEqual([{ closed_at: null }]);
+      } finally { await cleanupDeferredContext(fixture); }
+    });
+
+  it('lets only one of two distinct choices win and never retargets W1 to W2', async () => {
+    const fixture = await seedAnswerContext();
+    try {
+      const retry = await proposeAnswer(fixture), skip = await proposeAnswer(fixture, 'Skip');
+      const results = await Promise.all([confirmAnswer(fixture.runId, retry.commandId), confirmAnswer(fixture.runId, skip.commandId)]);
+      expect(results.filter(r => r.ok)).toHaveLength(1);
+      expect(results.filter(r => !r.ok)).toHaveLength(1);
+      const [closed] = await sql`SELECT answer_option_id FROM run_wait WHERE wait_id=${fixture.waitId}`;
+      const winning = closed?.answer_option_id === 'retry' ? retry : skip, losing = winning === retry ? skip : retry;
+      expect(await confirmAnswer(fixture.runId, losing.commandId)).toMatchObject({ ok: false, reason: expect.stringContaining('closed as answer') });
+      await sql`UPDATE run_agent_work SET wait_id=NULL WHERE run_id=${fixture.runId}`;
+      const raised = await raiseEscalation({ repository: new PostgresWaitRepository(db), ids, clock: { now: () => new Date() } },
+        { runId: fixture.runId, kind: 'retry-or-skip', stepId: classifyPlanTargets(fixture.plan).agents[0]!.stepId, supportingEvidenceIds: [] });
+      expect(raised.ok).toBe(true);
+      expect(await repository().append({ actorId: seeded.readerId, sessionId: seeded.readerSession,
+        request: { ...winning.request, idempotencyKey: ids.next() } })).toMatchObject({ ok: false });
+      expect(await confirmAnswer(fixture.runId, winning.commandId)).toMatchObject({ ok: true, replayed: true });
+      expect(await sql`SELECT wait_id FROM run_wait WHERE run_id=${fixture.runId} AND closed_at IS NULL`).toHaveLength(1);
+      expect(await sql`SELECT event_id FROM audit_events WHERE aggregate_id=${fixture.runId} AND event_type='execution.escalation-answered'`).toHaveLength(1);
+    } finally { await cleanupDeferredContext(fixture); }
+  });
+
+  it('refuses a conversation loser after the existing decision card wins', async () => {
+    const fixture = await seedAnswerContext();
+    try {
+      const proposal = await proposeAnswer(fixture);
+      expect(await answerEscalation({ repository: new PostgresWaitRepository(db), roles: new DrizzleRoleRepository(db),
+        unitOfWork: new PostgresRunsUnitOfWork(db), ids, clock: { now: () => new Date() } },
+        { session: readerSession(), request: { runId: fixture.runId, waitId: fixture.waitId,
+          expectedRunRevision: fixture.question.anchor.runRevision, answerOptionId: 'skip' } })).toMatchObject({ ok: true });
+      expect(await confirmAnswer(fixture.runId, proposal.commandId)).toMatchObject({ ok: false, reason: expect.stringContaining('option skip') });
+    } finally { await cleanupDeferredContext(fixture); }
+  });
+
+  it('uses the existing abort cancellation and seals its partial Result', async () => {
+    const fixture = await seedAnswerContext();
+    try {
+      const proposal = await proposeAnswer(fixture, 'Abort');
+      expect(await confirmAnswer(fixture.runId, proposal.commandId)).toMatchObject({ ok: true, state: 'applied' });
+      expect(await sql`SELECT state,cancel_requested_command_id FROM audit_run WHERE run_id=${fixture.runId}`)
+        .toEqual([{ state: 'CANCELED', cancel_requested_command_id: null }]);
+      expect(await sql`SELECT outcome,sealed FROM run_result WHERE run_id=${fixture.runId}`).toEqual([{ outcome: 'CANCELED', sealed: true }]);
+      expect(await confirmAnswer(fixture.runId, proposal.commandId)).toMatchObject({ ok: true, replayed: true });
+    } finally { await cleanupDeferredContext(fixture); }
+  });
+
+  it.each(['event','receipt','notification'] as const)('rolls back the whole answer if its %s write fails', async mode => {
+    const fixture = await seedAnswerContext();
+    try {
+      const proposal = await proposeAnswer(fixture);
+      const schema = 'answer_failure_' + ids.next().replaceAll('-', '');
+      const table = mode === 'event' ? 'audit_events' : mode === 'receipt' ? 'run_interaction_transition' : 'audit_events';
+      const predicate = mode === 'receipt' ? `NEW.command_id='${proposal.commandId}'::uuid AND NEW.state='applied'`
+        : `NEW.aggregate_id='${fixture.runId}' AND NEW.event_type='execution.escalation-answered'`;
+      if (mode === 'notification') {
+        const original = PostgresWaitRepository.prototype.transaction;
+        const spy = vi.spyOn(PostgresWaitRepository.prototype, 'transaction').mockImplementation(function (this: PostgresWaitRepository, id, work) {
+          return original.call(this, id, context => work({ ...context, notifyTimeline: async () => { throw new Error('synthetic timeline notification failure'); } })) as ReturnType<typeof original>;
+        });
+        try { await expect(confirmAnswer(fixture.runId, proposal.commandId)).rejects.toThrow('synthetic timeline notification failure'); }
+        finally { spy.mockRestore(); }
+      } else {
+        await sql.unsafe(`CREATE FUNCTION ${schema}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF ${predicate} THEN RAISE EXCEPTION 'synthetic answer failure'; END IF; RETURN NEW; END $$`);
+        await sql.unsafe(`CREATE TRIGGER ${schema} BEFORE INSERT ON ${table} FOR EACH ROW EXECUTE FUNCTION ${schema}()`);
+        try { await expect(confirmAnswer(fixture.runId, proposal.commandId)).rejects.toThrow(); }
+        finally { await sql.unsafe(`DROP TRIGGER ${schema} ON ${table}`); await sql.unsafe(`DROP FUNCTION ${schema}()`); }
+      }
+      expect(await sql`SELECT closed_at FROM run_wait WHERE wait_id=${fixture.waitId}`).toEqual([{ closed_at: null }]);
+      expect(await sql`SELECT state FROM audit_run WHERE run_id=${fixture.runId}`).toEqual([{ state: 'AWAITING_AUDITOR' }]);
+      expect(await sql`SELECT event_id FROM audit_events WHERE aggregate_id=${fixture.runId} AND event_type='execution.escalation-answered'`).toHaveLength(0);
+      expect(await confirmAnswer(fixture.runId, proposal.commandId)).toMatchObject({ ok: true, replayed: false });
+    } finally { await cleanupDeferredContext(fixture); }
+  });
+
+  it('rejects SQL forged or missing answer receipt bindings and preserves the authoritative event', async () => {
+    const fixture = await seedAnswerContext();
+    try {
+      const proposal = await proposeAnswer(fixture);
+      await expect(sql`UPDATE run_interaction_command SET answer_option_id='skip' WHERE command_id=${proposal.commandId}`).rejects.toMatchObject({ code: '23514' });
+      await expect(sql`INSERT INTO run_interaction_transition(command_id,sequence,state,reason_code,created_at)
+        VALUES (${proposal.commandId},3,'applied','forged',clock_timestamp())`).rejects.toMatchObject({ code: '23514' });
+      for (const bad of [null, { ...fixture.question.anchor, runRevision: String(fixture.question.anchor.runRevision) },
+        { ...fixture.question.anchor, waitId: ids.next() }]) {
+        await expect(new PostgresAuditUnitOfWork(db).execute(context => context.auditEvents.append({ actor: { type: 'human', id: seeded.readerId },
+          aggregateId: fixture.runId, correlationId: ids.next(), sessionId: seeded.readerSession, eventType: 'execution.escalation-answered', source: 'web', outcome: 'success',
+          payload: { commandId: proposal.commandId, questionAnchor: bad } }))).rejects.toThrow();
+      }
+      await expect(sql.begin(async tx => {
+        await tx`UPDATE run_wait SET closed_at=date_trunc('milliseconds',clock_timestamp()),closure_kind='answer',
+          answer_option_id='retry',actor=${seeded.readerId},answer_command_id=${proposal.commandId} WHERE wait_id=${fixture.waitId}`;
+        await tx`UPDATE audit_run SET state='RUNNING' WHERE run_id=${fixture.runId}`;
+      })).rejects.toMatchObject({ code: '23514' });
+      await expect(sql.begin(async tx => {
+        const [clock] = await tx`SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at`;
+        const at = String(clock!.at), eventId = ids.next();
+        const [command] = await tx`SELECT plan_digest,expected_run_revision FROM run_interaction_command WHERE command_id=${proposal.commandId}`;
+        await tx`UPDATE run_wait SET closed_at=${at}::timestamptz,closure_kind='answer',answer_option_id='retry',actor=${seeded.readerId},
+          answer_command_id=${proposal.commandId} WHERE wait_id=${fixture.waitId}`;
+        const payload = { waitId: fixture.waitId, kind: fixture.question.anchor.kind, answerOptionId: 'retry', closureKind: 'answer',
+          priorState: 'AWAITING_AUDITOR', state: 'RUNNING', occurredAt: at, commandId: proposal.commandId,
+          planDigest: command!.plan_digest, expectedRunRevision: command!.expected_run_revision, questionAnchor: fixture.question.anchor };
+        await tx`INSERT INTO audit_events(event_id,aggregate_id,correlation_id,session_id,actor_type,actor_id,event_type,source,outcome,occurred_at,sequence,payload,previous_hash,event_hash)
+          SELECT ${eventId},${fixture.runId},${ids.next()},${seeded.readerSession},'human',${seeded.readerId},'execution.escalation-answered','web','success',
+            ${at}::timestamptz,max(sequence)+1,${JSON.stringify(payload)}::jsonb,${'a'.repeat(64)},${'b'.repeat(64)} FROM audit_events WHERE aggregate_id=${fixture.runId}`;
+        await tx`INSERT INTO run_interaction_transition(command_id,sequence,state,reason_code,created_at,source_event_id)
+          VALUES (${proposal.commandId},3,'applied','applied',${at}::timestamptz,${eventId})`;
+      })).rejects.toMatchObject({ code: '23514', message: 'Answer fact requires its authoritative Run transition' });
+      expect(await confirmAnswer(fixture.runId, proposal.commandId)).toMatchObject({ ok: true });
+      for (const patch of [{ commandId: null }, { questionAnchor: null },
+        { questionAnchor: { ...fixture.question.anchor, runRevision: String(fixture.question.anchor.runRevision) } },
+        { questionAnchor: { ...fixture.question.anchor, waitId: ids.next() } }, { answerOptionId: 'skip' }]) {
+        await expect(sql`INSERT INTO audit_events(event_id,aggregate_id,correlation_id,session_id,actor_type,actor_id,event_type,source,outcome,occurred_at,sequence,payload,previous_hash,event_hash)
+          SELECT ${ids.next()},aggregate_id,correlation_id,session_id,actor_type,actor_id,event_type,source,outcome,occurred_at,sequence+100000,
+            payload||${JSON.stringify(patch)}::jsonb,previous_hash,event_hash FROM audit_events
+          WHERE aggregate_id=${fixture.runId} AND event_type='execution.escalation-answered'`).rejects.toMatchObject({ code: '23514' });
+      }
+      await expect(sql`UPDATE run_wait SET answer_option_id='skip' WHERE wait_id=${fixture.waitId}`).rejects.toMatchObject({ code: '23514' });
+      await expect(sql`DELETE FROM audit_events WHERE aggregate_id=${fixture.runId} AND event_type='execution.escalation-answered'`).rejects.toMatchObject({ code: '23514' });
+      await expect(sql`UPDATE audit_events SET payload=payload||'{"answerOptionId":"skip"}'::jsonb WHERE aggregate_id=${fixture.runId} AND event_type='execution.escalation-answered'`).rejects.toMatchObject({ code: '23514' });
+    } finally { await cleanupDeferredContext(fixture); }
+  });
+
   async function seedResumeContext() {
     now = new Date(now.getTime() + 61_000);
     const runId = ids.next();
@@ -1226,6 +1570,12 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
     // deleted in one transaction without disabling the retained-identity guard.
     for (const runId of [fixture.runId, fixture.otherRunId]) {
       await sql.begin(async tx => {
+        await tx`DELETE FROM notification WHERE run_id=${runId}`;
+        await tx`DELETE FROM pgboss.job WHERE data->>'runId'=${runId}`;
+        await tx`DELETE FROM run_result WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_gate_check WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_evidence_integrity WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
         await tx`DELETE FROM run_agent_work WHERE run_id=${runId}`;
         await tx`DELETE FROM run_wait WHERE run_id=${runId}`;
         await tx`DELETE FROM population_row WHERE run_id=${runId}`;

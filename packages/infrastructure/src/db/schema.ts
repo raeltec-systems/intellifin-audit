@@ -1947,9 +1947,11 @@ export const runWait = pgTable('run_wait', {
   deadline: timestamp('deadline',{withTimezone:true}).notNull(),
   closedAt: timestamp('closed_at',{withTimezone:true}), closureKind: text('closure_kind'),
   answerOptionId: text('answer_option_id'), actor: text('actor'),
+  answerCommandId: uuid('answer_command_id'),
 }, t => [
   uniqueIndex('run_wait_one_open').on(t.runId).where(sql`${t.closedAt} IS NULL`),
   index('run_wait_deadline').on(t.deadline).where(sql`${t.closedAt} IS NULL`),
+  check('run_wait_answer_command', sql`${t.answerCommandId} IS NULL OR (${t.closureKind} IS NOT DISTINCT FROM 'answer' AND ${t.closedAt} IS NOT NULL)`),
   check('run_wait_kind',sql`${t.kind} IN ('choose-candidate','unnamed-value','retry-or-skip','pause')`),
   // A pause names the auditor who asked for it; an Escalation never names anybody, because
   // the platform raised it. Pinned rather than left a convention anybody can satisfy.
@@ -2085,11 +2087,31 @@ export const runInteractionCommand = pgTable('run_interaction_command', {
   deferredAnchor: jsonb('deferred_anchor'),
   deferredControlEpoch: integer('deferred_control_epoch'),
   resumeAnchor: jsonb('resume_anchor'),
+  answerAnchor: jsonb('answer_anchor'),
+  answerOptionId: text('answer_option_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
 }, t => [
   uniqueIndex('run_interaction_command_request').on(t.runId, t.actorId, t.kind, t.requestKey),
   uniqueIndex('run_interaction_command_message').on(t.messageId),
-  check('run_interaction_command_kind', sql`(
+  check('run_interaction_command_kind', sql`((
+    (${t.kind} = 'answer' AND ${t.interpretationVersion} = 'confirmed-answer-v1'
+      AND ${t.deferredAnchor} IS NULL AND ${t.deferredControlEpoch} IS NULL AND ${t.resumeAnchor} IS NULL
+      AND ${t.answerAnchor} IS NOT NULL AND jsonb_typeof(${t.answerAnchor})='object'
+      AND ${t.answerAnchor} ?& ARRAY['runId','waitId','kind','runRevision','openedAt','deadline','raisedEventId','questionDigest']
+      AND (${t.answerAnchor} - ARRAY['runId','waitId','kind','runRevision','openedAt','deadline','raisedEventId','questionDigest']::text[])='{}'::jsonb
+      AND ${t.answerAnchor}->'runId'=to_jsonb(${t.runId}::text)
+      AND jsonb_typeof(${t.answerAnchor}->'waitId')='string'
+      AND (${t.answerAnchor}->>'waitId') ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+      AND jsonb_typeof(${t.answerAnchor}->'raisedEventId')='string'
+      AND (${t.answerAnchor}->>'raisedEventId') ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+      AND ${t.answerAnchor}->>'kind' IN ('choose-candidate','unnamed-value','retry-or-skip')
+      AND ${t.answerAnchor}->'runRevision'=to_jsonb(${t.expectedRunRevision})
+      AND jsonb_typeof(${t.answerAnchor}->'openedAt')='string' AND jsonb_typeof(${t.answerAnchor}->'deadline')='string'
+      AND (${t.answerAnchor}->>'openedAt') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+      AND (${t.answerAnchor}->>'deadline') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+      AND jsonb_typeof(${t.answerAnchor}->'questionDigest')='string' AND (${t.answerAnchor}->>'questionDigest') ~ '^[a-f0-9]{64}$'
+      AND ${t.answerOptionId} IS NOT NULL AND ${t.answerOptionId} ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$')
+    OR (${t.answerAnchor} IS NULL AND ${t.answerOptionId} IS NULL AND (
     (${t.kind} = 'stop' AND ${t.interpretationVersion} = 'confirmed-stop-v1' AND ${t.deferredAnchor} IS NULL AND ${t.deferredControlEpoch} IS NULL AND ${t.resumeAnchor} IS NULL) OR
     (${t.kind} = 'pause-now' AND ${t.interpretationVersion} = 'exact-safety-v1' AND ${t.deferredAnchor} IS NULL AND ${t.deferredControlEpoch} IS NULL AND ${t.resumeAnchor} IS NULL)
     OR
@@ -2127,7 +2149,7 @@ export const runInteractionCommand = pgTable('run_interaction_command', {
       AND (${t.resumeAnchor}->>'controlEpoch') ~ '^[0-9]+$'
       AND (${t.resumeAnchor}->>'controlEpoch')::numeric BETWEEN 1 AND 2147483647
     )
-  )`),
+  )))) IS TRUE`),
   check('run_interaction_command_envelope', sql`${t.expectedRunRevision} >= 0 AND ${t.planDigest} ~ '^[a-f0-9]{64}$' AND ${t.semanticFingerprint} ~ '^[a-f0-9]{64}$'`),
 ]);
 

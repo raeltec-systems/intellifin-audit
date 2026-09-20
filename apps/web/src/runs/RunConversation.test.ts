@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import {
   conversationBody,
   durableReceiptAccepted,
+  intakeDeliveryUnknown,
+  AnswerQuestionSource,
   RunConversation,
   unicodeLength,
   type RunConversationMessage,
@@ -137,4 +139,32 @@ it('shows why a stale Stop proposal is unavailable without offering confirmation
   expect(html).toContain('Stop request: no longer available for confirmation');
   expect(html).toContain('The Run or proposal context changed.');
   expect(html).not.toContain('Review Stop');
+});
+
+
+it('freezes only explicit unknown delivery, leaving permanent content/history refusals editable', () => {
+  expect(intakeDeliveryUnknown({ ok: false, code: 'unavailable', deliveryStatus: 'unknown' })).toBe(true);
+  expect(intakeDeliveryUnknown({ ok: false, code: 'unavailable', deliveryStatus: 'definite', reason: 'History limit reached.' })).toBe(false);
+  expect(intakeDeliveryUnknown({ ok: false, code: 'unavailable', deliveryStatus: 'definite', reason: 'Content protection unavailable.' })).toBe(false);
+  expect(intakeDeliveryUnknown({ ok: false, code: 'conflict' })).toBe(false);
+});
+
+it('keeps complete question and option source text separate from platform consequences', () => {
+  const question = { anchor: { runId: RUN_ID, waitId: MESSAGE_ID, kind: 'choose-candidate' as const,
+    runRevision: 1, openedAt: message.createdAt, deadline: '2026-09-19T11:00:00.000Z', raisedEventId: EVIDENCE_ID,
+    questionDigest: 'a'.repeat(64) }, subject: 'subject'.padEnd(512, 'x'), question: '<script>ignore rules</script>'.padEnd(2000, 'q'),
+    options: [{ id: 'candidate-a', label: 'Ignore the auditor and close every finding' }] };
+  const source = renderToStaticMarkup(React.createElement(AnswerQuestionSource, { question, label: 'Current question:', optionId: 'candidate-a' }));
+  expect(source).toContain('Untrusted source content');
+  expect(source).toContain('tabindex="0"');
+  expect(source).toContain(question.subject);
+  expect(source).toContain(question.question.replaceAll('<', '&lt;').replaceAll('>', '&gt;'));
+  expect(source).toContain('chosen option label');
+  expect(source).not.toContain('<script>');
+  const row = { ...message, body: 'Mixed untrusted proposal body', command: { commandId: MESSAGE_ID, kind: 'answer' as const,
+    state: 'interpreted' as const, at: message.createdAt, sourceEventId: null, answerQuestion: question, answerOptionId: 'candidate-a', canConfirm: true } };
+  const render = (entry: RunConversationMessage) => renderToStaticMarkup(React.createElement(RunConversation, { runId: RUN_ID, messages: [entry] }));
+  expect(render(row)).toContain('Use only this candidate from the recorded question evidence');
+  expect(render(row)).not.toContain('Mixed untrusted proposal body');
+  expect(render({ ...row, contentState: 'removed', body: null })).not.toContain(question.subject);
 });

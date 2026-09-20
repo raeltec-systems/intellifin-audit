@@ -421,3 +421,34 @@ pushed-candidate CI. See the continuation report and renewal spec under
 `_bmad-output/implementation-artifacts/` for review order and exact evidence. D3 transfer
 authority is approved in its decision record but remains a separate implementation slice.
 Full P3 and all seven overall proof gates remain open. No merge or deployment occurred.
+
+## Exact-question conversational answers (2026-09-20)
+
+A draft now keeps the exact question it began with, including its ordered options,
+source evidence, Run revision and deadline. A unique complete option ID or label can
+produce a reviewable proposal. Qualified, negated or ambiguous prose cannot choose an
+option. Confirmation uses the established escalation handler, independently of the
+controller lease. A replacement question never inherits an older draft's answer.
+
+The retained command, closed wait and original answer event identify one atomic effect.
+Migration 59 rejects forged bindings, missing Run transitions and changed accepted facts.
+Exact retry recovers the recorded outcome after fresh authorization, including the
+existing Abort cancellation path. Both intake and displayed proposal content must remain
+readable before first confirmation. Governed source text is presented as untrusted content;
+platform consequences and confirmation controls remain separate and readable.
+
+Independent review led to stricter source-event/option validation, privacy checks across
+history pages, legacy fingerprint preservation, exact lost-response behavior and removal
+of stale confirmations. The revised conversation PostgreSQL suite passed 87 cases. The
+real compiled-worker browser proof passed with zero retries: its captured candidate list
+raised the question, conversation selected one candidate, and only that candidate grounded
+the resulting Observation. One synthetic Northstar response supplies ambiguity; this is
+application/worker proof rather than a production provider or model-quality claim.
+
+The five answer protocol browser cases, four workspace cases and real-worker candidate
+journey passed with zero retries. All 703 existing/answer PostgreSQL cases passed; build,
+complete TypeScript, boundaries and drift checks passed. The continuation report records
+the separate uncommitted Replay fixture failure and the corrected unit/style check. The
+layout checks retain the 120px history floor and test maximum-length source text at
+1280×800 and 1440×900. The approved D3 transfer, flags, frozen strategies and fuller
+explanations remain separate pending slices. All overall proof gates remain open.

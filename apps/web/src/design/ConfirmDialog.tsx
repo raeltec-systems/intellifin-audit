@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
 import { useActionGate } from './action-gate';
 import { createPortal } from 'react-dom';
@@ -28,6 +28,8 @@ interface ConfirmDialogProps {
   readonly title: string;
   /** One sentence restating what confirming does. */
   readonly consequence: string;
+  /** Source material is separate from the platform consequence. */
+  readonly children?: ReactNode;
   readonly confirmLabel: string;
   readonly cancelLabel?: string;
   readonly onConfirm: (rationale: string | null) => void;
@@ -69,6 +71,7 @@ export function ConfirmDialog({
   weight,
   title,
   consequence,
+  children,
   confirmLabel,
   cancelLabel = 'Cancel',
   onConfirm,
@@ -241,6 +244,7 @@ export function ConfirmDialog({
           {title}
         </h2>
         <p id={consequenceId}>{consequence}</p>
+        {children}
         {refusal ? <p role="alert" className="ls-field-error">{refusal}</p> : null}
         {gateRefusal ? <p id={gateRefusalId} role="alert" className="ls-field-error">{gateRefusal}</p> : null}
 

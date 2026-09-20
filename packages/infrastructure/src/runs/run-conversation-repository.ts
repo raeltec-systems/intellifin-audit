@@ -1,3 +1,4 @@
+import { readLockedConversationQuestion } from './run-conversation-question.js';
 import { createHash } from 'node:crypto';
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 
@@ -13,6 +14,12 @@ import {
   parseRunConversationMessageRequest,
   pauseRun,
   resumeRun,
+  answerEscalation,
+  parseRunConversationQuestionAnchor,
+  resolveRunConversationAnswer,
+  runConversationAnswerConsequence,
+  runConversationAnswerClarification,
+  type RunConversationQuestionContext,
   cancelRun,
   authorizeCommandRole,
   parseRunConversationResumeAnchor,
@@ -59,7 +66,7 @@ import { PostgresWaitRepository } from './wait-repository.js';
 import { readLockedRunControlLease, runControlServerTime } from './run-control-lease-repository.js';
 import { PostgresDeferredPauseRepository } from './deferred-pause-repository.js';
 import { PostgresRunCancellationRepository } from './runs-unit-of-work.js';
-import { matchesStopInteractionEvent, matchesResumeInteractionEvent } from './run-interaction-projection.js';
+import { matchesStopInteractionEvent, matchesResumeInteractionEvent, matchesAnswerInteractionEvent } from './run-interaction-projection.js';
 
 const MAX_CONVERSATION_MESSAGES = 10_000;
 const MAX_REQUESTS_PER_MINUTE = 20;
@@ -400,12 +407,13 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       const receipts = receiptParents.length === 0 ? [] : await tx.execute<{
         message_id: string; command_id: string; state: NonNullable<RunConversationMessage['command']>['state'];
         expected_run_revision: number; deferred_control_epoch: number | null; reason_code: string;
-        kind: 'pause-now' | 'pause-after-inspection' | 'resume' | 'stop'; actor_id: string; deferred_anchor: unknown; resume_anchor: unknown;
-        at: string; source_event_id: string | null; event_valid: boolean;
-      }>(sql`SELECT c.message_id::text,c.command_id::text,c.kind,c.actor_id,c.expected_run_revision,c.deferred_control_epoch,c.deferred_anchor,c.resume_anchor,t.state,t.reason_code,
-        to_char(t.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at,t.source_event_id::text,
+        kind: 'pause-now' | 'pause-after-inspection' | 'resume' | 'stop' | 'answer'; actor_id: string; deferred_anchor: unknown; resume_anchor: unknown; answer_anchor: unknown; answer_option_id: string | null;
+        at: string; source_event_id: string | null; event_valid: boolean; intake_ciphertext: string | null; intake_removed_at: unknown;
+      }>(sql`SELECT c.message_id::text,c.command_id::text,c.kind,c.actor_id,c.expected_run_revision,c.deferred_control_epoch,c.deferred_anchor,c.resume_anchor,c.answer_anchor,c.answer_option_id,t.state,t.reason_code,
+        to_char(t.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at,t.source_event_id::text, intake.ciphertext AS intake_ciphertext,intake.removed_at AS intake_removed_at,
         (t.source_event_id IS NULL OR coalesce(e.aggregate_id=c.run_id::text
           AND e.payload->>'commandId'=c.command_id::text AND e.occurred_at=t.created_at AND (
+            (c.kind='answer' AND t.state='applied' AND conversation_answer_receipt_valid(c,e)) OR
             (c.kind='stop' AND e.outcome='success' AND e.actor_type='human' AND e.actor_id=c.actor_id
               AND EXISTS (SELECT 1 FROM audit_run r WHERE r.run_id=c.run_id AND r.cancel_requested_command_id=c.command_id
                 AND r.cancel_requested_by=e.actor_id AND r.cancel_requested_session=e.session_id
@@ -442,12 +450,16 @@ export class PostgresRunConversationRepository implements RunConversationReposit
         JOIN LATERAL (SELECT state,reason_code,created_at,source_event_id FROM run_interaction_transition
           WHERE command_id=c.command_id ORDER BY sequence DESC LIMIT 1) t ON true
         LEFT JOIN audit_events e ON e.event_id=t.source_event_id
-        WHERE c.run_id=${run.runId}::uuid AND c.kind IN ('pause-now','pause-after-inspection','resume','stop')
+        LEFT JOIN run_conversation_content intake ON intake.message_id=c.message_id
+        WHERE c.run_id=${run.runId}::uuid AND c.kind IN ('pause-now','pause-after-inspection','resume','stop','answer')
           AND c.message_id IN (SELECT jsonb_array_elements_text(${JSON.stringify(receiptParents)}::jsonb)::uuid)`);
       const receiptPlan = receipts.some(receipt => receipt.kind === 'pause-after-inspection')
         ? await new DrizzleFrozenExecutionReader(tx).readFrozenExecution(run.versionId, run.procedureId) : null;
       // Never present an applied receipt whose authoritative source fact is missing or changed.
       if (receipts.some(receipt => !receipt.event_valid)) return errorRead(input.runId, 'unavailable', 'content-unavailable');
+      const answerQuestion = receipts.some(receipt => receipt.kind === 'answer' && receipt.state === 'interpreted')
+        ? await readLockedConversationQuestion(tx, run.runId, false) : null;
+      const answerReadAt = Date.parse(await runControlServerTime(tx));
       const receiptFor = new Map(receipts.map(receipt => [receipt.message_id, receipt]));
       const messages: RunConversationMessage[] = [];
       for (const row of [...page].reverse()) {
@@ -508,6 +520,27 @@ export class PostgresRunConversationRepository implements RunConversationReposit
           links,
           ...(receipt === undefined ? {} : { command: { commandId: receipt.command_id, kind: receipt.kind,
             state: receipt.state, at: receipt.at, sourceEventId: receipt.source_event_id,
+            ...(receipt.kind === 'answer' ? (() => {
+              const anchor = parseRunConversationQuestionAnchor(receipt.answer_anchor);
+              const matchesQuestion = anchor !== null && answerQuestion !== null &&
+                canonicalJson(anchor as unknown as JsonValue) === canonicalJson(answerQuestion.anchor as unknown as JsonValue);
+              let intakeReadable = false;
+              if (receipt.intake_removed_at === null && receipt.intake_ciphertext != null) {
+                try { intakeReadable = storedBody(cipher.open(run.runId, receipt.message_id, receipt.intake_ciphertext)) !== null; } catch { /* Governed content is unavailable. */ }
+              }
+              const reason = receipt.state === 'refused' ? 'This answer proposal was refused. Review the current decision.'
+                : receipt.state !== 'interpreted' ? undefined
+                : receipt.actor_id !== input.actorId ? 'Only the auditor who proposed this answer can confirm it.'
+                : !authorizeActionRole(role, 'escalation.answer').allowed ? 'Your current role cannot answer this question.'
+                : !intakeReadable || contentState !== 'available' ? 'The original message or answer proposal is removed or unavailable.'
+                : anchor !== null && answerReadAt >= Date.parse(anchor.deadline) ? 'This question deadline has passed. Review the current decision.'
+                : !matchesQuestion ? 'This question changed, was already answered, or its source context is unavailable. Review the current decision.' : undefined;
+              return { ...(body !== null ? { reviewText: body } : {}), ...(anchor ? { answerAnchor: anchor } : {}),
+                ...(matchesQuestion && intakeReadable && contentState === 'available' && answerQuestion ? { answerQuestion } : {}),
+                ...(receipt.answer_option_id ? { answerOptionId: receipt.answer_option_id } : {}),
+                canConfirm: receipt.state === 'interpreted' && reason === undefined,
+                ...(reason === undefined ? {} : { reason }) };
+            })() : {}),
             ...(receipt.kind === 'stop' ? (() => {
               const stale = !(ACTIVE_RUN_STATES as readonly string[]).includes(run.state) || run.cancelRequestedAt !== null || run.revision !== receipt.expected_run_revision;
               return { canConfirm: !stale && contentState === 'available' && receipt.state === 'interpreted' && receipt.actor_id === input.actorId && authorizeActionRole(role, 'run.cancel').allowed,
@@ -594,6 +627,92 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       if (row.evidence_id !== null) sourceOrdinalForEvidenceId.set(row.evidence_id, row.ordinal);
     }
     return { sourceOrdinalForWorkItemId, sourceOrdinalForToolActionId, sourceOrdinalForEvidenceId };
+  }
+
+  /** Exact retained answer; no browser text is reparsed on confirmation. */
+  async confirmAnswer(input: PostgresRunConversationAppendInput): Promise<RunConversationCommandReceipt> {
+    const fields = input.request;
+    if (!validActor(input.actorId) || !validActor(input.sessionId) || !plainObject(fields) ||
+      !exactKeys(fields, ['runId', 'commandId']) || typeof fields.runId !== 'string' || !isUuidText(fields.runId) ||
+      typeof fields.commandId !== 'string' || !isUuidText(fields.commandId))
+      return { ok: false, code: 'malformed', reason: 'Choose a recorded answer proposal.' };
+    const runId = fields.runId.toLowerCase(), commandId = fields.commandId.toLowerCase(), cipher = this.cipher;
+    if (cipher === null) return { ok: false, code: 'unavailable', reason: 'Run conversation is unavailable.' };
+    return this.db.transaction(async tx => {
+      await tx.execute(sql`SET LOCAL lock_timeout = '250ms'`);
+      await tx.execute(sql`SET LOCAL statement_timeout = '5s'`);
+      const [run] = await tx.select().from(auditRun).where(eq(auditRun.runId, runId)).for('update').limit(1);
+      const at = new Date(await runControlServerTime(tx));
+      const roles = new DrizzleRoleRepository(tx);
+      const writer = createAuditEventWriter(tx, { now: () => at }, new CryptoUuidV7Generator());
+      const authorization = await authorizeCommandRole({ roles, unitOfWork: { execute: work => work({ auditEvents: writer }) } }, {
+        session: { userId: input.actorId, sessionId: input.sessionId }, correlationId: run?.correlationId ?? new CryptoUuidV7Generator().next(), action: 'escalation.answer',
+      });
+      if (!authorization.allowed) return { ok: false, code: 'denied', reason: authorization.reason };
+      if (!run) return { ok: false, code: 'run-not-found', reason: 'The Run was not found.' };
+      const [command] = await tx.select().from(runInteractionCommand).where(and(
+        eq(runInteractionCommand.commandId, commandId), eq(runInteractionCommand.runId, runId),
+        eq(runInteractionCommand.kind, 'answer'), eq(runInteractionCommand.actorId, input.actorId))).for('update').limit(1);
+      if (!command) return { ok: false, code: 'denied', reason: 'Only the auditor who proposed this answer can confirm it.' };
+      const anchor = parseRunConversationQuestionAnchor(command.answerAnchor);
+      if (!anchor || !command.answerOptionId) return { ok: false, code: 'unavailable', reason: 'The recorded question context is unavailable.' };
+      const [prior] = await tx.select().from(runInteractionTransition).where(eq(runInteractionTransition.commandId, commandId))
+        .orderBy(desc(runInteractionTransition.sequence)).limit(1);
+      const [closed] = await tx.select().from(runWait).where(and(eq(runWait.runId, runId), eq(runWait.waitId, anchor.waitId))).limit(1);
+      if (prior?.state === 'applied') {
+        const [fact] = prior.sourceEventId === null ? [] : await tx.select().from(auditEvents).where(eq(auditEvents.eventId, prior.sourceEventId));
+        if (!fact || !matchesAnswerInteractionEvent(command, { ...fact, actor: { type: fact.actorType, id: fact.actorId } }) ||
+          fact.occurredAt.getTime() !== prior.createdAt.getTime() || closed?.closureKind !== 'answer' || closed.answerCommandId !== commandId || closed.actor !== command.actorId ||
+          closed.answerOptionId !== command.answerOptionId || closed.closedAt?.toISOString() !== fact.payload.occurredAt ||
+          closed.closedAt?.getTime() !== fact.occurredAt.getTime())
+          return { ok: false, code: 'unavailable', reason: 'The authoritative answer receipt is unavailable.' };
+        if (command.answerOptionId === 'abort') {
+          const [sealed] = await tx.execute(sql`SELECT 1 FROM run_result WHERE run_id=${runId}::uuid AND run_state='CANCELED' AND outcome='CANCELED' AND sealed`);
+          if (run.state !== 'CANCELED' || !sealed) return { ok: false, code: 'unavailable', reason: 'The sealed abort outcome is unavailable.' };
+        }
+        return { ok: true, commandId, state: 'applied', replayed: true };
+      }
+      const recorded = closed?.closedAt ? ` The question was closed as ${closed.closureKind}${closed.answerOptionId ? ` with option ${closed.answerOptionId}` : ''} at ${closed.closedAt.toISOString()}.` : '';
+      if (prior?.state !== 'interpreted') return { ok: false, code: 'conflict', reason: `This answer proposal is no longer available.${recorded}` };
+      const bodies = await tx.select({ messageId: runConversationMessage.messageId,
+        ciphertext: runConversationContent.ciphertext, removedAt: runConversationContent.removedAt })
+        .from(runConversationMessage).innerJoin(runConversationContent, eq(runConversationContent.messageId, runConversationMessage.messageId))
+        .where(and(eq(runConversationMessage.runId, runId), or(eq(runConversationMessage.messageId, command.messageId),
+          and(eq(runConversationMessage.parentMessageId, command.messageId), eq(runConversationMessage.kind, 'command-receipt')))))
+        .orderBy(runConversationContent.messageId).limit(3).for('update', { of: runConversationContent });
+      let readable = bodies.length === 2;
+      for (const body of bodies) {
+        try { if (body.removedAt !== null || body.ciphertext === null || storedBody(cipher.open(runId, body.messageId, body.ciphertext)) === null) readable = false; }
+        catch { readable = false; }
+      }
+      if (!readable) return { ok: false, code: 'unavailable', reason: 'Both the message and displayed proposal must remain readable before confirmation.' };
+      const question = await readLockedConversationQuestion(tx, runId);
+      const plan = await new DrizzleFrozenExecutionReader(tx).readFrozenExecution(run.versionId, run.procedureId);
+      const valid = question !== null && canonicalJson(question.anchor as unknown as JsonValue) === canonicalJson(anchor as unknown as JsonValue) &&
+        plan !== null && createHash('sha256').update(canonicalJson(plan as unknown as JsonValue)).digest('hex') === command.planDigest &&
+        at.getTime() < Date.parse(anchor.deadline) && question.options.some(o => o.id === command.answerOptionId);
+      const waits = new PostgresWaitRepository(tx);
+      const outcome = valid ? await answerEscalation({ roles,
+        // The nested context owns the writer used by the wait handler. Sharing only its
+        // authorization unit of work would leave the event clock different from closure.
+        repository: { transaction: (id, work) => waits.transaction(id, context => work({ ...context, auditEvents: writer })), recoverableWaits: (...args) => waits.recoverableWaits(...args) },
+        unitOfWork: { execute: work => work({ auditEvents: writer }) }, ids: new CryptoUuidV7Generator(), clock: { now: () => at },
+        confirmedInteraction: { commandId, planDigest: command.planDigest, questionAnchor: anchor },
+      }, { session: { userId: input.actorId, sessionId: input.sessionId }, request: {
+        runId, waitId: anchor.waitId, expectedRunRevision: command.expectedRunRevision, answerOptionId: command.answerOptionId,
+      } }) : { ok: false as const, reason: `The question, choices, revision or deadline changed. Start a new draft from the current question.${recorded}` };
+      if (!outcome.ok) {
+        await tx.insert(runInteractionTransition).values({ commandId, sequence: prior.sequence + 1, state: 'refused', reasonCode: 'question-changed', createdAt: at });
+        const event = await writer.append({ actor: { type: 'human', id: input.actorId }, eventType: 'review.interaction-refused',
+          source: 'web', outcome: 'failure', aggregateId: runId, correlationId: run.correlationId, sessionId: input.sessionId,
+          payload: { commandId, reasonCode: 'question-changed' } });
+        await tx.execute(sql`SELECT pg_notify('run_timeline', ${JSON.stringify({ runId, sequence: event.sequence })})`);
+        return { ok: false, code: 'conflict', reason: outcome.reason };
+      }
+      const [applied] = await tx.select().from(runInteractionTransition).where(eq(runInteractionTransition.commandId, commandId)).orderBy(desc(runInteractionTransition.sequence)).limit(1);
+      if (applied?.state !== 'applied' || !applied.sourceEventId) throw new Error('Answer domain receipt unavailable');
+      return { ok: true, commandId, state: 'applied', replayed: false };
+    });
   }
 
   /** Confirm only the immutable proposal; the client cannot replace its target or epoch. */
@@ -856,7 +975,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
     const parsed = parseRunConversationMessageRequest(input.request);
     if (!parsed.ok) return { ok: false, code: 'malformed', reason: parsed.reason };
     const cipher = this.cipher;
-    if (cipher === null) return { ok: false, code: 'unavailable', reason: 'Run conversation content is unavailable.' };
+    if (cipher === null) return { ok: false, code: 'unavailable', deliveryStatus: 'definite', reason: 'Run conversation content is unavailable.' };
     const interpretation = interpretRunConversationMessage(parsed.value);
     if (!['pause-now', 'stop-confirmation'].includes(interpretation.intent.kind) && parsed.value.selectedSourceOrdinal !== null && parsed.value.selectedSourceOrdinal > MAX_SOURCE_ORDINAL) return { ok: false, code: 'malformed', reason: 'The selected source ordinal is outside the bounded Run surface.' };
     const at = validClock(this.now());
@@ -872,6 +991,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       text: parsed.value.text.trim(),
       selectedSourceOrdinal: parsed.value.selectedSourceOrdinal,
       replyToWaitId: parsed.value.replyToWaitId,
+      ...(parsed.value.questionAnchor == null ? {} : { questionAnchor: parsed.value.questionAnchor }),
       ...(interpretation.intent.kind === 'deferred-pause-proposal' ? { currentInspection: parsed.value.currentInspection ?? null } : {}),
     });
     const semanticFingerprint = cipher.fingerprint(semanticInput);
@@ -896,6 +1016,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       if (!authorizeActionRole(await new DrizzleRoleRepository(tx).findRole(input.actorId), 'run.initiate').allowed)
         return { ok: false, code: 'denied', reason: 'Your current role does not permit this action.' };
       const run = parseRun(runRow);
+      const admittedAt = new Date(await runControlServerTime(tx));
 
       const [prior] = await tx.select({ messageId: runConversationMessage.messageId, sequence: runConversationMessage.sequence, semanticFingerprint: runConversationMessage.semanticFingerprint })
         .from(runConversationMessage)
@@ -928,20 +1049,20 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       const [rate] = await tx.select({ count: sql<number>`count(*)::int` }).from(runConversationMessage)
         .where(and(eq(runConversationMessage.actorId, input.actorId), isNotNull(runConversationMessage.requestKey), gte(runConversationMessage.createdAt, windowStart),
           safetyShortcut ? sql`EXISTS (SELECT 1 FROM ${runInteractionCommand} c WHERE c.message_id=${runConversationMessage.messageId} AND c.kind IN ('pause-now','stop'))` : sql`NOT EXISTS (SELECT 1 FROM ${runInteractionCommand} c WHERE c.message_id=${runConversationMessage.messageId} AND c.kind IN ('pause-now','stop'))`));
-      if ((rate?.count ?? 0) >= MAX_REQUESTS_PER_MINUTE) return { ok: false, code: 'unavailable', reason: 'The conversation rate limit was reached. Try again shortly.' };
+      if ((rate?.count ?? 0) >= MAX_REQUESTS_PER_MINUTE) return { ok: false, code: 'unavailable', deliveryStatus: 'definite', reason: 'The conversation rate limit was reached. Try again shortly.' };
 
       if (!safetyShortcut) {
         const [total] = await tx.select({ count: sql<number>`count(*)::int` }).from(runConversationMessage)
           .where(and(eq(runConversationMessage.runId, run.runId), or(isNotNull(runConversationMessage.requestKey), isNotNull(runConversationMessage.parentMessageId))));
-        if ((total?.count ?? 0) + 2 > MAX_CONVERSATION_MESSAGES) return { ok: false, code: 'unavailable', reason: 'The Run conversation has reached its bounded message limit.' };
+        if ((total?.count ?? 0) + 2 > MAX_CONVERSATION_MESSAGES) return { ok: false, code: 'unavailable', deliveryStatus: 'definite', reason: 'The Run conversation has reached its bounded message limit.' };
       }
       const [position] = await tx.select({ sequence: sql<number>`coalesce(max(${runConversationMessage.sequence}), 0)::int` })
         .from(runConversationMessage).where(eq(runConversationMessage.runId, run.runId));
       const requiredPositions = interpretation.intent.kind === 'pause-now' ? 3 : 2;
-      if ((position?.sequence ?? 0) + requiredPositions > 1_000_000) return { ok: false, code: 'unavailable', reason: 'The Run conversation has reached its history limit. Execution history remains available in Run details.' };
+      if ((position?.sequence ?? 0) + requiredPositions > 1_000_000) return { ok: false, code: 'unavailable', deliveryStatus: 'definite', reason: 'The Run conversation has reached its history limit. Execution history remains available in Run details.' };
 
       const plan = await new DrizzleFrozenExecutionReader(tx).readFrozenExecution(run.versionId, run.procedureId);
-      if (!plan) return { ok: false, code: 'unavailable', reason: 'The frozen Run context is unavailable.' };
+      if (!plan) return { ok: false, code: 'unavailable', deliveryStatus: 'definite', reason: 'The frozen Run context is unavailable.' };
       const deferredAnchor = interpretation.intent.kind === 'deferred-pause-proposal' ? parsed.value.currentInspection ?? null : null;
       let deferredTargetLabel: string | null = null;
       let deferredControlEpoch: number | null = null;
@@ -969,6 +1090,18 @@ export class PostgresRunConversationRepository implements RunConversationReposit
         if (deferredAnchor.subjectKey === null && !/pause after this inspection[.!?]*$/i.test(parsed.value.text.trim()))
           return { ok: false, code: 'conflict', reason: 'The current unit is a page inspection, not one source record. Use “pause after this inspection” to name that boundary.' };
         deferredTargetLabel = `${deferredAnchor.subjectKey === null ? 'the page inspection' : JSON.stringify(deferredAnchor.subjectKey)} on ${safeFact(target.target.displayName, 120)}`;
+      }
+      let answerQuestion: RunConversationQuestionContext | null = null;
+      let answerOption: { readonly id: string; readonly label: string } | null = null;
+      if (interpretation.intent.kind === 'answer-request-proposal') {
+        if (!authorizeActionRole(await new DrizzleRoleRepository(tx).findRole(input.actorId), 'escalation.answer').allowed)
+          return { ok: false, code: 'denied', reason: 'Your current role cannot answer this question.' };
+        answerQuestion = await readLockedConversationQuestion(tx, run.runId);
+        if (!parsed.value.questionAnchor || !answerQuestion ||
+          canonicalJson(parsed.value.questionAnchor as unknown as JsonValue) !== canonicalJson(answerQuestion.anchor as unknown as JsonValue) ||
+          Date.parse(answerQuestion.anchor.deadline) <= admittedAt.getTime())
+          return { ok: false, code: 'conflict', reason: 'The question changed or expired while you were composing. Start a new draft from the current question.' };
+        answerOption = resolveRunConversationAnswer(parsed.value.text, answerQuestion.options);
       }
       const stopProposal = interpretation.intent.kind === 'stop-confirmation';
       if (stopProposal) {
@@ -1011,6 +1144,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
           messageId,
           replyMessageId,
           intent: interpretation.intent.kind,
+          ...(answerQuestion !== null && answerOption !== null ? { questionAnchor: { ...answerQuestion.anchor }, answerOptionId: answerOption.id } : {}),
           sourceOrdinal: sourceOrdinal,
           semanticFingerprint,
         },
@@ -1094,6 +1228,22 @@ export class PostgresRunConversationRepository implements RunConversationReposit
         ]);
         replyBody = bodyEnvelope(`Review Resume for the pause opened at ${resumeAnchor.pausedAt}. Confirm before ${resumeAnchor.deadline}. Interrupted work restarts as a new attempt using the frozen plan and committed evidence. No work resumes until you confirm.`, []);
       }
+      if (answerQuestion !== null) {
+        if (answerOption === null) replyBody = bodyEnvelope(runConversationAnswerClarification(answerQuestion), []);
+        else {
+          const commandId = new CryptoUuidV7Generator().next();
+          await tx.insert(runInteractionCommand).values({ commandId, runId: run.runId, messageId,
+            actorId: input.actorId, kind: 'answer', requestKey: parsed.value.idempotencyKey, semanticFingerprint,
+            planDigest: createHash('sha256').update(canonicalJson(plan as unknown as JsonValue)).digest('hex'),
+            expectedRunRevision: run.revision, interpretationVersion: 'confirmed-answer-v1',
+            answerAnchor: answerQuestion.anchor, answerOptionId: answerOption.id, createdAt: admittedAt });
+          await tx.insert(runInteractionTransition).values([
+            { commandId, sequence: 1, state: 'received', reasonCode: 'intake-persisted', createdAt: admittedAt },
+            { commandId, sequence: 2, state: 'interpreted', reasonCode: 'answer-confirmation-required', createdAt: admittedAt },
+          ]);
+          replyBody = bodyEnvelope(`Question for ${answerQuestion.subject}: ${answerQuestion.question} Choice: ${answerOption.label} (${answerOption.id}). ${runConversationAnswerConsequence(answerOption.id)} Confirm before ${answerQuestion.anchor.deadline}. No answer is applied until you confirm.`, []);
+        }
+      }
       // Existing domain events can append operational narration between intake and
       // reply. Allocate from the committed transaction history after invoking the handler.
       const [replyPosition] = await tx.select({ sequence: sql<number>`coalesce(max(${runConversationMessage.sequence}), 0)::int` })
@@ -1107,7 +1257,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
         runId: run.runId,
         sequence: replySequence,
         actorId: input.actorId,
-        kind: interpretation.intent.kind === 'pause-now' || deferredAnchor !== null || resumeAnchor !== null || stopProposal ? 'command-receipt' : 'platform-event',
+        kind: interpretation.intent.kind === 'pause-now' || deferredAnchor !== null || resumeAnchor !== null || stopProposal || answerOption !== null ? 'command-receipt' : 'platform-event',
         createdAt: at,
         parentMessageId: messageId,
         requestKey: null,

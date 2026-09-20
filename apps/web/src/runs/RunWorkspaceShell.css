@@ -216,6 +216,25 @@
     max-height: 15rem;
     padding: var(--spacing-1);
   }
+
+  /* Keep the question context visible without making Send a separate full-width row.
+     The textarea and its footer share a row; DOM and keyboard order stay unchanged. */
+  .run-workspace-route .run-conversation__composer-form {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    gap: var(--spacing-1) var(--spacing-2);
+  }
+
+  .run-workspace-route .run-conversation__composer-form > label,
+  .run-workspace-route .run-conversation__composer-form > p {
+    grid-column: 1 / -1;
+  }
+
+  .run-workspace-route .run-conversation__composer-footer {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: var(--spacing-1);
+  }
 }
 
 .run-workspace-route .run-workspace-shell__meta {
@@ -246,7 +265,7 @@
   align-items: start;
   column-gap: var(--spacing-2);
   gap: var(--spacing-1);
-  padding: var(--spacing-2);
+  padding: var(--spacing-1);
 }
 
 .escalation-panel--workspace > h2,
@@ -312,7 +331,7 @@
 }
 
 .escalation-panel--workspace .ls-untrusted {
-  padding: var(--spacing-2);
+  padding: var(--spacing-1);
 }
 
 .escalation-panel--workspace .escalation-panel__note,
@@ -802,4 +821,52 @@
 }
 .run-workspace-route .run-controller p {
   margin: 0;
+}
+
+/* Full source text stays accessible without expanding the pinned composer indefinitely. */
+.run-conversation__question-source {
+  min-width: 0;
+  grid-column: 1 / -1;
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+.run-conversation__question-source > summary {
+  cursor: pointer;
+  color: var(--color-text-link);
+}
+.run-conversation__source-scroll {
+  max-height: 8rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
+}
+.run-conversation__composer-form .run-conversation__source-scroll {
+  max-height: 2.5rem;
+}
+.run-conversation__source-scroll .ls-untrusted {
+  padding: var(--spacing-1);
+}
+.run-conversation__source-scroll .ls-untrusted__body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.escalation-panel--workspace .escalation-panel__question .ls-untrusted {
+  max-height: 5rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+/* Source values cannot expand the status chrome or move an answer below its pane. */
+.run-workspace-current-action {
+  max-height: 1.25rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
+}
+.escalation-panel--workspace .escalation-panel__answer-option .ls-untrusted {
+  max-height: 3rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
 }

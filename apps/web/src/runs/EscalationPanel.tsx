@@ -119,7 +119,7 @@ function WorkspaceUntrustedText({ field, children }: {
     ? `Candidate ${field.slice('AGENT-GENERATED candidate '.length)}`
     : field === 'AGENT-GENERATED question' ? 'Question' : field;
   return (
-    <div className="ls-untrusted">
+    <div className="ls-untrusted" role="region" aria-label={`${field} source content`} tabIndex={0}>
       <p className="ls-untrusted__label">
         <span aria-hidden="true">{compactField} · untrusted</span>
         <span className="ls-visually-hidden">{field} · untrusted.</span>
@@ -267,8 +267,8 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt, wor
 
   const answerSection = (
     <fieldset className="ls-stack escalation-panel__answers" disabled={unknown}>
-      <legend>Answer</legend>
-      <p className={workspace ? 'ls-caption' : undefined}>{workspace ? 'No answer is recommended.' : 'Choose one answer. The platform expresses no recommendation.'}</p>
+      <legend>Answer{workspace && <span className="ls-caption"> · No recommendation</span>}</legend>
+      {!workspace && <p>Choose one answer. The platform expresses no recommendation.</p>}
       <div className="ls-stack escalation-panel__answer-options">
         {options.map((option, index) => (
           <div key={`${option.id}-${index}`} className="ls-stack escalation-panel__answer-option">

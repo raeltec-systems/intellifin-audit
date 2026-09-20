@@ -13,7 +13,7 @@ export async function sendRunConversationMessage(request: unknown): Promise<RunC
     });
   } catch {
     // Neither raw requests nor database/crypto causes may reach telemetry or the client.
-    return { ok: false, code: 'unavailable', reason: 'The message could not be confirmed. Retry the same message to recover its receipt.' };
+    return { ok: false, code: 'unavailable', deliveryStatus: 'unknown', reason: 'The message could not be confirmed. Retry the same message to recover its receipt.' };
   }
 }
 
@@ -70,5 +70,15 @@ export async function confirmConversationStop(request: unknown): Promise<RunConv
     });
   } catch {
     return { ok: false, code: 'unavailable', reason: 'Stop could not be confirmed. Retry this same confirmation to recover its recorded outcome.' };
+  }
+}
+
+export async function confirmConversationAnswer(request: unknown): Promise<RunConversationCommandReceipt> {
+  const decision = await requireServerAction('escalation.answer');
+  if (!decision.allowed) return { ok: false, code: 'denied', reason: decision.reason };
+  try {
+    return await (await getRuntime()).conversation.confirmAnswer({ actorId: decision.session.userId, sessionId: decision.session.sessionId, request });
+  } catch {
+    return { ok: false, code: 'unavailable', reason: 'The answer could not be confirmed. Retry this same proposal to recover its recorded outcome.' };
   }
 }

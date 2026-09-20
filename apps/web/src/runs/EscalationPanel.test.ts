@@ -294,6 +294,7 @@ describe('Run-detail Escalation read seam', () => {
       pause: null,
       runRevision: 19,
       details: DETAILS_NONE,
+      question: null,
     });
     expect(transaction).toHaveBeenCalledWith(RUN_ID, expect.any(Function));
   });
@@ -315,6 +316,7 @@ describe('Run-detail Escalation read seam', () => {
       pause: paused,
       runRevision: 4,
       details: null,
+      question: null,
     });
   });
 
@@ -323,6 +325,6 @@ describe('Run-detail Escalation read seam', () => {
       transaction: async (_runId: string, work: (context: unknown) => Promise<unknown>) =>
         work({ wait: null, run: null, readEscalationDetails: async () => null }),
     } as unknown as Pick<WaitRepository, 'transaction'>;
-    await expect(readOpenEscalationWith(repository, RUN_ID)).resolves.toEqual({ wait: null, pause: null, runRevision: null, details: null });
+    await expect(readOpenEscalationWith(repository, RUN_ID)).resolves.toEqual({ wait: null, pause: null, runRevision: null, details: null, question: null });
   });
 });

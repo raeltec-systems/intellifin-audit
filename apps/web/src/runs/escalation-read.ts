@@ -1,4 +1,4 @@
-import { isEscalationWait, type EscalationDetails, type EscalationWait, type RunWait, type WaitRepository } from '@intellifin/application';
+import { isEscalationWait, type RunConversationQuestionContext, type EscalationDetails, type EscalationWait, type RunWait, type WaitRepository } from '@intellifin/application';
 import { PostgresWaitRepository } from '@intellifin/infrastructure';
 
 import { getRuntime } from '../bootstrap';
@@ -16,6 +16,7 @@ import { requireServerAction } from '../server-session';
  */
 export interface OpenEscalationRead {
   readonly wait: EscalationWait | null;
+  readonly question?: RunConversationQuestionContext | null;
   /**
    * The open PAUSE wait, when this Run is holding on one (Story 5.4).
    *
@@ -56,6 +57,7 @@ export async function readOpenEscalationWith(
     const wait = open !== null && isEscalationWait(open) ? open : null;
     return {
       wait,
+      question: wait === null ? null : await context.readConversationQuestion?.() ?? null,
       pause: open !== null && open.closedAt === null && open.kind === 'pause' ? open : null,
       runRevision: context.run?.revision ?? null,
       details: wait === null ? null : await context.readEscalationDetails(wait.waitId),

@@ -62,7 +62,7 @@ export function RunFlagControl({ runId, flaggable, flags }: RunFlagControlProps)
       : <Banner tone="danger" title={state.reason ?? FLAG_COPY.unknown} />}
     {state?.unknownOutcome === true && <p><a href={`/runs/${runId}/live`}>Reload this Run</a></p>}
     {flaggable ? (
-      <form method="POST" action={formAction} className="ls-stack">
+      <form action={formAction} className="ls-stack">
         <input type="hidden" name="runId" value={runId} />
         <div className="ls-stack">
           <label htmlFor="run-flag-note">{FLAG_COPY.noteLabel}</label>

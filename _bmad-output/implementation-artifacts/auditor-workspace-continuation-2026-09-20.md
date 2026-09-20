@@ -147,3 +147,63 @@ All 26 boundary cases passed across the full run and recheck.
 Final build, complete TypeScript and schema-drift checks passed at 19:23 UTC. The
 renewal commit's own remote CI remains pending. See [the renewal specification and
 review order](spec-aw-controller-renewal.md). The seven overall proof gates stay open.
+
+## Exact-question conversation answers — locally verified
+
+The conversation captures the exact open question when a draft starts: Run, wait,
+revision, deadline, raised-event identity and a digest of the complete ordered options
+and their source context. Only a unique whole option label or ID produces an answer
+proposal. Confirmation uses the existing answer handler without requiring controller
+ownership. A draft for an earlier question cannot answer its replacement. Unknown
+responses retain the original request; a definite pre-write refusal allows correction.
+
+Migration 59 binds conversational wait closure to the exact command, audit event and
+applied receipt. Missing, changed or removed intake/proposal content prevents confirmation.
+Duplicate confirmation recovers the original outcome after fresh authorization. The Abort
+option retains the established sealed partial cancellation result. Source question and
+choice text appear in explicit untrusted-text disclosures, separate from platform instructions.
+
+Three independent reviews produced corrections for source provenance, exact retry identity,
+withdrawn content, bounded clarification, stale dialogs and storage-level Run transitions.
+The revised PostgreSQL conversation suite passed **87/87**. A final source-removal projection
+regression passed separately. The real compiled worker journey passed with zero retries:
+it captured a synthetic ambiguous search result, raised its own question, consumed the
+conversationally selected snapshot-bound candidate and produced only that candidate's
+observation. The fixture substitutes one synthetic Northstar response; this proves the
+application/worker contract, not model quality or a real hosted provider.
+
+Five authenticated answer protocol journeys passed: replacement question, lost intake,
+visible confirmation retry, a competing answer and revoked permission. Full unit verification
+passed 4,785 cases and found one undefined class in the separate Replay slice. After its
+correction, all 57 affected UI/stylesheet checks passed. The complete database run passed
+all **703 existing and answer-related cases**; the separate selected Replay fixture had
+one UUID tie-order expectation failure among its three new cases. Build, complete
+package/root TypeScript, boundaries and schema drift passed. All four workspace browser
+cases passed on the final rerun, including maximum-length source disclosures, geometry
+and accessibility. The existing hydrated history control now gates the test's manual
+scrolling; no geometry assertion was relaxed. Combined with the five answer protocol
+cases and real-worker journey, ten unique targeted browser journeys have passing evidence
+with zero retries. The pushed candidate still needs its own remote CI.
+
+## Renewal CI findings and admission correction
+
+CI 35532244865 for `4e2791d95abd1134ad7e7cb9a7cd57a4e7661fa0` completed with four
+successful jobs. PostgreSQL passed 667/668: eight simultaneous 1,000-row record-query
+reads exceeded 30 seconds while retaining stale Serializable snapshots during admission.
+The correction takes admission before context/projection and releases transactions while
+waiting. It bounds pool queuing and lock contention by a monotonic deadline, fences late
+callbacks, and preserves fresh authorization and the two-snapshot limit. Cursor paging
+bypasses creation admission.
+
+The corrected 23-case PostgreSQL module passed locally; eight 1,000-row readers completed
+in 2.1 seconds. Commit `fae6b5667196ec92cef338aa9a73b8b9d569ab7c` is pushed. Its CI
+35535380156 has passed all **674 PostgreSQL tests**, units/type/boundaries, container checks,
+P0 browser checks and the hydrated worker abuse job. Its full browser job finished
+248/249, failing only the same 1280×800 layout assertion. The admission correction is
+verified; the complete candidate is not green until the layout fix passes.
+
+The renewal browser job passed 248/249. At 1280×800, wrapping controller controls clipped
+the first decision option. The local answer/layout correction retains the 120px history
+floor and strict geometry checks, including maximum-length source content. All four
+workspace cases now pass locally. No merge or deployment has occurred;
+all seven overall proof gates remain open.

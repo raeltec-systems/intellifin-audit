@@ -1,3 +1,5 @@
+import { canonicalJson, sha256Hex, type JsonValue } from '@intellifin/domain';
+import { isEscalationKind, type EscalationKind, type EscalationOption } from './escalation-kind.js';
 import type { DeferredPauseAnchor } from '@intellifin/domain';
 import { parseDeferredPauseAnchor } from './deferred-pause-run.js';
 
@@ -78,7 +80,11 @@ export interface RunConversationMessage {
   /** Current persisted receipt, separate from the immutable message text. */
   readonly command?: {
     readonly commandId: string;
-    readonly kind: 'pause-now' | 'pause-after-inspection' | 'resume' | 'stop';
+    readonly kind: 'pause-now' | 'pause-after-inspection' | 'resume' | 'stop' | 'answer';
+    readonly answerAnchor?: RunConversationQuestionAnchor;
+    readonly answerQuestion?: RunConversationQuestionContext;
+    readonly answerOptionId?: string;
+    readonly reviewText?: string;
     readonly targetLabel?: string;
     readonly resumeAnchor?: RunConversationResumeAnchor;
     readonly canConfirm?: boolean;
@@ -149,12 +155,69 @@ export interface RunConversationMessageRequest {
   readonly replyToWaitId: string | null;
   /** Server-read execution context captured when composition begins; never a selected-row guess. */
   readonly currentInspection?: DeferredPauseAnchor | null;
+  readonly questionAnchor?: RunConversationQuestionAnchor | null;
 }
 
 export type RunConversationInspectionRead =
   | { readonly status: 'ready'; readonly anchor: DeferredPauseAnchor; readonly subjectLabel: string;
       readonly targetName: string; readonly sourceOrdinal: number | null; readonly multipleTargets: boolean }
   | { readonly status: 'unavailable'; readonly reason: string };
+
+/** Safe identity only: question and option text remains governed content. */
+export interface RunConversationQuestionAnchor {
+  readonly runId: string;
+  readonly waitId: string;
+  readonly kind: EscalationKind;
+  readonly runRevision: number;
+  readonly openedAt: string;
+  readonly deadline: string;
+  readonly raisedEventId: string;
+  readonly questionDigest: string;
+}
+export interface RunConversationQuestionContext {
+  readonly anchor: RunConversationQuestionAnchor;
+  readonly question: string;
+  readonly subject: string;
+  readonly options: readonly EscalationOption[];
+}
+
+export function parseRunConversationQuestionAnchor(value: unknown): RunConversationQuestionAnchor | null {
+  if (!plainObject(value) || !exactKeys(value, ['runId','waitId','kind','runRevision','openedAt','deadline','raisedEventId','questionDigest']) ||
+    ![value.runId, value.waitId, value.raisedEventId].every(id => typeof id === 'string' && UUID.test(id) && id === id.toLowerCase()) ||
+    !isEscalationKind(value.kind) || typeof value.runRevision !== 'number' || !Number.isInteger(value.runRevision) || value.runRevision < 0 || value.runRevision > 2147483647 ||
+    typeof value.questionDigest !== 'string' || !/^[a-f0-9]{64}$/.test(value.questionDigest) ||
+    ![value.openedAt, value.deadline].every(at => typeof at === 'string' && Number.isFinite(Date.parse(at)) && new Date(at).toISOString() === at) ||
+    Date.parse(value.deadline as string) <= Date.parse(value.openedAt as string)) return null;
+  return value as unknown as RunConversationQuestionAnchor;
+}
+
+/** Canonicalize complete server-owned semantics, including ordered options and source bindings. */
+export function runConversationQuestionDigest(envelope: JsonValue): string {
+  return sha256Hex(canonicalJson(envelope));
+}
+
+/** Whole-message matching only; labels are never treated as instructions or aliases. */
+export function resolveRunConversationAnswer(text: string, options: readonly EscalationOption[]): EscalationOption | null {
+  const choice = text.trim().replace(/^answer:\s*/i, '').trim().toLowerCase();
+  const matches = options.filter(option => option.id.toLowerCase() === choice || option.label.trim().toLowerCase() === choice);
+  return matches.length === 1 ? matches[0]! : null;
+}
+
+/** Keep every displayed choice complete; large vocabularies stay in their decision card. */
+export function runConversationAnswerClarification(context: RunConversationQuestionContext): string {
+  const choices = context.options.map(option => `${option.label} (${option.id})`).join('; ');
+  const full = `No answer was proposed. Choose one exact option for ${context.subject}: ${choices}.`;
+  return full.length <= RUN_CONVERSATION_MAX_TEXT_CHARS ? full
+    : 'No answer was proposed. The complete choices are too long for a conversation message. Review all option labels and IDs in the existing decision card, then send one exact option ID or label.';
+}
+
+export function runConversationAnswerConsequence(optionId: string): string {
+  if (optionId === 'abort') return 'Stop this Run, retain collected evidence and seal the partial Result.';
+  if (optionId === 'skip' || optionId === 'mark-ambiguous') return 'Continue with this inspection unresolved; it remains visible in coverage.';
+  if (optionId === 'mark-unevaluated') return 'Retain the captured finding as Unevaluated and continue.';
+  if (optionId === 'retry') return 'Retry this inspection under the existing execution limits.';
+  return 'Use only this candidate from the recorded question evidence; the existing evidence checks still apply.';
+}
 
 /** Immutable pause and control context displayed before a conversational Resume. */
 export interface RunConversationResumeAnchor {
@@ -231,6 +294,8 @@ export type RunConversationAppendReceipt =
       readonly ok: false;
       readonly reason: string;
       readonly code: RunConversationAppendErrorCode;
+      /** Whether a refused intake is known not to have committed. */
+      readonly deliveryStatus?: 'definite' | 'unknown';
     };
 
 export type RunConversationCommandReceipt =
@@ -322,7 +387,7 @@ function failure(code: RunConversationMessageRefusalCode, reason: string): RunCo
 export function parseRunConversationMessageRequest(value: unknown): RunConversationMessageParseResult {
   if (!plainObject(value)) return failure('malformed', 'The conversation message must be an object.');
 
-  const expectedKeys = ['runId', 'idempotencyKey', 'text', 'selectedSourceOrdinal', 'replyToWaitId', 'currentInspection'] as const;
+  const expectedKeys = ['runId', 'idempotencyKey', 'text', 'selectedSourceOrdinal', 'replyToWaitId', 'currentInspection', 'questionAnchor'] as const;
   const requiredKeys = ['runId', 'idempotencyKey', 'text'] as const;
   const keys = Object.keys(value);
   if (keys.some((key) => !expectedKeys.includes(key as (typeof expectedKeys)[number]))) {
@@ -384,6 +449,10 @@ export function parseRunConversationMessageRequest(value: unknown): RunConversat
   if (value.currentInspection !== undefined && value.currentInspection !== null && currentInspection === null)
     return failure('malformed', 'The current inspection context is invalid.');
 
+  const questionAnchor = value.questionAnchor == null ? null : parseRunConversationQuestionAnchor(value.questionAnchor);
+  if (value.questionAnchor != null && (questionAnchor === null || questionAnchor.runId !== value.runId.toLowerCase() || questionAnchor.waitId !== replyToWaitId))
+    return failure('malformed', 'The question context is invalid.');
+
   return {
     ok: true,
     value: {
@@ -393,6 +462,7 @@ export function parseRunConversationMessageRequest(value: unknown): RunConversat
       selectedSourceOrdinal,
       replyToWaitId,
       ...(Object.hasOwn(value, 'currentInspection') ? { currentInspection } : {}),
+      ...(Object.hasOwn(value, 'questionAnchor') ? { questionAnchor } : {}),
     },
   };
 }
@@ -577,7 +647,7 @@ export function interpretRunConversationMessage(
       {
         kind: 'answer-request-proposal',
         waitId: input.replyToWaitId,
-        answer: answer[1].trim(),
+        answer: answer?.[1]?.trim() ?? text,
       },
       'proposal',
       true,
@@ -611,6 +681,10 @@ export function interpretRunConversationMessage(
       'read-only',
       false,
     );
+  }
+
+  if (input.questionAnchor != null && input.replyToWaitId !== null) {
+    return interpretation({ kind: 'answer-request-proposal', waitId: input.replyToWaitId, answer: text }, 'proposal', true);
   }
 
   // In particular, "do not pause now", "if needed pause now", and "'pause now'"

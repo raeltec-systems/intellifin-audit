@@ -6,6 +6,7 @@ import type { runInteractionCommand } from '../db/schema.js';
 const anchor = { waitId: '01a06fd8-0000-7000-8000-0000000000c2',
   pausedAt: '2026-09-19T12:00:00.000Z', deadline: '2026-09-19T12:30:00.000Z', controlEpoch: 7 };
 const command: typeof runInteractionCommand.$inferSelect = {
+  answerAnchor: null, answerOptionId: null,
   commandId: '01a06fd8-0000-7000-8000-0000000000d1', runId: '01a06fd8-0000-7000-8000-0000000000d2',
   messageId: '01a06fd8-0000-7000-8000-0000000000d3', requestKey: '01a06fd8-0000-7000-8000-0000000000d4',
   actorId: 'auditor', kind: 'resume', semanticFingerprint: 'a'.repeat(64), planDigest: 'b'.repeat(64),

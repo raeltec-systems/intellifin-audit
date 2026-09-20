@@ -1,9 +1,25 @@
 import { and, desc, eq } from 'drizzle-orm';
-import type { AuditEventRecord } from '@intellifin/domain';
-import { parseDeferredPauseAnchor, parseRunConversationResumeAnchor } from '@intellifin/application';
+import { canonicalJson, type JsonValue, type AuditEventRecord } from '@intellifin/domain';
+import { parseDeferredPauseAnchor, parseRunConversationResumeAnchor, parseRunConversationQuestionAnchor } from '@intellifin/application';
 import type { Transaction } from '../db/client.js';
 import { isUuidText } from '../db/identifier.js';
 import { runInteractionCommand, runInteractionTransition } from '../db/schema.js';
+
+export function matchesAnswerInteractionEvent(command: typeof runInteractionCommand.$inferSelect,
+  event: { readonly eventType: string; readonly source: string; readonly outcome: string;
+    readonly actor: { readonly type: string; readonly id: string }; readonly aggregateId: string;
+    readonly payload: Readonly<Record<string, unknown>> }): boolean {
+  const anchor = parseRunConversationQuestionAnchor(command.answerAnchor);
+  const actual = parseRunConversationQuestionAnchor(event.payload.questionAnchor);
+  return command.kind === 'answer' && anchor !== null && actual !== null &&
+    canonicalJson(anchor as unknown as JsonValue) === canonicalJson(actual as unknown as JsonValue) &&
+    event.aggregateId === command.runId && event.eventType === 'execution.escalation-answered' &&
+    event.source === 'web' && event.outcome === 'success' && event.actor.type === 'human' && event.actor.id === command.actorId &&
+    event.payload.commandId === command.commandId && event.payload.waitId === anchor.waitId && event.payload.kind === anchor.kind &&
+    event.payload.answerOptionId === command.answerOptionId && event.payload.expectedRunRevision === command.expectedRunRevision &&
+    event.payload.planDigest === command.planDigest && event.payload.closureKind === 'answer' && event.payload.priorState === 'AWAITING_AUDITOR' &&
+    event.payload.state === (command.answerOptionId === 'abort' ? 'CANCELED' : 'RUNNING');
+}
 
 export function matchesResumeInteractionEvent(command: typeof runInteractionCommand.$inferSelect,
   event: { readonly eventType: string; readonly source: string; readonly outcome: string;
@@ -42,7 +58,10 @@ export async function projectRunInteractionEvent(tx: Transaction, event: AuditEv
   let state: 'queued' | 'applied' | 'superseded';
   let priorState: 'interpreted' | 'queued';
   const human = event.actor.type === 'human' && event.actor.id === command.actorId;
-  if (command.kind === 'stop') {
+  if (command.kind === 'answer') {
+    if (!matchesAnswerInteractionEvent(command, event)) return;
+    state = 'applied'; priorState = 'interpreted';
+  } else if (command.kind === 'stop') {
     if (matchesStopInteractionEvent(command, event, 'queued')) { state = 'queued'; priorState = 'interpreted'; }
     else if (matchesStopInteractionEvent(command, event, 'applied')) { state = 'applied'; priorState = event.source === 'web' ? 'interpreted' : 'queued'; }
     else return;
@@ -78,7 +97,7 @@ export async function projectRunInteractionEvent(tx: Transaction, event: AuditEv
   // A terminal receipt is never overwritten by a later or duplicate fact.
   if (!prior || prior.state !== priorState) return;
   await tx.insert(runInteractionTransition).values({ commandId: command.commandId, sequence: prior.sequence + 1,
-    state, reasonCode: command.kind === 'stop' ? (state === 'queued' ? 'cancellation-requested' : 'run-canceled') : command.kind === 'resume' ? 'run-resumed' : state === 'queued' ? 'pause-requested' : state === 'applied' ? 'worker-paused' :
+    state, reasonCode: command.kind === 'answer' ? 'question-answered' : command.kind === 'stop' ? (state === 'queued' ? 'cancellation-requested' : 'run-canceled') : command.kind === 'resume' ? 'run-resumed' : state === 'queued' ? 'pause-requested' : state === 'applied' ? 'worker-paused' :
       command.kind === 'pause-after-inspection' ? 'deferred-pause-superseded' : 'run-finalized',
     createdAt: new Date(event.occurredAt), sourceEventId: event.eventId });
 }
