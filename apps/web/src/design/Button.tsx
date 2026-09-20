@@ -12,6 +12,8 @@ interface ButtonProps {
   /** `{spacing.control-sm}` in a record header, `{spacing.control-md}` in a form. */
   readonly size?: 'sm' | 'md';
   readonly type?: 'button' | 'submit';
+  /** A React action on the submitter preserves a native POST form without method warnings. */
+  readonly formAction?: (data: FormData) => void | Promise<void>;
   readonly icon?: IconName;
   readonly onClick?: () => void;
   /**
@@ -43,6 +45,7 @@ export function Button({
   variant = 'secondary',
   size = 'sm',
   type = 'button',
+  formAction,
   icon,
   onClick,
   disabledReason,
@@ -71,6 +74,7 @@ export function Button({
     <>
       <button
         type={type}
+        formAction={formAction}
         className={`ls-button ls-button--${variant} ls-button--${size}`}
         aria-disabled={unavailable || busy ? true : undefined}
         aria-describedby={describedBy}

@@ -147,8 +147,14 @@ test.describe('flagging a Run from Live View', () => {
     try {
       const page = await context.newPage();
       await page.goto(`/runs/${runId}/live`);
+      await expect(page.locator('#run-flag form')).toHaveAttribute('method', /post/i);
       await page.getByLabel(FLAG_COPY.noteLabel).fill('Typed without script.');
+      const submission = page.waitForRequest(request => request.method() === 'POST'
+        && new URL(request.url()).pathname === `/runs/${runId}/live`);
       await page.getByRole('button', { name: FLAG_COPY.submit }).click();
+      const request = await submission;
+      expect(new URL(request.url()).search).toBe('');
+      expect(request.postData()).toContain('Typed without script.');
       await expect(page.getByText(FLAG_COPY.raised, { exact: true })).toBeVisible();
       const [flag] = await sql`SELECT note FROM run_flag WHERE run_id=${runId}`;
       expect(flag).toEqual({ note: 'Typed without script.' });

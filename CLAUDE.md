@@ -4146,5 +4146,7 @@ confirmation/source projection, including when the intake lies on another histor
 
 For maximum-length workspace context, bound source text separately from its action and make
 scroll regions keyboard-accessible. Test the expanded disclosure as well as the initial and
-populated composer. React function-action forms supply their method; an explicit method on
-those forms causes a browser warning and should be omitted.
+populated composer. Keep explicit native POST forms: React function actions on the form
+conflict with an explicit method. Put the action on the submitter through Button.formAction
+instead, letting React supply its submitter metadata. Do not weaken the form-method guard.
+The no-JavaScript browser proof must assert POST, no URL query and the note in the body.

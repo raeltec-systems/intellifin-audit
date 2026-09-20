@@ -207,3 +207,15 @@ the first decision option. The local answer/layout correction retains the 120px 
 floor and strict geometry checks, including maximum-length source content. All four
 workspace cases now pass locally. No merge or deployment has occurred;
 all seven overall proof gates remain open.
+
+## Native POST follow-up from candidate CI
+
+CI 35537277008 passed typecheck/boundaries but its unit job passed 4,785/4,786: the
+form-method safety check rejected the flag form's omitted method. The correction keeps
+`method="POST"` on the native form and attaches the React action to its submit button,
+through an optional typed `Button.formAction` prop. The safety check is unchanged.
+All 221 form/flag unit cases passed. Two zero-retry browser journeys passed: actual
+JavaScript-disabled submission proves POST with no query and the note in the body,
+and the workspace journey proves successful conversation submission with no console errors.
+Web and root TypeScript checks passed. The rest of this candidate's CI remains
+independent evidence. No merge/deployment or overall proof-gate closure is claimed.

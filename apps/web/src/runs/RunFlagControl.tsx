@@ -62,7 +62,7 @@ export function RunFlagControl({ runId, flaggable, flags }: RunFlagControlProps)
       : <Banner tone="danger" title={state.reason ?? FLAG_COPY.unknown} />}
     {state?.unknownOutcome === true && <p><a href={`/runs/${runId}/live`}>Reload this Run</a></p>}
     {flaggable ? (
-      <form action={formAction} className="ls-stack">
+      <form method="POST" className="ls-stack">
         <input type="hidden" name="runId" value={runId} />
         <div className="ls-stack">
           <label htmlFor="run-flag-note">{FLAG_COPY.noteLabel}</label>
@@ -90,7 +90,7 @@ export function RunFlagControl({ runId, flaggable, flags }: RunFlagControlProps)
             and a second full fan-out of notifications to every Audit Manager — which is
             why `run-flag-v1.md` says the surface blocks the retry and asks for a reload.
             `RunCancelControl` was extracted from this change with exactly this arm. */}
-        <Button type="submit" variant="secondary" busy={pending}
+        <Button type="submit" formAction={formAction} variant="secondary" busy={pending}
           {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason }
             : state?.unknownOutcome === true ? { disabledReason: RUN_LOST_RESPONSE } : {})}>{FLAG_COPY.submit}</Button>
       </form>
