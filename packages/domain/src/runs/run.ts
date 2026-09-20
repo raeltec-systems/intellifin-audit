@@ -11,6 +11,8 @@ export type RunKind = 'STANDARD' | 'REGRESSION';
  * Run Detail state has to state — beside the reason it records.
  */
 export interface RunCancellationRequest {
+  /** Server-created interaction identity retained through worker restart. */
+  readonly commandId?: string;
   readonly requestedBy: string;
   readonly sessionId: string;
   readonly requestedAt: string;

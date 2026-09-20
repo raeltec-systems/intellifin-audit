@@ -134,6 +134,18 @@ function dependencies(context: FakeContext, denials: unknown[] = []): CancelRunD
 }
 
 describe('cancelRun', () => {
+  it('retains trusted command identity and refuses to claim another pending cancellation', async () => {
+    const context = new FakeContext({ ...RUN, state: 'RUNNING' });
+    const commandId = '01a06fd8-0000-7000-8000-0000000000f1';
+    const input = { session: SESSION, request: { runId: RUN.runId, reason: null } };
+    expect(await cancelRun({ ...dependencies(context), commandId }, input)).toMatchObject({ ok: true, pending: true });
+    expect(context.marker).toMatchObject({ commandId });
+    expect(context.events[0]?.payload).toMatchObject({ commandId });
+    expect(await cancelRun({ ...dependencies(context), commandId: RUN.runId }, input)).toMatchObject({ ok: false });
+    expect(context.events).toHaveLength(1);
+    expect(await cancelRun(dependencies(context), { ...input, request: { ...input.request, commandId } })).toMatchObject({ ok: false });
+  });
+
   it('finishes the job itself for a queued Run: state, marker, dispatch and Result in one unit', async () => {
     const context = new FakeContext(RUN);
     expect(await cancelRun(dependencies(context), { session: SESSION, request: { runId: RUN.runId, reason: null } }))

@@ -74,6 +74,7 @@ const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 let sql: Sql;
 let storage: Awaited<ReturnType<typeof startSyntheticS3>>;
 let stopWorker: (() => Promise<void>) | undefined;
+let crashWorker: (() => Promise<void>) | undefined;
 let releaseReadAttributeBarrier: (() => void) | undefined;
 const workerMarkers: string[] = [];
 let workerFailure: string | null = null;
@@ -82,6 +83,7 @@ async function startWorker(): Promise<void> {
   workerMarkers.length = 0;
   workerFailure = null;
   let stopping = false;
+  let crashing = false;
   let closed = false;
   let outputBuffer = '';
   const worker = spawn(process.execPath, [
@@ -120,7 +122,7 @@ async function startWorker(): Promise<void> {
   const exited = new Promise<void>((resolveExit) => {
     worker.once('close', (code) => {
       closed = true;
-      if ((code !== null && code !== 0) || !stopping) workerFailure = 'worker-exited-unexpectedly';
+      if ((!crashing && code !== null && code !== 0) || !stopping) workerFailure = 'worker-exited-unexpectedly';
       resolveExit();
     });
   });
@@ -155,6 +157,12 @@ async function startWorker(): Promise<void> {
   // Stderr is deliberately discarded. A worker error is reported using a fixed code;
   // provider/configuration text must never become a test failure artifact.
   worker.stderr.on('data', () => undefined);
+  crashWorker = async () => {
+    stopping = true; crashing = true;
+    worker.kill('SIGKILL');
+    await exited;
+    stopWorker = undefined; crashWorker = undefined; releaseReadAttributeBarrier = undefined;
+  };
   stopWorker = async () => {
     stopping = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -686,4 +694,49 @@ test.describe('canonical P-4 through the real compiled worker', () => {
     await page.reload();
     await expect.poll(() => page.locator('.ls-session__frame').evaluate(node => (node as HTMLImageElement).naturalWidth), { timeout: 15_000 }).toBeGreaterThan(100);
   });
+  test('recovers accepted conversational Stop after worker process loss and preserves captured evidence', async ({ page }) => {
+    test.setTimeout(360_000);
+    // Restart this fixture's worker so its first model-read barrier belongs to this Run.
+    await stopWorker?.();
+    await startWorker();
+    const runId = await startRun(page);
+    let commandId = '';
+    let evidenceId = '';
+    try {
+      await waitForReadAttributeBarrier();
+      const capture = await latestRegisteredScreenshot(runId);
+      if (!capture) throw new Error('Worker capture missing before Stop');
+      evidenceId = capture.evidence_id;
+      await page.goto(`/runs/${runId}/workspace`);
+      await page.getByLabel('Message the Run', { exact: true }).fill('Stop');
+      await page.getByRole('button', { name: 'Send message', exact: true }).click();
+      await expect(page.locator('.run-conversation__composer-status')).toHaveText('Message accepted.');
+      const [proposal] = await sql`SELECT command_id FROM run_interaction_command WHERE run_id=${runId} AND kind='stop'`;
+      if (!proposal) throw new Error('Stop proposal missing');
+      commandId = String(proposal.command_id);
+      expect(await sql`SELECT cancel_requested_at FROM audit_run WHERE run_id=${runId}`).toEqual([{ cancel_requested_at: null }]);
+      await page.getByRole('button', { name: 'Review Stop', exact: true }).click();
+      await page.getByRole('dialog', { name: 'Stop this Run?', exact: true }).getByRole('button', { name: 'Stop Run', exact: true }).click();
+      await expect(page.getByLabel('Conversation history')).toContainText('Stop request: awaiting worker boundary.');
+      await page.reload();
+      await expect(page.getByLabel('Conversation history')).toContainText('Stop request: awaiting worker boundary.');
+      expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`).toEqual([{ state: 'RUNNING' }]);
+      // Lose the process only after acceptance. A fresh worker must recover the durable
+      // command and honor the existing lease/recovery boundary without another request.
+      await crashWorker?.();
+      await startWorker();
+    } finally { releaseReadAttributeBarrier?.(); }
+    await expect.poll(async () => String((await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)[0]?.state), { timeout: 240_000 }).toBe('CANCELED');
+    await page.reload();
+    await expect(page.getByLabel('Conversation history')).toContainText('Stop request: applied.');
+    expect(await sql`SELECT state FROM run_interaction_transition WHERE command_id=${commandId} ORDER BY sequence`)
+      .toEqual([{ state: 'received' }, { state: 'interpreted' }, { state: 'queued' }, { state: 'applied' }]);
+    expect(await sql`SELECT event_type,source FROM audit_events WHERE aggregate_id=${runId}
+      AND payload->>'commandId'=${commandId} AND event_type IN ('lifecycle.run-cancel-requested','lifecycle.run-canceled') ORDER BY sequence`)
+      .toEqual([{ event_type: 'lifecycle.run-cancel-requested', source: 'web' }, { event_type: 'lifecycle.run-canceled', source: 'worker' }]);
+    expect(await sql`SELECT state FROM run_evidence WHERE run_id=${runId} AND evidence_id=${evidenceId}`).toEqual([{ state: 'REGISTERED' }]);
+    expect(await sql`SELECT * FROM run_evidence_package WHERE run_id=${runId}`).toHaveLength(1);
+    expect(await sql`SELECT outcome FROM run_result WHERE run_id=${runId}`).toEqual([{ outcome: 'CANCELED' }]);
+  });
+
 });

@@ -13,6 +13,8 @@ import {
   parseRunConversationMessageRequest,
   pauseRun,
   resumeRun,
+  cancelRun,
+  authorizeCommandRole,
   parseRunConversationResumeAnchor,
   type RunConversationResumeAnchor,
   acceptDeferredPause,
@@ -29,7 +31,7 @@ import {
   type RunConversationRepository,
   type RunConversationEventContext,
 } from '@intellifin/application';
-import { adapterLookupColumn, canonicalJson, classifyPlanTargets, authorizeActionRole, type AuditEventRecord, type ExecutablePlan, type JsonValue } from '@intellifin/domain';
+import { ACTIVE_RUN_STATES, adapterLookupColumn, canonicalJson, classifyPlanTargets, authorizeActionRole, type AuditEventRecord, type ExecutablePlan, type JsonValue } from '@intellifin/domain';
 
 import type { Database, Transaction } from '../db/client.js';
 import {
@@ -56,7 +58,8 @@ import { recordReviewProjectionQuery } from './record-review-repository.js';
 import { PostgresWaitRepository } from './wait-repository.js';
 import { readLockedRunControlLease, runControlServerTime } from './run-control-lease-repository.js';
 import { PostgresDeferredPauseRepository } from './deferred-pause-repository.js';
-import { matchesResumeInteractionEvent } from './run-interaction-projection.js';
+import { PostgresRunCancellationRepository } from './runs-unit-of-work.js';
+import { matchesStopInteractionEvent, matchesResumeInteractionEvent } from './run-interaction-projection.js';
 
 const MAX_CONVERSATION_MESSAGES = 10_000;
 const MAX_REQUESTS_PER_MINUTE = 20;
@@ -305,7 +308,7 @@ function replyText(run: ConversationRun, intent: RunConversationIntentKind, fact
  */
 export class PostgresRunConversationRepository implements RunConversationRepository {
   constructor(
-    private readonly db: Database,
+    private readonly db: Database | Transaction,
     private readonly cipher: ConversationContentCipher | null,
     private readonly now: () => Date = () => new Date(),
   ) {}
@@ -396,12 +399,21 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       const receiptParents = page.filter(row => row.kind === 'command-receipt' && row.parentMessageId !== null).map(row => row.parentMessageId!);
       const receipts = receiptParents.length === 0 ? [] : await tx.execute<{
         message_id: string; command_id: string; state: NonNullable<RunConversationMessage['command']>['state'];
-        kind: 'pause-now' | 'pause-after-inspection' | 'resume'; actor_id: string; deferred_anchor: unknown; resume_anchor: unknown;
+        expected_run_revision: number; reason_code: string;
+        kind: 'pause-now' | 'pause-after-inspection' | 'resume' | 'stop'; actor_id: string; deferred_anchor: unknown; resume_anchor: unknown;
         at: string; source_event_id: string | null; event_valid: boolean;
-      }>(sql`SELECT c.message_id::text,c.command_id::text,c.kind,c.actor_id,c.deferred_anchor,c.resume_anchor,t.state,
+      }>(sql`SELECT c.message_id::text,c.command_id::text,c.kind,c.actor_id,c.expected_run_revision,c.deferred_anchor,c.resume_anchor,t.state,t.reason_code,
         to_char(t.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at,t.source_event_id::text,
         (t.source_event_id IS NULL OR coalesce(e.aggregate_id=c.run_id::text
           AND e.payload->>'commandId'=c.command_id::text AND e.occurred_at=t.created_at AND (
+            (c.kind='stop' AND e.outcome='success' AND e.actor_type='human' AND e.actor_id=c.actor_id
+              AND EXISTS (SELECT 1 FROM audit_run r WHERE r.run_id=c.run_id AND r.cancel_requested_command_id=c.command_id
+                AND r.cancel_requested_by=e.actor_id AND r.cancel_requested_session=e.session_id
+                AND r.cancel_requested_at=(e.payload->>'requestedAt')::timestamptz AND r.cancel_reason=e.payload->>'reason') AND (
+              (t.state='queued' AND e.event_type='lifecycle.run-cancel-requested' AND e.source='web' AND e.payload->>'performedBy'='worker' AND e.payload->>'state'='RUNNING') OR
+              (t.state='applied' AND e.event_type='lifecycle.run-canceled' AND e.source IN ('web','worker') AND e.payload->>'performedBy'=e.source AND e.payload->>'state'='CANCELED' AND ((e.source='worker' AND e.payload->>'priorState'='RUNNING') OR (e.source='web' AND e.payload->>'priorState' IN ('QUEUED','PAUSED','AWAITING_AUDITOR')))
+                AND EXISTS (SELECT 1 FROM audit_run ar JOIN run_result rr ON rr.run_id=ar.run_id JOIN run_evidence_package ep ON ep.run_id=ar.run_id
+                  WHERE ar.run_id=c.run_id AND ar.state='CANCELED' AND rr.run_state='CANCELED' AND rr.outcome='CANCELED' AND rr.sealed AND ep.run_state='CANCELED')))) OR
             (c.kind='resume' AND t.state='applied' AND e.event_type='lifecycle.run-resumed'
               AND e.source='web' AND e.outcome='success' AND e.actor_type='human' AND e.actor_id=c.actor_id
               AND e.payload->'waitId'=c.resume_anchor->'waitId' AND e.payload->'pausedAt'=c.resume_anchor->'pausedAt'
@@ -427,10 +439,10 @@ export class PostgresRunConversationRepository implements RunConversationReposit
               ))
           ),false)) AS event_valid
         FROM run_interaction_command c
-        JOIN LATERAL (SELECT state,created_at,source_event_id FROM run_interaction_transition
+        JOIN LATERAL (SELECT state,reason_code,created_at,source_event_id FROM run_interaction_transition
           WHERE command_id=c.command_id ORDER BY sequence DESC LIMIT 1) t ON true
         LEFT JOIN audit_events e ON e.event_id=t.source_event_id
-        WHERE c.run_id=${run.runId}::uuid AND c.kind IN ('pause-now','pause-after-inspection','resume')
+        WHERE c.run_id=${run.runId}::uuid AND c.kind IN ('pause-now','pause-after-inspection','resume','stop')
           AND c.message_id IN (SELECT jsonb_array_elements_text(${JSON.stringify(receiptParents)}::jsonb)::uuid)`);
       const receiptPlan = receipts.some(receipt => receipt.kind === 'pause-after-inspection')
         ? await new DrizzleFrozenExecutionReader(tx).readFrozenExecution(run.versionId, run.procedureId) : null;
@@ -496,6 +508,13 @@ export class PostgresRunConversationRepository implements RunConversationReposit
           links,
           ...(receipt === undefined ? {} : { command: { commandId: receipt.command_id, kind: receipt.kind,
             state: receipt.state, at: receipt.at, sourceEventId: receipt.source_event_id,
+            ...(receipt.kind === 'stop' ? (() => {
+              const stale = !(ACTIVE_RUN_STATES as readonly string[]).includes(run.state) || run.cancelRequestedAt !== null || run.revision !== receipt.expected_run_revision;
+              return { canConfirm: !stale && contentState === 'available' && receipt.state === 'interpreted' && receipt.actor_id === input.actorId && authorizeActionRole(role, 'run.cancel').allowed,
+                ...(receipt.state === 'refused' || (receipt.state === 'interpreted' && stale) ? { reason: receipt.reason_code === 'competing-cancellation'
+                  ? 'Another cancellation request owns this Run.' : receipt.reason_code === 'run-ended' ? 'This Run has already ended.'
+                  : 'The Run or proposal context changed. Review the current Run before proposing Stop again.' } : {}) };
+            })() : {}),
             ...(receipt.kind === 'resume' ? (() => {
               const anchor = parseRunConversationResumeAnchor(receipt.resume_anchor);
               return { ...(anchor === null ? {} : { resumeAnchor: anchor }), canConfirm: anchor !== null &&
@@ -745,6 +764,93 @@ export class PostgresRunConversationRepository implements RunConversationReposit
     });
   }
 
+  /** A retry names the same retained proposal and can only recover its own effect. */
+  async confirmStop(input: PostgresRunConversationAppendInput): Promise<RunConversationCommandReceipt> {
+    const fields = input.request;
+    if (!validActor(input.actorId) || !validActor(input.sessionId) || !plainObject(fields) ||
+      !exactKeys(fields, ['runId', 'commandId']) || typeof fields.runId !== 'string' || !isUuidText(fields.runId) ||
+      typeof fields.commandId !== 'string' || !isUuidText(fields.commandId))
+      return { ok: false, code: 'malformed', reason: 'Choose a recorded Stop proposal.' };
+    const runId = fields.runId.toLowerCase();
+    const commandId = fields.commandId.toLowerCase();
+    const cipher = this.cipher;
+    if (cipher === null) return { ok: false, code: 'unavailable', reason: 'Run conversation is unavailable.' };
+    return this.db.transaction(async tx => {
+      await tx.execute(sql`SET LOCAL lock_timeout = '250ms'`);
+      await tx.execute(sql`SET LOCAL statement_timeout = '5s'`);
+      const [run] = await tx.select().from(auditRun).where(eq(auditRun.runId, runId)).for('update').limit(1);
+      const roles = new DrizzleRoleRepository(tx);
+      const at = new Date(await runControlServerTime(tx));
+      const auditEventsWriter = createAuditEventWriter(tx, { now: () => at }, new CryptoUuidV7Generator());
+      const permission = await authorizeCommandRole({ roles, unitOfWork: { execute: work => work({ auditEvents: auditEventsWriter }) } },
+        { session: { userId: input.actorId, sessionId: input.sessionId }, action: 'run.cancel', correlationId: run?.correlationId ?? new CryptoUuidV7Generator().next() });
+      if (!permission.allowed) return { ok: false, code: 'denied', reason: permission.reason };
+      if (!run) return { ok: false, code: 'run-not-found', reason: 'The Run was not found.' };
+      const [command] = await tx.select().from(runInteractionCommand).where(and(
+        eq(runInteractionCommand.commandId, commandId), eq(runInteractionCommand.runId, runId),
+        eq(runInteractionCommand.kind, 'stop'), eq(runInteractionCommand.actorId, input.actorId),
+      )).for('update').limit(1);
+      if (!command) return { ok: false, code: 'denied', reason: 'Only the auditor who proposed this Stop can confirm it.' };
+      const [prior] = await tx.select().from(runInteractionTransition).where(eq(runInteractionTransition.commandId, commandId))
+        .orderBy(desc(runInteractionTransition.sequence)).limit(1);
+      if (prior?.state === 'applied' || prior?.state === 'queued') {
+        const [fact] = prior.sourceEventId === null ? [] : await tx.select().from(auditEvents)
+          .where(eq(auditEvents.eventId, prior.sourceEventId)).limit(1);
+        if (!fact || fact.actorType !== 'human' || fact.occurredAt.getTime() !== prior.createdAt.getTime() ||
+          !matchesStopInteractionEvent(command, { ...fact, actor: { type: 'human', id: fact.actorId } }, prior.state) ||
+          run.cancelRequestedCommandId !== commandId || run.cancelRequestedBy !== command.actorId ||
+          run.cancelRequestedSession !== fact.sessionId || run.cancelRequestedAt?.toISOString() !== fact.payload.requestedAt ||
+          run.cancelReason !== fact.payload.reason)
+          return { ok: false, code: 'unavailable', reason: 'The authoritative Stop receipt is unavailable.' };
+        if (prior.state === 'applied') {
+          const [sealed] = await tx.execute(sql`SELECT 1 FROM run_result rr JOIN run_evidence_package ep ON ep.run_id=rr.run_id
+            WHERE rr.run_id=${runId}::uuid AND rr.run_state='CANCELED' AND rr.outcome='CANCELED' AND rr.sealed AND ep.run_state='CANCELED'`);
+          if (run.state !== 'CANCELED' || !sealed) return { ok: false, code: 'unavailable', reason: 'The sealed cancellation outcome is unavailable.' };
+        }
+        return { ok: true, commandId, state: prior.state, replayed: true };
+      }
+      if (prior?.state !== 'interpreted')
+        return { ok: false, code: 'conflict', reason: 'This Stop proposal is no longer available. Read its receipt and review the current Run.' };
+      const bodies = await tx.select({ messageId: runConversationMessage.messageId,
+        ciphertext: runConversationContent.ciphertext, removedAt: runConversationContent.removedAt })
+        .from(runConversationMessage).innerJoin(runConversationContent, eq(runConversationContent.messageId, runConversationMessage.messageId))
+        .where(and(eq(runConversationMessage.runId, runId), or(eq(runConversationMessage.messageId, command.messageId),
+          and(eq(runConversationMessage.parentMessageId, command.messageId), eq(runConversationMessage.kind, 'command-receipt'))))).orderBy(runConversationContent.messageId).limit(3).for('update', { of: runConversationContent });
+      let readable = bodies.length === 2;
+      for (const body of bodies) {
+        try {
+          if (body.removedAt !== null || body.ciphertext === null || storedBody(cipher.open(runId, body.messageId, body.ciphertext)) === null)
+            readable = false;
+        } catch { readable = false; }
+      }
+      if (!readable) return { ok: false, code: 'unavailable', reason: 'The proposal content is no longer available for confirmation.' };
+
+      const plan = await new DrizzleFrozenExecutionReader(tx).readFrozenExecution(run.versionId, run.procedureId);
+      const validPlan = plan !== null && createHash('sha256').update(canonicalJson(plan as unknown as JsonValue)).digest('hex') === command.planDigest;
+      const refusalCode = !(ACTIVE_RUN_STATES as readonly string[]).includes(run.state) ? 'run-ended'
+        : run.cancelRequestedAt !== null ? 'competing-cancellation' : !validPlan || run.revision !== command.expectedRunRevision ? 'stale-context' : 'domain-refused';
+      const outcome = !validPlan || run.revision !== command.expectedRunRevision
+        ? { ok: false as const, reason: 'The Run or frozen plan changed. Review a fresh Stop proposal.' }
+        : await cancelRun({ roles, repository: new PostgresRunCancellationRepository(tx, { clock: { now: () => at } }),
+          unitOfWork: { execute: work => work({ auditEvents: auditEventsWriter }) },
+          ids: new CryptoUuidV7Generator(), clock: { now: () => at }, commandId,
+        }, { session: { userId: input.actorId, sessionId: input.sessionId }, request: { runId, reason: null } });
+      if (!outcome.ok) {
+        await tx.insert(runInteractionTransition).values({ commandId, sequence: prior.sequence + 1,
+          state: 'refused', reasonCode: refusalCode, createdAt: at });
+        const refusal = await auditEventsWriter.append({ actor: { type: 'human', id: input.actorId },
+          eventType: 'review.interaction-refused', source: 'web', outcome: 'failure', aggregateId: runId,
+          correlationId: run.correlationId, sessionId: input.sessionId, payload: { commandId, reasonCode: refusalCode } });
+        await tx.execute(sql`SELECT pg_notify('run_timeline', ${JSON.stringify({ runId, sequence: refusal.sequence })})`);
+        return { ok: false, code: 'conflict', reason: outcome.reason };
+      }
+      const [applied] = await tx.select().from(runInteractionTransition).where(eq(runInteractionTransition.commandId, commandId))
+        .orderBy(desc(runInteractionTransition.sequence)).limit(1);
+      if (!applied || !['queued', 'applied'].includes(applied.state) || applied.sourceEventId === null) throw new Error('Stop domain receipt unavailable');
+      return { ok: true, commandId, state: applied.state as 'queued' | 'applied', replayed: false };
+    });
+  }
+
   async append(input: PostgresRunConversationAppendInput): Promise<RunConversationAppendReceipt> {
     if (!validActor(input.actorId) || !validActor(input.sessionId)) return { ok: false, code: 'malformed', reason: 'The conversation identity was not valid.' };
     const parsed = parseRunConversationMessageRequest(input.request);
@@ -752,13 +858,13 @@ export class PostgresRunConversationRepository implements RunConversationReposit
     const cipher = this.cipher;
     if (cipher === null) return { ok: false, code: 'unavailable', reason: 'Run conversation content is unavailable.' };
     const interpretation = interpretRunConversationMessage(parsed.value);
-    if (interpretation.intent.kind !== 'pause-now' && parsed.value.selectedSourceOrdinal !== null && parsed.value.selectedSourceOrdinal > MAX_SOURCE_ORDINAL) return { ok: false, code: 'malformed', reason: 'The selected source ordinal is outside the bounded Run surface.' };
+    if (!['pause-now', 'stop-confirmation'].includes(interpretation.intent.kind) && parsed.value.selectedSourceOrdinal !== null && parsed.value.selectedSourceOrdinal > MAX_SOURCE_ORDINAL) return { ok: false, code: 'malformed', reason: 'The selected source ordinal is outside the bounded Run surface.' };
     const at = validClock(this.now());
-    const semanticInput = JSON.stringify(interpretation.intent.kind === 'pause-now' ? {
+    const semanticInput = JSON.stringify(['pause-now', 'stop-confirmation'].includes(interpretation.intent.kind) ? {
       schemaVersion: RUN_CONVERSATION_SCHEMA_VERSION,
       runId: parsed.value.runId,
       actorId: input.actorId,
-      operation: 'pause-now',
+      operation: interpretation.intent.kind,
     } : {
       schemaVersion: RUN_CONVERSATION_SCHEMA_VERSION,
       runId: parsed.value.runId,
@@ -777,7 +883,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       await tx.execute(sql`SET LOCAL statement_timeout = '5s'`);
       // Serialize the per-actor limiter across Runs. All work under this lock remains
       // local PostgreSQL or local crypto; no provider, queue or object-store I/O occurs.
-      const safetyShortcut = interpretation.intent.kind === 'pause-now';
+      const safetyShortcut = ['pause-now', 'stop-confirmation'].includes(interpretation.intent.kind);
       // Exact unqualified pause targets the Run. A stale review selection must not
       // retarget it. An explicit wait reply is separately classified as clarification.
       const sourceOrdinal = safetyShortcut ? null : parsed.value.selectedSourceOrdinal;
@@ -787,6 +893,8 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       if (!authorizeActionRole(role, 'run.initiate').allowed) return { ok: false, code: 'denied', reason: 'Your role does not permit this action.' };
       const [runRow] = await tx.select().from(auditRun).where(eq(auditRun.runId, parsed.value.runId)).for('update').limit(1);
       if (!runRow) return { ok: false, code: 'run-not-found', reason: 'The Run was not found.' };
+      if (!authorizeActionRole(await new DrizzleRoleRepository(tx).findRole(input.actorId), 'run.initiate').allowed)
+        return { ok: false, code: 'denied', reason: 'Your current role does not permit this action.' };
       const run = parseRun(runRow);
 
       const [prior] = await tx.select({ messageId: runConversationMessage.messageId, sequence: runConversationMessage.sequence, semanticFingerprint: runConversationMessage.semanticFingerprint })
@@ -819,7 +927,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       const windowStart = new Date(at.getTime() - 60_000);
       const [rate] = await tx.select({ count: sql<number>`count(*)::int` }).from(runConversationMessage)
         .where(and(eq(runConversationMessage.actorId, input.actorId), isNotNull(runConversationMessage.requestKey), gte(runConversationMessage.createdAt, windowStart),
-          safetyShortcut ? sql`EXISTS (SELECT 1 FROM ${runInteractionCommand} c WHERE c.message_id=${runConversationMessage.messageId} AND c.kind='pause-now')` : sql`NOT EXISTS (SELECT 1 FROM ${runInteractionCommand} c WHERE c.message_id=${runConversationMessage.messageId} AND c.kind='pause-now')`));
+          safetyShortcut ? sql`EXISTS (SELECT 1 FROM ${runInteractionCommand} c WHERE c.message_id=${runConversationMessage.messageId} AND c.kind IN ('pause-now','stop'))` : sql`NOT EXISTS (SELECT 1 FROM ${runInteractionCommand} c WHERE c.message_id=${runConversationMessage.messageId} AND c.kind IN ('pause-now','stop'))`));
       if ((rate?.count ?? 0) >= MAX_REQUESTS_PER_MINUTE) return { ok: false, code: 'unavailable', reason: 'The conversation rate limit was reached. Try again shortly.' };
 
       if (!safetyShortcut) {
@@ -861,6 +969,13 @@ export class PostgresRunConversationRepository implements RunConversationReposit
         if (deferredAnchor.subjectKey === null && !/pause after this inspection[.!?]*$/i.test(parsed.value.text.trim()))
           return { ok: false, code: 'conflict', reason: 'The current unit is a page inspection, not one source record. Use “pause after this inspection” to name that boundary.' };
         deferredTargetLabel = `${deferredAnchor.subjectKey === null ? 'the page inspection' : JSON.stringify(deferredAnchor.subjectKey)} on ${safeFact(target.target.displayName, 120)}`;
+      }
+      const stopProposal = interpretation.intent.kind === 'stop-confirmation';
+      if (stopProposal) {
+        if (!authorizeActionRole(await new DrizzleRoleRepository(tx).findRole(input.actorId), 'run.cancel').allowed)
+          return { ok: false, code: 'denied', reason: 'Your current role cannot stop this Run.' };
+        if (!(ACTIVE_RUN_STATES as readonly string[]).includes(run.state) || runRow.cancelRequestedAt !== null)
+          return { ok: false, code: 'conflict', reason: 'The Run already ended or has a cancellation request. Read the current Run state.' };
       }
       let resumeAnchor: RunConversationResumeAnchor | null = null;
       if (interpretation.intent.kind === 'resume') {
@@ -955,6 +1070,18 @@ export class PostgresRunConversationRepository implements RunConversationReposit
         ]);
         replyBody = bodyEnvelope(`Review a pause after ${deferredTargetLabel}. Only this target's inspection is named; this is not an all-systems record barrier. No pause is requested until you confirm. An open question remains open. If no work remains after this inspection, the Run can finish instead.`, []);
       }
+      if (stopProposal) {
+        const commandId = new CryptoUuidV7Generator().next();
+        await tx.insert(runInteractionCommand).values({ commandId, runId: run.runId, messageId,
+          actorId: input.actorId, kind: 'stop', requestKey: parsed.value.idempotencyKey, semanticFingerprint,
+          planDigest: createHash('sha256').update(canonicalJson(plan as unknown as JsonValue)).digest('hex'),
+          expectedRunRevision: run.revision, interpretationVersion: 'confirmed-stop-v1', createdAt: at });
+        await tx.insert(runInteractionTransition).values([
+          { commandId, sequence: 1, state: 'received', reasonCode: 'intake-persisted', createdAt: at },
+          { commandId, sequence: 2, state: 'interpreted', reasonCode: 'stop-confirmation-required', createdAt: at },
+        ]);
+        replyBody = bodyEnvelope('Review Stop for this Run. Cancellation cannot be undone. The worker finishes its current safe boundary; collected evidence is retained and the partial Result is sealed. No cancellation is requested until you confirm.', []);
+      }
       if (resumeAnchor !== null) {
         const commandId = new CryptoUuidV7Generator().next();
         await tx.insert(runInteractionCommand).values({ commandId, runId: run.runId, messageId,
@@ -980,7 +1107,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
         runId: run.runId,
         sequence: replySequence,
         actorId: input.actorId,
-        kind: interpretation.intent.kind === 'pause-now' || deferredAnchor !== null || resumeAnchor !== null ? 'command-receipt' : 'platform-event',
+        kind: interpretation.intent.kind === 'pause-now' || deferredAnchor !== null || resumeAnchor !== null || stopProposal ? 'command-receipt' : 'platform-event',
         createdAt: at,
         parentMessageId: messageId,
         requestKey: null,

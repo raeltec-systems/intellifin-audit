@@ -1,5 +1,6 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { acquireRunControlLease, releaseRunControlLease, cancelRun, performCancellation, performPause } from '@intellifin/application';
+import { DrizzleFrozenExecutionReader } from '../../packages/infrastructure/src/procedures/procedure-repository.js';
 import { withRunExecutionContext } from '../../packages/infrastructure/src/runs/adapter-execution-repository.js';
 
 import {
@@ -877,6 +878,288 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
     }
   });
 
+  it.each(['QUEUED', 'PAUSED', 'AWAITING_AUDITOR'] as const)('confirms Stop without a lease on %s and retains one exact applied receipt', async state => {
+    const runId = await seedResumeContext();
+    try {
+      await sql`UPDATE audit_run SET state=${state} WHERE run_id=${runId}`;
+      const commandId = await proposeStop(runId);
+      expect(await sql`SELECT cancel_requested_at FROM audit_run WHERE run_id=${runId}`).toEqual([{ cancel_requested_at: null }]);
+      expect(await confirmStop(runId, commandId)).toMatchObject({ ok: true, state: 'applied', replayed: false });
+      expect(await confirmStop(runId, commandId)).toMatchObject({ ok: true, state: 'applied', replayed: true });
+      expect(await sql`SELECT state,cancel_requested_command_id FROM audit_run WHERE run_id=${runId}`)
+        .toEqual([{ state: 'CANCELED', cancel_requested_command_id: commandId }]);
+      expect(await sql`SELECT * FROM run_result WHERE run_id=${runId}`).toHaveLength(1);
+      expect(await sql`SELECT * FROM run_evidence_package WHERE run_id=${runId}`).toHaveLength(1);
+      expect(await sql`SELECT * FROM audit_events WHERE aggregate_id=${runId} AND event_type='lifecycle.run-canceled'`).toHaveLength(1);
+      expect((await repository().read({ runId, actorId: seeded.readerId })).messages.find(row => row.command?.commandId === commandId)?.command)
+        .toMatchObject({ kind: 'stop', state: 'applied', canConfirm: false });
+    } finally { await cleanupRun(runId); }
+  });
+
+  it('keeps Stop queued until actual worker cancellation and recovers the same command after both responses', async () => {
+    const runId = await seedResumeContext();
+    try {
+      await sql`UPDATE audit_run SET state='RUNNING' WHERE run_id=${runId}`;
+      const commandId = await proposeStop(runId);
+      expect(await confirmStop(runId, commandId)).toMatchObject({ ok: true, state: 'queued', replayed: false });
+      expect(await confirmStop(runId, commandId)).toMatchObject({ ok: true, state: 'queued', replayed: true });
+      expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`).toEqual([{ state: 'RUNNING' }]);
+      await db.transaction(tx => withRunExecutionContext(tx, runId, async context => {
+        if (!context.run?.cancellation) throw new Error('Cancellation marker missing');
+        // The marker is read through the same persistence port used after worker restart.
+        expect(await context.readCancellation()).toMatchObject({ commandId });
+        await performCancellation(context, { run: context.run, request: context.run.cancellation,
+          at: new Date().toISOString(), plan: seeded.plan, source: 'worker' });
+      }));
+      expect(await confirmStop(runId, commandId)).toMatchObject({ ok: true, state: 'applied', replayed: true });
+      expect(await sql`SELECT state FROM run_interaction_transition WHERE command_id=${commandId} ORDER BY sequence`)
+        .toEqual([{ state: 'received' }, { state: 'interpreted' }, { state: 'queued' }, { state: 'applied' }]);
+      expect(await sql`SELECT * FROM audit_events WHERE aggregate_id=${runId} AND event_type IN ('lifecycle.run-canceled','lifecycle.run-cancel-requested')`).toHaveLength(2);
+      const [fact] = await sql`SELECT source_event_id FROM run_interaction_transition WHERE command_id=${commandId} AND state='applied'`;
+      await sql`DELETE FROM audit_events WHERE event_id=${fact!.source_event_id}`;
+      expect(await confirmStop(runId, commandId)).toMatchObject({ ok: false, code: 'unavailable' });
+      expect(await repository().read({ runId, actorId: seeded.readerId })).toMatchObject({ status: 'unavailable' });
+    } finally { await cleanupRun(runId); }
+  });
+
+  it.each(['revision', 'removed-content', 'other-actor', 'wrong-run', 'role-revoked', 'competing-stop', 'terminal'] as const)
+    ('refuses confirmed Stop after %s without taking cancellation ownership', async mode => {
+    const runId = await seedResumeContext();
+    const [originalRole] = await sql`SELECT role,assigned_by,assigned_at::text AS assigned_at FROM user_role WHERE user_id=${seeded.readerId}`;
+    try {
+      await sql`UPDATE audit_run SET state='RUNNING' WHERE run_id=${runId}`;
+      const commandId = await proposeStop(runId);
+      if (mode === 'revision') await sql`UPDATE audit_run SET state='AWAITING_AUDITOR' WHERE run_id=${runId}`;
+      if (mode === 'removed-content') await sql`UPDATE run_conversation_content SET ciphertext=NULL,removed_at=clock_timestamp(),content_epoch=content_epoch+1
+        WHERE message_id IN (SELECT message_id FROM run_interaction_command WHERE command_id=${commandId})`;
+      if (mode === 'role-revoked') await sql`DELETE FROM user_role WHERE user_id=${seeded.readerId}`;
+      if (mode === 'competing-stop' || mode === 'terminal') {
+        expect(await cancelRun({ roles: new DrizzleRoleRepository(db), unitOfWork: new PostgresAuditUnitOfWork(db),
+          repository: new PostgresRunCancellationRepository(db), ids, clock: { now: () => now } },
+          { session: readerSession(seeded.pagerId), request: { runId, reason: null } })).toMatchObject({ ok: true, pending: true });
+        if (mode === 'terminal') await db.transaction(tx => withRunExecutionContext(tx, runId, async context => {
+          if (!context.run?.cancellation) throw new Error('Competing cancellation marker missing');
+          await performCancellation(context, { run: context.run, request: context.run.cancellation,
+            at: new Date().toISOString(), plan: seeded.plan, source: 'worker' });
+        }));
+      }
+      if (['revision', 'competing-stop', 'terminal'].includes(mode)) {
+        const pendingRead = await repository().read({ runId, actorId: seeded.readerId });
+        expect(pendingRead.messages.find(row => row.command?.commandId === commandId)?.command)
+          .toMatchObject({ state: 'interpreted', canConfirm: false });
+      }
+      expect(await repository().confirmStop({ actorId: mode === 'other-actor' ? seeded.pagerId : seeded.readerId,
+        sessionId: seeded.readerSession, request: { runId: mode === 'wrong-run' ? seeded.otherRunId : runId, commandId } })).toMatchObject({ ok: false });
+      if (mode === 'role-revoked') expect(await sql`SELECT event_id FROM audit_events WHERE actor_id=${seeded.readerId}
+        AND correlation_id=(SELECT correlation_id::text FROM audit_run WHERE run_id=${runId}) AND event_type='security.denied' AND payload->>'action'='run.cancel'`).toHaveLength(1);
+      if (['revision', 'competing-stop', 'terminal'].includes(mode)) {
+        const read = await repository().read({ runId, actorId: seeded.readerId });
+        expect(read.messages.find(row => row.command?.commandId === commandId)?.command).toMatchObject({ canConfirm: false });
+      }
+      expect(await sql`SELECT cancel_requested_command_id FROM audit_run WHERE run_id=${runId}`).toEqual([{ cancel_requested_command_id: null }]);
+      expect(await sql`SELECT * FROM audit_events WHERE aggregate_id=${runId} AND payload->>'commandId'=${commandId} AND event_type='lifecycle.run-canceled'`).toHaveLength(0);
+    } finally {
+      if (mode === 'role-revoked' && originalRole) await sql`INSERT INTO user_role(user_id,role,assigned_by,assigned_at)
+        VALUES (${seeded.readerId},${originalRole.role},${originalRole.assigned_by},${originalRole.assigned_at}::timestamptz)`;
+      await cleanupRun(runId);
+    }
+  });
+
+  it('rolls back cancellation, sealing and its projected receipt with the enclosing transaction', async () => {
+    const runId = await seedResumeContext();
+    try {
+      const commandId = await proposeStop(runId);
+      await expect(db.transaction(async tx => {
+        const result = await new PostgresRunConversationRepository(tx, cipher, () => now).confirmStop({
+          actorId: seeded.readerId, sessionId: seeded.readerSession, request: { runId, commandId } });
+        expect(result).toMatchObject({ ok: true, state: 'applied' });
+        throw new Error('rollback after real cancellation');
+      })).rejects.toThrow('rollback after real cancellation');
+      expect(await sql`SELECT state,cancel_requested_command_id FROM audit_run WHERE run_id=${runId}`)
+        .toEqual([{ state: 'PAUSED', cancel_requested_command_id: null }]);
+      expect(await sql`SELECT * FROM run_result WHERE run_id=${runId}`).toHaveLength(0);
+      expect(await sql`SELECT * FROM run_evidence_package WHERE run_id=${runId}`).toHaveLength(0);
+      expect(await sql`SELECT state FROM run_interaction_transition WHERE command_id=${commandId} ORDER BY sequence`)
+        .toEqual([{ state: 'received' }, { state: 'interpreted' }]);
+      expect(await confirmStop(runId, commandId)).toMatchObject({ ok: true, state: 'applied' });
+    } finally { await cleanupRun(runId); }
+  });
+
+  it.each(['removed', 'corrupt'] as const)('refuses Stop with an intact intake and %s child proposal', async mode => {
+    const runId = await seedResumeContext();
+    try {
+      class DamagedStopCipher extends ConversationContentCipher {
+        override seal(runId: string, messageId: string, content: string): string {
+          return (JSON.parse(content) as { text: string }).text.startsWith('Review Stop ') ? 'v1.AAAA' : super.seal(runId, messageId, content);
+        }
+      }
+      const writer = mode === 'corrupt' ? new PostgresRunConversationRepository(db, new DamagedStopCipher('11'.repeat(32)), () => now) : repository();
+      expect(await writer.append({ actorId: seeded.readerId, sessionId: seeded.readerSession,
+        request: { runId, idempotencyKey: ids.next(), text: 'Stop' } })).toMatchObject({ ok: true });
+      const [proposal] = await sql`SELECT c.command_id,child.message_id FROM run_interaction_command c
+        JOIN run_conversation_message child ON child.parent_message_id=c.message_id WHERE c.run_id=${runId} AND c.kind='stop'`;
+      if (!proposal) throw new Error('Stop proposal missing');
+      if (mode === 'removed') await sql`UPDATE run_conversation_content SET ciphertext=NULL,removed_at=clock_timestamp(),content_epoch=content_epoch+1 WHERE message_id=${proposal.message_id}`;
+      expect(await confirmStop(runId, proposal.command_id)).toMatchObject({ ok: false, code: 'unavailable' });
+      expect(await sql`SELECT cancel_requested_at FROM audit_run WHERE run_id=${runId}`).toEqual([{ cancel_requested_at: null }]);
+    } finally { await cleanupRun(runId); }
+  });
+
+  it('refuses a changed frozen plan without refreshing the original proposal', async () => {
+    const runId = await seedResumeContext();
+    try {
+      const commandId = await proposeStop(runId);
+      const changed = { ...seeded.plan, inputs: { ...seeded.plan.inputs, scope: 'Changed frozen scope' } };
+      const reader = vi.spyOn(DrizzleFrozenExecutionReader.prototype, 'readFrozenExecution').mockResolvedValueOnce(changed);
+      try { expect(await confirmStop(runId, commandId)).toMatchObject({ ok: false, code: 'conflict' }); }
+      finally { reader.mockRestore(); }
+      expect(await sql`SELECT cancel_requested_at FROM audit_run WHERE run_id=${runId}`).toEqual([{ cancel_requested_at: null }]);
+    } finally { await cleanupRun(runId); }
+  });
+
+  it.each(['same', 'different'] as const)('serializes %s Stop confirmations to one cancellation owner', async mode => {
+    const runId = await seedResumeContext();
+    try {
+      await sql`UPDATE audit_run SET state='RUNNING' WHERE run_id=${runId}`;
+      const first = await proposeStop(runId);
+      let second = first;
+      if (mode === 'different') {
+        const receipt = await append(seeded.readerId, { runId, text: 'Stop' });
+        if (!receipt.ok) throw new Error(receipt.reason);
+        const [other] = await sql`SELECT command_id FROM run_interaction_command WHERE message_id=${receipt.messageId}`;
+        second = String(other!.command_id);
+      }
+      const outcomes = await Promise.all([confirmStop(runId, first), confirmStop(runId, second)]);
+      expect(outcomes.filter(outcome => outcome.ok && !outcome.replayed)).toHaveLength(1);
+      expect(outcomes.filter(outcome => mode === 'same' ? outcome.ok && outcome.replayed : !outcome.ok)).toHaveLength(1);
+      expect(await sql`SELECT * FROM audit_events WHERE aggregate_id=${runId} AND event_type='lifecycle.run-cancel-requested'`).toHaveLength(1);
+    } finally { await cleanupRun(runId); }
+  });
+
+  it('locks both governed bodies until confirmed Stop commits', async () => {
+    const runId = await seedResumeContext();
+    try {
+      const commandId = await proposeStop(runId);
+      await db.transaction(async tx => {
+        expect(await new PostgresRunConversationRepository(tx, cipher).confirmStop({ actorId: seeded.readerId,
+          sessionId: seeded.readerSession, request: { runId, commandId } })).toMatchObject({ ok: true });
+        const bodies = await sql`SELECT m.message_id FROM run_conversation_message m JOIN run_interaction_command c
+          ON m.message_id=c.message_id OR m.parent_message_id=c.message_id WHERE c.command_id=${commandId} ORDER BY m.message_id`;
+        expect(bodies).toHaveLength(2);
+        for (const body of bodies) await expect(sql.begin(async removing => {
+          await removing`SET LOCAL lock_timeout='100ms'`;
+          await removing`UPDATE run_conversation_content SET ciphertext=NULL,removed_at=clock_timestamp(),content_epoch=content_epoch+1 WHERE message_id=${body.message_id}`;
+        })).rejects.toMatchObject({ code: '55P03' });
+      });
+    } finally { await cleanupRun(runId); }
+  });
+
+  it('binds the cancellation latch to the exact Stop and rejects reassignment or clearing', async () => {
+    const runId = await seedResumeContext();
+    try {
+      await sql`UPDATE audit_run SET state='RUNNING' WHERE run_id=${runId}`;
+      const commandId = await proposeStop(runId);
+      const [pause] = await sql`SELECT command_id FROM run_interaction_command WHERE run_id=${runId} AND kind='pause-now'`;
+      for (const candidate of [{ runId, commandId: pause!.command_id, actor: seeded.readerId },
+        { runId, commandId, actor: seeded.pagerId }, { runId: seeded.otherRunId, commandId, actor: seeded.readerId }]) {
+        await expect(sql`UPDATE audit_run SET cancel_requested_command_id=${candidate.commandId},cancel_requested_at=clock_timestamp(),
+          cancel_requested_by=${candidate.actor},cancel_requested_session=${seeded.readerSession},cancel_reason='Cancel'
+          WHERE run_id=${candidate.runId}`).rejects.toMatchObject({ code: '23514' });
+      }
+      expect(await confirmStop(runId, commandId)).toMatchObject({ ok: true, state: 'queued' });
+      await expect(sql`UPDATE audit_run SET cancel_requested_command_id=NULL WHERE run_id=${runId}`).rejects.toMatchObject({ code: '23514' });
+      await expect(sql`UPDATE audit_run SET cancel_requested_command_id=${pause!.command_id} WHERE run_id=${runId}`).rejects.toMatchObject({ code: '23514' });
+      for (const field of ['cancel_requested_by', 'cancel_requested_session', 'cancel_reason'])
+        await expect(sql.unsafe(`UPDATE audit_run SET ${field}=$1 WHERE run_id=$2`, ['changed', runId])).rejects.toMatchObject({ code: '23514' });
+      await expect(sql`UPDATE audit_run SET cancel_requested_at=cancel_requested_at+interval '1 second' WHERE run_id=${runId}`).rejects.toMatchObject({ code: '23514' });
+    } finally { await cleanupRun(runId); }
+  });
+
+  it.each(['session', 'requested-at', 'reason', 'source', 'prior-state', 'actor', 'command', 'run', 'still-running', 'unsealed'] as const)
+    ('rejects a forged applied Stop fact with %s disagreement', async mode => {
+    const runId = await seedResumeContext();
+    try {
+      await sql`UPDATE audit_run SET state='RUNNING' WHERE run_id=${runId}`;
+      const commandId = await proposeStop(runId);
+      expect(await confirmStop(runId, commandId)).toMatchObject({ ok: true, state: 'queued' });
+      const [request] = await sql`SELECT * FROM audit_events WHERE aggregate_id=${runId} AND event_type='lifecycle.run-cancel-requested'`;
+      if (!request) throw new Error('Cancellation request event missing');
+      const at = new Date().toISOString();
+      const payload = { ...request.payload, state: 'CANCELED', priorState: mode === 'prior-state' ? 'QUEUED' : 'RUNNING',
+        occurredAt: at, performedBy: mode === 'source' ? 'web' : 'worker',
+        ...(mode === 'requested-at' ? { requestedAt: '2026-01-01T00:00:00.000Z' } : {}),
+        ...(mode === 'reason' ? { reason: 'Another reason' } : {}), ...(mode === 'command' ? { commandId: ids.next() } : {}) };
+      await expect(sql.begin(async forging => {
+        if (mode !== 'still-running') await forging`UPDATE audit_run SET state='CANCELED' WHERE run_id=${runId}`;
+        const eventId = ids.next();
+        await forging`INSERT INTO audit_events(event_id,actor_type,actor_id,event_type,occurred_at,source,outcome,session_id,
+          correlation_id,aggregate_id,sequence,payload,previous_hash,event_hash)
+          SELECT ${eventId},actor_type,${mode === 'actor' ? seeded.pagerId : seeded.readerId},'lifecycle.run-canceled',${at}::timestamptz,
+          ${mode === 'source' ? 'web' : 'worker'},outcome,${mode === 'session' ? 'wrong-session' : request.session_id},
+          correlation_id,${mode === 'run' ? seeded.otherRunId : runId},(SELECT coalesce(max(e.sequence),0)+1 FROM audit_events e WHERE e.aggregate_id=${mode === 'run' ? seeded.otherRunId : runId}),${JSON.stringify(payload)}::jsonb,previous_hash,event_hash
+          FROM audit_events WHERE event_id=${request.event_id}`;
+        await forging`INSERT INTO run_interaction_transition(command_id,sequence,state,reason_code,created_at,source_event_id)
+          VALUES (${commandId},4,'applied','run-canceled',${at}::timestamptz,${eventId})`;
+      })).rejects.toMatchObject({ code: '23514' });
+      expect(await confirmStop(runId, commandId)).toMatchObject({ ok: true, state: 'queued', replayed: true });
+    } finally { await cleanupRun(runId); }
+  });
+
+  it('does not replay or display an applied Stop after its sealed Result is unavailable', async () => {
+    const runId = await seedResumeContext();
+    try {
+      const commandId = await proposeStop(runId);
+      expect(await confirmStop(runId, commandId)).toMatchObject({ ok: true, state: 'applied' });
+      await sql`DELETE FROM run_result WHERE run_id=${runId}`;
+      expect(await confirmStop(runId, commandId)).toMatchObject({ ok: false, code: 'unavailable' });
+      expect(await repository().read({ runId, actorId: seeded.readerId })).toMatchObject({ status: 'unavailable' });
+      await expect(sql`UPDATE audit_run SET state='RUNNING' WHERE run_id=${runId}`).rejects.toMatchObject({ code: '23514' });
+    } finally { await cleanupRun(runId); }
+  });
+
+  it.each(['immediate', 'deferred'] as const)('preserves %s pause supersession when confirmed Stop wins', async mode => {
+    const fixture = await seedDeferredContext();
+    try {
+      let pauseCommand: string;
+      if (mode === 'deferred') {
+        await acquireControl(fixture.runId);
+        pauseCommand = await proposeInspection(fixture.runId, (await currentInspection(fixture.runId)).anchor);
+        expect(await confirmInspection(fixture.runId, pauseCommand)).toMatchObject({ ok: true, state: 'queued' });
+      } else {
+        expect(await append(seeded.readerId, { runId: fixture.runId, text: 'pause now' })).toMatchObject({ ok: true });
+        const [pause] = await sql`SELECT command_id FROM run_interaction_command WHERE run_id=${fixture.runId} AND kind='pause-now'`;
+        pauseCommand = String(pause!.command_id);
+      }
+      const commandId = await proposeStop(fixture.runId);
+      expect(await confirmStop(fixture.runId, commandId)).toMatchObject({ ok: true, state: 'queued' });
+      await db.transaction(tx => withRunExecutionContext(tx, fixture.runId, async context => {
+        if (!context.run?.cancellation) throw new Error('Stop marker missing');
+        await performCancellation(context, { run: context.run, request: context.run.cancellation,
+          at: new Date().toISOString(), plan: fixture.plan, source: 'worker' });
+      }));
+      expect(await sql`SELECT state FROM run_interaction_transition WHERE command_id=${pauseCommand} ORDER BY sequence DESC LIMIT 1`)
+        .toEqual([{ state: 'superseded' }]);
+      expect(await confirmStop(fixture.runId, commandId)).toMatchObject({ ok: true, state: 'applied' });
+    } finally {
+      await sql`DELETE FROM notification WHERE run_id=${fixture.runId}`;
+      await sql`DELETE FROM run_result WHERE run_id=${fixture.runId}`;
+      await sql`DELETE FROM run_gate_check WHERE run_id=${fixture.runId}`;
+      await sql`DELETE FROM run_evidence_package WHERE run_id=${fixture.runId}`;
+      await cleanupDeferredContext(fixture);
+    }
+  });
+
+  async function proposeStop(runId: string) {
+    const [wait] = await sql`SELECT wait_id FROM run_wait WHERE run_id=${runId} AND closed_at IS NULL LIMIT 1`;
+    expect(await append(seeded.readerId, { runId, text: 'Stop', selectedSourceOrdinal: 999999, replyToWaitId: wait?.wait_id ?? null })).toMatchObject({ ok: true });
+    const [command] = await sql`SELECT command_id FROM run_interaction_command WHERE run_id=${runId} AND kind='stop'`;
+    if (!command) throw new Error('Stop proposal missing');
+    return command.command_id as string;
+  }
+  function confirmStop(runId: string, commandId: string) {
+    return repository().confirmStop({ actorId: seeded.readerId, sessionId: seeded.readerSession, request: { runId, commandId } });
+  }
+
   async function seedResumeContext() {
     now = new Date(now.getTime() + 61_000);
     const runId = ids.next();
@@ -1081,7 +1364,7 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
         observations: 0,
       },
     ]);
-    return { procedureId, runId, otherRunId, exactWorkItemId, duplicateWorkItemId, crossRunWorkItemId };
+    return { procedureId, runId, otherRunId, exactWorkItemId, duplicateWorkItemId, crossRunWorkItemId, plan };
   }
 
   async function insertP1Population(runId: string, rows: readonly { employee_id: string; full_name: string }[]): Promise<void> {

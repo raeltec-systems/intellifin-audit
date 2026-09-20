@@ -321,3 +321,63 @@ resources during this negative test's revocation phase. Earlier console checks a
 all page errors remain strict. The new candidate includes conversational Resume and
 pane-width record-filter wrapping; its normal CI and actual browser proofs are pending.
 No acceptance proof gate is closed by these intermediate test results.
+
+## Confirmed conversational Stop — implementation checkpoint, 2026-09-20
+
+Exact Stop creates an immutable proposal without cancellation. Confirmation accepts only
+Run and command IDs, rechecks current actor authority after the Run lock, verifies the
+original revision/frozen plan and readable proposal, and invokes the existing cancellation
+handler on the same transaction. Stop remains independent of controller ownership.
+Historical selected evidence is cleared from this Run-wide safety intent.
+
+The original cancellation marker now carries the server command ID through worker restart.
+Queued and applied receipts bind the exact cancellation audit event, requester, Run and
+command; SQL guards verify the durable marker's session/time/reason as well. Applied means
+the real cancellation handler transitioned and sealed the Run. Retries recover that same
+receipt, including after worker completion, and cannot take another requester's ownership.
+Migration 57 adds this identity and extends immutable command/receipt guards without changing
+historical migrations. Existing non-conversation cancellation stays compatible.
+
+The conversation offers Review Stop and a cancellation consequence dialog using the existing
+Stop control's routine confirmation weight. LiveGate remains enforced. Added persistence tests
+cover queued/paused/waiting cancellation, worker completion, lost-response recovery, competing
+commands, stale revision, role revocation, removed content, wrong actor/Run, and outer rollback.
+Browser additions cover lost response/retry, revoked authority, and the real compiled-worker
+boundary with retained captured evidence; the existing Resume assertions remain intact.
+
+The initial test and review findings were corrected; current verification is recorded below.
+This checkpoint does not claim full P3 or proof-gate closure.
+
+### Stop review corrections
+
+The cancellation marker now enforces same-Run Stop-command/actor/revision membership and
+cannot be cleared, reassigned or have its accepted request facts rewritten. Applied receipts
+require an actually canceled Run; deferred consistency checks verify its sealed canceled
+Result and evidence package when the transaction commits. Authorized reads/replays also
+fail closed if those terminal facts are later unavailable. Web and worker source facts must
+match the cancellation ownership rules for their prior state.
+
+First confirmation locks the original and displayed proposal content in stable message-ID
+order until commit. Current-role refusals use the shared audited authorization helper. Stale,
+terminal and competing proposals lose their confirmation control and expose a bounded reason.
+Exact Stop is Run-wide even when the workspace has an open execution question; its wait reply
+context is normalized away in the composer and at server interpretation, while questions,
+quoted text and qualified prose remain non-executing.
+
+Expanded checks include same/different-proposal races, real `confirmStop` rollback, governed
+content lock contention, corrupt/removed child content, changed-plan refusal, direct forged
+SQL event bindings, immutable marker mutations and existing pause supersession. The compiled
+worker browser test now loses the process after Stop has been accepted and relies on normal
+lease recovery. The expanded PostgreSQL suite passed all 58 tests against a fresh database
+with final migration57. The other 602 integration tests passed separately (before the final
+worker/web prior-state guard tightening, which the fresh 58-test run includes). Full typecheck,
+build and schema-drift checks passed. The final unit run passed 4,719 tests, excluding the
+26 dependency-boundary tests that passed separately. All seven targeted product browser journeys now pass across the combined run and isolated
+warm-route golden rerun, with zero Playwright retries. The combined run's single cold-compilation
+failure passed unchanged after warming routes. Memory-related external SIGTERM attempts were
+resolved with disk-backed Turbopack eviction; no worker deadline or product assertion changed.
+The tests prove terminal Stop reconciliation plus exact authenticated replay, queued Stop retry,
+revocation, controller/Resume behavior and a real worker SIGKILL after acceptance followed by
+normal recovery with retained evidence and a sealed canceled Result. Final web TypeScript passed.
+The new candidate still requires its own remote CI. Full P3, all overall proof gates, merge and
+deployment remain open/out of scope for this individual slice.

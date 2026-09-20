@@ -167,6 +167,7 @@ export function runResultContext(
             requestedBy: auditRun.cancelRequestedBy,
             sessionId: auditRun.cancelRequestedSession,
             reason: auditRun.cancelReason,
+            commandId: auditRun.cancelRequestedCommandId,
           })
           .from(auditRun)
           .where(eq(auditRun.runId, runId))
@@ -179,6 +180,7 @@ export function runResultContext(
         sessionId: row.sessionId,
         requestedAt: row.requestedAt.toISOString(),
         reason: row.reason,
+        ...(row.commandId === null ? {} : { commandId: row.commandId }),
       };
     },
 

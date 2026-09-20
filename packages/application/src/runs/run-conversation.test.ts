@@ -398,3 +398,14 @@ describe('finite conversation intent interpretation', () => {
     });
   });
 });
+
+describe('exact Stop consent boundary', () => {
+  it.each(['Stop', 'stop now', 'STOP THE RUN'])('makes %s a proposal independent of selected evidence', text => {
+    expect(interpretRunConversationMessage(parseSuccess({ text, selectedSourceOrdinal: 999999, replyToWaitId: WAIT })))
+      .toMatchObject({ intent: { kind: 'stop-confirmation' }, requiresConfirmation: true, execution: 'not-executed' });
+  });
+  it.each(['Should I stop?', 'do not stop', '"stop"', 'stop after this record', 'if needed stop', 'stop and delete evidence'])
+    ('never derives Stop consent from %s', text => {
+      expect(interpretRunConversationMessage(parseSuccess({ text })).intent.kind).not.toBe('stop-confirmation');
+    });
+});

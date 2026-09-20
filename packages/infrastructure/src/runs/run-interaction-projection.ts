@@ -19,6 +19,18 @@ export function matchesResumeInteractionEvent(command: typeof runInteractionComm
     event.payload.closureKind === 'resume' && event.payload.priorState === 'PAUSED' && event.payload.state === 'RUNNING';
 }
 
+/** Cancellation facts are attributed to the original requester even at a worker boundary. */
+export function matchesStopInteractionEvent(command: typeof runInteractionCommand.$inferSelect,
+  event: { readonly eventType: string; readonly source: string; readonly outcome: string;
+    readonly actor: { readonly type: string; readonly id: string }; readonly aggregateId: string;
+    readonly payload: Readonly<Record<string, unknown>> }, state: 'queued' | 'applied'): boolean {
+  return command.kind === 'stop' && event.aggregateId === command.runId && event.outcome === 'success' &&
+    event.actor.type === 'human' && event.actor.id === command.actorId && event.payload.commandId === command.commandId &&
+    (state === 'queued' ? event.eventType === 'lifecycle.run-cancel-requested' && event.source === 'web' && event.payload.performedBy === 'worker' && event.payload.state === 'RUNNING'
+      : event.eventType === 'lifecycle.run-canceled' && ['web', 'worker'].includes(event.source) && event.payload.performedBy === event.source && event.payload.state === 'CANCELED' &&
+        (event.source === 'worker' ? event.payload.priorState === 'RUNNING' : ['QUEUED', 'PAUSED', 'AWAITING_AUDITOR'].includes(String(event.payload.priorState))));
+}
+
 /** Called by the existing audit writer, in the transaction that owns the domain fact. */
 export async function projectRunInteractionEvent(tx: Transaction, event: AuditEventRecord): Promise<void> {
   const commandId = event.payload.commandId;
@@ -30,7 +42,11 @@ export async function projectRunInteractionEvent(tx: Transaction, event: AuditEv
   let state: 'queued' | 'applied' | 'superseded';
   let priorState: 'interpreted' | 'queued';
   const human = event.actor.type === 'human' && event.actor.id === command.actorId;
-  if (command.kind === 'resume') {
+  if (command.kind === 'stop') {
+    if (matchesStopInteractionEvent(command, event, 'queued')) { state = 'queued'; priorState = 'interpreted'; }
+    else if (matchesStopInteractionEvent(command, event, 'applied')) { state = 'applied'; priorState = event.source === 'web' ? 'interpreted' : 'queued'; }
+    else return;
+  } else if (command.kind === 'resume') {
     if (!matchesResumeInteractionEvent(command, event)) return;
     state = 'applied'; priorState = 'interpreted';
   } else if (command.kind === 'pause-now') {
@@ -62,7 +78,7 @@ export async function projectRunInteractionEvent(tx: Transaction, event: AuditEv
   // A terminal receipt is never overwritten by a later or duplicate fact.
   if (!prior || prior.state !== priorState) return;
   await tx.insert(runInteractionTransition).values({ commandId: command.commandId, sequence: prior.sequence + 1,
-    state, reasonCode: command.kind === 'resume' ? 'run-resumed' : state === 'queued' ? 'pause-requested' : state === 'applied' ? 'worker-paused' :
+    state, reasonCode: command.kind === 'stop' ? (state === 'queued' ? 'cancellation-requested' : 'run-canceled') : command.kind === 'resume' ? 'run-resumed' : state === 'queued' ? 'pause-requested' : state === 'applied' ? 'worker-paused' :
       command.kind === 'pause-after-inspection' ? 'deferred-pause-superseded' : 'run-finalized',
     createdAt: new Date(event.occurredAt), sourceEventId: event.eventId });
 }

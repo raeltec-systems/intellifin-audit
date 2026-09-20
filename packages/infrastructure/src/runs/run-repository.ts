@@ -9,7 +9,7 @@ import { isUuidText } from '../db/identifier.js';
  * answer to "is this Run still running". */
 const ACTIVE = [...ACTIVE_RUN_STATES];
 function record(row: typeof auditRun.$inferSelect): RunRecord {
-  const { periodFrom, periodTo, initiatedAt, cancelRequestedAt, cancelRequestedBy, cancelRequestedSession, cancelReason,
+  const { periodFrom, periodTo, initiatedAt, cancelRequestedAt, cancelRequestedBy, cancelRequestedSession, cancelReason, cancelRequestedCommandId,
     pauseRequestedAt, pauseRequestedBy, pauseRequestedSession, pauseRequestedCommandId, ...rest } = row;
   return {
     ...rest,
@@ -19,7 +19,7 @@ function record(row: typeof auditRun.$inferSelect): RunRecord {
     // carries the time carries the other three.
     cancellation: cancelRequestedAt === null || cancelRequestedBy === null || cancelRequestedSession === null || cancelReason === null
       ? null
-      : { requestedBy: cancelRequestedBy, sessionId: cancelRequestedSession, requestedAt: cancelRequestedAt.toISOString(), reason: cancelReason },
+      : { requestedBy: cancelRequestedBy, sessionId: cancelRequestedSession, requestedAt: cancelRequestedAt.toISOString(), reason: cancelReason, ...(cancelRequestedCommandId === null ? {} : { commandId: cancelRequestedCommandId }) },
     // The same rule, and generation 45's `audit_run_pause_request` CHECK says the three
     // move together. Present means "requested and not yet honoured": the boundary that
     // performs a pause clears it, so a Run that ends carrying one was never paused.
@@ -109,6 +109,7 @@ export class DrizzleRunRepository implements RunReader, RunWriter {
       cancelRequestedBy: cancellation?.requestedBy ?? null,
       cancelRequestedSession: cancellation?.sessionId ?? null,
       cancelReason: cancellation?.reason ?? null,
+      cancelRequestedCommandId: cancellation?.commandId ?? null,
       // A Run is never created already paused; `requestPause` is the only writer, which is
       // what makes one outstanding request per Run the rule.
       pauseRequestedAt: pauseRequest === null ? null : new Date(pauseRequest.requestedAt),
@@ -132,6 +133,7 @@ export class DrizzleRunRepository implements RunReader, RunWriter {
       cancelRequestedBy: request.requestedBy,
       cancelRequestedSession: request.sessionId,
       cancelReason: request.reason,
+      cancelRequestedCommandId: request.commandId ?? null,
     }).where(and(eq(auditRun.runId, runId), sql`${auditRun.cancelRequestedAt} IS NULL`));
   }
   /** The FIRST pause request wins, exactly as the FIRST cancellation request does. */

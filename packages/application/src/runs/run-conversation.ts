@@ -78,10 +78,11 @@ export interface RunConversationMessage {
   /** Current persisted receipt, separate from the immutable message text. */
   readonly command?: {
     readonly commandId: string;
-    readonly kind: 'pause-now' | 'pause-after-inspection' | 'resume';
+    readonly kind: 'pause-now' | 'pause-after-inspection' | 'resume' | 'stop';
     readonly targetLabel?: string;
     readonly resumeAnchor?: RunConversationResumeAnchor;
     readonly canConfirm?: boolean;
+    readonly reason?: string;
     readonly state: 'received' | 'interpreted' | 'queued' | 'applied' | 'refused' | 'superseded';
     readonly at: string;
     readonly sourceEventId: string | null;
@@ -547,9 +548,7 @@ export function interpretRunConversationMessage(
     return interpretation({ kind: 'resume' }, 'proposal', true);
   }
   if (
-    (normalized === 'stop' || normalized === 'stop now' || normalized === 'stop the run') &&
-    input.selectedSourceOrdinal === null &&
-    input.replyToWaitId === null
+    (normalized === 'stop' || normalized === 'stop now' || normalized === 'stop the run')
   ) {
     return interpretation({ kind: 'stop-confirmation' }, 'proposal', true);
   }

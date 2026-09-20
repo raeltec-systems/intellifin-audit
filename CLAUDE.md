@@ -4020,3 +4020,35 @@ wrap with their own pane. Browser proof must measure the fields with the inspect
   only allow the exact Chrome error at the exact same-origin event paths in that phase.
   CI 35466506732: 624 PostgreSQL tests and 233/234 full browser tests passed; the last
   failure was this workspace console assertion after all access-refusal checks passed.
+
+### Confirmed Stop carries cancellation identity through the worker (2026-09-20)
+
+Exact conversational Stop records a proposal bound to the Run revision and frozen plan;
+only explicit confirmation calls `cancelRun`. Historical evidence selection cannot retarget
+it, and it never requires the controller lease. Compose cancellation, roles and audit writes
+on the enclosing transaction. Preserve the server-created command ID on the existing durable
+cancellation marker, including the independent result/wait readers, so worker restart and
+lost-response recovery project the original event rather than infer success from Run state.
+Another cancellation owner is a refusal for conversation; legacy controls remain idempotent.
+A revision test must change actual Run content: the database deliberately ignores direct
+revision-only updates. Terminal fixtures must use actual completion/cancellation so open waits
+close and the required sealed Result exists.
+
+Confirmed safety receipts also need storage-level ownership: bind cancellation markers to
+same-Run Stop commands and original actors, then preserve the entire accepted marker. The
+cancel event precedes `completeRun`, so sealed-result consistency belongs in a deferred
+constraint; replay must independently verify the actual canceled/sealed outcome. Lock governed
+intake/proposal content in stable ID order for first confirmation. A displayed execution wait
+must not reinterpret exact Run-wide Stop as an answer to that wait.
+
+For a terminal conversational Stop, LiveGate replaces the subscribed view with its terminal
+view. The applied ledger receipt is valid lost-response reconciliation; a retry modal need
+not survive that remount. Test exact authenticated replay separately, and exercise modal
+retry with a still-running queued Stop. Never reopen the terminal gate to satisfy a test.
+
+On constrained local browser-test hosts, `INTELLIFIN_LOW_DISK=1` trades disk for memory:
+Turbopack cannot evict its cached graph without its filesystem cache. When disk is available,
+use `INTELLIFIN_LOW_MEMORY=1` instead for full cache eviction; do not combine the two modes.
+Keep worker deadlines and product assertions unchanged and warm cold routes before timed
+worker journeys. The Node runtime import in `instrumentation.ts` must sit inside the positive
+`NEXT_RUNTIME === 'nodejs'` branch so both bundlers can exclude it from the edge bundle.

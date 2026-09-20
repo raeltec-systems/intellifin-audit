@@ -319,7 +319,7 @@ export class PostgresWaitRepository implements WaitRepository {
             if (current) currentRun = { ...current, pauseRequest: request };
           },
           async requestCancellation(request) {
-            await tx.execute(sql`UPDATE audit_run SET cancel_requested_at = ${request.requestedAt}::timestamptz, cancel_requested_by = ${request.requestedBy}, cancel_requested_session = ${request.sessionId}, cancel_reason = ${request.reason} WHERE run_id = ${runId} AND cancel_requested_at IS NULL`);
+            await tx.execute(sql`UPDATE audit_run SET cancel_requested_at = ${request.requestedAt}::timestamptz, cancel_requested_by = ${request.requestedBy}, cancel_requested_session = ${request.sessionId}, cancel_reason = ${request.reason}, cancel_requested_command_id = ${request.commandId ?? null}::uuid WHERE run_id = ${runId} AND cancel_requested_at IS NULL`);
             const current = currentRun;
             if (current) currentRun = { ...current, cancellation: request };
           },

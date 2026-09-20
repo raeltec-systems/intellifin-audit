@@ -233,15 +233,16 @@ function ConversationMessage({
         <p className="run-conversation__actor">{messageActorLabel(message)}</p>
         <p className="run-conversation__body">{conversationBody(message)}</p>
         {message.command && <p className="run-conversation__command-status">
-          <strong>{message.command.kind === 'resume' ? 'Resume' : 'Pause'} request: {message.command.state === 'queued' ? (message.command.kind === 'pause-after-inspection' ? 'waiting for the named inspection to settle' : 'awaiting worker boundary') : message.command.state === 'interpreted' && message.command.kind !== 'pause-now' ? 'awaiting your confirmation' : message.command.state}.</strong>{' '}
+          <strong>{message.command.kind === 'stop' ? 'Stop' : message.command.kind === 'resume' ? 'Resume' : 'Pause'} request: {message.command.state === 'queued' ? (message.command.kind === 'pause-after-inspection' ? 'waiting for the named inspection to settle' : 'awaiting worker boundary') : message.command.state === 'interpreted' && message.command.kind !== 'pause-now' ? (message.command.reason ? 'no longer available for confirmation' : 'awaiting your confirmation') : message.command.state}.</strong>{' '}
           Recorded at <time dateTime={message.command.at}>{utcStamp(message.command.at)}</time>.
         </p>}
 
+        {message.command?.reason && <p>{message.command.reason}</p>}
         {message.command && message.command.kind !== 'pause-now' && message.command.state === 'interpreted' &&
           message.command.canConfirm && message.contentState === 'available' && onReviewCommand &&
           <Button variant="secondary" onClick={() => {
             if (gate.disabledReason === null && message.command) onReviewCommand(message.command);
-          }} {...(gate.disabledReason === null ? {} : { disabledReason: gate.disabledReason })}>{message.command.kind === 'resume' ? 'Review Resume' : 'Review pause after inspection'}</Button>}
+          }} {...(gate.disabledReason === null ? {} : { disabledReason: gate.disabledReason })}>{message.command.kind === 'stop' ? 'Review Stop' : message.command.kind === 'resume' ? 'Review Resume' : 'Review pause after inspection'}</Button>}
 
         {links.length > 0 || evidenceLinks.length > 0 ? (
           <div className="run-conversation__links" role="group" aria-label="Related records and evidence">
@@ -305,6 +306,8 @@ function ConversationComposer({
   const [interactive, setInteractive] = useState(false);
   useEffect(() => { setInteractive(true); }, []);
   const pendingRequestRef = useRef<RunConversationSendInput | null>(null);
+  // Exact Stop always addresses the Run, even while the workspace displays a wait.
+  const effectiveReplyToWaitId = /^(stop|stop now|stop the run)$/i.test(draft.trim()) ? null : replyToWaitId;
   const send = onSend ?? onSubmit;
   const gate = useActionGate();
   const blockedControl = gate.disabledReason !== null && interpretRunConversationMessage({
@@ -317,11 +320,11 @@ function ConversationComposer({
       pending !== null &&
       (pending.runId !== runId ||
         pending.selectedSourceOrdinal !== selectedSourceOrdinal ||
-        pending.replyToWaitId !== replyToWaitId)
+        pending.replyToWaitId !== effectiveReplyToWaitId)
     ) {
       pendingRequestRef.current = null;
     }
-  }, [replyToWaitId, runId, selectedSourceOrdinal]);
+  }, [effectiveReplyToWaitId, runId, selectedSourceOrdinal]);
 
   const onDraftChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
     const nextDraft = truncateConversationText(event.currentTarget.value);
@@ -347,14 +350,14 @@ function ConversationComposer({
         pending.runId === runId &&
         pending.text === draft &&
         pending.selectedSourceOrdinal === selectedSourceOrdinal &&
-        pending.replyToWaitId === replyToWaitId
+        pending.replyToWaitId === effectiveReplyToWaitId
           ? pending
           : {
               runId,
               idempotencyKey: idempotencyKeyFactory(),
               text: draft,
               selectedSourceOrdinal,
-              replyToWaitId,
+              replyToWaitId: effectiveReplyToWaitId,
               currentInspection: draftInspection?.status === 'ready' ? draftInspection.anchor : null,
             };
       pendingRequestRef.current = input;
@@ -374,7 +377,7 @@ function ConversationComposer({
         setSending(false);
       }
     },
-    [blockedControl, disabled, draft, draftInspection, idempotencyKeyFactory, replyToWaitId, runId, selectedSourceOrdinal, send, sending],
+    [blockedControl, disabled, draft, draftInspection, idempotencyKeyFactory, effectiveReplyToWaitId, runId, selectedSourceOrdinal, send, sending],
   );
 
   const visibleInspection = draftInspection ?? currentInspection;

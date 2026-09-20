@@ -817,6 +817,7 @@ export const auditRun = pgTable('audit_run', {
   cancelRequestedBy: text('cancel_requested_by'),
   cancelRequestedSession: text('cancel_requested_session'),
   cancelReason: text('cancel_reason'),
+  cancelRequestedCommandId: uuid('cancel_requested_command_id'),
   // One person's pause request, written whole or not at all (generation 45, Story 5.4).
   // Unlike the cancellation marker beside it this one is CLEARED, by the boundary that
   // honours it — so a row that still carries it at a terminal transition is a request no
@@ -832,6 +833,7 @@ export const auditRun = pgTable('audit_run', {
   // `(a IS NULL) = (b IS NULL)` is boolean = boolean and is never NULL, so unlike a
   // comparison of the values themselves this CHECK cannot pass by evaluating to NULL.
   check('audit_run_cancel_request', sql`(${table.cancelRequestedAt} IS NULL) = (${table.cancelRequestedBy} IS NULL) AND (${table.cancelRequestedAt} IS NULL) = (${table.cancelRequestedSession} IS NULL) AND (${table.cancelRequestedAt} IS NULL) = (${table.cancelReason} IS NULL)`),
+  check('audit_run_cancel_command', sql`${table.cancelRequestedCommandId} IS NULL OR ${table.cancelRequestedAt} IS NOT NULL`),
   check('audit_run_cancel_reason', sql`${table.cancelReason} IS NULL OR (length(${table.cancelReason}) BETWEEN 1 AND 500)`),
   // `(a IS NULL) = (b IS NULL)` is boolean = boolean and is never NULL, so unlike a
   // comparison of the values themselves this cannot pass by evaluating to NULL.
@@ -2086,6 +2088,7 @@ export const runInteractionCommand = pgTable('run_interaction_command', {
   uniqueIndex('run_interaction_command_request').on(t.runId, t.actorId, t.kind, t.requestKey),
   uniqueIndex('run_interaction_command_message').on(t.messageId),
   check('run_interaction_command_kind', sql`(
+    (${t.kind} = 'stop' AND ${t.interpretationVersion} = 'confirmed-stop-v1' AND ${t.deferredAnchor} IS NULL AND ${t.deferredControlEpoch} IS NULL AND ${t.resumeAnchor} IS NULL) OR
     (${t.kind} = 'pause-now' AND ${t.interpretationVersion} = 'exact-safety-v1' AND ${t.deferredAnchor} IS NULL AND ${t.deferredControlEpoch} IS NULL AND ${t.resumeAnchor} IS NULL)
     OR
     (${t.kind} = 'pause-after-inspection' AND ${t.interpretationVersion} = 'confirmed-inspection-v1' AND ${t.resumeAnchor} IS NULL

@@ -124,3 +124,17 @@ describe('RunConversation', () => {
   });
 
 });
+
+it('shows why a stale Stop proposal is unavailable without offering confirmation', () => {
+  const html = renderToStaticMarkup(React.createElement(RunConversation, {
+    runId: RUN_ID,
+    messages: [{ ...message, kind: 'command-receipt', command: {
+      commandId: MESSAGE_ID, kind: 'stop', state: 'interpreted', at: message.createdAt,
+      sourceEventId: null, canConfirm: false, reason: 'The Run or proposal context changed.',
+    } }],
+    onReviewCommand: () => undefined,
+  }));
+  expect(html).toContain('Stop request: no longer available for confirmation');
+  expect(html).toContain('The Run or proposal context changed.');
+  expect(html).not.toContain('Review Stop');
+});

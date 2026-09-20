@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { RunConversationMessageRequest, RunConversationRead, RunConversationInspectionRead, RunConversationMessage } from '@intellifin/application';
 import { RunConversation, RunConversationComposer } from './RunConversation';
 import { RunWorkspaceShell } from './RunWorkspaceShell';
-import { readRunConversation, sendRunConversationMessage, confirmDeferredPauseProposal, confirmConversationResume } from './run-conversation-actions';
+import { readRunConversation, sendRunConversationMessage, confirmDeferredPauseProposal, confirmConversationResume, confirmConversationStop } from './run-conversation-actions';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { useDesktopViewport, useLiveGate } from './LiveGate';
 
@@ -37,7 +37,7 @@ export function RunWorkspaceConversation({ runId, initial, selectedSourceOrdinal
     }
     setConfirming(true); setConfirmationError(null);
     try {
-      const execute = confirmation.kind === 'resume' ? confirmConversationResume : confirmDeferredPauseProposal;
+      const execute = confirmation.kind === 'stop' ? confirmConversationStop : confirmation.kind === 'resume' ? confirmConversationResume : confirmDeferredPauseProposal;
       const result = await execute({ runId, commandId: confirmation.commandId });
       if (!result.ok) { setConfirmationError(result.reason); router.refresh(); return; }
       setConfirmation(null); setBefore(null); setHistory(null); router.refresh();
@@ -62,7 +62,8 @@ export function RunWorkspaceConversation({ runId, initial, selectedSourceOrdinal
     if (confirmation === null) return;
     const proposal = read?.messages.find(row => row.command?.commandId === confirmation.commandId);
     if (initial.status !== 'ready' || (read?.status === 'ready' &&
-      (proposal === undefined || proposal.contentState !== 'available'))) {
+      (proposal === undefined || proposal.contentState !== 'available' ||
+        (proposal.command?.kind === 'stop' && proposal.command.state === 'interpreted' && !proposal.command.canConfirm)))) {
       setConfirmation(null); setConfirmationError(null);
       setError('The proposal is no longer available for confirmation. Read the current conversation.');
     }
@@ -77,16 +78,16 @@ export function RunWorkspaceConversation({ runId, initial, selectedSourceOrdinal
   return <RunWorkspaceShell header={header} progress={progress} controls={controls}
     currentDecision={currentDecision} workspace={workspace}
     conversation={<>
-      <ConfirmDialog open={confirmation !== null} weight="routine" title={confirmation?.kind === 'resume' ? 'Resume this Run?' : 'Pause after this inspection?'}
-        consequence={confirmation?.kind === 'resume'
+      <ConfirmDialog open={confirmation !== null} weight="routine" title={confirmation?.kind === 'stop' ? 'Stop this Run?' : confirmation?.kind === 'resume' ? 'Resume this Run?' : 'Pause after this inspection?'}
+        consequence={confirmation?.kind === 'stop' ? 'Cancellation cannot be undone. The worker finishes its current safe boundary. Collected evidence is retained and the partial Result is sealed.' : confirmation?.kind === 'resume'
           ? `Resume the pause opened at ${confirmation.resumeAnchor?.pausedAt}. Confirm before ${confirmation.resumeAnchor?.deadline}. Interrupted work restarts as a new attempt using the frozen plan and committed evidence.`
           : `Request a pause after ${confirmation?.targetLabel ?? 'the named inspection'} settles, including any recorded skip. Only this target inspection is named. An open question remains open; if no work remains, the Run finishes instead.`}
-        confirmLabel={confirmation?.kind === 'resume' ? 'Resume Run' : 'Pause after this inspection'} cancelLabel="Go back" busy={confirming} refusal={confirmationError}
+        confirmLabel={confirmation?.kind === 'stop' ? 'Stop Run' : confirmation?.kind === 'resume' ? 'Resume Run' : 'Pause after this inspection'} cancelLabel="Go back" busy={confirming} refusal={confirmationError}
         onCancel={() => { if (!confirming) setConfirmation(null); }} onConfirm={() => { void confirm(); }} />
       {before !== null && <button type="button" onClick={() => { setBefore(null); setHistory(null); setError(null); }}>Return to latest messages</button>}
       <RunConversation onReviewCommand={command => {
         if (command.canConfirm && gate.disabledReason === null &&
-          ((command.kind === 'pause-after-inspection' && command.targetLabel) || (command.kind === 'resume' && command.resumeAnchor))) {
+          (command.kind === 'stop' || (command.kind === 'pause-after-inspection' && command.targetLabel) || (command.kind === 'resume' && command.resumeAnchor))) {
           setConfirmationError(null); setConfirmation(command);
         }
       }} runId={runId} messages={read?.messages ?? []} olderBefore={read?.olderBefore ?? null}

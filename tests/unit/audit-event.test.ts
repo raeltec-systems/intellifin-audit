@@ -134,3 +134,17 @@ describe('UUIDv7 generator', () => {
     );
   });
 });
+
+describe('cancellation interaction audit payload', () => {
+  const commandId = '01a06fd8-0000-7000-8000-0000000000f1';
+  const payload = { commandId, state: 'RUNNING', reason: 'Canceled by auditor',
+    requestedAt: '2026-09-20T12:00:00.000Z', performedBy: 'worker' };
+  it('accepts the server identity and refuses added prose or malformed command IDs', () => {
+    const draft = { ...baseDraft, eventType: 'lifecycle.run-cancel-requested' as const, payload };
+    expect(() => createCanonicalAuditEvent(draft, { eventId: commandId, occurredAt: payload.requestedAt, sequence: 1 })).not.toThrow();
+    for (const invalid of [{ ...payload, text: 'untrusted conversation text' }, { ...payload, commandId: 'bad-id' }]) {
+      expect(() => createCanonicalAuditEvent({ ...draft, payload: invalid },
+        { eventId: commandId, occurredAt: payload.requestedAt, sequence: 1 })).toThrow(AuditEventValidationError);
+    }
+  });
+});

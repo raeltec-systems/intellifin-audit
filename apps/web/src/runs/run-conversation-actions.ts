@@ -60,3 +60,15 @@ export async function confirmConversationResume(request: unknown): Promise<RunCo
     return { ok: false, code: 'unavailable', reason: 'Resume could not be confirmed. Retry this same confirmation to recover its recorded outcome.' };
   }
 }
+
+export async function confirmConversationStop(request: unknown): Promise<RunConversationCommandReceipt> {
+  const decision = await requireServerAction('run.cancel');
+  if (!decision.allowed) return { ok: false, code: 'denied', reason: decision.reason };
+  try {
+    return await (await getRuntime()).conversation.confirmStop({
+      actorId: decision.session.userId, sessionId: decision.session.sessionId, request,
+    });
+  } catch {
+    return { ok: false, code: 'unavailable', reason: 'Stop could not be confirmed. Retry this same confirmation to recover its recorded outcome.' };
+  }
+}

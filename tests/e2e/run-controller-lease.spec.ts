@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type BrowserContext, type Page, type TestInfo } from '@playwright/test';
+import { expect, test, type BrowserContext, type Page, type Request, type TestInfo } from '@playwright/test';
 import { performPause, pauseRun, raiseEscalation } from '@intellifin/application';
 import {
   createDb,
@@ -268,6 +268,166 @@ test.describe('durable Run controller lease', () => {
       .toEqual([{ closure_kind: 'resume', actor: auditor.id }]);
     await capture(page, testInfo, 'conversation-resume-recovered-1440x900');
     await assertA11y(page);
+  });
+
+  test('reconciles terminal Stop after a lost response and replays the exact authenticated request', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const [auditor] = await sql<{ id: string }[]>`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
+    if (!auditor) throw new Error('The Stop journey requires its synthetic Auditor.');
+    const runId = await seedRun('RUNNING');
+    const waitId = await pauseSeededRun(runId, auditor.id);
+    await page.goto(`/runs/${runId}/workspace`);
+    await page.getByLabel('Message the Run', { exact: true }).fill('Stop');
+    await page.getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect(page.locator('.run-conversation__composer-status')).toHaveText('Message accepted.');
+    const [proposal] = await sql<{ command_id: string; expected_run_revision: number }[]>`
+      SELECT command_id,expected_run_revision FROM run_interaction_command WHERE run_id=${runId} AND kind='stop'`;
+    if (!proposal) throw new Error('The conversation did not retain its Stop proposal.');
+    await page.getByRole('button', { name: 'Review Stop', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Stop this Run?', exact: true });
+    await expect(dialog).toContainText('Cancellation cannot be undone');
+    await expect(dialog.getByRole('button', { name: 'Go back', exact: true })).toBeFocused();
+    expect(await sql`SELECT closed_at FROM run_wait WHERE wait_id=${waitId}`).toEqual([{ closed_at: null }]);
+    let dropped = false;
+    let captured: Request | null = null;
+    let forwardedStatus: number | null = null;
+    await page.route(`**/runs/${runId}/workspace`, async route => {
+      const request = route.request();
+      const fields = actionFields(request.postData());
+      if (!dropped && request.method() === 'POST' && request.headers()['next-action'] !== undefined &&
+        fields?.runId === runId && fields.commandId === proposal.command_id) {
+        dropped = true; captured = request;
+        // Execute the real authenticated request, then lose only its response. The
+        // retry must discover the existing effect instead of sending new inputs.
+        const response = await route.fetch();
+        forwardedStatus = response.status();
+        await route.abort('failed');
+        return;
+      }
+      await route.continue();
+    });
+    await dialog.getByRole('button', { name: 'Stop Run', exact: true }).click();
+    // The committed terminal event closes LiveGate and remounts this subtree. Its
+    // authoritative receipt resolves the unknown response without another UI action.
+    await expect(page.getByLabel('Conversation history')).toContainText('Stop request: applied.');
+    await expect(dialog).toHaveCount(0);
+    expect(dropped).toBe(true);
+    await expect.poll(() => forwardedStatus).toBe(200);
+    expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)
+      .toEqual([{ state: 'CANCELED' }]);
+    const beforeRetry = await sql`SELECT event_id,sequence FROM audit_events
+      WHERE aggregate_id=${runId} AND event_type='lifecycle.run-canceled'`;
+    expect(beforeRetry).toHaveLength(1);
+    if (captured === null) throw new Error('The authenticated Stop confirmation was not captured.');
+    // The browser-context API keeps the authenticated request's original method,
+    // headers and payload. A replay must recover its result despite the closed UI gate.
+    const replay = await page.request.fetch(captured);
+    expect(replay.status()).toBe(200);
+    const replayBody = await replay.text();
+    expect(replayBody).toContain('"commandId":"' + proposal.command_id + '"');
+    expect(replayBody).toContain('"state":"applied"');
+    expect(replayBody).toContain('"replayed":true');
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByLabel('Conversation history')).toContainText('Stop request: applied.');
+    await page.reload();
+    await expect(page.getByLabel('Conversation history')).toContainText('Stop request: applied.');
+    expect(await sql`SELECT event_id,sequence FROM audit_events
+      WHERE aggregate_id=${runId} AND event_type='lifecycle.run-canceled'`).toEqual(beforeRetry);
+    expect(await sql`SELECT state FROM run_interaction_transition WHERE command_id=${proposal.command_id} ORDER BY sequence`)
+      .toEqual([{ state: 'received' }, { state: 'interpreted' }, { state: 'applied' }]);
+    expect(await sql`SELECT closed_at IS NOT NULL AS closed FROM run_wait WHERE wait_id=${waitId}`)
+      .toEqual([{ closed: true }]);
+    await capture(page, testInfo, 'conversation-stop-recovered-1440x900');
+    await assertA11y(page);
+  });
+
+  test('retries the original queued Stop confirmation after a lost response while the Run remains live', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const [auditor] = await sql<{ id: string }[]>`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
+    if (!auditor) throw new Error('The Stop journey requires its synthetic Auditor.');
+    const runId = await seedRun('RUNNING');
+    await page.goto(`/runs/${runId}/workspace`);
+    await page.getByLabel('Message the Run', { exact: true }).fill('Stop');
+    await page.getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect(page.locator('.run-conversation__composer-status')).toHaveText('Message accepted.');
+    const [proposal] = await sql<{ command_id: string; expected_run_revision: number }[]>`
+      SELECT command_id,expected_run_revision FROM run_interaction_command WHERE run_id=${runId} AND kind='stop'`;
+    if (!proposal) throw new Error('The conversation did not retain its Stop proposal.');
+    await page.getByRole('button', { name: 'Review Stop', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Stop this Run?', exact: true });
+    await expect(dialog).toContainText('Cancellation cannot be undone');
+    await expect(dialog.getByRole('button', { name: 'Go back', exact: true })).toBeFocused();
+    let dropped = false;
+    const dispatches: string[] = [];
+    let forwardedStatus: number | null = null;
+    await page.route(`**/runs/${runId}/workspace`, async route => {
+      const request = route.request();
+      const fields = actionFields(request.postData());
+      if (request.method() === 'POST' && request.headers()['next-action'] !== undefined &&
+        fields?.runId === runId && fields.commandId === proposal.command_id) dispatches.push(request.postData() ?? '');
+      if (!dropped && request.method() === 'POST' && request.headers()['next-action'] !== undefined &&
+        fields?.runId === runId && fields.commandId === proposal.command_id) {
+        dropped = true;
+        // Execute the real authenticated request, then lose only its response. The
+        // retry must discover the existing effect instead of sending new inputs.
+        const response = await route.fetch();
+        forwardedStatus = response.status();
+        await route.abort('failed');
+        return;
+      }
+      await route.continue();
+    });
+    await dialog.getByRole('button', { name: 'Stop Run', exact: true }).click();
+    await expect(dialog).toContainText('Retry this same confirmation');
+    expect(dropped).toBe(true);
+    expect(forwardedStatus).toBe(200);
+    expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)
+      .toEqual([{ state: 'RUNNING' }]);
+    const beforeRetry = await sql`SELECT event_id,sequence FROM audit_events
+      WHERE aggregate_id=${runId} AND event_type='lifecycle.run-cancel-requested'`;
+    expect(beforeRetry).toHaveLength(1);
+    await dialog.getByRole('button', { name: 'Stop Run', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(dispatches).toHaveLength(2);
+    expect(dispatches[1]).toBe(dispatches[0]);
+    await expect(page.getByLabel('Conversation history')).toContainText('Stop request: awaiting worker boundary.');
+    await page.reload();
+    await expect(page.getByLabel('Conversation history')).toContainText('Stop request: awaiting worker boundary.');
+    expect(await sql`SELECT event_id,sequence FROM audit_events
+      WHERE aggregate_id=${runId} AND event_type='lifecycle.run-cancel-requested'`).toEqual(beforeRetry);
+    expect(await sql`SELECT state FROM run_interaction_transition WHERE command_id=${proposal.command_id} ORDER BY sequence`)
+      .toEqual([{ state: 'received' }, { state: 'interpreted' }, { state: 'queued' }]);
+    expect(await sql`SELECT event_id FROM audit_events WHERE aggregate_id=${runId} AND event_type='lifecycle.run-canceled'`).toHaveLength(0);
+    await capture(page, testInfo, 'conversation-stop-queued-recovered-1440x900');
+    await assertA11y(page);
+  });
+
+  test('refuses conversational Stop when the proposing auditor loses authority before confirmation', async ({ page }) => {
+    const [auditor] = await sql<{ id: string }[]>`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
+    if (!auditor) throw new Error('Stop requires the synthetic auditor');
+    const [role] = await sql<RoleRow[]>`SELECT role,assigned_by,assigned_at::text AS assigned_at FROM user_role WHERE user_id=${auditor.id}`;
+    if (!role) throw new Error('Auditor role missing');
+    const runId = await seedRun('RUNNING');
+    await pauseSeededRun(runId, auditor.id);
+    try {
+      await page.goto(`/runs/${runId}/workspace`);
+      await page.getByLabel('Message the Run', { exact: true }).fill('Stop');
+      await page.getByRole('button', { name: 'Send message', exact: true }).click();
+      await expect(page.locator('.run-conversation__composer-status')).toHaveText('Message accepted.');
+      await page.getByRole('button', { name: 'Review Stop', exact: true }).click();
+      const [beforeDenial] = await sql`SELECT count(*)::integer AS n FROM audit_events WHERE actor_id=${auditor.id} AND event_type='security.denied'`;
+      await sql`DELETE FROM user_role WHERE user_id=${auditor.id}`;
+      await page.getByRole('dialog', { name: 'Stop this Run?', exact: true }).getByRole('button', { name: 'Stop Run', exact: true }).click();
+      // An authorized-action refusal or refreshed denied page is truthful; neither can cancel.
+      await expect.poll(async () => (await sql`SELECT count(*)::integer AS n FROM audit_events WHERE actor_id=${auditor.id}
+        AND event_type='security.denied'`)[0]?.n ?? 0).toBeGreaterThan(Number(beforeDenial?.n ?? 0));
+      expect(await sql`SELECT state,cancel_requested_at FROM audit_run WHERE run_id=${runId}`)
+        .toEqual([{ state: 'PAUSED', cancel_requested_at: null }]);
+    } finally {
+      await sql`INSERT INTO user_role(user_id,role,assigned_by,assigned_at)
+        VALUES (${auditor.id},${role.role},${role.assigned_by},${role.assigned_at}::timestamptz)
+        ON CONFLICT (user_id) DO UPDATE SET role=EXCLUDED.role,assigned_by=EXCLUDED.assigned_by,assigned_at=EXCLUDED.assigned_at`;
+    }
   });
 
   test('serializes Resume across contexts, fences stale requests, and leaves eligible controls lease-free', async ({ browser, baseURL }, testInfo) => {

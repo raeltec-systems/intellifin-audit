@@ -246,6 +246,18 @@ export function validateAuditEventDraft(draft: AuditEventDraft): AuditEventDraft
   if (Array.isArray(draft.payload)) {
     throw new AuditEventValidationError('payload', 'must be a JSON object');
   }
+  // Conversation cancellation extends the existing fact with one server-owned ID.
+  // Retain a closed payload so arbitrary interaction text cannot enter the audit fact.
+  if (['lifecycle.run-cancel-requested', 'lifecycle.run-canceled'].includes(draft.eventType) &&
+    Object.hasOwn(draft.payload, 'commandId')) {
+    const fields = draft.eventType === 'lifecycle.run-canceled'
+      ? ['commandId', 'priorState', 'state', 'reason', 'requestedAt', 'occurredAt', 'performedBy']
+      : ['commandId', 'state', 'reason', 'requestedAt', 'performedBy'];
+    if (Object.keys(draft.payload).length !== fields.length || fields.some(key => !Object.hasOwn(draft.payload, key)) ||
+      typeof draft.payload.commandId !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(draft.payload.commandId))
+      throw new AuditEventValidationError('payload', 'cancellation interaction identity requires its closed payload');
+  }
   return draft;
 }
 
