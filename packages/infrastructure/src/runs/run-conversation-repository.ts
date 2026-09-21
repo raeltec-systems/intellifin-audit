@@ -13,6 +13,7 @@ import {
   narrateRunConversationEvent,
   parseRunConversationMessageRequest,
   pauseRun,
+  flagRun, parseRunConversationFlag, runConversationFlagProposalText,
   resumeRun,
   answerEscalation,
   parseRunConversationQuestionAnchor,
@@ -38,7 +39,7 @@ import {
   type RunConversationRepository,
   type RunConversationEventContext,
 } from '@intellifin/application';
-import { ACTIVE_RUN_STATES, adapterLookupColumn, canonicalJson, classifyPlanTargets, authorizeActionRole, type AuditEventRecord, type ExecutablePlan, type JsonValue } from '@intellifin/domain';
+import { isFlaggableRunState, sha256Hex, ACTIVE_RUN_STATES, adapterLookupColumn, canonicalJson, classifyPlanTargets, authorizeActionRole, type AuditEventRecord, type ExecutablePlan, type JsonValue } from '@intellifin/domain';
 
 import type { Database, Transaction } from '../db/client.js';
 import {
@@ -65,8 +66,8 @@ import { recordReviewProjectionQuery } from './record-review-repository.js';
 import { PostgresWaitRepository } from './wait-repository.js';
 import { readLockedRunControlLease, runControlServerTime } from './run-control-lease-repository.js';
 import { PostgresDeferredPauseRepository } from './deferred-pause-repository.js';
-import { PostgresRunCancellationRepository } from './runs-unit-of-work.js';
-import { matchesStopInteractionEvent, matchesResumeInteractionEvent, matchesAnswerInteractionEvent } from './run-interaction-projection.js';
+import { PostgresRunFlagRepository, PostgresRunCancellationRepository } from './runs-unit-of-work.js';
+import { matchesStopInteractionEvent, matchesResumeInteractionEvent, matchesAnswerInteractionEvent, matchesFlagInteractionEvent } from './run-interaction-projection.js';
 
 const MAX_CONVERSATION_MESSAGES = 10_000;
 const MAX_REQUESTS_PER_MINUTE = 20;
@@ -298,7 +299,7 @@ function replyText(run: ConversationRun, intent: RunConversationIntentKind, fact
     case 'strategy-proposal':
       return `The frozen plan does not declare selectable lookup strategies. No strategy was changed. ${base}${selectedText}`;
     case 'flag-proposal':
-      return `Flag proposals are recorded as conversation text and do not apply a Run flag. Use the existing Flag control. ${base}${selectedText}`;
+      return 'Review a request for manager attention. No flag is applied until confirmation.';
     case 'amendment':
       return `Amendments cannot change this frozen Run. Use the existing Procedure controls for a future version. ${base}${selectedText}`;
     case 'refusal':
@@ -407,12 +408,13 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       const receipts = receiptParents.length === 0 ? [] : await tx.execute<{
         message_id: string; command_id: string; state: NonNullable<RunConversationMessage['command']>['state'];
         expected_run_revision: number; deferred_control_epoch: number | null; reason_code: string;
-        kind: 'pause-now' | 'pause-after-inspection' | 'resume' | 'stop' | 'answer'; actor_id: string; deferred_anchor: unknown; resume_anchor: unknown; answer_anchor: unknown; answer_option_id: string | null;
+        kind: 'pause-now' | 'pause-after-inspection' | 'resume' | 'stop' | 'answer' | 'flag'; flag_anchor: unknown; actor_id: string; deferred_anchor: unknown; resume_anchor: unknown; answer_anchor: unknown; answer_option_id: string | null;
         at: string; source_event_id: string | null; event_valid: boolean; intake_ciphertext: string | null; intake_removed_at: unknown;
-      }>(sql`SELECT c.message_id::text,c.command_id::text,c.kind,c.actor_id,c.expected_run_revision,c.deferred_control_epoch,c.deferred_anchor,c.resume_anchor,c.answer_anchor,c.answer_option_id,t.state,t.reason_code,
+      }>(sql`SELECT c.message_id::text,c.command_id::text,c.kind,c.actor_id,c.expected_run_revision,c.deferred_control_epoch,c.deferred_anchor,c.resume_anchor,c.answer_anchor,c.answer_option_id,c.flag_anchor,t.state,t.reason_code,
         to_char(t.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at,t.source_event_id::text, intake.ciphertext AS intake_ciphertext,intake.removed_at AS intake_removed_at,
         (t.source_event_id IS NULL OR coalesce(e.aggregate_id=c.run_id::text
           AND e.payload->>'commandId'=c.command_id::text AND e.occurred_at=t.created_at AND (
+            (c.kind='flag' AND t.state='applied' AND conversation_flag_receipt_valid(c,e)) OR
             (c.kind='answer' AND t.state='applied' AND conversation_answer_receipt_valid(c,e)) OR
             (c.kind='stop' AND e.outcome='success' AND e.actor_type='human' AND e.actor_id=c.actor_id
               AND EXISTS (SELECT 1 FROM audit_run r WHERE r.run_id=c.run_id AND r.cancel_requested_command_id=c.command_id
@@ -451,7 +453,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
           WHERE command_id=c.command_id ORDER BY sequence DESC LIMIT 1) t ON true
         LEFT JOIN audit_events e ON e.event_id=t.source_event_id
         LEFT JOIN run_conversation_content intake ON intake.message_id=c.message_id
-        WHERE c.run_id=${run.runId}::uuid AND c.kind IN ('pause-now','pause-after-inspection','resume','stop','answer')
+        WHERE c.run_id=${run.runId}::uuid AND c.kind IN ('pause-now','pause-after-inspection','resume','stop','answer','flag')
           AND c.message_id IN (SELECT jsonb_array_elements_text(${JSON.stringify(receiptParents)}::jsonb)::uuid)`);
       const receiptPlan = receipts.some(receipt => receipt.kind === 'pause-after-inspection')
         ? await new DrizzleFrozenExecutionReader(tx).readFrozenExecution(run.versionId, run.procedureId) : null;
@@ -520,6 +522,25 @@ export class PostgresRunConversationRepository implements RunConversationReposit
           links,
           ...(receipt === undefined ? {} : { command: { commandId: receipt.command_id, kind: receipt.kind,
             state: receipt.state, at: receipt.at, sourceEventId: receipt.source_event_id,
+            ...(receipt.kind === 'flag' ? (() => {
+              let note: { readonly note: string | null } | null = null;
+              if (receipt.intake_removed_at === null && receipt.intake_ciphertext !== null && contentState === 'available') {
+                try {
+                  const intake = storedBody(cipher.open(run.runId,receipt.message_id,receipt.intake_ciphertext));
+                  const parsed = intake === null ? null : parseRunConversationFlag(intake.text);
+                  if (parsed && body === runConversationFlagProposalText(parsed.note) &&
+                    canonicalJson(receipt.flag_anchor as JsonValue) === canonicalJson({noteDigest:parsed.note === null ? null : sha256Hex(parsed.note),noteLength:parsed.note?.length ?? 0})) note=parsed;
+                } catch { /* Both governed bodies must remain readable. */ }
+              }
+              const reason = receipt.state === 'refused' ? 'This flag proposal was refused. Review the current Run.'
+                : receipt.state !== 'interpreted' ? undefined
+                : receipt.actor_id !== input.actorId ? 'Only the auditor who proposed this flag can confirm it.'
+                : !authorizeActionRole(role,'run.flag').allowed ? 'Your current role cannot flag this Run.'
+                : !isFlaggableRunState(run.state) ? 'This Run is no longer eligible for a new flag.'
+                : note === null ? 'The original message or recorded note is removed or unavailable.' : undefined;
+              return { ...(note === null ? {} : {flagNote:note.note}), canConfirm:receipt.state==='interpreted' && reason===undefined,
+                ...(reason === undefined ? {} : {reason}) };
+            })() : {}),
             ...(receipt.kind === 'answer' ? (() => {
               const anchor = parseRunConversationQuestionAnchor(receipt.answer_anchor);
               const matchesQuestion = anchor !== null && answerQuestion !== null &&
@@ -627,6 +648,73 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       if (row.evidence_id !== null) sourceOrdinalForEvidenceId.set(row.evidence_id, row.ordinal);
     }
     return { sourceOrdinalForWorkItemId, sourceOrdinalForToolActionId, sourceOrdinalForEvidenceId };
+  }
+
+  /** One retained human flag statement; no controller lease or replacement note. */
+  async confirmFlag(input: PostgresRunConversationAppendInput): Promise<RunConversationCommandReceipt> {
+    const fields=input.request;
+    if (!validActor(input.actorId) || !validActor(input.sessionId) || !plainObject(fields) ||
+      !exactKeys(fields,['runId','commandId']) || typeof fields.runId!=='string' || !isUuidText(fields.runId) ||
+      typeof fields.commandId!=='string' || !isUuidText(fields.commandId))
+      return {ok:false,code:'malformed',reason:'Choose a recorded flag proposal.'};
+    const runId=fields.runId.toLowerCase(),commandId=fields.commandId.toLowerCase(),cipher=this.cipher;
+    return this.db.transaction(async tx=>{
+      await tx.execute(sql`SET LOCAL lock_timeout = '250ms'`);
+      await tx.execute(sql`SET LOCAL statement_timeout = '5s'`);
+      const [run]=await tx.select().from(auditRun).where(eq(auditRun.runId,runId)).for('update').limit(1);
+      // Role changes serialize on this identity (migration 0060), before fresh authorization.
+      await tx.select({id:authUser.id}).from(authUser).where(eq(authUser.id,input.actorId)).for('update');
+      const at=new Date(await runControlServerTime(tx)),roles=new DrizzleRoleRepository(tx);
+      const writer=createAuditEventWriter(tx,{now:()=>at},new CryptoUuidV7Generator());
+      const unitOfWork={execute:<T>(work:(context:{auditEvents:typeof writer})=>Promise<T>)=>work({auditEvents:writer})};
+      const permission=await authorizeCommandRole({roles,unitOfWork},{session:{userId:input.actorId,sessionId:input.sessionId},
+        action:'run.flag',correlationId:run?.correlationId ?? new CryptoUuidV7Generator().next()});
+      if(!permission.allowed)return {ok:false,code:'denied',reason:permission.reason};
+      if(!run)return {ok:false,code:'run-not-found',reason:'The Run was not found.'};
+      const [command]=await tx.select().from(runInteractionCommand).where(and(eq(runInteractionCommand.commandId,commandId),
+        eq(runInteractionCommand.runId,runId),eq(runInteractionCommand.kind,'flag'),eq(runInteractionCommand.actorId,input.actorId))).for('update').limit(1);
+      if(!command)return {ok:false,code:'denied',reason:'Only the auditor who proposed this flag can confirm it.'};
+      const [prior]=await tx.select().from(runInteractionTransition).where(eq(runInteractionTransition.commandId,commandId)).orderBy(desc(runInteractionTransition.sequence)).limit(1);
+      if(prior?.state==='applied') {
+        const [fact]=prior.sourceEventId===null ? [] : await tx.select().from(auditEvents).where(eq(auditEvents.eventId,prior.sourceEventId));
+        const [valid]=await tx.execute(sql`SELECT 1 FROM run_interaction_command c JOIN audit_events e ON e.event_id=${prior.sourceEventId}::uuid
+          WHERE c.command_id=${commandId}::uuid AND conversation_flag_receipt_valid(c,e)`);
+        if(!fact || !valid || fact.occurredAt.getTime()!==prior.createdAt.getTime() ||
+          !matchesFlagInteractionEvent(command,{...fact,actor:{type:fact.actorType,id:fact.actorId}}))
+          return {ok:false,code:'unavailable',reason:'The authoritative flag receipt is unavailable.'};
+        return {ok:true,commandId,state:'applied',replayed:true};
+      }
+      if(prior?.state!=='interpreted')return {ok:false,code:'conflict',reason:'This flag proposal is no longer available for confirmation.'};
+      if(cipher===null)return {ok:false,code:'unavailable',reason:'The original message and recorded note are unavailable.'};
+      const bodies=await tx.select({messageId:runConversationMessage.messageId,ciphertext:runConversationContent.ciphertext,removedAt:runConversationContent.removedAt})
+        .from(runConversationMessage).innerJoin(runConversationContent,eq(runConversationContent.messageId,runConversationMessage.messageId))
+        .where(and(eq(runConversationMessage.runId,runId),or(eq(runConversationMessage.messageId,command.messageId),
+          and(eq(runConversationMessage.parentMessageId,command.messageId),eq(runConversationMessage.kind,'command-receipt')))))
+        .orderBy(runConversationContent.messageId).limit(3).for('update',{of:runConversationContent});
+      const texts=new Map<string,string>();
+      for(const body of bodies) {
+        try { const opened=body.ciphertext!==null && body.removedAt===null ? storedBody(cipher.open(runId,body.messageId,body.ciphertext)) : null;
+          if(opened)texts.set(body.messageId,opened.text); } catch { /* Unreadable content cannot authorize a new flag. */ }
+      }
+      const intake=texts.get(command.messageId),flag=intake===undefined ? null : parseRunConversationFlag(intake);
+      const reply=bodies.find(body=>body.messageId!==command.messageId);
+      if(bodies.length!==2 || texts.size!==2 || !flag || !reply || texts.get(reply.messageId)!==runConversationFlagProposalText(flag.note) ||
+        canonicalJson(command.flagAnchor as JsonValue)!==canonicalJson({noteDigest:flag.note===null ? null : sha256Hex(flag.note),noteLength:flag.note?.length ?? 0}))
+        return {ok:false,code:'unavailable',reason:'The original message or recorded note is removed, changed or unavailable.'};
+      const outcome=await flagRun({roles,unitOfWork,repository:new PostgresRunFlagRepository(tx,{clock:{now:()=>at}}),
+        ids:new CryptoUuidV7Generator(),clock:{now:()=>at},confirmedInteraction:{commandId}},
+        {session:{userId:input.actorId,sessionId:input.sessionId},request:{runId,note:flag.note}});
+      if(!outcome.ok) {
+        await tx.insert(runInteractionTransition).values({commandId,sequence:prior.sequence+1,state:'refused',reasonCode:'domain-refused',createdAt:at});
+        const refusal=await writer.append({actor:{type:'human',id:input.actorId},eventType:'review.interaction-refused',source:'web',outcome:'failure',
+          aggregateId:runId,correlationId:run.correlationId,sessionId:input.sessionId,payload:{commandId,reasonCode:'domain-refused'}});
+        await tx.execute(sql`SELECT pg_notify('run_timeline', ${JSON.stringify({runId,sequence:refusal.sequence})})`);
+        return {ok:false,code:'conflict',reason:outcome.reason};
+      }
+      const [applied]=await tx.select().from(runInteractionTransition).where(eq(runInteractionTransition.commandId,commandId)).orderBy(desc(runInteractionTransition.sequence)).limit(1);
+      if(applied?.state!=='applied' || applied.sourceEventId===null)throw new Error('Flag domain receipt unavailable');
+      return {ok:true,commandId,state:'applied',replayed:false};
+    });
   }
 
   /** Exact retained answer; no browser text is reparsed on confirmation. */
@@ -1103,6 +1191,13 @@ export class PostgresRunConversationRepository implements RunConversationReposit
           return { ok: false, code: 'conflict', reason: 'The question changed or expired while you were composing. Start a new draft from the current question.' };
         answerOption = resolveRunConversationAnswer(parsed.value.text, answerQuestion.options);
       }
+      const flagProposal = interpretation.intent.kind === 'flag-proposal' ? interpretation.intent : null;
+      if (flagProposal) {
+        await tx.select({id:authUser.id}).from(authUser).where(eq(authUser.id,input.actorId)).for('update');
+        if (!authorizeActionRole(await new DrizzleRoleRepository(tx).findRole(input.actorId),'run.flag').allowed)
+          return {ok:false,code:'denied',reason:'Your current role cannot flag this Run.'};
+        if (!isFlaggableRunState(run.state)) return {ok:false,code:'conflict',reason:'This Run is no longer eligible for a new flag.'};
+      }
       const stopProposal = interpretation.intent.kind === 'stop-confirmation';
       if (stopProposal) {
         if (!authorizeActionRole(await new DrizzleRoleRepository(tx).findRole(input.actorId), 'run.cancel').allowed)
@@ -1144,6 +1239,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
           messageId,
           replyMessageId,
           intent: interpretation.intent.kind,
+          ...(flagProposal ? {flagAnchor:{noteDigest:flagProposal.note===null ? null : sha256Hex(flagProposal.note),noteLength:flagProposal.note?.length ?? 0}} : {}),
           ...(answerQuestion !== null && answerOption !== null ? { questionAnchor: { ...answerQuestion.anchor }, answerOptionId: answerOption.id } : {}),
           sourceOrdinal: sourceOrdinal,
           semanticFingerprint,
@@ -1204,6 +1300,19 @@ export class PostgresRunConversationRepository implements RunConversationReposit
         ]);
         replyBody = bodyEnvelope(`Review a pause after ${deferredTargetLabel}. Only this target's inspection is named; this is not an all-systems record barrier. No pause is requested until you confirm. An open question remains open. If no work remains after this inspection, the Run can finish instead.`, []);
       }
+      if (flagProposal) {
+        const commandId = new CryptoUuidV7Generator().next();
+        await tx.insert(runInteractionCommand).values({commandId,runId:run.runId,messageId,actorId:input.actorId,
+          kind:'flag',requestKey:parsed.value.idempotencyKey,semanticFingerprint,
+          planDigest:createHash('sha256').update(canonicalJson(plan as unknown as JsonValue)).digest('hex'),
+          expectedRunRevision:run.revision,interpretationVersion:'confirmed-flag-v1',createdAt:at,
+          flagAnchor:{noteDigest:flagProposal.note===null ? null : sha256Hex(flagProposal.note),noteLength:flagProposal.note?.length ?? 0}});
+        await tx.insert(runInteractionTransition).values([
+          {commandId,sequence:1,state:'received',reasonCode:'intake-persisted',createdAt:at},
+          {commandId,sequence:2,state:'interpreted',reasonCode:'flag-confirmation-required',createdAt:at},
+        ]);
+        replyBody=bodyEnvelope(runConversationFlagProposalText(flagProposal.note),[],false);
+      }
       if (stopProposal) {
         const commandId = new CryptoUuidV7Generator().next();
         await tx.insert(runInteractionCommand).values({ commandId, runId: run.runId, messageId,
@@ -1257,7 +1366,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
         runId: run.runId,
         sequence: replySequence,
         actorId: input.actorId,
-        kind: interpretation.intent.kind === 'pause-now' || deferredAnchor !== null || resumeAnchor !== null || stopProposal || answerOption !== null ? 'command-receipt' : 'platform-event',
+        kind: interpretation.intent.kind === 'pause-now' || deferredAnchor !== null || resumeAnchor !== null || stopProposal || flagProposal !== null || answerOption !== null ? 'command-receipt' : 'platform-event',
         createdAt: at,
         parentMessageId: messageId,
         requestKey: null,

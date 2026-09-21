@@ -90,7 +90,7 @@ export class PostgresRunCancellationRepository implements RunCancellationReposit
  * commands already follow, one table along.
  */
 export class PostgresRunFlagRepository implements RunFlagRepository {
-  constructor(private readonly db: Database, private readonly dependencies: PostgresAuditDependencies = {}) {}
+  constructor(private readonly db: Database | Transaction, private readonly dependencies: PostgresAuditDependencies = {}) {}
   transaction<T>(runId: string, work: (context: RunFlagContext) => Promise<T>): Promise<T> {
     return this.db.transaction(async transaction => {
       if (!isUuidText(runId)) throw new Error('Invalid Run identity');
@@ -102,9 +102,10 @@ export class PostgresRunFlagRepository implements RunFlagRepository {
         authorizationRoles: new DrizzleRoleRepository(transaction),
         auditEvents: createAuditEventWriter(transaction, this.dependencies.clock ?? new SystemClock(), this.dependencies.ids ?? new CryptoUuidV7Generator()),
         auditManagerIds: () => new DrizzleNotificationRecipientReader(transaction).auditManagerIds(),
-        async insertFlag(flag) {
+        async insertFlag(flag, confirmedInteraction) {
           await transaction.insert(runFlag).values({
             flagId: flag.flagId,
+            interactionCommandId: confirmedInteraction?.commandId ?? null,
             runId: flag.runId,
             flaggedBy: flag.flaggedBy,
             sessionId: flag.sessionId,

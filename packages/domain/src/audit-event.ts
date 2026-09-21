@@ -258,6 +258,18 @@ export function validateAuditEventDraft(draft: AuditEventDraft): AuditEventDraft
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(draft.payload.commandId))
       throw new AuditEventValidationError('payload', 'cancellation interaction identity requires its closed payload');
   }
+  if (draft.eventType === 'lifecycle.run-flagged' && Object.hasOwn(draft.payload,'commandId')) {
+    const p=draft.payload,keys=['commandId','flagId','state','flaggedAt','noteLength','noteDigest'];
+    const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+    if (Object.keys(p).length!==keys.length || keys.some(key=>!Object.hasOwn(p,key)) ||
+      draft.source!=='web' || draft.outcome!=='success' || draft.actor.type!=='human' ||
+      typeof p.commandId!=='string' || !uuid.test(p.commandId) || typeof p.flagId!=='string' || !uuid.test(p.flagId) ||
+      !['RUNNING','PAUSED','AWAITING_AUDITOR'].includes(String(p.state)) ||
+      typeof p.flaggedAt!=='string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(p.flaggedAt) || !Number.isFinite(Date.parse(p.flaggedAt)) ||
+      typeof p.noteLength!=='number' || !Number.isInteger(p.noteLength) || p.noteLength<0 || p.noteLength>500 ||
+      (p.noteLength===0 ? p.noteDigest!==null : typeof p.noteDigest!=='string' || !/^[a-f0-9]{64}$/.test(p.noteDigest)))
+      throw new Error('Conversational flag requires an exact note-free payload');
+  }
   if (draft.eventType === 'execution.escalation-answered' && Object.hasOwn(draft.payload, 'commandId')) {
     const fields = ['waitId','kind','answerOptionId','closureKind','priorState','state','occurredAt','commandId','planDigest','expectedRunRevision','questionAnchor'];
     const rawAnchor = draft.payload.questionAnchor;

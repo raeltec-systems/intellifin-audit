@@ -241,13 +241,16 @@ function ConversationMessage({
           </time>
         </header>
         <p className="run-conversation__actor">{messageActorLabel(message)}</p>
-        {message.command?.kind === 'answer' && message.contentState === 'available' ? <>
+        {message.command?.kind === 'flag' && message.contentState === 'available' ? <>
+          <p>Request manager attention. Work continues without pausing.</p>
+          {message.command.flagNote === undefined ? <p>The recorded note is unavailable.</p> : message.command.flagNote === null ? <p>No note was supplied.</p> : <UntrustedText field="recorded flag note">{message.command.flagNote}</UntrustedText>}
+        </> : message.command?.kind === 'answer' && message.contentState === 'available' ? <>
           <p className="run-conversation__body">{runConversationAnswerConsequence(message.command.answerOptionId ?? '')} No answer is applied until you confirm.</p>
           {message.command.answerQuestion ? <AnswerQuestionSource question={message.command.answerQuestion} optionId={message.command.answerOptionId} label="Recorded question and choice" />
             : <details className="run-conversation__question-source"><summary>Recorded answer proposal — source content</summary><div className="run-conversation__source-scroll" role="region" aria-label="Recorded answer proposal source" tabIndex={0}><UntrustedText field="recorded question and choice">{conversationBody(message)}</UntrustedText></div></details>}
         </> : <p className="run-conversation__body">{conversationBody(message)}</p>}
         {message.command && <p className="run-conversation__command-status">
-          <strong>{message.command.kind === 'answer' ? 'Answer' : message.command.kind === 'stop' ? 'Stop' : message.command.kind === 'resume' ? 'Resume' : 'Pause'} request: {message.command.state === 'queued' ? (message.command.kind === 'pause-after-inspection' ? 'waiting for the named inspection to settle' : 'awaiting worker boundary') : message.command.state === 'interpreted' && message.command.kind !== 'pause-now' ? (message.command.reason ? 'no longer available for confirmation' : 'awaiting your confirmation') : message.command.state}.</strong>{' '}
+          <strong>{message.command.kind === 'flag' ? 'Flag' : message.command.kind === 'answer' ? 'Answer' : message.command.kind === 'stop' ? 'Stop' : message.command.kind === 'resume' ? 'Resume' : 'Pause'} request: {message.command.state === 'queued' ? (message.command.kind === 'pause-after-inspection' ? 'waiting for the named inspection to settle' : 'awaiting worker boundary') : message.command.state === 'interpreted' && message.command.kind !== 'pause-now' ? (message.command.reason ? 'no longer available for confirmation' : 'awaiting your confirmation') : message.command.state}.</strong>{' '}
           Recorded at <time dateTime={message.command.at}>{utcStamp(message.command.at)}</time>.
         </p>}
 
@@ -256,7 +259,7 @@ function ConversationMessage({
           message.command.canConfirm && message.contentState === 'available' && onReviewCommand &&
           <Button variant="secondary" onClick={() => {
             if (gate.disabledReason === null && message.command) onReviewCommand(message.command);
-          }} {...(gate.disabledReason === null ? {} : { disabledReason: gate.disabledReason })}>{message.command.kind === 'answer' ? 'Review answer' : message.command.kind === 'stop' ? 'Review Stop' : message.command.kind === 'resume' ? 'Review Resume' : 'Review pause after inspection'}</Button>}
+          }} {...(gate.disabledReason === null ? {} : { disabledReason: gate.disabledReason })}>{message.command.kind === 'flag' ? 'Review flag' : message.command.kind === 'answer' ? 'Review answer' : message.command.kind === 'stop' ? 'Review Stop' : message.command.kind === 'resume' ? 'Review Resume' : 'Review pause after inspection'}</Button>}
 
         {links.length > 0 || evidenceLinks.length > 0 ? (
           <div className="run-conversation__links" role="group" aria-label="Related records and evidence">
@@ -339,7 +342,7 @@ function ConversationComposer({
   useEffect(() => { setInteractive(true); }, []);
   const pendingRequestRef = useRef<RunConversationSendInput | null>(null);
   // Exact Stop always addresses the Run, even while the workspace displays a wait.
-  const effectiveReplyToWaitId = /^(stop|stop now|stop the run)$/i.test(draft.trim()) ? null : draftWaitId;
+  const effectiveReplyToWaitId = /^(stop|stop now|stop the run|flag(?:\s*:\s*.+)?)$/is.test(draft.trim()) ? null : draftWaitId;
   const send = onSend ?? onSubmit;
   const gate = useActionGate();
   const blockedControl = gate.disabledReason !== null && interpretRunConversationMessage({

@@ -52,6 +52,7 @@ async function flag(options: {
   lockedRole?: string | null;
   request?: unknown;
   managers?: readonly string[];
+  commandId?: string;
 }): Promise<Harness> {
   const flags: RunFlag[] = [];
   const notifications: FlagNotification[] = [];
@@ -71,12 +72,16 @@ async function flag(options: {
       },
     } as never,
     auditManagerIds: async () => options.managers ?? ['manager-1', 'manager-2'],
-    insertFlag: async (value) => { flags.push(value); },
+    insertFlag: async (value, interaction) => {
+      expect(interaction).toEqual(options.commandId ? {commandId:options.commandId} : undefined);
+      flags.push(value);
+    },
     enqueueNotification: async (value) => { notifications.push(value); },
     notifyTimeline: async (sequence) => { notified.push(sequence); },
   };
   const outcome = await flagRun(
     {
+      ...(options.commandId ? { confirmedInteraction: { commandId: options.commandId } } : {}),
       roles: { findRole: async () => (options.role ?? 'auditor') as never },
       unitOfWork: {
         execute: async (work: (context: unknown) => Promise<unknown>) => work({
@@ -93,6 +98,24 @@ async function flag(options: {
 }
 
 describe('flagRun', () => {
+  it('binds the existing flag event to trusted conversation identity without leaking its note', async () => {
+    const commandId = '019823ab-0000-7000-8000-000000000099';
+    const harness = await flag({ commandId });
+    expect(harness.outcome.ok).toBe(true);
+    expect(harness.flags).toHaveLength(1);
+    expect(harness.events[0]?.payload).toMatchObject({ commandId, flagId: harness.flags[0]?.flagId });
+    expect(JSON.stringify(harness.events)).not.toContain('Please look at');
+    expect(JSON.stringify(harness.notifications)).not.toContain(commandId);
+    expect(JSON.stringify(harness.notifications)).not.toContain('Please look at');
+  });
+
+  it('does not accept conversation command identity from the untrusted direct request', async () => {
+    const harness = await flag({ request: { runId: RUN_ID, note: null, commandId: RUN_ID } });
+    expect(harness.outcome).toEqual({ ok: false, reason: FLAG_REQUEST_MALFORMED });
+    expect(harness.flags).toEqual([]);
+    expect(harness.notifications).toEqual([]);
+  });
+
   it('records one flag, notifies the initiator and every Audit Manager, and chains the note by digest', async () => {
     const harness = await flag({});
     expect(harness.outcome).toEqual({ ok: true, flagId: '019823ab-0000-7000-8000-0000000000aa' });

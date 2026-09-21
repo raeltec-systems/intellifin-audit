@@ -80,7 +80,8 @@ export interface RunConversationMessage {
   /** Current persisted receipt, separate from the immutable message text. */
   readonly command?: {
     readonly commandId: string;
-    readonly kind: 'pause-now' | 'pause-after-inspection' | 'resume' | 'stop' | 'answer';
+    readonly kind: 'pause-now' | 'pause-after-inspection' | 'resume' | 'stop' | 'answer' | 'flag';
+    readonly flagNote?: string | null;
     readonly answerAnchor?: RunConversationQuestionAnchor;
     readonly answerQuestion?: RunConversationQuestionContext;
     readonly answerOptionId?: string;
@@ -570,6 +571,17 @@ function interpretation(
   };
 }
 
+/** Exact whole-message flag syntax; note bounds match the existing domain command. */
+export function parseRunConversationFlag(text: string): { readonly note: string | null } | null {
+  const match = /^flag(?:\s*:\s*(.+))?$/is.exec(text.trim());
+  if (!match) return null;
+  const note = match[1]?.trim() || null;
+  return note !== null && (note.length > 500 || !note.isWellFormed() || detectRunConversationSecretPattern(note)) ? null : { note };
+}
+export function runConversationFlagProposalText(note: string | null): string {
+  return `Request manager attention for this Run. Work continues without pausing. No flag or notification is sent until you confirm.${note === null ? ' No note was supplied.' : ` Recorded note: ${note}`}`;
+}
+
 function normalizedIntentText(text: string): string {
   return text.trim().toLowerCase();
 }
@@ -654,10 +666,10 @@ export function interpretRunConversationMessage(
     );
   }
 
-  const flag = /^flag(?:\s*:\s*(.+))?$/is.exec(text);
+  const flag = parseRunConversationFlag(text);
   if (flag) {
     return interpretation(
-      { kind: 'flag-proposal', note: flag[1]?.trim() || null },
+      { kind: 'flag-proposal', note: flag.note },
       'proposal',
       true,
     );

@@ -7,7 +7,7 @@ const anchor = { runId: '01990000-0000-7000-8000-000000000001', waitId: '0199000
 const command: typeof runInteractionCommand.$inferSelect = { commandId: '01990000-0000-7000-8000-000000000004',
   runId: anchor.runId, messageId: anchor.waitId, actorId: 'auditor', kind: 'answer', requestKey: anchor.waitId,
   semanticFingerprint: 'b'.repeat(64), planDigest: 'c'.repeat(64), expectedRunRevision: 2, interpretationVersion: 'confirmed-answer-v1',
-  deferredAnchor: null, deferredControlEpoch: null, resumeAnchor: null, answerAnchor: anchor, answerOptionId: 'retry', createdAt: new Date() };
+  deferredAnchor: null, deferredControlEpoch: null, resumeAnchor: null, flagAnchor:null, answerAnchor: anchor, answerOptionId: 'retry', createdAt: new Date() };
 const event = { aggregateId: anchor.runId, eventType: 'execution.escalation-answered', source: 'web', outcome: 'success',
   actor: { type: 'human', id: 'auditor' }, payload: { commandId: command.commandId, waitId: anchor.waitId, kind: anchor.kind,
     answerOptionId: 'retry', questionAnchor: anchor, expectedRunRevision: 2, planDigest: command.planDigest,

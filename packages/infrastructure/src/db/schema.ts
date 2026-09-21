@@ -89,6 +89,7 @@ export const auditEvents = pgTable(
     uniqueIndex('audit_events_aggregate_sequence_uidx').on(table.aggregateId, table.sequence),
     uniqueIndex('audit_events_control_renewal_request_uidx').on(table.aggregateId, table.actorId, sql`(${table.payload}->>'requestKey')`)
       .where(sql`${table.eventType} = 'lifecycle.run-control-lease-renewed' AND ${table.payload} ? 'requestKey'`),
+    uniqueIndex('conversation_flag_command_fact').on(sql`(${table.payload}->>'commandId')`).where(sql`${table.eventType}='lifecycle.run-flagged' AND ${table.payload} ? 'commandId'`),
     index('audit_events_correlation_idx').on(table.correlationId),
     index('audit_events_type_time_idx').on(table.eventType, table.occurredAt),
     check('audit_events_sequence_positive', sql`${table.sequence} > 0`),
@@ -1991,12 +1992,14 @@ export const runWait = pgTable('run_wait', {
  */
 export const runFlag = pgTable('run_flag', {
   flagId: uuid('flag_id').primaryKey(),
+  interactionCommandId: uuid('interaction_command_id').references(() => runInteractionCommand.commandId),
   runId: uuid('run_id').notNull().references(() => auditRun.runId, { onDelete: 'cascade' }),
   flaggedBy: text('flagged_by').notNull(),
   sessionId: text('session_id').notNull(),
   flaggedAt: timestamp('flagged_at', { withTimezone: true }).notNull(),
   note: text('note'),
 }, t => [
+  uniqueIndex('run_flag_interaction_command').on(t.interactionCommandId),
   index('run_flag_run_idx').on(t.runId, t.flaggedAt, t.flagId),
   // A note is absent or it says something. An empty string would read as a note somebody
   // left blank rather than as one they chose not to write.
@@ -2087,13 +2090,23 @@ export const runInteractionCommand = pgTable('run_interaction_command', {
   deferredAnchor: jsonb('deferred_anchor'),
   deferredControlEpoch: integer('deferred_control_epoch'),
   resumeAnchor: jsonb('resume_anchor'),
+  flagAnchor: jsonb('flag_anchor'),
   answerAnchor: jsonb('answer_anchor'),
   answerOptionId: text('answer_option_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
 }, t => [
   uniqueIndex('run_interaction_command_request').on(t.runId, t.actorId, t.kind, t.requestKey),
   uniqueIndex('run_interaction_command_message').on(t.messageId),
-  check('run_interaction_command_kind', sql`((
+  check('run_interaction_command_kind', sql`((${t.kind}='flag' AND ${t.interpretationVersion}='confirmed-flag-v1'
+      AND ${t.deferredAnchor} IS NULL AND ${t.deferredControlEpoch} IS NULL AND ${t.resumeAnchor} IS NULL
+      AND ${t.answerAnchor} IS NULL AND ${t.answerOptionId} IS NULL
+      AND ${t.flagAnchor} IS NOT NULL AND jsonb_typeof(${t.flagAnchor})='object'
+      AND ${t.flagAnchor} ?& ARRAY['noteDigest','noteLength']
+      AND (${t.flagAnchor} - ARRAY['noteDigest','noteLength']::text[])='{}'::jsonb
+      AND ((${t.flagAnchor}->'noteDigest'='null'::jsonb AND ${t.flagAnchor}->'noteLength'='0'::jsonb)
+        OR (jsonb_typeof(${t.flagAnchor}->'noteDigest')='string' AND (${t.flagAnchor}->>'noteDigest') ~ '^[a-f0-9]{64}$'
+          AND jsonb_typeof(${t.flagAnchor}->'noteLength')='number' AND (${t.flagAnchor}->>'noteLength') ~ '^[0-9]+$'
+          AND (${t.flagAnchor}->>'noteLength')::numeric BETWEEN 1 AND 500))) OR (${t.flagAnchor} IS NULL AND (((
     (${t.kind} = 'answer' AND ${t.interpretationVersion} = 'confirmed-answer-v1'
       AND ${t.deferredAnchor} IS NULL AND ${t.deferredControlEpoch} IS NULL AND ${t.resumeAnchor} IS NULL
       AND ${t.answerAnchor} IS NOT NULL AND jsonb_typeof(${t.answerAnchor})='object'
@@ -2149,7 +2162,7 @@ export const runInteractionCommand = pgTable('run_interaction_command', {
       AND (${t.resumeAnchor}->>'controlEpoch') ~ '^[0-9]+$'
       AND (${t.resumeAnchor}->>'controlEpoch')::numeric BETWEEN 1 AND 2147483647
     )
-  )))) IS TRUE`),
+  )))) IS TRUE))) IS TRUE`),
   check('run_interaction_command_envelope', sql`${t.expectedRunRevision} >= 0 AND ${t.planDigest} ~ '^[a-f0-9]{64}$' AND ${t.semanticFingerprint} ~ '^[a-f0-9]{64}$'`),
 ]);
 

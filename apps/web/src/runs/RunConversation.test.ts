@@ -35,6 +35,15 @@ const message: RunConversationMessage = {
 };
 
 describe('RunConversation', () => {
+  it('renders a flag as manager attention with an inert retained note and explicit confirmation',()=>{
+    const html=renderToStaticMarkup(React.createElement(RunConversation,{runId:RUN_ID,messages:[{...message,kind:'command-receipt',
+      command:{commandId:MESSAGE_ID,kind:'flag',state:'interpreted',at:message.createdAt,sourceEventId:null,canConfirm:true,flagNote:'<script>flag note</script>'}}],
+      olderBefore:null,onReviewCommand:()=>undefined}));
+    expect(html).toContain('Request manager attention. Work continues without pausing.');expect(html).toContain('Review flag');
+    expect(html).toContain('&lt;script&gt;flag note&lt;/script&gt;');expect(html).not.toContain('<script>flag note</script>');
+    expect(html).toContain('Flag request:');expect(html).not.toContain('Review Resume');
+  });
+
   it('renders inert escaped text with human labels, related links and bounded older history', () => {
     const html = renderToStaticMarkup(
       React.createElement(RunConversation, {

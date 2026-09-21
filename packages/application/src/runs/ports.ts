@@ -105,7 +105,7 @@ export interface RunFlagContext {
   /** Every current Audit Manager, read on THIS transaction's connection. */
   auditManagerIds(): Promise<readonly string[]>;
   /** The Procedure name and version this Run froze, for the notification projection. */
-  insertFlag(flag: RunFlag): Promise<void>;
+  insertFlag(flag: RunFlag, confirmedInteraction?: { readonly commandId: string }): Promise<void>;
   enqueueNotification(notification: FlagNotification): Promise<void>;
   /** Wake the list channel so a bell somewhere re-reads its count (Story 5.1). */
   notifyTimeline(sequence: number): Promise<void>;

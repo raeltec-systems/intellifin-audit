@@ -28,14 +28,17 @@ import type { RunFlagRepository } from './ports.js';
  * The notification rows carry no note either: they name the Procedure and the Run, and the
  * text is read on the Run by somebody already authorized to open it.
  *
- * **There is no request token, and a repeated flag is a second flag.** Nothing in the
+ * **Direct flags have no request token; repeated direct requests are separate flags.** Nothing in the
  * contract says a Run has at most one, two flags with different notes are two different
  * things a person said, and merging them under a derived id would silently lose the
  * second. A lost response is handled the way every other control on these surfaces handles
- * one — the surface blocks the retry and asks for a reload.
+ * one — the surface blocks the retry and asks for a reload. A trusted conversation adapter
+ * may bind the event to its retained command and recover that command atomically.
  */
 
 export interface FlagRunDependencies {
+  /** Trusted adapter context; never accepted in the untrusted request envelope. */
+  readonly confirmedInteraction?: { readonly commandId: string };
   readonly roles: RoleRepository;
   /** Where a refusal's `security.denied` event is appended, after the refusal. */
   readonly unitOfWork: AuditUnitOfWork;
@@ -108,7 +111,7 @@ export async function flagRun(
         flaggedAt: dependencies.clock.now().toISOString(),
         note,
       };
-      await context.insertFlag(flag);
+      await context.insertFlag(flag, dependencies.confirmedInteraction);
       // FR-28's recipient rule, the same one an Escalation uses: the initiator — the
       // Procedure's author for a scheduled Run — and every current Audit Manager, read on
       // this transaction's connection so a role granted a moment ago is included and one
@@ -133,6 +136,7 @@ export async function flagRun(
         correlationId,
         sessionId: flag.sessionId,
         payload: {
+          ...(dependencies.confirmedInteraction ? { commandId: dependencies.confirmedInteraction.commandId } : {}),
           flagId: flag.flagId,
           state: run.state,
           flaggedAt: flag.flaggedAt,

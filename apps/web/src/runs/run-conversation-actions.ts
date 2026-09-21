@@ -82,3 +82,13 @@ export async function confirmConversationAnswer(request: unknown): Promise<RunCo
     return { ok: false, code: 'unavailable', reason: 'The answer could not be confirmed. Retry this same proposal to recover its recorded outcome.' };
   }
 }
+
+export async function confirmConversationFlag(request: unknown): Promise<RunConversationCommandReceipt> {
+  const decision = await requireServerAction('run.flag');
+  if (!decision.allowed) return {ok:false,code:'denied',reason:decision.reason};
+  try {
+    return await (await getRuntime()).conversation.confirmFlag({actorId:decision.session.userId,sessionId:decision.session.sessionId,request});
+  } catch {
+    return {ok:false,code:'unavailable',reason:'Flag delivery is unknown. Retry this same confirmation to recover its recorded outcome.'};
+  }
+}

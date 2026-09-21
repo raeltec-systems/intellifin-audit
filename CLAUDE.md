@@ -4160,3 +4160,15 @@ populated composer. Keep explicit native POST forms: React function actions on t
 conflict with an explicit method. Put the action on the submitter through Button.formAction
 instead, letting React supply its submitter metadata. Do not weaken the form-method guard.
 The no-JavaScript browser proof must assert POST, no URL query and the note in the body.
+
+### Conversational flags retain one human statement (2026-09-20)
+
+A flag proposal binds its governed original message and displayed note through an immutable
+note digest/UTF-16 length anchor. Confirmation accepts only Run/command identity, locks Run
+then actor identity and both content rows, and calls the existing `flagRun` inside the same
+transaction as its applied interaction receipt. The actor identity lock composes with the
+role-change serialization introduced in migration 0060; fresh reads alone are insufficient.
+A flag is independent of the controller lease and never pauses work. Exact retries recover
+the original flag; distinct proposals and direct Flag submissions remain separate statements.
+Events and notification payloads carry no note. SQL note-length comparisons must count
+supplementary Unicode code points as two UTF-16 code units to match the existing flag contract.

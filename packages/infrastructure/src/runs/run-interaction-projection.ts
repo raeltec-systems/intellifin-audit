@@ -1,9 +1,20 @@
 import { and, desc, eq } from 'drizzle-orm';
-import { canonicalJson, type JsonValue, type AuditEventRecord } from '@intellifin/domain';
+import { validateAuditEventDraft, canonicalJson, type JsonValue, type AuditEventRecord } from '@intellifin/domain';
 import { parseDeferredPauseAnchor, parseRunConversationResumeAnchor, parseRunConversationQuestionAnchor } from '@intellifin/application';
 import type { Transaction } from '../db/client.js';
 import { isUuidText } from '../db/identifier.js';
 import { runInteractionCommand, runInteractionTransition } from '../db/schema.js';
+
+export function matchesFlagInteractionEvent(command: typeof runInteractionCommand.$inferSelect,
+  event: { readonly eventType: string; readonly source: string; readonly outcome: string;
+    readonly actor: { readonly type: string; readonly id: string }; readonly aggregateId: string;
+    readonly payload: Readonly<Record<string, unknown>> }): boolean {
+  try { validateAuditEventDraft({...event,sessionId:'projection',correlationId:'projection'} as import('@intellifin/domain').AuditEventDraft); }
+  catch { return false; }
+  return command.kind==='flag' && event.eventType==='lifecycle.run-flagged' && event.source==='web' && event.outcome==='success' &&
+    event.actor.type==='human' && event.actor.id===command.actorId && event.aggregateId===command.runId && event.payload.commandId===command.commandId &&
+    command.flagAnchor!==null && canonicalJson(command.flagAnchor as JsonValue)===canonicalJson({noteDigest:event.payload.noteDigest,noteLength:event.payload.noteLength} as JsonValue);
+}
 
 export function matchesAnswerInteractionEvent(command: typeof runInteractionCommand.$inferSelect,
   event: { readonly eventType: string; readonly source: string; readonly outcome: string;
@@ -58,7 +69,10 @@ export async function projectRunInteractionEvent(tx: Transaction, event: AuditEv
   let state: 'queued' | 'applied' | 'superseded';
   let priorState: 'interpreted' | 'queued';
   const human = event.actor.type === 'human' && event.actor.id === command.actorId;
-  if (command.kind === 'answer') {
+  if (command.kind === 'flag') {
+    if (!matchesFlagInteractionEvent(command,event)) return;
+    state='applied'; priorState='interpreted';
+  } else if (command.kind === 'answer') {
     if (!matchesAnswerInteractionEvent(command, event)) return;
     state = 'applied'; priorState = 'interpreted';
   } else if (command.kind === 'stop') {
@@ -97,7 +111,7 @@ export async function projectRunInteractionEvent(tx: Transaction, event: AuditEv
   // A terminal receipt is never overwritten by a later or duplicate fact.
   if (!prior || prior.state !== priorState) return;
   await tx.insert(runInteractionTransition).values({ commandId: command.commandId, sequence: prior.sequence + 1,
-    state, reasonCode: command.kind === 'answer' ? 'question-answered' : command.kind === 'stop' ? (state === 'queued' ? 'cancellation-requested' : 'run-canceled') : command.kind === 'resume' ? 'run-resumed' : state === 'queued' ? 'pause-requested' : state === 'applied' ? 'worker-paused' :
+    state, reasonCode: command.kind === 'flag' ? 'run-flagged' : command.kind === 'answer' ? 'question-answered' : command.kind === 'stop' ? (state === 'queued' ? 'cancellation-requested' : 'run-canceled') : command.kind === 'resume' ? 'run-resumed' : state === 'queued' ? 'pause-requested' : state === 'applied' ? 'worker-paused' :
       command.kind === 'pause-after-inspection' ? 'deferred-pause-superseded' : 'run-finalized',
     createdAt: new Date(event.occurredAt), sourceEventId: event.eventId });
 }
