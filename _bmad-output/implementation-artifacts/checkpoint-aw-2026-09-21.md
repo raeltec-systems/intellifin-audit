@@ -37,6 +37,10 @@ Separate unvalidated drafts are saved on `feat/pr51-frozen-strategies` (188f56b)
   pass is claimed. Independent three-layer final review and new CI are pending.
 - Checkpoint verification: complete package/root TypeScript checks and dependency
   boundaries (718 modules) passed; `git diff --check` passed.
+- The first checkpoint CI preview job failed before its adapter cases because the
+  job database name ended in `_e2e`, while the fixture safety guard accepts only
+  explicit `test`/`ci` database names. The job now consistently uses
+  `intellifin_preview_ci`; this correction requires a new CI run.
 
 The baseline pushed candidate d74ff29 had five CI jobs passing and the full browser
 job failing four cases. Targeted fixes are saved but their regression run is pending.
