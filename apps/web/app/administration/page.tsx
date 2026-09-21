@@ -8,7 +8,7 @@ import { UsersPanel } from '../../src/admin/UsersPanel';
 import { Banner } from '../../src/design/Banner';
 import { getRuntime } from '../../src/bootstrap';
 import { requireServerAction } from '../../src/server-session';
-import { createUserAction, setUserRoleAction } from './actions';
+import { createUserAction, setUserRoleAction, setUserRunControlTransferGrantAction } from './actions';
 
 export const metadata: Metadata = { title: 'Administration · IntelliFin Audit' };
 
@@ -68,6 +68,7 @@ export default async function AdministrationPage(): Promise<React.JSX.Element> {
         limit={USER_LIST_LIMIT}
         createUser={createUserAction}
         setRole={setUserRoleAction}
+        setTransferGrant={setUserRunControlTransferGrantAction}
       />
     </div>
   );

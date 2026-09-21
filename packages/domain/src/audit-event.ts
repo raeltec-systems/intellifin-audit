@@ -283,6 +283,29 @@ export function validateAuditEventDraft(draft: AuditEventDraft): AuditEventDraft
       typeof draft.payload.planDigest !== 'string' || !HASH_PATTERN.test(draft.payload.planDigest))
       throw new AuditEventValidationError('payload', 'answer interaction requires its exact question identity and closed payload');
   }
+  if (draft.eventType === 'configuration.user-permission-changed') {
+    const p = draft.payload;
+    if (Object.keys(p).length !== 7 || typeof p.subjectUserId !== 'string' || !p.subjectUserId || p.subjectUserId.includes('@') ||
+      p.permission !== 'run.control-transfer' || typeof p.granted !== 'boolean' || p.priorGranted !== !p.granted ||
+      typeof p.revision !== 'number' || !Number.isInteger(p.revision) || p.revision < 1 || p.revision > 2147483647 || p.priorRevision !== p.revision-1 ||
+      !['administration','role-change'].includes(p.cause as string) || draft.actor.type !== 'human' || draft.source !== 'web' || draft.outcome !== 'success' ||
+      (draft.aggregateId !== undefined && draft.aggregateId !== 'platform'))
+      throw new AuditEventValidationError('payload', 'permission receipt requires its exact grant revision');
+  }
+  if (draft.eventType === 'lifecycle.run-control-lease-transferred') {
+    const p = draft.payload;
+    const fields = ['operation','commandId','requestKey','expectedEpoch','priorEpoch','priorHolderId','epoch','holderId','reasonRef','updatedAt','expiresAt'];
+    if (Object.keys(p).length !== fields.length || fields.some(key => !Object.hasOwn(p,key)) ||
+      p.operation !== 'transfer' || !['commandId','requestKey'].every(key => typeof p[key] === 'string' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(p[key] as string)) ||
+      p.reasonRef !== p.commandId || typeof p.expectedEpoch !== 'number' || !Number.isInteger(p.expectedEpoch) ||
+      p.expectedEpoch < 1 || p.expectedEpoch >= 2147483647 || p.priorEpoch !== p.expectedEpoch || p.epoch !== p.expectedEpoch+1 ||
+      p.holderId !== draft.actor.id || typeof p.priorHolderId !== 'string' || !p.priorHolderId || p.priorHolderId === p.holderId ||
+      !['updatedAt','expiresAt'].every(key => typeof p[key] === 'string' && Number.isFinite(Date.parse(p[key] as string)) &&
+        new Date(p[key] as string).toISOString() === p[key]) || Date.parse(p.expiresAt as string)-Date.parse(p.updatedAt as string) !== 120000 ||
+      draft.actor.type !== 'human' || draft.source !== 'web' || draft.outcome !== 'success')
+      throw new AuditEventValidationError('payload', 'transfer receipt requires its exact proposal and lease transition');
+  }
   return draft;
 }
 

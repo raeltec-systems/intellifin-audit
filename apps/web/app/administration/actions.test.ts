@@ -27,6 +27,7 @@ const requireServerAction = vi.fn<() => Promise<ActionDecision>>();
 const currentCorrelationId = vi.fn(async () => 'corr-test');
 const createUserWithRole = vi.fn();
 const setUserRole = vi.fn();
+const setUserRunControlTransferGrant = vi.fn();
 const getRuntime = vi.fn(() => {
   throw new Error('the runtime must not be reached on a refusal');
 });
@@ -46,11 +47,12 @@ vi.mock('@intellifin/application', async (importOriginal) => {
   return {
     ...actual,
     createUserWithRole: (...args: unknown[]) => createUserWithRole(...args),
+    setUserRunControlTransferGrant: (...args: unknown[]) => setUserRunControlTransferGrant(...args),
     setUserRole: (...args: unknown[]) => setUserRole(...args),
   };
 });
 
-const { createUserAction, setUserRoleAction } = await import('./actions');
+const { createUserAction, setUserRoleAction, setUserRunControlTransferGrantAction } = await import('./actions');
 
 const VALID_CREATE = {
   email: 'dana@synthetic.invalid',
@@ -197,5 +199,24 @@ describe('an authorized administrator', () => {
       reason: 'The change could not be saved. Nothing was changed.',
     });
     expect(JSON.stringify(outcome)).not.toContain('user_role');
+  });
+});
+
+
+describe('Run control transfer grant boundary', () => {
+  beforeEach(() => vi.clearAllMocks());
+  it('authorizes before inspecting a hostile input', async () => {
+    requireServerAction.mockResolvedValue(AUDITOR_DENIED);
+    const input = new Proxy({}, { get: () => { throw new Error('read'); }, ownKeys: () => { throw new Error('read'); } });
+    expect(await setUserRunControlTransferGrantAction(input)).toEqual({ ok: false, reason: AUDITOR_DENIED.reason });
+    expect(getRuntime).not.toHaveBeenCalled(); expect(setUserRunControlTransferGrant).not.toHaveBeenCalled();
+  });
+  it.each([null, [], {}, { userId: 'manager', granted: 'true', expectedGrantRevision: 0 },
+    { userId: 'manager', granted: true, expectedGrantRevision: -1 },
+    { userId: 'manager', granted: true, expectedGrantRevision: 1.5 },
+    { userId: 'manager', granted: true, expectedGrantRevision: 0, actorId: 'administrator' }])('refuses malformed exact grant envelopes', async input => {
+    requireServerAction.mockResolvedValue({ allowed: true, session: { userId: 'admin', sessionId: 'session' }, role: 'poc-administrator' });
+    expect(await setUserRunControlTransferGrantAction(input)).toMatchObject({ ok: false });
+    expect(getRuntime).not.toHaveBeenCalled(); expect(setUserRunControlTransferGrant).not.toHaveBeenCalled();
   });
 });

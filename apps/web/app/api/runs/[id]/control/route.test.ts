@@ -11,7 +11,7 @@ import { GET } from './route';
 const runId = '019823ab-0000-7000-8000-000000000001';
 const session = { userId: 'trusted-auditor', sessionId: 'trusted-session' };
 const projection = { status: 'ready', runId, required: true, epoch: 7, heldByYou: true,
-  holderName: 'Auditor', expiresAt: '2026-09-20T19:02:00.000Z', serverTime: '2026-09-20T19:00:00.000Z', active: true };
+  holderName: 'Auditor', actorId: session.userId, actorName: 'Auditor', transferEligible: true, expiresAt: '2026-09-20T19:02:00.000Z', serverTime: '2026-09-20T19:00:00.000Z', active: true };
 const request = new Request(`https://audit.example.test/api/runs/${runId}/control`);
 async function call(id = runId) {
   const response = await GET(request, { params: Promise.resolve({ id }) });
@@ -66,4 +66,10 @@ describe('GET /api/runs/<id>/control', () => {
     const response = await call();
     expect(response.status).toBe(503); expect(await response.json()).toEqual({ status: 'unavailable' });
   });
+});
+
+it('does not advertise transfer when governed conversation content is disabled', async () => {
+  mocks.runtime.mockResolvedValue({ db: {}, conversationEnabled: false });
+  const response = await call();
+  expect(await response.json()).toMatchObject({ actorId: session.userId, transferEligible: false });
 });

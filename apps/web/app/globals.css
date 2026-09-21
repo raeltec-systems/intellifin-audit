@@ -2448,3 +2448,9 @@ a {
   display: grid;
   gap: var(--spacing-1);
 }
+
+/* The reason is source text; its scroll area leaves the decision buttons visible. */
+.run-control-transfer-source { max-height: min(28vh, 220px); overflow: auto; min-width: 0; }
+.run-control-transfer-source .ls-untrusted__body { overflow-wrap: anywhere; white-space: pre-wrap; }
+.ls-dialog:has(.run-control-transfer-source) { max-height: calc(100dvh - 48px); overflow: auto; }
+.ls-dialog:has(.run-control-transfer-source) > :not(.run-control-transfer-source) { flex-shrink: 0; }

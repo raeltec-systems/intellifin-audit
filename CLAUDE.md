@@ -4148,3 +4148,33 @@ For maximum-length workspace context, bound source text separately from its acti
 scroll regions keyboard-accessible. Test the expanded disclosure as well as the initial and
 populated composer. React function-action forms supply their method; an explicit method on
 those forms causes a browser warning and should be omitted.
+
+### Manager transfer requires an explicit grant and a retained review (2026-09-20)
+
+`run.control-transfer` has two gates: current Audit Manager role and a separately granted
+permission. Revoked grants retain monotonically increasing revisions; demotion/removal
+revokes atomically and promotion never restores authority. Administration locks ordered
+administrator role rows, then distinct actor/subject identities sorted by ID, before fresh
+authorization and audit writes. Reject role identity rewrites in storage. Transfer locks
+the Run then manager identity, so grant/role revocation serializes even when a row is absent.
+
+A governed reason proposal freezes the observed controller and epoch. Confirmation accepts
+only Run/command IDs. A changed lease cannot rebind the review, and an applied receipt is
+historical evidence rather than current ownership. Bind the exceptional live-holder change
+to an immutable proposal, durable lease marker, exact domain event and receipt. Keep the
+last transfer marker through ordinary renew/release/acquire, and validate the transfer at
+fact creation so legitimate later transitions in the same transaction remain possible.
+Accepted Pause/Stop and deferred inspection Pause remain safety requests through transfer.
+
+Browser recovery retains a separate monotonic `confirmRequested` flag. A server command ID
+alone means only that a proposal exists: reload must recover its reason and require review.
+Only a previously attempted confirmation may recover its applied receipt automatically;
+then refresh the existing controller GET instead of restoring ownership from that receipt.
+
+
+## 2026-09-20 — Assert the storage refusal beneath Drizzle's query wrapper
+
+For a deliberate trigger refusal through a Drizzle adapter, assert the PostgreSQL `cause`
+with its exact SQLSTATE and message. The outer message describes the failed parameterized
+query; matching that message loses the intended invariant and can report a correct guard
+as a failed test. Raw postgres client errors keep their SQLSTATE at the top level.
