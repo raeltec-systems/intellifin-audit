@@ -4148,3 +4148,22 @@ For maximum-length workspace context, bound source text separately from its acti
 scroll regions keyboard-accessible. Test the expanded disclosure as well as the initial and
 populated composer. React function-action forms supply their method; an explicit method on
 those forms causes a browser warning and should be omitted.
+
+### Synthetic preview ownership and browser deadlines (PR 51 P2)
+
+A settled `withActionDeadline` race is not proof that Playwright I/O stopped. The
+preview-enabled LiveWorkspace tracks the actual promises through async context; if
+any remain pending on return, it permanently fences and disposes that workspace
+before admitting another action or private input. The same coordinator owns
+registered captures and preview sampling. Stored sign-in invalidates the local
+buffer/epoch before persisting the private fence, then drains actual work before
+credential dispatch. A failed authentication or safe-page check does not hand back.
+
+P2 initially supports only explicit `WORKSPACE_PREVIEW_MODE=synthetic-local` in a
+non-production environment, with web and one worker on the same loopback host.
+Both use the same `WORKSPACE_PREVIEW_SECRET` (minimum 32 characters) and
+`WORKSPACE_PREVIEW_PORT` (default 4311). There is no remote worker routing, TLS
+listener, provider enablement, or real-data authorization. Metadata generation
+0061 must follow manager generation0060; do not apply the draft outside the normal
+migration/journal/snapshot sequence. A missing/expired in-memory runtime cannot
+reclaim the same workspace revision; a new provisioned revision is required.

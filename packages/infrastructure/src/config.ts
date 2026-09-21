@@ -144,6 +144,9 @@ export const configSchema = z
       .min(1, 'DATABASE_URL is required')
       .regex(/^postgres(ql)?:\/\//, 'DATABASE_URL must start with postgres:// or postgresql://'),
     SERVICE_NAME: z.enum(SERVICE_NAMES),
+    WORKSPACE_PREVIEW_MODE: z.enum(['disabled', 'synthetic-local']).default('disabled'),
+    WORKSPACE_PREVIEW_PORT: z.coerce.number().int().min(1024).max(65535).default(4311),
+    WORKSPACE_PREVIEW_SECRET: optionalNonEmpty(256),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
     // Real-data intake requires the AW D2 policy/incident gate. No implicit enablement.
     RUN_CONVERSATION_MODE: z.enum(['off', 'synthetic']).default('off'),
@@ -318,6 +321,9 @@ export const configSchema = z
     if (config.RUN_CONVERSATION_MODE === 'synthetic' && config.RUN_CONVERSATION_CONTENT_KEY === undefined) {
       ctx.addIssue({ code: 'custom', path: ['RUN_CONVERSATION_CONTENT_KEY'], message: 'is required when synthetic conversation is enabled' });
     }
+    if (config.WORKSPACE_PREVIEW_MODE === 'synthetic-local' && (config.NODE_ENV === 'production' || !config.WORKSPACE_PREVIEW_SECRET || config.WORKSPACE_PREVIEW_SECRET.length < 32)) {
+      ctx.addIssue({ code: 'custom', path: ['WORKSPACE_PREVIEW_MODE'], message: 'requires non-production and a secret of at least 32 characters' });
+    }
     if (config.NODE_ENV === 'production' && config.SERVICE_NAME !== 'worker') {
       for (const key of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY'] as const) {
         if (config[key] !== undefined) ctx.addIssue({ code: 'custom', path: [key], message: 'must not be set on any process other than the worker' });
@@ -455,6 +461,9 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
   const parsed = configSchema.safeParse({
     DATABASE_URL: env['DATABASE_URL'],
     SERVICE_NAME: env['SERVICE_NAME'],
+    WORKSPACE_PREVIEW_MODE: env['WORKSPACE_PREVIEW_MODE'],
+    WORKSPACE_PREVIEW_PORT: env['WORKSPACE_PREVIEW_PORT'],
+    WORKSPACE_PREVIEW_SECRET: env['WORKSPACE_PREVIEW_SECRET'],
     LOG_LEVEL: env['LOG_LEVEL'],
     SENTRY_DSN: env['SENTRY_DSN'],
     SENTRY_ENVIRONMENT: env['SENTRY_ENVIRONMENT'],

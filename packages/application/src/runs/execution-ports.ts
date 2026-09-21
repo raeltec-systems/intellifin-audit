@@ -1536,3 +1536,39 @@ export interface AgentExecutionRepository {
   /** The agent phase's OWN read of the Runs it may resume. Never a surface's. */
   recoverableRunIds(limit: number): Promise<string[]>;
 }
+
+/** Ephemeral preview identity contains no browser/provider capability. */
+export interface WorkspacePreviewIdentity {
+  readonly runId: string;
+  readonly workspaceRevision: number;
+  readonly runtimeId: string;
+  readonly privacyEpoch: number;
+}
+export type WorkspacePreviewMode = 'unavailable' | 'public' | 'private' | 'closed';
+export interface WorkspacePreviewMetadata extends WorkspacePreviewIdentity {
+  readonly mode: WorkspacePreviewMode;
+  readonly sequence: number;
+  readonly capturedAt: number | null;
+  readonly captureCompletedAt: number | null;
+  readonly expiresAt: number;
+}
+export interface WorkspacePreviewViewer {
+  readonly actorId: string;
+  readonly sessionId: string;
+}
+/** Only metadata crosses persistence. Browser I/O must never run inside these calls. */
+export interface WorkspacePreviewMetadataStore {
+  claim(ref: WorkspaceRef, runtimeId: string): Promise<number | null>;
+  publish(metadata: WorkspacePreviewMetadata): Promise<boolean>;
+  current(identity: WorkspacePreviewIdentity): Promise<boolean>;
+  authorized(runId: string, viewer: WorkspacePreviewViewer): Promise<WorkspacePreviewMetadata | null>;
+}
+export interface WorkspacePreviewReadPort {
+  /** Synchronous final write fence; database checks alone cannot observe an in-process transition awaiting persistence. */
+  current(identity: WorkspacePreviewIdentity): boolean;
+  read(identity: WorkspacePreviewIdentity, viewer: WorkspacePreviewViewer): Promise<{
+    readonly metadata: WorkspacePreviewMetadata;
+    /** Owned transient bytes; caller clears them immediately after transport write. */
+    readonly bytes: Uint8Array | null;
+  } | null>;
+}

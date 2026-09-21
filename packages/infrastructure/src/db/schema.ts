@@ -2213,3 +2213,20 @@ export const runControlLease = pgTable('run_control_lease', {
   check('run_control_lease_holder_expiry', sql`(${t.holderId} IS NULL) = (${t.expiresAt} IS NULL)`),
   check('run_control_lease_duration', sql`${t.expiresAt} IS NULL OR (${t.expiresAt} > ${t.updatedAt} AND ${t.expiresAt} <= ${t.updatedAt} + interval '120 seconds')`),
 ]);
+
+/** P2 operational metadata; ephemeral preview pixels are never persisted. */
+export const runWorkspacePreview = pgTable('run_workspace_preview', {
+  runId: uuid('run_id').primaryKey().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  workspaceRevision: integer('workspace_revision').notNull(),
+  runtimeId: uuid('runtime_id').notNull(), privacyEpoch: integer('privacy_epoch').notNull(),
+  mode: text('mode').notNull(), sequence: integer('sequence').notNull().default(0),
+  capturedAt: timestamp('captured_at', { withTimezone: true }),
+  captureCompletedAt: timestamp('capture_completed_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, table => [
+  check('run_workspace_preview_workspace_revision_check', sql`${table.workspaceRevision} >= 0`),
+  check('run_workspace_preview_privacy_epoch_check', sql`${table.privacyEpoch} >= 0`),
+  check('run_workspace_preview_sequence_check', sql`${table.sequence} >= 0`),
+  check('run_workspace_preview_mode_check', sql`${table.mode} IN ('unavailable','public','private','closed')`),
+  check('run_workspace_preview_capture', sql`(${table.capturedAt} IS NULL AND ${table.captureCompletedAt} IS NULL) OR (${table.mode}='public' AND ${table.capturedAt} IS NOT NULL AND ${table.captureCompletedAt} IS NOT NULL AND ${table.captureCompletedAt}>=${table.capturedAt})`),
+]);

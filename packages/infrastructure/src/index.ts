@@ -69,3 +69,6 @@ export * from './runs/conversation-content.js';
 export * from './runs/run-conversation-repository.js';
 export * from './runs/run-control-lease-repository.js';
 export * from './runs/deferred-pause-repository.js';
+export * from './runs/workspace-preview-repository.js';
+
+export { WorkspacePreviewProxy } from './runs/workspace-preview-transport.js';

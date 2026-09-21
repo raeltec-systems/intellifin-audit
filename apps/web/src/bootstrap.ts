@@ -1,5 +1,5 @@
 import {
-  ConfigError,
+  ConfigError, WorkspacePreviewProxy, PostgresWorkspacePreviewStore,
   ManifestCredentialProvider,
   TimerDeadline,
   UnsupportedDatabaseError,
@@ -38,6 +38,7 @@ import { telemetry } from './telemetry';
  */
 
 export interface WebRuntime {
+  readonly workspacePreview?: WorkspacePreviewProxy | null;
   readonly conversation: PostgresRunConversationRepository;
   readonly conversationEnabled: boolean;
   readonly config: AppConfig;
@@ -160,6 +161,7 @@ async function start(): Promise<WebRuntime> {
 
     return {
       config,
+      workspacePreview: config.WORKSPACE_PREVIEW_MODE === 'synthetic-local' ? new WorkspacePreviewProxy(config.WORKSPACE_PREVIEW_PORT, config.WORKSPACE_PREVIEW_SECRET!, new PostgresWorkspacePreviewStore(database())) : null,
       conversationEnabled: config.RUN_CONVERSATION_MODE === 'synthetic',
       get conversation(): PostgresRunConversationRepository {
         return conversation ??= new PostgresRunConversationRepository(database(),

@@ -42,6 +42,10 @@
       "types": "./src/runs/credential-resolver.ts",
       "default": "./dist/runs/credential-resolver.js"
     },
+    "./workspace-preview-broker": {
+      "types": "./src/runs/workspace-preview-transport.ts",
+      "default": "./dist/runs/workspace-preview-transport.js"
+    },
     "./browser": {
       "types": "./src/runs/browser-execution.ts",
       "default": "./dist/runs/browser-execution.js"

@@ -341,3 +341,14 @@ describe('agent provider configuration', () => {
     expect(() => loadConfig({ ...validEnv, RAILWAY_GIT_COMMIT_SHA: 'latest' })).toThrow(/RAILWAY_GIT_COMMIT_SHA/);
   });
 });
+
+
+describe('synthetic preview deployment boundary', () => {
+  it('is disabled by default and requires an explicit non-production capability and dedicated secret', () => {
+    expect(loadConfig(validEnv).WORKSPACE_PREVIEW_MODE).toBe('disabled');
+    expect(() => loadConfig({ ...validEnv, WORKSPACE_PREVIEW_MODE: 'synthetic-local' })).toThrow(/WORKSPACE_PREVIEW/);
+    expect(() => loadConfig({ ...validEnv, WORKSPACE_PREVIEW_MODE: 'synthetic-local', WORKSPACE_PREVIEW_SECRET: 's'.repeat(32), NODE_ENV: 'production' })).toThrow(/WORKSPACE_PREVIEW/);
+    expect(loadConfig({ ...validEnv, WORKSPACE_PREVIEW_MODE: 'synthetic-local', WORKSPACE_PREVIEW_SECRET: 's'.repeat(32) }).WORKSPACE_PREVIEW_PORT).toBe(4311);
+    expect(() => loadConfig({ ...validEnv, WORKSPACE_PREVIEW_MODE: 'solari' })).toThrow(/WORKSPACE_PREVIEW/);
+  });
+});
