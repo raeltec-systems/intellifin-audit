@@ -58,6 +58,9 @@ export const CREDENTIAL_FIELD = 'credential';
 /** The cookie a signed-in session is held in. */
 export const SESSION_COOKIE = 'loancore_session';
 
+/** The sole identity established by this synthetic target's accepted credential. */
+export const LOANCORE_AUDIT_ACCOUNT = 'audit.readonly';
+
 export const AUTHENTICATION_ERROR = 'authentication_required';
 
 /**

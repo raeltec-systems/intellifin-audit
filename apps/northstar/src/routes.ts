@@ -166,6 +166,15 @@ export const ROUTES: readonly Route[] = [
     handle: (request) => loancore.signIn(request),
   },
   {
+    id: 'loancore-authentication-proof',
+    system: 'LoanCore',
+    pattern: /^\/loancore\/authentication-proof$/,
+    probe: '/loancore/authentication-proof',
+    nonMutating: NON_MUTATING_READS,
+    summary: 'Authenticated identity and global read-only policy proof for the synthetic LoanCore flow.',
+    handle: (request) => loancore.authenticationProof(request),
+  },
+  {
     id: 'loancore-search',
     system: 'LoanCore',
     pattern: /^\/loancore\/users\/?$/,

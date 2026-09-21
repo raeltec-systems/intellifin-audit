@@ -46,6 +46,9 @@ export const READ_ONLY_RULE =
 
 export const READ_ONLY_ERROR = 'read_only_system';
 
+/** Version of the global fail-closed route policy, not a claim from a page label. */
+export const READ_ONLY_POLICY_VERSION = 'northstar-read-only-v1';
+
 /**
  * What the matched resource accepts, for the `Allow` header and the denial body.
  *

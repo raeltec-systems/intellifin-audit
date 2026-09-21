@@ -4160,3 +4160,13 @@ populated composer. Keep explicit native POST forms: React function actions on t
 conflict with an explicit method. Put the action on the submitter through Button.formAction
 instead, letting React supply its submitter metadata. Do not weaken the form-method guard.
 The no-JavaScript browser proof must assert POST, no URL query and the note in the body.
+
+### Synthetic rights proof is a private-authentication prerequisite (2026-09-20)
+
+Northstar's `/loancore/authentication-proof` returns a closed identity/read-only policy
+result only after actual session validation and global method enforcement. Keep it free
+of cookies, tokens and credentials; a signed-in page label is not a rights verifier.
+The existing synthetic session has no temporal expiry: an obsolete-credential token
+test must not be described as an expiry test. P6 must separately enforce application
+session expiry, the short human input lease, runtime loss and fresh identity/rights
+revalidation at handback. The endpoint alone does not complete private authentication.

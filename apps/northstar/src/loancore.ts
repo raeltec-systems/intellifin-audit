@@ -1,6 +1,7 @@
 import {
   CREDENTIAL_FIELD,
   SIGN_IN_PATH,
+  LOANCORE_AUDIT_ACCOUNT,
   authenticationDenial,
   presentedCredential,
   presentedSession,
@@ -9,6 +10,7 @@ import {
 import { datasets, type LoanCoreAccount } from './fixtures.js';
 import { escapeHtml, html, json, type NorthstarRequest, type NorthstarResponse } from './http.js';
 import { field, layout, tableHead, tableRows } from './page.js';
+import { READ_ONLY_POLICY_VERSION } from './read-only.js';
 
 /**
  * LoanCore — the synthetic loan origination and servicing web application (addendum A.2).
@@ -54,6 +56,19 @@ function byEmployeeId(): ReadonlyMap<string, LoanCoreAccount> {
  */
 export function home(request: NorthstarRequest): NorthstarResponse {
   return presentedSession(request) ? administrationHome() : signInPage();
+}
+
+/** Closed synthetic proof; routing applies the global method policy before this handler. */
+export function authenticationProof(request: NorthstarRequest): NorthstarResponse {
+  // Keep this handler fail-closed even when called independently of the routing middleware.
+  if (!presentedSession(request)) return authenticationDenial(request);
+  return json(200, {
+    schemaVersion: 1,
+    system: 'northstar-loancore',
+    account: LOANCORE_AUDIT_ACCOUNT,
+    rights: 'read-only',
+    policy: READ_ONLY_POLICY_VERSION,
+  });
 }
 
 /**
