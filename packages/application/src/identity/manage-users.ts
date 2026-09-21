@@ -1,12 +1,13 @@
-import { isRole, type Role } from '@intellifin/domain';
+import { authorizeAction, isRole, type Role } from '@intellifin/domain';
 
 import type { AuditUnitOfWork } from '../audit/ports.js';
-import { authorizeCommand } from './authorize.js';
+import { authorizeCommand, recordAuthorizationDenial } from './authorize.js';
 import type {
   IdentityUnitOfWorkContext,
   RoleRepository,
   SessionSnapshot,
   UserDirectory,
+  PermissionGrantState,
 } from './ports.js';
 
 /**
@@ -46,12 +47,17 @@ export const IRREPLACEABLE_ROLE = 'poc-administrator' as const satisfies Role;
 /** The two event types this module appends. Both are in the `configuration` family. */
 export const USER_CREATED_EVENT = 'configuration.user-created' as const;
 export const ROLE_CHANGED_EVENT = 'configuration.role-changed' as const;
+export const PERMISSION_CHANGED_EVENT = 'configuration.user-permission-changed' as const;
 
 /** Better Auth is configured with the same floor; stating it here refuses earlier. */
 export const MIN_PASSWORD_LENGTH = 12;
 
 /** What an administrator is told when a command refuses. Never why a password failed. */
 export const MANAGE_USERS_REFUSALS = {
+  GRANT_INVALID: 'Choose a permission change and the grant revision you reviewed.',
+  MANAGER_REQUIRED: 'Only an Audit Manager may receive control-transfer permission.',
+  STALE_GRANT: 'This permission changed since the page was loaded. Reload before changing it.',
+  GRANT_EXHAUSTED: 'This permission cannot be changed further.',
   EMAIL_REQUIRED: 'Enter an email address.',
   EMAIL_INVALID: 'Enter a valid email address.',
   NAME_REQUIRED: 'Enter a name.',
@@ -100,6 +106,39 @@ class CommandRefused extends Error {
     super(refusal);
     this.refusal = refusal;
   }
+}
+
+class ActorRevoked extends CommandRefused {
+  constructor(readonly role: Role | null, reason: string) { super(reason); }
+}
+
+async function lockAdministration(context: IdentityUnitOfWorkContext, session: SessionSnapshot, subjectId?: string): Promise<void> {
+  await context.roles.lockHolders(IRREPLACEABLE_ROLE);
+  for (const id of [...new Set([session.userId, ...(subjectId === undefined ? [] : [subjectId])])].sort()) {
+    if (!await context.roles.lockUser(id)) throw new CommandRefused(MANAGE_USERS_REFUSALS.UNKNOWN_USER);
+  }
+  const role = await context.roles.findRole(session.userId);
+  const decision = authorizeAction(role, MANAGE_USERS_ACTION);
+  if (!decision.allowed) throw new ActorRevoked(role, decision.reason);
+}
+
+async function permissionChange(context: IdentityUnitOfWorkContext, input: {
+  session: SessionSnapshot; correlationId: string; userId: string; prior: PermissionGrantState;
+  granted: boolean; cause: 'administration' | 'role-change';
+}): Promise<PermissionGrantState> {
+  if (input.prior.revision >= 2147483647) throw new CommandRefused(MANAGE_USERS_REFUSALS.GRANT_EXHAUSTED);
+  const grant = await context.permissions.setGrant({ userId: input.userId, permission: 'run.control-transfer',
+    granted: input.granted, assignedBy: input.session.userId });
+  await context.auditEvents.append({ actor: { type: 'human', id: input.session.userId }, eventType: PERMISSION_CHANGED_EVENT,
+    source: 'web', outcome: 'success', sessionId: input.session.sessionId, correlationId: input.correlationId,
+    payload: { subjectUserId: input.userId, permission: 'run.control-transfer', priorGranted: input.prior.granted,
+      granted: grant.granted, priorRevision: input.prior.revision, revision: grant.revision, cause: input.cause } });
+  return grant;
+}
+
+async function recordRevoked(dependencies: ManageUsersDependencies, input: { session: SessionSnapshot; correlationId: string }, error: unknown) {
+  if (error instanceof ActorRevoked) await recordAuthorizationDenial(dependencies,
+    { session: input.session, correlationId: input.correlationId, action: MANAGE_USERS_ACTION }, error.role, error.message);
 }
 
 function refuse(reason: string): { readonly ok: false; readonly reason: string } {
@@ -175,7 +214,9 @@ export async function createUserWithRole(
 
   try {
     return await dependencies.unitOfWork.execute(
-      async ({ auditEvents, roles, users }): Promise<CreateUserWithRoleResult> => {
+      async (context): Promise<CreateUserWithRoleResult> => {
+        await lockAdministration(context, session);
+        const { auditEvents, roles, users } = context;
         const creation = await users.createUser({ email, name, password: input.password });
         if (!creation.created) throw new CommandRefused(creation.reason);
 
@@ -203,6 +244,7 @@ export async function createUserWithRole(
       },
     );
   } catch (error) {
+    await recordRevoked(dependencies, input, error);
     if (error instanceof CommandRefused) return refuse(error.refusal);
     // Anything else is a failure, not a refusal. It is rethrown so the composition root
     // reports it: nothing was committed, and pretending otherwise would hide an outage.
@@ -274,7 +316,8 @@ export async function setUserRole(
 
   try {
     return await dependencies.unitOfWork.execute(
-      async ({ auditEvents, roles }): Promise<SetUserRoleResult> => {
+      async (context): Promise<SetUserRoleResult> => {
+        const { auditEvents, roles } = context;
         // FIRST, before any write: lock every holder of the irreplaceable role, in a
         // deterministic order. Two administrators demoting each other concurrently each
         // count one remaining holder under READ COMMITTED — each sees its own
@@ -283,7 +326,7 @@ export async function setUserRole(
         // after the first has committed. Locking BEFORE the write, rather than after,
         // also keeps the acquisition order the same for every caller, so two of them
         // queue instead of deadlocking.
-        await roles.lockHolders(IRREPLACEABLE_ROLE);
+        await lockAdministration(context, session, userId);
 
         // Read inside the transaction. The prior value the event claims must be the value
         // the write actually replaced, not one read a moment earlier from another
@@ -302,6 +345,11 @@ export async function setUserRole(
         if (priorRole === input.role) {
           return { ok: true, userId, priorRole, newRole: input.role };
         }
+
+        const grant = await context.permissions.readGrant(userId, 'run.control-transfer');
+        if (input.role !== 'audit-manager' && grant.granted) await permissionChange(context, {
+          session, correlationId, userId, prior: grant, granted: false, cause: 'role-change',
+        });
 
         if (input.role === null) {
           await roles.clearRole(userId);
@@ -329,6 +377,33 @@ export async function setUserRole(
       },
     );
   } catch (error) {
+    await recordRevoked(dependencies, input, error);
+    if (error instanceof CommandRefused) return refuse(error.refusal);
+    throw error;
+  }
+}
+
+export async function setUserRunControlTransferGrant(dependencies: ManageUsersDependencies, input: {
+  readonly session: SessionSnapshot; readonly correlationId: string; readonly userId: string;
+  readonly granted: boolean; readonly expectedGrantRevision: number;
+}): Promise<ManageUsersOutcome<{ readonly userId: string; readonly grant: PermissionGrantState }>> {
+  const decision = await authorizeCommand(dependencies, { session: input.session, correlationId: input.correlationId, action: MANAGE_USERS_ACTION });
+  if (!decision.allowed) return refuse(decision.reason);
+  if (typeof input.userId !== 'string' || !input.userId.trim() || input.userId.length > 255 ||
+    typeof input.granted !== 'boolean' || !Number.isInteger(input.expectedGrantRevision) || input.expectedGrantRevision < 0 || input.expectedGrantRevision > 2147483647)
+    return refuse(MANAGE_USERS_REFUSALS.GRANT_INVALID);
+  try {
+    return await dependencies.unitOfWork.execute(async context => {
+      await lockAdministration(context, input.session, input.userId);
+      const role = await context.roles.findRole(input.userId);
+      if (input.granted && role !== 'audit-manager') throw new CommandRefused(MANAGE_USERS_REFUSALS.MANAGER_REQUIRED);
+      const prior = await context.permissions.readGrant(input.userId, 'run.control-transfer');
+      if (prior.revision !== input.expectedGrantRevision) throw new CommandRefused(MANAGE_USERS_REFUSALS.STALE_GRANT);
+      const grant = prior.granted === input.granted ? prior : await permissionChange(context, { ...input, prior, cause: 'administration' });
+      return { ok: true as const, userId: input.userId, grant };
+    });
+  } catch (error) {
+    await recordRevoked(dependencies, input, error);
     if (error instanceof CommandRefused) return refuse(error.refusal);
     throw error;
   }

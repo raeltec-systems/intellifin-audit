@@ -1,6 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
+  proposeRunControlTransfer, confirmRunControlTransfer, setUserRunControlTransferGrant, type AuditUnitOfWork, type IdentityUnitOfWorkContext,
   acquireRunControlLease, releaseRunControlLease, acquirePopulation, executeAdapterSteps, executeAgentSteps, initiateRun, provisionWorkspace, raiseEscalation,
   WorkspaceProvisionError, type AgentModelGateway, type EvidenceStore,
 } from '@intellifin/application';
@@ -9,6 +10,7 @@ import {
   initialDraftSections, registrationDigest, sha256Hex, sha256HexOfBytes, snapshotFromRegistration, utf8Bytes,
 } from '@intellifin/domain';
 import {
+  createAuditEventWriter, DrizzleRoleWriter, DrizzlePermissionGrantWriter, DrizzleUserDirectory, PostgresRunControlTransferRepository,
   createDb, createExceptionFingerprinter, createSqlClient, CryptoUuidV7Generator, DrizzleRoleRepository,
   PostgresAdapterExecutionRepository, PostgresAgentExecutionRepository, PostgresPopulationRepository,
   PostgresRunControlLeaseRepository, PostgresProceduresUnitOfWork, PostgresRunsUnitOfWork, PostgresWaitRepository, PostgresWorkspaceRepository,
@@ -31,6 +33,7 @@ const REF = 'cred://synthetic/agent-journey';
 describe.skipIf(!url)('local browser agent journeys through PostgreSQL registration', () => {
   let sql: Sql; let db: Database; let server: Server; let origin: string;
   const ids = new CryptoUuidV7Generator(), clock = new SystemClock(), author = ids.next();
+  const transferManager=ids.next(),grantAdministrator=ids.next();
   const runs: string[] = [], procedures: string[] = [], bindings: string[] = [];
   const browsers: PlaywrightBrowserExecution[] = [];
   const requests: { method: string; path: string; authenticated: boolean }[] = [];
@@ -43,6 +46,15 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
     sql = createSqlClient(url!, { max: 5 }); db = createDb(sql);
     await sql`INSERT INTO auth_user(id,name,email) VALUES (${author},'Agent journey',${author + '@test.invalid'})`;
     await sql`INSERT INTO user_role(user_id,role) VALUES (${author},'auditor')`;
+    await sql`INSERT INTO auth_user(id,name,email) VALUES (${transferManager},'Journey transfer manager',${transferManager+'@test.invalid'}),(${grantAdministrator},'Journey grant administrator',${grantAdministrator+'@test.invalid'})`;
+    await sql`INSERT INTO user_role(user_id,role) VALUES (${transferManager},'audit-manager'),(${grantAdministrator},'poc-administrator')`;
+    const unitOfWork: AuditUnitOfWork<IdentityUnitOfWorkContext> = {execute:work=>db.transaction(tx=>work({
+      auditEvents:createAuditEventWriter(tx,clock,ids),roles:new DrizzleRoleWriter(tx),permissions:new DrizzlePermissionGrantWriter(tx),
+      users:{createUser:async()=>{throw new Error('Not used');}},sessions:{revokeSession:async()=>{}},
+    }))};
+    expect(await setUserRunControlTransferGrant({roles:new DrizzleRoleRepository(db),users:new DrizzleUserDirectory(db),unitOfWork},
+      {session:{userId:grantAdministrator,sessionId:grantAdministrator},correlationId:ids.next(),userId:transferManager,granted:true,expectedGrantRevision:0})).toMatchObject({ok:true});
+
     server = createServer((request, response) => {
       const chunks: Buffer[] = [];
       request.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -113,7 +125,10 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
       });
       for (const procedureId of procedures) { await sql`DELETE FROM procedure_version WHERE procedure_id=${procedureId}`; await sql`DELETE FROM procedure WHERE procedure_id=${procedureId}`; }
       for (const bindingId of bindings) await sql`DELETE FROM population_source_binding WHERE binding_id=${bindingId}`;
-      await sql`DELETE FROM auth_user WHERE id=${author}`;
+      await sql.begin(async tx=>{
+        await tx`DELETE FROM audit_events WHERE event_type='configuration.user-permission-changed' AND payload->>'subjectUserId'=${transferManager}`;
+        await tx`DELETE FROM auth_user WHERE id IN (${author},${transferManager},${grantAdministrator})`;
+      });
     } finally { await sql.end({ timeout: 5 }); }
   });
 
@@ -157,7 +172,7 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
     return { job, dependencies, objects, selectedTools, plan: version.compiledPlan! };
   }
 
-  it.each([false, true])('executes a confirmed deferred pause through real PostgreSQL and Chromium (final inspection: %s)', async finalInspection => {
+  it.each([{finalInspection:false,transfer:false},{finalInspection:true,transfer:false},{finalInspection:false,transfer:true},{finalInspection:true,transfer:true}])('executes a confirmed deferred pause through real PostgreSQL and Chromium (final inspection: $finalInspection, manager transfer: $transfer)', async ({finalInspection,transfer}) => {
     const seeded = await seed('E-101', 'Esther Kabwe', finalInspection ? [] : [{ employeeId: 'E-202', name: 'Absent Person' }]);
     const session = { userId: author, sessionId: author };
     const leaseDependencies = { roles: new DrizzleRoleRepository(db), unitOfWork: new PostgresRunsUnitOfWork(db),
@@ -188,8 +203,18 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
         expect(await conversation.confirmDeferredPause({ actorId: author, sessionId: author,
           request: { runId: seeded.job.runId, commandId } })).toMatchObject({ ok: true, state: 'queued' });
         // Once accepted this is a safety latch, not a continuing discretionary lease.
-        expect(await releaseRunControlLease(leaseDependencies, { session, request: { runId: seeded.job.runId, expectedEpoch: 1 } }))
-          .toMatchObject({ ok: true, lease: { epoch: 2, holderId: null } });
+        if (transfer) {
+          const managerSession={userId:transferManager,sessionId:transferManager};
+          const transferDependencies={...leaseDependencies,repository:new PostgresRunControlTransferRepository(db,new ConversationContentCipher('56'.repeat(32)))};
+          const before=await sql`SELECT to_jsonb(p) body FROM run_deferred_pause p WHERE command_id=${commandId}`;
+          const review=await proposeRunControlTransfer(transferDependencies,{session:managerSession,request:{runId:seeded.job.runId,expectedEpoch:1,requestKey:ids.next(),reason:'The prior controller is unavailable during inspection.'}});
+          if(!review.ok)throw new Error(review.reason);
+          expect(await confirmRunControlTransfer(transferDependencies,{session:managerSession,request:{runId:seeded.job.runId,commandId:review.proposal.commandId}})).toMatchObject({ok:true,receipt:{epoch:2,holderId:transferManager}});
+          expect(await sql`SELECT to_jsonb(p) body FROM run_deferred_pause p WHERE command_id=${commandId}`).toEqual(before);
+        } else {
+          expect(await releaseRunControlLease(leaseDependencies, { session, request: { runId: seeded.job.runId, expectedEpoch: 1 } }))
+            .toMatchObject({ ok: true, lease: { epoch: 2, holderId: null } });
+        }
       }
       return originalModel.propose(request);
     } };

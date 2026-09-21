@@ -4160,3 +4160,53 @@ populated composer. Keep explicit native POST forms: React function actions on t
 conflict with an explicit method. Put the action on the submitter through Button.formAction
 instead, letting React supply its submitter metadata. Do not weaken the form-method guard.
 The no-JavaScript browser proof must assert POST, no URL query and the note in the body.
+
+### Manager transfer requires an explicit grant and a retained review (2026-09-20)
+
+`run.control-transfer` has two gates: current Audit Manager role and a separately granted
+permission. Revoked grants retain monotonically increasing revisions; demotion/removal
+revokes atomically and promotion never restores authority. Administration locks ordered
+administrator role rows, then distinct actor/subject identities sorted by ID, before fresh
+authorization and audit writes. Reject role identity rewrites in storage. Transfer locks
+the Run then manager identity, so grant/role revocation serializes even when a row is absent.
+
+A governed reason proposal freezes the observed controller and epoch. Confirmation accepts
+only Run/command IDs. A changed lease cannot rebind the review, and an applied receipt is
+historical evidence rather than current ownership. Bind the exceptional live-holder change
+to an immutable proposal, durable lease marker, exact domain event and receipt. Keep the
+last transfer marker through ordinary renew/release/acquire, and validate the transfer at
+fact creation so legitimate later transitions in the same transaction remain possible.
+Accepted Pause/Stop and deferred inspection Pause remain safety requests through transfer.
+
+Browser recovery retains a separate monotonic `confirmRequested` flag. A server command ID
+alone means only that a proposal exists: reload must recover its reason and require review.
+Only a previously attempted confirmation may recover its applied receipt automatically;
+then refresh the existing controller GET instead of restoring ownership from that receipt.
+
+
+## 2026-09-20 — Assert the storage refusal beneath Drizzle's query wrapper
+
+For a deliberate trigger refusal through a Drizzle adapter, assert the PostgreSQL `cause`
+with its exact SQLSTATE and message. The outer message describes the failed parameterized
+query; matching that message loses the intended invariant and can report a correct guard
+as a failed test. Raw postgres client errors keep their SQLSTATE at the top level.
+
+## 2026-09-20 — Retain shared platform events during fixture cleanup
+
+Removing synthetic identities does not permit deleting their events from the shared
+`platform` hash chain. Keep those events and its head intact; removing a subset corrupts
+later chain verification, even when the events' storage guards allow account removal.
+Run-owned aggregate cleanup remains scoped to the complete Run and its own head. Every
+new migration table must also appear in the exact schema inventory integration test.
+
+Browser fixture cleanup must lock its Run before deleting children, matching production
+read/command ordering while late refreshes finish. To exercise explicit lost-response
+retry, delay the competing authoritative refresh until the exact retry settles; otherwise
+normal receipt reconciliation can correctly close the dialog before the test clicks it.
+Release injected refresh gates in `finally`, preserving the original request and domain
+effect assertions rather than increasing timeouts or suppressing the error.
+
+For the full root-test TypeScript graph, run the compiler alone with a 2 GB Node heap
+on the 8 GB Codespace; 768 MB exhausts V8 before diagnostics complete. After a Codespace
+restart, recreate any ignored cache symlink target under `/tmp` before starting Next.
+Temporary directories and running container state do not survive with repository files.

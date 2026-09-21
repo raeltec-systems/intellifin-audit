@@ -454,6 +454,7 @@ describe.skipIf(!databaseUrl)('manage users against PostgreSQL 18', () => {
         'email',
         'name',
         'role',
+        'runControlTransferGrant',
         'userId',
       ]);
     }
@@ -644,7 +645,7 @@ describe.skipIf(!databaseUrl)('manage users against PostgreSQL 18', () => {
       expect(outcomes.filter((outcome) => outcome.ok)).toHaveLength(1);
       expect(outcomes.find((outcome) => !outcome.ok)).toEqual({
         ok: false,
-        reason: 'This would leave no PoC Administrator. Give another user that role first.',
+        reason: 'Your role does not permit this action.',
       });
 
       // The invariant that actually matters: somebody can still administer.
@@ -653,13 +654,12 @@ describe.skipIf(!databaseUrl)('manage users against PostgreSQL 18', () => {
       `;
       expect(remaining[0]?.c).toBe(1);
 
-      // And exactly one event, for the one change that happened.
+      // The winner changes one role; the loser is freshly denied and that denial is audited.
       const events = await sql<{ event_type: string }[]>`
         SELECT event_type FROM audit_events
         WHERE correlation_id LIKE ${`${correlationId}-%`} ORDER BY sequence
       `;
-      expect(events).toHaveLength(1);
-      expect(events[0]?.event_type).toBe('configuration.role-changed');
+      expect(events.map(event => event.event_type)).toEqual(['configuration.role-changed','security.denied']);
     } finally {
       openGate();
       await sql`DELETE FROM user_role WHERE role = 'poc-administrator'`;

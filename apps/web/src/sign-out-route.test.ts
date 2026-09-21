@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { IdentityUnitOfWorkContext } from '@intellifin/application';
 import type { AuditEventDraft } from '@intellifin/domain';
 
 /**
@@ -33,14 +34,14 @@ vi.mock('@intellifin/infrastructure', async (importOriginal) => {
     },
     PostgresIdentityUnitOfWork: class {
       execute(
-        work: (context: {
-          auditEvents: { append: (draft: AuditEventDraft) => Promise<unknown> };
-          sessions: { revokeSession: (sessionId: string) => Promise<void> };
-        }) => Promise<unknown>,
+        work: (context: IdentityUnitOfWorkContext) => Promise<unknown>,
       ) {
         // A transaction: a throw discards the revoke made inside it.
         const before = state.revoked.length;
         return work({
+          roles: { lockUser: async () => true, findRole: async () => null, setRole: async () => {}, clearRole: async () => {}, lockHolders: async () => [], countHolders: async () => 0 },
+          permissions: { readGrant: async () => ({ granted: false, revision: 0 }), setGrant: async () => { throw new Error('Sign-out must not write grants'); } },
+          users: { createUser: async () => { throw new Error('Sign-out must not create users'); } },
           auditEvents: {
             append: (draft) => {
               if (state.failAppend) return Promise.reject(new Error('database unavailable'));

@@ -19,7 +19,7 @@ export async function GET(request: Request, context: { readonly params: Promise<
       runId: id.toLowerCase(), actorId: permission.session.userId,
       requiredForUnenrolledRun: runtime.conversationEnabled,
     });
-    return Response.json(read, { status: read.status === 'denied' ? 403 : read.status === 'missing' ? 404 : 200, headers });
+    return Response.json(read.status === 'ready' ? { ...read, actorId: permission.session.userId, transferEligible: read.transferEligible && runtime.conversationEnabled } : read, { status: read.status === 'denied' ? 403 : read.status === 'missing' ? 404 : 200, headers });
   } catch {
     return Response.json({ status: 'unavailable' }, { status: 503, headers });
   }

@@ -16,6 +16,8 @@ export type ConfirmWeight = 'routine' | 'routine-with-rationale' | 'finalization
 
 interface ConfirmDialogProps {
   readonly initialRationale?: string;
+  /** A caller can announce an identical refusal on a later attempt. */
+  readonly refusalRevision?: number;
   readonly refusal?: string | null;
   readonly busy?: boolean;
   /** Temporary reconciliation disables submission without discarding the decision. */
@@ -76,7 +78,7 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   onConfirm,
   onCancel,
-  initialRationale = '', refusal = null, busy = false, disabledReason = null, keepOpenOnGateClose = false,
+  refusalRevision = 0, initialRationale = '', refusal = null, busy = false, disabledReason = null, keepOpenOnGateClose = false,
 }: ConfirmDialogProps): React.JSX.Element | null {
   const titleId = useId();
   const consequenceId = useId();
@@ -177,7 +179,7 @@ export function ConfirmDialog({
     };
   }, [open, container]);
 
-  useEffect(() => { if (refusal) confirmedRef.current = false; }, [refusal]);
+  useEffect(() => { if (refusal) confirmedRef.current = false; }, [refusal, refusalRevision]);
 
   /**
    * A confirmation is a WINDOW in which the surface's gate can close underneath somebody

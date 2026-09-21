@@ -309,7 +309,9 @@ test.describe('durable Run controller lease', () => {
         AND event_type='lifecycle.run-control-lease-renewed'`).toEqual(beforeRetry);
       await capture(page, testInfo, 'controller-renewal-recovered');
     } finally {
-      releaseRead(); stopped = true; await progress;
+      holdRead = false; releaseRead(); stopped = true;
+      await page.unrouteAll({ behavior: 'wait' });
+      await progress;
       if (originalAdminRole) await sql`UPDATE user_role SET role=${originalAdminRole.role},assigned_by=${originalAdminRole.assigned_by},assigned_at=${originalAdminRole.assigned_at}::timestamptz WHERE user_id=${adminId}`;
     }
   });
@@ -346,6 +348,7 @@ test.describe('durable Run controller lease', () => {
     });
     await page.getByRole('button', { name: 'Resume', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Resume this Run?', exact: true });
+    await expect(dialog).toBeVisible();
     try {
       await captured;
       await expect(dialog).toBeVisible();
@@ -356,7 +359,7 @@ test.describe('durable Run controller lease', () => {
       await expect(dialog.getByRole('button', { name: 'Resume Run', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
       await dialog.getByRole('button', { name: 'Go back', exact: true }).click();
       expect(await readLease(runId)).toMatchObject({ epoch: 1 });
-    } finally { releaseRead(); }
+    } finally { releaseRead(); await page.unrouteAll({ behavior: 'wait' }); }
   });
 
   test('a pending ownership read does not queue an independent safety Pause behind it', async ({ page }) => {
@@ -752,8 +755,14 @@ test.describe('durable Run controller lease', () => {
     let dropped = false;
     const dispatches: string[] = [];
     let forwardedStatus: number | null = null;
-    await page.route(`**/runs/${runId}/workspace`, async route => {
+    let refreshReleased = false;
+    let releaseRefresh!: () => void;
+    const refreshHeld = new Promise<void>(resolve => { releaseRefresh = () => { refreshReleased = true; resolve(); }; });
+    await page.route(`**/runs/${runId}/workspace*`, async route => {
       const request = route.request();
+      // The normal authoritative refresh may settle a lost response before a
+      // human can retry. Hold that read to exercise the explicit retry path.
+      if (!refreshReleased && request.method() === 'GET') await refreshHeld;
       const fields = actionFields(request.postData());
       if (request.method() === 'POST' && request.headers()['next-action'] !== undefined &&
         fields?.runId === runId && fields.commandId === proposal.command_id) dispatches.push(request.postData() ?? '');
@@ -767,31 +776,40 @@ test.describe('durable Run controller lease', () => {
         await route.abort('failed');
         return;
       }
+      if (request.method() === 'POST' && request.headers()['next-action'] !== undefined &&
+        fields?.runId === runId && fields.commandId === proposal.command_id) {
+        const response = await route.fetch();
+        await route.fulfill({ response });
+        releaseRefresh();
+        return;
+      }
       await route.continue();
     });
-    await dialog.getByRole('button', { name: 'Stop Run', exact: true }).click();
-    await expect(dialog).toContainText('Retry this same confirmation');
-    expect(dropped).toBe(true);
-    expect(forwardedStatus).toBe(200);
-    expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)
-      .toEqual([{ state: 'RUNNING' }]);
-    const beforeRetry = await sql`SELECT event_id,sequence FROM audit_events
-      WHERE aggregate_id=${runId} AND event_type='lifecycle.run-cancel-requested'`;
-    expect(beforeRetry).toHaveLength(1);
-    await dialog.getByRole('button', { name: 'Stop Run', exact: true }).click();
-    await expect(dialog).toHaveCount(0);
-    expect(dispatches).toHaveLength(2);
-    expect(dispatches[1]).toBe(dispatches[0]);
-    await expect(page.getByLabel('Conversation history')).toContainText('Stop request: awaiting worker boundary.');
-    await page.reload();
-    await expect(page.getByLabel('Conversation history')).toContainText('Stop request: awaiting worker boundary.');
-    expect(await sql`SELECT event_id,sequence FROM audit_events
-      WHERE aggregate_id=${runId} AND event_type='lifecycle.run-cancel-requested'`).toEqual(beforeRetry);
-    expect(await sql`SELECT state FROM run_interaction_transition WHERE command_id=${proposal.command_id} ORDER BY sequence`)
-      .toEqual([{ state: 'received' }, { state: 'interpreted' }, { state: 'queued' }]);
-    expect(await sql`SELECT event_id FROM audit_events WHERE aggregate_id=${runId} AND event_type='lifecycle.run-canceled'`).toHaveLength(0);
-    await capture(page, testInfo, 'conversation-stop-queued-recovered-1440x900');
-    await assertA11y(page);
+    try {
+      await dialog.getByRole('button', { name: 'Stop Run', exact: true }).click();
+      await expect(dialog).toContainText('Retry this same confirmation');
+      expect(dropped).toBe(true);
+      expect(forwardedStatus).toBe(200);
+      expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)
+        .toEqual([{ state: 'RUNNING' }]);
+      const beforeRetry = await sql`SELECT event_id,sequence FROM audit_events
+        WHERE aggregate_id=${runId} AND event_type='lifecycle.run-cancel-requested'`;
+      expect(beforeRetry).toHaveLength(1);
+      await dialog.getByRole('button', { name: 'Stop Run', exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+      expect(dispatches).toHaveLength(2);
+      expect(dispatches[1]).toBe(dispatches[0]);
+      await expect(page.getByLabel('Conversation history')).toContainText('Stop request: awaiting worker boundary.');
+      await page.reload();
+      await expect(page.getByLabel('Conversation history')).toContainText('Stop request: awaiting worker boundary.');
+      expect(await sql`SELECT event_id,sequence FROM audit_events
+        WHERE aggregate_id=${runId} AND event_type='lifecycle.run-cancel-requested'`).toEqual(beforeRetry);
+      expect(await sql`SELECT state FROM run_interaction_transition WHERE command_id=${proposal.command_id} ORDER BY sequence`)
+        .toEqual([{ state: 'received' }, { state: 'interpreted' }, { state: 'queued' }]);
+      expect(await sql`SELECT event_id FROM audit_events WHERE aggregate_id=${runId} AND event_type='lifecycle.run-canceled'`).toHaveLength(0);
+      await capture(page, testInfo, 'conversation-stop-queued-recovered-1440x900');
+      await assertA11y(page);
+    } finally { releaseRefresh(); await page.unrouteAll({ behavior: 'wait' }); }
   });
 
   test('refuses conversational Stop when the proposing auditor loses authority before confirmation', async ({ page }) => {

@@ -272,6 +272,9 @@ export async function createRunWorkspaceBrowserFixture(options: { readonly quest
     try {
       await restoreAuditor();
       await sql.begin(async transaction => {
+      // Match the production Run-before-child lock order while late authenticated
+      // refreshes finish. Deleting children first can deadlock their Run-owned read.
+      await transaction`SELECT run_id FROM audit_run WHERE run_id=${runId} FOR UPDATE`;
       await transaction`DELETE FROM notification WHERE run_id=${runId}`;
       await transaction`DELETE FROM run_agent_turn WHERE run_id=${runId}`;
       await transaction`DELETE FROM run_agent_work WHERE run_id=${runId}`;

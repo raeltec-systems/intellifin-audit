@@ -13,6 +13,8 @@
 
 export const ROLES = ['auditor', 'audit-manager', 'poc-administrator'] as const;
 export type Role = (typeof ROLES)[number];
+export const EXPLICIT_PERMISSIONS = ['run.control-transfer'] as const;
+export type ExplicitPermission = (typeof EXPLICIT_PERMISSIONS)[number];
 
 export function isRole(value: unknown): value is Role {
   return typeof value === 'string' && (ROLES as readonly string[]).includes(value);
@@ -30,6 +32,7 @@ export const GATED_ACTIONS = [
   'run.initiate',
   'run.pause',
   'run.resume',
+  'run.control-transfer',
   'run.cancel',
   'escalation.answer',
   'run.flag',
@@ -81,6 +84,8 @@ export const DENIAL_REASONS = {
 
 /** Context a cell may need beyond the role. Absent fields simply do not constrain. */
 export interface AuthorizationContext {
+  /** Fresh server-read grants; role eligibility alone never confers these powers. */
+  readonly explicitPermissions?: readonly ExplicitPermission[];
   /**
    * The person asking. Supplied by the session, never by a caller — see
    * `authorizeCommand`, which applies it last so nothing can override it.
@@ -153,6 +158,7 @@ const ACTION_RULES: Readonly<Record<GatedAction, ActionRule>> = {
   'run.initiate': AUTHOR_AND_SUPERVISE,
   'run.pause': AUTHOR_AND_SUPERVISE,
   'run.resume': AUTHOR_AND_SUPERVISE,
+  'run.control-transfer': { allowedRoles: MANAGER_ONLY },
   'run.cancel': AUTHOR_AND_SUPERVISE,
   'escalation.answer': AUTHOR_AND_SUPERVISE,
   'run.flag': AUTHOR_AND_SUPERVISE,
@@ -217,6 +223,8 @@ export function authorizeAction(
 ): AuthorizationDecision {
   const preflight = authorizeActionRole(role, action);
   if (!preflight.allowed) return preflight;
+  if (action === 'run.control-transfer' && !context.explicitPermissions?.includes('run.control-transfer'))
+    return deny('A separately granted manager control-transfer permission is required.');
   if (authorApprovingOwnVersion(action, context)) return deny(DENIAL_REASONS.AUTHOR_CANNOT_APPROVE);
   return ALLOW;
 }

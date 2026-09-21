@@ -1,6 +1,6 @@
 # D3 decision surface: manager control transfer
 
-Status: approved by the user in this continuation on 20 September 2026. The user selected “Approve the proposed dedicated manager permission (recommended).” Implementation and verification remain pending; no permission or transfer action is enabled yet. This records the authority decision required by Auditor Workspace specification §10.2 and §19.1.
+Status: approved by the user in this continuation on 20 September 2026. The user selected “Approve the proposed dedicated manager permission (recommended).” Implemented and locally verified on PR #51; the pushed candidate still requires fresh CI. No production permission is enabled and nothing is merged or deployed. See [implementation review](report-aw-manager-transfer.md). This records the authority decision required by Auditor Workspace specification §10.2 and §19.1.
 
 ## Proposed behavior
 

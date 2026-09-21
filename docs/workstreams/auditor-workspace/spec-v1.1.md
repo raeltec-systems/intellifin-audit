@@ -5,6 +5,8 @@
 
 **Status:** Proposed specification, revised after a documented adversarial design review. This is not production acceptance, a human product-owner signature, an independent engineering approval, or deployment authorization. The next release remains subject to the explicit capability, integration and usability gates in section 19.
 
+**Decision update, 20 September 2026:** The user approved D3's dedicated manager-transfer permission, required reason and audited epoch change. This resolves that authority decision only; it creates no automatic grants and closes no proof gate. Historical checkpoints that list D3 as pending are superseded by the [approved decision record](../../../_bmad-output/implementation-artifacts/decision-aw-manager-transfer-d3.md). No other requirement or historical acceptance evidence changes.
+
 **Revision receipt:** 48 adversarial scenario walkthroughs; 21 specification findings corrected; three bounded protocol models explored through eight transitions; 22 deterministic fixture groups passed; 14 deliberately broken model variants detected. The model explored 3,688 distinct states and 53,969 transition attempts. It does not import the application or test real database concurrency, Solari, browser privacy, natural-language model quality, or auditor usability. Read the separate Challenge Log and model README before interpreting these numbers.
 
 **Version control:** supersedes version 1.0 as a proposed specification. The original is preserved with SHA256 `ff2926a807bf20a1c088d74a3598d8b219250b419fca9b4ff0968ffc4fbdf287`. Existing AW/AT identifiers are retained; this revision adds AW-100–120 and AT-37–60. It does not change the repository, a deployed Procedure, or historical acceptance evidence.
@@ -407,7 +409,7 @@ An ordinary queued directive records actor and epoch and must revalidate current
 
 **Accepted safety latches are different.** A pause or stop accepted while authorized remains effective even if its requester subsequently loses control or access. No controller transfer clears or resumes it. A current eligible actor may explicitly resume an actual paused Run under the existing deadline/revision rules. A stop is not undoable after terminalization. Refused new requests from revoked actors do not become latches.
 
-Proposed transfer rule, pending D3 approval: the current holder may voluntarily release; a currently eligible Audit Manager with a dedicated control-transfer permission may take control with a reason; an administrator role alone is insufficient. The database transition and audit receipt commit together. Both viewers see who now controls the Run and which prior discretionary directions were superseded. A transfer cannot override independent author/approver or result-review rules.
+Approved D3 transfer rule: the current holder may voluntarily release; a currently eligible Audit Manager with a dedicated control-transfer permission may take control with a reason; an administrator role alone is insufficient. The database transition and audit receipt commit together. Both viewers see who now controls the Run and which prior discretionary directions were superseded. A transfer cannot override independent author/approver or result-review rules. Accepted Pause and Stop remain safety latches.
 
 For a lost live stream, normal controls retain the existing LiveGate behavior. A separately labelled **Reconnect and request a safe stop/pause** path may perform a fresh, independently authorized server read before issuing the safety command; it bypasses only stream freshness, not authentication or Run state. Amend the LiveGate contract before enabling that new path. No silent front-end-only bypass is allowed. [R2–R4]
 
@@ -742,7 +744,7 @@ Retain Auditor Workspace, the initially resizable 40/60 desktop split, record-ba
 
 **D2 — Real-data governance:** the organization must provide/approve retention, exceptional sensitive-content removal, export and provider-data handling policy. Synthetic prototype work can proceed; admitting real customer/employee secrets cannot rely on an invented default retention period.
 
-**D3 — Control transfer:** recommend a dedicated Audit Manager control-transfer permission, named reason and audited epoch change; preserve existing eligible safety/wait-answer rights. This is a proposed permission extension, not an existing grant or a manager’s automatic power to bypass audit segregation.
+**D3 — Control transfer, approved 20 September 2026:** separately grant `run.control-transfer` to an eligible Audit Manager, require a named reason and audit the epoch change; preserve existing eligible safety/wait-answer rights and accepted Pause/Stop. Administrator status alone does not qualify. Approval authorizes implementation, not automatic grants, merge, deployment or real-data admission.
 
 Other technical defaults are explicit in this revision: fencing, durable safety latches, subject-target work-unit pause, payload-bound idempotency, existing-domain authority, privacy epochs, immutable review snapshots and no unsupported strategy steering. They are proposed requirements, not reasons to ask the owner to select database algorithms. Readability and meaningful control are release obligations, not polish to defer.
 
@@ -1019,4 +1021,3 @@ Finding F21 · High design priority · former sections 6.1; 12.2; AT-05,32.
 Keep critical captured facts readable as native UI text. Provide one-action workspace focus/expand and true 100-percent evidence inspection without silently changing the active agent viewport. Test text legibility and target identification, not only visible image area. Multi-viewer resizing must not race the executor or change another viewer’s evidence.
 
 **Release proof still required:** Actual target screenshots at the chosen sizes, focus/zoom behavior and non-builder auditor review. Gate G1.
-

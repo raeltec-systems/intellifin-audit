@@ -1,4 +1,4 @@
-import type { Role } from '@intellifin/domain';
+import type { ExplicitPermission, Role } from '@intellifin/domain';
 
 import type { AuditUnitOfWorkContext } from '../audit/ports.js';
 
@@ -50,6 +50,7 @@ export interface ManagedUser {
   readonly role: Role | null;
   /** ISO 8601 UTC, as the boundary rule requires. */
   readonly createdAt: string;
+  readonly runControlTransferGrant: PermissionGrantState;
 }
 
 /** Reads the user list and one user. Outside any transaction; it changes nothing. */
@@ -84,6 +85,8 @@ export interface ActorNameReader {
  * transition that never happened.
  */
 export interface RoleWriter {
+  /** Stable identity lock; callers lock distinct actors/subjects in sorted ID order. */
+  lockUser(userId: string): Promise<boolean>;
   findRole(userId: string): Promise<Role | null>;
   setRole(assignment: RoleAssignment): Promise<void>;
   clearRole(userId: string): Promise<void>;
@@ -152,6 +155,17 @@ export interface SessionWriter {
  */
 export interface IdentityUnitOfWorkContext extends AuditUnitOfWorkContext {
   readonly roles: RoleWriter;
+  readonly permissions: PermissionGrantWriter;
   readonly users: UserCreator;
   readonly sessions: SessionWriter;
+}
+
+/** Revoked grants retain their revision; absent rows have false/zero state. */
+export interface PermissionGrantState { readonly granted: boolean; readonly revision: number }
+export interface PermissionGrantReader {
+  readGrant(userId: string, permission: ExplicitPermission): Promise<PermissionGrantState>;
+}
+export interface PermissionGrantWriter extends PermissionGrantReader {
+  setGrant(input: { readonly userId: string; readonly permission: ExplicitPermission;
+    readonly granted: boolean; readonly assignedBy: string }): Promise<PermissionGrantState>;
 }

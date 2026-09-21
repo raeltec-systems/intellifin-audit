@@ -246,3 +246,29 @@ web/root TypeScript and final dependency boundaries passed. This includes the na
 correction. See [the Replay specification and suggested review order](spec-aw-selected-replay.md).
 Conversation/record/evidence/history synchronization remains required; all seven overall
 proof gates remain open. No merge or deployment has occurred.
+
+## Continuation update — 21 September 2026
+
+Manager transfer is implemented locally after the approved D3 decision and three independent
+reviews. Managers require an explicit grant and retained reason; confirmation binds the
+observed controller epoch. Lost responses recover the exact receipt. Accepted safety holds,
+open questions and review permissions remain intact. No automatic grants are introduced.
+
+Combined verification passed 4,886/4,886 unit tests, 731/731 PostgreSQL cases, all package/root
+types, dependency boundaries, package build and schema drift checks. Four actual Chromium
+worker safety-boundary cases and both authenticated manager browser journeys passed. The
+final transfer-module cleanup proof passed 21/21 and retained a valid nonempty platform chain
+(26 events). The two previously failing answer-cleanup/empty-list browser cases now pass;
+all 17 controller/workspace cases have passing evidence across the combined 16/17 run and the final strengthened 2/2 renewal/heartbeat pair. Original failed invocations remain in the manager report.
+
+The latest pushed head remains 00de6c3: CI completed with five passing jobs and 255/258 browser
+cases. Local corrections address cleanup lock order and the explicit queued-Stop retry race.
+Final CI will verify the next pushed candidate. See [the manager report](report-aw-manager-transfer.md)
+for original failed invocations, corrections and actual evidence.
+
+Near-live viewing, conversation flags and frozen strategies are prepared in isolated worktrees
+and await integration/acceptance. Synthetic Northstar identity/read-only proof is prepared;
+exclusive private human input and controlled handback are not yet delivered. D2 remains the
+real-data boundary. All seven proof gates remain open. A 30.8-second selected-Replay read in
+the full database suite needs performance diagnosis despite passing semantic assertions.
+Nothing has been merged or deployed.

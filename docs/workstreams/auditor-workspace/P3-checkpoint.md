@@ -452,3 +452,24 @@ the separate uncommitted Replay fixture failure and the corrected unit/style che
 layout checks retain the 120px history floor and test maximum-length source text at
 1280×800 and 1440×900. The approved D3 transfer, flags, frozen strategies and fuller
 explanations remain separate pending slices. All overall proof gates remain open.
+
+## Approved manager transfer — 21 September 2026
+
+D3 is implemented locally: a separately granted Audit Manager permission, exact controller
+review, encrypted governed reason, atomic epoch change and audited durable receipt. Role
+demotion revokes authority without resurrection. Accepted Pause/Stop and independent
+question-answer/review permissions remain unchanged. Recovery distinguishes an unconfirmed
+proposal, an attempted confirmation and historical proof; fresh reads establish ownership.
+
+Three independent reviews were reconciled. Full local checks passed 4,886 unit tests and
+731 PostgreSQL integration tests, package/root types, boundaries, build and migration drift.
+The final transfer module passed 21 cases and retained a valid 26-event platform chain after
+fixture account cleanup. Four real Chromium worker deferred-Pause cases passed, including
+transfer at intermediate and final inspection boundaries. Both authenticated manager browser
+journeys passed, as did the two CI-regression cases for lost intake cleanup and the empty
+procedure list. All 17 controller/workspace cases now have passing evidence: the combined run passed 16/17, and the strengthened renewal/heartbeat pair passed 2/2 after cleanup corrections. The report retains the original failure and intermediate intermittent observation.
+
+See [the manager transfer report](../../../_bmad-output/implementation-artifacts/report-aw-manager-transfer.md)
+and [specification/review order](../../../_bmad-output/implementation-artifacts/spec-aw-manager-transfer.md).
+Flags, frozen strategies, fuller explanations, remaining synchronization and P6 remain open.
+All seven overall proof gates remain open; nothing is merged or deployed.

@@ -67,6 +67,7 @@ const EXPECTED: Record<GatedAction, Record<Role, Cell>> = {
   'run.initiate': AUTHOR_AND_SUPERVISE,
   'run.pause': AUTHOR_AND_SUPERVISE,
   'run.resume': AUTHOR_AND_SUPERVISE,
+  'run.control-transfer': { auditor: DEFAULT_DENIAL_REASON, 'audit-manager': true, 'poc-administrator': DEFAULT_DENIAL_REASON },
   'run.cancel': AUTHOR_AND_SUPERVISE,
   'escalation.answer': AUTHOR_AND_SUPERVISE,
   'run.flag': AUTHOR_AND_SUPERVISE,
@@ -99,6 +100,7 @@ const EXPECTED: Record<GatedAction, Record<Role, Cell>> = {
  * that is not the actor. The author rule itself is exercised on its own below.
  */
 const CELL_CONTEXT: Partial<Record<GatedAction, AuthorizationContext>> = {
+  'run.control-transfer': { explicitPermissions: ['run.control-transfer'] },
   'procedure.version.approve': { actorId: 'user_actor', authorId: 'user_somebody_else' },
 };
 
@@ -235,4 +237,13 @@ describe('the vocabularies', () => {
       });
     },
   );
+});
+
+describe('explicit manager transfer authority', () => {
+  it('requires the fresh grant as well as manager role', () => {
+    expect(authorizeAction('audit-manager', 'run.control-transfer').allowed).toBe(false);
+    expect(authorizeAction('audit-manager', 'run.control-transfer', { explicitPermissions: [] }).allowed).toBe(false);
+    for (const role of ROLES) expect(authorizeAction(role, 'run.control-transfer', { explicitPermissions: ['run.control-transfer'] }).allowed).toBe(role === 'audit-manager');
+    expect(authorizeAction(null, 'run.control-transfer', { explicitPermissions: ['run.control-transfer'] }).allowed).toBe(false);
+  });
 });

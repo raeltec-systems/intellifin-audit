@@ -9,6 +9,7 @@ import {
   USER_CREATED_EVENT,
   createUserWithRole,
   setUserRole,
+  setUserRunControlTransferGrant,
 } from './manage-users.js';
 import type {
   IdentityUnitOfWorkContext,
@@ -64,6 +65,8 @@ function world(options: WorldOptions = {}) {
   /** Which roles were locked, and in what order — the last-administrator guard's proof. */
   const locked: string[] = [];
   let created = 0;
+  const grants = new Map<string, { granted: boolean; revision: number }>();
+  const identityLocks: string[] = [];
 
   const roleRepository: RoleRepository = {
     findRole: (userId) => Promise.resolve(roles.get(userId) ?? null),
@@ -81,6 +84,7 @@ function world(options: WorldOptions = {}) {
               email: account.email,
               role: roles.get(userId) ?? null,
               createdAt: '2026-01-01T00:00:00.000Z',
+              runControlTransferGrant: grants.get(userId) ?? { granted: false, revision: 0 },
             }
           : null,
       );
@@ -91,6 +95,7 @@ function world(options: WorldOptions = {}) {
     async execute(work) {
       // The snapshot IS the transaction: restored on a throw, kept on a return.
       const rolesBefore = new Map(roles);
+      const grantsBefore = new Map(grants);
       const accountsBefore = new Map(accounts);
       const eventsBefore = events.length;
       try {
@@ -102,7 +107,10 @@ function world(options: WorldOptions = {}) {
               return Promise.resolve({} as never);
             },
           },
+          permissions: { readGrant: async userId => grants.get(userId) ?? { granted: false, revision: 0 },
+            setGrant: async ({ userId, granted }) => { const next = { granted, revision: (grants.get(userId)?.revision ?? 0) + 1 }; grants.set(userId, next); return next; } },
           roles: {
+            lockUser: async userId => { identityLocks.push(userId); return accounts.has(userId); },
             findRole: (userId) => Promise.resolve(roles.get(userId) ?? null),
             setRole: ({ userId, role }) => {
               roles.set(userId, role);
@@ -138,6 +146,8 @@ function world(options: WorldOptions = {}) {
           sessions: { revokeSession: () => Promise.resolve() },
         });
       } catch (error) {
+        grants.clear();
+        for (const [key, value] of grantsBefore) grants.set(key, value);
         roles.clear();
         for (const [key, value] of rolesBefore) roles.set(key, value);
         accounts.clear();
@@ -150,6 +160,8 @@ function world(options: WorldOptions = {}) {
 
   return {
     roles,
+    grants,
+    identityLocks,
     accounts,
     events,
     locked,
@@ -538,10 +550,10 @@ describe('lockout guards', () => {
       expectedRole: 'poc-administrator',
     });
 
-    expect(outcome).toEqual({ ok: false, reason: MANAGE_USERS_REFUSALS.LAST_ADMINISTRATOR });
+    expect(outcome).toEqual({ ok: false, reason: 'Your role does not permit this action.' });
     // Refused inside the transaction, so the write it had already made is gone.
     expect(scene.roles.get('user-9')).toBe('poc-administrator');
-    expect(scene.events).toHaveLength(0);
+    expect(scene.events).toMatchObject([{ eventType: 'security.denied' }]);
     // And it locked the holders before writing, which is what makes the concurrent case
     // safe against the database rather than only against this fake.
     expect(scene.locked).toEqual(['poc-administrator']);
@@ -554,7 +566,7 @@ describe('lockout guards', () => {
         'user-b': { name: 'Admin B', email: 'b@synthetic.invalid', role: 'poc-administrator' },
       },
     });
-    scene.roles.delete(ADMIN.userId);
+    // Keep the actual actor authorized; reauthorization no longer trusts the outside fake.
     const acting = {
       ...scene.dependencies,
       roles: { findRole: () => Promise.resolve('poc-administrator' as Role) },
@@ -581,9 +593,52 @@ describe('lockout guards', () => {
       expectedRole: 'poc-administrator',
     });
 
-    expect(second).toEqual({ ok: false, reason: MANAGE_USERS_REFUSALS.LAST_ADMINISTRATOR });
+    expect(second).toEqual({ ok: false, reason: 'Your role does not permit this action.' });
     expect(scene.roles.get('user-a')).toBe('poc-administrator');
     // Both transactions took the lock, and took it first.
     expect(scene.locked).toEqual(['poc-administrator', 'poc-administrator']);
+  });
+});
+
+describe('explicit transfer grant administration', () => {
+  const manager = { 'manager': { name: 'Manager', email: 'manager@synthetic.invalid', role: 'audit-manager' as Role } };
+  const command = { session: ADMIN, correlationId: CORRELATION, userId: 'manager', granted: true, expectedGrantRevision: 0 };
+  it('grants explicitly, refuses stale revisions and preserves revoke/regrant history', async () => {
+    const scene = world({ users: manager });
+    expect(await setUserRunControlTransferGrant(scene.dependencies,command)).toMatchObject({ ok: true, grant: { granted: true, revision: 1 } });
+    expect(scene.identityLocks).toEqual([ADMIN.userId,'manager'].sort());
+    expect(await setUserRunControlTransferGrant(scene.dependencies,command)).toMatchObject({ ok: false, reason: MANAGE_USERS_REFUSALS.STALE_GRANT });
+    expect(await setUserRunControlTransferGrant(scene.dependencies,{ ...command, expectedGrantRevision: 1 })).toMatchObject({ ok: true });
+    expect(scene.events).toHaveLength(1);
+    expect(await setUserRunControlTransferGrant(scene.dependencies,{ ...command, granted: false, expectedGrantRevision: 1 })).toMatchObject({ ok: true, grant: { granted: false, revision: 2 } });
+    expect(await setUserRunControlTransferGrant(scene.dependencies,{ ...command, expectedGrantRevision: 2 })).toMatchObject({ ok: true, grant: { granted: true, revision: 3 } });
+    expect(scene.events.map(e => e.payload.revision)).toEqual([1,2,3]);
+  });
+  it.each(['auditor','poc-administrator',null] as const)('refuses a grant to %s', async role => {
+    const scene = world({ users: { manager: { ...manager.manager, role } } });
+    expect(await setUserRunControlTransferGrant(scene.dependencies,command)).toMatchObject({ ok: false, reason: MANAGE_USERS_REFUSALS.MANAGER_REQUIRED });
+    expect(scene.grants.size).toBe(0);
+  });
+  it('rolls back the grant if its audit append fails', async () => {
+    const scene = world({ users: manager, failAppend: true });
+    await expect(setUserRunControlTransferGrant(scene.dependencies,command)).rejects.toThrow('append failed');
+    expect(scene.grants.size).toBe(0);
+  });
+  it.each(['auditor',null] as const)('revokes on role change to %s and never resurrects on promotion', async role => {
+    const scene = world({ users: manager });
+    await setUserRunControlTransferGrant(scene.dependencies,command);
+    expect(await setUserRole(scene.dependencies,{ session: ADMIN, correlationId: CORRELATION, userId: 'manager', role, expectedRole: 'audit-manager' })).toMatchObject({ ok: true });
+    expect(scene.grants.get('manager')).toEqual({ granted: false, revision: 2 });
+    await setUserRole(scene.dependencies,{ session: ADMIN, correlationId: CORRELATION, userId: 'manager', role: 'audit-manager', expectedRole: role });
+    expect(scene.grants.get('manager')).toEqual({ granted: false, revision: 2 });
+    expect(scene.events.find(e => e.payload.cause === 'role-change')?.payload).toMatchObject({ priorGranted: true, granted: false });
+  });
+  it('reauthorizes the administrator inside the transaction', async () => {
+    const scene = world({ users: manager });
+    scene.roles.delete(ADMIN.userId);
+    const deps = { ...scene.dependencies, roles: { findRole: async () => 'poc-administrator' as const } };
+    expect(await setUserRunControlTransferGrant(deps,command)).toMatchObject({ ok: false, reason: 'Your role does not permit this action.' });
+    expect(scene.grants.size).toBe(0);
+    expect(scene.events).toMatchObject([{ eventType: 'security.denied' }]);
   });
 });

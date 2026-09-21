@@ -6,6 +6,7 @@ import type { ManagedUser } from '@intellifin/application';
 
 import { Banner } from '../design/Banner';
 import { DataTable } from '../design/DataTable';
+import { TransferPermissionControl } from './TransferPermissionControl';
 import { RoleControl } from './RoleControl';
 import { UserForm } from './UserForm';
 import { roleLabel } from './roles';
@@ -13,6 +14,7 @@ import type {
   AdministrationActionResult,
   CreateUserFields,
   SetRoleFields,
+  SetTransferGrantFields,
 } from '../../app/administration/actions';
 
 /**
@@ -44,6 +46,7 @@ export interface UsersPanelProps {
   /** How many rows the query would return at most. The surface says when it truncated. */
   readonly limit: number;
   readonly createUser: (fields: CreateUserFields) => Promise<AdministrationActionResult>;
+  readonly setTransferGrant: (fields: SetTransferGrantFields) => Promise<AdministrationActionResult>;
   readonly setRole: (fields: SetRoleFields) => Promise<AdministrationActionResult>;
 }
 
@@ -58,6 +61,7 @@ export function UsersPanel({
   limit,
   createUser,
   setRole,
+  setTransferGrant,
 }: UsersPanelProps): React.JSX.Element {
   const [result, setResult] = useState<AdministrationActionResult | null>(null);
   /** Increments on every reported outcome, so an identical message re-announces. */
@@ -99,6 +103,11 @@ export function UsersPanel({
           columns={[
             { key: 'email', header: 'Email address', render: (user) => user.email },
             { key: 'role', header: 'Role', render: (user) => roleLabel(user.role) },
+            { key: 'transfer', header: 'Run control transfer', render: (user) => (
+              <TransferPermissionControl key={`${user.userId}:${user.runControlTransferGrant.revision}`}
+                userId={user.userId} userName={user.name} role={user.role} grant={user.runControlTransferGrant}
+                onSubmit={setTransferGrant} onResult={report} onStart={clear} />
+            ) },
             { key: 'created', header: 'Created (UTC)', render: (user) => createdOn(user.createdAt) },
             {
               key: 'change',

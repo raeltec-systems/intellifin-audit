@@ -1,4 +1,4 @@
-import { RUN_STATES, type AuditEventRecord } from '@intellifin/domain';
+import { validateAuditEventDraft, RUN_STATES, type AuditEventRecord } from '@intellifin/domain';
 
 /**
  * The small set of committed Run facts that may become a platform conversation entry.
@@ -18,6 +18,7 @@ export const RUN_CONVERSATION_EVENT_KINDS = [
   'pause-requested',
   'paused',
   'resumed',
+  'control-transferred',
   'ended',
 ] as const;
 
@@ -261,6 +262,13 @@ function resumed(event: AuditEventRecord, context: RunConversationEventContext):
   return fixed(event, 'resumed', 'The Run resumed.', context);
 }
 
+function controlTransferred(event: AuditEventRecord, context: RunConversationEventContext): RunConversationEventNarration | null {
+  if (event.eventType !== 'lifecycle.run-control-lease-transferred') return null;
+  try { validateAuditEventDraft(event); } catch { return null; }
+  if (event.payload.updatedAt !== event.occurredAt) return null;
+  return fixed(event, 'control-transferred', 'Took control using explicit manager permission. Earlier discretionary reviews require a fresh controller check.', context);
+}
+
 function ended(event: AuditEventRecord, context: RunConversationEventContext): RunConversationEventNarration | null {
   if (event.eventType !== 'lifecycle.result-sealed' || event.source !== 'worker' || !['success', 'failure'].includes(event.outcome) || !actorIs(event, 'system', 'result-sealer')) return null;
   const payload = event.payload;
@@ -281,7 +289,7 @@ export function narrateRunConversationEvent(
   if (!baseEventIsValid(event)) return null;
   return workspaceCreated(event, context) ?? captureRegistered(event, context) ?? currentInspection(event, context) ??
     observationsRegistered(event, context) ?? escalationRaised(event, context) ?? pauseRequested(event, context) ??
-    paused(event, context) ?? resumed(event, context) ?? ended(event, context);
+    paused(event, context) ?? resumed(event, context) ?? controlTransferred(event, context) ?? ended(event, context);
 }
 
 /** Descriptive alias for repository callers that name the operation as a projection. */

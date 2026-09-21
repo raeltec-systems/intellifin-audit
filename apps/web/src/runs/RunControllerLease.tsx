@@ -1,7 +1,10 @@
 'use client';
 
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { changeRunControlAction, type RunControlReadActionResult } from '../../app/runs/control-actions';
+import { proposeRunControlTransferAction, confirmRunControlTransferAction, recoverRunControlTransferReceiptAction, type RunControlTransferProposalResult, changeRunControlAction, type RunControlReadActionResult } from '../../app/runs/control-actions';
+import { UntrustedText } from './UntrustedText';
+import { ConfirmDialog } from '../design/ConfirmDialog';
+import { pendingControlTransfer, retainControlTransfer, clearControlTransfer, type PendingControlTransfer } from './control-transfer-storage';
 import { Button } from '../design/Button';
 import { useLiveGate } from './LiveGate';
 import { clearControlRenewal, pendingControlRenewal, retainControlRenewal, type PendingControlRenewal } from './control-renewal-storage';
@@ -13,7 +16,7 @@ const ReadPublication = createContext<{ readonly read: RunControlView; readonly 
 export const RunControlReadProvider = ReadPublication.Provider;
 export const useSharedRunControl = () => useContext(ReadPublication);
 // A remount must not overlap a still-pending request in the same browser document.
-const activeControlMutations = new Map<string, 'renew' | 'acquire' | 'release'>();
+const activeControlMutations = new Map<string, 'renew' | 'acquire' | 'release' | 'transfer'>();
 const CONTROL_SETTLED = 'intellifin-control-settled';
 const REQUEST_DEADLINE_MS = 15_000;
 type Props = { readonly runId: string; readonly refreshKey: string; readonly onRead?: (value: RunControlView) => void };
@@ -23,6 +26,8 @@ export function RunControllerLease(props: Props): React.JSX.Element {
 }
 function ControllerLease({ runId, refreshKey, onRead = ignoreRead }: Props): React.JSX.Element {
   const gate = useLiveGate();
+  const region = useRef<HTMLElement | null>(null);
+  const [transferAttempt, setTransferAttempt] = useState(0);
   const shared = useSharedRunControl();
   const latest = useRef({ onRead, shared, disabledReason: gate.disabledReason });
   latest.current = { onRead, shared, disabledReason: gate.disabledReason };
@@ -33,6 +38,11 @@ function ControllerLease({ runId, refreshKey, onRead = ignoreRead }: Props): Rea
   const [unknown, setUnknown] = useState(false);
   const [retryable, setRetryable] = useState(false);
   const [hung, setHung] = useState(false);
+  const [transferDraft, setTransferDraft] = useState(false);
+  const [transferProposal, setTransferProposal] = useState<Extract<RunControlTransferProposalResult, { ok: true }>['proposal'] | null>(null);
+  const [transferRecovery, setTransferRecovery] = useState(false);
+  const [transferRefusal, setTransferRefusal] = useState<string | null>(null);
+  const transferActions = useRef({ propose: (_reason: string) => {}, confirm: () => {}, retry: () => {}, cancel: () => {} });
   const actions = useRef({ refresh: () => {}, observe: () => {}, renew: () => {}, change: (_operation: 'acquire' | 'release') => {} });
 
   useEffect(() => {
@@ -48,6 +58,10 @@ function ControllerLease({ runId, refreshKey, onRead = ignoreRead }: Props): Rea
     const timers = new Set<number>();
     const reads = new Set<AbortController>();
     let pending: PendingControlRenewal | null = null;
+    let transfer: PendingControlTransfer | null = null;
+    let transferUncertain = false;
+    let transferDismissed = false;
+    let actorId: string | null = null;
     const available = () => !closed && document.visibilityState === 'visible' && latest.current.disabledReason === null;
     function publish(value: RunControlView): void {
       if (closed) return;
@@ -88,10 +102,11 @@ function ControllerLease({ runId, refreshKey, onRead = ignoreRead }: Props): Rea
       setReason('Pending control recovery is unavailable. Restore browser session storage before renewing.');
     }
     async function refresh(): Promise<void> {
-      if (!available()) { invalidate(); return; }
+      if (closed || document.visibilityState !== 'visible') { invalidate(); return; }
+      // An authenticated identity read is needed even when a terminal gate is closed.
       // No read can republish authority until every mutation has a definite outcome.
       if (inFlight || activeControlMutations.has(runId)) return;
-      if (uncertainChange || pending !== null || storageFailed) { invalidate(); return; }
+      if (actorId !== null && (uncertainChange || pending !== null || transfer !== null || storageFailed)) { invalidate(); return; }
       checking();
       const requestGeneration = generation;
       const started = performance.now();
@@ -115,7 +130,13 @@ function ControllerLease({ runId, refreshKey, onRead = ignoreRead }: Props): Rea
       reads.delete(controller);
       clearTimer(timer);
       if (closed || requestGeneration !== generation) return;
-      if (!available() || inFlight || activeControlMutations.has(runId) || uncertainChange || pending !== null) { invalidate(); return; }
+      if (next.status === 'ready') {
+        actorId = next.actorId;
+        try { transfer = pendingControlTransfer(sessionStorage, runId, actorId); }
+        catch { storageFailed = true; invalidate(); setReadReason('Transfer recovery storage is unavailable.'); return; }
+        if (transfer) { transferUncertain = true; setTransferRecovery(true); setTransferRefusal('A retained transfer request needs recovery before current control can be checked.'); }
+      }
+      if (!available() || inFlight || activeControlMutations.has(runId) || uncertainChange || pending !== null || transfer !== null) { invalidate(); return; }
       window.clearTimeout(expiryTimer); deadline = 0;
       if (next.status !== 'ready') { invalidate(); publish(next); return; }
       if (next.expiresAt !== null) {
@@ -129,7 +150,7 @@ function ControllerLease({ runId, refreshKey, onRead = ignoreRead }: Props): Rea
       confirmed = next; setReadReason(null); publish(next);
     }
     async function renew(): Promise<void> {
-      if (!available() || inFlight || activeControlMutations.has(runId) || uncertainChange || storageFailed) return;
+      if (!available() || inFlight || activeControlMutations.has(runId) || uncertainChange || transfer !== null || storageFailed) return;
       if (pending === null) {
         if (!confirmed?.active || !confirmed.heldByYou || performance.now() >= deadline) { await refresh(); return; }
         const request = { runId, expectedEpoch: confirmed.epoch, requestKey: crypto.randomUUID() };
@@ -167,7 +188,7 @@ function ControllerLease({ runId, refreshKey, onRead = ignoreRead }: Props): Rea
       }
     }
     async function change(operation: 'acquire' | 'release'): Promise<void> {
-      if (!available() || inFlight || activeControlMutations.has(runId) || uncertainChange || pending !== null || presentation?.status !== 'ready' || !confirmed) return;
+      if (!available() || inFlight || activeControlMutations.has(runId) || uncertainChange || pending !== null || transfer !== null || presentation?.status !== 'ready' || !confirmed) return;
       const request = { runId, expectedEpoch: confirmed.epoch };
       inFlight = true; activeControlMutations.set(runId, operation); setBusy(true); setReason(null); invalidate();
       const timer = bounded(() => {
@@ -194,21 +215,106 @@ function ControllerLease({ runId, refreshKey, onRead = ignoreRead }: Props): Rea
         if (!closed) { setBusy(false); setHung(false); if (!uncertainChange) await refresh(); }
       }
     }
+    function transferUnknown(): void {
+      transferUncertain = true; invalidate(); setTransferRecovery(true);
+      setTransferRefusal('The transfer outcome is unknown. Retry the same request to recover its recorded outcome.');
+    }
+    async function runTransfer(mode: 'propose' | 'confirm' | 'recover', draft?: string): Promise<void> {
+      setTransferAttempt(attempt => attempt + 1);
+      if ((mode !== 'recover' && !available()) || closed || document.visibilityState !== 'visible' || inFlight || activeControlMutations.has(runId) || pending !== null || uncertainChange || storageFailed) {
+        setTransferRefusal(latest.current.disabledReason ?? 'Current control is being checked. Refresh control before reviewing a transfer.'); return;
+      }
+      if (!transfer) {
+        if (mode !== 'propose' || actorId === null || presentation?.status !== 'ready' || !confirmed?.active || !confirmed.transferEligible || confirmed.heldByYou || confirmed.holderName === null || performance.now() >= deadline) { setTransferRefusal('Current control changed or expired. Refresh control before reviewing a transfer.'); return; }
+        const reason = draft?.trim() ?? '';
+        if (!reason || [...reason].length > 1000 || new TextEncoder().encode(reason).length > 4000) {
+          setTransferRefusal('Give a reason of at most 1,000 characters.'); return;
+        }
+        const request = { actorId, runId, expectedEpoch: confirmed.epoch, requestKey: crypto.randomUUID(), reason };
+        try { retainControlTransfer(sessionStorage, request); transfer = request; }
+        catch { setTransferRefusal('The transfer request could not be retained for recovery. Restore browser session storage.'); return; }
+      }
+      if (mode === 'confirm') {
+        if (!transfer.commandId) return;
+        try { const retained = { ...transfer, confirmRequested: true as const }; retainControlTransfer(sessionStorage, retained); transfer = retained; }
+        catch { setTransferRefusal('The confirmation could not be retained for recovery. Restore browser session storage.'); return; }
+      }
+      if (mode === 'recover' && !transfer.commandId) { setTransferRefusal('Reconnect to recover and review this proposal.'); return; }
+      const request = transfer;
+      transferDismissed = false;
+      inFlight = true; activeControlMutations.set(runId, 'transfer'); setBusy(true); setHung(false);
+      setTransferDraft(false); setTransferRefusal(null); invalidate();
+      const timer = bounded(() => { transferUnknown(); setHung(true); });
+      let definite = false;
+      try {
+        const result = mode === 'propose'
+          ? await proposeRunControlTransferAction({ runId: request.runId, expectedEpoch: request.expectedEpoch, requestKey: request.requestKey, reason: request.reason }, request.actorId)
+          : mode === 'recover' ? await recoverRunControlTransferReceiptAction({ runId: request.runId, commandId: request.commandId }, request.actorId)
+          : await confirmRunControlTransferAction({ runId: request.runId, commandId: request.commandId }, request.actorId);
+        definite = result.ok || !('unknownOutcome' in result && result.unknownOutcome);
+        if (!definite) { if (!closed) transferUnknown(); return; }
+        if (result.ok && 'proposal' in result) {
+          // Save the server command identity before confirmation can become available.
+          const retained = { ...request, commandId: result.proposal.commandId };
+          retainControlTransfer(sessionStorage, retained); transfer = retained;
+          if (!closed) {
+            transferUncertain = transferDismissed; setTransferRecovery(transferDismissed);
+            setTransferRefusal(transferDismissed ? 'Transfer proposal recorded. Recover it to review before confirming.' : null);
+            if (!transferDismissed) setTransferProposal(result.proposal);
+          }
+        } else {
+          clearControlTransfer(sessionStorage, request); transfer = null;
+          if (!closed) {
+            transferUncertain = false; setTransferRecovery(false); setTransferProposal(null);
+            setTransferRefusal(result.ok ? 'Control transfer recorded. Checking the current controller…' : result.reason);
+          }
+        }
+      } catch { definite = false; if (!closed) transferUnknown(); }
+      finally {
+        clearTimer(timer); activeControlMutations.delete(runId);
+        window.dispatchEvent(new CustomEvent(CONTROL_SETTLED, { detail: { runId, definite } }));
+        inFlight = false;
+        if (!closed) { setBusy(false); setHung(false); if (definite && transfer === null) await refresh(); }
+      }
+    }
+    transferActions.current = {
+      propose: reason => { void runTransfer('propose', reason); },
+      confirm: () => { void runTransfer('confirm'); },
+      // A retained command goes straight to exact confirmation recovery; a proposal
+      // with a lost response is recovered and reviewed before first confirmation.
+      retry: () => { void runTransfer(transfer?.confirmRequested && transferUncertain ? (available() ? 'confirm' : 'recover') : 'propose'); },
+      cancel: () => {
+        if (transferUncertain || inFlight) {
+          transferDismissed = true;
+          setTransferDraft(false); setTransferProposal(null); setTransferRecovery(true);
+          queueMicrotask(() => region.current?.focus()); return;
+        }
+        if (transfer) {
+          try { clearControlTransfer(sessionStorage, transfer); transfer = null; }
+          catch { transferUnknown(); return; }
+        }
+        setTransferDraft(false); setTransferProposal(null); setTransferRefusal(null); void refresh(); queueMicrotask(() => region.current?.focus());
+      },
+    };
     actions.current = { refresh: () => { void refresh(); },
-      observe: () => { if (!available()) invalidate(); else void refresh(); },
+      observe: () => { void refresh(); },
       renew: () => { void renew(); }, change: operation => { void change(operation); } };
     const settled = (event: Event) => {
       const detail = (event as CustomEvent<{ runId: string; definite: boolean }>).detail;
       if (closed || inFlight || detail.runId !== runId) return;
       setBusy(false); setHung(false);
-      try { pending = pendingControlRenewal(sessionStorage, runId); }
+      try {
+        pending = pendingControlRenewal(sessionStorage, runId);
+        transfer = actorId === null ? null : pendingControlTransfer(sessionStorage, runId, actorId);
+      }
       catch { storageFailed = true; invalidate(); return; }
-      if (pending) unknownRenewal();
+      if (transfer) { transferUnknown(); }
+      else if (pending) unknownRenewal();
       else if (!detail.definite) { uncertainChange = true; invalidate(); setUnknown(true); }
-      else { setUnknown(false); setRetryable(false); void refresh(); }
+      else { transferUncertain = false; setTransferRecovery(false); setTransferProposal(null); setTransferRefusal(null); setUnknown(false); setRetryable(false); void refresh(); }
     };
     window.addEventListener(CONTROL_SETTLED, settled);
-    const visibility = () => { invalidate(); if (available()) void refresh(); };
+    const visibility = () => { invalidate(); void refresh(); };
     document.addEventListener('visibilitychange', visibility);
     const timer = window.setInterval(() => { void renew(); }, 30_000);
     return () => {
@@ -225,7 +331,7 @@ function ControllerLease({ runId, refreshKey, onRead = ignoreRead }: Props): Rea
   useEffect(() => { actions.current.observe(); }, [refreshKey, gate.disabledReason]);
 
   if (read?.status === 'ready' && !read.required) return <></>;
-  return <section aria-label="Run controller" className="ls-stack run-controller" data-control-ready={read?.status === 'ready'}>
+  return <section ref={region} tabIndex={-1} aria-label="Run controller" className="ls-stack run-controller" data-control-ready={read?.status === 'ready'}>
     {read === null || read.status === 'checking' ? <><p>Checking current Run control…</p>{!busy && <Button variant="secondary" onClick={() => actions.current.refresh()}>Refresh control</Button>}</> : read.status !== 'ready'
       ? <><p>Run control is unavailable. Refresh before confirming steering or Resume.</p>
         {!unknown && <Button variant="secondary" onClick={() => actions.current.refresh()}>Refresh control</Button>}</>
@@ -239,7 +345,24 @@ function ControllerLease({ runId, refreshKey, onRead = ignoreRead }: Props): Rea
         </> : <Button variant="secondary" busy={busy} onClick={() => actions.current.change('acquire')}
           {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason }
             : read.holderName !== null ? { disabledReason: 'The current controller must release control or let the lease expire.' } : {})}>Acquire control</Button>}
+        {read.transferEligible && !read.heldByYou && read.holderName !== null && <Button variant="secondary" busy={busy}
+          onClick={() => { setTransferRefusal(null); setTransferDraft(true); }}
+          {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason } : {})}>Transfer control to me</Button>}
       </>}
+    <ConfirmDialog open={transferDraft} weight="routine-with-rationale" title="Request Run control transfer?"
+      consequence={`Provide a reason to review transferring control from ${read?.status === 'ready' ? read.holderName : 'the current controller'} to ${read?.status === 'ready' ? read.actorName : 'you'}. No control changes until you confirm the review.`}
+      confirmLabel="Review transfer" busy={busy} refusal={transferRefusal} refusalRevision={transferAttempt}
+      onConfirm={value => transferActions.current.propose(value ?? '')} onCancel={() => transferActions.current.cancel()} />
+    <ConfirmDialog open={transferProposal !== null} weight="routine" title="Transfer Run control?"
+      consequence={transferProposal ? `${transferProposal.actorName} will take control from ${transferProposal.priorHolderName}. The controller epoch advances from ${transferProposal.expectedEpoch} to ${transferProposal.expectedEpoch + 1}; outstanding discretionary directions tied to the old epoch can no longer be confirmed. Accepted Pause and Stop requests remain in effect. Open questions, answers, approvals, reviews and Results are unchanged.` : ''}
+      confirmLabel={transferRecovery ? 'Retry same confirmation' : 'Confirm transfer'} busy={busy && !hung} refusal={transferRefusal}
+      keepOpenOnGateClose={transferRecovery} disabledReason={gate.disabledReason}
+      onConfirm={() => transferActions.current.confirm()} onCancel={() => transferActions.current.cancel()}>
+      {transferProposal && <div className="run-control-transfer-source" role="region" aria-label="Transfer reason source" tabIndex={0}><UntrustedText field={`transfer reason supplied by ${transferProposal.actorName}`}>{transferProposal.reason}</UntrustedText></div>}
+    </ConfirmDialog>
+    {transferRecovery && transferProposal === null && <Button variant="secondary" busy={busy} onClick={() => transferActions.current.retry()}
+      >Recover transfer request</Button>}
+    {transferRefusal !== null && transferProposal === null && !transferDraft && <p role="status">{transferRefusal}</p>}
     {reason !== null && <p role="status">{reason}</p>}
     {readReason !== null && <p role="status">{readReason}</p>}
     {retryable && <Button variant="secondary" busy={busy} onClick={() => actions.current.renew()}

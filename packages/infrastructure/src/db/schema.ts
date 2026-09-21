@@ -2202,6 +2202,7 @@ export const runInteractionTransition = pgTable('run_interaction_transition', {
  * never a return to legacy Resume authority. The Run row serializes every transition.
  */
 export const runControlLease = pgTable('run_control_lease', {
+  transferCommandId: uuid('transfer_command_id'),
   renewalRequestKey: uuid('renewal_request_key'),
   runId: uuid('run_id').primaryKey().references(() => auditRun.runId, { onDelete: 'cascade' }),
   epoch: integer('epoch').notNull(),
@@ -2209,7 +2210,39 @@ export const runControlLease = pgTable('run_control_lease', {
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
 }, t => [
+  foreignKey({ columns: [t.runId, t.transferCommandId], foreignColumns: [runControlTransfer.runId, runControlTransfer.commandId], name: 'run_control_lease_transfer_fk' }),
   check('run_control_lease_epoch', sql`${t.epoch} > 0`),
   check('run_control_lease_holder_expiry', sql`(${t.holderId} IS NULL) = (${t.expiresAt} IS NULL)`),
   check('run_control_lease_duration', sql`${t.expiresAt} IS NULL OR (${t.expiresAt} > ${t.updatedAt} AND ${t.expiresAt} <= ${t.updatedAt} + interval '120 seconds')`),
 ]);
+
+/** Explicit manager authority; revoked rows retain their monotonic revision. */
+export const userPermissionGrant = pgTable('user_permission_grant', {
+  userId: text('user_id').notNull().references(() => authUser.id, { onDelete: 'cascade' }),
+  permission: text('permission').notNull(), granted: boolean('granted').notNull(),
+  revision: integer('revision').notNull(), assignedBy: text('assigned_by').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+}, t => [primaryKey({ columns: [t.userId, t.permission] }),
+  check('user_permission_vocabulary', sql`${t.permission} = 'run.control-transfer'`),
+  check('user_permission_revision', sql`${t.revision} > 0`)]);
+
+export const runControlTransfer = pgTable('run_control_transfer', {
+  commandId: uuid('command_id').primaryKey(), runId: uuid('run_id').notNull().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  actorId: text('actor_id').notNull(), requestKey: uuid('request_key').notNull(), expectedEpoch: integer('expected_epoch').notNull(),
+  priorHolderId: text('prior_holder_id').notNull(), fingerprint: text('fingerprint').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+}, t => [uniqueIndex('run_control_transfer_request_uidx').on(t.runId, t.actorId, t.requestKey),
+  uniqueIndex('run_control_transfer_run_command_uidx').on(t.runId,t.commandId),
+  check('run_control_transfer_epoch', sql`${t.expectedEpoch} BETWEEN 1 AND 2147483646`),
+  check('run_control_transfer_fingerprint', sql`${t.fingerprint} ~ '^[a-f0-9]{64}$'`),
+  check('run_control_transfer_holder', sql`${t.actorId} <> ${t.priorHolderId}`)]);
+export const runControlTransferContent = pgTable('run_control_transfer_content', {
+  commandId: uuid('command_id').primaryKey().references(() => runControlTransfer.commandId, { onDelete: 'cascade' }),
+  ciphertext: text('ciphertext'), contentEpoch: integer('content_epoch').notNull().default(1),
+  removedAt: timestamp('removed_at', { withTimezone: true }),
+}, t => [check('run_control_transfer_content_bound', sql`${t.ciphertext} IS NULL OR (octet_length(${t.ciphertext}) <= 90000 AND ${t.ciphertext} ~ '^v1\\.[A-Za-z0-9_-]+$')`),
+  check('run_control_transfer_content_removal', sql`(${t.ciphertext} IS NULL) = (${t.removedAt} IS NOT NULL) AND ${t.contentEpoch} >= 1`)]);
+export const runControlTransferReceipt = pgTable('run_control_transfer_receipt', {
+  commandId: uuid('command_id').primaryKey().references(() => runControlTransfer.commandId, { onDelete: 'cascade' }),
+  eventId: uuid('event_id').notNull().references(() => auditEvents.eventId),
+}, t => [uniqueIndex('run_control_transfer_receipt_event_uidx').on(t.eventId)]);

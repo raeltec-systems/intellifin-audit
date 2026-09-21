@@ -1,6 +1,7 @@
 import { asc, eq, inArray, sql } from 'drizzle-orm';
 
 import type {
+  PermissionGrantReader, PermissionGrantWriter, PermissionGrantState,
   ActorNameReader,
   NotificationRecipientReader,
   ManagedUser,
@@ -19,10 +20,10 @@ export class DrizzleNotificationRecipientReader implements NotificationRecipient
     return (await this.handle.select({ id: userRole.userId }).from(userRole).where(eq(userRole.role, 'audit-manager')).orderBy(asc(userRole.userId))).map(row => row.id);
   }
 }
-import { isRole, type Role } from '@intellifin/domain';
+import { isRole, type ExplicitPermission, type Role } from '@intellifin/domain';
 
 import type { Database, Transaction } from '../db/client.js';
-import { authSession, authUser, userRole } from '../db/schema.js';
+import { authSession, authUser, userRole, userPermissionGrant } from '../db/schema.js';
 import type { Auth } from './auth.js';
 
 /**
@@ -76,6 +77,10 @@ export class DrizzleRoleWriter implements RoleWriter {
 
   findRole(userId: string): Promise<Role | null> {
     return readRole(this.transaction, userId);
+  }
+
+  async lockUser(userId: string): Promise<boolean> {
+    return (await this.transaction.select({ id: authUser.id }).from(authUser).where(eq(authUser.id, userId)).for('update')).length === 1;
   }
 
   async setRole({ userId, role, assignedBy }: RoleAssignment): Promise<void> {
@@ -188,9 +193,11 @@ export class DrizzleUserDirectory implements UserDirectory {
         email: authUser.email,
         role: userRole.role,
         createdAt: authUser.createdAt,
+        transferGranted: userPermissionGrant.granted, transferRevision: userPermissionGrant.revision,
       })
       .from(authUser)
       .leftJoin(userRole, eq(userRole.userId, authUser.id))
+      .leftJoin(userPermissionGrant, sql`${userPermissionGrant.userId}=${authUser.id} AND ${userPermissionGrant.permission}='run.control-transfer'`)
       .orderBy(asc(authUser.createdAt), asc(authUser.id))
       .limit(this.limit);
     return rows.map(toManagedUser);
@@ -204,9 +211,11 @@ export class DrizzleUserDirectory implements UserDirectory {
         email: authUser.email,
         role: userRole.role,
         createdAt: authUser.createdAt,
+        transferGranted: userPermissionGrant.granted, transferRevision: userPermissionGrant.revision,
       })
       .from(authUser)
       .leftJoin(userRole, eq(userRole.userId, authUser.id))
+      .leftJoin(userPermissionGrant, sql`${userPermissionGrant.userId}=${authUser.id} AND ${userPermissionGrant.permission}='run.control-transfer'`)
       .where(eq(authUser.id, userId))
       .limit(1);
     const row = rows[0];
@@ -220,6 +229,7 @@ function toManagedUser(row: {
   email: string;
   role: string | null;
   createdAt: Date;
+  transferGranted: boolean | null; transferRevision: number | null;
 }): ManagedUser {
   return {
     userId: row.userId,
@@ -228,6 +238,7 @@ function toManagedUser(row: {
     // Same fail-closed reading as `readRole`: an unrecognized value is no role at all.
     role: isRole(row.role) ? row.role : null,
     createdAt: row.createdAt.toISOString(),
+    runControlTransferGrant: { granted: row.transferGranted === true, revision: row.transferRevision ?? 0 },
   };
 }
 
@@ -288,4 +299,28 @@ export async function findSessionByToken(
  */
 export async function revokeSessionByToken(db: Database, token: string): Promise<void> {
   await db.delete(authSession).where(eq(authSession.token, token));
+}
+
+export class DrizzlePermissionGrantReader implements PermissionGrantReader {
+  constructor(protected readonly handle: ReadHandle) {}
+  async readGrant(userId: string, permission: ExplicitPermission): Promise<PermissionGrantState> {
+    const [row] = await this.handle.select({ granted: userPermissionGrant.granted, revision: userPermissionGrant.revision })
+      .from(userPermissionGrant).where(sql`${userPermissionGrant.userId}=${userId} AND ${userPermissionGrant.permission}=${permission}`);
+    return row ?? { granted: false, revision: 0 };
+  }
+}
+export class DrizzlePermissionGrantWriter extends DrizzlePermissionGrantReader implements PermissionGrantWriter {
+  constructor(private readonly tx: Transaction) { super(tx); }
+  async setGrant(input: { userId: string; permission: ExplicitPermission; granted: boolean; assignedBy: string }): Promise<PermissionGrantState> {
+    const prior = await this.readGrant(input.userId, input.permission);
+    if (prior.granted === input.granted) return prior;
+    const values = { ...input, revision: prior.revision + 1, updatedAt: sql`date_trunc('milliseconds',clock_timestamp())` };
+    const updated = await this.tx.update(userPermissionGrant).set(values)
+      .where(sql`${userPermissionGrant.userId}=${input.userId} AND ${userPermissionGrant.permission}=${input.permission}`)
+      .returning({ granted: userPermissionGrant.granted, revision: userPermissionGrant.revision });
+    const row = updated[0] ?? (await this.tx.insert(userPermissionGrant).values(values)
+      .returning({ granted: userPermissionGrant.granted, revision: userPermissionGrant.revision }))[0];
+    if (!row) throw new Error('Permission grant write unavailable');
+    return row;
+  }
 }

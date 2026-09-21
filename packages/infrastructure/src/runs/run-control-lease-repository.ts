@@ -1,10 +1,10 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { authorizeActionRole, type AuditEventRecord } from '@intellifin/domain';
+import { authorizeAction, authorizeActionRole, type AuditEventRecord } from '@intellifin/domain';
 import type { RunControlLeaseRepository, RunControlLeaseContext, RunControlLeaseState } from '@intellifin/application';
 import type { Database, Transaction } from '../db/client.js';
 import { auditEvents, auditRun, authUser, runControlLease } from '../db/schema.js';
 import { isUuidText } from '../db/identifier.js';
-import { DrizzleRoleRepository } from '../identity/role-repository.js';
+import { DrizzleRoleRepository, DrizzlePermissionGrantReader } from '../identity/role-repository.js';
 import { createAuditEventWriter, CryptoUuidV7Generator, SystemClock } from '../db/audit-events.js';
 import { DrizzleRunRepository } from './run-repository.js';
 
@@ -91,6 +91,8 @@ export type RunControlLeaseRead =
     readonly expiresAt: string | null;
     readonly serverTime: string;
     readonly active: boolean;
+    readonly transferEligible: boolean;
+    readonly actorName: string;
   };
 
 /** Bounded presentation read. A subsequent command must recheck everything under lock. */
@@ -102,6 +104,8 @@ export async function readRunControlLease(
   return db.transaction(async tx => {
     const role = await new DrizzleRoleRepository(tx).findRole(input.actorId);
     if (!authorizeActionRole(role, 'run.resume').allowed) return { status: 'denied' };
+    const grant = await new DrizzlePermissionGrantReader(tx).readGrant(input.actorId, 'run.control-transfer');
+    const [actor] = await tx.select({ name: authUser.name }).from(authUser).where(eq(authUser.id,input.actorId));
     const [row] = await tx.select({
       runId: auditRun.runId,
       state: auditRun.state,
@@ -119,6 +123,8 @@ export async function readRunControlLease(
     const live = row.holderId !== null && row.expiresAt !== null && row.expiresAt > now;
     return {
       status: 'ready',
+      transferEligible: authorizeAction(role, 'run.control-transfer', { explicitPermissions: grant.granted ? ['run.control-transfer'] : [] }).allowed,
+      actorName: actor?.name || 'Unavailable identity',
       runId: row.runId,
       required: row.epoch !== null || input.requiredForUnenrolledRun,
       epoch: row.epoch ?? 0,
