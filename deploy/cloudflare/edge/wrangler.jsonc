@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  "name": "intellifin-audit-edge",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-09-21",
+  "workers_dev": true,
+  "preview_urls": true,
+  "observability": {
+    "enabled": true,
+    "traces": {
+      "enabled": true
+    }
+  },
+  "vars": {
+    "UPSTREAM_ORIGIN": "https://web-production-edded.up.railway.app"
+  }
+}

@@ -4253,3 +4253,17 @@ resolve the enabled opener and assert its dialog before testing later heartbeat 
 Never infer that an asynchronously rendered Acquire control is absent from an immediate
 `count()` after reload. Keep retained renewal events and their Run deletion in one
 Run-first cleanup transaction, including closed/open wait rows.
+
+### Cloudflare parallel hosting starts at the edge (2026-09-21)
+
+Keep Railway live while Cloudflare adoption is validated. The first Cloudflare service is
+`intellifin-audit-edge`, a fixed-origin Worker that proxies only to the deployed Railway web
+origin and exposes a marker header for verification. It rewrites same-origin Origin, Referer
+and absolute redirects so authentication remains on the Cloudflare hostname. Do not add an
+arbitrary upstream parameter or copy Railway secrets into source.
+
+The current Cloudflare account does not have Containers access: its API requires the Workers
+Paid plan. The existing Node web image and the Playwright worker therefore remain on Railway
+until that capability is enabled and runtime secrets plus a reachable PostgreSQL connection
+can be transferred through protected configuration. The edge stage is reversible and does
+not change, stop or delete any Railway service.
