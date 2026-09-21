@@ -41,3 +41,9 @@ The pushed Replay candidate, 00de6c3, has five passing CI jobs and 255/258 passi
 One selected-Replay large-history read took 30,771.9 ms in the passing combined database run, versus approximately 586–656 ms in prior runs. Semantics passed; this timing remains unexplained and does not establish measured capacity. Retain and investigate it during performance acceptance.
 
 D3 authority was explicitly approved on 20 September. D2 remains required before real-data handling. This slice does not close the seven overall workspace proof gates, deliver private authentication input or authorize merge/deployment.
+
+## Fresh CI correction — shared platform history
+
+CI 35570477577 on 86f3528 passed 728/731 PostgreSQL cases; the transfer module's cleanup hook and three later platform-chain assertions failed. The worker-journey fixture still deleted its manager-grant event before deleting its synthetic account. Depending on file order, another fixture later cleared the complete platform chain and masked the hole. The earlier local 731/731 result remains real but did not establish order independence.
+
+A separate invocation of the missing-workspace journey reproduced the corruption: its test passed but subsequent platform verification returned false. Cleanup now retains that event and verifies a nonempty valid chain immediately after account removal. On the existing schema-60 test database, the same journey passed, then all 21 transfer cases and 57 administration/source/registration cases passed in explicit sequential invocations. The final platform chain was valid with 68 events. No production audit facts or hash-chain guards changed. Fresh CI must verify the correction.

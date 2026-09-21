@@ -12,7 +12,7 @@ import {
 import {
   createAuditEventWriter, DrizzleRoleWriter, DrizzlePermissionGrantWriter, DrizzleUserDirectory, PostgresRunControlTransferRepository,
   createDb, createExceptionFingerprinter, createSqlClient, CryptoUuidV7Generator, DrizzleRoleRepository,
-  PostgresAdapterExecutionRepository, PostgresAgentExecutionRepository, PostgresPopulationRepository,
+  PostgresAdapterExecutionRepository, PostgresAgentExecutionRepository, PostgresAuditChainReader, PostgresPopulationRepository,
   PostgresRunControlLeaseRepository, PostgresProceduresUnitOfWork, PostgresRunsUnitOfWork, PostgresWaitRepository, PostgresWorkspaceRepository,
   SystemClock, type Database, type Sql,
 } from '@intellifin/infrastructure';
@@ -126,9 +126,13 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
       for (const procedureId of procedures) { await sql`DELETE FROM procedure_version WHERE procedure_id=${procedureId}`; await sql`DELETE FROM procedure WHERE procedure_id=${procedureId}`; }
       for (const bindingId of bindings) await sql`DELETE FROM population_source_binding WHERE binding_id=${bindingId}`;
       await sql.begin(async tx=>{
-        await tx`DELETE FROM audit_events WHERE event_type='configuration.user-permission-changed' AND payload->>'subjectUserId'=${transferManager}`;
+        // Account cleanup cannot remove an event from the shared platform hash chain.
         await tx`DELETE FROM auth_user WHERE id IN (${author},${transferManager},${grantAdministrator})`;
       });
+      const chain = await new PostgresAuditChainReader(db).verify('platform');
+      expect(chain.valid).toBe(true);
+      if (!chain.valid) throw new Error('Journey cleanup damaged the platform audit chain');
+      expect(chain.eventCount).toBeGreaterThan(0);
     } finally { await sql.end({ timeout: 5 }); }
   });
 
