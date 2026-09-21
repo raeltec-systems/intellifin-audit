@@ -295,7 +295,7 @@ test.describe('Run Workspace through the authenticated application', () => {
       const expectedRefusal = checkingRevocation
         && message.text() === 'Failed to load resource: the server responded with a status of 403 (Forbidden)'
         && resource.startsWith(new URL(page.url()).origin + '/')
-        && ['/api/runs/events', `/api/runs/${fixture.runId}/events`].includes(new URL(resource).pathname);
+        && ['/api/runs/events', `/api/runs/${fixture.runId}/events`, `/api/runs/${fixture.runId}/control`, `/api/runs/${fixture.runId}/preview`].includes(new URL(resource).pathname);
       if (!expectedRefusal) consoleErrors.push(`${message.text()} [${resource}]`);
     });
     page.on('pageerror', (error) => consoleErrors.push(error.message));

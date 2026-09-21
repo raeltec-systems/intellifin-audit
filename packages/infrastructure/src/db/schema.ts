@@ -2246,3 +2246,21 @@ export const runControlTransferReceipt = pgTable('run_control_transfer_receipt',
   commandId: uuid('command_id').primaryKey().references(() => runControlTransfer.commandId, { onDelete: 'cascade' }),
   eventId: uuid('event_id').notNull().references(() => auditEvents.eventId),
 }, t => [uniqueIndex('run_control_transfer_receipt_event_uidx').on(t.eventId)]);
+
+/** P2 operational metadata; ephemeral preview pixels are never persisted. */
+export const runWorkspacePreview = pgTable('run_workspace_preview', {
+  runId: uuid('run_id').primaryKey().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  workspaceId: text('workspace_id').notNull(),
+  workspaceRevision: integer('workspace_revision').notNull(),
+  runtimeId: uuid('runtime_id').notNull(), privacyEpoch: integer('privacy_epoch').notNull(),
+  mode: text('mode').notNull(), sequence: integer('sequence').notNull().default(0),
+  capturedAt: timestamp('captured_at', { withTimezone: true }),
+  captureCompletedAt: timestamp('capture_completed_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, table => [
+  check('run_workspace_preview_workspace_revision_check', sql`${table.workspaceRevision} >= 0`),
+  check('run_workspace_preview_privacy_epoch_check', sql`${table.privacyEpoch} >= 0`),
+  check('run_workspace_preview_sequence_check', sql`${table.sequence} >= 0`),
+  check('run_workspace_preview_mode_check', sql`${table.mode} IN ('unavailable','public','private','closed')`),
+  check('run_workspace_preview_capture', sql`(${table.capturedAt} IS NULL AND ${table.captureCompletedAt} IS NULL) OR (${table.mode}='public' AND ${table.capturedAt} IS NOT NULL AND ${table.captureCompletedAt} IS NOT NULL AND ${table.captureCompletedAt}>=${table.capturedAt})`),
+]);

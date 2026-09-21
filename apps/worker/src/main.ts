@@ -1,9 +1,11 @@
 import { RECORDING_COPY_TIMEOUT_MS, canExecuteWithoutAuditCredentials, executeEvaluationReviewCommand, acquirePopulation, executeAgentWorkItem, raiseEscalation, executeAdapterSteps, executeAgentSteps, derivePlan, provisionWorkspace, releaseWorkspace, reconcilePlanDerivation, stopUnexecutableRun, verifySealedPackage, type PopulationJob, type WorkspaceDependencies } from '@intellifin/application';
 import { isActiveRunState } from '@intellifin/domain';
+import { randomUUID } from 'node:crypto';
+import { startWorkspacePreviewBroker } from '@intellifin/infrastructure/workspace-preview-broker';
 import { hostname } from 'node:os';
 
 import {
-  ConfigError, startRecordReviewExpiry,
+  ConfigError, PostgresWorkspacePreviewStore, startRecordReviewExpiry,
   createExceptionFingerprinter, PostgresEvaluationReviewRepository, startEvaluationReviewWorker, startEvaluationReviewRecovery,
   PostgresEvidenceReadGrantRepository, startEvidenceReadGrantWorker, startEvidenceReadGrantRecovery,
   PostgresWaitRepository, startWaitWorker, startWaitRecovery,
@@ -80,6 +82,7 @@ async function main(): Promise<void> {
   let stopPopulationRecovery: (() => Promise<void>) | undefined;
   let stopIntegritySweep: (() => Promise<void>) | undefined;
   let stopWorkspaceReaper: (() => Promise<void>) | undefined;
+  let stopPreview: (() => Promise<void>) | undefined;
   let closeBrowsers: (() => Promise<void>) | undefined;
   let shuttingDown = false;
 
@@ -101,6 +104,7 @@ async function main(): Promise<void> {
     // `solari.close()` is REQUIRED in Node and `browser.close()` is not enough: the client
     // keeps a loopback proxy server open for its connection-retry path, and that handle
     // keeps the event loop alive. A worker that closes only its browsers never exits.
+    await stopPreview?.();
     await closeBrowsers?.().catch(() => undefined);
     await queue.stop().catch(() => undefined);
     await sql.end({ timeout: 5 }).catch(() => undefined);
@@ -142,7 +146,9 @@ async function main(): Promise<void> {
   // same code path against a locally launched Chromium. What differs is the GUARANTEE, and
   // that is said once here and recorded on every workspace row.
   const provider = agentWorkspace(config);
-  const browser = new PlaywrightBrowserExecution(provider.connection);
+  const previewStore = config.WORKSPACE_PREVIEW_MODE === 'synthetic-local' ? new PostgresWorkspacePreviewStore(db) : null;
+  const browser = new PlaywrightBrowserExecution(provider.connection, previewStore ? { runtimeId: randomUUID(), store: previewStore } : undefined);
+  if (previewStore) stopPreview = await startWorkspacePreviewBroker({ port: config.WORKSPACE_PREVIEW_PORT, secret: config.WORKSPACE_PREVIEW_SECRET!, store: previewStore, frames: browser });
   closeBrowsers = () => browser.close();
   const workspace: WorkspaceDependencies = {
     repository: new PostgresWorkspaceRepository(db),

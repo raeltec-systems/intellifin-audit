@@ -17,6 +17,10 @@ const nextConfig: NextConfig = {
     '@intellifin/infrastructure',
   ],
   reactStrictMode: true,
+  // The private Codespaces manual-check port uses its own HTTPS origin.
+  ...(process.env['CODESPACE_NAME'] ? {
+    allowedDevOrigins: [`${process.env['CODESPACE_NAME']}-3103.app.github.dev`],
+  } : {}),
   // Server Action arguments can contain passwords or authored text. Framework logs
   // bypass the application telemetry sanitizer, including during local development.
   logging: { serverFunctions: false },

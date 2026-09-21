@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { WorkspacePreviewSession } from './workspace-preview-session.js';
+import { withTrackedBrowserIo } from './browser-io-tracker.js';
+import type { WorkspacePreviewIdentity, WorkspacePreviewMetadataStore, WorkspacePreviewViewer } from '@intellifin/application';
 
 import { Solari, SolariError } from '@solarisdk/browser';
 import {
@@ -379,6 +382,9 @@ interface LiveWorkspace {
   readonly browser: Browser;
   readonly context: BrowserContext;
   readonly handle: PlaywrightWorkspace;
+  preview: WorkspacePreviewSession | null;
+  previewOpening: Promise<WorkspacePreviewSession | null> | null;
+  previewFenced: boolean;
   /** The ONE page this workspace drives, made on the first Tool Action. */
   page: Page | null;
   /**
@@ -450,7 +456,8 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
   private readonly live = new Map<string, LiveWorkspace>();
   private solari: Solari | null = null;
 
-  constructor(private readonly connection: BrowserConnection) {
+  constructor(private readonly connection: BrowserConnection, private readonly previewOptions?: { readonly runtimeId: string; readonly store: WorkspacePreviewMetadataStore }) {
+    if (previewOptions && connection.mode !== 'local') throw new Error('Preview requires synthetic local mode');
     this.mode = connection.mode;
   }
 
@@ -483,6 +490,9 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
     // Compiled BEFORE anything is provisioned: a frozen allowlist this build cannot read
     // must not cost a provider session to discover.
     const allowed = egressPolicy(input.policy);
+    if (this.previewOptions && !input.policy.allowedOrigins.every(origin => {
+      try { return ['localhost', '127.0.0.1', '[::1]'].includes(new URL(origin).hostname); } catch { return false; }
+    })) throw new WorkspaceProvisionError('policy');
     const timeout = Math.max(1, Math.min(input.timeoutMs, 600_000));
 
     let browser: Browser;
@@ -583,6 +593,7 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
         browser,
         context,
         handle,
+        preview: null, previewOpening: null, previewFenced: false,
         page: null,
         lastResponse: null,
         authPost: null,
@@ -601,7 +612,7 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
     const live = this.live.get(ref.workspaceId);
     // A workspace belongs to ONE Run and to one mode. An identity that matches on the
     // string alone but names another Run is not this Run's workspace.
-    if (!live || live.ref.runId !== ref.runId || live.ref.mode !== ref.mode) return null;
+    if (!live || live.ref.runId !== ref.runId || live.ref.mode !== ref.mode || live.previewFenced) return null;
     if (!live.browser.isConnected()) {
       this.live.delete(ref.workspaceId);
       return null;
@@ -706,7 +717,99 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
    * is what distinguishes that from a network fault: it is read before and after, so a
    * refusal is reported as `scope` and never as an outage.
    */
-  async perform(
+  async perform(ref: WorkspaceRef, action: BrowserToolAction, timeoutMs: number, captureGuard?: CaptureGuard): Promise<BrowserActionResult> {
+    if (!this.previewOptions) return this.performUncoordinated(ref, action, timeoutMs, captureGuard);
+    const capture = validateCaptureRequest(action, captureGuard);
+    if (action.credential !== null && capture.length > 0) throw new BrowserActionError('contract');
+    const live = this.live.get(ref.workspaceId);
+    if (!live || live.ref.runId !== ref.runId || live.ref.mode !== ref.mode || live.previewFenced) throw new BrowserActionError('unavailable');
+    const preview = await this.ensurePreview(live);
+    if (!preview) throw new BrowserActionError('unavailable');
+    const run = async () => {
+      const expected = preview.metadata();
+      if (!(await this.previewOptions!.store.current(expected)) || !this.current(expected)) { preview.close(); throw new BrowserActionError('unavailable'); }
+      return withTrackedBrowserIo(() => this.performUncoordinated(ref, action, timeoutMs, captureGuard), () => preview.close());
+    };
+    const discard = (result: BrowserActionResult) => { for (const artifact of result.artifacts ?? []) artifact.bytes.fill(0); };
+    try {
+      if (action.credential !== null || preview.coordinator.status().mode !== 'public') {
+        if (capture.length > 0) throw new BrowserActionError('unavailable');
+        const token = await preview.enterPrivate();
+        const result = await preview.coordinator.runPrivate(token, run, discard);
+        await preview.handback(token, () => action.credential !== null && !result.session ? Promise.resolve(false) : withTrackedBrowserIo(() => this.previewPageSafe(live), () => preview.close()));
+        return result;
+      }
+      let safe = false;
+      const result = await preview.coordinator.runAction(preview.coordinator.status().fence, async () => {
+        const result = await run();
+        safe = await withTrackedBrowserIo(() => this.previewPageSafe(live), () => preview.close());
+        return result;
+      }, discard);
+      if (!safe) await preview.enterPrivate();
+      return result;
+    } catch (error) {
+      if (preview.coordinator.status().mode === 'closed' || live.previewFenced) throw new BrowserActionError('unavailable');
+      throw error;
+    }
+  }
+
+  current(identity: WorkspacePreviewIdentity): boolean {
+    const live = [...this.live.values()].find(value => value.ref.runId === identity.runId && value.preview?.identity.runtimeId === identity.runtimeId
+      && value.preview.identity.workspaceRevision === identity.workspaceRevision);
+    const status = live?.preview?.coordinator.status();
+    return !!status && !live?.previewFenced && status.mode !== 'closed' && status.fence.privacyEpoch === identity.privacyEpoch;
+  }
+
+  async read(identity: WorkspacePreviewIdentity, viewer: WorkspacePreviewViewer) {
+    const live = [...this.live.values()].find(value => value.ref.runId === identity.runId && value.preview?.identity.runtimeId === identity.runtimeId
+      && value.preview.identity.workspaceRevision === identity.workspaceRevision);
+    if (!live?.preview || live.previewFenced) return null;
+    return live.preview.read(identity, viewer);
+  }
+
+  private async ensurePreview(live: LiveWorkspace): Promise<WorkspacePreviewSession | null> {
+    if (live.preview) return live.preview;
+    if (live.previewFenced || !this.previewOptions) return null;
+    live.previewOpening ??= (async () => {
+      const options = this.previewOptions!;
+      const revision = await options.store.claim(live.ref, options.runtimeId);
+      if (revision === null || live.previewFenced) return null;
+      const preview: WorkspacePreviewSession = new WorkspacePreviewSession({ ...live.ref, workspaceRevision: revision, runtimeId: options.runtimeId }, options.store,
+        async () => {
+          // No new Page and no viewport mutation. Safe-page checks bracket the actual
+          // screenshot; a changing/login page discards its bytes before publication.
+          const page = live.page;
+          return withTrackedBrowserIo(async () => {
+            if (!page || !(await this.previewPageSafe(live))) return null;
+            const bytes = await withActionDeadline(() => page.screenshot({ type: 'jpeg', quality: 70, timeout: 2000 }), Date.now() + 2000);
+            if (live.page !== page || !(await this.previewPageSafe(live))) { bytes.fill(0); return null; }
+            return bytes;
+          }, () => preview.close());
+        }, () => {
+          if (live.previewFenced) return;
+          live.previewFenced = true; live.authPost = null;
+          void this.discardActivePage(live, live.page).catch(() => {});
+        });
+      live.preview = preview;
+      return preview;
+    })();
+    return live.previewOpening;
+  }
+
+  private async previewPageSafe(live: LiveWorkspace): Promise<boolean> {
+    const page = live.page;
+    if (!page || page.isClosed() || !live.browser.isConnected() || live.authPost !== null || !live.allowed(page.url())) return false;
+    try {
+      // Fixed platform projection: no DOM, labels, values or target errors cross out.
+      const safe = await withActionDeadline(() => page.evaluate(`(() => {
+        const credential = document.querySelector('input[type="password"],input[autocomplete="one-time-code"],input[autocomplete="current-password"],input[autocomplete="new-password"]');
+        return credential === null && document.readyState !== 'loading';
+      })()`), Date.now() + 1000);
+      return safe === true && live.page === page && !page.isClosed();
+    } catch { return false; }
+  }
+
+  private async performUncoordinated(
     ref: WorkspaceRef,
     action: BrowserToolAction,
     timeoutMs: number,
@@ -1003,6 +1106,7 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
     // A page being discarded can no longer complete an armed form submission. Revoke the
     // exception before any close attempt, so a late provider request cannot use it.
     live.authPost = null;
+    if (live.preview) { live.previewFenced = true; live.preview.close(); }
     const active = page ?? live.page;
     if (active === null) return;
     // Make reuse impossible before asking Playwright to close anything. The workspace stays
@@ -1063,6 +1167,7 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
     context: BrowserContext | null,
     timeoutMs: number = CLOSE_TIMEOUT_MS,
   ): Promise<void> {
+    this.live.get(workspaceId)?.preview?.close();
     this.live.delete(workspaceId);
     if (context) await withTimeout(context.close(), timeoutMs);
     await withTimeout(browser.close(), timeoutMs);

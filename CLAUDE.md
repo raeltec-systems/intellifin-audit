@@ -4210,3 +4210,46 @@ For the full root-test TypeScript graph, run the compiler alone with a 2 GB Node
 on the 8 GB Codespace; 768 MB exhausts V8 before diagnostics complete. After a Codespace
 restart, recreate any ignored cache symlink target under `/tmp` before starting Next.
 Temporary directories and running container state do not survive with repository files.
+
+### Synthetic preview ownership and browser deadlines (PR 51 P2)
+
+A settled `withActionDeadline` race is not proof that Playwright I/O stopped. The
+preview-enabled LiveWorkspace tracks the actual promises through async context; if
+any remain pending on return, it permanently fences and disposes that workspace
+before admitting another action or private input. The same coordinator owns
+registered captures and preview sampling. Stored sign-in invalidates the local
+buffer/epoch before persisting the private fence, then drains actual work before
+credential dispatch. A failed authentication or safe-page check does not hand back.
+
+P2 initially supports only explicit `WORKSPACE_PREVIEW_MODE=synthetic-local` in a
+non-production environment, with web and one worker on the same loopback host.
+Both use the same `WORKSPACE_PREVIEW_SECRET` (minimum 32 characters) and
+`WORKSPACE_PREVIEW_PORT` (default 4311). There is no remote worker routing, TLS
+listener, provider enablement, or real-data authorization. Metadata generation
+0061 must follow manager generation0060; do not apply the draft outside the normal
+migration/journal/snapshot sequence. A missing/expired in-memory runtime cannot
+reclaim the same workspace revision; a new provisioned revision is required.
+
+
+### Preview ownership follows the workspace identity, not provisioning CAS (2026-09-21)
+
+`run_workspace.revision` advances twice on every legitimate reattachment. It is a
+checkpoint CAS, not a browser incarnation. Bind preview to the stored local workspace
+ID and runtime; retain its first claim revision as the public generation. Keep an
+unchanged owner alive during `PROVISIONING`, but withhold viewer delivery until OPEN.
+A changed workspace ID must have a higher claim generation. The same ID cannot
+reclaim an expired runtime, even after its provisioning revision advances. A fenced
+Page must also refuse browser attachment so existing recovery can replace it.
+
+Keep a fresh displayed preview while decoding and reauthorizing its replacement;
+clearing at every poll produces blank intervals. Private/refused/expired/hidden states
+withdraw both displayed and pending object URLs. Browser assertions must not print
+session cookie values: compare session distinction as a boolean. A new Playwright
+context can inherit configured storageState; explicitly empty it for independent login.
+
+An aria-disabled Resume opener remains focusable and ignores clicks. Acquisition can
+trigger another ownership read after its success text appears, so browser proofs must
+resolve the enabled opener and assert its dialog before testing later heartbeat events.
+Never infer that an asynchronously rendered Acquire control is absent from an immediate
+`count()` after reload. Keep retained renewal events and their Run deletion in one
+Run-first cleanup transaction, including closed/open wait rows.

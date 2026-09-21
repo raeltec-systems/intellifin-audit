@@ -428,6 +428,13 @@
       "when": 1789938437116,
       "tag": "0060_same_yellow_claw",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1789979791452,
+      "tag": "0061_hesitant_gertrude_yorkes",
+      "breakpoints": true
     }
   ]
 }

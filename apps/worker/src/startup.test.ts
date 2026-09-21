@@ -408,7 +408,9 @@ describe('agentWorkspace', () => {
   it('is composed by the worker, reaped on a sweep, and closed on shutdown', () => {
     const main = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
     expect(main).toContain('const provider = agentWorkspace(config);');
-    expect(main).toContain('new PlaywrightBrowserExecution(provider.connection)');
+    expect(main).toContain('new PlaywrightBrowserExecution(provider.connection, previewStore ?');
+    expect(main).toContain("config.WORKSPACE_PREVIEW_MODE === 'synthetic-local'");
+    expect(main.indexOf('await stopPreview?.()')).toBeLessThan(main.indexOf('await closeBrowsers?.()'));
     expect(main).toContain('startWorkspaceReaper(');
     // Provisioning runs BEFORE population acquisition: `create-workspace` is the frozen
     // plan's first Session Step for an agent Run.

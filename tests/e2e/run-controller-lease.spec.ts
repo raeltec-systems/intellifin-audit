@@ -346,7 +346,11 @@ test.describe('durable Run controller lease', () => {
       }
       await route.continue();
     });
-    await page.getByRole('button', { name: 'Resume', exact: true }).click();
+    // Acquisition can trigger a live refresh between the controller message and
+    // activation. Resolve only the currently enabled opener; aria-disabled is
+    // intentionally focusable and a plain click on it is a no-op.
+    await page.getByRole('button', { name: 'Resume', exact: true })
+      .and(page.locator(':not([aria-disabled="true"])')).click();
     const dialog = page.getByRole('dialog', { name: 'Resume this Run?', exact: true });
     await expect(dialog).toBeVisible();
     try {
@@ -452,7 +456,11 @@ test.describe('durable Run controller lease', () => {
     const controller = page.getByRole('region', { name: 'Run controller', exact: true });
     await controller.getByRole('button', { name: 'Acquire control', exact: true }).click();
     await expect(controller).toContainText('You control this Run.');
-    await page.getByRole('button', { name: 'Resume', exact: true }).click();
+    // Acquisition can trigger a live refresh between the controller message and
+    // activation. Resolve only the currently enabled opener; aria-disabled is
+    // intentionally focusable and a plain click on it is a no-op.
+    await page.getByRole('button', { name: 'Resume', exact: true })
+      .and(page.locator(':not([aria-disabled="true"])')).click();
     await expect(page.getByRole('dialog', { name: 'Resume this Run?' })).toBeVisible();
     let readCount = 0;
     let releaseOld!: () => void;

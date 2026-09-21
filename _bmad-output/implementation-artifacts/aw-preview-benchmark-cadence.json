@@ -1,0 +1,481 @@
+{
+  "scope": "Compiled production browser adapter/broker and actual web route; no agent worker subprocess or provider/model",
+  "benchmark": "15 seconds, changing loopback page, two independent authenticated sessions, existing agent viewport",
+  "windowMs": 15113,
+  "runId": "01a0c2cc-3023-7206-9603-87aca4c0825b",
+  "workspaceId": "c89d440c-28b9-4c40-8954-38fc9b05dcd6",
+  "runtimeId": "b2a1b4d2-1f01-4563-81b0-21f4b8afd14f",
+  "agentPageCount": 1,
+  "agentViewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "newPageEvents": 0,
+  "viewportMutations": 0,
+  "uniqueDeliveredSamples": 25,
+  "captureIntervalMs": {
+    "count": 24,
+    "p50": 601,
+    "p95": 605,
+    "max": 611
+  },
+  "captureDurationMs": {
+    "count": 25,
+    "p50": 77,
+    "p95": 247,
+    "max": 331
+  },
+  "actualScreenshotDurationMs": {
+    "count": 25,
+    "p50": 65,
+    "p95": 207,
+    "max": 269
+  },
+  "displayed": [
+    {
+      "uniqueSequences": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27
+      ],
+      "changingPixelDigests": 22,
+      "observations": [
+        {
+          "sequence": 3,
+          "digest": "91e5eea2a9bb2e32a4b1ec317afba9f41cecf612554d58edda272d01f63b7402",
+          "capturedAt": 1789974574400,
+          "captureCompletedAt": 1789974574519,
+          "receivedAt": 1789974574842,
+          "displayedAt": 1789974574898.3
+        },
+        {
+          "sequence": 4,
+          "digest": "592067dea90246e839ac1e3156b2440329b6b81233617e102043152a025845f3",
+          "capturedAt": 1789974574969,
+          "captureCompletedAt": 1789974575038,
+          "receivedAt": 1789974575346,
+          "displayedAt": 1789974575419.6
+        },
+        {
+          "sequence": 5,
+          "digest": "b2d8fc5d304df9af2f568c75cca11ce5788c67266c8d7285305239c907760114",
+          "capturedAt": 1789974575569,
+          "captureCompletedAt": 1789974575607,
+          "receivedAt": 1789974575872,
+          "displayedAt": 1789974575957.5
+        },
+        {
+          "sequence": 6,
+          "digest": "c4fcbc969d33f2df648ad3e4cdb37f466b608a48de83542c69ad5d40dbda03a4",
+          "capturedAt": 1789974576170,
+          "captureCompletedAt": 1789974576254,
+          "receivedAt": 1789974576864,
+          "displayedAt": 1789974576421.2
+        },
+        {
+          "sequence": 7,
+          "digest": "a35289c72d5a0ead4886f78bf07a63c44594a67a8a14a249d5c3275c279f37c9",
+          "capturedAt": 1789974576775,
+          "captureCompletedAt": 1789974576877,
+          "receivedAt": 1789974577362,
+          "displayedAt": 1789974577496.6
+        },
+        {
+          "sequence": 8,
+          "digest": "3ce3394786374755f35e2df0715174d640da4ae509c9c9f39db322803c1661eb",
+          "capturedAt": 1789974577379,
+          "captureCompletedAt": 1789974577520,
+          "receivedAt": 1789974577894,
+          "displayedAt": 1789974577964.5
+        },
+        {
+          "sequence": 9,
+          "digest": "83944b4238bc5132d61d4865a1c53ffc34a4e20a09a9afc757e2ead55c71f8c4",
+          "capturedAt": 1789974577982,
+          "captureCompletedAt": 1789974578229,
+          "receivedAt": 1789974578391,
+          "displayedAt": 1789974578442.3
+        },
+        {
+          "sequence": 10,
+          "digest": "aa5d6aa63e4dda8e36e8d0405618c27884c226fe8d4305f5571bb695e3b83cf0",
+          "capturedAt": 1789974578573,
+          "captureCompletedAt": 1789974578615,
+          "receivedAt": 1789974578876,
+          "displayedAt": 1789974579038.9
+        },
+        {
+          "sequence": 12,
+          "digest": "a9e5309d8fc67129d6b4cae2e8d8d25b3ebd4eb764efaac64dcafd9be0417851",
+          "capturedAt": 1789974579784,
+          "captureCompletedAt": 1789974579876,
+          "receivedAt": 1789974580018,
+          "displayedAt": 1789974580077
+        },
+        {
+          "sequence": 13,
+          "digest": "6a2b278dbc4d41dc7e3a72d9cc3d4a5cd49db0c22b3b65d4941609e24b12c182",
+          "capturedAt": 1789974580380,
+          "captureCompletedAt": 1789974580440,
+          "receivedAt": 1789974581078,
+          "displayedAt": 1789974580655.4
+        },
+        {
+          "sequence": 14,
+          "digest": "fb4b9a7143d7153e052ccfc656741b4701286f1fee6a253bfe27a610e9eb7a90",
+          "capturedAt": 1789974580985,
+          "captureCompletedAt": 1789974581087,
+          "receivedAt": 1789974581500,
+          "displayedAt": 1789974581580
+        },
+        {
+          "sequence": 15,
+          "digest": "8f70fa55a652e121c8cefcf770d8a08cd3209ba654a4cb6dce635039571a1247",
+          "capturedAt": 1789974581577,
+          "captureCompletedAt": 1789974581643,
+          "receivedAt": 1789974582013,
+          "displayedAt": 1789974582070.5
+        },
+        {
+          "sequence": 16,
+          "digest": "d728a0f29edf7edef5b9ab7c657d134a32a7637111103d1a54ca920d85f47bfc",
+          "capturedAt": 1789974582175,
+          "captureCompletedAt": 1789974582252,
+          "receivedAt": 1789974582504,
+          "displayedAt": 1789974582566.2
+        },
+        {
+          "sequence": 17,
+          "digest": "826842c02fd12bcaff26d3e6d735d62aa0153ece60b5f5bdc40ae93281eb3e10",
+          "capturedAt": 1789974582778,
+          "captureCompletedAt": 1789974582835,
+          "receivedAt": 1789974582979,
+          "displayedAt": 1789974583026
+        },
+        {
+          "sequence": 18,
+          "digest": "cb9b0a95b24bfc95dd8cfcf4639c712b1b0321edace69f63f67979f616124e3c",
+          "capturedAt": 1789974583381,
+          "captureCompletedAt": 1789974583435,
+          "receivedAt": 1789974584005,
+          "displayedAt": 1789974583565.9
+        },
+        {
+          "sequence": 21,
+          "digest": "f3ea64d204d9d5e4e5c3448487fa15995d7ce9b29f1cee42f48491d04446d97c",
+          "capturedAt": 1789974585183,
+          "captureCompletedAt": 1789974585284,
+          "receivedAt": 1789974585579,
+          "displayedAt": 1789974585617.6
+        },
+        {
+          "sequence": 22,
+          "digest": "561f1697026a1c5caa71925067c7e206874bb3bf6ad24e8c4821b19e031f7bb7",
+          "capturedAt": 1789974585788,
+          "captureCompletedAt": 1789974585851,
+          "receivedAt": 1789974586095,
+          "displayedAt": 1789974586199.5
+        },
+        {
+          "sequence": 23,
+          "digest": "3e9ce5ae254db300ff89b1b3582fcb005dec9301231a2cdd12262264fc20aea8",
+          "capturedAt": 1789974586385,
+          "captureCompletedAt": 1789974586432,
+          "receivedAt": 1789974586570,
+          "displayedAt": 1789974586615
+        },
+        {
+          "sequence": 24,
+          "digest": "0e8a34c8f699e87e8bc2a36f6f8087d94a3918f6e9e1272f13a86a060c732081",
+          "capturedAt": 1789974586985,
+          "captureCompletedAt": 1789974587057,
+          "receivedAt": 1789974587550,
+          "displayedAt": 1789974587594.4
+        },
+        {
+          "sequence": 25,
+          "digest": "7677ba75fc2753e27a172948fd542332327f2ec7db6e2a0188eb5d902e08eb57",
+          "capturedAt": 1789974587580,
+          "captureCompletedAt": 1789974587617,
+          "receivedAt": 1789974588071,
+          "displayedAt": 1789974588117.9
+        },
+        {
+          "sequence": 26,
+          "digest": "3c2de449b28a2b30df170623a0af1f1bf676a56a32026af9a4c60a56a640c86d",
+          "capturedAt": 1789974588182,
+          "captureCompletedAt": 1789974588244,
+          "receivedAt": 1789974588582,
+          "displayedAt": 1789974588674.8
+        },
+        {
+          "sequence": 27,
+          "digest": "cc891f482ec0d502660678a5822531545d861d2046fede49c15defae21e1f11d",
+          "capturedAt": 1789974588785,
+          "captureCompletedAt": 1789974588936,
+          "receivedAt": 1789974589118,
+          "displayedAt": 1789974589205.8
+        }
+      ],
+      "measuredFramesPerSecond": 1.4677616634632187,
+      "captureToDisplayMs": {
+        "count": 22,
+        "p50": 434.60009765625,
+        "p95": 609.39990234375,
+        "max": 721.60009765625
+      },
+      "sampleAgeAtDeliveryMs": {
+        "count": 22,
+        "p50": 400,
+        "p95": 694,
+        "max": 698
+      }
+    },
+    {
+      "uniqueSequences": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26
+      ],
+      "changingPixelDigests": 23,
+      "observations": [
+        {
+          "sequence": 3,
+          "digest": "91e5eea2a9bb2e32a4b1ec317afba9f41cecf612554d58edda272d01f63b7402",
+          "capturedAt": 1789974574400,
+          "captureCompletedAt": 1789974574519,
+          "receivedAt": 1789974574736,
+          "displayedAt": 1789974574843
+        },
+        {
+          "sequence": 4,
+          "digest": "592067dea90246e839ac1e3156b2440329b6b81233617e102043152a025845f3",
+          "capturedAt": 1789974574969,
+          "captureCompletedAt": 1789974575038,
+          "receivedAt": 1789974575270,
+          "displayedAt": 1789974575366.6
+        },
+        {
+          "sequence": 5,
+          "digest": "b2d8fc5d304df9af2f568c75cca11ce5788c67266c8d7285305239c907760114",
+          "capturedAt": 1789974575569,
+          "captureCompletedAt": 1789974575607,
+          "receivedAt": 1789974576271,
+          "displayedAt": 1789974575895.2002
+        },
+        {
+          "sequence": 6,
+          "digest": "c4fcbc969d33f2df648ad3e4cdb37f466b608a48de83542c69ad5d40dbda03a4",
+          "capturedAt": 1789974576170,
+          "captureCompletedAt": 1789974576254,
+          "receivedAt": 1789974576739,
+          "displayedAt": 1789974576870.8
+        },
+        {
+          "sequence": 7,
+          "digest": "a35289c72d5a0ead4886f78bf07a63c44594a67a8a14a249d5c3275c279f37c9",
+          "capturedAt": 1789974576775,
+          "captureCompletedAt": 1789974576877,
+          "receivedAt": 1789974577235,
+          "displayedAt": 1789974577363.1
+        },
+        {
+          "sequence": 8,
+          "digest": "3ce3394786374755f35e2df0715174d640da4ae509c9c9f39db322803c1661eb",
+          "capturedAt": 1789974577379,
+          "captureCompletedAt": 1789974577520,
+          "receivedAt": 1789974577793,
+          "displayedAt": 1789974577887.1
+        },
+        {
+          "sequence": 9,
+          "digest": "83944b4238bc5132d61d4865a1c53ffc34a4e20a09a9afc757e2ead55c71f8c4",
+          "capturedAt": 1789974577982,
+          "captureCompletedAt": 1789974578229,
+          "receivedAt": 1789974578359,
+          "displayedAt": 1789974578439.5
+        },
+        {
+          "sequence": 10,
+          "digest": "aa5d6aa63e4dda8e36e8d0405618c27884c226fe8d4305f5571bb695e3b83cf0",
+          "capturedAt": 1789974578573,
+          "captureCompletedAt": 1789974578615,
+          "receivedAt": 1789974579244,
+          "displayedAt": 1789974578882.3
+        },
+        {
+          "sequence": 12,
+          "digest": "a9e5309d8fc67129d6b4cae2e8d8d25b3ebd4eb764efaac64dcafd9be0417851",
+          "capturedAt": 1789974579784,
+          "captureCompletedAt": 1789974579876,
+          "receivedAt": 1789974580263,
+          "displayedAt": 1789974580344.5
+        },
+        {
+          "sequence": 13,
+          "digest": "6a2b278dbc4d41dc7e3a72d9cc3d4a5cd49db0c22b3b65d4941609e24b12c182",
+          "capturedAt": 1789974580380,
+          "captureCompletedAt": 1789974580440,
+          "receivedAt": 1789974580752,
+          "displayedAt": 1789974580886.7002
+        },
+        {
+          "sequence": 14,
+          "digest": "fb4b9a7143d7153e052ccfc656741b4701286f1fee6a253bfe27a610e9eb7a90",
+          "capturedAt": 1789974580985,
+          "captureCompletedAt": 1789974581087,
+          "receivedAt": 1789974581222,
+          "displayedAt": 1789974581289.2002
+        },
+        {
+          "sequence": 15,
+          "digest": "8f70fa55a652e121c8cefcf770d8a08cd3209ba654a4cb6dce635039571a1247",
+          "capturedAt": 1789974581577,
+          "captureCompletedAt": 1789974581643,
+          "receivedAt": 1789974581744,
+          "displayedAt": 1789974581788.9001
+        },
+        {
+          "sequence": 16,
+          "digest": "d728a0f29edf7edef5b9ab7c657d134a32a7637111103d1a54ca920d85f47bfc",
+          "capturedAt": 1789974582175,
+          "captureCompletedAt": 1789974582252,
+          "receivedAt": 1789974582730,
+          "displayedAt": 1789974582807.9001
+        },
+        {
+          "sequence": 17,
+          "digest": "826842c02fd12bcaff26d3e6d735d62aa0153ece60b5f5bdc40ae93281eb3e10",
+          "capturedAt": 1789974582778,
+          "captureCompletedAt": 1789974582835,
+          "receivedAt": 1789974583227,
+          "displayedAt": 1789974583277.8
+        },
+        {
+          "sequence": 18,
+          "digest": "cb9b0a95b24bfc95dd8cfcf4639c712b1b0321edace69f63f67979f616124e3c",
+          "capturedAt": 1789974583381,
+          "captureCompletedAt": 1789974583435,
+          "receivedAt": 1789974583766,
+          "displayedAt": 1789974583828.5
+        },
+        {
+          "sequence": 19,
+          "digest": "3002ca175ca92cfedd13ae2998ad7c247b23fadc36377a4e024b822cdc929ebf",
+          "capturedAt": 1789974583982,
+          "captureCompletedAt": 1789974584067,
+          "receivedAt": 1789974584287,
+          "displayedAt": 1789974584374
+        },
+        {
+          "sequence": 20,
+          "digest": "fbc8ff84486e9c538600fe9f9d9f3624bc2bf127df82d586201fc3776a9e04af",
+          "capturedAt": 1789974584585,
+          "captureCompletedAt": 1789974584916,
+          "receivedAt": 1789974585043,
+          "displayedAt": 1789974585239.7002
+        },
+        {
+          "sequence": 21,
+          "digest": "f3ea64d204d9d5e4e5c3448487fa15995d7ce9b29f1cee42f48491d04446d97c",
+          "capturedAt": 1789974585183,
+          "captureCompletedAt": 1789974585284,
+          "receivedAt": 1789974585831,
+          "displayedAt": 1789974585485.1
+        },
+        {
+          "sequence": 22,
+          "digest": "561f1697026a1c5caa71925067c7e206874bb3bf6ad24e8c4821b19e031f7bb7",
+          "capturedAt": 1789974585788,
+          "captureCompletedAt": 1789974585851,
+          "receivedAt": 1789974586332,
+          "displayedAt": 1789974586386.5
+        },
+        {
+          "sequence": 23,
+          "digest": "3e9ce5ae254db300ff89b1b3582fcb005dec9301231a2cdd12262264fc20aea8",
+          "capturedAt": 1789974586385,
+          "captureCompletedAt": 1789974586432,
+          "receivedAt": 1789974586813,
+          "displayedAt": 1789974586875.5
+        },
+        {
+          "sequence": 24,
+          "digest": "0e8a34c8f699e87e8bc2a36f6f8087d94a3918f6e9e1272f13a86a060c732081",
+          "capturedAt": 1789974586985,
+          "captureCompletedAt": 1789974587057,
+          "receivedAt": 1789974587320,
+          "displayedAt": 1789974587383.5
+        },
+        {
+          "sequence": 25,
+          "digest": "7677ba75fc2753e27a172948fd542332327f2ec7db6e2a0188eb5d902e08eb57",
+          "capturedAt": 1789974587580,
+          "captureCompletedAt": 1789974587617,
+          "receivedAt": 1789974587824,
+          "displayedAt": 1789974587878.8
+        },
+        {
+          "sequence": 26,
+          "digest": "3c2de449b28a2b30df170623a0af1f1bf676a56a32026af9a4c60a56a640c86d",
+          "capturedAt": 1789974588182,
+          "captureCompletedAt": 1789974588244,
+          "receivedAt": 1789974588878,
+          "displayedAt": 1789974588358.4001
+        }
+      ],
+      "measuredFramesPerSecond": 1.6277727452799566,
+      "captureToDisplayMs": {
+        "count": 23,
+        "p50": 447.5,
+        "p95": 654.7001953125,
+        "max": 700.800048828125
+      },
+      "sampleAgeAtDeliveryMs": {
+        "count": 23,
+        "p50": 428,
+        "p95": 696,
+        "max": 702
+      }
+    }
+  ]
+}

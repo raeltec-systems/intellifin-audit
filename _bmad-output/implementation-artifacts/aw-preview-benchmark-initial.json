@@ -1,0 +1,220 @@
+{
+  "scope": "Compiled production browser adapter/broker and actual web route; no agent worker subprocess or provider/model",
+  "benchmark": "15 seconds, changing loopback page, two independent authenticated sessions, existing agent viewport",
+  "windowMs": 15065,
+  "runId": "01a0c2c6-f3e6-7d80-980e-3aba23329311",
+  "workspaceId": "3eb3a723-0e42-468a-a68e-5c3a0bb11d15",
+  "runtimeId": "67a5fcdf-6f54-48e3-bcdd-c71dc9f11fb4",
+  "agentPageCount": 1,
+  "agentViewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "newPageEvents": 0,
+  "viewportMutations": 0,
+  "uniqueDeliveredSamples": 8,
+  "captureIntervalMs": {
+    "count": 7,
+    "p50": 1991,
+    "p95": 2014,
+    "max": 2014
+  },
+  "captureDurationMs": {
+    "count": 8,
+    "p50": 49,
+    "p95": 171,
+    "max": 171
+  },
+  "actualScreenshotDurationMs": {
+    "count": 8,
+    "p50": 40,
+    "p95": 144,
+    "max": 144
+  },
+  "displayed": [
+    {
+      "uniqueSequences": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "changingPixelDigests": 8,
+      "observations": [
+        {
+          "sequence": 2,
+          "digest": "d417e8505273c075826aa9ba61bc21e90a24ba554a3535117af2560de48b72d4",
+          "capturedAt": 1789974224877,
+          "captureCompletedAt": 1789974225048,
+          "receivedAt": 1789974225784,
+          "displayedAt": 1789974225992.3
+        },
+        {
+          "sequence": 3,
+          "digest": "0b57213254887409947c33ff4a3353311dd4b7e0b149cb1466166d9bf6be1bc8",
+          "capturedAt": 1789974226848,
+          "captureCompletedAt": 1789974226888,
+          "receivedAt": 1789974228713,
+          "displayedAt": 1789974228809.8
+        },
+        {
+          "sequence": 4,
+          "digest": "8a3f566bae3e6585d8f2bdec88b01c2d538ce72b8c6c3275f67d9d44f31a77b3",
+          "capturedAt": 1789974228852,
+          "captureCompletedAt": 1789974228903,
+          "receivedAt": 1789974230691,
+          "displayedAt": 1789974230749.1
+        },
+        {
+          "sequence": 5,
+          "digest": "27ac00c683a646f26fa6033908a435e9339dcc0e97813d50ee3ff9e502158b67",
+          "capturedAt": 1789974230843,
+          "captureCompletedAt": 1789974230892,
+          "receivedAt": 1789974231701,
+          "displayedAt": 1789974231799.2
+        },
+        {
+          "sequence": 6,
+          "digest": "5cd18f00888996125b223bd2e841ed0c844d0eb53b402a8bad9db34a0e9f5200",
+          "capturedAt": 1789974231857,
+          "captureCompletedAt": 1789974231908,
+          "receivedAt": 1789974233627,
+          "displayedAt": 1789974233710.6
+        },
+        {
+          "sequence": 7,
+          "digest": "8edc32988a4451e7fc29b54f4978b1f54b29d3b35f31eb4bf138f33d0f4ddaa8",
+          "capturedAt": 1789974233845,
+          "captureCompletedAt": 1789974233890,
+          "receivedAt": 1789974235624,
+          "displayedAt": 1789974235683
+        },
+        {
+          "sequence": 8,
+          "digest": "c76b66f5b206e27a1b09610cf730d74aea673935eeaf8d8ee90d0ec8f58dd59e",
+          "capturedAt": 1789974235851,
+          "captureCompletedAt": 1789974235910,
+          "receivedAt": 1789974237633,
+          "displayedAt": 1789974237689.4
+        },
+        {
+          "sequence": 9,
+          "digest": "fcf6a706eeca563431d2418969c86422ef8f9629ed2fbce2975ab4fb7ac10b2a",
+          "capturedAt": 1789974237865,
+          "captureCompletedAt": 1789974237892,
+          "receivedAt": 1789974239623,
+          "displayedAt": 1789974239695
+        }
+      ],
+      "measuredFramesPerSecond": 0.5108482288121144,
+      "captureToDisplayMs": {
+        "count": 8,
+        "p50": 1838,
+        "p95": 1961.800048828125,
+        "max": 1961.800048828125
+      },
+      "sampleAgeAtDeliveryMs": {
+        "count": 8,
+        "p50": 1770,
+        "p95": 1865,
+        "max": 1865
+      }
+    },
+    {
+      "uniqueSequences": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "changingPixelDigests": 8,
+      "observations": [
+        {
+          "sequence": 2,
+          "digest": "d417e8505273c075826aa9ba61bc21e90a24ba554a3535117af2560de48b72d4",
+          "capturedAt": 1789974224877,
+          "captureCompletedAt": 1789974225048,
+          "receivedAt": 1789974226191,
+          "displayedAt": 1789974226368.7
+        },
+        {
+          "sequence": 3,
+          "digest": "0b57213254887409947c33ff4a3353311dd4b7e0b149cb1466166d9bf6be1bc8",
+          "capturedAt": 1789974226848,
+          "captureCompletedAt": 1789974226888,
+          "receivedAt": 1789974228115,
+          "displayedAt": 1789974228177.3
+        },
+        {
+          "sequence": 4,
+          "digest": "8a3f566bae3e6585d8f2bdec88b01c2d538ce72b8c6c3275f67d9d44f31a77b3",
+          "capturedAt": 1789974228852,
+          "captureCompletedAt": 1789974228903,
+          "receivedAt": 1789974230130,
+          "displayedAt": 1789974230194.4
+        },
+        {
+          "sequence": 5,
+          "digest": "27ac00c683a646f26fa6033908a435e9339dcc0e97813d50ee3ff9e502158b67",
+          "capturedAt": 1789974230843,
+          "captureCompletedAt": 1789974230892,
+          "receivedAt": 1789974231114,
+          "displayedAt": 1789974231158.0999
+        },
+        {
+          "sequence": 6,
+          "digest": "5cd18f00888996125b223bd2e841ed0c844d0eb53b402a8bad9db34a0e9f5200",
+          "capturedAt": 1789974231857,
+          "captureCompletedAt": 1789974231908,
+          "receivedAt": 1789974233170,
+          "displayedAt": 1789974233219.3
+        },
+        {
+          "sequence": 7,
+          "digest": "8edc32988a4451e7fc29b54f4978b1f54b29d3b35f31eb4bf138f33d0f4ddaa8",
+          "capturedAt": 1789974233845,
+          "captureCompletedAt": 1789974233890,
+          "receivedAt": 1789974235100,
+          "displayedAt": 1789974235172.5
+        },
+        {
+          "sequence": 8,
+          "digest": "c76b66f5b206e27a1b09610cf730d74aea673935eeaf8d8ee90d0ec8f58dd59e",
+          "capturedAt": 1789974235851,
+          "captureCompletedAt": 1789974235910,
+          "receivedAt": 1789974237124,
+          "displayedAt": 1789974237211.2
+        },
+        {
+          "sequence": 9,
+          "digest": "fcf6a706eeca563431d2418969c86422ef8f9629ed2fbce2975ab4fb7ac10b2a",
+          "capturedAt": 1789974237865,
+          "captureCompletedAt": 1789974237892,
+          "receivedAt": 1789974239130,
+          "displayedAt": 1789974239183.4
+        }
+      ],
+      "measuredFramesPerSecond": 0.5462476707743645,
+      "captureToDisplayMs": {
+        "count": 8,
+        "p50": 1329.300048828125,
+        "p95": 1491.699951171875,
+        "max": 1491.699951171875
+      },
+      "sampleAgeAtDeliveryMs": {
+        "count": 8,
+        "p50": 1267,
+        "p95": 1314,
+        "max": 1314
+      }
+    }
+  ]
+}

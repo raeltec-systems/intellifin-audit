@@ -63,21 +63,24 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   if (!sql) return;
   try {
-    for (const runId of runs) {
-      await sql`DELETE FROM pgboss.job WHERE data->>'runId'=${runId}`;
-      await sql`DELETE FROM notification WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_wait WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_result WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_session_step WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_agent_execution WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_execution WHERE run_id=${runId}`;
-      await sql`DELETE FROM population_execution WHERE run_id=${runId}`;
-      await sql`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
-      await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
-      await sql`DELETE FROM run_initiation_request WHERE run_id=${runId} OR refused_run_id=${runId}`;
-    }
-    await sql`DELETE FROM audit_run WHERE procedure_id=${procedureId}`;
+    for (const runId of runs) await sql.begin(async tx => {
+      // Retained command/renewal facts and their Run leave together. Lock the Run
+      // first so late controller reads cannot invert cleanup lock ordering.
+      await tx`SELECT run_id FROM audit_run WHERE run_id=${runId} FOR UPDATE`;
+      await tx`DELETE FROM pgboss.job WHERE data->>'runId'=${runId}`;
+      await tx`DELETE FROM notification WHERE run_id=${runId}`;
+      await tx`DELETE FROM run_wait WHERE run_id=${runId}`;
+      await tx`DELETE FROM run_result WHERE run_id=${runId}`;
+      await tx`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
+      await tx`DELETE FROM run_session_step WHERE run_id=${runId}`;
+      await tx`DELETE FROM run_agent_execution WHERE run_id=${runId}`;
+      await tx`DELETE FROM run_execution WHERE run_id=${runId}`;
+      await tx`DELETE FROM population_execution WHERE run_id=${runId}`;
+      await tx`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
+      await tx`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
+      await tx`DELETE FROM run_initiation_request WHERE run_id=${runId} OR refused_run_id=${runId}`;
+      await tx`DELETE FROM audit_run WHERE run_id=${runId}`;
+    });
     await sql`DELETE FROM procedure_version WHERE procedure_id=${procedureId}`;
     await sql`DELETE FROM procedure WHERE procedure_id=${procedureId}`;
   } finally {
@@ -176,7 +179,11 @@ test.describe('pausing and resuming a Run', () => {
     await expect(page.getByRole('button', { name: 'Acquire control', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
     await page.getByRole('button', { name: 'Acquire control', exact: true }).click();
     await expect(page.getByText('You control this Run.', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Resume', exact: true }).click();
+    // Acquisition can trigger a live refresh between the controller message and
+    // activation. Resolve only the currently enabled opener; aria-disabled is
+    // intentionally focusable and a plain click on it is a no-op.
+    await page.getByRole('button', { name: 'Resume', exact: true })
+      .and(page.locator(':not([aria-disabled="true"])')).click();
     await page.getByRole('dialog', { name: 'Resume this Run?', exact: true }).getByRole('button', { name: 'Resume Run', exact: true }).click();
     await expect(page.getByText(PAUSE_COPY.resumed, { exact: true })).toBeVisible();
 

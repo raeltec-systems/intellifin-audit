@@ -15,6 +15,7 @@ import { RunPauseControls } from '../../../../src/runs/RunPauseControls';
 import { RunCancelControl } from '../../../../src/runs/RunCancelControl';
 import { RunFlagControl } from '../../../../src/runs/RunFlagControl';
 import { RunWorkspaceConversation } from '../../../../src/runs/RunWorkspaceConversation';
+import { WorkspacePreview } from '../../../../src/runs/WorkspacePreview';
 import { WorkspaceCaptureView } from '../../../../src/runs/WorkspaceCaptureView';
 import { frameNarration, currentStepExecution } from '../../../../src/runs/live-view';
 import { planActionWord, utcStamp } from '../../../../src/runs/labels';
@@ -86,14 +87,15 @@ export default async function RunWorkspacePage({ params, searchParams }: {
           {ordinal !== null && selected?.status !== 'ready' && <p>The selected record is unavailable. Messages will have Run context only.</p>}</>}
         workspace={<section aria-label="Action-linked workspace captures">
           <h2>{isActiveRunState(run.state) ? 'Agent workspace' : 'Last workspace capture'}</h2>
-          <p>Action-linked captures · {timeline.workspace?.status.toLowerCase() ?? 'workspace not yet available'}</p>
+          <WorkspacePreview key={id} runId={id} enabled={isActiveRunState(run.state) && runtime.config.WORKSPACE_PREVIEW_MODE === 'synthetic-local'} />
+          <p>Registered action-linked capture · {timeline.workspace?.status.toLowerCase() ?? 'workspace not yet available'}</p>
           <WorkspaceCaptureView hasCapture={frame !== null}>
             <SessionStage runId={id} frame={frame === null ? null : {
               evidenceId: frame.evidenceId, sourceLocation: frame.sourceLocation, digest: frame.digest, capturedAt: frame.capturedAt,
               narration: frameNarration(frame, frameStep, targetFor(frameStep?.workItemId ?? frame.workItemId), itemFor(frameStep?.workItemId ?? frame.workItemId)?.subjectKey ?? null),
             }} stageNote={timeline.workspace === null ? 'No browser workspace has been recorded for this Run.' : 'No registered workspace capture is available yet.'} />
           </WorkspaceCaptureView>
-          <p className="ls-caption">Images update when execution registers evidence. Near-live preview is not available in this development checkpoint.</p>
+          <p className="ls-caption">Registered evidence updates when execution commits a capture. It is separate from the ephemeral preview above.</p>
         </section>} />
     <details><summary>Flag this Run</summary><RunFlagControl runId={id} flaggable={isFlaggableRunState(run.state)} flags={flags.map(flag => ({ ...flag, flaggedBy: names.get(flag.flaggedBy) ?? 'Auditor' }))} /></details>
     </LiveGate>
