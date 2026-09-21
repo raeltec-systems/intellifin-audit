@@ -1,3 +1,4 @@
+import { runStrategyWorkerPort } from './run-strategy-repository.js';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { AgentWorkCheckpoint, AgentWorkContext, AgentWorkRepository, AgentTurnRecord, RunWait } from '@intellifin/application';
 import { canonicalJson, type JsonValue, type SanitizedToolAction } from '@intellifin/domain';
@@ -36,6 +37,7 @@ export class PostgresAgentWorkRepository implements AgentWorkRepository {
       const captures = await tx.select().from(runEvidenceCapture).where(eq(runEvidenceCapture.runId, runId));
       return work({
         ...shared,
+        ...runStrategyWorkerPort(tx,runId),
         // Agent work is the only execution stage that may consume a deferred latch. The
         // shared result context supplies the same locked marker methods; make the
         // capability required at this worker seam rather than silently dropping it.

@@ -96,3 +96,13 @@ it('states once that identity keys are compared exactly, beside the steps that s
   expect(html).toContain('data-identity-matching');
   expect(html).toContain(IDENTITY_KEYS_EXACT_SENTENCE.slice(0, 60));
 });
+
+it('shows compiler 2 graph authority separately from the legacy approval explanation',()=>{
+  const draft=view();
+  expect(render(draft)).toContain('Frozen lookup strategies');
+  const legacy=deriveExecutablePlan(executablePlanInputs(),'1');
+  if(!legacy.ok)throw new Error(legacy.reason);
+  const html=render({...draft,compiledPlan:legacy.plan,planCompilerVersion:'1'});
+  expect(html).toContain('This historical plan does not authorize auditor-selected strategies.');
+  expect(html).not.toContain('complete zero-match');
+});

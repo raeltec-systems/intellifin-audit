@@ -93,6 +93,17 @@ export function ExecutablePlanPreview({
         })}
       </section>
 
+      <section className="ls-plan-group" aria-labelledby={`${id}-strategies`}>
+        <h3 className="ls-overline" id={`${id}-strategies`}>Frozen lookup strategies</h3>
+        {plan.schemaVersion === 1 ? <p>This historical plan does not authorize auditor-selected strategies.</p>
+          : plan.capabilityGraph.nodes.length === 0 ? <p>This plan declares no selectable lookup strategies.</p>
+          : <ul>{plan.capabilityGraph.nodes.map(node => <li key={`${node.targetSystemId}:${node.id}`}>
+            {plan.inputs.targets.find(target => target.registrationId === node.targetSystemId)?.displayName}: {node.lookupKey === 'employee_id' ? 'Employee ID search' : 'Full name search'}.
+            {node.predecessors.length === 0 ? ' Primary lookup.' : ' Available only after a complete, grounded zero-match Employee ID search for the same inspection and attempt.'}
+            {' '}At most {node.maxAttempts} successful search per inspection attempt. Identity, evidence and scope rules remain unchanged.
+          </li>)}</ul>}
+      </section>
+
       <section className="ls-plan-group" aria-labelledby={`${id}-observations`}>
         <h3 className="ls-overline" id={`${id}-observations`}>Observations to capture</h3>
         <ul className="ls-tag-row">{plan.observations.map((observation) => <li key={observation.attributeName} className="ls-tag">{observation.attributeName} <span className="ls-tag__note">{observation.valueType}</span></li>)}</ul>

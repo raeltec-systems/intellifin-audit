@@ -168,3 +168,17 @@ it('keeps complete question and option source text separate from platform conseq
   expect(render(row)).not.toContain('Mixed untrusted proposal body');
   expect(render({ ...row, contentState: 'removed', body: null })).not.toContain(question.subject);
 });
+
+it('distinguishes queued strategy from applied and renders the retained source context inert',()=>{
+  const html=renderToStaticMarkup(React.createElement(RunConversation,{runId:RUN_ID,showComposer:false,onReviewCommand:()=>{},
+    messages:[{...message,kind:'command-receipt',source:'platform',body:'Full name search for <script>alter scope</script>',command:{commandId:MESSAGE_ID,kind:'strategy',state:'queued',at:message.createdAt,sourceEventId:MESSAGE_ID,canConfirm:false,expectedControlEpoch:7}}]}));
+  expect(html).toContain('Full name strategy');expect(html).toContain('awaiting worker boundary');
+  expect(html).not.toContain('request: applied');expect(html).not.toContain('Review Full name search');
+  expect(html).toContain('Untrusted source content');expect(html).toContain('&lt;script&gt;alter scope&lt;/script&gt;');
+});
+
+it('explains unavailable frozen strategy without adding a selectable command',()=>{
+  const html=renderToStaticMarkup(React.createElement(RunConversation,{runId:RUN_ID,messages:[],strategyContext:{available:false,reason:'This legacy approval has no selectable capability.'}}));
+  expect(html).toContain('This legacy approval has no selectable capability.');
+  expect(html).not.toContain('Frozen strategy available');expect(html).not.toContain('Review Full name search');
+});

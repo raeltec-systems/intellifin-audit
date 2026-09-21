@@ -99,3 +99,33 @@ describe('explicit P-1 target scope', () => {
     expect(classifyPlanTargets(result.plan).unsupported).toBe('agent-driven-target');
   });
 });
+
+describe('compiler 2 frozen capabilities', () => {
+  it('preserves legacy bytes and refuses graph retrofit while new approvals declare semantic nodes', () => {
+    const inputs = authored('P-1',cases[0].columns);
+    const old = deriveExecutablePlan(inputs,'1'); const next = deriveExecutablePlan(inputs);
+    expect(old.ok && old.plan.schemaVersion).toBe(1);
+    expect(next.ok && next.plan.schemaVersion).toBe(2);
+    if(!old.ok || !next.ok || next.plan.schemaVersion!==2)return;
+    expect(Object.hasOwn(old.plan,'capabilityGraph')).toBe(false);
+    expect(ExecutablePlanSchema.safeParse(old.plan).success).toBe(true);
+    expect(ExecutablePlanSchema.safeParse({...old.plan,capabilityGraph:next.plan.capabilityGraph}).success).toBe(false);
+    expect(next.plan.capabilityGraph.nodes).toEqual(inputs.targets.filter(target=>target.contract.kind==='web').flatMap(target=>[
+      {id:'p1.employee-id',targetSystemId:target.registrationId,action:'inspect-record',lookupKey:'employee_id',predecessors:[],maxAttempts:1},
+      {id:'p1.full-name',targetSystemId:target.registrationId,action:'inspect-record',lookupKey:'full_name',predecessors:[{nodeId:'p1.employee-id',outcome:'complete-zero-match'}],maxAttempts:1},
+    ]));
+    for(const mutate of [
+      (p:any)=>{p.capabilityGraph.nodes[1].predecessors=[];},
+      (p:any)=>{p.capabilityGraph.nodes[1].maxAttempts=2;},
+      (p:any)=>{p.capabilityGraph.nodes[1].targetSystemId='foreign';},
+      (p:any)=>{p.capabilityGraph.nodes[1].lookupKey='employee_id';},
+      (p:any)=>{p.capabilityGraph.nodes.reverse();},
+    ]){const forged=structuredClone(next.plan);mutate(forged);expect(ExecutablePlanSchema.safeParse(forged).success).toBe(false);}
+    const renamed=structuredClone(next.plan); renamed.targetSystems[0]!.planSteps[0]!.id='different-model-step';
+    expect(ExecutablePlanSchema.safeParse(renamed).success).toBe(true);
+  });
+  it.each(cases.slice(1))('$id has no invented fallback capability', ({id,columns})=>{
+    const result=deriveExecutablePlan(authored(id,columns));
+    expect(result).toMatchObject({ok:true,plan:{schemaVersion:2,capabilityGraph:{schemaVersion:1,nodes:[]}}});
+  });
+});

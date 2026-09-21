@@ -22,7 +22,7 @@ class PermissionRefused extends Refused {
 export function reviewedDefinition(row: ProcedureVersionRecord): ReviewedDefinition {
   if (row.frozenReview) return row.frozenReview.definition;
   return { schemaVersion: 1, inputs: planAuthoringInputs(row), compiledPlan: row.compiledPlan, modelConfiguration: row.derivationModel,
-    toolConfiguration: { interpreterContract: 'executable-plan-v1', identityMatching: 'opaque-exact-strings', accessPolicy: 'frozen-registered-read-actions',
+    toolConfiguration: { interpreterContract: row.planCompilerVersion === '2' ? 'executable-plan-v2' : 'executable-plan-v1', identityMatching: 'opaque-exact-strings', accessPolicy: 'frozen-registered-read-actions',
       actions: ['create-workspace', 'acquire-population', 'sign-in', 'extract-adapter', 'inspect-record', 'capture-observation', 'evaluate-conditions'] } };
 }
 export function versionConfigurationTuple(row: ProcedureVersionRecord): ConfigurationTuple {

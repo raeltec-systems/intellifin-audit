@@ -651,7 +651,7 @@ export const procedureVersion = pgTable(
     evidenceSchemaVersion: integer('evidence_schema_version').notNull().default(1),
     evidenceRequirements: jsonb('evidence_requirements').$type<readonly EvidenceRequirement[]>().notNull().default([]),
     schedule: jsonb('schedule').$type<DraftSchedule>(),
-    planCompilerVersion: text('plan_compiler_version').notNull().default('1'),
+    planCompilerVersion: text('plan_compiler_version').notNull().default('2'),
     derivationModel: jsonb('derivation_model').$type<PlanDerivationFields['derivationModel']>(),
     compiledPlan: jsonb('compiled_plan').$type<PlanDerivationFields['compiledPlan']>(),
     planInputDigest: text('plan_input_digest'),
@@ -707,7 +707,7 @@ export const procedureVersion = pgTable(
     check('procedure_version_confidence_range', sql`CASE WHEN length(${table.agentJudgedThreshold}) <= 100 AND ${table.agentJudgedThreshold} ~ '^-?(0|[1-9][0-9]*)([.][0-9]+)?$' THEN ${table.agentJudgedThreshold}::numeric BETWEEN 0 AND 1 ELSE false END`),
     check('procedure_version_plan_compiler', sql`length(${table.planCompilerVersion}) BETWEEN 1 AND 64`),
     check('procedure_version_plan_model', sql`${table.derivationModel} IS NULL OR coalesce(jsonb_typeof(${table.derivationModel}) = 'object' AND ${table.derivationModel} - 'provider' - 'modelId' - 'promptVersion' = '{}'::jsonb AND jsonb_typeof(${table.derivationModel}->'provider') = 'string' AND jsonb_typeof(${table.derivationModel}->'modelId') = 'string' AND jsonb_typeof(${table.derivationModel}->'promptVersion') = 'string' AND length(${table.derivationModel}->>'provider') BETWEEN 1 AND 100 AND length(${table.derivationModel}->>'modelId') BETWEEN 1 AND 200 AND length(${table.derivationModel}->>'promptVersion') BETWEEN 1 AND 100, false)`),
-    check('procedure_version_plan_shape', sql`${table.compiledPlan} IS NULL OR coalesce(jsonb_typeof(${table.compiledPlan}) = 'object' AND ${table.compiledPlan}->'schemaVersion' = '1'::jsonb, false)`),
+    check('procedure_version_plan_shape', sql`${table.compiledPlan} IS NULL OR coalesce(jsonb_typeof(${table.compiledPlan}) = 'object' AND ((${table.compiledPlan}->'schemaVersion' = '1'::jsonb AND ${table.compiledPlan}->>'compilerVersion' = '1' AND NOT ${table.compiledPlan} ? 'capabilityGraph') OR (${table.compiledPlan}->'schemaVersion' = '2'::jsonb AND ${table.compiledPlan}->>'compilerVersion' = '2' AND jsonb_typeof(${table.compiledPlan}->'capabilityGraph')='object')), false)`),
     check('procedure_version_plan_digest', sql`${table.planInputDigest} IS NULL OR ${table.planInputDigest} ~ '^[0-9a-f]{64}$'`),
     check('procedure_version_plan_status', sql`${table.planStatus} IN ('pending','succeeded','failed')`),
     check('procedure_version_plan_failure', sql`${table.planFailureReason} IS NULL OR length(${table.planFailureReason}) BETWEEN 1 AND 1000`),
@@ -2213,3 +2213,40 @@ export const runControlLease = pgTable('run_control_lease', {
   check('run_control_lease_holder_expiry', sql`(${t.holderId} IS NULL) = (${t.expiresAt} IS NULL)`),
   check('run_control_lease_duration', sql`${t.expiresAt} IS NULL OR (${t.expiresAt} > ${t.updatedAt} AND ${t.expiresAt} <= ${t.updatedAt} + interval '120 seconds')`),
 ]);
+
+/** Compiler2 opportunities are grounded worker facts; conversation never supplies tools. */
+export const runStrategyOpportunity = pgTable('run_strategy_opportunity', {
+  opportunityId: uuid('opportunity_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  anchor: jsonb('anchor').$type<import('@intellifin/application').RunStrategyAnchor>().notNull(),
+  tool: jsonb('tool').$type<import('@intellifin/application').AgentApprovedTool>().notNull(),
+  parameters: jsonb('parameters').$type<readonly import('@intellifin/domain').ToolActionParameter[]>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+}, t => [uniqueIndex('run_strategy_opportunity_run_key').on(t.runId, t.opportunityId)]);
+export const runStrategyCursor = pgTable('run_strategy_cursor', {
+  runId: uuid('run_id').primaryKey().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  opportunityId: uuid('opportunity_id'),
+}, t => [foreignKey({ columns: [t.runId,t.opportunityId], foreignColumns: [runStrategyOpportunity.runId,runStrategyOpportunity.opportunityId] })]);
+/** Immutable proposal adjunct to the existing governed conversation intake/reply. */
+export const runStrategySelection = pgTable('run_strategy_selection', {
+  commandId: uuid('command_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  opportunityId: uuid('opportunity_id').notNull(),
+  messageId: uuid('message_id').notNull().references(() => runConversationMessage.messageId, { onDelete: 'cascade' }),
+  actorId: text('actor_id').notNull(), sessionId: text('session_id').notNull(),
+  expectedControlEpoch: integer('expected_control_epoch').notNull(),
+  interpretationDigest: text('interpretation_digest').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+}, t => [uniqueIndex('run_strategy_selection_message').on(t.messageId), uniqueIndex('run_strategy_selection_run_key').on(t.runId,t.commandId),
+  foreignKey({ columns: [t.runId,t.opportunityId], foreignColumns: [runStrategyOpportunity.runId,runStrategyOpportunity.opportunityId] }),
+  check('run_strategy_selection_epoch', sql`${t.expectedControlEpoch}>0 AND ${t.interpretationDigest} ~ '^[a-f0-9]{64}$'`)]);
+export const runStrategyTransition = pgTable('run_strategy_transition', {
+  commandId: uuid('command_id').notNull().references(() => runStrategySelection.commandId, { onDelete: 'cascade' }),
+  sequence: integer('sequence').notNull(),
+  state: text('state').$type<'interpreted'|'queued'|'dispatched'|'applied'|'refused'|'superseded'>().notNull(),
+  toolActionId: uuid('tool_action_id'),
+  reasonCode: text('reason_code').notNull(),
+  sourceEventId: uuid('source_event_id').notNull().references(() => auditEvents.eventId),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+}, t => [primaryKey({ columns: [t.commandId,t.sequence] }), uniqueIndex('run_strategy_transition_action').on(t.toolActionId,t.state),
+  check('run_strategy_transition_sequence', sql`${t.sequence}>0 AND ${t.state} IN ('interpreted','queued','dispatched','applied','refused','superseded')`)]);

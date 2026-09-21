@@ -13,6 +13,7 @@ import {
   type RunConversationMessageRequest,
   type RunConversationInspectionRead,
   type RunConversationQuestionContext,
+  type RunStrategyRead,
   type RunConversationMessageSource,
 } from '@intellifin/application';
 
@@ -69,6 +70,7 @@ export interface RunConversationProps {
   readonly replyToWaitId?: string | null;
   readonly currentInspection?: RunConversationInspectionRead;
   readonly questionContext?: RunConversationQuestionContext | null;
+  readonly strategyContext?: RunStrategyRead;
   readonly onSend?: (input: RunConversationSendInput) => unknown | Promise<unknown>;
   /** Alias for action wiring that uses submit terminology. */
   readonly onSubmit?: (input: RunConversationSendInput) => unknown | Promise<unknown>;
@@ -85,6 +87,7 @@ export interface RunConversationComposerProps {
   readonly replyToWaitId?: string | null;
   readonly currentInspection?: RunConversationInspectionRead;
   readonly questionContext?: RunConversationQuestionContext | null;
+  readonly strategyContext?: RunStrategyRead;
   readonly onSend?: (input: RunConversationSendInput) => unknown | Promise<unknown>;
   readonly onSubmit?: (input: RunConversationSendInput) => unknown | Promise<unknown>;
   readonly disabled?: boolean;
@@ -245,18 +248,19 @@ function ConversationMessage({
           <p className="run-conversation__body">{runConversationAnswerConsequence(message.command.answerOptionId ?? '')} No answer is applied until you confirm.</p>
           {message.command.answerQuestion ? <AnswerQuestionSource question={message.command.answerQuestion} optionId={message.command.answerOptionId} label="Recorded question and choice" />
             : <details className="run-conversation__question-source"><summary>Recorded answer proposal — source content</summary><div className="run-conversation__source-scroll" role="region" aria-label="Recorded answer proposal source" tabIndex={0}><UntrustedText field="recorded question and choice">{conversationBody(message)}</UntrustedText></div></details>}
-        </> : <p className="run-conversation__body">{conversationBody(message)}</p>}
+        </> : message.command?.kind === 'strategy' ? <UntrustedText field="recorded strategy context">{conversationBody(message)}</UntrustedText> : <p className="run-conversation__body">{conversationBody(message)}</p>}
         {message.command && <p className="run-conversation__command-status">
-          <strong>{message.command.kind === 'answer' ? 'Answer' : message.command.kind === 'stop' ? 'Stop' : message.command.kind === 'resume' ? 'Resume' : 'Pause'} request: {message.command.state === 'queued' ? (message.command.kind === 'pause-after-inspection' ? 'waiting for the named inspection to settle' : 'awaiting worker boundary') : message.command.state === 'interpreted' && message.command.kind !== 'pause-now' ? (message.command.reason ? 'no longer available for confirmation' : 'awaiting your confirmation') : message.command.state}.</strong>{' '}
+          <strong>{message.command.kind === 'strategy' ? 'Full name strategy' : message.command.kind === 'answer' ? 'Answer' : message.command.kind === 'stop' ? 'Stop' : message.command.kind === 'resume' ? 'Resume' : 'Pause'} request: {message.command.state === 'queued' ? (message.command.kind === 'pause-after-inspection' ? 'waiting for the named inspection to settle' : 'awaiting worker boundary') : message.command.state === 'interpreted' && message.command.kind !== 'pause-now' ? (message.command.reason ? 'no longer available for confirmation' : 'awaiting your confirmation') : message.command.state}.</strong>{' '}
           Recorded at <time dateTime={message.command.at}>{utcStamp(message.command.at)}</time>.
         </p>}
 
+        {message.command?.kind === 'strategy' && message.command.state === 'applied' && message.command.strategyActionId && <p>Recorded search action: <a href={`/runs/${runId}/evidence/technical`}>{message.command.strategyActionId}</a>. Review its evidence and the remaining Run checks.</p>}
         {message.command?.reason && <p>{message.command.reason}</p>}
         {message.command && message.command.kind !== 'pause-now' && message.command.state === 'interpreted' &&
           message.command.canConfirm && message.contentState === 'available' && onReviewCommand &&
           <Button variant="secondary" onClick={() => {
             if (gate.disabledReason === null && message.command) onReviewCommand(message.command);
-          }} {...(gate.disabledReason === null ? {} : { disabledReason: gate.disabledReason })}>{message.command.kind === 'answer' ? 'Review answer' : message.command.kind === 'stop' ? 'Review Stop' : message.command.kind === 'resume' ? 'Review Resume' : 'Review pause after inspection'}</Button>}
+          }} {...(gate.disabledReason === null ? {} : { disabledReason: gate.disabledReason })}>{message.command.kind === 'strategy' ? 'Review Full name search' : message.command.kind === 'answer' ? 'Review answer' : message.command.kind === 'stop' ? 'Review Stop' : message.command.kind === 'resume' ? 'Review Resume' : 'Review pause after inspection'}</Button>}
 
         {links.length > 0 || evidenceLinks.length > 0 ? (
           <div className="run-conversation__links" role="group" aria-label="Related records and evidence">
@@ -319,6 +323,7 @@ function ConversationComposer({
   replyToWaitId = null,
   currentInspection,
   questionContext,
+  strategyContext,
   onSend,
   onSubmit,
   disabled = false,
@@ -327,6 +332,7 @@ function ConversationComposer({
   idempotencyKeyFactory = createIdempotencyKey,
 }: RunConversationComposerProps): React.JSX.Element {
   const [draft, setDraft] = useState('');
+  const [draftStrategy, setDraftStrategy] = useState<RunStrategyRead | null>(null);
   const [draftQuestion, setDraftQuestion] = useState<RunConversationQuestionContext | null>(null);
   const [draftSource, setDraftSource] = useState<number | null>(null);
   const [draftWaitId, setDraftWaitId] = useState<string | null>(null);
@@ -350,8 +356,9 @@ function ConversationComposer({
   const onDraftChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
     const nextDraft = truncateConversationText(event.currentTarget.value);
     if (unknownIntake) return;
-    if (nextDraft === '') { setDraftInspection(null); setDraftQuestion(null); setDraftSource(null); setDraftWaitId(null); }
+    if (nextDraft === '') { setDraftStrategy(null); setDraftInspection(null); setDraftQuestion(null); setDraftSource(null); setDraftWaitId(null); }
     else if (draft === '') {
+      setDraftStrategy(strategyContext ?? { available: false, reason: 'No strategy was eligible when this draft began.' });
       setDraftInspection(currentInspection ?? { status: 'unavailable', reason: 'No inspection context was available when this draft began.' });
       setDraftQuestion(questionContext ?? null); setDraftSource(selectedSourceOrdinal); setDraftWaitId(questionContext?.anchor.waitId ?? replyToWaitId);
     }
@@ -360,7 +367,7 @@ function ConversationComposer({
     if (pending !== null && pending.text !== nextDraft) pendingRequestRef.current = null;
     setSubmitError(null);
     setSubmitStatus(null);
-  }, [draft, currentInspection, questionContext, selectedSourceOrdinal, replyToWaitId, unknownIntake]);
+  }, [draft, currentInspection, strategyContext, questionContext, selectedSourceOrdinal, replyToWaitId, unknownIntake]);
 
   const onFormSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -383,13 +390,14 @@ function ConversationComposer({
               replyToWaitId: effectiveReplyToWaitId,
               questionAnchor: effectiveReplyToWaitId === null ? null : draftQuestion?.anchor ?? null,
               currentInspection: draftInspection?.status === 'ready' ? draftInspection.anchor : null,
+              ...(draftStrategy?.available ? { strategyAnchor: draftStrategy.anchor } : {}),
             };
       pendingRequestRef.current = input;
       try {
         const receipt = await send(input);
         if (durableReceiptAccepted(receipt)) {
           pendingRequestRef.current = null;
-          setDraft(''); setDraftQuestion(null); setDraftSource(null); setDraftWaitId(null); setUnknownIntake(false);
+          setDraft(''); setDraftStrategy(null); setDraftQuestion(null); setDraftSource(null); setDraftWaitId(null); setUnknownIntake(false);
           setDraftInspection(null);
           setSubmitStatus('Message accepted.');
         } else {
@@ -403,9 +411,10 @@ function ConversationComposer({
         setSending(false);
       }
     },
-    [blockedControl, disabled, draft, draftInspection, draftSource, draftQuestion, idempotencyKeyFactory, effectiveReplyToWaitId, runId, selectedSourceOrdinal, send, sending],
+    [blockedControl, disabled, draft, draftStrategy, draftInspection, draftSource, draftQuestion, idempotencyKeyFactory, effectiveReplyToWaitId, runId, selectedSourceOrdinal, send, sending],
   );
 
+  const visibleStrategy = draftStrategy ?? strategyContext;
   const visibleInspection = draftInspection ?? currentInspection;
   const visibleQuestion = draftQuestion ?? (draft === '' ? questionContext : null);
   const remaining = RUN_CONVERSATION_MAX_TEXT_CHARS - unicodeLength(draft);
@@ -427,6 +436,9 @@ function ConversationComposer({
         question={visibleQuestion} label={draft === '' ? 'Current question:' : 'Question at draft start:'} />}
       {draftQuestion && draftQuestion.anchor.questionDigest !== questionContext?.anchor.questionDigest &&
         <p className="run-conversation__composer-help">This question changed. This draft cannot answer the new question.</p>}
+      {visibleStrategy && <div className="run-conversation__composer-help">{visibleStrategy.available
+        ? <>Frozen strategy available: Full name search. Send <code>strategy: p1.full-name</code> to review it for this inspection. Its prerequisite evidence and inspection are fixed when this draft starts.<UntrustedText field="Strategy inspection">{visibleStrategy.targetLabel}</UntrustedText></>
+        : visibleStrategy.reason}</div>}
       {unknownIntake && <p role="status">Delivery is unknown. Retry this exact message before editing it or starting another draft.</p>}
       <textarea
         id="run-conversation-message"
@@ -485,6 +497,7 @@ export function RunConversation({
   replyToWaitId = null,
   currentInspection,
   questionContext,
+  strategyContext,
   onSend,
   onSubmit,
   composerDisabled = false,
@@ -628,7 +641,7 @@ export function RunConversation({
           <ConversationComposer
             runId={runId}
             selectedSourceOrdinal={selectedSourceOrdinal}
-            replyToWaitId={replyToWaitId} currentInspection={currentInspection} questionContext={questionContext}
+            replyToWaitId={replyToWaitId} currentInspection={currentInspection} questionContext={questionContext} strategyContext={strategyContext}
             onSend={onSend}
             onSubmit={onSubmit}
             disabled={composerDisabled}

@@ -1,6 +1,9 @@
+import { strategyOpportunity, refreshStrategyOpportunity, parseRunStrategyAnchor } from './run-strategy.js';
+import type { AdapterEvidenceRecord } from './execution-ports.js';
 import { describe, expect, it } from 'vitest';
 import {
   initialDraftCompliance,
+  canonicalLookupCapabilityGraph, sha256HexOfBytes,
   registrationDigest,
   registrationDigestEnvelope,
   utf8Bytes,
@@ -9,7 +12,7 @@ import {
   type StoredSnapshot,
 } from '@intellifin/domain';
 import {
-  planAgentTools,
+  planAgentTools, eligibleLookupCapabilities,
   type AgentSearchEvidence,
 } from './agent-tool-planner.js';
 import type { PopulationRecord } from './execution-ports.js';
@@ -385,5 +388,52 @@ describe('planAgentTools', () => {
     expect(planned.tools.filter((tool) => ['navigate', 'open-record', 'search'].includes(tool.action))).toEqual([]);
     expect(planned.candidates).toEqual([]);
     expect(planned.absenceReady).toBe(false);
+  });
+});
+
+describe('frozen strategy eligibility', () => {
+  const id=(n:number)=>`01990000-0000-7000-8000-${String(n).padStart(12,'0')}`;
+  function eligibleInput() {
+    const plan={...PLAN,schemaVersion:2 as const,compilerVersion:'2' as const,capabilityGraph:canonicalLookupCapabilityGraph(PLAN.inputs)};
+    const committed={runId:id(1),workItemId:id(2),attemptId:id(3),stepExecutionId:id(4),targetSystemId:TARGET.registrationId,toolActionId:id(5)};
+    const zero={...snapshot(HOME_NODES,{complete:true,returned:0}),evidenceId:id(6)};
+    const controls={...snapshot(HOME_NODES),evidenceId:id(7)};
+    const evidence={committed,parameters:[{name:'employee_id',value:'E-000105'}],snapshot:zero,controlSnapshot:controls,
+      controlPage:{runId:id(1),targetSystem:TARGET.registrationId,sourceLocation:'https://loancore.example.test/loancore'}};
+    return input({...committed,plan,snapshot:zero,searches:[evidence]});
+  }
+  it('offers one exact fallback with its committed evidence/action identities',()=>{
+    const base=eligibleInput();
+    expect(eligibleLookupCapabilities(base)).toMatchObject([{node:{id:'p1.full-name',maxAttempts:1},prerequisiteEvidenceIds:[id(6)],prerequisiteActionIds:[id(5)]}]);
+    const selected=planAgentTools({...base,selectedStrategyId:'p1.full-name'});
+    expect(selected.tools.map(tool=>tool.action)).toEqual(['search']);
+    expect(Object.values(selected.parametersByToolId)).toEqual([[{name:'name',value:'Esther Kabwe'}]]);
+    expect(planAgentTools({...base,selectedStrategyId:'arbitrary-url'}).tools).toEqual([]);
+  });
+  it('requires a complete noncontradictory zero and exact committed unit provenance',()=>{
+    const base=eligibleInput(), evidence=base.searches[0]!;
+    const invalid=[{...evidence,committed:undefined},...['runId','workItemId','attemptId','stepExecutionId','targetSystemId'].map(key=>({...evidence,committed:{...evidence.committed!,[key]:'foreign'}})),
+      {...evidence,parameters:[{name:'employee_id',value:'different-subject'}]},
+      {...evidence,snapshot:snapshot([],{complete:false,returned:0})},
+      {...evidence,snapshot:snapshot([])},
+      {...evidence,snapshot:snapshot(RECORD_NODES,{complete:true,returned:0})},
+      {...evidence,snapshot:snapshot(RECORD_NODES,{complete:true,returned:1})},
+      {...evidence,controlSnapshot:snapshot([])},
+    ];
+    for(const entry of invalid)expect(eligibleLookupCapabilities({...base,searches:[entry]})).toEqual([]);
+    expect(eligibleLookupCapabilities({...base,searches:[evidence,evidence]})).toEqual([]);
+    expect(eligibleLookupCapabilities({...base,plan:PLAN})).toEqual([]);
+    expect(eligibleLookupCapabilities({...base,searches:[evidence,{...evidence,parameters:[{name:'name',value:'Esther Kabwe'}]}]})).toEqual([]);
+  });
+  it('rejects extra anchor fields and changed registered artifact bytes before consumption',async()=>{
+    const base=eligibleInput();const opportunity=strategyOpportunity(base)!;
+    expect(parseRunStrategyAnchor({...opportunity.anchor,controlEpoch:1})).not.toBeNull();
+    expect(parseRunStrategyAnchor({...opportunity.anchor,controlEpoch:1,url:'https://foreign.test'})).toBeNull();
+    const snapshots=[base.snapshot,base.searches[0]!.controlSnapshot!];
+    const evidence=snapshots.map(snapshot=>({evidenceId:snapshot.evidenceId,kind:'structural-snapshot',registrationId:TARGET.registrationId,state:'REGISTERED',objectKey:snapshot.evidenceId,digest:sha256HexOfBytes(snapshot.bytes),size:snapshot.bytes.length} as AdapterEvidenceRecord));
+    const store={read:async(key:string)=>snapshots.find(snapshot=>snapshot.evidenceId===key)?.bytes??null,putIfAbsent:async()=>{}};
+    expect(await refreshStrategyOpportunity(base,evidence,store,()=>100)).toEqual(opportunity);
+    expect(await refreshStrategyOpportunity(base,evidence,{...store,read:async()=>utf8Bytes('{}')},()=>100)).toBeNull();
+    expect(await refreshStrategyOpportunity(base,evidence.map(row=>({...row,state:'ABANDONED' as const})),store,()=>100)).toBeNull();
   });
 });

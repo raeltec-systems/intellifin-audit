@@ -3,7 +3,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { APICallError, generateText, type LanguageModel } from 'ai';
 import type { ModelGateway, ModelIdentity } from '@intellifin/application';
 import { ModelGatewayError } from '@intellifin/application';
-import { deriveExecutablePlan, executablePlanModelInstructions, type FrozenPlanInputs } from '@intellifin/domain';
+import { deriveExecutablePlan, executablePlanInstructionsForCompiler, type FrozenPlanInputs } from '@intellifin/domain';
 import type { AppConfig } from '../config.js';
 import { DEFAULT_MODEL_OUTPUT_TOKENS, MAX_CONFIGURED_MODEL_OUTPUT_TOKENS, SUPPORTED_MODEL_PROMPT_VERSION } from './model-policy.js';
 
@@ -26,7 +26,7 @@ abstract class SdkModelGateway implements ModelGateway {
     try {
       const result = await generateText({
         model: this.model,
-        system: executablePlanModelInstructions,
+        system: executablePlanInstructionsForCompiler(compilerVersion),
         prompt: JSON.stringify({ compilerVersion, promptVersion: this.identity.promptVersion, authoredInputs: input }),
         temperature: 0,
         maxOutputTokens: this.maxOutputTokens,

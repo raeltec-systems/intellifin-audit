@@ -1,3 +1,4 @@
+import { AgentModelGatewayError } from '@intellifin/application';
 import { createServer, type Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
@@ -106,6 +107,9 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
         await tx`DELETE FROM population_snapshot WHERE run_id=${runId}`;
         await tx`DELETE FROM population_evidence WHERE run_id=${runId}`;
         await tx`DELETE FROM population_execution WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_strategy_cursor WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_strategy_selection WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_strategy_opportunity WHERE run_id=${runId}`;
         await tx`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
         await tx`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
         await tx`DELETE FROM run_initiation_request WHERE run_id=${runId} OR refused_run_id=${runId}`;
@@ -479,5 +483,78 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
     expect(await sql`SELECT * FROM audit_events WHERE aggregate_id=${seeded.job.runId} ORDER BY sequence`).toEqual(eventsBefore);
     expect([...seeded.objects]).toEqual(objectsAfter);
   }, 120_000);
+
+  it.each(['applied','confirmation-rollback','new-controller-epoch','revoked-role','unknown-dispatch'] as const)('retains an exact frozen strategy across %s',async mode=>{
+    const seeded=await seed('E-202','Absent Person');
+    const runId=seeded.job.runId,session={userId:author,sessionId:author};
+    const lease={roles:new DrizzleRoleRepository(db),unitOfWork:new PostgresRunsUnitOfWork(db),repository:new PostgresRunControlLeaseRepository(db),ids,allowEnrollment:true};
+    expect(await acquireRunControlLease(lease,{session,request:{runId,expectedEpoch:0}})).toMatchObject({ok:true,lease:{epoch:1}});
+    const cipher=new ConversationContentCipher('56'.repeat(32));
+    const conversation=new PostgresRunConversationRepository(db,cipher);
+    let commandId:string|null=null;let interrupted=false;
+    const model:AgentModelGateway={...seeded.dependencies.model,async propose(request){
+      const read=await conversation.read({runId,actorId:author});
+      if(commandId===null&&read.status==='ready'&&read.strategy?.available){
+        const anchor=read.strategy.anchor;
+        const proposal={runId,idempotencyKey:ids.next(),text:'strategy: p1.full-name',selectedSourceOrdinal:null,replyToWaitId:null,strategyAnchor:anchor};
+        const received=await conversation.append({actorId:author,sessionId:author,request:proposal});
+        expect(received.ok).toBe(true);
+        expect(await conversation.append({actorId:author,sessionId:author,request:proposal})).toMatchObject({ok:true,replayed:true});
+        expect(await conversation.append({actorId:author,sessionId:author,request:{...proposal,strategyAnchor:{...anchor,subjectKey:'another'}}})).toMatchObject({ok:false,code:'conflict'});
+        const history=await conversation.read({runId,actorId:author});
+        commandId=history.messages.find(row=>row.command?.kind==='strategy')?.command?.commandId??null;
+        expect(commandId).not.toBeNull();
+        const confirm={actorId:author,sessionId:author,request:{runId,commandId}};
+        // Direct SQL cannot mutate a retained proposal, invent prerequisite references,
+        // skip confirmation, erase its history or fabricate an applied action receipt.
+        await expect(sql`UPDATE run_strategy_selection SET expected_control_epoch=2 WHERE command_id=${commandId}`).rejects.toMatchObject({code:'23514'});
+        await expect(sql`DELETE FROM run_strategy_selection WHERE command_id=${commandId}`).rejects.toMatchObject({code:'23514'});
+        await expect(sql`INSERT INTO run_strategy_opportunity(opportunity_id,run_id,anchor,tool,parameters,created_at)
+          SELECT ${ids.next()},run_id,jsonb_set(anchor,'{workItemId}',to_jsonb(${ids.next()}::text)),tool,parameters,clock_timestamp() FROM run_strategy_opportunity WHERE opportunity_id=${anchor.snapshotEvidenceId}`).rejects.toMatchObject({code:'23514'});
+        await expect(sql`INSERT INTO run_strategy_transition(command_id,sequence,state,tool_action_id,reason_code,source_event_id,created_at)
+          SELECT command_id,2,'applied',${ids.next()},'exact-action-committed',source_event_id,created_at FROM run_strategy_transition WHERE command_id=${commandId} AND sequence=1`).rejects.toMatchObject({code:'23514'});
+        if(mode==='confirmation-rollback'){
+          await expect(db.transaction(async tx=>{expect(await new PostgresRunConversationRepository(tx,cipher).confirmStrategy(confirm)).toMatchObject({ok:true,state:'queued'});throw new Error('proof-rollback');})).rejects.toThrow('proof-rollback');
+          expect((await sql`SELECT state FROM run_strategy_transition WHERE command_id=${commandId} ORDER BY sequence DESC LIMIT 1`)[0]?.state).toBe('interpreted');
+        }
+        expect(await conversation.confirmStrategy(confirm)).toMatchObject({ok:true,state:'queued'});
+        expect(await conversation.confirmStrategy(confirm)).toMatchObject({ok:true,state:'queued',replayed:true});
+        if(mode==='new-controller-epoch'){
+          expect(await releaseRunControlLease(lease,{session,request:{runId,expectedEpoch:1}})).toMatchObject({ok:true});
+          const [current]=await sql`SELECT epoch FROM run_control_lease WHERE run_id=${runId}`;
+          expect(await acquireRunControlLease(lease,{session,request:{runId,expectedEpoch:Number(current!.epoch)}})).toMatchObject({ok:true});
+        }
+        if(mode==='revoked-role')await sql`UPDATE user_role SET role='poc-administrator' WHERE user_id=${author}`;
+        if(mode==='unknown-dispatch'){
+          await seeded.dependencies.repository.transaction(runId,async context=>{
+            const [stored]=await sql`SELECT anchor,tool,parameters FROM run_strategy_opportunity WHERE opportunity_id=${anchor.snapshotEvidenceId}`;
+            const reserved=await context.claimStrategy(stored as unknown as import('@intellifin/application').RunStrategyOpportunity,ids.next());
+            expect(reserved).not.toBeNull();
+          });
+          interrupted=true;throw new AgentModelGatewayError('unavailable');
+        }
+      }
+      return seeded.dependencies.model.propose(request);
+    }};
+    try{
+      await executeAgentWorkItem({...seeded.dependencies,model},seeded.job);
+      if(interrupted)await executeAgentWorkItem({...seeded.dependencies,repository:new PostgresAgentWorkRepository(db)},seeded.job);
+      expect(commandId).not.toBeNull();
+      const transitions=await sql`SELECT state,tool_action_id FROM run_strategy_transition WHERE command_id=${commandId} ORDER BY sequence`;
+      if(mode==='applied'||mode==='confirmation-rollback'){
+        expect(transitions.map(row=>row.state)).toEqual(['interpreted','queued','dispatched','applied']);
+        const actionId=transitions.at(-1)!.tool_action_id;
+        expect(actionId).toBe(transitions.at(-2)!.tool_action_id);
+        expect(await sql`SELECT action,parameters,outcome FROM run_tool_action WHERE tool_action_id=${actionId}`).toEqual([{action:'search',parameters:[{name:'full_name',value:'Absent Person'}],outcome:'performed'}]);
+        expect(await conversation.confirmStrategy({actorId:author,sessionId:author,request:{runId,commandId}})).toMatchObject({ok:true,state:'applied',replayed:true});
+      }else{
+        expect(transitions.at(-1)?.state).toBe('superseded');
+        expect(transitions.some(row=>row.state==='applied')).toBe(false);
+      }
+      const before=await sql`SELECT tool_action_id FROM run_tool_action WHERE run_id=${runId}`;
+      await executeAgentWorkItem({...seeded.dependencies,repository:new PostgresAgentWorkRepository(db)},seeded.job);
+      expect(await sql`SELECT tool_action_id FROM run_tool_action WHERE run_id=${runId}`).toEqual(before);
+    }finally{if(mode==='revoked-role')await sql`UPDATE user_role SET role='auditor' WHERE user_id=${author}`;}
+  },120000);
 
 });

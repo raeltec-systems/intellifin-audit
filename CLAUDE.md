@@ -4160,3 +4160,16 @@ populated composer. Keep explicit native POST forms: React function actions on t
 conflict with an explicit method. Put the action on the submitter through Button.formAction
 instead, letting React supply its submitter metadata. Do not weaken the form-method guard.
 The no-JavaScript browser proof must assert POST, no URL query and the note in the body.
+
+### Frozen strategy contract (AW P3, 2026-09-20)
+
+New drafts use explicit schema/compiler 2 and freeze the canonical capability graph in
+approval/equivalence/digests; preserve explicit compiler 1 derivation and original
+approval bytes without adding steering authority. Strategy eligibility requires exact
+committed Run/work/attempt/Step/action/capture provenance and complete zero-match
+primary evidence, not lookup prose or an attempted search. The existing worker reserves
+one Tool Action ID before selected I/O and records applied only beside that exact
+committed action. Re-read registered blob bytes/digests before consumption; SQL can
+validate immutable capture references but cannot attest external blob completion.
+Migration 0063 follows manager 0060, preview 0061 and flags 0062; parent generates the
+combined journal/snapshot/compatibility metadata. See docs/contracts/executable-plan-v2.md.

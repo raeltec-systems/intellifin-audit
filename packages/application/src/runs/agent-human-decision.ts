@@ -1,3 +1,4 @@
+import { supportedExecutablePlanVersion } from '@intellifin/domain';
 import {
   adapterLookupColumn, adapterSearchKeys, attributeLabelFor, canonicalJson, findProcedureTemplate, groundedText,
   hasIdentityGroundingSplit, isObservationRecord, normalizeObservationValue, normalizeObservedAt,
@@ -55,7 +56,7 @@ export function applyAgentHumanDecision(input: AgentHumanDecisionInput): AgentHu
       !Number.isFinite(Date.parse(wait.closedAt)) || !Number.isFinite(Date.parse(wait.deadline)) || Date.parse(wait.closedAt) >= Date.parse(wait.deadline)) return refuse('wait-mismatch');
   const keyColumn = adapterLookupColumn('P-1'), searchKeys = adapterSearchKeys('P-1');
   const key = keyColumn === null ? null : input.population.values[keyColumn];
-  if (input.plan.schemaVersion !== 1 || input.plan.compilerVersion !== '1' || input.plan.inputs.templateId !== 'P-1' || keyColumn === null || searchKeys === null || typeof key !== 'string' || key === '' ||
+  if (!supportedExecutablePlanVersion(input.plan) || input.plan.inputs.templateId !== 'P-1' || keyColumn === null || searchKeys === null || typeof key !== 'string' || key === '' ||
       target.contract.kind !== 'web' || !input.plan.inputs.targets.some(frozen => same(frozen, target)) || !target.contract.allowed_origins.some(origin => withinFrozenOrigin(origin, input.sourceLocation)) ||
       workItem.subjectKey !== key || workItem.registrationId !== target.registrationId || raised.stepId !== workItem.stepId ||
       !input.plan.targetSystems.some(system => system.registrationId === target.registrationId && system.planSteps.some(step => step.id === workItem.stepId && step.action === 'inspect-record'))) return refuse('scope-mismatch');

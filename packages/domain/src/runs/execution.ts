@@ -1,5 +1,5 @@
 import type { ExecutablePlan } from '../procedures/executable-plan.js';
-import { PLAN_LOOKUP_COLUMNS } from '../procedures/executable-plan.js';
+import { PLAN_LOOKUP_COLUMNS, supportedExecutablePlanVersion } from '../procedures/executable-plan.js';
 import { isAgentDrivenKind, type ProcedureTargetSnapshot } from '../procedures/target-draft.js';
 
 /**
@@ -162,7 +162,7 @@ export function classifyPlanTargets(plan: ExecutablePlan): PlanClassification {
     agents: EMPTY,
     unsupported: reason,
   });
-  if (plan.schemaVersion !== 1 || plan.compilerVersion !== '1') return unsupported('unsupported-plan-version');
+  if (!supportedExecutablePlanVersion(plan)) return unsupported('unsupported-plan-version');
   // Where the compiler PUTS the population step. It read `sessionSteps[0]` literally,
   // which made every agent plan `unsupported-frozen-plan` before the loop below could say
   // `agent-driven-target` — the refusal BY NAME the workspace contract promises.
@@ -301,7 +301,7 @@ export interface WorkspaceRequirement {
  * an order nobody froze.
  */
 export function populationSessionStep(plan: ExecutablePlan): { readonly stepId: string } | null {
-  if (plan.schemaVersion !== 1 || plan.compilerVersion !== '1') return null;
+  if (!supportedExecutablePlanVersion(plan)) return null;
   const first = plan.sessionSteps[0];
   if (first === undefined) return null;
   if (first.action === 'acquire-population') {
@@ -329,7 +329,7 @@ export function populationSessionStep(plan: ExecutablePlan): { readonly stepId: 
  * derived.
  */
 export function workspaceRequirement(plan: ExecutablePlan): WorkspaceRequirement | null {
-  if (plan.schemaVersion !== 1 || plan.compilerVersion !== '1') return null;
+  if (!supportedExecutablePlanVersion(plan)) return null;
   const agents = plan.inputs.targets
     .map((target, index) => ({ target, ordinal: index + 1 }))
     .filter((entry) => isAgentDrivenKind(entry.target.contract.kind));

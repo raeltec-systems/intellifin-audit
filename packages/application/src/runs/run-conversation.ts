@@ -1,3 +1,4 @@
+import { parseRunStrategyAnchor, type RunStrategyProposalAnchor, type RunStrategyRead } from './run-strategy.js';
 import { canonicalJson, sha256Hex, type JsonValue } from '@intellifin/domain';
 import { isEscalationKind, type EscalationKind, type EscalationOption } from './escalation-kind.js';
 import type { DeferredPauseAnchor } from '@intellifin/domain';
@@ -80,7 +81,9 @@ export interface RunConversationMessage {
   /** Current persisted receipt, separate from the immutable message text. */
   readonly command?: {
     readonly commandId: string;
-    readonly kind: 'pause-now' | 'pause-after-inspection' | 'resume' | 'stop' | 'answer';
+    readonly kind: 'pause-now' | 'pause-after-inspection' | 'resume' | 'stop' | 'answer' | 'strategy';
+    readonly strategyAnchor?: RunStrategyProposalAnchor;
+    readonly strategyActionId?: string | null;
     readonly answerAnchor?: RunConversationQuestionAnchor;
     readonly answerQuestion?: RunConversationQuestionContext;
     readonly answerOptionId?: string;
@@ -120,6 +123,7 @@ export interface RunConversationReadRequest {
 }
 
 export interface RunConversationReadReady {
+  readonly strategy?: RunStrategyRead;
   readonly status: 'ready';
   readonly runId: string;
   readonly messages: readonly RunConversationMessage[];
@@ -154,6 +158,7 @@ export interface RunConversationMessageRequest {
   readonly selectedSourceOrdinal: number | null;
   readonly replyToWaitId: string | null;
   /** Server-read execution context captured when composition begins; never a selected-row guess. */
+  readonly strategyAnchor?: RunStrategyProposalAnchor | null;
   readonly currentInspection?: DeferredPauseAnchor | null;
   readonly questionAnchor?: RunConversationQuestionAnchor | null;
 }
@@ -387,7 +392,7 @@ function failure(code: RunConversationMessageRefusalCode, reason: string): RunCo
 export function parseRunConversationMessageRequest(value: unknown): RunConversationMessageParseResult {
   if (!plainObject(value)) return failure('malformed', 'The conversation message must be an object.');
 
-  const expectedKeys = ['runId', 'idempotencyKey', 'text', 'selectedSourceOrdinal', 'replyToWaitId', 'currentInspection', 'questionAnchor'] as const;
+  const expectedKeys = ['runId', 'idempotencyKey', 'text', 'selectedSourceOrdinal', 'replyToWaitId', 'currentInspection', 'questionAnchor', 'strategyAnchor'] as const;
   const requiredKeys = ['runId', 'idempotencyKey', 'text'] as const;
   const keys = Object.keys(value);
   if (keys.some((key) => !expectedKeys.includes(key as (typeof expectedKeys)[number]))) {
@@ -449,6 +454,8 @@ export function parseRunConversationMessageRequest(value: unknown): RunConversat
   if (value.currentInspection !== undefined && value.currentInspection !== null && currentInspection === null)
     return failure('malformed', 'The current inspection context is invalid.');
 
+  const strategyAnchor = value.strategyAnchor == null ? null : parseRunStrategyAnchor(value.strategyAnchor);
+  if (value.strategyAnchor != null && (strategyAnchor === null || strategyAnchor.runId !== value.runId.toLowerCase())) return failure('malformed', 'The strategy context is invalid.');
   const questionAnchor = value.questionAnchor == null ? null : parseRunConversationQuestionAnchor(value.questionAnchor);
   if (value.questionAnchor != null && (questionAnchor === null || questionAnchor.runId !== value.runId.toLowerCase() || questionAnchor.waitId !== replyToWaitId))
     return failure('malformed', 'The question context is invalid.');
@@ -463,6 +470,7 @@ export function parseRunConversationMessageRequest(value: unknown): RunConversat
       replyToWaitId,
       ...(Object.hasOwn(value, 'currentInspection') ? { currentInspection } : {}),
       ...(Object.hasOwn(value, 'questionAnchor') ? { questionAnchor } : {}),
+      ...(Object.hasOwn(value, 'strategyAnchor') ? { strategyAnchor } : {}),
     },
   };
 }

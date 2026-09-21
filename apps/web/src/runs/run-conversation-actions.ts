@@ -82,3 +82,13 @@ export async function confirmConversationAnswer(request: unknown): Promise<RunCo
     return { ok: false, code: 'unavailable', reason: 'The answer could not be confirmed. Retry this same proposal to recover its recorded outcome.' };
   }
 }
+
+export async function confirmConversationStrategy(request: unknown): Promise<RunConversationCommandReceipt> {
+  const decision = await requireServerAction('run.resume');
+  if (!decision.allowed) return { ok: false, code: 'denied', reason: decision.reason };
+  try {
+    return await (await getRuntime()).conversation.confirmStrategy({ actorId: decision.session.userId, sessionId: decision.session.sessionId, request });
+  } catch {
+    return { ok: false, code: 'unavailable', reason: 'The strategy could not be confirmed. Retry this same proposal to recover its recorded outcome.' };
+  }
+}

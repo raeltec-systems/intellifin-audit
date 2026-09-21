@@ -24,7 +24,7 @@ export interface ReviewedDefinition {
   readonly compiledPlan: ExecutablePlan | null;
   readonly modelConfiguration: { readonly provider: string; readonly modelId: string; readonly promptVersion: string } | null;
   readonly toolConfiguration: {
-    readonly interpreterContract: 'executable-plan-v1';
+    readonly interpreterContract: 'executable-plan-v1' | 'executable-plan-v2';
     readonly identityMatching: 'opaque-exact-strings';
     readonly accessPolicy: 'frozen-registered-read-actions';
     readonly actions: readonly ExecutablePlan['sessionSteps'][number]['action'][];

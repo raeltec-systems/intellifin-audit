@@ -246,6 +246,17 @@ export function validateAuditEventDraft(draft: AuditEventDraft): AuditEventDraft
   if (Array.isArray(draft.payload)) {
     throw new AuditEventValidationError('payload', 'must be a JSON object');
   }
+  if (draft.eventType.startsWith('lifecycle.run-strategy-')) {
+    const fields=['commandId','opportunityId','nodeId','workItemId','attemptId','stepExecutionId','expectedControlEpoch','toolActionId','reasonCode'];
+    const states=['interpreted','queued','dispatched','applied','refused','superseded'];
+    const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+    if(!states.includes(draft.eventType.slice('lifecycle.run-strategy-'.length)) || Object.keys(draft.payload).length!==fields.length ||
+      fields.some(key=>!Object.hasOwn(draft.payload,key)) || ['commandId','opportunityId','workItemId','attemptId','stepExecutionId'].some(key=>typeof draft.payload[key]!=='string'||!uuid.test(draft.payload[key] as string)) ||
+      draft.payload.nodeId!=='p1.full-name' || typeof draft.payload.expectedControlEpoch!=='number' || !Number.isInteger(draft.payload.expectedControlEpoch) || draft.payload.expectedControlEpoch<1 ||
+      (draft.payload.toolActionId!==null && (typeof draft.payload.toolActionId!=='string'||!uuid.test(draft.payload.toolActionId))) ||
+      !['confirmation-required','awaiting-worker-boundary','stale-authority-or-inspection','exact-action-reserved','exact-action-committed','action-not-performed','dispatch-outcome-unknown'].includes(String(draft.payload.reasonCode)))
+      throw new AuditEventValidationError('payload','strategy fact requires its closed identity payload');
+  }
   // Conversation cancellation extends the existing fact with one server-owned ID.
   // Retain a closed payload so arbitrary interaction text cannot enter the audit fact.
   if (['lifecycle.run-cancel-requested', 'lifecycle.run-canceled'].includes(draft.eventType) &&

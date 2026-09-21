@@ -1,3 +1,4 @@
+import { canonicalLookupCapabilityGraph, type FrozenLookupCapability, supportedExecutablePlanVersion } from '@intellifin/domain';
 import {
   adapterLookupColumn,
   adapterSearchKeys,
@@ -27,6 +28,8 @@ const MAX_TOOL_OPTIONS = 128;
 
 /** A successful search action and the structural snapshot captured for that action. */
 export interface AgentSearchEvidence {
+  readonly committed?: { readonly runId: string; readonly workItemId: string; readonly attemptId: string;
+    readonly stepExecutionId: string; readonly targetSystemId: string; readonly toolActionId: string };
   readonly parameters: readonly ToolActionParameter[];
   readonly snapshot: StoredSnapshot;
   /** Optional pre-search snapshot used to prove each parameter name/label binding. */
@@ -48,6 +51,11 @@ export type AgentSearchHistoryEntry = Pick<SanitizedToolAction, 'parameters'> & 
 export interface AgentToolPlannerInput {
   /** Required to offer navigation derived from this Run's recorded search history. */
   readonly runId?: string;
+  readonly workItemId?: string;
+  readonly attemptId?: string;
+  readonly stepExecutionId?: string;
+  /** Internal worker restriction, never accepted as raw chat/tool arguments. */
+  readonly selectedStrategyId?: string;
   readonly plan: ExecutablePlan;
   readonly target: ProcedureTargetSnapshot;
   readonly population: PopulationRecord;
@@ -378,7 +386,8 @@ function completeZero(snapshot: StoredSnapshot): boolean {
     parsed.ok &&
     parsed.substrate === 'web_tree' &&
     parsed.document.completion?.complete === true &&
-    parsed.document.completion.returned === 0
+    parsed.document.completion.returned === 0 &&
+    !parsed.document.nodes.some(node => node.role === 'datum' || node.group.startsWith('record:'))
   );
 }
 
@@ -581,9 +590,52 @@ function output(
  * root's gate call. Observation values are never returned by this function: `found` contains
  * locators only, and the existing observation builder re-reads the selected snapshot bytes.
  */
+export interface EligibleLookupCapability {
+  readonly node: FrozenLookupCapability;
+  readonly prerequisiteEvidenceIds: readonly string[];
+  readonly prerequisiteActionIds: readonly string[];
+}
+/** Uses the same grounded query and completion validators as autonomous lookup. */
+export function eligibleLookupCapabilities(input: AgentToolPlannerInput): readonly EligibleLookupCapability[] {
+  const { plan } = input;
+  if (plan.schemaVersion !== 2 || plan.compilerVersion !== '2' || !sameFrozenTarget(plan, input.target) ||
+      !input.runId || !input.workItemId || !input.attemptId || !input.stepExecutionId ||
+      canonicalJson(plan.capabilityGraph as unknown as JsonValue) !== canonicalJson(canonicalLookupCapabilityGraph(plan.inputs) as unknown as JsonValue)) return [];
+  const primary = exactStringRecordValue(input.population, 'employee_id');
+  const secondary = exactStringRecordValue(input.population, 'full_name');
+  const label = findProcedureTemplate('P-1').declaredAttributeLabels?.identity;
+  const secondaryLabel = input.target.contract.secondary_key;
+  if (primary === null || secondary === null || typeof label !== 'string' || !secondaryLabel) return [];
+  const lookups = [{ key: 'employee_id', value: primary, label }, { key: 'full_name', value: secondary, label: secondaryLabel }];
+  const nodes = plan.capabilityGraph.nodes.filter(node => node.targetSystemId === input.target.registrationId);
+  const history = new Map<string, AgentSearchEvidence[]>();
+  for (const evidence of input.searches) {
+    const identity = evidence.committed;
+    if (!identity || identity.runId !== input.runId || identity.workItemId !== input.workItemId || identity.attemptId !== input.attemptId ||
+      identity.stepExecutionId !== input.stepExecutionId || identity.targetSystemId !== input.target.registrationId || !identity.toolActionId ||
+      evidence.controlPage?.runId !== input.runId || evidence.controlPage.targetSystem !== input.target.registrationId ||
+      !inTargetOrigins(input.target, evidence.controlPage.sourceLocation) || !evidence.controlSnapshot) return [];
+    const keys = searchKeysForEvidence(evidence, lookups);
+    if (keys === null || keys.size !== 1) return [];
+    for (const key of keys) history.set(key, [...(history.get(key) ?? []), evidence]);
+  }
+  return nodes.flatMap(node => {
+    if ((history.get(node.lookupKey)?.length ?? 0) >= node.maxAttempts) return [];
+    const prerequisites: AgentSearchEvidence[] = [];
+    for (const predicate of node.predecessors) {
+      const predecessor = nodes.find(other => other.id === predicate.nodeId);
+      const entries = predecessor ? history.get(predecessor.lookupKey) ?? [] : [];
+      if (entries.length !== 1 || !completeZero(entries[0]!.snapshot)) return [];
+      prerequisites.push(entries[0]!);
+    }
+    return [{ node, prerequisiteEvidenceIds: prerequisites.map(entry => entry.snapshot.evidenceId),
+      prerequisiteActionIds: prerequisites.map(entry => entry.committed!.toolActionId) }];
+  });
+}
+
 export function planAgentTools(input: AgentToolPlannerInput): AgentToolPlannerResult {
   const plan = input.plan;
-  if (plan.schemaVersion !== 1 || plan.compilerVersion !== '1' || plan.inputs.templateId !== P1_TEMPLATE) {
+  if (!supportedExecutablePlanVersion(plan) || plan.inputs.templateId !== P1_TEMPLATE) {
     return emptyResult();
   }
   if (!sameFrozenTarget(plan, input.target) || !validWebTarget(input.target)) return emptyResult();
@@ -624,6 +676,11 @@ export function planAgentTools(input: AgentToolPlannerInput): AgentToolPlannerRe
   const attempted = new Set<string>();
   const zeroByKey = new Set<string>();
   for (const evidence of input.searches) {
+    if (plan.schemaVersion === 2 && (!evidence.committed || evidence.committed.runId !== input.runId ||
+      evidence.committed.workItemId !== input.workItemId || evidence.committed.attemptId !== input.attemptId ||
+      evidence.committed.stepExecutionId !== input.stepExecutionId || evidence.committed.targetSystemId !== input.target.registrationId ||
+      !evidence.committed.toolActionId || evidence.controlPage?.runId !== input.runId || evidence.controlPage.targetSystem !== input.target.registrationId ||
+      !inTargetOrigins(input.target,evidence.controlPage.sourceLocation))) return emptyResult();
     if (evidence.snapshot.substrate !== 'web_tree') continue;
     const evidenceSnapshot = readStructuralSnapshot(evidence.snapshot);
     if (!evidenceSnapshot.ok || evidenceSnapshot.substrate !== 'web_tree') continue;
@@ -634,7 +691,11 @@ export function planAgentTools(input: AgentToolPlannerInput): AgentToolPlannerRe
   }
   const currentCompleteZero = completeZero(input.snapshot);
   const absenceReady = currentCompleteZero && lookups.every(({ key }) => zeroByKey.has(key));
-  const next = attempted.has(primary.key) ? (attempted.has(secondary.key) ? undefined : secondary) : primary;
+  const eligible = plan.schemaVersion === 2 ? eligibleLookupCapabilities(input) : [];
+  const declared = eligible.find(option => input.selectedStrategyId === undefined || option.node.id === input.selectedStrategyId);
+  if (input.selectedStrategyId !== undefined && (plan.schemaVersion !== 2 || declared === undefined)) return emptyResult();
+  const next = plan.schemaVersion === 1 ? (attempted.has(primary.key) ? (attempted.has(secondary.key) ? undefined : secondary) : primary)
+    : lookups.find(lookup => lookup.key === declared?.node.lookupKey);
 
   const candidate = buildCandidate(parsed.document, plan, input.target, primary, secondary);
   // An ambiguous or malformed identity cannot be made safe by another model action. Stop
@@ -647,7 +708,7 @@ export function planAgentTools(input: AgentToolPlannerInput): AgentToolPlannerRe
   if (found === null && !absenceReady && !addRecordedSearchPageOption(options, input, lookups, next)) return emptyResult();
   if (!addReadOptions(options, input.target, destination, parsed.document, found)) return emptyResult();
   if (!addScreenshotOption(options, input.target, destination)) return emptyResult();
-  return output(options, found, candidate.candidates, absenceReady);
+  return output(input.selectedStrategyId === undefined ? options : options.filter(option => option.tool.action === 'search'), found, candidate.candidates, absenceReady);
 }
 
 /** The root projects this function's exact model tool list; kept as a named convenience. */

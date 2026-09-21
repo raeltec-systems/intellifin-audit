@@ -1,3 +1,4 @@
+import { supportedExecutablePlanVersion } from '@intellifin/domain';
 import {
   adapterLookupColumn, adapterSearchKeys, attributeLabelFor, groundedText, normalizeObservationValue, normalizeObservedAt,
   findProcedureTemplate, isTemplateId,
@@ -35,7 +36,7 @@ export function buildFoundAgentObservation(input: {
   readonly selections: readonly AgentFieldSelection[];
   readonly observedAt: string;
 }): ObservationBatchItem | null {
-  if (input.plan.schemaVersion !== 1 || input.plan.compilerVersion !== '1') return null;
+  if (!supportedExecutablePlanVersion(input.plan)) return null;
   const templateId = input.plan.inputs.templateId;
   if (!isTemplateId(templateId)) return null;
   // Compiler1's shipped label contract is immutable build data. A target must have
@@ -131,7 +132,7 @@ export function buildAbsentAgentObservation(input: {
   readonly screenshotEvidenceId: string | null;
   readonly observedAt: string;
 }): ObservationBatchItem | null {
-  if (input.plan.schemaVersion !== 1 || input.plan.compilerVersion !== '1' || input.plan.inputs.templateId !== 'P-1') return null;
+  if (!supportedExecutablePlanVersion(input.plan) || input.plan.inputs.templateId !== 'P-1') return null;
   const parsed = readStructuralSnapshot(input.snapshot);
   // A failed capture or arbitrary empty page is no absence claim at all. Partial result
   // pages may carry an explicit zero count, but completeness remains false below.

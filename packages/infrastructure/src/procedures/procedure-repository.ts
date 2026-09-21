@@ -220,8 +220,9 @@ const authorshipSchema = z.strictObject({ createdBy: z.strictObject({ type: z.en
 const jsonValueSchema = z.custom<JsonValue>(value => { try { canonicalJson(value as JsonValue); return true; } catch { return false; } });
 const definitionSchema = z.strictObject({ schemaVersion: z.literal(1), inputs: jsonValueSchema, compiledPlan: ExecutablePlanSchema,
   modelConfiguration: z.strictObject({ provider: z.string().min(1).max(100), modelId: z.string().min(1).max(200), promptVersion: z.string().min(1).max(100) }).nullable(),
-  toolConfiguration: z.strictObject({ interpreterContract: z.literal('executable-plan-v1'), identityMatching: z.literal('opaque-exact-strings'), accessPolicy: z.literal('frozen-registered-read-actions'), actions: z.tuple([z.literal('create-workspace'),z.literal('acquire-population'),z.literal('sign-in'),z.literal('extract-adapter'),z.literal('inspect-record'),z.literal('capture-observation'),z.literal('evaluate-conditions')]) }),
-}).refine(value => canonicalJson(value.inputs) === canonicalJson(value.compiledPlan.inputs as unknown as JsonValue));
+  toolConfiguration: z.strictObject({ interpreterContract: z.enum(['executable-plan-v1','executable-plan-v2']), identityMatching: z.literal('opaque-exact-strings'), accessPolicy: z.literal('frozen-registered-read-actions'), actions: z.tuple([z.literal('create-workspace'),z.literal('acquire-population'),z.literal('sign-in'),z.literal('extract-adapter'),z.literal('inspect-record'),z.literal('capture-observation'),z.literal('evaluate-conditions')]) }),
+}).refine(value => canonicalJson(value.inputs) === canonicalJson(value.compiledPlan.inputs as unknown as JsonValue) &&
+  value.toolConfiguration.interpreterContract === `executable-plan-v${value.compiledPlan.schemaVersion}`);
 const reviewShape = { schemaVersion: z.literal(1), versionId: z.uuid(), baseline: z.strictObject({ versionId: z.uuid(), versionNumber: z.number().int().positive(), revision: z.string().regex(/^[0-9a-f]{64}$/) }).nullable(), definition: definitionSchema,
   diff: z.array(z.strictObject({ section: z.string().min(1), before: jsonValueSchema, after: jsonValueSchema, changed: z.boolean() })).refine(diff => diff.length === 12 || diff.length === 14),
 };

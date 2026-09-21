@@ -6,7 +6,8 @@ import { runConversationAnswerConsequence } from '@intellifin/application';
 import type { RunConversationMessageRequest, RunConversationRead, RunConversationInspectionRead, RunConversationMessage, RunConversationQuestionContext } from '@intellifin/application';
 import { RunConversation, RunConversationComposer, AnswerQuestionSource } from './RunConversation';
 import { RunWorkspaceShell } from './RunWorkspaceShell';
-import { readRunConversation, sendRunConversationMessage, confirmDeferredPauseProposal, confirmConversationResume, confirmConversationStop, confirmConversationAnswer } from './run-conversation-actions';
+import { readRunConversation, sendRunConversationMessage, confirmDeferredPauseProposal, confirmConversationResume, confirmConversationStop, confirmConversationAnswer, confirmConversationStrategy } from './run-conversation-actions';
+import { UntrustedText } from './UntrustedText';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { RunControllerLease, RunControlReadProvider, type RunControlView } from './RunControllerLease';
 import { useDesktopViewport, useLiveGate } from './LiveGate';
@@ -53,7 +54,7 @@ export function RunWorkspaceConversation({ runId, initial, selectedSourceOrdinal
     }
     setConfirming(true); setConfirmationError(null);
     try {
-      const execute = confirmation.kind === 'answer' ? confirmConversationAnswer : confirmation.kind === 'stop' ? confirmConversationStop : confirmation.kind === 'resume' ? confirmConversationResume : confirmDeferredPauseProposal;
+      const execute = confirmation.kind === 'strategy' ? confirmConversationStrategy : confirmation.kind === 'answer' ? confirmConversationAnswer : confirmation.kind === 'stop' ? confirmConversationStop : confirmation.kind === 'resume' ? confirmConversationResume : confirmDeferredPauseProposal;
       const result = await execute({ runId, commandId: confirmation.commandId });
       if (!result.ok) {
         if (confirmation.kind !== 'stop') setUnknownConfirmation(result.code === 'unavailable');
@@ -115,22 +116,27 @@ export function RunWorkspaceConversation({ runId, initial, selectedSourceOrdinal
     controls={<><RunControllerLease runId={runId} refreshKey={controlRefreshKey} />{controls}</>}
     currentDecision={currentDecision} workspace={workspace}
     conversation={<>
-      <ConfirmDialog open={confirmation !== null} weight="routine" title={confirmation?.kind === 'answer' ? 'Confirm this answer?' : confirmation?.kind === 'stop' ? 'Stop this Run?' : confirmation?.kind === 'resume' ? 'Resume this Run?' : 'Pause after this inspection?'}
-        consequence={confirmation?.kind === 'answer' ? `${runConversationAnswerConsequence(confirmation.answerOptionId ?? '')} Confirm before ${confirmation.answerAnchor?.deadline}. Answer only the recorded question with its chosen option.` : confirmation?.kind === 'stop' ? 'Cancellation cannot be undone. The worker finishes its current safe boundary. Collected evidence is retained and the partial Result is sealed.' : confirmation?.kind === 'resume'
+      <ConfirmDialog open={confirmation !== null} weight="routine" title={confirmation?.kind === 'strategy' ? 'Use the frozen Full name search?' : confirmation?.kind === 'answer' ? 'Confirm this answer?' : confirmation?.kind === 'stop' ? 'Stop this Run?' : confirmation?.kind === 'resume' ? 'Resume this Run?' : 'Pause after this inspection?'}
+        consequence={confirmation?.kind === 'strategy' ? `Queue one Full name search for the recorded inspection. This uses only the frozen fallback after the recorded complete zero-match employee-ID search for this exact inspection attempt. The worker rechecks Run control, prerequisite evidence and attempt limits. Pause and Stop retain priority. Queued does not mean applied.` : confirmation?.kind === 'answer' ? `${runConversationAnswerConsequence(confirmation.answerOptionId ?? '')} Confirm before ${confirmation.answerAnchor?.deadline}. Answer only the recorded question with its chosen option.` : confirmation?.kind === 'stop' ? 'Cancellation cannot be undone. The worker finishes its current safe boundary. Collected evidence is retained and the partial Result is sealed.' : confirmation?.kind === 'resume'
           ? `Resume the pause opened at ${confirmation.resumeAnchor?.pausedAt}. Confirm before ${confirmation.resumeAnchor?.deadline}. Interrupted work restarts as a new attempt using the frozen plan and committed evidence.`
           : `Request a pause after ${confirmation?.targetLabel ?? 'the named inspection'} settles, including any recorded skip. Only this target inspection is named. An open question remains open; if no work remains, the Run finishes instead.`}
-        confirmLabel={confirmation?.kind === 'answer' ? 'Confirm answer' : confirmation?.kind === 'stop' ? 'Stop Run' : confirmation?.kind === 'resume' ? 'Resume Run' : 'Pause after this inspection'} cancelLabel="Go back" busy={confirming} refusal={confirmationError}
+        confirmLabel={confirmation?.kind === 'strategy' ? 'Queue Full name search' : confirmation?.kind === 'answer' ? 'Confirm answer' : confirmation?.kind === 'stop' ? 'Stop Run' : confirmation?.kind === 'resume' ? 'Resume Run' : 'Pause after this inspection'} cancelLabel="Go back" busy={confirming} refusal={confirmationError}
         keepOpenOnGateClose={unknownConfirmation}
         disabledReason={confirmation !== null && !['stop', 'answer'].includes(confirmation.kind) && !unknownConfirmation && !commandOwned(confirmation)
           ? 'Checking current Run control before confirming.' : null}
         onCancel={() => { if (!confirming) setConfirmation(null); }} onConfirm={() => { void confirm(); }}>
+        {confirmation?.kind === 'strategy' && confirmation.strategyAnchor && <>
+          <UntrustedText field="Strategy inspection">{confirmation.targetLabel ?? ''}</UntrustedText>
+          <p>Required committed evidence: {confirmation.strategyAnchor.prerequisiteEvidenceIds.map(id => <a key={id} href={`/runs/${runId}/evidence?evidence=${id}`}>Primary search evidence</a>)}</p>
+          <p>Control epoch {confirmation.strategyAnchor.controlEpoch}. This selection cannot move to another inspection or restart.</p>
+        </>}
         {confirmation?.kind === 'answer' && currentAnswerQuestion && <AnswerQuestionSource
           question={currentAnswerQuestion} optionId={confirmation.answerOptionId} expanded label="Recorded question and choice" />}
       </ConfirmDialog>
       {before !== null && <button type="button" onClick={() => { setBefore(null); setHistory(null); setError(null); }}>Return to latest messages</button>}
       <RunConversation onReviewCommand={command => {
         if (command.canConfirm && gate.disabledReason === null && (['stop', 'answer'].includes(command.kind) || commandOwned(command)) &&
-          (command.kind === 'answer' || command.kind === 'stop' || (command.kind === 'pause-after-inspection' && command.targetLabel) || (command.kind === 'resume' && command.resumeAnchor))) {
+          (command.kind === 'strategy' && command.strategyAnchor || command.kind === 'answer' || command.kind === 'stop' || (command.kind === 'pause-after-inspection' && command.targetLabel) || (command.kind === 'resume' && command.resumeAnchor))) {
           setUnknownConfirmation(false); setConfirmationError(null); setConfirmation(command);
         }
       }} runId={runId} messages={(read?.messages ?? []).map(message => message.command && !['stop', 'answer'].includes(message.command.kind) && !commandOwned(message.command)
@@ -143,5 +149,5 @@ export function RunWorkspaceConversation({ runId, initial, selectedSourceOrdinal
         }]} />
     </>}
     composer={<RunConversationComposer runId={runId} selectedSourceOrdinal={selectedSourceOrdinal}
-      replyToWaitId={replyToWaitId} currentInspection={currentInspection} questionContext={questionContext} onSend={send} disabled={disabledReason !== undefined} disabledReason={disabledReason} />} /></RunControlReadProvider>;
+      replyToWaitId={replyToWaitId} currentInspection={currentInspection} questionContext={questionContext} strategyContext={initial.status === 'ready' ? initial.strategy : undefined} onSend={send} disabled={disabledReason !== undefined} disabledReason={disabledReason} />} /></RunControlReadProvider>;
 }

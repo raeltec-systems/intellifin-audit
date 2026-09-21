@@ -1,9 +1,10 @@
+import type { RunStrategyWorkerPort } from './run-strategy.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   COMPLIANCE_OBSERVATION_FIELDS,
   compileComplianceDraft,
   complianceInputFromFields,
-  initialDraftCompliance,
+  initialDraftCompliance, canonicalLookupCapabilityGraph,
   initialDraftEvidence,
   registrationDigest,
   registrationDigestEnvelope,
@@ -156,6 +157,7 @@ function response(action: string | null, uncertainty: AgentModelResponse['uncert
 }
 
 class FakeRepository implements AgentWorkRepository {
+  strategyPort: RunStrategyWorkerPort = { publishStrategyOpportunity: async()=>{}, claimStrategy: async()=>null, completeStrategy: async()=>{} };
   run: RunRecord = { ...RUN };
   checkpoint: AgentWorkCheckpoint | null = null;
   workItems: AgentWorkContext['workItems'][number][] = [];
@@ -190,6 +192,7 @@ class FakeRepository implements AgentWorkRepository {
     const records = this.records;
     const executions = this.executions;
     const context = {
+      ...this.strategyPort,
       run: this.run,
       population: this.population,
       checkpoint: this.checkpoint,
@@ -1452,5 +1455,57 @@ describe('agent absence returns to its recorded search controls', () => {
     ]);
     expect(actions.slice(-4)).toEqual(['navigate','search','navigate','search']);
     expect(repository.actions.every(action => action.runId === RUN_ID && action.destination === 'https://loancore.example.test/')).toBe(true);
+  });
+});
+
+describe('worker frozen strategy action linkage',()=>{
+  afterEach(()=>vi.restoreAllMocks());
+  it.each(['before-model','during-model','pause','corrupt-evidence'] as const)('consumes only a fresh selected action at its existing boundary (%s)',async timing=>{
+    vi.spyOn(gate,'runRunLevelGate').mockResolvedValue(undefined as never);
+    const repository=new FakeRepository();
+    repository.plan={...PLAN,schemaVersion:2,compilerVersion:'2',capabilityGraph:canonicalLookupCapabilityGraph(PLAN.inputs)};
+    let opportunity: import('./run-strategy.js').RunStrategyOpportunity|null=null;
+    let queued=false, dispatched:string|null=null; const applied:string[]=[]; let models=0; let fallbackCalls=0;
+    repository.strategyPort={
+      publishStrategyOpportunity:async value=>{opportunity=value;if(value&&timing==='before-model')queued=true;},
+      claimStrategy:async(value,actionId)=>{
+        if(!value||!queued||dispatched)return null;
+        repository.eventOrder.push('strategy-dispatched');dispatched=actionId;
+        return {commandId:'01990000-0000-7000-8000-000000000001',toolActionId:actionId};
+      },
+      completeStrategy:async(_command,action)=>{
+        expect(repository.actions.some(row=>row.toolActionId===action.toolActionId)).toBe(true);
+        expect(action.toolActionId).toBe(dispatched); applied.push(action.toolActionId);repository.eventOrder.push('strategy-applied');
+      },
+    };
+    const browser=browserFor(repository);const perform=browser.perform;
+    browser.perform=async(...args)=>{
+      const result=await perform(...args);const action=args[1];
+      if(action.action==='search'&&action.parameters?.[0]?.name==='full_name')fallbackCalls++;
+      const document={schemaVersion:1,nodes:SNAPSHOT_NODES,...(action.action==='search'?{completion:{complete:true,returned:0}}:{})};
+      return {...result,artifacts:result.artifacts!.map(artifact=>artifact.kind==='structural-snapshot'?{...artifact,bytes:utf8Bytes(JSON.stringify(document))}:artifact)};
+    };
+    const model:AgentModelGateway={identity:identity(),propose:vi.fn(async (request:AgentModelRequest)=>{
+      models++;
+      if(opportunity){
+        queued=true;
+        if(timing==='pause') repository.run={...repository.run,pauseRequest:{requestedBy:'auditor',requestedAt:'2026-09-07T00:00:01.000Z',sessionId:'session-1'}};
+        if(timing==='corrupt-evidence'){const evidence=repository.evidence.find(row=>row.evidenceId===opportunity!.anchor.prerequisiteEvidenceIds[0]);if(evidence)evidence.state='ABANDONED';}
+      }
+      return response(request.tools.find(tool=>tool.action==='search')?.toolId??null);
+    })};
+    const dependencies=deps(repository,browser,model,durableWaitPort(repository));
+    await executeAgentWorkItem(dependencies,JOB);
+    if(timing==='pause'||timing==='corrupt-evidence'){
+      expect(fallbackCalls).toBe(0);expect(applied).toEqual([]);expect(dispatched).toBeNull();
+    }else{
+      expect(fallbackCalls).toBe(1);expect(applied).toEqual([dispatched]);
+      const action=repository.actions.find(row=>row.toolActionId===dispatched)!;
+      expect(action.parameters).toEqual([{name:'full_name',value:RECORD.values.full_name}]);
+      expect(repository.eventOrder.indexOf('strategy-dispatched')).toBeLessThan(repository.eventOrder.lastIndexOf('browser:search'));
+      expect(models).toBe(timing==='before-model'?1:2);
+      await executeAgentWorkItem(dependencies,JOB);
+      expect(fallbackCalls).toBe(1);expect(applied).toHaveLength(1);
+    }
   });
 });

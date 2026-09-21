@@ -83,7 +83,7 @@ describe('durable executable plan', () => {
   });
 
   it.each([
-    ['schema version', (candidate: any) => { candidate.schemaVersion = 2; }],
+    ['schema version', (candidate: any) => { candidate.schemaVersion = 3; }],
     ['extra property', (candidate: any) => { candidate.secret = 'not-stored'; }],
     ['nested extra property', (candidate: any) => { candidate.sessionSteps[0].secret = 'not-stored'; }],
     ['changed limits', (candidate: any) => { candidate.limits.runTokens++; }],

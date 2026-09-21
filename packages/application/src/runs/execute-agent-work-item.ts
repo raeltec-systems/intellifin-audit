@@ -1,3 +1,4 @@
+import { strategyOpportunity, refreshStrategyOpportunity, type ClaimedRunStrategy } from './run-strategy.js';
 import {
   observationChecks, observationCoverage, observationCorroborationState, RULE_DOES_NOT_NAME_VALUE, POLICY_CONTRADICTED,
   conditionInstructionText,
@@ -703,11 +704,21 @@ export async function executeAgentWorkItem(
    * already committed. What a pause does to the attempt in progress is supersede it, so the
    * resume restarts the Work Item from its first Tool Action.
    */
+  const retireStrategies = async (context: AgentWorkContext): Promise<void> => {
+    if(plan.schemaVersion!==2)return;
+    await context.publishStrategyOpportunity(null);
+    await context.claimStrategy(null,dependencies.ids.next());
+  };
+
   const lifecycleBoundary = async (
     inFlight?: { readonly item: WorkItemRecord; readonly execution: StepExecutionRecord },
   ): Promise<'continue' | 'stopped' | 'lost'> => {
     let stopped = false;
     const committed = await guarded(async (context) => {
+      if(plan.schemaVersion===2 && (context.run?.cancellation || context.run?.pauseRequest)) {
+        await context.publishStrategyOpportunity(null);
+        await context.claimStrategy(null,dependencies.ids.next());
+      }
       const cancellation = context.run?.cancellation ?? null;
       if (cancellation !== null) {
         stopped = true;
@@ -803,6 +814,7 @@ export async function executeAgentWorkItem(
       const settled = context.workItems.find(candidate => candidate.workItemId === marker.workItemId);
       const otherPending = context.workItems.some(candidate => candidate.workItemId !== marker.workItemId && !isTerminalWorkItem(candidate));
       if (settled === undefined || !isTerminalWorkItem(settled) || !otherPending) return;
+      await retireStrategies(context);
       const at = nowIso(dependencies.clock);
       await context.settleDeferredPause('APPLIED', at);
       checkpoint = {
@@ -838,6 +850,7 @@ export async function executeAgentWorkItem(
   };
 
   const stopWithin = async (context: AgentWorkContext, diagnostic: AgentWorkDiagnostic, cause: RunLimitCause | 'action-denied' | 'scope-violation' | 'session-step-failed'): Promise<void> => {
+    await retireStrategies(context);
     const decision = runStopFor(cause);
     const next: AgentWorkCheckpoint = { ...checkpoint, status: 'TERMINAL', diagnostic, leaseUntil: nowIso(dependencies.clock) };
     await context.saveCheckpoint(next, decision.state);
@@ -923,6 +936,7 @@ export async function executeAgentWorkItem(
         diagnostic,
       };
       const saved = await guarded(async (context) => {
+        await retireStrategies(context);
         await context.saveWorkItem(item);
         await context.saveStepExecution({ ...execution, state: 'FAILED', completedAt: nowIso(dependencies.clock), diagnostic });
         await context.saveCheckpoint(next, 'RUNNING');
@@ -958,6 +972,7 @@ export async function executeAgentWorkItem(
       diagnostic,
     };
     const saved = await guarded(async (context) => {
+        await retireStrategies(context);
       await context.saveWorkItem(item);
       await context.saveStepExecution({ ...execution, state: 'FAILED', completedAt: nowIso(dependencies.clock), diagnostic });
       await context.saveCheckpoint(next, 'RUNNING');
@@ -998,6 +1013,7 @@ export async function executeAgentWorkItem(
         status: 'RETRY', leaseUntil: nowIso(dependencies.clock), workItemId: null,
         waitId: null, pendingWait: null, diagnostic: input.diagnostic };
       const saved = await guarded(async context => {
+        await retireStrategies(context);
         await context.saveWorkItem(input.item);
         await context.saveStepExecution({ ...input.execution, state: 'FAILED', completedAt: nowIso(dependencies.clock), diagnostic: input.diagnostic });
         await context.saveCheckpoint(next, 'RUNNING');
@@ -1020,6 +1036,7 @@ export async function executeAgentWorkItem(
       diagnostic: input.diagnostic,
     };
     const saved = await guarded(async (context) => {
+      await retireStrategies(context);
       await context.saveWorkItem(input.item);
       await context.saveStepExecution({ ...input.execution, state: 'FAILED', completedAt: nowIso(dependencies.clock), diagnostic: input.item.diagnostic });
       await context.saveCheckpoint(waiting, 'RUNNING');
@@ -1373,7 +1390,10 @@ export async function executeAgentWorkItem(
           timeoutMs: budget,
           guard: agentGuard,
         });
-        const savedAction = await guarded(async (context) => { await context.saveToolAction(performed.action); });
+        const savedAction = await guarded(async (context) => {
+          await context.saveToolAction(performed.action);
+          if(plan.schemaVersion===2)await context.publishStrategyOpportunity(null);
+        });
         if (!savedAction) return { retry: false };
         if (!performed.ok) {
           const diagnostic = actionDiagnostic(performed.diagnostic);
@@ -1616,8 +1636,8 @@ export async function executeAgentWorkItem(
           }
           break;
         }
-        const planned = planAgentTools({
-          runId: run.runId,
+        let planned = planAgentTools({
+          runId: run.runId, workItemId: item.workItemId, attemptId: checkpoint.attemptId, stepExecutionId: execution.stepExecutionId,
           plan,
           target: entry.target,
           population: record,
@@ -1625,6 +1645,31 @@ export async function executeAgentWorkItem(
           sourceLocation: current.sourceLocation,
           searches,
         });
+        const strategyInput = {runId:run.runId,plan,target:entry.target,population:record,snapshot:current.snapshot,
+          sourceLocation:current.sourceLocation,searches,workItemId:item.workItemId,attemptId:checkpoint.attemptId,stepExecutionId:execution.stepExecutionId};
+        let opportunity = strategyOpportunity(strategyInput);
+        const refreshOpportunity = async () => {
+          let evidence: readonly AdapterEvidenceRecord[] = [];
+          if(!await guarded(async context => { evidence = context.evidence; })) return false;
+          try { opportunity = await refreshStrategyOpportunity(strategyInput,evidence,dependencies.store,budget); }
+          catch { opportunity = null; }
+          return opportunity !== null;
+        };
+        const refuseChangedStrategy = async () => {
+          await guarded(async context => { await context.publishStrategyOpportunity(null); await context.claimStrategy(null,dependencies.ids.next()); });
+          return persistWait({item,execution,kind:'retry-or-skip',options:FIXED_ESCALATION_OPTIONS['retry-or-skip'],diagnostic:'insufficient-evidence',supportingEvidenceIds:[]});
+        };
+        if (opportunity && !await refreshOpportunity()) return refuseChangedStrategy();
+        let selectedStrategy: ClaimedRunStrategy | null = null;
+        if (plan.schemaVersion === 2) {
+          const published = await guarded(async context => {
+            if(context.run?.cancellation || context.run?.pauseRequest) return;
+            await context.publishStrategyOpportunity(opportunity);
+            selectedStrategy = await context.claimStrategy(opportunity,dependencies.ids.next());
+          });
+          if(!published)return {retry:false};
+          if(selectedStrategy && opportunity) planned={...planned,tools:[opportunity.tool],parametersByToolId:{[opportunity.tool.toolId]:opportunity.parameters}};
+        }
         if (planned.absenceReady) {
           const queryKeys = currentSearchQueryKeys(searches, entry.target);
           const observation = buildAbsentAgentObservation({
@@ -1656,6 +1701,11 @@ export async function executeAgentWorkItem(
             supportingEvidenceIds: [current.snapshot.evidenceId],
           });
         }
+        let response: AgentModelResponse;
+        if (selectedStrategy && opportunity) {
+          response={schemaVersion:1,route:dependencies.model.identity.provider,model:dependencies.model.identity,
+            actions:[{...opportunity.tool,parameters:[]}],uncertainty:{kind:'none',rationale:null},usage:{inputTokens:0,outputTokens:0,totalTokens:0}};
+        } else {
         const request: AgentModelRequest = {
           schemaVersion: 1,
           objective: targetStepText(plan, entry.target),
@@ -1692,7 +1742,23 @@ export async function executeAgentWorkItem(
         }
         const responseBoundary = await lifecycleBoundary({ item, execution });
         if (responseBoundary !== 'continue') return { retry: false };
-        const response: AgentModelResponse = turn.response;
+        response = turn.response;
+
+          // A human can confirm while the model is in flight. Recheck at the same
+          // guarded boundary and replace only with the exact frozen eligible action.
+          if(plan.schemaVersion===2 && opportunity){
+            if (!await refreshOpportunity()) return refuseChangedStrategy();
+            const selected=await guarded(async context=>{
+              if(context.run?.cancellation||context.run?.pauseRequest)return;
+              selectedStrategy=await context.claimStrategy(opportunity,dependencies.ids.next());
+            });
+            if(!selected)return {retry:false};
+            if(selectedStrategy){
+              planned={...planned,tools:[opportunity.tool],parametersByToolId:{[opportunity.tool.toolId]:opportunity.parameters}};
+              response={...response,actions:[{...opportunity.tool,parameters:[]}],uncertainty:{kind:'none',rationale:null}};
+            }
+          }
+        }
         if (response.uncertainty.kind !== 'none') {
           const kind: EscalationKind = response.uncertainty.kind === 'ambiguous' && planned.candidates.length > 0
             ? 'choose-candidate' : 'retry-or-skip';
@@ -1745,7 +1811,7 @@ export async function executeAgentWorkItem(
         }
         const actionBoundary = await lifecycleBoundary({ item, execution });
         if (actionBoundary !== 'continue') return { retry: false };
-        const actionId = dependencies.ids.next();
+        const actionId = (selectedStrategy as ClaimedRunStrategy | null)?.toolActionId ?? dependencies.ids.next();
         const performed = await performToolAction(dependencies.browser, {
           ref: workspace,
           runId: run.runId,
@@ -1761,7 +1827,11 @@ export async function executeAgentWorkItem(
           timeoutMs: budget,
           guard: agentGuard,
         });
-        const savedAction = await guarded(async (context) => { await context.saveToolAction(performed.action); });
+        const savedAction = await guarded(async (context) => {
+          await context.saveToolAction(performed.action);
+          if(selectedStrategy)await context.completeStrategy((selectedStrategy as ClaimedRunStrategy).commandId,performed.action);
+          else if(plan.schemaVersion===2)await context.publishStrategyOpportunity(null);
+        });
         if (!savedAction) return { retry: false };
         if (!performed.ok) {
           const diagnostic = actionDiagnostic(performed.diagnostic);
@@ -1804,6 +1874,8 @@ export async function executeAgentWorkItem(
         item.evidenceId = capture.snapshot.evidenceId;
         if (selected.action === 'search') {
           searches = [...searches, {
+            committed: { runId: run.runId, workItemId: item.workItemId, attemptId: checkpoint.attemptId,
+              stepExecutionId: execution.stepExecutionId, targetSystemId: entry.target.registrationId, toolActionId: performed.action.toolActionId },
             parameters: performed.action.parameters,
             controlSnapshot: beforeSearch,
             controlPage,
@@ -1812,7 +1884,7 @@ export async function executeAgentWorkItem(
           }];
         }
         if (selected.action === 'read-attribute') {
-          const after = planAgentTools({ runId: run.runId, plan, target: entry.target, population: record, snapshot: current.snapshot, sourceLocation: current.sourceLocation, searches });
+          const after = planAgentTools({ runId: run.runId, workItemId: item.workItemId, attemptId: checkpoint.attemptId, stepExecutionId: execution.stepExecutionId, plan, target: entry.target, population: record, snapshot: current.snapshot, sourceLocation: current.sourceLocation, searches });
           if (after.found !== null) {
             const observation = buildFoundAgentObservation({
               plan, target: entry.target, population: record, workItemId: item.workItemId,

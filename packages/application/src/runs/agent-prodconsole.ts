@@ -1,3 +1,4 @@
+import { supportedExecutablePlanVersion } from '@intellifin/domain';
 import {
   adapterLookupColumn,
   adapterSearchKeys,
@@ -283,8 +284,7 @@ function validP4Input(
   sourceLocation: string,
 ): { readonly labels: readonly ProdConsoleLabel[]; readonly destination: string; readonly lookupColumn: string } | null {
   if (
-    plan.schemaVersion !== 1 ||
-    plan.compilerVersion !== '1' ||
+    !supportedExecutablePlanVersion(plan) ||
     plan.inputs.templateId !== 'P-4' ||
     adapterLookupColumn(plan.inputs.templateId) !== 'parameter' ||
     adapterSearchKeys(plan.inputs.templateId)?.length !== 1 ||

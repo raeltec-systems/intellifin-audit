@@ -1,3 +1,4 @@
+import { readRunStrategy, readStrategyCommands, admitRunStrategy, insertRunStrategy, confirmRunStrategy } from './run-strategy-repository.js';
 import { readLockedConversationQuestion } from './run-conversation-question.js';
 import { createHash } from 'node:crypto';
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
@@ -404,6 +405,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       const olderBefore = rows.length > RUN_CONVERSATION_PAGE_SIZE ? page[page.length - 1]?.sequence ?? null : null;
       const eventContext = await this.eventContext(tx, run, page);
       const receiptParents = page.filter(row => row.kind === 'command-receipt' && row.parentMessageId !== null).map(row => row.parentMessageId!);
+      const strategyReceipts = await readStrategyCommands(tx,run.runId,input.actorId,receiptParents,this.cipher);
       const receipts = receiptParents.length === 0 ? [] : await tx.execute<{
         message_id: string; command_id: string; state: NonNullable<RunConversationMessage['command']>['state'];
         expected_run_revision: number; deferred_control_epoch: number | null; reason_code: string;
@@ -518,6 +520,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
           createdAt: row.createdAt.toISOString(),
           contextRevision: row.contextRevision,
           links,
+          ...(row.parentMessageId === null || !strategyReceipts.has(row.parentMessageId) ? {} : { command: { ...strategyReceipts.get(row.parentMessageId)!, canConfirm: contentState === 'available' && strategyReceipts.get(row.parentMessageId)!.canConfirm === true } }),
           ...(receipt === undefined ? {} : { command: { commandId: receipt.command_id, kind: receipt.kind,
             state: receipt.state, at: receipt.at, sourceEventId: receipt.source_event_id,
             ...(receipt.kind === 'answer' ? (() => {
@@ -568,6 +571,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
         status: 'ready' as const,
         runId: input.runId,
         messages,
+        strategy: await readRunStrategy(tx,run.runId,input.actorId),
         olderBefore,
         enabled: true as const,
         readAt: validClock(this.now()).toISOString(),
@@ -970,6 +974,8 @@ export class PostgresRunConversationRepository implements RunConversationReposit
     });
   }
 
+  async confirmStrategy(input: PostgresRunConversationAppendInput): Promise<RunConversationCommandReceipt> { return confirmRunStrategy(this.db,this.cipher,input); }
+
   async append(input: PostgresRunConversationAppendInput): Promise<RunConversationAppendReceipt> {
     if (!validActor(input.actorId) || !validActor(input.sessionId)) return { ok: false, code: 'malformed', reason: 'The conversation identity was not valid.' };
     const parsed = parseRunConversationMessageRequest(input.request);
@@ -992,6 +998,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       selectedSourceOrdinal: parsed.value.selectedSourceOrdinal,
       replyToWaitId: parsed.value.replyToWaitId,
       ...(parsed.value.questionAnchor == null ? {} : { questionAnchor: parsed.value.questionAnchor }),
+      ...(interpretation.intent.kind === 'strategy-proposal' ? { strategyAnchor: parsed.value.strategyAnchor ?? null } : {}),
       ...(interpretation.intent.kind === 'deferred-pause-proposal' ? { currentInspection: parsed.value.currentInspection ?? null } : {}),
     });
     const semanticFingerprint = cipher.fingerprint(semanticInput);
@@ -1063,6 +1070,17 @@ export class PostgresRunConversationRepository implements RunConversationReposit
 
       const plan = await new DrizzleFrozenExecutionReader(tx).readFrozenExecution(run.versionId, run.procedureId);
       if (!plan) return { ok: false, code: 'unavailable', deliveryStatus: 'definite', reason: 'The frozen Run context is unavailable.' };
+      const strategyAnchor = interpretation.intent.kind === 'strategy-proposal' ? parsed.value.strategyAnchor ?? null : null;
+      if (interpretation.intent.kind === 'strategy-proposal') {
+        if (plan.schemaVersion !== 2 || strategyAnchor === null) return { ok:false,code:'conflict',deliveryStatus:'definite',reason:'No eligible frozen strategy was captured for this draft. Read the current strategy prerequisites before starting a new draft.' };
+        if (parsed.value.replyToWaitId !== null) return {ok:false,code:'conflict',deliveryStatus:'definite',reason:'A strategy selection cannot answer an open question.'};
+        const subjects = await tx.select({ordinal:populationRow.ordinal}).from(populationRow).where(and(eq(populationRow.runId,run.runId),sql`${populationRow.values}->'employee_id'=to_jsonb(${strategyAnchor.subjectKey}::text)`,eq(populationRow.disposition,'included')));
+        if(subjects.length!==1)return {ok:false,code:'conflict',deliveryStatus:'definite',reason:'The exact strategy subject is not unique in the frozen population.'};
+        const subject=subjects[0];
+        if (sourceOrdinal !== null && sourceOrdinal !== subject?.ordinal) return {ok:false,code:'conflict',deliveryStatus:'definite',reason:'This draft addresses a historical record, not the current inspection. Start a new draft from the current work item.'};
+        const refusal = await admitRunStrategy(tx,{runId:run.runId,actorId:input.actorId,anchor:strategyAnchor,strategy:interpretation.intent.strategy});
+        if(refusal)return {ok:false,code:'conflict',deliveryStatus:'definite',reason:refusal};
+      }
       const deferredAnchor = interpretation.intent.kind === 'deferred-pause-proposal' ? parsed.value.currentInspection ?? null : null;
       let deferredTargetLabel: string | null = null;
       let deferredControlEpoch: number | null = null;
@@ -1130,6 +1148,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       if (!safetyShortcut && facts === null) return { ok: false, code: 'malformed', reason: 'The selected source record is not available in this Run.' };
       let replyBody = facts === null ? bodyEnvelope('Pause request awaiting the domain decision.', [])
         : bodyEnvelope(replyText(run, safeIntentKind(interpretation.intent.kind), facts), facts.selected?.evidenceLinks ?? []);
+      if(strategyAnchor) replyBody=bodyEnvelope(`Review Full name search for ${strategyAnchor.subjectKey} on ${strategyAnchor.targetSystemId}. The primary Employee ID lookup has a complete grounded zero-match result for this exact attempt. Confirming queues one declared lookup; the worker must recheck control, evidence and safety before the action. Identity matching, population, predicates and evidence requirements remain unchanged.`,strategyAnchor.prerequisiteEvidenceIds.map(evidenceId=>({evidenceId,locator:null})));
       const messageId = new CryptoUuidV7Generator().next();
       const replyMessageId = new CryptoUuidV7Generator().next();
       const event = await createAuditEventWriter(tx, { now: () => at }, new CryptoUuidV7Generator()).append({
@@ -1244,6 +1263,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
           replyBody = bodyEnvelope(`Question for ${answerQuestion.subject}: ${answerQuestion.question} Choice: ${answerOption.label} (${answerOption.id}). ${runConversationAnswerConsequence(answerOption.id)} Confirm before ${answerQuestion.anchor.deadline}. No answer is applied until you confirm.`, []);
         }
       }
+      if(strategyAnchor) await insertRunStrategy(tx,{commandId:new CryptoUuidV7Generator().next(),runId:run.runId,actorId:input.actorId,sessionId:input.sessionId,messageId,anchor:strategyAnchor});
       // Existing domain events can append operational narration between intake and
       // reply. Allocate from the committed transaction history after invoking the handler.
       const [replyPosition] = await tx.select({ sequence: sql<number>`coalesce(max(${runConversationMessage.sequence}), 0)::int` })
@@ -1257,7 +1277,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
         runId: run.runId,
         sequence: replySequence,
         actorId: input.actorId,
-        kind: interpretation.intent.kind === 'pause-now' || deferredAnchor !== null || resumeAnchor !== null || stopProposal || answerOption !== null ? 'command-receipt' : 'platform-event',
+        kind: strategyAnchor !== null || interpretation.intent.kind === 'pause-now' || deferredAnchor !== null || resumeAnchor !== null || stopProposal || answerOption !== null ? 'command-receipt' : 'platform-event',
         createdAt: at,
         parentMessageId: messageId,
         requestKey: null,
