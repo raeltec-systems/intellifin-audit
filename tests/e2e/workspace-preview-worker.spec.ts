@@ -202,9 +202,19 @@ test.describe('composed compiled-worker near-live preview', () => {
       release(model);
       await expect.poll(async () => (await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)[0]?.state, { timeout: 60_000 }).toBe('PAUSED');
       await page.reload();
-      const acquire = page.getByRole('button', { name: 'Acquire control', exact: true });
-      await acquire.and(page.locator(':not([aria-disabled="true"])')).click();
-      await expect(page.getByRole('region', { name: 'Run controller', exact: true })).toContainText('You control this Run.');
+      const controller = page.getByRole('region', { name: 'Run controller', exact: true });
+      for (let attempt = 0; attempt < 2 && !(await controller.textContent())?.includes('You control this Run.'); attempt++) {
+        const acquire = page.getByRole('button', { name: 'Acquire control', exact: true })
+          .and(page.locator(':not([aria-disabled="true"])'));
+        await expect(acquire).toBeVisible();
+        await acquire.click();
+        // A stale post-Pause read can produce a definite epoch refusal. Its refresh
+        // exposes the current epoch and leaves Acquire explicitly eligible for one
+        // retry; never retry an unknown or still-pending outcome.
+        await expect(controller).toHaveAttribute('data-control-ready', 'false');
+        await expect(controller).toHaveAttribute('data-control-ready', 'true');
+      }
+      await expect(controller).toContainText('You control this Run.');
       await page.getByRole('button', { name: 'Resume', exact: true }).and(page.locator(':not([aria-disabled="true"])')).click();
       await page.getByRole('dialog').getByRole('button', { name: 'Resume Run', exact: true }).click();
       // Safe-pause restart may replace the workspace. Allow the real fresh sign-in,
