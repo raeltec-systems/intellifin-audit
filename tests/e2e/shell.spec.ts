@@ -20,7 +20,7 @@ test.describe('as an Auditor', () => {
   test('the sidebar shows four items and no Administration', async ({ page }) => {
     await page.goto('/');
     const nav = page.getByRole('navigation', { name: 'Main' });
-    await expect(nav.getByRole('link')).toHaveText(['Overview', 'Procedures', 'Runs', 'Review']);
+    await expect(nav.getByRole('link')).toHaveText(['Overview', 'Procedures', 'Runs', 'Reviews']);
     await expect(nav.getByRole('link', { name: 'Administration' })).toHaveCount(0);
   });
 
@@ -100,7 +100,7 @@ test.describe('as a PoC Administrator', () => {
       'Overview',
       'Procedures',
       'Runs',
-      'Review',
+      'Reviews',
       'Administration',
     ]);
   });
@@ -162,7 +162,7 @@ test.describe('as a PoC Administrator', () => {
       'Administration',
       'Overview',
       'Procedures',
-      'Review',
+      'Reviews',
       'Runs',
     ]);
   });

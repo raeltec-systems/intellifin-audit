@@ -21,20 +21,20 @@ import {
  */
 
 describe('the sidebar item order', () => {
-  it('is Overview, Procedures, Runs, Review, with Administration last', () => {
+  it('is Overview, Procedures, Runs, Reviews, with Administration last', () => {
     expect(NAV_ITEMS.map((item) => item.label)).toEqual([
       'Overview',
       'Procedures',
       'Runs',
-      'Review',
+      'Reviews',
     ]);
     expect(ADMINISTRATION_ITEM.label).toBe('Administration');
   });
 
-  it('puts a count on Runs and Review and on nothing else', () => {
+  it('puts a count on Runs and Reviews and on nothing else', () => {
     expect(NAV_ITEMS.filter((item) => item.count).map((item) => item.label)).toEqual([
       'Runs',
-      'Review',
+      'Reviews',
     ]);
   });
 });
@@ -93,11 +93,11 @@ describe('which item a route highlights', () => {
 describe('what a count reads as', () => {
   it('counts one Run and one Result in the singular', () => {
     expect(countDescription('runs', 1)).toBe(' active Run');
-    expect(countDescription('review', 1)).toBe(' Result awaiting your decision');
+    expect(countDescription('review', 1)).toBe(' item awaiting your review');
   });
 
   it('counts more than one in the plural', () => {
     expect(countDescription('runs', 4)).toBe(' active Runs');
-    expect(countDescription('review', 4)).toBe(' Results awaiting your decision');
+    expect(countDescription('review', 4)).toBe(' items awaiting your review');
   });
 });

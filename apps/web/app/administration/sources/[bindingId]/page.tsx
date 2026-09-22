@@ -7,6 +7,7 @@ import { DrizzleBindingRepository, DrizzleProcedureRepository } from '@intellifi
 import { BindingEditor } from '../../../../src/admin/BindingEditor';
 import { Banner } from '../../../../src/design/Banner';
 import { getRuntime } from '../../../../src/bootstrap';
+import { DetailTrail } from '../../../../src/procedures/DetailTrail';
 import { requireServerAction } from '../../../../src/server-session';
 import { changeBindingAction } from '../actions';
 
@@ -52,8 +53,17 @@ export default async function SourcePage({
 
   const referencingProcedures = await new DrizzleProcedureRepository(runtime.db).countReferencing(bindingId, 'source');
 
+  // The page trails itself with the name it knows (UI cleanup 2026-09-21, UX-41): the
+  // shell could only say this row's UUID, which the walkthrough found as the last crumb.
   return (
     <div className="ls-stack">
+      <DetailTrail
+        trail={[
+          { href: '/administration', label: 'Administration' },
+          { href: '/administration/sources', label: 'Population sources' },
+          { href: `/administration/sources/${binding.bindingId}`, label: binding.displayName },
+        ]}
+      />
       <header className="ls-page-header">
         <h1>{binding.displayName}</h1>
         <p>

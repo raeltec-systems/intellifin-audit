@@ -20,14 +20,19 @@ export interface NavItem {
 
 /**
  * EXPERIENCE.md → Information Architecture: "Sidebar areas: Overview · Procedures ·
- * Runs · Review · Administration, with counts on Runs (active) and Review (awaiting)."
+ * Runs · Reviews · Administration, with counts on Runs (active) and Reviews (awaiting)."
  * Administration is listed separately and added below; the order is the contract's.
+ *
+ * `Reviews`, plural, since the UI cleanup of 2026-09-21 (UX-35): the area holds the
+ * Procedure Versions waiting for a manager's approval AND the Results waiting for a
+ * decision, as two tabs, so a submitted Procedure appears where a manager looks for it.
+ * The route stays `/review`; a URL is not a word a person reads.
  */
 export const NAV_ITEMS: readonly NavItem[] = [
   { href: '/', label: 'Overview', icon: 'layout-dashboard' },
   { href: '/procedures', label: 'Procedures', icon: 'file-text' },
   { href: '/runs', label: 'Runs', icon: 'play', count: 'runs' },
-  { href: '/review', label: 'Review', icon: 'inbox', count: 'review' },
+  { href: '/review', label: 'Reviews', icon: 'inbox', count: 'review' },
 ];
 
 export const ADMINISTRATION_ITEM: NavItem = {
@@ -67,5 +72,5 @@ export function isActiveNavItem(href: string, pathname: string): boolean {
 /** What a count means, read out, counted correctly at one. */
 export function countDescription(kind: 'runs' | 'review', count: number): string {
   if (kind === 'runs') return ` active ${count === 1 ? 'Run' : 'Runs'}`;
-  return ` ${count === 1 ? 'Result' : 'Results'} awaiting your decision`;
+  return ` ${count === 1 ? 'item' : 'items'} awaiting your review`;
 }

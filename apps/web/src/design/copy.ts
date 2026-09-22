@@ -32,11 +32,18 @@ export const EMPTY_STATES = {
     sentence:
       'No Result awaits confirmation or review, no Run is waiting on you, and none is Inconclusive or Run Failed. This does not imply that any control passed.',
   },
+  /**
+   * The Reviews area's Procedures tab, with nothing waiting (UI cleanup 2026-09-21,
+   * UX-35). It used to read `No Result awaits your decision.` over a queue that could
+   * hold no Result in this release while a submitted Procedure Version waited elsewhere.
+   * The Results tab has no empty state at all: it states that Result review is not yet
+   * available, which is a different sentence from an empty queue.
+   */
   reviewQueueEmpty: {
-    headline: 'No Result awaits your decision.',
+    headline: 'No Procedure Version is waiting for your approval.',
     /** Not from the contract: EXPERIENCE.md gives this surface a headline only. */
     sentence:
-      'A submitted Result, its outcome, and its Evidence Quality Gate would be listed here. An empty queue does not mean a control passed.',
+      'A submitted Procedure Version, who wrote it, and when it was submitted would be listed here. An empty queue does not mean a control passed.',
   },
   notificationsEmpty: {
     headline: 'No Run is waiting on you.',

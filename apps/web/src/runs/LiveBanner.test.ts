@@ -8,6 +8,7 @@ import { LIVE_SENTENCES } from './live-status';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: () => undefined }) }));
 
+import { readableStamp } from '../design/time';
 import { LiveBanner } from './LiveBanner';
 import { changesOpenWaits } from '../shell/BellLive';
 
@@ -17,7 +18,10 @@ describe('LiveBanner', () => {
     const html = renderToStaticMarkup(
       React.createElement(LiveBanner, { url: '/api/runs/r/events', cursor: 3, readAt, href: '/runs/r' }),
     );
-    expect(html).toContain(updatedAtTitle(utcStamp(new Date(readAt))));
+    // Readable UTC to the minute since the UI cleanup (UX-02); the ISO instant is what the
+    // props carry and what Technical details show.
+    expect(html).toContain(updatedAtTitle(readableStamp(readAt, 'minute')));
+    expect(html).not.toContain(utcStamp(readAt));
     expect(html).toContain('data-live-status="connecting"');
     expect(html).toContain('data-live-seq="3"');
     expect(html).toContain(LIVE_SENTENCES.connecting);

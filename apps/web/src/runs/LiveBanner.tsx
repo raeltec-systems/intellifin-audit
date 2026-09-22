@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef } from 'react';
 
 import { Banner } from '../design/Banner';
 import { STALE_DATA_ACTION, updatedAtTitle } from '../design/copy';
-import { utcStamp } from './labels';
+import { readableStamp } from '../design/time';
 import { liveSentence, type LiveStatus } from './live-status';
 import { useLiveTimeline, type LiveTimelineEvent } from './useLiveTimeline';
 
@@ -40,8 +40,10 @@ export function LiveBannerView({
   readonly href: string;
 }): React.JSX.Element {
   const attention = status === 'stale' || status === 'lost' || status === 'ended';
+  // One line, in readable UTC to the minute: the contract's sentence is unchanged and the
+  // `{time}` inside it stopped being a machine spelling (UI cleanup 2026-09-21, UX-02).
   return (
-    <Banner tone={attention ? 'warning' : 'info'} title={updatedAtTitle(utcStamp(new Date(readAt)))}>
+    <Banner tone={attention ? 'warning' : 'info'} variant="line" title={updatedAtTitle(readableStamp(readAt, 'minute'))}>
       <p data-live-status={status} data-live-seq={lastSeq}>
         <span className="ls-visually-hidden" aria-live="polite">{LIVE_WORDS[status]}</span>
         <span aria-hidden="true">{liveSentence(status, silence)}</span>{' '}

@@ -7,6 +7,7 @@ import { DrizzleRegistrationRepository, DrizzleProcedureRepository } from '@inte
 import { RegistrationEditor } from '../../../../src/admin/RegistrationEditor';
 import { Banner } from '../../../../src/design/Banner';
 import { getRuntime } from '../../../../src/bootstrap';
+import { DetailTrail } from '../../../../src/procedures/DetailTrail';
 import { requireServerAction } from '../../../../src/server-session';
 import { changeRegistrationAction } from '../actions';
 
@@ -53,8 +54,17 @@ export default async function RegistrationPage({
 
   const referencingProcedures = await new DrizzleProcedureRepository(runtime.db).countReferencing(registrationId, 'registration');
 
+  // The page trails itself with the name it knows (UI cleanup 2026-09-21, UX-41): the
+  // shell could only say this row's UUID, which the walkthrough found as the last crumb.
   return (
     <div className="ls-stack">
+      <DetailTrail
+        trail={[
+          { href: '/administration', label: 'Administration' },
+          { href: '/administration/registrations', label: 'Systems' },
+          { href: `/administration/registrations/${registration.registrationId}`, label: registration.displayName },
+        ]}
+      />
       <header className="ls-page-header">
         <h1>{registration.displayName}</h1>
         <p>

@@ -17,8 +17,13 @@ import {
 
 import { getRuntime } from '../bootstrap';
 import { Banner } from '../design/Banner';
+import { PageHeader } from '../design/PageHeader';
 import { StatusBadge } from '../design/StatusBadge';
 import { Tabs } from '../design/Tabs';
+import { TechnicalDetails } from '../design/TechnicalDetails';
+import { Timestamp } from '../design/Timestamp';
+import { executionMeaning } from '../design/status-words';
+import { readablePeriod, readableStamp } from '../design/time';
 import { WatchControl } from './WatchControl';
 import { ESCALATION_PANEL_COPY, PAUSE_COPY, STALE_DATA_ACTION, fillTemplate, runCanceledBy, updatedAtTitle } from '../design/copy';
 import { DetailTrail } from '../procedures/DetailTrail';
@@ -29,7 +34,7 @@ import { readOpenEscalation, type OpenEscalationRead } from './escalation-read';
 import { LiveBanner } from './LiveBanner';
 import { RunLifecycleActions } from './RunLifecycleActions';
 import { WaitCountdown } from './WaitCountdown';
-import { runLifecycleWord, utcStamp } from './labels';
+import { periodText, runLifecycleWord, utcStamp } from './labels';
 import { ActorName } from './ActorName';
 import { StopReasonBanner } from './StopReason';
 import { isStoppedState } from './stop-reason';
@@ -156,8 +161,11 @@ export function RefreshBanner({
   readonly readAt: Date;
   readonly href: string;
 }): React.JSX.Element {
+  // One line, in readable UTC to the minute (UI cleanup 2026-09-21, UX-02, UX-23): the
+  // contract's sentence is unchanged; what changed is that `{time}` is no longer a
+  // machine spelling and the strip no longer costs a card of every viewport.
   return (
-    <Banner tone="info" title={updatedAtTitle(utcStamp(readAt))}>
+    <Banner tone="info" variant="line" title={updatedAtTitle(readableStamp(readAt, 'minute'))}>
       <p>
         <Link href={href}>{STALE_DATA_ACTION}</Link>
       </p>
@@ -215,31 +223,36 @@ export async function RunDetailFrame({
   const stop = isStoppedState(run.state)
     ? await new DrizzleRunStopReader((await getRuntime()).db).readStop(run.runId)
     : null;
+  // The trail names the Procedure, never the Run's UUID (UI cleanup 2026-09-21, UX-02):
+  // a person follows `Runs / Leaver access review / Evidence`, and the identifier is one
+  // row under Technical details.
   const trail = [
     { href: '/runs', label: 'Runs' },
-    { href: runTabHref(run.runId, ''), label: run.runId, mono: true },
+    { href: runTabHref(run.runId, ''), label: run.procedureName },
     ...(tab === '' ? [] : [{ href: here, label: runTabLabel(tab) }]),
   ];
   return (
     <div className="ls-stack">
       <DetailTrail trail={trail} />
-      <header className="ls-page-header">
-        <h1>Run · {run.procedureName}</h1>
-        <p>
-          <Link href={`/procedures/${run.procedureId}`}>{run.procedureName}</Link> ·{' '}
-          <Link href={`/procedures/${run.procedureId}/versions/${run.versionId}`}>
-            v{run.versionNumber}
-          </Link>{' '}
-          · {run.kind === 'STANDARD' ? 'Standard' : 'Regression'} Run
-        </p>
-        {/* A state outside the vocabulary is written in words: `StatusBadge` throws on an
-            unknown state, and on a page that is a 500 for the whole Run. */}
-        {lifecycle === null ? (
-          <p>Run lifecycle: {run.state}</p>
-        ) : (
-          <StatusBadge family="run-lifecycle" state={lifecycle} size="md" />
-        )}
-      </header>
+      {/* One row for the title and its state, one meta line, and the controls that belong
+          to the whole Run on the title's right (UI cleanup 2026-09-21, UX-23, UX-48). The
+          walkthrough measured this header at nearly half a laptop viewport. A state
+          outside the vocabulary is still written in words: `StatusBadge` throws on an
+          unknown state, and on a page that is a 500 for the whole Run. */}
+      <PageHeader
+        title={<>Run · {run.procedureName}</>}
+        badge={lifecycle === null ? <span>Run lifecycle: {run.state}</span> : <StatusBadge family="run-lifecycle" state={lifecycle} size="md" />}
+        actions={<WatchControl runId={run.runId} state={run.state} active={isActiveRunState(run.state)} />}
+        meta={
+          <>
+            <Link href={`/procedures/${run.procedureId}`}>{run.procedureName}</Link> ·{' '}
+            <Link href={`/procedures/${run.procedureId}/versions/${run.versionId}`}>v{run.versionNumber}</Link> ·{' '}
+            {run.kind === 'STANDARD' ? 'Standard' : 'Regression'} Run · Period {readablePeriod(run.period)} · Started{' '}
+            <Timestamp value={run.initiatedAt} precision="minute" />
+            {lifecycle === null ? null : <> · {executionMeaning(lifecycle)}</>}
+          </>
+        }
+      />
       {liveCursor === null
         ? <RefreshBanner readAt={readAt} href={here} />
         : <LiveBanner url={`/api/runs/${run.runId}/events`} cursor={liveCursor} readAt={readAt.toISOString()} href={here} />}
@@ -248,10 +261,6 @@ export async function RunDetailFrame({
       <CancellationBanners run={run} names={names} />
       <PauseBanners run={run} pause={escalation?.pause ?? null} readAt={readAt} names={names} />
       <RerunLinks runId={run.runId} />
-      {/* Watch: the rail's Session control (EXPERIENCE.md → Run Detail rows). Live View
-          is its own surface, not a sixth tab, so it is reached from here and from a
-          notification rather than from the tab bar. */}
-      <WatchControl runId={run.runId} state={run.state} active={isActiveRunState(run.state)} />
       <RunLifecycleActions
         runId={run.runId}
         active={isActiveRunState(run.state)}
@@ -263,6 +272,15 @@ export async function RunDetailFrame({
         runRevision={escalation?.runRevision ?? null}
         requestToken={new CryptoUuidV7Generator().next()}
         procedureName={run.procedureName}
+      />
+      <TechnicalDetails
+        items={[
+          { label: 'Run identifier', value: run.runId, mono: true },
+          { label: 'Procedure Version identifier', value: run.versionId, mono: true },
+          { label: 'Effective period', value: periodText(run.period), mono: true },
+          { label: 'Started', value: utcStamp(run.initiatedAt), mono: true },
+          { label: 'Read at', value: utcStamp(readAt), mono: true },
+        ]}
       />
       <OpenEscalationSection run={run} escalation={escalation} readAt={readAt} />
       {evaluationReview !== null ? (
@@ -316,7 +334,7 @@ export function RerunLinksBanner({ successors, names }: {
             <Link className="ls-mono" href={runTabHref(successor.runId, '')}>
               {successor.runId}
             </Link>{' '}
-            · started {utcStamp(successor.initiatedAt)} by <ActorName id={successor.initiatorId} names={names} />
+            · started <Timestamp value={successor.initiatedAt} /> by <ActorName id={successor.initiatorId} names={names} />
           </li>
         ))}
       </ul>
@@ -409,8 +427,8 @@ export function PauseBanners({ run, pause, readAt, names }: {
         tone="warning"
         title={fillTemplate(PAUSE_COPY.banner, {
           actor: names.get(pause.openedBy) ?? pause.openedBy,
-          time: utcStamp(pause.openedAt),
-          ends: utcStamp(pause.deadline),
+          time: readableStamp(pause.openedAt),
+          ends: readableStamp(pause.deadline),
         })}
       >
         {/* EXPERIENCE.md asks for a COUNTDOWN here, in three places (lines 115, 149 and
@@ -432,7 +450,7 @@ export function PauseBanners({ run, pause, readAt, names }: {
     return (
       <Banner
         tone="warning"
-        title={`Pause requested by ${names.get(run.pauseRequest.requestedBy) ?? run.pauseRequest.requestedBy} at ${utcStamp(run.pauseRequest.requestedAt)}`}
+        title={`Pause requested by ${names.get(run.pauseRequest.requestedBy) ?? run.pauseRequest.requestedBy} at ${readableStamp(run.pauseRequest.requestedAt)}`}
       >
         <p>The Run holds at its next Tool Action, before any further Target System work.</p>
       </Banner>
@@ -459,7 +477,7 @@ export function CancellationBanners({ run, names }: {
     return (
       <Banner
         tone="warning"
-        title={runCanceledBy(actor, utcStamp(run.cancellation.requestedAt))}
+        title={runCanceledBy(actor, readableStamp(run.cancellation.requestedAt))}
       >
         <p>{run.cancellation.reason}</p>
         <p>Evidence already collected is preserved. No conclusion was issued.</p>
@@ -469,7 +487,7 @@ export function CancellationBanners({ run, names }: {
   return (
     <Banner
       tone="warning"
-      title={`Cancellation requested by ${actor} at ${utcStamp(run.cancellation.requestedAt)}`}
+      title={`Cancellation requested by ${actor} at ${readableStamp(run.cancellation.requestedAt)}`}
     >
       {isActiveRunState(run.state) ? (
         <p>The Run stops at its next checkpoint, before any further Target System work.</p>

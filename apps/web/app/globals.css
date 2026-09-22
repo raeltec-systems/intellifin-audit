@@ -2448,3 +2448,143 @@ a {
   display: grid;
   gap: var(--spacing-1);
 }
+
+/* ---------------------------------------------------------------------------
+   UI cleanup, 2026-09-22 — package 1: the shared language and layout layer.
+
+   The owner's 21 September walkthrough (49 findings, 17 P1) found ordinary screens
+   spending most of a laptop viewport on chrome — a title, a paragraph, a badge and a
+   card-sized "Updated" banner each on their own row — and printing identifiers where a
+   person expected a name. These rules are what `PageHeader`, the `line` Banner variant,
+   `Reference`, `TechnicalDetails` and the Run toolbar paint. Packages 2–6 add their own
+   rules in the labelled regions below, one region each, so five branches merge without
+   touching one another's lines. */
+
+/* The title row: name and state on one line, page controls on the right. */
+.ls-page-header__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-3) var(--spacing-5);
+}
+
+.ls-page-header__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-3);
+  min-width: 0;
+}
+
+.ls-page-header__title h1 {
+  overflow-wrap: anywhere;
+}
+
+.ls-page-header__actions {
+  flex: none;
+}
+
+/* The meta line reads at caption size: it is facts about the thing named, not prose. */
+.ls-page-header__meta {
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+/* A Banner as one row of caption text. The role and the tone are the same as the card;
+   only the space it costs changes. The title and the body sit on one line and wrap
+   together when the viewport is narrow. */
+.ls-banner--line {
+  padding: var(--spacing-1) var(--spacing-3);
+  align-items: center;
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+.ls-banner--line > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--spacing-2);
+}
+
+.ls-banner--line .ls-banner__title {
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+  font-weight: 600;
+}
+
+.ls-banner--line p {
+  margin: 0;
+}
+
+/* `Run bf4ea3e7`: the kind in prose, the reference in monospace, together on one line. */
+.ls-reference {
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+}
+
+/* Technical details: the one disclosure identifiers, digests and exact instants live
+   under. Closed by default; the reading order of a surface never meets a UUID first. */
+.ls-technical summary {
+  color: var(--color-text-secondary);
+}
+
+.ls-technical__body {
+  max-width: none;
+}
+
+.ls-technical .ls-definition dd {
+  overflow-wrap: anywhere;
+}
+
+/* The Run toolbar: every control that belongs to the whole Run, in one row, with any
+   message a control has to show on the row beneath it. */
+.ls-toolbar__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.ls-toolbar__group .ls-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.ls-toolbar__message {
+  max-width: 68ch;
+}
+
+/* ---------------------------------------------------------------------------
+   UI cleanup — package 2: role landing pages, Reviews, searchable lists, compact tables.
+   (Rules are added here by package 2 and nowhere else.) */
+
+
+
+/* ---------------------------------------------------------------------------
+   UI cleanup — package 3: procedure authoring.
+   (Rules are added here by package 3 and nowhere else.) */
+
+
+
+/* ---------------------------------------------------------------------------
+   UI cleanup — package 4: manager procedure review.
+   (Rules are added here by package 4 and nowhere else.) */
+
+
+
+/* ---------------------------------------------------------------------------
+   UI cleanup — package 5: findings, evidence, Replay and Live View.
+   (Rules are added here by package 5 and nowhere else.) */
+
+
+
+/* ---------------------------------------------------------------------------
+   UI cleanup — package 6: administration.
+   (Rules are added here by package 6 and nowhere else.) */
+
+
+
+/* --------------------------------------------------------------- end of file ---- */
