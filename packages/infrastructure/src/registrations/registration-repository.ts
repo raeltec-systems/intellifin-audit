@@ -13,6 +13,7 @@ import type {
 } from '@intellifin/application';
 import { isRegistrationStatus } from '@intellifin/application';
 import {
+  TERMINAL_RUN_STATES,
   isPermittedReadAction,
   isTargetSystemKind,
   type PermittedReadAction,
@@ -123,13 +124,17 @@ function toRegistration(
 }
 
 /**
- * The Run states a Run can no longer leave (`audit_run_state`, addendum §E).
+ * What the landing counts (UI cleanup 2026-09-22, UX-37).
  *
- * Only these count as audit activity: a Run still queued or running has observed
- * nothing yet, and listing one as the system's last activity would tell an operator a
- * test finished when it has not started.
+ * The same shape as the user directory's query, deliberately: three areas that answer
+ * "how much is there" and "how much of it needs attention" should not answer them three
+ * different ways.
  */
-const TERMINAL_RUN_STATES = ['COMPLETED', 'INCONCLUSIVE', 'RUN_FAILED', 'CANCELED'] as const;
+export interface RegistrationCountQuery {
+  readonly status?: RegistrationStatus;
+  /** `never-probed` is the absence of a probe row, which is what the column shows. */
+  readonly connectivity?: 'never-probed';
+}
 
 /** The one Run this system was last used by, as the Administration surface shows it. */
 export interface RegistrationAuditActivity {
@@ -279,8 +284,22 @@ export class DrizzleRegistrationRepository implements RegistrationRepository {
    * an operator goes to find out how much there is. A `count(*)` answers the question
    * that was asked.
    */
-  async countRegistrations(): Promise<number> {
-    const rows = await this.db.select({ total: count() }).from(targetSystemRegistration);
+  async countRegistrations(query: RegistrationCountQuery = {}): Promise<number> {
+    const clauses = [];
+    if (query.status !== undefined) clauses.push(eq(targetSystemRegistration.status, query.status));
+    if (query.connectivity === 'never-probed') {
+      // The LEFT JOIN is the read: "no worker has written a row for this one" is an
+      // absence, and an inner join would answer the opposite question.
+      clauses.push(sql`${targetSystemProbe.registrationId} IS NULL`);
+    }
+    const rows = await this.db
+      .select({ total: count() })
+      .from(targetSystemRegistration)
+      .leftJoin(
+        targetSystemProbe,
+        eq(targetSystemProbe.registrationId, targetSystemRegistration.registrationId),
+      )
+      .where(clauses.length === 0 ? undefined : and(...clauses));
     return rows[0]?.total ?? 0;
   }
 
