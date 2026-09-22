@@ -346,3 +346,27 @@
 [data-guided-manual][open] > summary { margin-bottom: var(--spacing-4); }
 
 .ls-guide-questions { min-width: 0; }
+
+/* UX-11 (UI cleanup 2026-09-22): the evidence-source chooser — one row per source, the
+ * name and what it provides on the left, the Choose action on the right. */
+.ls-source-chooser { gap: var(--spacing-3); }
+.ls-source-chooser__title { margin: 0; font-size: var(--type-sub-title-font-size); line-height: var(--type-sub-title-line-height); }
+.ls-source-chooser__group { margin: 0; font-size: var(--type-caption-font-size); line-height: var(--type-caption-line-height); font-weight: 600; color: var(--color-text-secondary); }
+.ls-source-chooser__list {
+  margin: 0; padding: 0; list-style: none;
+  max-height: 24rem; overflow-y: auto; overscroll-behavior-y: contain;
+  border: 1px solid var(--color-border-default); border-radius: var(--rounded-md); background: var(--color-surface-card);
+}
+.ls-source-choice {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--spacing-3);
+  padding: var(--spacing-3) var(--spacing-4); border-bottom: 1px solid var(--color-border-default);
+}
+.ls-source-choice:last-child { border-bottom: 0; }
+.ls-source-choice__copy { min-width: 0; display: flex; flex-direction: column; gap: var(--spacing-1); }
+.ls-source-choice__copy p { margin: 0; overflow-wrap: anywhere; }
+.ls-source-choice__name { font-weight: 600; }
+.ls-source-choice__missing { color: var(--color-warning-text); }
+.ls-source-choice__action { flex-shrink: 0; }
+@media (max-width: 479px) {
+  .ls-source-choice { flex-direction: column; }
+}

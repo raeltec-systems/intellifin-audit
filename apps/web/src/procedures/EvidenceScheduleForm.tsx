@@ -240,7 +240,7 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
                   aria-invalid={(error !== null && nameError) || undefined}
                   onChange={(event) => change(index, { attributeName: event.target.value })}
                 />
-                <p className="ls-caption">The value you need proof of, spelled the way the system shows it — for example <code>account_status</code>.</p>
+                <p className="ls-caption">The value you need proof of, spelled the way the system shows it — for example <code>username</code>.</p>
               </div>
               <fieldset aria-invalid={(error !== null && !nameError) || undefined} aria-describedby={`${fieldId}-error`}>
                 <legend>Proof kept for this value</legend>
@@ -440,7 +440,7 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
       )}
       {/*
         UX-14: the saved value read as a PLAN, before the form that edits it. A step
-        titled "How often this is meant to run" that opened straight onto a frequency
+        titled "How often this is meant to run" (now "Planned frequency") that opened straight onto a frequency
         picker and a bare time field read as a control that starts something; this says
         what is actually true about what was saved, in the same words the Procedure
         page reads (`plannedFrequencyLine`).
