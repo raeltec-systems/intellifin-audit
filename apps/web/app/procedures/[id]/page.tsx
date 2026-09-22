@@ -16,6 +16,7 @@ import { Timestamp } from '../../../src/design/Timestamp';
 import { DetailTrail } from '../../../src/procedures/DetailTrail';
 import { ProcedureStateBadge } from '../../../src/procedures/ProcedureStateBadge';
 import { templateLabel, versionLabel } from '../../../src/procedures/labels';
+import { draftGapWords } from '../../../src/procedures/readiness-words';
 import { plannedFrequencyLine, SCHEDULE_NOT_SAVED_LINE } from '../../../src/design/run-start-words';
 import { requireServerAction } from '../../../src/server-session';
 import { InitiateRunForm } from '../../../src/runs/InitiateRunForm';
@@ -113,7 +114,7 @@ export default async function ProcedurePage({
                 </p>
                 <VersionStatus version={version} successorNumber={successors.get(version.versionId) ?? null} />
                 {version.state === 'ACTIVE' && <NewVersionButton procedureId={procedure.procedureId} versionId={version.versionId} expectedRowVersion={procedureVersionRowVersion(version)} />}
-                {version.state === 'DRAFT' && <VersionActions procedureId={procedure.procedureId} versionId={version.versionId} rowVersion={procedureVersionRowVersion(version)} actions={[{ decision: 'submit', label: 'Submit for approval', reason: submissionUnavailableReason(version) }]} />}
+                {version.state === 'DRAFT' && <VersionActions procedureId={procedure.procedureId} versionId={version.versionId} rowVersion={procedureVersionRowVersion(version)} actions={[{ decision: 'submit', label: 'Submit for approval', reason: draftGapWords(submissionUnavailableReason(version)) }]} />}
                 {version.state === 'DRAFT' ? (
                   <p>
                     <Link
@@ -152,10 +153,8 @@ function VersionMeta({ version }: { readonly version: ProcedureVersionView }): R
         <dt>Version</dt>
         <dd>{version.versionNumber}</dd>
       </div>
-      <div>
-        <dt>State</dt>
-        <dd>{version.state}</dd>
-      </div>
+      {/* No "State" cell: the stored upper-case state (`ACTIVE`) repeated the badge on the
+          card's title in the platform's own spelling. The badge is the one place it is said. */}
       {/*
         UX-14: the Schedule's saved frequency, read the way a plan is read — never a
         claim that anything runs by itself. `run-start-words.ts` is the one place this

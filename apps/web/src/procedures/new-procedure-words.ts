@@ -52,3 +52,11 @@ export function draftCreatedBanner(name: string): string {
  */
 export const NEW_PROCEDURE_REQUIRES_JAVASCRIPT =
   'Creating a Procedure needs JavaScript. If the choices stay unavailable, enable JavaScript and reload this page.';
+
+/**
+ * Said when the create response was lost. It never claims nothing was created, because
+ * this path cannot know: `createProcedure` mints its ids inside the command and carries
+ * no request token, so a retry after a lost response creates a SECOND Procedure.
+ */
+export const UNKNOWN_CREATE_OUTCOME =
+  'The create response was lost. The Procedure may have been created. Open Procedures to check before creating another.';

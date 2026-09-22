@@ -10,7 +10,8 @@ import Link from 'next/link';
 
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
-import { NEW_PROCEDURE_PREPARING, NEW_PROCEDURE_REQUIRES_JAVASCRIPT } from './new-procedure-words';
+import { NEW_PROCEDURE_PREPARING, NEW_PROCEDURE_REQUIRES_JAVASCRIPT, UNKNOWN_CREATE_OUTCOME } from './new-procedure-words';
+export { UNKNOWN_CREATE_OUTCOME } from './new-procedure-words';
 import type { NewProcedureActionResult, NewProcedureFormFields } from '../../app/procedures/new/actions';
 
 /**
@@ -34,25 +35,16 @@ import type { NewProcedureActionResult, NewProcedureFormFields } from '../../app
  * lost-response recovery are unchanged.
  */
 
-/**
- * Said when the create response was lost. It never claims nothing was created, because
- * this path cannot know: `createProcedure` mints its ids inside the command and carries
- * no request token, so a retry after a lost response creates a SECOND Procedure.
- */
-export const UNKNOWN_CREATE_OUTCOME =
-  'The create response was lost. The Procedure may have been created. Open Procedures to check before creating another.';
-
 export interface NewProcedureFormProps {
   readonly onCreate: (fields: NewProcedureFormFields) => Promise<NewProcedureActionResult>;
 }
 
 const TEMPLATE_OPTIONS = PROCEDURE_TEMPLATES.map((template) => ({
   value: template.id,
-  // §C marks P-1 the hero; the flag is data, so the picker orders it first from the
-  // record and no surface hard-codes the id.
-  label: template.hero
-    ? `${template.name} (recommended)`
-    : template.name,
+  // UX-06 (2026-09-22): no Template is recommended over another. "(recommended)" beside
+  // the hero was a universal opinion on a choice that depends on what is being audited;
+  // each Template is described by its own risk, control and objective once chosen.
+  label: template.name,
 }));
 
 const UNCHOSEN = '';

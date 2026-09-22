@@ -58,7 +58,8 @@ export const PROCEDURE_LIMITS = {
 /** What an author is told. One sentence each, naming the thing it protects. */
 export const PROCEDURE_REFUSALS = {
   TEMPLATE_REQUIRED: 'Choose a Template.',
-  NAME_REQUIRED: 'Enter a Control name.',
+  // UX-05 (2026-09-22): the field is the Procedure name; the domain keeps `controlName`.
+  NAME_REQUIRED: 'Enter a Procedure name.',
   TOO_LONG: 'That value is longer than this field allows.',
   UNKNOWN_PROCEDURE: 'That procedure no longer exists.',
   UNKNOWN_VERSION: 'That version no longer exists.',
