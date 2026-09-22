@@ -129,6 +129,19 @@ badge, which the decision bar still renders. **No control or label was renamed.*
 
 ---
 
+## Layout (house rule 8)
+
+**No page-level horizontal scrolling at 1366×768 or 1280×720.** The technical disclosure
+holds the widest content this surface renders — `ExecutablePlanPreview`'s canonical plan
+text, monospace identifiers, the stored section diff — so the check runs with that
+disclosure OPEN, at both laptop viewports, inside the existing acceptance journey
+(`version-review.spec.ts`): `document.documentElement.scrollWidth <=
+document.documentElement.clientWidth`. It runs once, on the Auditor's page, right after the
+disclosure is opened and the plan preview and diff are confirmed visible — the state in
+which the page is widest, so a narrower assertion elsewhere would prove less.
+
+---
+
 ## Proven by mutation
 
 Each mutation was applied to a copy-aside of the file and restored from the copy.
@@ -177,6 +190,12 @@ Run from the worktree with the package environment sourced.
 
 WCAG 2.1 AA: `a11y.spec.ts` and both in-spec axe scans of the review surface (before and after
 the approval) pass with no violations and no allowlist.
+
+**Reconfirmed** after PostgreSQL was restarted and the horizontal-scroll check (above) was
+added to `version-review.spec.ts`: same eight gates, same worktree, fresh run, identical
+counts throughout — including the 6/6 on `version-review.spec.ts` FIRST attempt this time
+(no cold-`.next` timeout), with the new scroll assertion passing at both viewports. Nothing
+changed between the two runs except that the layout check is now committed.
 
 ---
 

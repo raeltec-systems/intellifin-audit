@@ -122,6 +122,12 @@ test('P-1 authored Builder → actual worker/SDK HTTP → submitted review → r
     await contractDisclosure.getByText(FROZEN_CONTRACT_SUMMARY, { exact: true }).click();
     await expect(page.getByTestId('executable-plan-preview')).toBeVisible();
     await expect(page.locator('[data-version-diff]')).toBeVisible();
+    // No page-level horizontal scrolling at a laptop viewport, with the disclosure OPEN:
+    // the frozen contract is the widest thing this surface can show.
+    for (const size of [{ width: 1366, height: 768 }, { width: 1280, height: 720 }]) {
+      await page.setViewportSize(size);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), `${size.width}px`).toBe(true);
+    }
     await scan(page);
     await signIn(manager,email); await expect(manager).toHaveURL(new URL('/', baseURL!).href); await manager.goto('/notifications'); await expect(manager.getByRole('link',{ name:/Procedure Version submitted/ })).toBeVisible({ timeout: 10000 }); await manager.getByRole('link',{ name:/Procedure Version submitted/ }).click(); await expect(manager).toHaveURL(reviewUrl);
     await manager.getByRole('button',{ name:'Reject',exact:true }).click(); await expect(manager.getByLabel('Rationale')).toBeFocused(); await manager.getByRole('dialog').getByRole('button',{ name:'Reject',exact:true }).click(); await expect(manager.getByText('A rationale is required.')).toBeVisible(); await scan(manager);
