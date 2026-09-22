@@ -17,7 +17,7 @@ import { readablePeriod } from '../design/time';
 import { ActorName } from '../runs/ActorName';
 import { StopReasonNote } from '../runs/StopReason';
 import { runLifecycleWord } from '../runs/labels';
-import { OPEN_RESULT } from '../review/review-words';
+import { OPEN_RESULT, resultTabHref } from '../review/review-words';
 import {
   ATTENTION_GROUPS,
   ATTENTION_GROUP_ORDER,
@@ -155,7 +155,7 @@ export function AttentionList({
       <li className="ls-attention__item" key={row.runId}>
         <p className="ls-attention__head">
           <StatusBadge family="result-outcome" state="Pending Confirmation" />
-          <Link href={`/runs/${row.runId}/result`}>
+          <Link href={resultTabHref(row.runId)}>
             {row.procedureName} · v{row.versionNumber} · {ATTENTION_GROUPS.pending}
           </Link>
           <Reference kind="Run" value={row.runId} />
@@ -164,7 +164,7 @@ export function AttentionList({
         <p className="ls-caption">
           {readablePeriod(row.period)} · {STARTED_BY}{' '}
           <ActorName id={row.initiatorId} names={names} /> ·{' '}
-          <Link href={`/runs/${row.runId}/result`}>{OPEN_RESULT}</Link>
+          <Link href={resultTabHref(row.runId)}>{OPEN_RESULT}</Link>
         </p>
       </li>
     )),

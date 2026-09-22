@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
@@ -20,6 +20,7 @@ import {
   REVIEWS_NOT_YOUR_QUEUE,
   REVIEWS_TITLE,
   REVIEW_TABS,
+  resultTabHref,
   SUBMITTED_VERSIONS_UNREADABLE,
   reviewsBounded,
 } from './review-words';
@@ -107,5 +108,14 @@ describe('the Reviews area words', () => {
   it('tells a role with no review work where its own work is', () => {
     expect(REVIEWS_NOT_YOUR_QUEUE).toContain('Administration');
     expect(REVIEWS_NOT_YOUR_QUEUE).not.toContain('permit');
+  });
+  it("links a Result to the Run's own page, which is where the Result tab is", () => {
+    // `[ADDED 2026-09-22]` Both queues linked `/runs/{id}/result`, which is no route at
+    // all, and a browser assertion on the `href` agreed with the component that wrote it.
+    const id = '019823ab-0000-7000-8000-000000000004';
+    expect(resultTabHref(id)).toBe(`/runs/${id}`);
+    const runRoute = fileURLToPath(new URL('../../app/runs/[id]/', import.meta.url));
+    expect(existsSync(`${runRoute}page.tsx`)).toBe(true);
+    expect(existsSync(`${runRoute}result`)).toBe(false);
   });
 });

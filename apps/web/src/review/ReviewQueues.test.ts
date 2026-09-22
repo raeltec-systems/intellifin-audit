@@ -94,7 +94,8 @@ describe('the waiting assessments queue', () => {
     // The same number the Run's own Result tab shows: both come from the effective
     // confirmation over the review ledger, never from the machine rows alone.
     expect(html).toContain(OPEN_RESULT);
-    expect(html).toContain('href="/runs/019823ab-0000-7000-8000-000000000004/result"');
+    expect(html).toContain('href="/runs/019823ab-0000-7000-8000-000000000004"');
+    expect(html).not.toContain('/result"');
     expect(html).toContain('1–31 Aug 2026');
     expect(html).toContain('Daniel Okonjo');
     // Named by a short reference, never by its own UUID as visible text.

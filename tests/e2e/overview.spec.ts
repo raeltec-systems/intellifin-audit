@@ -128,6 +128,9 @@ test.afterAll(async () => {
   if (!sql) return;
   try {
     for (const procedureId of [draftProcedureId, submittedProcedureId]) {
+      // Submitting notifies every Audit Manager, and that row names the version with a
+      // real foreign key — so it goes first, or the whole teardown throws.
+      await sql`DELETE FROM notification WHERE procedure_id=${procedureId}`;
       await sql`DELETE FROM procedure_version WHERE procedure_id=${procedureId}`;
       await sql`DELETE FROM procedure WHERE procedure_id=${procedureId}`;
     }
@@ -172,9 +175,10 @@ test.describe('the Overview as an Auditor', () => {
 
 test.describe('the Overview as an Audit Manager', () => {
   test('leads the attention list with Procedure Versions awaiting approval', async ({ page }) => {
+    // Required, never skipped: a skipped manager journey would read as a passed one.
     const managerEmail = process.env['E2E_MANAGER_EMAIL'];
-    test.skip(!managerEmail, 'E2E_MANAGER_EMAIL is not set for this environment.');
-    await signIn(page, managerEmail as string);
+    if (!managerEmail) throw new Error('E2E_MANAGER_EMAIL is required for the Overview manager journey.');
+    await signIn(page, managerEmail);
 
     const attention = page.getByRole('region', { name: 'Needs attention' });
     await expect(attention).toBeVisible();

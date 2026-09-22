@@ -285,7 +285,8 @@ describe('the Overview attention list', () => {
     // The exact count, in the same sentence the Run's own Result tab uses.
     expect(html).toContain('3 of the agent’s assessments need your confirmation.');
     // One action, and it is the Result tab, which is where the confirming happens.
-    expect(html).toContain(`href="/runs/${PENDING.runId}/result"`);
+    expect(html).toContain(`href="/runs/${PENDING.runId}"`);
+    expect(html).not.toContain('/result"');
     expect(html).toContain('Daniel Okonjo');
     expect(html).toContain('1–31 Aug 2026');
   });

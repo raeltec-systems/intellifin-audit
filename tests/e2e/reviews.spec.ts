@@ -22,6 +22,7 @@ import {
 import { executablePlanInputs } from '../fixtures/executable-plan';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase, signIn } from './accounts';
 import {
+  OPEN_RESULT,
   OPEN_VERSION_REVIEW,
   PROCEDURES_TAB_AUDITOR_HEADING,
   PROCEDURES_TAB_HEADING,
@@ -141,11 +142,15 @@ test.beforeAll(async () => {
   await sql`INSERT INTO audit_run(request_token,run_id,correlation_id,procedure_id,version_id,version_number,procedure_name,
               period_from,period_to,state,kind,initiator_id,session_id,authorization_role,initiated_at)
             VALUES(${ids.next()},${runId},${ids.next()},${runProcedureId},${runVersionId},1,${runControlName},
-              '2026-09-01','2026-09-15','COMPLETED','STANDARD',${auditorId},'reviews-e2e-fixture','auditor',now())`;
+              '2026-09-01','2026-09-15','QUEUED','STANDARD',${auditorId},'reviews-e2e-fixture','auditor',now())`;
   await sql`INSERT INTO run_evidence_package(run_id,state,run_state,sealed_at,required_total,registered,missing_required,abandoned)
             VALUES(${runId},'SEALED','COMPLETED',now(),0,0,'[]'::jsonb,'[]'::jsonb)`;
   await sql`INSERT INTO run_result(run_id,version,outcome,outcome_row,sealed,run_state,gate_passed,sealed_at,scope,publication)
             VALUES(${runId},1,'PENDING_CONFIRMATION','pending-confirmation',false,'COMPLETED',true,now(),NULL,'{}'::jsonb)`;
+  // Generations 21 and 25 refuse a terminal Run with no package or Result, and each
+  // statement here commits on its own — so the Run is inserted QUEUED and made COMPLETED
+  // only once both rows exist, the order `stoppedAtAcquisition` in runs.spec.ts uses.
+  await sql`UPDATE audit_run SET state='COMPLETED' WHERE run_id=${runId}`;
 });
 
 test.afterAll(async () => {
@@ -154,11 +159,13 @@ test.afterAll(async () => {
     await sql`DELETE FROM run_result WHERE run_id=${runId}`;
     await sql`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
     await sql`DELETE FROM audit_run WHERE run_id=${runId}`;
+    // A submission notifies every Audit Manager and that row names the version with a
+    // real foreign key, so the notifications go before the versions they name.
+    await sql`DELETE FROM notification WHERE procedure_id IN (${ownProcedureId},${foreignProcedureId},${runProcedureId})`;
     for (const procedureId of [ownProcedureId, foreignProcedureId, runProcedureId]) {
       await sql`DELETE FROM procedure_version WHERE procedure_id=${procedureId}`;
       await sql`DELETE FROM procedure WHERE procedure_id=${procedureId}`;
     }
-    await sql`DELETE FROM notification WHERE procedure_id IN (${ownProcedureId},${foreignProcedureId})`;
     await sql`DELETE FROM auth_user WHERE id=${foreignAuthorId}`;
   } finally {
     await sql.end({ timeout: 5 });
@@ -190,9 +197,10 @@ test.describe('Reviews — Procedures, as the Auditor who submitted one of the t
 
 test.describe('Reviews as an Audit Manager', () => {
   test('sees the whole queue, and the Results tab states what is not available', async ({ page }) => {
+    // Required, never skipped: a skipped manager journey would read as a passed one.
     const managerEmail = process.env['E2E_MANAGER_EMAIL'];
-    test.skip(!managerEmail, 'E2E_MANAGER_EMAIL is not set for this environment.');
-    await signIn(page, managerEmail as string);
+    if (!managerEmail) throw new Error('E2E_MANAGER_EMAIL is required for the Reviews manager journey.');
+    await signIn(page, managerEmail);
 
     await page.goto('/review');
     await expect(page.getByRole('heading', { name: PROCEDURES_TAB_HEADING })).toBeVisible();
@@ -208,11 +216,16 @@ test.describe('Reviews as an Audit Manager', () => {
     await expect(page.getByText(RESULT_REVIEW_MANAGER_NOTE)).toBeVisible();
     // The one thing a person really can do here: confirm the agent's own assessments.
     await expect(page.getByText(runControlName)).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Open the Result', exact: true }).first()).toHaveAttribute(
-      'href',
-      `/runs/${runId}/result`,
-    );
+    // Scoped to THIS Run's row: other suites' pending Results may share the page.
+    const openResult = page.locator(`a[href="/runs/${runId}"]`).filter({ hasText: OPEN_RESULT });
+    await expect(openResult).toHaveCount(1);
 
     await scan(page);
+
+    // FOLLOWED, not only read: both queues once linked `/runs/{id}/result`, which is no
+    // route, and an assertion on the `href` alone agreed with the component that wrote it.
+    await openResult.click();
+    await expect(page).toHaveURL(new RegExp(`/runs/${runId}$`));
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(runControlName);
   });
 });

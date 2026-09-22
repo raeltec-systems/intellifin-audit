@@ -8,7 +8,7 @@ import { Timestamp } from '../design/Timestamp';
 import { pendingAssessmentSentence } from '../design/status-words';
 import { readablePeriod } from '../design/time';
 import { ActorName } from '../runs/ActorName';
-import { OPEN_RESULT, STARTED_BY, TEST_FINISHED, reviewsBounded } from './review-words';
+import { OPEN_RESULT, STARTED_BY, TEST_FINISHED, resultTabHref, reviewsBounded } from './review-words';
 
 /**
  * The finished tests whose assessments are waiting for a person
@@ -43,7 +43,7 @@ export function PendingResults({
           <li className="ls-attention__item" key={row.runId}>
             <p className="ls-attention__head">
               <StatusBadge family="result-outcome" state="Pending Confirmation" />
-              <Link href={`/runs/${row.runId}/result`}>
+              <Link href={resultTabHref(row.runId)}>
                 {row.procedureName} · v{row.versionNumber}
               </Link>
               <Reference kind="Run" value={row.runId} />
@@ -55,7 +55,7 @@ export function PendingResults({
               <ActorName id={row.initiatorId} names={names} />
             </p>
             <p className="ls-caption">
-              <Link href={`/runs/${row.runId}/result`}>{OPEN_RESULT}</Link>
+              <Link href={resultTabHref(row.runId)}>{OPEN_RESULT}</Link>
             </p>
           </li>
         ))}

@@ -95,6 +95,20 @@ export const RESULTS_TAB_EMPTY = {
 /** The way onward from one row: the Run's own Result tab, where the confirming happens. */
 export const OPEN_RESULT = 'Open the Result';
 
+/**
+ * Where a Run's Result tab lives: `/runs/{id}` itself.
+ *
+ * `[REPAIRED 2026-09-22]` Both queues linked `/runs/{id}/result`, a route that does not
+ * exist — the Result tab is the Run's own page (`RUN_TABS`' empty slug in `detail.tsx`),
+ * so every "Open the Result" on the Overview and on Reviews answered a 404. A browser test
+ * that read the link's `href` agreed with the component that wrote it; only following
+ * the link could see it. One function, so the two surfaces cannot disagree again, and
+ * `review-words.test.ts` pins it to the route directory on disk.
+ */
+export function resultTabHref(runId: string): string {
+  return `/runs/${runId}`;
+}
+
 /** What a pending Result row says about when the test finished. */
 export const TEST_FINISHED = 'Test finished';
 export const STARTED_BY = 'Started by';
