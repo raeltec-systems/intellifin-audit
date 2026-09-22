@@ -5,7 +5,9 @@ import {
   INITIATE_RUN_ANCHOR,
   initiateRunHref,
   NO_AUTOMATIC_RUNS_SENTENCE,
+  plannedFrequencyLine,
   RUN_STARTS_ON_CONFIRM_SENTENCE,
+  SCHEDULE_NOT_SAVED_LINE,
   SCHEDULE_TIME_STARTS_NOTHING_SENTENCE,
   START_RUN_LINK_LABEL,
 } from './run-start-words';
@@ -72,5 +74,31 @@ describe('the run-start sentences', () => {
     expect(RUN_STARTS_ON_CONFIRM_SENTENCE).toContain('as soon as you confirm');
     expect(NO_AUTOMATIC_RUNS_SENTENCE).toContain('Nothing runs by itself');
     expect(SCHEDULE_TIME_STARTS_NOTHING_SENTENCE).toContain('does not start a Run');
+  });
+});
+
+/**
+ * UX-14: the saved frequency read as a plan, on the Procedure page's version card and
+ * on the Schedule step's own readback — the same words in both places.
+ */
+describe('the saved frequency is read as a plan, never a promise', () => {
+  it.each(['once', 'daily', 'weekly', 'monthly'] as const)('names %s and says nothing runs by itself', (frequency) => {
+    const line = plannedFrequencyLine(frequency);
+    expect(line).toBe(`Planned: ${frequency} (nothing runs by itself yet)`);
+    expect(line).toContain('nothing runs by itself');
+  });
+
+  it('has a distinct sentence for no saved Schedule at all', () => {
+    expect(SCHEDULE_NOT_SAVED_LINE.length).toBeGreaterThan(0);
+    expect(SCHEDULE_NOT_SAVED_LINE).not.toBe(plannedFrequencyLine('weekly'));
+  });
+
+  it.each([
+    ['the Procedure page version card', '../../app/procedures/[id]/page.tsx'],
+    ['the Schedule step', '../procedures/EvidenceScheduleForm.tsx'],
+  ] as const)('%s reads the frequency line from this module, never retyping it', (_surface, path) => {
+    const source = read(path);
+    expect(source).toContain('plannedFrequencyLine');
+    expect(source).not.toContain('nothing runs by itself yet)');
   });
 });

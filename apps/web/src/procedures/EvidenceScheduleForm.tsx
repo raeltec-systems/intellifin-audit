@@ -20,7 +20,7 @@ import type { ProcedureVersionView, UpdateEvidenceDraftResult } from '@intellifi
 
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
-import { NO_AUTOMATIC_RUNS_SENTENCE, SCHEDULE_TIME_STARTS_NOTHING_SENTENCE } from '../design/run-start-words';
+import { NO_AUTOMATIC_RUNS_SENTENCE, SCHEDULE_TIME_STARTS_NOTHING_SENTENCE, plannedFrequencyLine } from '../design/run-start-words';
 import {
   ASKS_A_PERSON_LABEL,
   HANDLING_HEADING,
@@ -438,6 +438,14 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
           }
         />
       )}
+      {/*
+        UX-14: the saved value read as a PLAN, before the form that edits it. A step
+        titled "How often this is meant to run" that opened straight onto a frequency
+        picker and a bare time field read as a control that starts something; this says
+        what is actually true about what was saved, in the same words the Procedure
+        page reads (`plannedFrequencyLine`).
+      */}
+      {draft.schedule ? <p className="ls-caption" data-planned-frequency>{plannedFrequencyLine(draft.schedule.frequency)}</p> : null}
       {evidenceBlockersFor(draft.sourceSnapshot, frequency === '' ? null : {
         frequency, startTime, periodDerivationRule: PERIOD_DERIVATION_RULES[frequency],
       }).includes('upload-frequency-mismatch') ? (
@@ -486,9 +494,14 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
             onChange={(event) => { section.edit({ ...section.value, startTime: event.target.value }); setGeneratedStartTime(false); setResult(null); }}
           />
         </div>
-        {/* The one sentence the owner needed: the time is not when it runs. Choosing Once
-            fills it with 00:00 (`scheduleEdit`) so a one-time Procedure needs no invented time. */}
-        <p id={`${id}-start-note`} className="ls-caption">{NO_AUTOMATIC_RUNS_SENTENCE} {SCHEDULE_TIME_STARTS_NOTHING_SENTENCE}</p>
+        {/*
+          The one sentence the owner needed: the time is not when it runs. Choosing Once
+          fills it with 00:00 (`scheduleEdit`) so a one-time Procedure needs no invented
+          time. UX-14 leads with "intended" so the field is framed as the time a plan
+          names rather than a control that fires — without renaming the field's own
+          accessible name, which several other packages' journeys already locate it by.
+        */}
+        <p id={`${id}-start-note`} className="ls-caption">The intended time, in UTC. {NO_AUTOMATIC_RUNS_SENTENCE} {SCHEDULE_TIME_STARTS_NOTHING_SENTENCE}</p>
         <p id={`${id}-derivation`} className="ls-caption">
           {frequency === ''
             ? 'Choose how often it runs to see which dates each run will cover.'
