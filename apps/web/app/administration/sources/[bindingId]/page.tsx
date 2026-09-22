@@ -5,6 +5,7 @@ import { bindingRowVersion } from '@intellifin/application';
 import { DrizzleBindingRepository, DrizzleProcedureRepository } from '@intellifin/infrastructure';
 
 import { BindingEditor } from '../../../../src/admin/BindingEditor';
+import { AdministrationTabs } from '../../../../src/admin/AdministrationTabs';
 import { Banner } from '../../../../src/design/Banner';
 import { getRuntime } from '../../../../src/bootstrap';
 import { DetailTrail } from '../../../../src/procedures/DetailTrail';
@@ -51,7 +52,12 @@ export default async function SourcePage({
   const binding = await new DrizzleBindingRepository(runtime.db).findBinding(bindingId);
   if (binding === null) notFound();
 
-  const referencingProcedures = await new DrizzleProcedureRepository(runtime.db).countReferencing(bindingId, 'source');
+  const procedures = new DrizzleProcedureRepository(runtime.db);
+  const [referencingProcedures, affected] = await Promise.all([
+    procedures.countReferencing(bindingId, 'source'),
+    procedures.listReferencing(bindingId, 'source'),
+  ]);
+  const affectedProcedures = affected.map((row) => row.controlName);
 
   // The page trails itself with the name it knows (UI cleanup 2026-09-21, UX-41): the
   // shell could only say this row's UUID, which the walkthrough found as the last crumb.
@@ -64,6 +70,7 @@ export default async function SourcePage({
           { href: `/administration/sources/${binding.bindingId}`, label: binding.displayName },
         ]}
       />
+      <AdministrationTabs current="/administration/sources" />
       <header className="ls-page-header">
         <h1>{binding.displayName}</h1>
         <p>
@@ -78,6 +85,7 @@ export default async function SourcePage({
         binding={binding}
         rowVersion={bindingRowVersion(binding)}
         referencingProcedures={referencingProcedures}
+        affectedProcedures={affectedProcedures}
         changeBinding={changeBindingAction}
       />
     </div>

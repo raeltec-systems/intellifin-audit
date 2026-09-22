@@ -176,6 +176,10 @@ export async function createBindingAction(
     if (!outcome.ok) return outcome;
 
     revalidatePath('/administration/sources');
+    // The landing states the EXACT source count and the "nothing confirms the count"
+    // health line (UX-37, UI cleanup 2026-09-22); naming only the list here would leave
+    // both stale until something else happened to revalidate the path.
+    revalidatePath('/administration');
     return {
       ok: true,
       bindingId: outcome.bindingId,
@@ -239,6 +243,9 @@ export async function changeBindingAction(
 
     revalidatePath('/administration/sources');
     revalidatePath(`/administration/sources/${fields.bindingId}`);
+    // Same reason as the create path: a status change or a new declared-count mechanism
+    // moves the landing's source count and its "nothing confirms the count" line.
+    revalidatePath('/administration');
     return {
       ok: true,
       bindingId: outcome.bindingId,
