@@ -79,7 +79,7 @@ export function SourceChooser({
 
   return (
     <section className="ls-source-chooser ls-stack" aria-labelledby={`${id}-heading`} data-source-chooser>
-      <h4 className="ls-source-chooser__title" id={`${id}-heading`}>Choose where the records come from</h4>
+      <h4 className="ls-source-chooser__title" id={`${id}-heading`}>Sources you can choose</h4>
       <div className="ls-dialog__field">
         <label htmlFor={`${id}-search`}>Search sources</label>
         <input

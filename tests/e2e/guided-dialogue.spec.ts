@@ -129,7 +129,8 @@ test('a fresh Template leads through choices, a precise test-design reply, saved
   await scope.getByLabel('Period start', { exact: true }).fill('2026-08-01');
   await scope.getByLabel('Period end', { exact: true }).fill('2026-08-31');
   await scope.getByRole('button', { name: 'Save Period and scope', exact: true }).click();
-  await expect(scope.locator('[data-guide-question="confirm"]')).toContainText('2026-08-01 to 2026-08-31');
+  // UX-02 (2026-09-22): the saved period reads as a person reads it.
+  await expect(scope.locator('[data-guide-question="confirm"]')).toContainText('1–31 Aug 2026, both dates included (UTC).');
 
   const scopeChat = scope.locator('[data-preparation-action-panel="scope"]');
   await scopeChat.getByLabel('Your instruction', { exact: true }).fill('I’ve reviewed this; continue');

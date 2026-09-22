@@ -405,7 +405,7 @@ test.describe('as an Auditor', () => {
     await page.getByLabel('Template').selectOption('P-1');
     await page.getByLabel('Procedure name').fill(controlName);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
-    await expect(page).toHaveURL(/\/procedures\/[^/]+\/builder$/);
+    await expect(page).toHaveURL(/\/procedures\/[^/]+\/builder\?created=1$/);
     await expect(page).toHaveTitle('Builder · IntelliFin Audit');
     const c1 = page.locator('[data-condition-id="C1"]');
     const c1Text = page.getByLabel('Rule text C1', { exact: true });
