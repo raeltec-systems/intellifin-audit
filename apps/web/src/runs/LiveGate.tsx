@@ -92,6 +92,7 @@ export function LiveGate({
   cursor,
   readAt,
   href,
+  header,
   children,
 }: {
   readonly runId: string;
@@ -102,13 +103,22 @@ export function LiveGate({
   readonly cursor: number | null;
   readonly readAt: string;
   readonly href: string;
+  /**
+   * Rendered INSIDE the gate and ABOVE the banner (UI cleanup 2026-09-22, UX-48).
+   *
+   * Live View's page header carries Pause / Resume, Cancel and Flag as its actions, and
+   * each of those asks this gate whether it may act — so the header has to be inside the
+   * provider. It is above the banner because a reader meets the page's name and its
+   * controls before a note about the channel's health.
+   */
+  readonly header?: React.ReactNode;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   return cursor === null
     ? (
-      <TerminalGate runId={runId} state={state}>{children}</TerminalGate>
+      <TerminalGate runId={runId} state={state} header={header}>{children}</TerminalGate>
     )
-    : <SubscribedGate url={url} cursor={cursor} readAt={readAt} href={href}>{children}</SubscribedGate>;
+    : <SubscribedGate url={url} cursor={cursor} readAt={readAt} href={href} header={header}>{children}</SubscribedGate>;
 }
 
 /**
@@ -117,10 +127,11 @@ export function LiveGate({
  * actionable ("open on a desktop") rather than one that is not.
  */
 function TerminalGate({
-  runId, state, children,
+  runId, state, header, children,
 }: {
   readonly runId: string;
   readonly state: string;
+  readonly header?: React.ReactNode;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   const desktop = useDesktopViewport();
@@ -128,6 +139,7 @@ function TerminalGate({
       <ActionGateProvider
         value={{ disabledReason: desktop ? LIVE_GATE_REASONS.runEnded : LIVE_GATE_REASONS.viewport }}
       >
+      {header ?? null}
       <EndedBanner runId={runId} state={state} />
       {children}
     </ActionGateProvider>
@@ -135,12 +147,13 @@ function TerminalGate({
 }
 
 function SubscribedGate({
-  url, cursor, readAt, href, children,
+  url, cursor, readAt, href, header, children,
 }: {
   readonly url: string;
   readonly cursor: number;
   readonly readAt: string;
   readonly href: string;
+  readonly header?: React.ReactNode;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   const refresh = useThrottledRefresh();
@@ -159,6 +172,7 @@ function SubscribedGate({
     <ActionGateProvider
       value={reason === null ? ACTION_GATE_OPEN : { disabledReason: LIVE_GATE_REASONS[reason] }}
     >
+      {header ?? null}
       <LiveBannerView status={live.status} silence={live.silence} lastSeq={live.lastSeq} readAt={readAt} href={href} />
       {children}
     </ActionGateProvider>

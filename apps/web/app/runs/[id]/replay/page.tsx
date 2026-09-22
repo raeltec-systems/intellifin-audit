@@ -9,8 +9,11 @@ import { Banner } from '../../../../src/design/Banner';
 import { REPLAY_COPY } from '../../../../src/design/copy';
 import { DetailTrail } from '../../../../src/procedures/DetailTrail';
 import { ReplayViewer, type ReplayFrameView } from '../../../../src/runs/ReplayViewer';
+import { PageHeader } from '../../../../src/design/PageHeader';
+import { Reference } from '../../../../src/design/Reference';
+import { Timestamp } from '../../../../src/design/Timestamp';
 import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
-import { planActionWord, runLifecycleWord, utcStamp, workItemLabel } from '../../../../src/runs/labels';
+import { planActionWord, runLifecycleWord, workItemLabel } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
 import { frameNarration, plannedStepCount, stepNarration } from '../../../../src/runs/live-view';
 import { replayJumpTargets, replayObservationsThrough, resolveFrameWorkItems } from '../../../../src/runs/replay';
@@ -56,18 +59,19 @@ export default async function RunReplayPage({
           { href: here, label: 'Replay' },
         ]}
       />
-      <header className="ls-page-header">
-        <h1>Replay · {run.procedureName}</h1>
-        <p>
-          <Link href={runTabHref(run.runId, '')}>Open Run Detail</Link> for the Result, the
-          Evidence Quality Gate and the Execution Timeline.
-        </p>
-        {lifecycle === null ? (
-          <p>Run lifecycle: {run.state}</p>
-        ) : (
-          <StatusBadge family="run-lifecycle" state={lifecycle} size="md" />
-        )}
-      </header>
+      {/* ONE header row: the title, the lifecycle badge beside it and one meta line, so
+          the session's first frame is inside the first viewport (UI cleanup, UX-29). */}
+      <PageHeader
+        title={<>Replay · {run.procedureName}</>}
+        badge={lifecycle === null ? <span>{run.state}</span> : <StatusBadge family="run-lifecycle" state={lifecycle} size="md" />}
+        meta={
+          <>
+            <Link href={runTabHref(run.runId, '')}>Open Run Detail</Link> ·{' '}
+            <Reference kind="Run" value={run.runId} /> · started{' '}
+            <Timestamp value={run.initiatedAt} precision="minute" />
+          </>
+        }
+      />
     </>
   );
 
@@ -121,8 +125,9 @@ export default async function RunReplayPage({
     const system = systemOf(step?.workItemId ?? frame.workItemId);
     // The record, so the frame's `alt` and each scrubber pill's label can tell two Work
     // Items of the same Run apart. `system` is identical on both.
+    const workItemId = step?.workItemId ?? frame.workItemId;
     const subject = timeline.workItems
-      .find((item) => item.workItemId === (step?.workItemId ?? frame.workItemId))?.subjectKey ?? null;
+      .find((item) => item.workItemId === workItemId)?.subjectKey ?? null;
     // The frame's `alt` and the rail's Step narration are the SAME string (UX-DR37): a
     // reader who cannot see the picture hears exactly what the picture is captioned with.
     const narration = frameNarration(frame, step, system, subject);
@@ -130,6 +135,8 @@ export default async function RunReplayPage({
     return {
       evidenceId: frame.evidenceId,
       narration,
+      workItemId,
+      subjectKey: subject,
       sourceLocation: frame.sourceLocation,
       digest: frame.digest,
       capturedAt: frame.capturedAt,
@@ -161,6 +168,7 @@ export default async function RunReplayPage({
       {header}
       <ReplayViewer
         runId={run.runId}
+        runState={run.state}
         stateSentence={`Session REPLAY. This Run ended: ${run.state}.`}
         workspace={
           timeline.workspace === null
@@ -196,7 +204,7 @@ export default async function RunReplayPage({
             digest: step.evidenceId === null ? null : (digestByEvidence.get(step.evidenceId) ?? null),
           }))}
       />
-      <p className="ls-caption">Read at {utcStamp(readAt)}.</p>
+      <p className="ls-caption">Read at <Timestamp value={readAt} precision="minute" />.</p>
     </div>
   );
 }

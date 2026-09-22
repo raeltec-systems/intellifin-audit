@@ -10,6 +10,7 @@ import {
 } from '../design/copy';
 import { EndedBanner, LiveViewer, type LiveViewerProps } from './LiveViewer';
 import { LIVE_VIEW_STAGE } from './live-view';
+import { NO_WORK_ITEM } from './session-words';
 
 /**
  * The session viewer, rendered server-side (Story 5.3, UX-DR24, UX-DR25).
@@ -25,11 +26,13 @@ const RUN_ID = '019823ab-0000-7000-8000-000000000042';
 function props(overrides: Partial<LiveViewerProps> = {}): LiveViewerProps {
   return {
     runId: RUN_ID,
+    runState: 'RUNNING',
     chrome: 'LIVE',
     stateSentence: 'Session LIVE.',
     workspace: { mode: 'solari', reference: 'workspace-test-run', status: 'OPEN' },
     stepsStarted: 3,
     plannedSteps: 8,
+    retries: 0,
     frame: null,
     stageNote: LIVE_VIEW_STAGE.awaitingFirstFrame,
     step: null,
@@ -132,8 +135,47 @@ describe('the narration rail', () => {
   it('states an absent Step, Work Item and Evidence in words, never as a gap', () => {
     const html = renderToStaticMarkup(React.createElement(LiveViewer, props()));
     expect(html).toContain('No Step Execution has started yet.');
-    expect(html).toContain('No Work Item is being worked yet.');
+    expect(html).toContain(NO_WORK_ITEM.working);
     expect(html).toContain('No Evidence has been registered yet.');
+  });
+
+  // UI cleanup 2026-09-22, UX-49. The rail said "No Work Item is being worked yet." over a
+  // COMPLETED Run — "yet" is a claim about a future only an active Run has. The sentence
+  // now depends on the Run's own state, and never implies that nothing happened.
+  it('tells a finished Run its Run is finished, not that nothing has started', () => {
+    for (const state of ['COMPLETED', 'INCONCLUSIVE', 'RUN_FAILED', 'CANCELED']) {
+      const html = renderToStaticMarkup(React.createElement(LiveViewer, props({ runState: state })));
+      // Scoped to the rail's own section: the stage note legitimately says "yet" about a
+      // frame that has not arrived, which is a different claim from this one.
+      const rail = html.slice(html.indexOf('live-work-item-heading'), html.indexOf('Evidence as registered'));
+      expect(rail, state).toContain(NO_WORK_ITEM.finished);
+      expect(rail, state).not.toContain('yet');
+    }
+    expect(renderToStaticMarkup(React.createElement(LiveViewer, props({ runState: 'QUEUED' }))))
+      .toContain(NO_WORK_ITEM['not-started']);
+    expect(renderToStaticMarkup(React.createElement(LiveViewer, props({ runState: 'PAUSED' }))))
+      .toContain(NO_WORK_ITEM.paused);
+  });
+
+  // UX-47. The chrome read "Step 7 of 6" after a pause and a resume, because the numerator
+  // was `run_step_execution`'s exact TOTAL. The component only reports what it is given,
+  // so what this pins is that it reports the number and the denominator unchanged and says
+  // the retries beside it rather than inside the counter.
+  it('never puts a retry inside the Step counter', () => {
+    const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
+      stepsStarted: 6, plannedSteps: 6, retries: 1,
+      step: { narration: 'Opening the record for E-000103 on LoanCore', state: 'RUNNING', attempt: 2, diagnostic: null },
+    })));
+    expect(html).toContain('Step 6 of 6');
+    expect(html).not.toContain('Step 7 of 6');
+    expect(html).toContain('This is attempt 2.');
+  });
+
+  it('says nothing about an attempt that is the first one', () => {
+    const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
+      step: { narration: 'Opening the record for E-000103 on LoanCore', state: 'RUNNING', attempt: 1, diagnostic: null },
+    })));
+    expect(html).not.toContain('attempt 1');
   });
 
   // Watch is where a person follows the Agent record by record. `displayName` is the
@@ -144,7 +186,10 @@ describe('the narration rail', () => {
     const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
       workItem: { displayName: 'LoanCore', state: 'RUNNING', subjectKey: 'E-000103', observations: 1 },
     })));
-    expect(html).toContain('E-000103 · LoanCore · RUNNING · 1 Observations');
+    // `1 Observations` was on this line until the UI cleanup: a count and a noun joined by
+    // a template that never asked how many (UX-31).
+    expect(html).toContain('E-000103 · LoanCore · RUNNING · 1 Observation');
+    expect(html).not.toContain('1 Observations');
   });
 
   it('keeps the system name alone for a Work Item that inspects no record', () => {
@@ -152,6 +197,7 @@ describe('the narration rail', () => {
       workItem: { displayName: 'ProdConsole', state: 'RUNNING', subjectKey: null, observations: 4 },
     })));
     expect(html).toContain('ProdConsole · RUNNING · 4 Observations');
+    expect(html).toContain('0 Observations registered in this Run so far.');
   });
 
   it('renders a Step Execution diagnostic as untrusted content', () => {
@@ -177,9 +223,26 @@ describe('the narration rail', () => {
       stageNote: LIVE_VIEW_STAGE.adapterOnly,
       adapterSteps: [{ stepId: 'session-2', displayName: 'Extract · AccessGate', state: 'ACQUIRED', attempts: 1, digest: 'b'.repeat(64) }],
     })));
-    expect(html).toContain('session-2');
-    expect(html).toContain('ACQUIRED');
+    // The stored state is a WORD and the plan-step id is under Technical details: an
+    // auditor reads `Acquired`, and `session-2` is a plan identifier (UX-28).
+    expect(html).toContain('Acquired · 1 attempt');
     expect(html).toContain('b'.repeat(64));
+    expect(html).toContain('Plan step identifier');
+    expect(html).toContain('session-2');
+    expect(html.slice(0, html.indexOf('Plan step identifier'))).not.toContain('session-2');
+  });
+
+  // UX-28: the chrome strip is read at a glance, and a thirty-six character workspace
+  // reference on it is the one thing a reader can neither compare nor type. It is under
+  // Technical details, where nothing is lost.
+  it('keeps the workspace reference off the chrome strip and under Technical details', () => {
+    const html = renderToStaticMarkup(React.createElement(LiveViewer, props()));
+    const strip = html.match(/<div class="ls-session__chrome">([\s\S]*?)<\/div>/)?.[1] ?? '';
+    expect(strip).toContain('Managed remote browser');
+    expect(strip).toContain(SESSION_ISOLATION_NOTE);
+    expect(strip).not.toContain('workspace-test-run');
+    expect(html).toContain('Agent Workspace reference');
+    expect(html).toContain('workspace-test-run');
   });
 });
 

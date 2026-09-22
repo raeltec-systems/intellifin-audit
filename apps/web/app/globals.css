@@ -2625,6 +2625,30 @@ a {
   font-size: var(--type-body-sm-font-size);
 }
 
+/* Replay's screen column: the frame, then the playback controls, then the scrubber. The
+   walkthrough found both controls under the first viewport, so a reader had to scroll away
+   from the screen to move it (UX-29). They are the stage's own siblings now. */
+.ls-session__screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  min-width: 0;
+}
+
+/* The selected record's position, beside the global counter and never instead of it. */
+.ls-session__record-position {
+  font-size: var(--type-body-sm-font-size);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The Agent's current action, said as a sentence. It is the rail's first line and the
+   frame's own caption for a screen-reader user, so it reads as prose (UX-28). */
+.ls-session__narration {
+  margin: 0;
+  font-weight: 600;
+}
+
 /* A finding is headed by the record a reader recognises, with the state badge on the
    same row (UX-21). The system name is secondary: it is identical on every finding of a
    Run, so it must not compete with the one value that is not. */

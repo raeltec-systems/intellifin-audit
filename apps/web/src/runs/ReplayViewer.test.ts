@@ -22,8 +22,10 @@ const RUN_ID = '019823ab-0000-7000-8000-000000000001';
 function frameView(index: number, overrides: Partial<ReplayFrameView> = {}): ReplayFrameView {
   return {
     evidenceId: `019823ab-0000-7000-8000-00000000000${index}`,
-    narration: `Read record on LoanCore, plan step agent-${index}, started 2026-09-10T09:0${index}:00.000Z.`,
-    stepNarration: `Read record on LoanCore, plan step agent-${index}, started 2026-09-10T09:0${index}:00.000Z.`,
+    narration: `Opening the record for E-00010${index} on LoanCore`,
+    stepNarration: `Opening the record for E-00010${index} on LoanCore`,
+    workItemId: `019823ab-0000-7000-8000-0000000000c${index}`,
+    subjectKey: `E-00010${index}`,
     sourceLocation: 'https://synthetic.invalid/loancore/records/1',
     digest: 'a'.repeat(64),
     capturedAt: `2026-09-10T09:0${index}:00.000Z`,
@@ -47,6 +49,7 @@ function frameView(index: number, overrides: Partial<ReplayFrameView> = {}): Rep
 function render(input: Partial<React.ComponentProps<typeof ReplayViewer>> = {}): string {
   return renderToStaticMarkup(React.createElement(ReplayViewer, {
     runId: RUN_ID,
+    runState: 'COMPLETED',
     stateSentence: 'Session REPLAY. This Run ended: COMPLETED.',
     workspace: { mode: 'solari', reference: 'workspace-test-run' },
     frames: [frameView(1), frameView(2), frameView(3)],
@@ -97,7 +100,7 @@ describe('Replay, as the server first paints it', () => {
     const html = render();
     expect([...html.matchAll(/ls-scrubber-pill/g)]).toHaveLength(4); // three pills, one current modifier
     expect(html).toContain('aria-current="true"');
-    expect(html).toContain('Frame 2 of 3: Read record on LoanCore');
+    expect(html).toContain('Frame 2 of 3: Opening the record for E-000102 on LoanCore');
   });
 
   it('says a Run captured nothing rather than showing an empty stage', () => {
@@ -186,7 +189,7 @@ describe('where Replay sends a reader for the Observations', () => {
 
   it('still counts them for the frame the viewer is showing', () => {
     const html = render({ frames: [frameView(2)], framesTotal: 1 });
-    expect(html).toContain(REPLAY_COPY.observationsThrough.replace('{count}', '2'));
+    expect(html).toContain(REPLAY_COPY.observationsThrough.replace('{count}', '2 Observations'));
     expect(html).not.toContain(REPLAY_COPY.observationsNoFrame);
   });
 });

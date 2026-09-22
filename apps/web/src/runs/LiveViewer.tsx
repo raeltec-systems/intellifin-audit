@@ -2,11 +2,15 @@ import Link from 'next/link';
 
 import { Banner } from '../design/Banner';
 import { Digest } from '../design/Digest';
+import { TechnicalDetails, type TechnicalItem } from '../design/TechnicalDetails';
+import { Timestamp } from '../design/Timestamp';
+import { countNoun } from '../design/words';
 import { CAPTURE_TIME_UNRECORDED, LIVE_VIEW_DESKTOP_ONLY_SENTENCE, SESSION_ISOLATION_NOTE } from '../design/copy';
 import { EvidenceKindBadge } from './MinorBadge';
 import { UntrustedText } from './UntrustedText';
 import { chromeDotClass, type LiveViewChrome } from './live-view';
-import { evidenceKindWord, utcStamp, workItemLabel, workspaceModeWord } from './labels';
+import { attemptContext, noWorkItemSentence } from './session-words';
+import { evidenceKindWord, sessionStepWord, utcStamp, workItemLabel, workspaceModeWord } from './labels';
 
 export interface LiveViewerFrame {
   readonly evidenceId: string;
@@ -48,13 +52,23 @@ export interface LiveViewerAdapterStep {
 
 export interface LiveViewerProps {
   readonly runId: string;
+  /** The Run's own state, so the rail's "no record" sentence is true of it (UX-49). */
+  readonly runState: string;
   /** `null` when the Run has no session yet — a Queued Run, which says so in words. */
   readonly chrome: LiveViewChrome | null;
   /** What the chrome says out loud when a screen reader reaches it. */
   readonly stateSentence: string;
   readonly workspace: { readonly mode: string; readonly reference: string | null; readonly status: string } | null;
+  /**
+   * How many LOGICAL plan steps have started — distinct plan steps with at least one Step
+   * Execution, never the row count. The chrome read "Step 7 of 6" after a pause and a
+   * resume because this was `run_step_execution`'s exact TOTAL, which counts ATTEMPTS
+   * (UI cleanup 2026-09-22, UX-47). See `logicalStepProgress`.
+   */
   readonly stepsStarted: number;
   readonly plannedSteps: number | null;
+  /** Every attempt beyond the first, across the Run: secondary context, never the counter. */
+  readonly retries: number;
   readonly frame: LiveViewerFrame | null;
   /** Why there is no frame, in words. Never an empty stage with nothing said. */
   readonly stageNote: string | null;
@@ -78,7 +92,13 @@ export interface LiveViewerProps {
 export function SessionChrome({ chrome, stateSentence, workspace, counter }: {
   readonly chrome: LiveViewChrome | null;
   readonly stateSentence: string;
-  readonly workspace: { readonly mode: string; readonly reference: string | null } | null;
+  /**
+   * The workspace's GUARANTEE, said as a word. Its platform reference used to sit beside
+   * it here — `workspace-01a0b44d-…`, thirty-six characters a reader never types, on the
+   * one strip that has to be legible at a glance (UI cleanup 2026-09-22, UX-28). The
+   * reference is under Technical details on the rail, where nothing is lost.
+   */
+  readonly workspace: { readonly mode: string } | null;
   readonly counter: string;
 }): React.JSX.Element {
   return (
@@ -91,9 +111,7 @@ export function SessionChrome({ chrome, stateSentence, workspace, counter }: {
         {chrome ?? 'NO SESSION'}
       </span>
       <span className="ls-session__workspace">
-        {workspace === null
-          ? 'No Agent Workspace'
-          : `${workspaceModeWord(workspace.mode)}${workspace.reference === null ? '' : ` · ${workspace.reference}`}`}
+        {workspace === null ? 'No Agent Workspace' : workspaceModeWord(workspace.mode)}
       </span>
       <span className="ls-session__note">{SESSION_ISOLATION_NOTE}</span>
       <span className="ls-session__counter">{counter}</span>
@@ -132,12 +150,16 @@ export function SessionStage({ runId, frame, stageNote }: {
             alt={frame.narration}
             decoding="async"
           />
+          {/* The location the screen was captured at, and WHEN — readable. The integrity
+              digest that used to end this caption is under Technical details on the rail
+              (UX-28): it is a sixty-four character check value, not a caption. */}
           <figcaption className="ls-session__caption">
             <UntrustedText field="captured page location">{frame.sourceLocation}</UntrustedText>
             <span>
-              {frame.capturedAt === null ? CAPTURE_TIME_UNRECORDED : `Captured ${utcStamp(frame.capturedAt)}`}
+              {frame.capturedAt === null
+                ? CAPTURE_TIME_UNRECORDED
+                : <>Captured <Timestamp value={frame.capturedAt} /></>}
             </span>
-            <Digest value={frame.digest} label="frame integrity digest" />
           </figcaption>
         </figure>
       )}
@@ -159,9 +181,32 @@ export function SessionStage({ runId, frame, stageNote }: {
  * otherwise, is ever in this markup (AD-5, `docs/contracts/live-view-v1.md`).
  */
 export function LiveViewer(props: LiveViewerProps): React.JSX.Element {
+  // The counter can never pass its own denominator: `stepsStarted` counts distinct plan
+  // steps intersected with the plan's own step ids (UX-47).
   const counter = props.plannedSteps === null
-    ? `Step ${props.stepsStarted}`
-    : `Step ${props.stepsStarted} of ${props.plannedSteps}`;
+    ? `Step ${props.stepsStarted.toLocaleString('en-US')}`
+    : `Step ${props.stepsStarted.toLocaleString('en-US')} of ${props.plannedSteps.toLocaleString('en-US')}`;
+  const attempt = props.step === null ? null : attemptContext(props.step.attempt);
+  // The identifiers, the exact instants and the check values, in one place a reader opens
+  // deliberately rather than meets on the way to the screen (UX-28, UX-48).
+  const technical: readonly TechnicalItem[] = [
+    ...(props.workspace === null ? [] : [
+      { label: 'Agent Workspace reference', value: props.workspace.reference ?? 'Not recorded', mono: true },
+      { label: 'Agent Workspace state', value: props.workspace.status, mono: true },
+    ]),
+    ...(props.frame === null ? [] : [
+      { label: 'Frame Evidence identifier', value: props.frame.evidenceId, mono: true },
+      { label: 'Frame integrity digest', value: props.frame.digest, mono: true },
+      ...(props.frame.capturedAt === null
+        ? []
+        : [{ label: 'Captured at', value: utcStamp(props.frame.capturedAt), mono: true }]),
+    ]),
+    ...(props.step === null ? [] : [
+      { label: 'Current attempt', value: String(props.step.attempt), mono: true },
+      { label: 'Step Execution state', value: props.step.state, mono: true },
+    ]),
+    { label: 'Attempts beyond the first', value: String(props.retries), mono: true },
+  ];
   return (
     <section className="ls-session" aria-labelledby="live-session-heading">
       <h2 id="live-session-heading" className="ls-visually-hidden">Agent session</h2>
@@ -175,19 +220,22 @@ export function LiveViewer(props: LiveViewerProps): React.JSX.Element {
       <p className="ls-session-desktop-only">{LIVE_VIEW_DESKTOP_ONLY_SENTENCE}</p>
 
       <div className="ls-session__body">
+        {/* The screen FIRST. The walkthrough met it below the first viewport, under a
+            title, a status, a banner, full-width controls, a workspace id, a warning and a
+            row of hashes — on the one surface whose purpose is to show a screen. */}
         <SessionStage runId={props.runId} frame={props.frame} stageNote={props.stageNote} />
 
         <div className="ls-session__rail ls-stack">
           <section aria-labelledby="live-step-heading" className="ls-stack">
-            <h3 id="live-step-heading">Current Step</h3>
+            <h3 id="live-step-heading">What the Agent is doing</h3>
             {props.step === null ? (
               <p>No Step Execution has started yet.</p>
             ) : (
               <>
-                <p>{props.step.narration}</p>
-                <p>
-                  {props.step.state} · attempt {props.step.attempt}
-                </p>
+                <p className="ls-session__narration">{props.step.narration}</p>
+                {/* `attempt 1` is said nowhere: every Step Execution has one, so printing
+                    it makes a retry indistinguishable from an ordinary first pass. */}
+                {attempt === null ? null : <p className="ls-caption">This is {attempt}.</p>}
                 {props.step.diagnostic === null ? null : (
                   <UntrustedText field="Step Execution diagnostic">{props.step.diagnostic}</UntrustedText>
                 )}
@@ -196,50 +244,61 @@ export function LiveViewer(props: LiveViewerProps): React.JSX.Element {
           </section>
 
           <section aria-labelledby="live-work-item-heading" className="ls-stack">
-            <h3 id="live-work-item-heading">Work Item</h3>
+            <h3 id="live-work-item-heading">Record being inspected</h3>
             {props.workItem === null ? (
-              <p>No Work Item is being worked yet.</p>
+              // Each sentence is true of its own Run state. A COMPLETED Run used to be
+              // told "No Work Item is being worked yet." — "yet" is a claim about a
+              // future only an active Run has (UX-49).
+              <p>{noWorkItemSentence(props.runState)}</p>
             ) : (
               <p>
                 {/* The record, then the system: `displayName` alone is the same on every
                     Work Item of a Run, so this rail could not say which leaver was being
                     inspected. One rule, shared with the Replay jump list. */}
                 {workItemLabel(props.workItem)} · {props.workItem.state} ·{' '}
-                {props.workItem.observations} Observations
+                {countNoun(props.workItem.observations, 'Observation')}
               </p>
             )}
-            <p>{props.observations} Observations registered in this Run so far.</p>
+            <p>{countNoun(props.observations, 'Observation')} registered in this Run so far.</p>
           </section>
 
-          <section aria-labelledby="live-evidence-heading" className="ls-stack">
-            <h3 id="live-evidence-heading">Evidence as registered</h3>
-            {props.evidence.length === 0 ? (
-              <p>No Evidence has been registered yet.</p>
-            ) : (
-              <ul className="ls-session__evidence">
-                {props.evidence.map((item) => (
-                  <li key={item.evidenceId}>
-                    <EvidenceKindBadge kind={item.kind} />
-                    <span>{evidenceKindWord(item.kind)}</span>
-                    {item.digest === null ? <span>No digest recorded.</span> : <Digest value={item.digest} label="Evidence integrity digest" />}
-                    <span>{item.capturedAt === null ? CAPTURE_TIME_UNRECORDED : utcStamp(item.capturedAt)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <p>
-              <Link href={`/runs/${props.runId}/evidence`}>Open the Evidence tab</Link>
-            </p>
-          </section>
+          {/* What has been frozen, behind a disclosure: a growing inventory is provenance,
+              not what a person watching a Run is reading (UX-48). */}
+          <details className="ls-disclosure">
+            <summary>
+              Evidence as registered · {countNoun(props.evidence.length, 'item')}
+            </summary>
+            <div className="ls-disclosure__body ls-stack">
+              {props.evidence.length === 0 ? (
+                <p>No Evidence has been registered yet.</p>
+              ) : (
+                <ul className="ls-session__evidence">
+                  {props.evidence.map((item) => (
+                    <li key={item.evidenceId}>
+                      <EvidenceKindBadge kind={item.kind} />
+                      <span>{evidenceKindWord(item.kind)}</span>
+                      {item.digest === null ? <span>No digest recorded.</span> : <Digest value={item.digest} label="Evidence integrity digest" />}
+                      <span>
+                        {item.capturedAt === null ? CAPTURE_TIME_UNRECORDED : <Timestamp value={item.capturedAt} />}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p>
+                <Link href={`/runs/${props.runId}/evidence`}>Open the Evidence tab</Link>
+              </p>
+            </div>
+          </details>
+
+          <TechnicalDetails items={technical} />
         </div>
       </div>
 
       {props.instructions.length === 0 ? null : (
         <section aria-labelledby="live-instructions-heading" className="ls-card ls-stack">
           <h3 id="live-instructions-heading">Audit Instructions</h3>
-          <p>
-            The auditor&rsquo;s own words, frozen into this Procedure Version and shown verbatim (FR-8).
-          </p>
+          <p>The auditor&rsquo;s own words, frozen into this Procedure Version and shown verbatim.</p>
           {props.instructions.map((instruction) => (
             <div key={instruction.system} className="ls-stack">
               <h4>{instruction.system}</h4>
@@ -251,15 +310,15 @@ export function LiveViewer(props: LiveViewerProps): React.JSX.Element {
 
       {props.adapterSteps.length === 0 ? null : (
         <section aria-labelledby="live-adapter-heading" className="ls-card ls-stack">
-          <h3 id="live-adapter-heading">Adapter Session Steps</h3>
-          <p>An Adapter reads without a workspace screen, so each Step is a log row with its state and its integrity digest.</p>
+          <h3 id="live-adapter-heading">Systems read without a screen</h3>
+          <p>An Adapter reads without a workspace screen, so each step is a log row with its state and its integrity digest.</p>
           <ul className="ls-session__log">
             {props.adapterSteps.map((step) => (
               <li key={step.stepId}>
-                <span className="ls-mono">{step.stepId}</span>
                 <span>{step.displayName}</span>
-                <span>{step.state} · {step.attempts} attempts</span>
+                <span>{sessionStepWord(step.state)} · {countNoun(step.attempts, 'attempt')}</span>
                 {step.digest === null ? <span>No artifact registered.</span> : <Digest value={step.digest} label="Adapter artifact digest" />}
+                <TechnicalDetails items={[{ label: 'Plan step identifier', value: step.stepId, mono: true }]} />
               </li>
             ))}
           </ul>

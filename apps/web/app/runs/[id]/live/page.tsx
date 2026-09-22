@@ -11,6 +11,9 @@ import {
 
 import { getRuntime } from '../../../../src/bootstrap';
 import { LIVE_VIEW_QUEUED_SENTENCE } from '../../../../src/design/copy';
+import { PageHeader } from '../../../../src/design/PageHeader';
+import { Reference } from '../../../../src/design/Reference';
+import { Timestamp } from '../../../../src/design/Timestamp';
 import { DetailTrail } from '../../../../src/procedures/DetailTrail';
 import { LiveGate } from '../../../../src/runs/LiveGate';
 import { RunCancelControl } from '../../../../src/runs/RunCancelControl';
@@ -27,7 +30,9 @@ import {
   currentStepExecution,
   frameNarration,
   liveViewChrome,
+  logicalStepProgress,
   plannedStepCount,
+  plannedStepIds,
   stepNarration,
 } from '../../../../src/runs/live-view';
 
@@ -139,6 +144,57 @@ export default async function RunLivePage({
           ? LIVE_VIEW_STAGE.awaitingFirstFrame
           : LIVE_VIEW_STAGE.unavailable;
 
+  // The Step counter's numerator: LOGICAL plan steps, never `run_step_execution`'s row
+  // count. A pause supersedes the attempt in flight and the resume starts a new one, so
+  // the total counted attempts and the chrome read "Step 7 of 6" (UX-47).
+  const progress = logicalStepProgress(timeline.stepExecutions.rows, plannedStepIds(plan));
+
+  // ONE header row: the title, the lifecycle badge beside it, the four session controls on
+  // its right and one meta line. The walkthrough met the title, the status, the banner, a
+  // full-width control stack, a workspace id, a warning and a row of hashes each on their
+  // own row before the screen (UX-48).
+  const header = (
+    <PageHeader
+      title={<>Watch · {run.procedureName}</>}
+      badge={lifecycle === null ? <span>{run.state}</span> : <StatusBadge family="run-lifecycle" state={lifecycle} size="md" />}
+      actions={
+        <>
+          <RunPauseControls
+            runId={run.runId}
+            procedureName={run.procedureName}
+            paused={run.state === 'PAUSED'}
+            pausePending={run.pauseRequest !== null}
+            awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
+            pausable={runPauseTransition(run.state) !== null}
+            runRevision={waits?.runRevision ?? null}
+          />
+          <RunCancelControl
+            runId={run.runId}
+            procedureName={run.procedureName}
+            active={isActiveRunState(run.state)}
+            cancelPending={run.cancellation !== null}
+          />
+          <RunFlagControl
+            runId={run.runId}
+            flaggable={isFlaggableRunState(run.state)}
+            flags={flagRows.map((row) => ({
+              flagId: row.flagId,
+              flaggedBy: actorNames.get(row.flaggedBy) ?? row.flaggedBy,
+              flaggedAt: row.flaggedAt,
+              note: row.note,
+            }))}
+          />
+        </>
+      }
+      meta={
+        <>
+          <Link href={runTabHref(run.runId, '')}>Open Run Detail</Link> ·{' '}
+          <Reference kind="Run" value={run.runId} /> · started <Timestamp value={run.initiatedAt} precision="minute" />
+        </>
+      }
+    />
+  );
+
   return (
     <div className="ls-stack">
       <DetailTrail
@@ -148,18 +204,6 @@ export default async function RunLivePage({
           { href: here, label: 'Live' },
         ]}
       />
-      <header className="ls-page-header">
-        <h1>Live View · {run.procedureName}</h1>
-        <p>
-          <Link href={runTabHref(run.runId, '')}>Open Run Detail</Link> for the Result, the
-          Evidence Quality Gate and the Execution Timeline.
-        </p>
-        {lifecycle === null ? (
-          <p>Run lifecycle: {run.state}</p>
-        ) : (
-          <StatusBadge family="run-lifecycle" state={lifecycle} size="md" />
-        )}
-      </header>
 
       {/* ONE subscription for the surface, and the gate over every control under it
           (Story 5.7). The channel subscribes only while the Run is active (UX-DR35); a
@@ -176,6 +220,7 @@ export default async function RunLivePage({
         cursor={liveCursor}
         readAt={readAt.toISOString()}
         href={here}
+        header={header}
       >
         {/* AT THE TOP, and the workspace screen stays below it rather than behind it
             (EXPERIENCE.md → Live View / Awaiting Auditor: "Escalation panel focused;
@@ -186,24 +231,10 @@ export default async function RunLivePage({
             is a context change nobody asked for. */}
         <OpenEscalationSection run={run} escalation={waits} readAt={readAt} />
         <PauseBanners run={run} pause={waits?.pause ?? null} readAt={readAt} names={pauseNames} />
-        <RunPauseControls
-          runId={run.runId}
-          procedureName={run.procedureName}
-          paused={run.state === 'PAUSED'}
-          pausePending={run.pauseRequest !== null}
-          awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
-          pausable={runPauseTransition(run.state) !== null}
-          runRevision={waits?.runRevision ?? null}
-        />
-        <RunCancelControl
-          runId={run.runId}
-          procedureName={run.procedureName}
-          active={isActiveRunState(run.state)}
-          cancelPending={run.cancellation !== null}
-        />
 
         <LiveViewer
           runId={run.runId}
+          runState={run.state}
           chrome={chrome}
           stateSentence={
             chrome === null
@@ -219,8 +250,9 @@ export default async function RunLivePage({
                   status: timeline.workspace.status,
                 }
           }
-          stepsStarted={timeline.stepExecutions.total}
+          stepsStarted={progress.started}
           plannedSteps={plannedStepCount(plan)}
+          retries={progress.retries}
           frame={
             frame === null
               ? null
@@ -279,20 +311,7 @@ export default async function RunLivePage({
               digest: null,
             }))}
         />
-        {/* Flag sits AFTER the viewer: it is the one control here that is not about stopping
-            or holding the Run, and it carries the record of the flags already raised. */}
-        <RunFlagControl
-          runId={run.runId}
-          flaggable={isFlaggableRunState(run.state)}
-          flags={flagRows.map((row) => ({
-            flagId: row.flagId,
-            flaggedBy: actorNames.get(row.flaggedBy) ?? row.flaggedBy,
-            flaggedAt: row.flaggedAt,
-            note: row.note,
-          }))}
-        />
       </LiveGate>
-      <p className="ls-caption">Read at {utcStamp(readAt)}.</p>
     </div>
   );
 }
