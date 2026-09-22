@@ -1,13 +1,16 @@
 'use client';
 
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { ProcedureVersionView } from '@intellifin/application';
 import { PREPARATION_SECTIONS, draftContext, preparationStatus, preparationReviewBlocker, sectionReview, type PreparationSectionId } from '@intellifin/domain';
 
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
+import { TechnicalDetails } from '../design/TechnicalDetails';
 import { ActorName } from '../runs/ActorName';
 import { NO_AUTOMATIC_RUNS_SENTENCE, SCHEDULE_TIME_STARTS_NOTHING_SENTENCE } from '../design/run-start-words';
+import { CONDITION_NOT_IN_WORDS, conditionSentence } from './condition-words';
+import { PREPARATION_PANEL_PREFIX, preparationPanelId } from './preparation-anchors';
 import { UNKNOWN_SAVE_OUTCOME, UnknownSaveOutcome } from './UnknownSaveOutcome';
 import { useSectionSubmissionStatus, useSubmissionGuard } from './use-section';
 import { usePreparationGuide, type PreparationActionResult } from './PreparationActions';
@@ -134,7 +137,10 @@ const REVIEW_DATE = new Intl.DateTimeFormat('en-GB', {
  * its submission guard, making an unfinished section look safe to review or submit.
  */
 export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, editors, review, help, assistant, onStepChange, actorNames }: GuidedPreparationProps): React.JSX.Element {
-  const id = useId();
+  // Fixed prefix (UX-15): exactly one GuidedPreparation is mounted per page, so a
+  // stable id lets ReadinessPanel link to a step without threading this component's
+  // internal state out through a render-prop. See preparation-anchors.ts.
+  const id = PREPARATION_PANEL_PREFIX;
   const names = new Map(Object.entries(actorNames ?? {}));
   const [selected, setSelected] = useState<PreparationStep>('context');
   const [hydrated, setHydrated] = useState(false);
@@ -163,11 +169,19 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
   useEffect(() => {
     // Native outline links work before hydration. Keep the section a reader chose
     // while JavaScript was loading, then switch to the focused editing layout.
-    const hash = decodeURIComponent(window.location.hash.slice(1));
-    const linked = [...PREPARATION_SECTIONS, 'review' as const].find(section => `${id}-panel-${section}` === hash);
-    if (linked) setSelected(linked);
+    function selectFromHash(): void {
+      const hash = decodeURIComponent(window.location.hash.slice(1));
+      const linked = [...PREPARATION_SECTIONS, 'review' as const].find(section => preparationPanelId(section) === hash);
+      if (linked) setSelected(linked);
+    }
+    selectFromHash();
     setHydrated(true);
-  }, [id]);
+    // UX-15: a reader who is already on this page and follows a readiness link (a
+    // same-page `href` change) fires `hashchange` without a navigation -- the
+    // mount-only read above cannot see that. `ReadinessPanel` is the one caller.
+    window.addEventListener('hashchange', selectFromHash);
+    return () => window.removeEventListener('hashchange', selectFromHash);
+  }, []);
 
   const reviewed = PREPARATION_SECTIONS.filter(section => preparationStatus(draft, section) === 'reviewed').length;
   const complete = reviewed === PREPARATION_SECTIONS.length;
@@ -306,7 +320,23 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
             {section === 'assessment' ? <div className="ls-guide-facts ls-stack" data-criteria-confirmation>
               <p>I’ll use these saved criteria to distinguish a finding from a compliant result. Missing or ambiguous evidence stays unresolved.</p>
               {draft.complianceConditions.length === 0 ? <Banner tone="warning" title="No assessment criteria have been supplied." />
-                : <ol>{draft.complianceConditions.map(condition => <li key={condition.conditionId}>{condition.text}</li>)}</ol>}
+                : <ol className="ls-stack">{draft.complianceConditions.map((condition, index) => {
+                    // UX-13: the rule's own vocabulary — `found = false`, a field name,
+                    // a condition id like `C1` — is what an auditor met here before this
+                    // was said in audit language. `conditionSentence` is the one place a
+                    // Compliance Rule condition becomes a sentence; a condition it cannot
+                    // read (free prose the Template pinned) keeps its authored text, said
+                    // as what it is rather than a sentence this surface guessed.
+                    const sentence = conditionSentence(condition.text, draft.templateId, condition.conditionId);
+                    return <li key={condition.conditionId} data-condition-sentence={condition.conditionId}>
+                      <p><strong>Condition {index + 1}.</strong> {sentence ?? condition.text}</p>
+                      {sentence === null ? <p className="ls-caption">{CONDITION_NOT_IN_WORDS}</p> : null}
+                      <TechnicalDetails items={[
+                        { label: 'Compiled rule text', value: condition.text, mono: true },
+                        { label: 'Applies to', value: condition.applicability, mono: true },
+                      ]} />
+                    </li>;
+                  })}</ol>}
               <p className="ls-caption">Confirm these criteria if they match the intended test, or change them explicitly below.</p>
             </div> : null}
             {selected === section ? assistant?.(section) : null}
