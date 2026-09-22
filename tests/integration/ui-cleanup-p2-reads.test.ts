@@ -6,6 +6,7 @@ import {
   DrizzleActiveRunCounter,
   DrizzlePendingResultReader,
   DrizzleProcedureListReader,
+  DrizzleSubmittedVersionReader,
   PostgresProceduresUnitOfWork,
   PROCEDURE_PAGE_SIZE,
   type Database,
@@ -42,9 +43,20 @@ describe.skipIf(!url)('the UI cleanup landing reads', () => {
     draft: `ZZP2 Alpha leaver access ${suffix}`,
     active: `ZZP2 Beta segregation 100% ${suffix}`,
     submitted: `ZZP2 Gamma approvals ${suffix}`,
+    foreignSubmitted: `ZZP2 Delta vendor master ${suffix}`,
   } as const;
-  const procedures = { draft: ids.next(), active: ids.next(), submitted: ids.next() };
-  const versions = { draft: ids.next(), active: ids.next(), submitted: ids.next() };
+  const procedures = {
+    draft: ids.next(),
+    active: ids.next(),
+    submitted: ids.next(),
+    foreignSubmitted: ids.next(),
+  };
+  const versions = {
+    draft: ids.next(),
+    active: ids.next(),
+    submitted: ids.next(),
+    foreignSubmitted: ids.next(),
+  };
   const runs = { pending: ids.next(), sealed: ids.next(), running: ids.next(), foreign: ids.next() };
   const observationId = ids.next();
   const workItemId = ids.next();
@@ -70,6 +82,17 @@ describe.skipIf(!url)('the UI cleanup landing reads', () => {
     await seedProcedure(procedures.draft, versions.draft, names.draft, 'DRAFT', auditor, null);
     await seedProcedure(procedures.active, versions.active, names.active, 'ACTIVE', other, 'weekly');
     await seedProcedure(procedures.submitted, versions.submitted, names.submitted, 'SUBMITTED', auditor, null);
+    // A SECOND version awaiting approval, written by somebody else. The Reviews area shows
+    // a manager BOTH and an auditor only their own, so the two rows are what tell the
+    // whole-queue read apart from the author-scoped one.
+    await seedProcedure(
+      procedures.foreignSubmitted,
+      versions.foreignSubmitted,
+      names.foreignSubmitted,
+      'SUBMITTED',
+      other,
+      null,
+    );
 
     // A Run whose Result is waiting for a person: `run_result_sealed` (generation 25) is
     // `sealed = (outcome <> 'PENDING_CONFIRMATION')`, so this row IS the unsealed state.
@@ -252,6 +275,52 @@ describe.skipIf(!url)('the UI cleanup landing reads', () => {
     }
   });
 
+  /* ------------------------------ the author-scoped approval queue (UX-30, UX-35) --- */
+
+  const submittedVersions = (): DrizzleSubmittedVersionReader => new DrizzleSubmittedVersionReader(db);
+
+  it('shows a manager every version awaiting approval, including one they did not write', async () => {
+    // `listSubmitted` is role-level: whether THIS manager may approve a PARTICULAR version
+    // is the author rule, applied where the decision is taken.
+    const page = await submittedVersions().listSubmitted(50);
+    const ours = page.rows.filter((row) => row.versionId === versions.submitted || row.versionId === versions.foreignSubmitted);
+    expect(ours.map((row) => row.versionId).sort()).toEqual(
+      [versions.submitted, versions.foreignSubmitted].sort(),
+    );
+    expect(page.total).toBeGreaterThanOrEqual(2);
+  });
+
+  it("shows an Auditor only the versions they submitted or are accountable for", async () => {
+    // The finding: an auditor's Reviews tab is headed "Your versions waiting for an Audit
+    // Manager", and `listSubmitted` would have put every other auditor's work under it —
+    // a label stating something untrue. Proven by mutation: point the page back at
+    // `listSubmitted` and this fails on the foreign version.
+    const page = await submittedVersions().listSubmittedFor(auditor, 50);
+    const ids = page.rows.map((row) => row.versionId);
+    expect(ids).toContain(versions.submitted);
+    expect(ids).not.toContain(versions.foreignSubmitted);
+
+    const theirs = await submittedVersions().listSubmittedFor(other, 50);
+    expect(theirs.rows.map((row) => row.versionId)).toContain(versions.foreignSubmitted);
+    expect(theirs.rows.map((row) => row.versionId)).not.toContain(versions.submitted);
+  });
+
+  it('counts the scoped queue exactly, never the length of a bounded page', async () => {
+    const whole = await submittedVersions().listSubmitted(50);
+    const mine = await submittedVersions().listSubmittedFor(auditor, 50);
+    // The author-scoped total is its own `count(*)` under the same predicate, so it is
+    // strictly smaller here rather than a copy of the whole queue's number.
+    expect(mine.total).toBeLessThan(whole.total);
+    expect(mine.total).toBe(mine.rows.length);
+  });
+
+  it('claims nothing for a reader with no id, and nothing for a stranger', async () => {
+    expect(await submittedVersions().listSubmittedFor('', 50)).toEqual({ rows: [], total: 0 });
+    const none = await submittedVersions().listSubmittedFor(stranger, 50);
+    expect(none.rows).toHaveLength(0);
+    expect(none.total).toBe(0);
+  });
+
   /* ------------------------------------------------- pending Results (UX-01, UX-35) --- */
 
   const pending = (): DrizzlePendingResultReader => new DrizzlePendingResultReader(db);
@@ -388,13 +457,15 @@ describe.skipIf(!url)('the UI cleanup landing reads', () => {
     expect(page.rows).toHaveLength(1);
     // `rows.length` after a LIMIT is the bound, never a count — the whole reason both
     // numbers are their own statements.
-    expect(page.total).toBe(3);
-    expect(page.unfilteredTotal).toBeGreaterThanOrEqual(3);
+    // Four, because this file seeds four Procedures under one suffix — and the number is
+    // read from the fixture rather than typed, so adding a fifth cannot silently pass.
+    expect(page.total).toBe(Object.keys(procedures).length);
+    expect(page.unfilteredTotal).toBeGreaterThanOrEqual(Object.keys(procedures).length);
     expect(page.limit).toBe(1);
 
     const second = await procedureList().listProcedures({ search: suffix, limit: 1, offset: 1 });
     expect(second.rows[0]?.procedureId).not.toBe(page.rows[0]?.procedureId);
-    expect(second.total).toBe(3);
+    expect(second.total).toBe(Object.keys(procedures).length);
   });
 
   it('bounds the page size and the offset a query string can ask for', async () => {
