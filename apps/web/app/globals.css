@@ -2762,6 +2762,16 @@ a {
   }
 }
 
+/* The population reconciliation stacks each label over its value (UX-19, "coverage and
+   reconciliation, compact"). The shared rule lays them side by side with the value column
+   sized to its content, and a value that is a SENTENCE ("Not recorded — the independent
+   declaration stated no count…") then took the whole row and printed over its own label,
+   measured in the Result-first browser journey at 1366px. */
+.ls-reconciliation > div {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--spacing-1);
+}
+
 /* ---------------------------------------------------------------------------
    UI cleanup — package 6: administration.
    (Rules are added here by package 6 and nowhere else.) */

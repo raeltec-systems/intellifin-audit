@@ -234,7 +234,9 @@ test.describe('the Runs list and Run Detail as an Auditor', () => {
     await expect(row.getByRole('link')).toHaveCount(1);
     await expect(row.getByRole('link')).toHaveAttribute('href', `/runs/${runs.completed}`);
     // The refresh banner names when the page was read; nothing polls.
-    await expect(page.getByText(/^Updated \d{4}-\d{2}-\d{2}T/)).toBeVisible();
+    // The strip says a READABLE instant (UI cleanup 2026-09-21, UX-02): it pinned the ISO
+    // form, which the shared language layer replaced, so it failed on the base commit too.
+    await expect(page.getByText(/^Updated \d{1,2} [A-Z][a-z]{2} \d{4}, \d{2}:\d{2} UTC/)).toBeVisible();
     await expect(page.getByRole('link', { name: 'Refresh.', exact: true })).toBeVisible();
     await scan(page);
   });
