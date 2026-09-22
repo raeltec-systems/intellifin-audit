@@ -7,6 +7,7 @@ import { refreshPreparation, type PreparationSectionId } from '@intellifin/domai
 
 import { executablePlanInputs } from '../../../../tests/fixtures/executable-plan';
 import { GuidedPreparation } from './GuidedPreparation';
+import { CONDITION_NOT_IN_WORDS } from './condition-words';
 import { BuilderSubmissionProvider } from './use-section';
 
 function view(overrides: Partial<ProcedureVersionView> = {}): ProcedureVersionView {
@@ -58,6 +59,33 @@ function reviewedContext(): ProcedureVersionView {
 
 describe('guided procedure preparation', () => {
   /**
+   * UX-13: the criteria step says each condition in audit language, numbered by its own
+   * id, with the compiled rule and its applicability under Technical details — never the
+   * rule grammar (`found = false`, `account_status`) as the text a reader meets first.
+   */
+  it('says the criteria in audit language and keeps the compiled rule under Technical details', () => {
+    const base = view();
+    const [c1] = base.complianceConditions;
+    const html = render(view({ templateId: 'P-1', complianceConditions: [
+      { ...c1!, conditionId: 'C1', text: 'found = false or account_status in [Disabled] else [Active]' },
+      { ...c1!, conditionId: 'C3', text: 'Observed and approved normalized values are equal.' },
+    ] }));
+    const assessment = panel(html, 'assessment').body;
+    // Everything a reader meets without opening a disclosure.
+    const ordinary = assessment.replace(/<details[\s\S]*?<\/details>/gu, '');
+    expect(ordinary).toContain('Condition 1.');
+    expect(ordinary).toContain('Acceptable: no record is found after every required search, or the account status is “Disabled”. Exception: the account status is “Active”. Any other account status needs review.');
+    // Numbered by its OWN id: C3 is Condition 3 even as the second item, and prose the
+    // simple reader cannot express is said as what it is.
+    expect(ordinary).toContain('Condition 3.');
+    expect(ordinary).toContain(CONDITION_NOT_IN_WORDS);
+    expect(ordinary).not.toContain('found = false');
+    expect(ordinary).not.toContain('account_status');
+    expect(assessment).toContain('Technical details');
+    expect(assessment).toContain('Compiled rule text');
+  });
+
+  /**
    * The frequency step was titled "Frequency and handling" and offered a frequency and a
    * time: half the title named an editor that is not there, and an auditor went looking
    * for the stop-and-ask controls. The handling is frozen by the compiler and shown by
@@ -67,13 +95,15 @@ describe('guided procedure preparation', () => {
     const html = render(view());
     // The outline entry, the panel heading and the review-step link all read the one
     // title, so renaming it once renames it everywhere.
-    expect(html).toContain('>How often this is meant to run</span>');
-    expect(panel(html, 'frequency').body).toContain('>How often this is meant to run</h2>');
+    expect(html).toContain('>Planned frequency</span>');
+    expect(panel(html, 'frequency').body).toContain('>Planned frequency</h2>');
     expect(html).not.toContain('Frequency and handling');
     // The question no longer offers a stop-or-ask control. Those facts are frozen by the
     // compiler, and the Schedule editor shows them read-only (`handling-words.test.ts`).
     const step = panel(html, 'frequency');
-    expect(step.body).toContain('How often should this test happen');
+    // UX-14 (2026-09-22): the question says it is a plan and that nothing runs by itself.
+    expect(step.body).toContain('How often is this test meant to happen');
+    expect(step.body).toContain('Nothing runs by itself yet.');
     expect(step.body).not.toContain('when should the agent stop or ask');
   });
 
@@ -145,7 +175,10 @@ describe('guided procedure preparation', () => {
     expect(html).toContain('1 of 6 sections reviewed by auditor.');
     const context = panel(html, 'context').body;
     expect(context).toContain('Reviewed by auditor');
-    expect(context).toContain('<time dateTime="2026-09-11T14:05:09.000Z">11 Sept 2026, 14:05:09 UTC</time>');
+    // UX-02 (2026-09-22): the shared `Timestamp` — readable text, the exact instant in the
+    // attribute and the title. `Intl` spelled September "Sept" here, which the shared
+    // formatter exists to stop.
+    expect(context).toContain('<time dateTime="2026-09-11T14:05:09.000Z" title="2026-09-11T14:05:09.000Z">11 Sep 2026, 14:05:09 UTC</time>');
     expect(context).toContain('auditor-42');
     expect(context).toContain('Saved section revision');
     expect(context).toContain(draft.sectionPreparation!.sections.context.basis);

@@ -13,7 +13,7 @@ export const PREPARATION_NAMES: Readonly<Record<PreparationDestination, string>>
   // Not "Frequency and handling": the handling is frozen by the compiler and shown, not
   // edited here, and a title naming an editor that is not there sends an auditor looking
   // for it. `GuidedPreparation`'s own words for this step say the same thing.
-  instructions: 'Audit steps', assessment: 'Assessment criteria', frequency: 'How often this is meant to run', review: 'Review and submission',
+  instructions: 'Audit steps', assessment: 'Assessment criteria', frequency: 'Planned frequency', review: 'Review and submission',
 };
 
 export function commandWords(value: string): string {
@@ -28,7 +28,7 @@ const destinations: Readonly<Record<string, PreparationDestination>> = {
   // The old title stays a navigation alias: a renamed step must not strand somebody who
   // learned the previous name, and an alias is never rendered at a reader.
   frequency: 'frequency', 'frequency and handling': 'frequency', 'how often': 'frequency',
-  'how often this is meant to run': 'frequency', review: 'review', 'review and submission': 'review',
+  'how often this is meant to run': 'frequency', 'planned frequency': 'frequency', review: 'review', 'review and submission': 'review',
 };
 
 /** Only the human's submitted composer message is routed here. This is deliberately

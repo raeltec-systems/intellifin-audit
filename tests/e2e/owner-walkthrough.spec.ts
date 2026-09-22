@@ -343,7 +343,7 @@ async function markReviewed(page: Page, section: string, title: string): Promise
 async function reviewPreparedSections(page: Page): Promise<void> {
   for (const [section, title] of [
     ['context', 'Risk, control and objective'], ['scope', 'Scope and period'], ['evidence', 'Evidence to review'],
-    ['instructions', 'Audit steps'], ['assessment', 'Assessment criteria'], ['frequency', 'How often this is meant to run'],
+    ['instructions', 'Audit steps'], ['assessment', 'Assessment criteria'], ['frequency', 'Planned frequency'],
   ]) await markReviewed(page, section!, title!);
   await expect(page.locator('[data-preparation-progress]')).toContainText('6 of 6 sections reviewed by auditor.');
 }

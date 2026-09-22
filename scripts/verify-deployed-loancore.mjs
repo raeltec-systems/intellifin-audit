@@ -196,7 +196,7 @@ async function authorApproveAndRun({ control, sourceName, prefix, accounts }) {
   await step('Schedule', () => auditor.getByLabel('Frequency', { exact: true }).selectOption('once'),
     () => auditor.getByRole('button', { name: 'Save Schedule', exact: true }).click(), 'Saved. The Schedule is recorded in the audit chain.');
   phase = `${prefix}review-sections`;
-  for (const [section, title] of [['context','Risk, control and objective'],['scope','Scope and period'],['evidence','Evidence to review'],['instructions','Audit steps'],['assessment','Assessment criteria'],['frequency','How often this is meant to run']]) {
+  for (const [section, title] of [['context','Risk, control and objective'],['scope','Scope and period'],['evidence','Evidence to review'],['instructions','Audit steps'],['assessment','Assessment criteria'],['frequency','Planned frequency']]) {
     let reviewed = false;
     for (let attempt = 0; attempt < 3 && !reviewed; attempt++) {
       await planSettled(auditor); await auditor.locator(`[data-preparation-nav="${section}"]`).click();

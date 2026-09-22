@@ -552,7 +552,7 @@ async function reviewPreparedSections(page: Page): Promise<void> {
     // The step's own title, which UX-09 renamed: the acknowledgement is built from
     // `SECTION_WORDS[section].title`, so a retyped old name waits for a sentence the
     // product no longer writes while the review itself has already been recorded.
-    ['frequency', 'How often this is meant to run'],
+    ['frequency', 'Planned frequency'],
   ]) {
     await markReviewed(page, section!, title!);
   }

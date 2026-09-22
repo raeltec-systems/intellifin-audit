@@ -67,7 +67,9 @@ describe('every domain vocabulary the Builder shows has words for it', () => {
    */
   it('asks the Schedule section for the intent, never claiming the Procedure runs itself', () => {
     const { title, question } = SECTION_WORDS.Schedule;
-    expect(title).toBe('How often this is meant to run');
+    // UX-14 (2026-09-22): the title itself says it is a plan.
+    expect(title).toBe('Planned frequency');
+    expect(question).toContain('meant to happen');
     for (const words of [title, question]) {
       expect(words).not.toContain('run on its own');
       expect(words).not.toContain('runs on its own');

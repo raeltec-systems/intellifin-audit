@@ -83,9 +83,11 @@ export const SECTION_WORDS: Readonly<
   // Run starts by itself in this release, and the Schedule step has no control that
   // would make one. The saved frequency is the INTENT, which is what the words say now;
   // `run-start-words.ts` says the rest, in the editor and on three other surfaces.
+  //
+  // `[REWORDED 2026-09-22, UX-14]` "Planned frequency": the title itself says it is a plan.
   Schedule: {
-    title: 'How often this is meant to run',
-    question: 'How often should this test happen, and which dates would each one cover?',
+    title: 'Planned frequency',
+    question: 'How often is this test meant to happen, and which dates would each one cover?',
   },
 };
 
