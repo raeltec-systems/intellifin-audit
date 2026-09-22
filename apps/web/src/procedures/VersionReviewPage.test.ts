@@ -6,6 +6,16 @@ import { initialPlanDerivation, type ProcedureVersionView } from '@intellifin/ap
 import { executablePlanInputs } from '../../../../tests/fixtures/executable-plan';
 import VersionReviewPage from '../../app/procedures/[id]/versions/[versionId]/page';
 import { decisionWord } from './version-review-words';
+import { DIFF_WORDS } from './VersionDiff';
+import { CONDITION_NOT_IN_WORDS } from './condition-words';
+import {
+  FIRST_VERSION_SENTENCE,
+  FROZEN_CONTRACT_SUMMARY,
+  REVIEW_HEADINGS,
+  SAVED_DECISION_LABEL,
+  comparedWithSentence,
+  templateWords,
+} from './review/review-words';
 let row: ProcedureVersionView;
 const names = vi.fn(async (_userIds: readonly string[]) => new Map<string, string>());
 vi.mock('@intellifin/infrastructure',()=>({DrizzleProcedureRepository:class {async findVersion(){return row;} async activatedSuccessors(){return new Map();}},DrizzleActorNameReader:class {namesFor=names;}}));
@@ -33,17 +43,30 @@ const DECISIONS: readonly VersionDecisionRecord[] = [
   { schemaVersion: 1, actorId: 'manager-id', occurredAt: '2026-09-06T09:30:00.000Z', priorState: 'SUBMITTED', decision: 'reject', rationale: 'Widen the Period.', aggregateRevision: 'b'.repeat(64) },
 ];
 
-async function renderVersion(overrides: Partial<ProcedureVersionView> = {}): Promise<string> {
+async function renderVersion(overrides: Partial<ProcedureVersionView> = {}, baselineVersionNumber: number | null = null): Promise<string> {
   const inputs = executablePlanInputs(), result = deriveExecutablePlan(inputs);
   if (!result.ok) throw new Error(result.reason);
   const definition: ReviewedDefinition & { compiledPlan: typeof result.plan } = { schemaVersion: 1, inputs, compiledPlan: result.plan, modelConfiguration: { provider: 'saved-provider', modelId: 'saved-model', promptVersion: '1' }, toolConfiguration: { interpreterContract: 'executable-plan-v1', identityMatching: 'opaque-exact-strings', accessPolicy: 'frozen-registered-read-actions', actions: ['create-workspace'] } };
-  row = { ...inputs, ...initialPlanDerivation(), procedureId: 'procedure', versionId: 'version', versionNumber: 3, state: 'SUBMITTED', targetBlockers: [], evidenceBlockers: [], createdAt: '2026-09-05T00:00:00Z', updatedAt: '2026-09-05T01:00:00Z', compiledPlan: result.plan, derivationModel: definition.modelConfiguration, planStatus: 'succeeded', decisions: DECISIONS, submittedReview: { schemaVersion: 1, versionId: 'version', baseline: null, definition, diff: diffReviewedDefinitions(null, definition) }, ...overrides };
+  // A later version compares against a predecessor whose scope differs by one sentence,
+  // so exactly one authored fact should be reported as changed.
+  const previous: ReviewedDefinition = { ...definition, inputs: { ...inputs, scope: 'The predecessor scope.' } };
+  const baseline = baselineVersionNumber === null ? null : { versionId: 'baseline', versionNumber: baselineVersionNumber, revision: 'c'.repeat(64) };
+  row = { ...inputs, ...initialPlanDerivation(), procedureId: 'procedure', versionId: 'version', versionNumber: 3, state: 'SUBMITTED', targetBlockers: [], evidenceBlockers: [], createdAt: '2026-09-05T00:00:00Z', updatedAt: '2026-09-05T01:00:00Z', compiledPlan: result.plan, derivationModel: definition.modelConfiguration, planStatus: 'succeeded', decisions: DECISIONS, submittedReview: { schemaVersion: 1, versionId: 'version', baseline, definition, diff: diffReviewedDefinitions(baseline === null ? null : previous, definition) }, ...overrides };
   return renderToStaticMarkup(await VersionReviewPage({ params: Promise.resolve({ id: 'procedure', versionId: 'version' }) }));
 }
 
-/** The Decision history section alone: `approve` also appears in control ids and labels. */
+function region(html: string, marker: string): string {
+  const start = html.indexOf(marker);
+  expect(start, marker).toBeGreaterThan(-1);
+  const open = html.lastIndexOf('<', start);
+  const tag = /^<([a-z0-9]+)/i.exec(html.slice(open))?.[1] ?? 'div';
+  const end = html.indexOf(`</${tag}>`, start);
+  return html.slice(open, end === -1 ? undefined : end);
+}
+
+/** The Decision history disclosure alone: `approve` also appears in control ids and labels. */
 function decisionHistory(html: string): string {
-  return /<section aria-label="Decision history">([\s\S]*?)<\/section>/.exec(html)?.[1] ?? '';
+  return region(html, 'data-decision-history');
 }
 
 /**
@@ -53,9 +76,13 @@ function decisionHistory(html: string): string {
  */
 describe('the decision history names people, not identifiers', () => {
   it('resolves every actor through the one id-to-name port, in one statement', async () => {
+    names.mockClear();
     names.mockResolvedValueOnce(new Map([['author-id', 'Dana Mwale'], ['manager-id', 'Ada Mensah']]));
     const html = await renderVersion();
-    expect(names).toHaveBeenCalledWith(['author-id', 'manager-id']);
+    // One statement, and the responsible author is resolved with the decision actors —
+    // the decision bar names them all and a second read would be a second statement.
+    expect(names).toHaveBeenCalledTimes(1);
+    expect(names.mock.calls[0]![0]).toEqual(expect.arrayContaining(['author-id', 'manager-id']));
     const history = decisionHistory(html);
     expect(history).toContain('Dana Mwale');
     expect(history).toContain('Ada Mensah');
@@ -70,12 +97,15 @@ describe('the decision history names people, not identifiers', () => {
     expect(history).toContain('ls-mono');
   });
 
-  it('names the same person in the Saved decision section', async () => {
+  it('names the same person in the one Saved decision the surface shows', async () => {
     names.mockResolvedValueOnce(new Map([['manager-id', 'Ada Mensah']]));
     const html = await renderVersion();
-    const saved = /<h2>Saved decision<\/h2>([\s\S]*?)<\/section>/.exec(html)?.[1] ?? '';
+    const saved = region(html, 'data-saved-decision');
     expect(saved).toContain('Ada Mensah');
     expect(saved).not.toContain('manager-id');
+    // UX-34: "Saved decision" is said ONCE. It used to be a heading above the content
+    // AND the last row of the Decision history directly below it.
+    expect(html.split(SAVED_DECISION_LABEL).length - 1).toBe(1);
   });
 
   it('writes the decision as a word and never as the stored value', async () => {
@@ -88,21 +118,121 @@ describe('the decision history names people, not identifiers', () => {
     expect(history).not.toMatch(/(^|[^A-Za-z])reject([^A-Za-z]|$)/);
   });
 
-  it('reads every timestamp as ISO 8601 UTC, keeping the stored instant machine-readable', async () => {
+  it('reads every instant as readable UTC, keeping the exact instant machine-readable', async () => {
     names.mockResolvedValueOnce(new Map());
     const history = decisionHistory(await renderVersion());
-    // EXPERIENCE.md fixes ISO 8601 UTC on every surface. The stored text carries a +02:00
-    // offset, so a page that printed it verbatim would show a local time on a UTC surface.
-    expect(history).toContain('2026-09-04T23:00:00.000Z');
+    // UX-02: a person reads `4 Sep 2026, 23:00:00 UTC`, and the `datetime` attribute
+    // carries the same instant exactly. The stored text has a +02:00 offset, so a page
+    // that printed it verbatim would show a local time on a UTC-only surface.
+    expect(history).toContain('4 Sep 2026, 23:00:00 UTC');
     // `renderToStaticMarkup` writes the React prop name; HTML attribute names are
     // ASCII case-insensitive, so a browser parses this as `datetime`.
-    expect(history).toContain('dateTime="2026-09-05T01:00:00.000+02:00"');
-    expect(history).toContain('2026-09-06T09:30:00.000Z');
+    expect(history).toContain('dateTime="2026-09-04T23:00:00.000Z"');
+    expect(history).toContain('6 Sep 2026, 09:30:00 UTC');
+    // The raw ISO instant is never the visible text of an ordinary surface.
+    expect(history).not.toContain('>2026-09-06T09:30:00.000Z<');
   });
 
   it('keeps the rationale a rejecting manager wrote', async () => {
     names.mockResolvedValueOnce(new Map());
     expect(decisionHistory(await renderVersion())).toContain('Widen the Period.');
+  });
+
+  it('collapses the history into a disclosure that says how many decisions it holds', async () => {
+    names.mockResolvedValueOnce(new Map());
+    const history = decisionHistory(await renderVersion());
+    expect(history).toContain('<details');
+    expect(history).toContain(`${REVIEW_HEADINGS.history} · 2 decisions`);
+  });
+});
+
+/**
+ * UX-33: the submitted-version review was 13,887px of nested frozen structures. It now
+ * leads with what an approver decides, and the frozen contract is behind ONE disclosure.
+ */
+describe('the review leads with the decision summary', () => {
+  it('states what is tested, the scope, the systems, the criteria, the proof and the frequency', async () => {
+    names.mockResolvedValueOnce(new Map());
+    const html = await renderVersion();
+    for (const heading of [REVIEW_HEADINGS.tested, REVIEW_HEADINGS.scope, REVIEW_HEADINGS.systems, REVIEW_HEADINGS.criteria, REVIEW_HEADINGS.evidence, REVIEW_HEADINGS.frequency, REVIEW_HEADINGS.access]) {
+      expect(html, heading).toContain(heading);
+    }
+    // The Template is named, never shown as its stored id on the ordinary reading.
+    expect(html).toContain(templateWords(row.templateId));
+  });
+
+  it('says a criterion the audit reader cannot express as what it is, with the approved text', async () => {
+    // This fixture is P-4, whose Template criterion is frozen prose the simple reader
+    // has no shape for. A surface that invented a sentence there would describe a rule
+    // the version did not freeze; `DecisionSummary.test.ts` proves the other arm, where
+    // `conditionSentence` really does answer.
+    names.mockResolvedValueOnce(new Map());
+    const criteria = region(await renderVersion(), 'data-review-block="criteria"');
+    expect(criteria).toContain(CONDITION_NOT_IN_WORDS);
+    expect(criteria).toContain('Observed and approved normalized values are equal.');
+  });
+
+  it('renders the executable plan contract ONCE, inside the technical disclosure', async () => {
+    names.mockResolvedValueOnce(new Map());
+    const html = await renderVersion();
+    // `ExecutablePlanPreview` is a client component; under SSR it renders its own card,
+    // and the page must mount exactly one of them, after the disclosure's summary.
+    const previews = html.split('data-testid="executable-plan-preview"').length - 1;
+    expect(previews).toBe(1);
+    const disclosure = html.indexOf(FROZEN_CONTRACT_SUMMARY);
+    expect(disclosure).toBeGreaterThan(-1);
+    expect(html.indexOf('data-testid="executable-plan-preview"')).toBeGreaterThan(disclosure);
+    // And the stored section-by-section diff is inside it too, not above the summary.
+    expect(html.indexOf('data-version-diff')).toBeGreaterThan(disclosure);
+  });
+
+  it('puts the decision above everything it is a decision about', async () => {
+    names.mockResolvedValueOnce(new Map());
+    const html = await renderVersion();
+    const bar = html.indexOf('data-decision-bar');
+    expect(bar).toBeGreaterThan(-1);
+    expect(bar).toBeLessThan(html.indexOf(REVIEW_HEADINGS.tested));
+    expect(bar).toBeLessThan(html.indexOf('data-subject-control'));
+    // Exactly one set of decision controls. Two would be two Approve buttons for one
+    // version, and a guard withdrawn on one of them.
+    expect(html.split('data-subject-control').length - 1).toBe(1);
+  });
+
+  it('never shows a raw identifier outside the technical disclosure', async () => {
+    names.mockResolvedValueOnce(new Map());
+    const html = await renderVersion();
+    const ordinary = html.slice(0, html.indexOf(FROZEN_CONTRACT_SUMMARY));
+    for (const id of [row.versionId, row.procedureId]) {
+      // The identifiers still appear in `href`s and control ids, which are not text a
+      // reader meets; what must not appear is the id rendered as a value.
+      expect(ordinary, id).not.toContain(`>${id}<`);
+    }
+  });
+});
+
+/**
+ * UX-33: the stored diff marks EVERY section of a first version `changed` — a review
+ * with no baseline must — so rendering that flag told an approver that fourteen sections
+ * had been changed by somebody on a version with no predecessor at all.
+ */
+describe('what changed is compared against something', () => {
+  it('says a first version has nothing to compare, and marks no section Changed', async () => {
+    names.mockResolvedValueOnce(new Map());
+    const html = await renderVersion();
+    expect(region(html, 'data-what-changed')).toContain(FIRST_VERSION_SENTENCE);
+    expect(html).not.toContain(`· ${DIFF_WORDS.changed}`);
+    // The stored sections are still there, as New, under the technical disclosure.
+    expect(html).toContain(`· ${DIFF_WORDS.first}`);
+  });
+
+  it('lists only the facts a later version really changed, as before → after', async () => {
+    names.mockResolvedValueOnce(new Map());
+    const changed = region(await renderVersion({}, 2), 'data-what-changed');
+    expect(changed).toContain(comparedWithSentence(2));
+    expect(changed).toContain('The predecessor scope.');
+    expect(changed).toContain(row.scope);
+    // One authored fact differs, so one authored section is listed — never fourteen.
+    expect(changed.split('<dt>').length - 1).toBe(1);
   });
 });
 

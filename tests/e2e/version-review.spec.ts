@@ -11,6 +11,11 @@ import { initialPlanDerivation, planAuthoringDigest, type ProcedureVersionRecord
 import { executablePlanInputs } from '../fixtures/executable-plan';
 import { AUTH_STATE, ACCOUNTS, assertThrowawayDatabase, signIn } from './accounts';
 import { keepBuilderStepsOpen } from './builder';
+import {
+  FIRST_VERSION_SENTENCE,
+  FROZEN_CONTRACT_SUMMARY,
+  REVIEW_HEADINGS,
+} from '../../apps/web/src/procedures/review/review-words';
 test.use({ storageState: AUTH_STATE.auditor });
 const scan = async (page: Page) => expect((await new AxeBuilder({ page }).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()).violations).toEqual([]);
 /** An ordinary Draft section save: direct, with NO dialog between the click and the change. */
@@ -100,13 +105,41 @@ test('P-1 authored Builder → actual worker/SDK HTTP → submitted review → r
     await submit.focus(); await page.keyboard.press('Enter'); await expect(page.getByRole('dialog')).toBeVisible(); await page.keyboard.press('Escape'); await expect(submit).toBeFocused();
     await confirmed(page,'Submit for approval'); await expect(page).toHaveURL(/\/versions\//);
     const reviewUrl = page.url(); await expect(page.getByRole('button',{ name:'Approve',exact:true })).toBeDisabled(); await expect(page.getByRole('button',{ name:'Approve',exact:true })).toHaveAccessibleDescription(/You cannot approve a version you authored\./);
-    await expect(page.locator('details')).toHaveCount(14); await expect(page.locator('details:not([open])')).toHaveCount(0); await scan(page);
+    // UX-33: the review leads with the decision summary. It used to open fourteen
+    // `<details>` at once — every section of a FIRST version, each marked "Changed",
+    // because the stored diff flags them all when there is no baseline to compare.
+    await expect(page.getByRole('heading', { name: REVIEW_HEADINGS.tested, exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: REVIEW_HEADINGS.criteria, exact: true })).toBeVisible();
+    await expect(page.getByText(FIRST_VERSION_SENTENCE, { exact: true })).toBeVisible();
+    await expect(page.getByText('· Changed')).toHaveCount(0);
+    // The frozen contract is behind ONE disclosure, and it starts closed, so the
+    // ordinary reading of this surface never meets a digest or a plan-step id.
+    const contractDisclosure = page.locator('details.ls-technical');
+    await expect(contractDisclosure).toHaveCount(1);
+    await expect(contractDisclosure).not.toHaveAttribute('open', /.*/);
+    await expect(page.getByTestId('executable-plan-preview')).toHaveCount(1);
+    await expect(page.getByTestId('executable-plan-preview')).not.toBeVisible();
+    await contractDisclosure.getByText(FROZEN_CONTRACT_SUMMARY, { exact: true }).click();
+    await expect(page.getByTestId('executable-plan-preview')).toBeVisible();
+    await expect(page.locator('[data-version-diff]')).toBeVisible();
+    // No page-level horizontal scrolling at a laptop viewport, with the disclosure OPEN:
+    // the frozen contract is the widest thing this surface can show.
+    for (const size of [{ width: 1366, height: 768 }, { width: 1280, height: 720 }]) {
+      await page.setViewportSize(size);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), `${size.width}px`).toBe(true);
+    }
+    await scan(page);
     await signIn(manager,email); await expect(manager).toHaveURL(new URL('/', baseURL!).href); await manager.goto('/notifications'); await expect(manager.getByRole('link',{ name:/Procedure Version submitted/ })).toBeVisible({ timeout: 10000 }); await manager.getByRole('link',{ name:/Procedure Version submitted/ }).click(); await expect(manager).toHaveURL(reviewUrl);
     await manager.getByRole('button',{ name:'Reject',exact:true }).click(); await expect(manager.getByLabel('Rationale')).toBeFocused(); await manager.getByRole('dialog').getByRole('button',{ name:'Reject',exact:true }).click(); await expect(manager.getByText('A rationale is required.')).toBeVisible(); await scan(manager);
-    await manager.getByLabel('Rationale').fill('Clarify the saved scope before approval.'); await manager.getByRole('dialog').getByRole('button',{ name:'Reject',exact:true }).click(); await expect(manager.getByText('Rationale: Clarify the saved scope before approval.')).toBeVisible();
+    await manager.getByLabel('Rationale').fill('Clarify the saved scope before approval.'); await manager.getByRole('dialog').getByRole('button',{ name:'Reject',exact:true }).click(); await expect(manager.getByText('Rejected: Clarify the saved scope before approval.')).toBeVisible();
     await page.reload(); await confirmed(page,'Edit'); await expect(page).toHaveURL(/\/builder\?version=/); await confirmed(page,'Submit for approval'); await expect(page).toHaveURL(/\/versions\//);
     await manager.goto(reviewUrl);
-    await expect(manager.getByRole('region',{name:'Decision history'})).toContainText('Clarify the saved scope before approval.');
+    // UX-34: the history is collapsed below the summary. It says how many decisions it
+    // holds while closed, so closing it hides nothing a reader needs to decide to open it.
+    const history = manager.locator('[data-decision-history]');
+    await expect(history.locator('summary')).toContainText(new RegExp(`${REVIEW_HEADINGS.history} · \\d+ decisions`));
+    await history.locator('summary').click();
+    await expect(history).toContainText('Clarify the saved scope before approval.');
     let decisionPosts = 0;
     await manager.route(reviewUrl, async route => { if (route.request().method() !== 'POST') return route.continue(); decisionPosts++; await route.fetch(); await route.abort('failed'); });
     await confirmed(manager,'Approve');
@@ -115,7 +148,12 @@ test('P-1 authored Builder → actual worker/SDK HTTP → submitted review → r
     await expect(manager.getByRole('button',{name:'Reject',exact:true})).toBeDisabled();
     await manager.getByRole('button',{name:'Reject',exact:true}).press('Enter'); await expect(manager.getByRole('dialog')).toHaveCount(0); expect(decisionPosts).toBe(1);
     await manager.unroute(reviewUrl); await manager.getByRole('button',{name:'Reload version'}).click();
-    await expect(manager.getByRole('heading',{ name:'Saved decision' })).toBeVisible(); await expect(manager.getByText('Active', { exact: true })).toBeVisible(); await scan(manager);
+    // "Saved decision" is said ONCE now, in the decision bar, not as a heading above the
+    // content AND again as the last row of the Decision history directly below it.
+    const bar = manager.locator('[data-decision-bar]');
+    await expect(bar.locator('[data-saved-decision]')).toContainText('Approved');
+    await expect(manager.getByText('Saved decision')).toHaveCount(1);
+    await expect(bar.getByText('Active', { exact: true })).toBeVisible(); await scan(manager);
     await page.goto('/notifications');
     // Other synthetic Runs can leave valid notices in this shared throwaway database.
     // Assert this Procedure's delivery and recipient boundary, not the whole inbox.

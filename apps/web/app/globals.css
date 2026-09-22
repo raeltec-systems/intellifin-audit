@@ -2574,6 +2574,131 @@ a {
    (Rules are added here by package 4 and nowhere else.) */
 
 
+/* The decision, kept in front of the person taking it (UX-34).
+
+   Approve and Reject used to sit at the bottom of a 13,887px page. This bar sticks to the
+   top of the CONTENT column — the shell's own top bar scrolls away with the document, so
+   `top: 0` is the viewport's top and nothing overlaps it. It is inside the page, not the
+   shell, because it belongs to ONE version and must leave with it. */
+.ls-decision-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: var(--spacing-card-padding);
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--rounded-lg);
+  gap: var(--spacing-3);
+}
+
+.ls-decision-bar__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+.ls-decision-bar__title {
+  margin: 0;
+  font-size: var(--type-card-title-font-size);
+  line-height: var(--type-card-title-line-height);
+  font-weight: var(--type-card-title-font-weight);
+}
+
+.ls-decision-bar__version {
+  margin: 0;
+  font-weight: var(--type-card-title-font-weight);
+}
+
+.ls-decision-bar__meta,
+.ls-decision-bar__saved {
+  margin: 0;
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+  color: var(--color-text-secondary);
+}
+
+/* The decision summary: what is being decided, before anything that is not (UX-33).
+
+   Two columns at 1024px and up, so the seven blocks fit a laptop viewport without the
+   page becoming a single tall column; the four blocks whose content is prose or a list
+   of criteria take the whole width. One column below that, where a table would stack
+   anyway. */
+.ls-review-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--spacing-5);
+}
+
+@media (min-width: 1024px) {
+  .ls-review-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ls-review-block--wide {
+    grid-column: 1 / -1;
+  }
+}
+
+.ls-review-block {
+  min-width: 0;
+}
+
+.ls-review-list {
+  margin: 0;
+  padding-left: var(--spacing-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.ls-review-system {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  padding-top: var(--spacing-3);
+  border-top: 1px solid var(--color-border-default);
+}
+
+.ls-review-system:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.ls-review-system__name {
+  margin: 0;
+  font-weight: var(--type-card-title-font-weight);
+}
+
+/* What changed, section by section, in words. */
+.ls-review-change {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.ls-change__before {
+  color: var(--color-text-secondary);
+  text-decoration: line-through;
+}
+
+.ls-change__after {
+  font-weight: var(--type-card-title-font-weight);
+}
+
+.ls-review-history {
+  margin: 0;
+  padding-left: var(--spacing-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.ls-review-history p {
+  margin: 0;
+}
+
+
 
 /* ---------------------------------------------------------------------------
    UI cleanup — package 5: findings, evidence, Replay and Live View.
