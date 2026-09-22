@@ -103,7 +103,7 @@ export default async function BuilderPage({
         meta={`Template ${procedure.templateId} · ${templateLabel(procedure.templateId)} · Version ${draft.versionNumber}`}
       />
       {query.created === '1' ? (
-        <Banner tone="success" title={draftCreatedBanner(draft.controlName)}>
+        <Banner tone="success" variant="line" title={draftCreatedBanner(draft.controlName)}>
           <p>{DRAFT_CREATED_BODY}</p>
         </Banner>
       ) : null}

@@ -244,9 +244,11 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
   });
 
   return <div className="ls-guided ls-stack" data-guided-preparation data-guided-ready={hydrated}>
-    <header className="ls-guided__intro ls-stack">
+    {/* UX-08: one compact row — the title and the progress — so the outline and the
+        current step start inside the first viewport. The outline itself says the
+        sections can be taken in any order. */}
+    <header className="ls-guided__intro">
       <h2 className="ls-card__title">Prepare an audit procedure</h2>
-      <p>I’ll guide you through the choices and help prepare the test. Start by confirming the selected control. You can jump to any section.</p>
       <p className="ls-caption" data-preparation-progress>{reviewed} of {PREPARATION_SECTIONS.length} sections reviewed by auditor. Section review does not authorise execution.</p>
     </header>
     <UnknownSaveOutcome visible={unknownOutcome} />

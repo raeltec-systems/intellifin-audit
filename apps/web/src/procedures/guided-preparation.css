@@ -370,3 +370,36 @@
 @media (max-width: 479px) {
   .ls-source-choice { flex-direction: column; }
 }
+
+/* UX-08 (UI cleanup 2026-09-22): a compact introduction on one row, and an outline that
+ * stays in view as a steady left column while the current step scrolls beside it. */
+.ls-guided__intro {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: var(--spacing-1) var(--spacing-4);
+}
+.ls-guided__intro > * { margin: 0; }
+@media (min-width: 900px) {
+  .ls-guided__outline {
+    position: sticky;
+    top: var(--spacing-4);
+    max-height: calc(100dvh - var(--spacing-top-bar) - var(--spacing-6));
+    overflow-y: auto;
+  }
+  .ls-guided__outline-title { padding: var(--spacing-3) var(--spacing-4); }
+  .ls-guided__step { padding: var(--spacing-2); }
+}
+
+/* UX-08: the step's heading block spends two rows, not four — the step number and its
+ * status share the first, the title the second, the question the third. */
+.ls-guided__panel-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--spacing-3);
+  row-gap: var(--spacing-1);
+  padding-bottom: var(--spacing-3);
+}
+.ls-guided__panel-heading > * { grid-column: 1 / -1; margin: 0; }
+.ls-guided__panel-heading > .ls-caption:first-child { grid-column: 1; grid-row: 1; }
+.ls-guided__panel-heading > .ls-guided__status { grid-column: 2; grid-row: 1; }
+.ls-guided__help-disclosure { padding: var(--spacing-2) var(--spacing-3); }
