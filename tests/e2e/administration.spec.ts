@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { createSqlClient } from '@intellifin/infrastructure';
 
@@ -61,23 +61,60 @@ async function scan(page: Page): Promise<void> {
   expect(summary, JSON.stringify(summary, null, 2)).toEqual([]);
 }
 
+/**
+ * Open the "Add a user" disclosure the create form now sits behind (UI cleanup
+ * 2026-09-22, UX-38): the directory is first in the viewport. Idempotent.
+ */
+async function openAddUser(page: Page): Promise<void> {
+  const summary = page.locator('summary', { hasText: 'Add a user' });
+  const disclosure = page.locator('details.ls-disclosure', {
+    has: page.locator(':scope > summary', { hasText: 'Add a user' }),
+  });
+  if (await disclosure.evaluate((element) => (element as HTMLDetailsElement).open)) return;
+  await summary.click();
+}
+
+/**
+ * Open one row's "Change" disclosure (UX-39): the role select and its button sit
+ * behind it now, so a row's controls are not all visible at once. Idempotent.
+ */
+async function openChangeControl(row: Locator): Promise<void> {
+  const disclosure = row.locator('details.ls-row-change');
+  if (await disclosure.evaluate((element) => (element as HTMLDetailsElement).open)) return;
+  await disclosure.locator('summary').click();
+}
+
+/**
+ * The "Add a user" section, scoped: the FILTER and the CREATE form each have a
+ * control labelled "Role", so a page-wide `getByLabel('Role')` is ambiguous the
+ * moment both are on screen.
+ */
+function addUserSection(page: Page): Locator {
+  return page.locator('details.ls-disclosure', {
+    has: page.locator(':scope > summary', { hasText: 'Add a user' }),
+  });
+}
+
 test.describe('as a PoC Administrator', () => {
   test.use({ storageState: AUTH_STATE.administrator });
 
   test('creates a user through the confirmation dialog and sees the result in a Banner', async ({
     page,
   }) => {
-    await page.goto('/administration');
-    await expect(page.getByRole('heading', { name: 'Administration', level: 1 })).toBeVisible();
+    await page.goto('/administration/users');
+    await expect(page.getByRole('heading', { name: 'Users', level: 1 })).toBeVisible();
+
+    await openAddUser(page);
+    const section = addUserSection(page);
 
     // A submission that beats hydration must not put the password in a URL. With no
     // method a form submits as a GET, which would do exactly that.
     await expect(page.locator('form.ls-admin__form')).toHaveAttribute('method', 'post');
 
-    await page.getByLabel('Email address').fill(newUserEmail);
-    await page.getByLabel('Full name').fill(newUserName);
-    await page.getByLabel('Initial password').fill(PASSWORD);
-    await page.getByLabel('Role', { exact: true }).selectOption('auditor');
+    await section.getByLabel('Email address').fill(newUserEmail);
+    await section.getByLabel('Full name').fill(newUserName);
+    await section.getByLabel('Initial password').fill(PASSWORD);
+    await section.getByLabel('Role', { exact: true }).selectOption('auditor');
     await page.getByRole('button', { name: 'Create user' }).click();
 
     // The dialog stands between the click and the change, and states the consequence.
@@ -96,15 +133,17 @@ test.describe('as a PoC Administrator', () => {
     await expect(page.getByRole('cell', { name: newUserEmail })).toBeVisible();
     // The password field is cleared: a credential must not sit on screen at a shared
     // workstation after it has been used.
-    await expect(page.getByLabel('Initial password')).toHaveValue('');
+    await expect(section.getByLabel('Initial password')).toHaveValue('');
   });
 
   test('refuses a second account for the same address, without creating one', async ({ page }) => {
-    await page.goto('/administration');
+    await page.goto('/administration/users');
+    await openAddUser(page);
+    const section = addUserSection(page);
 
-    await page.getByLabel('Email address').fill(newUserEmail);
-    await page.getByLabel('Full name').fill('Somebody Else');
-    await page.getByLabel('Initial password').fill(PASSWORD);
+    await section.getByLabel('Email address').fill(newUserEmail);
+    await section.getByLabel('Full name').fill('Somebody Else');
+    await section.getByLabel('Initial password').fill(PASSWORD);
     await page.getByRole('button', { name: 'Create user' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Create user' }).click();
 
@@ -116,13 +155,17 @@ test.describe('as a PoC Administrator', () => {
   });
 
   test('changes a role, confirming first and reporting the outcome', async ({ page }) => {
-    await page.goto('/administration');
+    await page.goto('/administration/users');
 
-    const control = page.getByLabel(`Role for ${newUserName}`);
+    // The row's controls sit behind one "Change" disclosure now (UX-39): the select and
+    // its button are not visible until it is opened.
+    const row = page.getByRole('row', { name: new RegExp(newUserName) });
+    await openChangeControl(row);
+
+    const control = row.getByLabel(`Role for ${newUserName}`);
     await expect(control).toHaveValue('auditor');
     await control.selectOption('audit-manager');
 
-    const row = page.getByRole('row', { name: new RegExp(newUserName) });
     await row.getByRole('button', { name: 'Change role' }).click();
 
     const dialog = page.getByRole('dialog');
@@ -132,14 +175,16 @@ test.describe('as a PoC Administrator', () => {
     await expect(page.getByRole('status')).toContainText(
       'Set the role to Audit Manager. It applies on their next request.',
     );
-    await expect(page.getByLabel(`Role for ${newUserName}`)).toHaveValue('audit-manager');
+    await expect(row.getByLabel(`Role for ${newUserName}`)).toHaveValue('audit-manager');
   });
 
   test('removes a role, and says the account and its sessions survive', async ({ page }) => {
-    await page.goto('/administration');
+    await page.goto('/administration/users');
 
-    await page.getByLabel(`Role for ${newUserName}`).selectOption('');
     const row = page.getByRole('row', { name: new RegExp(newUserName) });
+    await openChangeControl(row);
+
+    await row.getByLabel(`Role for ${newUserName}`).selectOption('');
     await row.getByRole('button', { name: 'Change role' }).click();
 
     const dialog = page.getByRole('dialog');
@@ -157,15 +202,19 @@ test.describe('as a PoC Administrator', () => {
     // The command refuses this — that is the control — but a person must not have to be
     // refused to find out. Self-demotion and removing the last administrator are the two
     // ways to lock this deployment out of itself, and recovery is shell access.
-    await page.goto('/administration');
+    await page.goto('/administration/users');
 
     // The signed-in administrator's OWN row, whichever account `E2E_ADMIN_EMAIL` names.
     // A hard-coded address here asserted the wrong row the moment the suite was pointed at
     // a differently-named administrator: somebody else's select is correctly ENABLED, so
     // the failure read as a broken self-demotion guard rather than as a wrong locator.
     const ownRow = page.getByRole('row', { name: ACCOUNTS.administrator.email });
+    await openChangeControl(ownRow);
+
+    // `aria-disabled`, never `disabled`: a `disabled` control is unfocusable, so its
+    // reason would be unreachable by keyboard (DESIGN.md).
     const ownSelect = ownRow.getByRole('combobox');
-    await expect(ownSelect).toBeDisabled();
+    await expect(ownSelect).toHaveAttribute('aria-disabled', 'true');
 
     const ownButton = ownRow.getByRole('button', { name: 'Change role' });
     await expect(ownButton).toHaveAttribute('aria-disabled', 'true');
@@ -177,17 +226,36 @@ test.describe('as a PoC Administrator', () => {
     );
   });
 
-  test('the populated surface has no WCAG 2.1 AA violation', async ({ page }) => {
+  test('the landing summary has no WCAG 2.1 AA violation', async ({ page }) => {
+    // The three areas and the four health lines are a new surface (UX-37, UX-41), so it
+    // gets its own scan rather than inheriting the users list's.
     await page.goto('/administration');
+    await expect(page.getByRole('heading', { name: 'Configuration' })).toBeVisible();
+    await scan(page);
+  });
+
+  test('the populated surface has no WCAG 2.1 AA violation', async ({ page }) => {
+    await page.goto('/administration/users');
     await expect(page.getByRole('table')).toBeVisible();
     await scan(page);
   });
 
+  test('an opened "Change" disclosure has no violation', async ({ page }) => {
+    // The confirmation and the guardrails are new markup the disclosure reveals; it gets
+    // its own scan rather than relying on the closed default state.
+    await page.goto('/administration/users');
+    const row = page.getByRole('row', { name: new RegExp(newUserName) });
+    await openChangeControl(row);
+    await scan(page);
+  });
+
   test('the create dialog, open over the populated surface, has no violation', async ({ page }) => {
-    await page.goto('/administration');
-    await page.getByLabel('Email address').fill(`e2e-a11y-${stamp}@synthetic.invalid`);
-    await page.getByLabel('Full name').fill('E2E A11y');
-    await page.getByLabel('Initial password').fill(PASSWORD);
+    await page.goto('/administration/users');
+    await openAddUser(page);
+    const section = addUserSection(page);
+    await section.getByLabel('Email address').fill(`e2e-a11y-${stamp}@synthetic.invalid`);
+    await section.getByLabel('Full name').fill('E2E A11y');
+    await section.getByLabel('Initial password').fill(PASSWORD);
     await page.getByRole('button', { name: 'Create user' }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await scan(page);
@@ -197,15 +265,26 @@ test.describe('as a PoC Administrator', () => {
 test.describe('as an Auditor', () => {
   test.use({ storageState: AUTH_STATE.auditor });
 
-  test('is refused the surface, and no user data reaches the browser', async ({ page }) => {
+  test('is refused the summary, and no user data reaches the browser', async ({ page }) => {
     await page.goto('/administration');
+
+    await expect(page.locator('main#content').getByRole('alert')).toHaveText(
+      'Your role does not permit this action.',
+    );
+    // Not the tabs, not the three areas, not the health lines.
+    await expect(page.getByRole('navigation', { name: 'Administration areas' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Configuration' })).toHaveCount(0);
+  });
+
+  test('is refused the users directory, and no user data reaches the browser', async ({ page }) => {
+    await page.goto('/administration/users');
 
     await expect(page.locator('main#content').getByRole('alert')).toHaveText(
       'Your role does not permit this action.',
     );
     // Not the list, not the form, not one address.
     await expect(page.getByRole('table')).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: 'Add a user' })).toHaveCount(0);
+    await expect(page.getByText('Add a user')).toHaveCount(0);
     await expect(page.getByText(newUserEmail)).toHaveCount(0);
     await expect(page.getByText('@example.test')).toHaveCount(0);
   });

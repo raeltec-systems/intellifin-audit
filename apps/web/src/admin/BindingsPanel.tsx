@@ -1,42 +1,43 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import type { PopulationSourceBinding } from '@intellifin/application';
 
 import { Banner } from '../design/Banner';
 import { DataTable } from '../design/DataTable';
+import { Timestamp } from '../design/Timestamp';
 import { DECLARED_COUNT_MISSING_SENTENCE, MANUAL_UPLOAD_SENTENCE } from '../design/copy';
-import { Digest } from '../design/Digest';
-import { FINGERPRINT_EXPLANATION, FINGERPRINT_WORD } from '../design/plain-words';
-import {
-  BindingForm,
-  RETIRE_SOURCE_SENTENCE,
-  changedStamp,
-  countMechanismWords,
-  sourceKindWords,
-} from './BindingForm';
+import { BindingForm, countMechanismWords, sourceKindWords } from './BindingForm';
 import { bindingStatusLabel, declaresNoCount } from './bindings';
+import {
+  ADD_SOURCE_SUMMARY,
+  INVENTORY_SEARCH_BOUNDED,
+  SOURCE_SEARCH_LABEL,
+  inventoryFilterSentence,
+} from './administration-words';
 import type {
   BindingActionResult,
   BindingFormFields,
 } from '../../app/administration/sources/actions';
 
 /**
- * The population sources surface (FR-6, FR-41).
+ * The population sources inventory (FR-6, FR-41; UI cleanup 2026-09-22, UX-43).
  *
- * The table is written to be SCANNED: what each source is called, how its records arrive,
- * where they are, which fields it provides, whether the count can be checked, whether it
- * is still in use and when it last changed. Everything a reader would otherwise have to
- * know the platform's vocabulary to decode is written in words.
+ * **The inventory is first.** The walkthrough met a form eight fields long before the
+ * first row of the table it was adding to, so an operator who came to check what was set
+ * up had to scroll past the thing they were not doing. Adding is a disclosure at the
+ * foot.
+ *
+ * **The table is compact and scannable**: what each source is called, how its records
+ * arrive, whether the count can be checked, whether it is still in use, and when it last
+ * changed. The fingerprint and the full list of fields moved to the source's own page and
+ * under Technical details — they are what an auditor compares, not what a reader scans,
+ * and a 64-character value in every row is a column nobody can read across.
  *
  * It owns ONE banner, cleared when the next mutation starts and keyed by a counter, for
  * the reasons `UsersPanel` states: a banner per control is several live regions racing,
  * and a live region whose text does not change is not re-announced.
- *
- * The fingerprint column shows the whole 64-character value. It is the number a Procedure
- * Version freezes and the thing an auditor compares, so truncating it would make the
- * column decorative — the one place it must not be.
  *
  * The count column says "Nothing confirms it" in words and carries the consequence
  * beneath it. An empty cell or a dash is something a reader takes for "fine", and this is
@@ -45,23 +46,35 @@ import type {
 
 export interface BindingsPanelProps {
   readonly bindings: readonly PopulationSourceBinding[];
+  /** How many rows this read could return at most. */
   readonly limit: number;
+  /** The EXACT number of sources, so a truncated page says what it is a page OF. */
+  readonly total: number;
   readonly createBinding: (fields: BindingFormFields) => Promise<BindingActionResult>;
 }
 
 export function BindingsPanel({
   bindings,
   limit,
+  total,
   createBinding,
 }: BindingsPanelProps): React.JSX.Element {
+  const searchId = useId();
   const [result, setResult] = useState<BindingActionResult | null>(null);
   /** Increments on every reported outcome, so an identical message re-announces. */
   const [announcement, setAnnouncement] = useState(0);
+  const [search, setSearch] = useState('');
 
   function report(outcome: BindingActionResult): void {
     setResult(outcome);
     setAnnouncement((count) => count + 1);
   }
+
+  const needle = search.trim().toLowerCase();
+  const shown =
+    needle === ''
+      ? bindings
+      : bindings.filter((binding) => binding.displayName.toLowerCase().includes(needle));
 
   return (
     <div className="ls-stack">
@@ -73,42 +86,38 @@ export function BindingsPanel({
         />
       )}
 
-      <BindingForm
-        binding={null}
-        // Nothing to be stale against: this form creates.
-        rowVersion=""
-        // A new source is referenced by nothing by definition, so this is not merely the
-        // current value — it is the only one.
-        referencingProcedures={0}
-        onCreate={createBinding}
-        onResult={report}
-        onStart={() => setResult(null)}
-      />
-
       <section className="ls-stack">
         <h2>Population sources</h2>
+
         {/*
-          The fingerprint column is the one thing on this table nobody can read off the
-          screen, so its explanation sits directly above the rows it describes — which is
-          also the only place `FINGERPRINT_EXPLANATION`'s "the settings below" is true.
+          A filter over the rows this page holds, not a search of the table. There is no
+          `<form>`: nothing is submitted, so nothing can be put in a URL by a submission
+          that beats hydration. The caption below says what was searched, because a
+          filtered list that did not say so would read as the whole deployment.
         */}
-        {bindings.length === 0 ? null : (
-          <details className="ls-disclosure">
-            <summary>What the {FINGERPRINT_WORD.toLowerCase()} column is</summary>
-            <div className="ls-disclosure__body">
-              <p className="ls-caption">{FINGERPRINT_EXPLANATION}</p>
-            </div>
-          </details>
-        )}
+        <div className="ls-admin-filter">
+          <div className="ls-dialog__field">
+            <label htmlFor={searchId}>{SOURCE_SEARCH_LABEL}</label>
+            <input
+              className="ls-input"
+              id={searchId}
+              type="search"
+              autoComplete="off"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </div>
+        </div>
+
         <DataTable<PopulationSourceBinding>
-          caption="Every source a procedure can use: how its records arrive, where they are, which fields it provides, whether its record count can be checked, and when it last changed."
+          caption="Every source a procedure can use: how its records arrive, whether its record count can be checked, and when it last changed."
           first={{
             header: 'Source',
             label: (binding) => binding.displayName,
             href: (binding) => `/administration/sources/${binding.bindingId}`,
           }}
           rowKey={(binding) => binding.bindingId}
-          rows={bindings}
+          rows={shown}
           columns={[
             {
               key: 'kind',
@@ -124,49 +133,6 @@ export function BindingsPanel({
                 ),
             },
             {
-              key: 'location',
-              header: 'Where to find it',
-              render: (row) =>
-                row.location === '' ? (
-                  // A manual upload names nowhere on purpose. Said in words rather than
-                  // left blank, so an empty cell is never read as a missing value.
-                  <span>Supplied with each Run</span>
-                ) : (
-                  <span className="ls-mono">{row.location}</span>
-                ),
-            },
-            {
-              /**
-               * The fields and the hidden ones are ONE cell, because they are one list:
-               * a hidden field is one of the declared fields, and showing them as two
-               * columns invited a reader to look for a field in the second that could
-               * only ever be in the first. The order is the file's own order, so it is an
-               * `<ol>`.
-               */
-              key: 'schema',
-              header: 'Fields provided',
-              render: (row) => (
-                <>
-                  <ol className="ls-plain-list">
-                    {row.declaredSchema.map((field) => (
-                      <li className="ls-mono" key={field}>
-                        {field}
-                        {row.sensitiveFields.includes(field) ? (
-                          <>
-                            {' '}
-                            <span className="ls-masked-tag">hidden in lists</span>
-                          </>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ol>
-                  {row.sensitiveFields.length === 0 ? (
-                    <p className="ls-caption">No fields are hidden.</p>
-                  ) : null}
-                </>
-              ),
-            },
-            {
               key: 'mechanism',
               header: 'Record count confirmed by',
               render: (row) =>
@@ -179,42 +145,52 @@ export function BindingsPanel({
                   countMechanismWords(row.declaredCountMechanism).label
                 ),
             },
+            { key: 'status', header: 'Status', render: (row) => bindingStatusLabel(row.status) },
             {
-              /** Status and the moment it last moved are one fact a reader checks together. */
-              key: 'status',
-              header: 'Status',
-              render: (row) => (
-                <>
-                  <span>{bindingStatusLabel(row.status)}</span>
-                  <p className="ls-caption">
-                    Last changed{' '}
-                    <time dateTime={row.updatedAt}>{changedStamp(row.updatedAt)}</time>
-                  </p>
-                </>
-              ),
-            },
-            {
-              key: 'digest',
-              header: FINGERPRINT_WORD,
-              render: (row) => <Digest value={row.digest} label="Source" />,
+              key: 'changed',
+              header: 'Last changed',
+              render: (row) => <Timestamp value={row.updatedAt} precision="minute" />,
             },
           ]}
-          empty={{
-            headline: 'No population source is set up yet.',
-            sentence:
-              'A procedure tests a list of records, and this is where that list comes from. Until one source is here, no procedure can be pointed at anything to test.',
-          }}
+          empty={
+            needle === ''
+              ? {
+                  headline: 'No population source is set up yet.',
+                  sentence:
+                    'A procedure tests a list of records, and this is where that list comes from. Until one source is here, no procedure can be pointed at anything to test.',
+                }
+              : {
+                  headline: 'No source matches this search.',
+                  sentence:
+                    'Every source on this page is listed when the search is cleared. An empty result is about the search, not about what is set up.',
+                }
+          }
         />
-        {bindings.length >= limit ? (
-          <p className="ls-caption">
-            Showing the first {limit} sources by name. This deployment has more; searching
-            and paging them is not part of this release.
-          </p>
-        ) : null}
+
         <p className="ls-caption">
-          Open a source by its name to change or retire it. {RETIRE_SOURCE_SENTENCE}
+          {inventoryFilterSentence(shown.length, total, 'sources')}
+          {bindings.length >= limit ? ` ${INVENTORY_SEARCH_BOUNDED}` : ''}
         </p>
+        <p className="ls-caption">Open a source by its name to change or retire it.</p>
       </section>
+
+      <details className="ls-disclosure">
+        <summary>{ADD_SOURCE_SUMMARY}</summary>
+        <div className="ls-disclosure__body">
+          <BindingForm
+            binding={null}
+            // Nothing to be stale against: this form creates.
+            rowVersion=""
+            // A new source is referenced by nothing by definition, so this is not merely
+            // the current value — it is the only one.
+            referencingProcedures={0}
+            affectedProcedures={[]}
+            onCreate={createBinding}
+            onResult={report}
+            onStart={() => setResult(null)}
+          />
+        </div>
+      </details>
     </div>
   );
 }

@@ -84,10 +84,6 @@ export function connectivityLabel(value: string): string {
     : UNKNOWN_LABEL;
 }
 
-/** The sentence under a never-probed cell. It says why, so nobody reads it as a pass. */
-export const NEVER_PROBED_SENTENCE =
-  'No worker has observed this system yet. This page never contacts a Target System.';
-
 export interface Option {
   readonly value: string;
   readonly label: string;

@@ -2585,6 +2585,139 @@ a {
    UI cleanup — package 6: administration.
    (Rules are added here by package 6 and nowhere else.) */
 
+/* The landing's three areas (UX-37, UX-41): a card per area, its exact count leading
+   because "how much is there" is the first question, its name as the link. */
+.ls-admin-areas {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--spacing-4);
+}
 
+.ls-admin-area {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  padding: var(--spacing-5);
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-lg);
+}
+
+.ls-admin-area__count {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.ls-admin-area__title {
+  margin: 0;
+}
+
+/* The four configuration health lines. A line needing attention gets the warning
+   treatment; a clear one stays plain text, because four warning-coloured lines that are
+   all fine would train a reader to stop reading them. */
+.ls-admin-health {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.ls-admin-health__line {
+  padding: var(--spacing-2) var(--spacing-3);
+  border-radius: var(--rounded-md);
+  border: 1px solid transparent;
+}
+
+.ls-admin-health__line--attention {
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning-border);
+  color: var(--color-warning-text);
+}
+
+/* The directory/inventory search (UX-38, UX-43): the field and its submit sit on one
+   line while there is room, and wrap rather than overflow when there is not. */
+.ls-admin-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--spacing-3);
+}
+
+.ls-admin-filter__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+.ls-admin-pages {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+/* The reason a role change is unavailable, or the two guardrails beside it: shown
+   whether or not the control is currently refused (UX-39). */
+.ls-role-control__reason {
+  flex-basis: 100%;
+}
+
+/* One "Change" disclosure per row (UX-39): the select and the button sit beneath the
+   summary rather than beside it, so a narrow "Change" column does not force the row's
+   height to whatever the widest control needs. */
+.ls-row-change {
+  display: inline-block;
+}
+
+.ls-row-change .ls-disclosure__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  min-width: 220px;
+}
+
+/* The onboarding steps (UX-40): a numbered list, because "how does somebody sign in" is
+   a sequence and reads better as one than as three unordered captions. */
+.ls-onboarding {
+  margin: 0;
+  padding-left: var(--spacing-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+/* The live field-list preview (UX-42): what will be saved, read back beneath the
+   textarea it comes from, so the numbered order is checkable rather than asserted. */
+.ls-field-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  padding: var(--spacing-3);
+  background: var(--color-surface-sunken);
+  border-radius: var(--rounded-md);
+}
+
+.ls-field-preview__title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.ls-field-preview__list {
+  margin: 0;
+  padding-left: var(--spacing-5);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ls-field-preview__warning {
+  color: var(--color-warning-text);
+}
 
 /* --------------------------------------------------------------- end of file ---- */
