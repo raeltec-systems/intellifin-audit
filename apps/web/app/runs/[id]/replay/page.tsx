@@ -55,7 +55,9 @@ export default async function RunReplayPage({
       <DetailTrail
         trail={[
           { href: '/runs', label: 'Runs' },
-          { href: runTabHref(run.runId, ''), label: run.runId, mono: true },
+          // The Procedure, as Run Detail's own trail names it; the Run's identifier is under
+          // Technical details and its short reference is on the meta line (UX-02).
+          { href: runTabHref(run.runId, ''), label: run.procedureName },
           { href: here, label: 'Replay' },
         ]}
       />

@@ -9,6 +9,7 @@ import {
   SESSION_ISOLATION_NOTE,
 } from '../design/copy';
 import { EndedBanner, LiveViewer, type LiveViewerProps } from './LiveViewer';
+import { UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
 import { LIVE_VIEW_STAGE } from './live-view';
 import { NO_WORK_ITEM } from './session-words';
 
@@ -251,5 +252,45 @@ describe('the ended banner', () => {
     const html = renderToStaticMarkup(React.createElement(EndedBanner, { runId: RUN_ID, state: 'COMPLETED' }));
     expect(html).toContain('This Run has ended: COMPLETED.');
     expect(html).toContain(`href="/runs/${RUN_ID}"`);
+  });
+});
+
+// UI cleanup 2026-09-22, UX-27, UX-29, UX-48. The stage holds the SCREEN: the captured
+// location and time sat under the picture inside the stage, and the untrusted block that
+// carries the location made the stage a third taller than its floor. They are in the rail
+// now, and the rail says the policy sentence once above every untrusted block it carries.
+describe('the stage and the rail (UX-27, UX-48)', () => {
+  const policyCount = (html: string): number => html.split(UNTRUSTED_CONTENT_SENTENCE).length - 1;
+  const stageOf = (html: string): string => html.slice(html.indexOf('ls-session__stage'), html.indexOf('ls-session__rail'));
+  const railOf = (html: string): string => html.slice(html.indexOf('ls-session__rail'));
+
+  it('keeps the captured location and time out of the stage and beside it in the rail', () => {
+    const html = renderToStaticMarkup(React.createElement(LiveViewer, props({ frame: FRAME })));
+    expect(stageOf(html)).toContain('<img');
+    expect(stageOf(html)).not.toContain(FRAME.sourceLocation);
+    expect(stageOf(html)).not.toContain('ls-untrusted');
+    expect(railOf(html)).toContain(FRAME.sourceLocation);
+    expect(railOf(html)).toContain('Where this screen was captured');
+  });
+
+  it('says the policy sentence once for the location and a diagnostic together', () => {
+    const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
+      frame: FRAME,
+      step: { narration: 'Opening the record for E-000105 on LoanCore', state: 'FAILED', attempt: 2, diagnostic: 'target said: close this' },
+    })));
+    expect(html.split('Untrusted source content —').length - 1).toBe(2);
+    expect(policyCount(html)).toBe(1);
+  });
+
+  it('does not say it at all when the rail carries no source content', () => {
+    expect(policyCount(renderToStaticMarkup(React.createElement(LiveViewer, props())))).toBe(0);
+  });
+
+  it('says the record’s state as a word, never the stored token', () => {
+    const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
+      workItem: { displayName: 'LoanCore', state: 'IN_PROGRESS', subjectKey: 'E-000105', observations: 1 },
+    })));
+    expect(html).toContain('E-000105 · LoanCore · In progress · 1 Observation');
+    expect(html).not.toContain('IN_PROGRESS');
   });
 });

@@ -67,10 +67,19 @@ export function UntrustedText({
 export function UntrustedRegion({ children }: { readonly children: React.ReactNode }): React.JSX.Element {
   return (
     <div className="ls-untrusted-region">
-      <p className="ls-untrusted-region__policy">{UNTRUSTED_CONTENT_SENTENCE}</p>
+      <UntrustedPolicy />
       {children}
     </div>
   );
+}
+
+/**
+ * The policy sentence on its own, for a surface whose untrusted blocks are not siblings —
+ * the session viewers' rails, whose blocks sit in separate sections under one heading
+ * each. It is said once, before the first of them, exactly as `UntrustedRegion` says it.
+ */
+export function UntrustedPolicy(): React.JSX.Element {
+  return <p className="ls-untrusted-region__policy">{UNTRUSTED_CONTENT_SENTENCE}</p>;
 }
 
 /**

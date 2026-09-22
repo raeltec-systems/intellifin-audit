@@ -8,6 +8,7 @@ import { Button } from '../design/Button';
 import { FLAG_COPY, RUN_LOST_RESPONSE, fillTemplate } from '../design/copy';
 import { useLiveGate } from './LiveGate';
 import { readableStamp } from '../design/time';
+import { flagMenuLabel } from './session-words';
 
 /**
  * Flag a Run to the Audit Managers, from Live View (Story 5.5, FR-27, FR-28, UX-DR24).
@@ -54,57 +55,64 @@ export function RunFlagControl({ runId, flaggable, flags }: RunFlagControlProps)
   // the new entry to appear. Without script the POST already re-rendered it.
   useEffect(() => { if (state?.ok === true) router.refresh(); }, [state, router]);
 
-  return <section id="run-flag" className="ls-card ls-stack" aria-labelledby="run-flag-heading">
-    <h2 id="run-flag-heading">{FLAG_COPY.heading}</h2>
-    <p>{FLAG_COPY.explanation}</p>
-    {state === null ? null : state.ok
-      ? <Banner tone="success" title={FLAG_COPY.raised}><p>{FLAG_COPY.raisedBody}</p></Banner>
-      : <Banner tone="danger" title={state.reason ?? FLAG_COPY.unknown} />}
-    {state?.unknownOutcome === true && <p><a href={`/runs/${runId}/live`}>Reload this Run</a></p>}
-    {flaggable ? (
-      <form method="POST" action={formAction} className="ls-stack">
-        <input type="hidden" name="runId" value={runId} />
-        <div className="ls-stack">
-          <label htmlFor="run-flag-note">{FLAG_COPY.noteLabel}</label>
-          <textarea
-            className="ls-textarea"
-            id="run-flag-note"
-            name="note"
-            rows={3}
-            maxLength={500}
-            // The submit button is withdrawn when the gate closes; the note stayed fully
-            // editable beside it, unlike the Escalation panel's. `readOnly` rather than
-            // `disabled`, so the reason stays reachable by keyboard.
-            readOnly={gate.disabledReason !== null || state?.unknownOutcome === true}
-            aria-disabled={gate.disabledReason !== null || state?.unknownOutcome === true ? true : undefined}
-            aria-describedby={gate.disabledReason !== null ? 'run-flag-note-help run-flag-note-withdrawn' : 'run-flag-note-help'}
-          />
-          <p id="run-flag-note-help" className="ls-caption">{FLAG_COPY.noteHelp}</p>
-          {gate.disabledReason !== null
-            ? <p id="run-flag-note-withdrawn" className="ls-caption">{gate.disabledReason}</p>
-            : null}
-        </div>
-        {/* A lost response WITHDRAWS the control, it does not merely offer a reload.
-            `flagId` is minted here and a flag deliberately carries no request token, so a
-            retry after a committed-but-unacknowledged flag writes a second `run_flag` row
-            and a second full fan-out of notifications to every Audit Manager — which is
-            why `run-flag-v1.md` says the surface blocks the retry and asks for a reload.
-            `RunCancelControl` was extracted from this change with exactly this arm. */}
-        <Button type="submit" variant="secondary" busy={pending}
-          {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason }
-            : state?.unknownOutcome === true ? { disabledReason: RUN_LOST_RESPONSE } : {})}>{FLAG_COPY.submit}</Button>
-      </form>
-    ) : null}
-    <h3>Flags on this Run</h3>
-    {flags.length === 0 ? <p>{FLAG_COPY.none}</p> : (
-      <ul className="ls-stack">
-        {flags.map((item) => (
-          <li key={item.flagId}>
-            <p>{fillTemplate(FLAG_COPY.by, { actor: item.flaggedBy, time: readableStamp(item.flaggedAt) })}</p>
-            {item.note === null ? null : <p className="ls-quote">{item.note}</p>}
-          </li>
-        ))}
-      </ul>
-    )}
-  </section>;
+  // A native disclosure in the page header (UX-48): it opens without script, so the
+  // no-JavaScript path this control exists to keep is intact, and it opens BY ITSELF when
+  // the form has answered — on the scripted path and on the plain POST's re-rendered page
+  // alike — so a result is never hidden behind a closed opener.
+  return <details id="run-flag" className="ls-flag-menu" open={state !== null ? true : undefined}>
+    <summary className="ls-button ls-button--secondary">{flagMenuLabel(flags.length)}</summary>
+    <section className="ls-card ls-stack ls-flag-menu__panel" aria-labelledby="run-flag-heading">
+      <h2 id="run-flag-heading">{FLAG_COPY.heading}</h2>
+      <p>{FLAG_COPY.explanation}</p>
+      {state === null ? null : state.ok
+        ? <Banner tone="success" title={FLAG_COPY.raised}><p>{FLAG_COPY.raisedBody}</p></Banner>
+        : <Banner tone="danger" title={state.reason ?? FLAG_COPY.unknown} />}
+      {state?.unknownOutcome === true && <p><a href={`/runs/${runId}/live`}>Reload this Run</a></p>}
+      {flaggable ? (
+        <form method="POST" action={formAction} className="ls-stack">
+          <input type="hidden" name="runId" value={runId} />
+          <div className="ls-stack">
+            <label htmlFor="run-flag-note">{FLAG_COPY.noteLabel}</label>
+            <textarea
+              className="ls-textarea"
+              id="run-flag-note"
+              name="note"
+              rows={3}
+              maxLength={500}
+              // The submit button is withdrawn when the gate closes; the note stayed fully
+              // editable beside it, unlike the Escalation panel's. `readOnly` rather than
+              // `disabled`, so the reason stays reachable by keyboard.
+              readOnly={gate.disabledReason !== null || state?.unknownOutcome === true}
+              aria-disabled={gate.disabledReason !== null || state?.unknownOutcome === true ? true : undefined}
+              aria-describedby={gate.disabledReason !== null ? 'run-flag-note-help run-flag-note-withdrawn' : 'run-flag-note-help'}
+            />
+            <p id="run-flag-note-help" className="ls-caption">{FLAG_COPY.noteHelp}</p>
+            {gate.disabledReason !== null
+              ? <p id="run-flag-note-withdrawn" className="ls-caption">{gate.disabledReason}</p>
+              : null}
+          </div>
+          {/* A lost response WITHDRAWS the control, it does not merely offer a reload.
+              `flagId` is minted here and a flag deliberately carries no request token, so a
+              retry after a committed-but-unacknowledged flag writes a second `run_flag` row
+              and a second full fan-out of notifications to every Audit Manager — which is
+              why `run-flag-v1.md` says the surface blocks the retry and asks for a reload.
+              `RunCancelControl` was extracted from this change with exactly this arm. */}
+          <Button type="submit" variant="secondary" busy={pending}
+            {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason }
+              : state?.unknownOutcome === true ? { disabledReason: RUN_LOST_RESPONSE } : {})}>{FLAG_COPY.submit}</Button>
+        </form>
+      ) : null}
+      <h3>Flags on this Run</h3>
+      {flags.length === 0 ? <p>{FLAG_COPY.none}</p> : (
+        <ul className="ls-stack">
+          {flags.map((item) => (
+            <li key={item.flagId}>
+              <p>{fillTemplate(FLAG_COPY.by, { actor: item.flaggedBy, time: readableStamp(item.flaggedAt) })}</p>
+              {item.note === null ? null : <p className="ls-quote">{item.note}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  </details>;
 }

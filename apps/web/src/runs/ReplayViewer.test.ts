@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
-import { REPLAY_COPY } from '../design/copy';
+import { REPLAY_COPY, UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
 import { ReplayViewer, type ReplayFrameView } from './ReplayViewer';
 import type { ReplayJumpTarget } from './replay';
 
@@ -191,5 +191,28 @@ describe('where Replay sends a reader for the Observations', () => {
     const html = render({ frames: [frameView(2)], framesTotal: 1 });
     expect(html).toContain(REPLAY_COPY.observationsThrough.replace('{count}', '2 Observations'));
     expect(html).not.toContain(REPLAY_COPY.observationsNoFrame);
+  });
+});
+
+// UI cleanup 2026-09-22, UX-29 and UX-27. The playback controls and the scrubber were under
+// the stage, past the first viewport at 1366x768 because the stage keeps its 430px floor.
+// They are at the top of the rail, BESIDE the screen, before anything else the rail says;
+// the browser test in `replay.spec.ts` measures where they actually land.
+describe('the playback controls sit beside the screen (UX-29)', () => {
+  it('puts the controls and the scrubber at the top of the rail, after the stage', () => {
+    const html = render();
+    const stage = html.indexOf('ls-session__stage');
+    const rail = html.indexOf('ls-session__rail');
+    const controls = html.indexOf('ls-session__controls');
+    const scrubber = html.indexOf('ls-session__scrubber');
+    const narration = html.indexOf('What the Agent was doing');
+    expect(stage).toBeGreaterThan(-1);
+    expect([stage, rail, controls, scrubber, narration]).toEqual([stage, rail, controls, scrubber, narration].sort((a, b) => a - b));
+  });
+
+  it('says the policy sentence once, above the location and the address the Agent asked for', () => {
+    const html = render();
+    expect(html.split('Untrusted source content —').length - 1).toBe(2);
+    expect(html.split(UNTRUSTED_CONTENT_SENTENCE).length - 1).toBe(1);
   });
 });

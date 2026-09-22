@@ -2625,16 +2625,6 @@ a {
   font-size: var(--type-body-sm-font-size);
 }
 
-/* Replay's screen column: the frame, then the playback controls, then the scrubber. The
-   walkthrough found both controls under the first viewport, so a reader had to scroll away
-   from the screen to move it (UX-29). They are the stage's own siblings now. */
-.ls-session__screen {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-3);
-  min-width: 0;
-}
-
 /* The selected record's position, beside the global counter and never instead of it. */
 .ls-session__record-position {
   font-size: var(--type-body-sm-font-size);
@@ -2707,6 +2697,70 @@ a {
 }
 
 
+
+/* The session viewer's layout, restated here rather than edited in place above, because
+   this region is package 5's and the rules above are shared (UX-29, UX-48).
+
+   Grid's default is to STRETCH a row to its tallest cell, and the narration rail is
+   routinely taller than a screen: a stretched stage centred its frame in a box as tall as
+   the rail and pushed the frame, and on Replay the playback controls under it, below the
+   first viewport. `align-items: start` is on the CONTAINER, so it holds whichever element
+   is the grid item. Replay's playback controls and scrubber are at the top of the rail,
+   beside the screen, because the stage's 430px floor leaves no room under it at 1366x768. */
+.ls-session__body {
+  align-items: start;
+}
+
+/* A real frame starts at the top of the stage; only the "no frame yet" sentence is
+   centred in the 430px floor. */
+.ls-session__stage--frame {
+  align-items: flex-start;
+}
+
+/* A frame keeps the column's full width, so an ordinary landscape capture is as large as
+   it ever was, and is BOUNDED in height with `object-fit: contain`, so a capture of an
+   unusual shape (a tall page, a square) is letterboxed inside the stage instead of pushing
+   the controls under it off the screen. The pixels are never cropped or stretched: this is
+   Evidence, and the whole captured screen stays visible. */
+.ls-session__frame {
+  max-height: min(48vh, 400px);
+  object-fit: contain;
+}
+
+/* Live View's flag form opens from one control on the page header's action row (UX-48).
+   The panel floats under its opener rather than growing the header, so the workspace
+   screen stays in the first viewport whether it is open or not. No shadow: DESIGN.md keeps
+   the confirmation dialog's as the only one, so the panel is set off by its border. */
+.ls-flag-menu {
+  position: relative;
+}
+
+.ls-flag-menu > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.ls-flag-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ls-flag-menu__panel {
+  position: absolute;
+  top: calc(100% + var(--spacing-2));
+  right: 0;
+  z-index: 20;
+  width: min(28rem, calc(100vw - 2 * var(--spacing-4)));
+}
+
+/* Below 1024px the header's actions wrap, so a floating panel could open off the page's
+   left edge; it takes its place in the flow instead. */
+@media (max-width: 1023px) {
+  .ls-flag-menu__panel {
+    position: static;
+    width: auto;
+    margin-top: var(--spacing-2);
+  }
+}
 
 /* ---------------------------------------------------------------------------
    UI cleanup — package 6: administration.

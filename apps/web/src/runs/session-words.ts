@@ -160,3 +160,20 @@ export function recordFramePosition(record: string, position: number, total: num
 export function attemptContext(attempt: number): string | null {
   return attempt > 1 ? `attempt ${attempt.toLocaleString('en-US')}` : null;
 }
+
+/**
+ * The words on Live View's flag disclosure, in the page header (UI cleanup 2026-09-22,
+ * UX-48). The flag FORM used to be a full card on the header's action row, taller than the
+ * header itself, which pushed the workspace screen below the first viewport. It opens from
+ * this one word now, natively (a `<details>`), so it still needs no JavaScript.
+ *
+ * Deliberately NOT `FLAG_COPY.submit`: that is the submit button's name inside the panel,
+ * and two controls sharing one accessible name would leave a reader — and a locator —
+ * unable to tell the opener from the action.
+ */
+export const FLAG_MENU_LABEL = 'Flag this Run';
+
+/** The opener says how many flags are already on the Run, so they are not hidden by it. */
+export function flagMenuLabel(flags: number): string {
+  return flags === 0 ? FLAG_MENU_LABEL : `${FLAG_MENU_LABEL} · ${flags === 1 ? '1 flag raised' : `${flags.toLocaleString('en-US')} flags raised`}`;
+}

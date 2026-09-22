@@ -5,11 +5,10 @@ import { useEffect, useRef, useState } from 'react';
 
 import { Digest } from '../design/Digest';
 import { TechnicalDetails } from '../design/TechnicalDetails';
-import { Timestamp } from '../design/Timestamp';
 import { countNoun } from '../design/words';
 import { REPLAY_COPY } from '../design/copy';
-import { SessionChrome, SessionStage, type LiveViewerAdapterStep, type LiveViewerFrame } from './LiveViewer';
-import { UntrustedText } from './UntrustedText';
+import { FrameSource, SessionChrome, SessionStage, type LiveViewerAdapterStep, type LiveViewerFrame } from './LiveViewer';
+import { UntrustedPolicy, UntrustedText } from './UntrustedText';
 import { clampReplayIndex, type ReplayFrameAbsence, type ReplayJumpTarget } from './replay';
 import { recordFramePosition, toolActionNarration } from './session-words';
 import { sessionStepWord, utcStamp } from './labels';
@@ -96,6 +95,9 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
   const [jumped, setJumped] = useState<ReplayJumpTarget | null>(null);
   const viewer = useRef<HTMLDivElement>(null);
   const frame = index < 0 ? null : props.frames[index] ?? null;
+  // Whether this rail carries source content at all: the frame's captured location and the
+  // page address its Tool Action asked for. No frame, no untrusted block, no policy line.
+  const untrusted = frame !== null;
   const last = props.frames.length - 1;
 
   useEffect(() => {
@@ -194,49 +196,55 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
         aria-label={REPLAY_COPY.viewerLabel}
         onKeyDown={onKeyDown}
       >
-        <div className="ls-session__screen">
-          <SessionStage
-            runId={props.runId}
-            frame={frame}
-            stageNote={frame === null ? props.stageNote : null}
-          />
-
-          {/* The playback controls and the scrubber sit WITH the frame, not below the rail
-              (UX-29): the walkthrough found both under the first viewport, so a reader had
-              to scroll away from the screen to move it. */}
-          <div className="ls-session__controls">
-            <button
-              type="button"
-              className="ls-button ls-button--secondary ls-button--sm"
-              onClick={() => setPlaying((value) => !value)}
-              aria-disabled={index < 0 ? true : undefined}
-            >{playing ? REPLAY_COPY.pause : REPLAY_COPY.play}</button>
-            {ofRecord === null ? null : <span className="ls-session__record-position">{ofRecord}</span>}
-            <span className="ls-caption">{REPLAY_COPY.keys}</span>
-          </div>
-
-          <div className="ls-session__scrubber" role="group" aria-label={REPLAY_COPY.scrubberLabel}>
-            {props.frames.map((item, position) => (
-              <button
-                key={item.evidenceId}
-                type="button"
-                className={position === index ? 'ls-scrubber-pill ls-scrubber-pill--current' : 'ls-scrubber-pill'}
-                aria-current={position === index ? 'true' : undefined}
-                aria-label={`Frame ${position + 1} of ${props.frames.length}: ${item.stepNarration}`}
-                onClick={() => go(position)}
-              />
-            ))}
-          </div>
-          {props.framesTotal > props.frames.length ? (
-            <p className="ls-caption">
-              {REPLAY_COPY.bounded
-                .replace('{shown}', String(props.frames.length))
-                .replace('{total}', String(props.framesTotal))}
-            </p>
-          ) : null}
-        </div>
+        <SessionStage
+          runId={props.runId}
+          frame={frame}
+          stageNote={frame === null ? props.stageNote : null}
+        />
 
         <div className="ls-session__rail ls-stack">
+          <section aria-labelledby="replay-playback-heading" className="ls-stack">
+            <h3 id="replay-playback-heading" className="ls-visually-hidden">Playback</h3>
+            {/* The playback controls and the scrubber sit BESIDE the frame, at the top of the
+                rail (UX-29). The walkthrough found both under the first viewport, so a reader
+                had to scroll away from the screen to move it; under the stage they would still
+                sit past the fold at 1366x768, because the stage keeps DESIGN.md's 430px floor.
+                Below 1024px the rail stacks under the stage, so they are directly under it. */}
+            <div className="ls-session__controls">
+              <button
+                type="button"
+                className="ls-button ls-button--secondary ls-button--sm"
+                onClick={() => setPlaying((value) => !value)}
+                aria-disabled={index < 0 ? true : undefined}
+              >{playing ? REPLAY_COPY.pause : REPLAY_COPY.play}</button>
+              {ofRecord === null ? null : <span className="ls-session__record-position">{ofRecord}</span>}
+              <span className="ls-caption">{REPLAY_COPY.keys}</span>
+            </div>
+
+            <div className="ls-session__scrubber" role="group" aria-label={REPLAY_COPY.scrubberLabel}>
+              {props.frames.map((item, position) => (
+                <button
+                  key={item.evidenceId}
+                  type="button"
+                  className={position === index ? 'ls-scrubber-pill ls-scrubber-pill--current' : 'ls-scrubber-pill'}
+                  aria-current={position === index ? 'true' : undefined}
+                  aria-label={`Frame ${position + 1} of ${props.frames.length}: ${item.stepNarration}`}
+                  onClick={() => go(position)}
+                />
+              ))}
+            </div>
+            {props.framesTotal > props.frames.length ? (
+              <p className="ls-caption">
+                {REPLAY_COPY.bounded
+                  .replace('{shown}', String(props.frames.length))
+                  .replace('{total}', String(props.framesTotal))}
+              </p>
+            ) : null}
+          </section>
+
+          {/* The policy sentence ONCE, above the untrusted blocks this rail carries (UX-27). */}
+          {untrusted ? <UntrustedPolicy /> : null}
+
           <section aria-labelledby="replay-step-heading" className="ls-stack">
             <h3 id="replay-step-heading">What the Agent was doing</h3>
             {frame === null ? <p>{REPLAY_COPY.noFrames}</p> : (
@@ -263,7 +271,7 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
                   })}
                   {frame.action.outcome === 'denied' ? ' — refused by the platform' : ''}
                 </p>
-                <UntrustedText field="page address the Agent asked for">{frame.action.destination}</UntrustedText>
+                <UntrustedText field="page address the Agent asked for" policy={false}>{frame.action.destination}</UntrustedText>
                 {frame.action.denial === null ? null : <p>Refused: {frame.action.denial}</p>}
                 <p>
                   {frame.action.capture === 'SUPPRESSED'
@@ -273,6 +281,8 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
               </>
             )}
           </section>
+
+          {frame === null ? null : <FrameSource frame={frame} headingId="replay-frame-source-heading" />}
 
           <section aria-labelledby="replay-observations-heading" className="ls-stack">
             <h3 id="replay-observations-heading">Observations</h3>

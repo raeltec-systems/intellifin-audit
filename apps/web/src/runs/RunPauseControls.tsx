@@ -9,6 +9,7 @@ import { ConfirmDialog } from '../design/ConfirmDialog';
 import { ESCALATION_PANEL_COPY, PAUSE_COPY, RUN_LOST_RESPONSE } from '../design/copy';
 import { UnavailableActions } from '../design/UnavailableActions';
 import { useLiveGate } from './LiveGate';
+import { useTransitionalMessage } from './transitional-message';
 
 /**
  * Pause and Resume, on Run Detail AND on Live View (Story 5.4).
@@ -67,7 +68,12 @@ export function RunPauseControls({
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const [message, setMessage] = useState<{ tone: 'success' | 'danger'; title: string; body?: string } | null>(null);
+  // Dropped once the Run state it was written about has settled: "Pause requested." must
+  // not stay beside the server's own "Pause requested by …" or "Paused by …" banner, and
+  // "Run resumed." must not outlive the next pause (UX-49).
+  const [message, setMessage] = useTransitionalMessage<{ tone: 'success' | 'danger'; title: string; body?: string }>(
+    `${paused}|${pausePending}`,
+  );
   // A lost Server Action response is an UNKNOWN outcome: the transaction may have
   // committed. Further attempts are blocked and a reload is what inspects what was saved.
   const [unknown, setUnknown] = useState(false);

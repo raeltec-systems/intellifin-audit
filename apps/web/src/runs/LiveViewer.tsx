@@ -7,10 +7,10 @@ import { Timestamp } from '../design/Timestamp';
 import { countNoun } from '../design/words';
 import { CAPTURE_TIME_UNRECORDED, LIVE_VIEW_DESKTOP_ONLY_SENTENCE, SESSION_ISOLATION_NOTE } from '../design/copy';
 import { EvidenceKindBadge } from './MinorBadge';
-import { UntrustedText } from './UntrustedText';
+import { UntrustedPolicy, UntrustedText } from './UntrustedText';
 import { chromeDotClass, type LiveViewChrome } from './live-view';
 import { attemptContext, noWorkItemSentence } from './session-words';
-import { evidenceKindWord, sessionStepWord, utcStamp, workItemLabel, workspaceModeWord } from './labels';
+import { evidenceKindWord, sessionStepWord, utcStamp, workItemLabel, workItemWord, workspaceModeWord } from './labels';
 
 export interface LiveViewerFrame {
   readonly evidenceId: string;
@@ -127,9 +127,16 @@ export function SessionChrome({ chrome, stateSentence, workspace, counter }: {
  * consumes a worker-signed grant on the server, so no object-store URL, signed or
  * otherwise, is ever in this markup (AD-5).
  *
- * The stage owns its grid alignment: a growing narration/evidence rail must not stretch
- * this cell and vertically centre the screen below the auditor's viewport. Keep the
- * frame's position independent of its sibling's height in both Live View and Replay.
+ * The stage holds the SCREEN and nothing else (UI cleanup 2026-09-22, UX-29, UX-48). The
+ * captured page location and the capture time used to sit under the picture as its
+ * caption, inside the stage, and the untrusted-content block that carries the location made
+ * the stage a third taller than its 430px floor — which is what pushed Replay's playback
+ * controls and Live View's screen below the first viewport. They are `FrameSource`, in the
+ * rail beside the screen, where the rest of what a reader is told about it already is.
+ *
+ * Whether a tall rail can stretch this cell, and where a real frame sits inside the floor,
+ * are both decided in package 5's region of `globals.css`: `.ls-session__body` aligns its
+ * items to the start, because the grid item is this stage on Live View and on Replay alike.
  */
 export function SessionStage({ runId, frame, stageNote }: {
   readonly runId: string;
@@ -137,7 +144,10 @@ export function SessionStage({ runId, frame, stageNote }: {
   readonly stageNote: string | null;
 }): React.JSX.Element {
   return (
-    <div className="ls-session__stage" style={{ alignSelf: 'start' }}>
+    // Centred for the "no frame yet" sentence; top-aligned for a real frame, whatever
+    // its own aspect ratio, so a short screenshot does not push its own top toward the
+    // middle of the 430px floor (UX-29, UX-48; see `.ls-session__stage--frame`).
+    <div className={frame === null ? 'ls-session__stage' : 'ls-session__stage ls-session__stage--frame'}>
       {frame === null ? (
         <p className="ls-session__stage-note">{stageNote}</p>
       ) : (
@@ -150,20 +160,34 @@ export function SessionStage({ runId, frame, stageNote }: {
             alt={frame.narration}
             decoding="async"
           />
-          {/* The location the screen was captured at, and WHEN — readable. The integrity
-              digest that used to end this caption is under Technical details on the rail
-              (UX-28): it is a sixty-four character check value, not a caption. */}
-          <figcaption className="ls-session__caption">
-            <UntrustedText field="captured page location">{frame.sourceLocation}</UntrustedText>
-            <span>
-              {frame.capturedAt === null
-                ? CAPTURE_TIME_UNRECORDED
-                : <>Captured <Timestamp value={frame.capturedAt} /></>}
-            </span>
-          </figcaption>
         </figure>
       )}
     </div>
+  );
+}
+
+/**
+ * Where a frame was captured, and WHEN, beside the screen rather than under it (UX-29).
+ *
+ * The location is what the Target System's page was at, so it is source content and goes
+ * through `UntrustedText` — without the policy sentence, which the rail states ONCE above
+ * every untrusted block it carries (UX-27). The integrity digest is under Technical details:
+ * it is a sixty-four character check value, not something a reader reads (UX-28).
+ */
+export function FrameSource({ frame, headingId }: {
+  readonly frame: Pick<LiveViewerFrame, 'sourceLocation' | 'capturedAt'>;
+  readonly headingId: string;
+}): React.JSX.Element {
+  return (
+    <section aria-labelledby={headingId} className="ls-stack">
+      <h3 id={headingId}>Where this screen was captured</h3>
+      <UntrustedText field="captured page location" policy={false}>{frame.sourceLocation}</UntrustedText>
+      <p className="ls-caption">
+        {frame.capturedAt === null
+          ? CAPTURE_TIME_UNRECORDED
+          : <>Captured <Timestamp value={frame.capturedAt} /></>}
+      </p>
+    </section>
   );
 }
 
@@ -187,6 +211,7 @@ export function LiveViewer(props: LiveViewerProps): React.JSX.Element {
     ? `Step ${props.stepsStarted.toLocaleString('en-US')}`
     : `Step ${props.stepsStarted.toLocaleString('en-US')} of ${props.plannedSteps.toLocaleString('en-US')}`;
   const attempt = props.step === null ? null : attemptContext(props.step.attempt);
+  const untrusted = props.frame !== null || (props.step !== null && props.step.diagnostic !== null);
   // The identifiers, the exact instants and the check values, in one place a reader opens
   // deliberately rather than meets on the way to the screen (UX-28, UX-48).
   const technical: readonly TechnicalItem[] = [
@@ -226,6 +251,9 @@ export function LiveViewer(props: LiveViewerProps): React.JSX.Element {
         <SessionStage runId={props.runId} frame={props.frame} stageNote={props.stageNote} />
 
         <div className="ls-session__rail ls-stack">
+          {/* The policy sentence ONCE, above every untrusted block this rail carries, and
+              only when it carries one (UX-27): the walkthrough met it under every field. */}
+          {untrusted ? <UntrustedPolicy /> : null}
           <section aria-labelledby="live-step-heading" className="ls-stack">
             <h3 id="live-step-heading">What the Agent is doing</h3>
             {props.step === null ? (
@@ -237,7 +265,7 @@ export function LiveViewer(props: LiveViewerProps): React.JSX.Element {
                     it makes a retry indistinguishable from an ordinary first pass. */}
                 {attempt === null ? null : <p className="ls-caption">This is {attempt}.</p>}
                 {props.step.diagnostic === null ? null : (
-                  <UntrustedText field="Step Execution diagnostic">{props.step.diagnostic}</UntrustedText>
+                  <UntrustedText field="Step Execution diagnostic" policy={false}>{props.step.diagnostic}</UntrustedText>
                 )}
               </>
             )}
@@ -255,12 +283,14 @@ export function LiveViewer(props: LiveViewerProps): React.JSX.Element {
                 {/* The record, then the system: `displayName` alone is the same on every
                     Work Item of a Run, so this rail could not say which leaver was being
                     inspected. One rule, shared with the Replay jump list. */}
-                {workItemLabel(props.workItem)} · {props.workItem.state} ·{' '}
+                {workItemLabel(props.workItem)} · {workItemWord(props.workItem.state) ?? props.workItem.state} ·{' '}
                 {countNoun(props.workItem.observations, 'Observation')}
               </p>
             )}
             <p>{countNoun(props.observations, 'Observation')} registered in this Run so far.</p>
           </section>
+
+          {props.frame === null ? null : <FrameSource frame={props.frame} headingId="live-frame-source-heading" />}
 
           {/* What has been frozen, behind a disclosure: a growing inventory is provenance,
               not what a person watching a Run is reading (UX-48). */}

@@ -1082,6 +1082,48 @@ export class DrizzleRunDetailRepository {
   }
 
   /** Every Step Execution, oldest first — the order the Timeline is read in. */
+  /**
+   * How far through its plan a Run has got, in LOGICAL steps, counted EXACTLY
+   * (UI cleanup 2026-09-22, UX-47).
+   *
+   * Live View's counter read "Step 7 of 6" after a pause and a resume, because its
+   * numerator was `run_step_execution`'s row total — ATTEMPTS, and a pause supersedes one
+   * attempt and the resume starts another. Counting distinct plan steps over the bounded
+   * page `readStepExecutions` returns would trade that defect for its opposite: a long Run
+   * whose first fifty attempts had not yet reached a later plan step would report fewer
+   * steps than it had started. So the three facts are aggregates over EVERY row:
+   *
+   * - `started`: distinct plan steps with at least one Step Execution, restricted to the
+   *   ids the frozen plan declares when the caller has them — so `started` can never pass
+   *   the plan's own step count, by construction rather than by clamping;
+   * - `units`: distinct (plan step, Work Item) pairs, the work actually done;
+   * - `retries`: every attempt beyond the first.
+   */
+  async readLogicalStepProgress(
+    runId: string,
+    planStepIds: readonly string[] | null,
+  ): Promise<{ readonly started: number; readonly units: number; readonly retries: number }> {
+    if (!isUuidText(runId)) return { started: 0, units: 0, retries: 0 };
+    const declared = planStepIds === null
+      ? sql`true`
+      : planStepIds.length === 0
+        ? sql`false`
+        : inArray(runStepExecution.planStepId, [...planStepIds]);
+    const [row] = await this.db
+      .select({
+        started: sql<number>`count(DISTINCT ${runStepExecution.planStepId}) FILTER (WHERE ${declared})::int`,
+        units: sql<number>`count(DISTINCT ${runStepExecution.planStepId} || '|' || coalesce(${runStepExecution.workItemId}::text, ''))::int`,
+        retries: sql<number>`count(*) FILTER (WHERE ${runStepExecution.attempt} > 1)::int`,
+      })
+      .from(runStepExecution)
+      .where(eq(runStepExecution.runId, runId));
+    return {
+      started: Number(row?.started ?? 0),
+      units: Number(row?.units ?? 0),
+      retries: Number(row?.retries ?? 0),
+    };
+  }
+
   async readStepExecutions(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<Bounded<RunStepExecutionRow>> {
     if (!isUuidText(runId)) return { rows: [], total: 0 };
     const counted = await this.db

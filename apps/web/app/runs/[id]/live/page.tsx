@@ -20,7 +20,7 @@ import { RunCancelControl } from '../../../../src/runs/RunCancelControl';
 import { RunFlagControl } from '../../../../src/runs/RunFlagControl';
 import { RunPauseControls } from '../../../../src/runs/RunPauseControls';
 import { readOpenEscalation } from '../../../../src/runs/escalation-read';
-import { OpenEscalationSection, PauseBanners } from '../../../../src/runs/detail';
+import { CancellationBanners, OpenEscalationSection, PauseBanners } from '../../../../src/runs/detail';
 import { LiveViewer } from '../../../../src/runs/LiveViewer';
 import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
 import { planActionWord, runLifecycleWord, utcStamp } from '../../../../src/runs/labels';
@@ -30,7 +30,6 @@ import {
   currentStepExecution,
   frameNarration,
   liveViewChrome,
-  logicalStepProgress,
   plannedStepCount,
   plannedStepIds,
   stepNarration,
@@ -130,6 +129,7 @@ export default async function RunLivePage({
   const pauseNames = await new DrizzleActorNameReader(runtime.db).namesFor([
     ...(waits?.pause?.openedBy == null ? [] : [waits.pause.openedBy]),
     ...(run.pauseRequest === null ? [] : [run.pauseRequest.requestedBy]),
+    ...(run.cancellation === null ? [] : [run.cancellation.requestedBy]),
   ]);
 
   // Why there is no frame, in words. An empty stage that says nothing reads as "fine",
@@ -146,8 +146,11 @@ export default async function RunLivePage({
 
   // The Step counter's numerator: LOGICAL plan steps, never `run_step_execution`'s row
   // count. A pause supersedes the attempt in flight and the resume starts a new one, so
-  // the total counted attempts and the chrome read "Step 7 of 6" (UX-47).
-  const progress = logicalStepProgress(timeline.stepExecutions.rows, plannedStepIds(plan));
+  // the total counted attempts and the chrome read "Step 7 of 6" (UX-47). Counted over
+  // EVERY row in the database rather than over the bounded page above, so a long Run is
+  // not under-reported either; `logicalStepProgress` in `live-view.ts` is the same rule
+  // over rows in hand, and the integration test holds the two to one answer.
+  const progress = await detail.readLogicalStepProgress(run.runId, plannedStepIds(plan));
 
   // ONE header row: the title, the lifecycle badge beside it, the four session controls on
   // its right and one meta line. The walkthrough met the title, the status, the banner, a
@@ -155,7 +158,7 @@ export default async function RunLivePage({
   // own row before the screen (UX-48).
   const header = (
     <PageHeader
-      title={<>Watch · {run.procedureName}</>}
+      title={<>Live View · {run.procedureName}</>}
       badge={lifecycle === null ? <span>{run.state}</span> : <StatusBadge family="run-lifecycle" state={lifecycle} size="md" />}
       actions={
         <>
@@ -200,7 +203,9 @@ export default async function RunLivePage({
       <DetailTrail
         trail={[
           { href: '/runs', label: 'Runs' },
-          { href: runTabHref(run.runId, ''), label: run.runId, mono: true },
+          // The Procedure, as Run Detail's own trail names it; the Run's identifier is under
+          // Technical details and its short reference is on the meta line (UX-02).
+          { href: runTabHref(run.runId, ''), label: run.procedureName },
           { href: here, label: 'Live' },
         ]}
       />
@@ -231,6 +236,10 @@ export default async function RunLivePage({
             is a context change nobody asked for. */}
         <OpenEscalationSection run={run} escalation={waits} readAt={readAt} />
         <PauseBanners run={run} pause={waits?.pause ?? null} readAt={readAt} names={pauseNames} />
+        {/* The server's own statement of a requested cancellation, as on Run Detail: the
+            control's transitional "Cancellation requested." is dropped once the page has
+            re-read the Run (UX-49), so this is what says it from then on. */}
+        <CancellationBanners run={run} names={pauseNames} />
 
         <LiveViewer
           runId={run.runId}
