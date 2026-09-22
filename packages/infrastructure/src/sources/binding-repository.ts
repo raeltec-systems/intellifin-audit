@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
+import { asc, count, eq } from 'drizzle-orm';
 
 import { isUuidText } from '../db/identifier.js';
 
@@ -130,6 +130,19 @@ export class DrizzleBindingRepository implements BindingRepository {
    * (found by the automated reviewer on #21 — the same defect Story 1.8 recorded for
    * the probe sweep and Story 2.3 fixed for the Target System picker).
    */
+  /**
+   * How many sources there are, EXACTLY (UI cleanup 2026-09-22, UX-37).
+   *
+   * Not `(await listBindings()).length`: that read is capped at `BINDING_LIST_LIMIT`, so
+   * a summary built from it would report the cap as the total once a deployment passed
+   * it — the "decided by an EXACT count, never by `rows.length` of a bounded page" rule,
+   * in the one place an operator goes to find out how much there is.
+   */
+  async countBindings(): Promise<number> {
+    const rows = await this.db.select({ total: count() }).from(populationSourceBinding);
+    return rows[0]?.total ?? 0;
+  }
+
   async listActiveBindings(): Promise<readonly PopulationSourceBinding[]> {
     const rows = await this.db.select(SELECTION).from(populationSourceBinding)
       .where(eq(populationSourceBinding.status, 'active'))
