@@ -19,6 +19,14 @@ import { EvidencePackageSection, PopulationReconciliation, SafeNextActionPanel, 
 import { ADAPTER_ACTIONS_UNRECORDED, CAPTURE_TIME_SOURCE } from '../design/copy';
 import { ExecutionTimeline } from './Timeline';
 import { ConclusionTriptych } from './Triptych';
+import { RESULT_WORDS } from './result-words';
+import {
+  STATUS_COLUMN_WORDS,
+  assessmentMeaning,
+  evidenceChecksMeaning,
+  executionMeaning,
+  pendingAssessmentSentence,
+} from '../design/status-words';
 import { UntrustedText } from './UntrustedText';
 
 /**
@@ -64,16 +72,58 @@ const triptych = (props: Parameters<typeof ConclusionTriptych>[0]): string =>
   renderToStaticMarkup(React.createElement(ConclusionTriptych, props));
 
 describe('the conclusion triptych', () => {
-  it('shows three cells and makes none of them clickable', () => {
+  it('labels its three cells with the three QUESTIONS, in the contract\u2019s order', () => {
+    // UI cleanup 2026-09-22, UX-18. EXPERIENCE.md's revised Conclusion triptych row:
+    // "Cells are Execution (lifecycle), Assessment (Result outcome) and Evidence checks
+    // (Gate), in that order and under those labels". The old labels named the TABLE a
+    // word came from (`Run lifecycle`, `Evidence Quality Gate`, `Result outcome`), so a
+    // reader could take a passed Gate for a passed control.
     const html = triptych({ state: 'COMPLETED', result: result(), gateChecks: 20, gateFailed: 0 });
     expect(html.match(/ls-triptych__cell/g) ?? []).toHaveLength(3);
-    for (const label of ['Run lifecycle', 'Evidence Quality Gate', 'Result outcome']) {
-      expect(html).toContain(label);
+    const order = [
+      STATUS_COLUMN_WORDS.execution,
+      STATUS_COLUMN_WORDS.assessment,
+      STATUS_COLUMN_WORDS.evidenceChecks,
+    ].map((label) => html.indexOf(`>${label}<`));
+    expect(order.every((at) => at > -1)).toBe(true);
+    expect(order).toEqual([...order].sort((left, right) => left - right));
+    for (const gone of ['Run lifecycle', 'Evidence Quality Gate', 'Result outcome']) {
+      expect(html, gone).not.toContain(`>${gone}<`);
     }
     // No cell is clickable: the tabs are the navigation. There is no link, no button and
     // no handler in this component, so one cannot appear by accident.
     expect(html).not.toContain('<a ');
     expect(html).not.toContain('<button');
+  });
+
+  it('says what each badge MEANS under it, so the three families cannot be read as one', () => {
+    const html = triptych({ state: 'COMPLETED', result: result(), gateChecks: 20, gateFailed: 0 });
+    expect(html).toContain(executionMeaning('Completed'));
+    expect(html).toContain(assessmentMeaning('Pass'));
+    // The one sentence the finding is really about: a passed Gate is not a passed control.
+    expect(html).toContain(evidenceChecksMeaning('Passed'));
+    expect(html).toContain('not that the control passed');
+  });
+
+  it('asks the reader for the pending confirmations by their exact count', () => {
+    const html = triptych({
+      state: 'COMPLETED',
+      result: result({ outcome: 'PENDING_CONFIRMATION', outcomeRow: 'pending-confirmation', sealed: false }),
+      gateChecks: 20,
+      gateFailed: 0,
+      pendingCount: 3,
+    });
+    expect(html).toContain(pendingAssessmentSentence(3));
+    // An unreadable count says what the state means rather than claiming a zero.
+    const unknown = triptych({
+      state: 'COMPLETED',
+      result: result({ outcome: 'PENDING_CONFIRMATION', outcomeRow: 'pending-confirmation', sealed: false }),
+      gateChecks: 20,
+      gateFailed: 0,
+      pendingCount: null,
+    });
+    expect(unknown).toContain(assessmentMeaning('Pending Confirmation'));
+    expect(unknown).not.toContain(pendingAssessmentSentence(0));
   });
 
   it('carries the sealed marker and the Result version, and the published statement', () => {
@@ -168,23 +218,75 @@ describe('the Evidence Quality Gate checklist', () => {
     expect(html).toContain('Observation is captured during the Run');
   });
 
-  it('leads with the failed rows on an Inconclusive Run, and links them to their Work Items', () => {
+  it('puts every passed check behind one disclosure, open only when a reader asks', () => {
+    // UI cleanup 2026-09-22, UX-20: all twenty rows were expanded on every Result, so a
+    // reader looking for the two that failed scrolled past eighteen that did not.
+    const rows = GATE_CHECKS.map((check) =>
+      gateRow({ check, outcome: 'PASS', diagnostics: [], targetSystems: [], workItems: [], records: [], total: 0 }),
+    );
+    const html = checklist({ rows, runId: RUN_ID, failedFirst: true, notEvaluatedReason: 'x' });
+    expect(html).toContain(`<summary>${RESULT_WORDS.passedChecks} · ${GATE_CHECKS.length} checks</summary>`);
+    // Native `<details>`, closed: it works before hydration and with no JavaScript, and a
+    // reader's first sight of a passing Gate is one line rather than twenty rows.
+    expect(html).toContain('<details');
+    expect(html).not.toContain('<details open');
+    // Every row is still on the page — nothing is deleted, only moved out of the way.
+    // Matched on the state modifier: `ls-gate__row` is also the prefix of
+    // `ls-gate__row--pass`, so a bare match counts each row twice.
+    expect(html.match(/ls-gate__row--/g) ?? []).toHaveLength(GATE_CHECKS.length);
+  });
+
+  it('never cites a specification section in the ordinary rule line, and keeps the exact one', () => {
+    // §H's own sentence for `per-record-coverage` ends `(§C)`; `condition-completeness`
+    // ends `(§B)`. `gate-rows.ts` is a transcription pinned against the addendum on disk
+    // and does not move: what changes is what a reader meets.
+    const rows = GATE_CHECKS.map((check) =>
+      gateRow({ check, outcome: 'PASS', diagnostics: [], targetSystems: [], workItems: [], records: [], total: 0 }),
+    );
+    const html = checklist({ rows, runId: RUN_ID, failedFirst: false, notEvaluatedReason: 'x' });
+    const ordinary = html.match(/<p class="ls-gate__rule">([^<]*)<\/p>/g) ?? [];
+    expect(ordinary.length).toBe(GATE_CHECKS.length);
+    for (const line of ordinary) expect(line, line).not.toMatch(/§|addendum|FR-\d/);
+    // The citation is under Technical details, where an auditor checking the checklist
+    // against the contract can still find it.
+    expect(html).toContain('Rule as the contract states it');
+    expect(html).toContain('(§C)');
+  });
+
+  it('leads with the failed rows, links them to their inspections, and never repeats them', () => {
     const rows = GATE_CHECKS.map((check) =>
       check === 'per-record-coverage'
         ? gateRow()
         : gateRow({ check, outcome: 'PASS', diagnostics: [], targetSystems: [], workItems: [], records: [], total: 0 }),
     );
     const html = checklist({ rows, runId: RUN_ID, failedFirst: true, notEvaluatedReason: 'x' });
-    expect(html).toContain('Failed checks');
-    expect(html.indexOf('Failed checks')).toBeLessThan(html.indexOf('Per-Observation checks'));
+    expect(html).toContain('1 check that did not pass');
+    expect(html.indexOf('1 check that did not pass')).toBeLessThan(html.indexOf(RESULT_WORDS.passedChecks));
     expect(html).toContain(`href="/runs/${RUN_ID}/timeline#work-item-019823ab-0000-7000-8000-0000000000c1"`);
-    expect(html).toContain('record-uninspected');
+    // The failed row appears ONCE: repeating it inside the disclosure would make the
+    // summary's own count disagree with what is under it.
+    expect(html.match(/ls-gate__row--fail/g) ?? []).toHaveLength(1);
     expect(html).toContain('19 of 20 checks passed');
+    // The code word is under Technical details; the ordinary line counts the records.
+    expect(html).toContain('3 records affected');
+    expect(html).toContain('record-uninspected');
+    expect(html).not.toContain('<code class="ls-mono">record-uninspected</code>');
   });
 
-  it('does not lead with failures when the Run concluded', () => {
-    const html = checklist({ rows: [gateRow()], runId: RUN_ID, failedFirst: false, notEvaluatedReason: 'x' });
-    expect(html).not.toContain('Failed checks');
+  it('says what a passed Gate does NOT mean, beside the count', () => {
+    const rows = GATE_CHECKS.map((check) =>
+      gateRow({ check, outcome: 'PASS', diagnostics: [], targetSystems: [], workItems: [], records: [], total: 0 }),
+    );
+    const html = checklist({ rows, runId: RUN_ID, failedFirst: false, notEvaluatedReason: 'x' });
+    expect(html).toContain('not that the control passed');
+  });
+
+  it('shows a Work Item as a short reference rather than thirty-six characters', () => {
+    const html = checklist({ rows: [gateRow()], runId: RUN_ID, failedFirst: true, notEvaluatedReason: 'x' });
+    expect(html).toContain('0000000000c1');
+    expect(html).toContain('Inspection');
+    // The full identifier is still reachable, in the link's title.
+    expect(html).toContain('title="019823ab-0000-7000-8000-0000000000c1"');
   });
 });
 

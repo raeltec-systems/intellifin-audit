@@ -29,7 +29,6 @@ import { ESCALATION_PANEL_COPY, PAUSE_COPY, STALE_DATA_ACTION, fillTemplate, run
 import { DetailTrail } from '../procedures/DetailTrail';
 import { requireServerAction } from '../server-session';
 import { EscalationPanel } from './EscalationPanel';
-import { EvaluationReview } from './EvaluationReview';
 import { readOpenEscalation, type OpenEscalationRead } from './escalation-read';
 import { LiveBanner } from './LiveBanner';
 import { RunLifecycleActions } from './RunLifecycleActions';
@@ -198,9 +197,6 @@ export async function RunDetailFrame({
   const escalation = run.state === 'AWAITING_AUDITOR' || run.state === 'PAUSED'
     ? await readOpenEscalation(run.runId)
     : null;
-  const evaluationReview = tab === '' && (run.state === 'COMPLETED' || run.state === 'INCONCLUSIVE')
-    ? await readEvaluationReview(run.runId)
-    : null;
   const lifecycle = runLifecycleWord(run.state);
   const here = runTabHref(run.runId, tab);
   // The live channel subscribes only while the Run is active (UX-DR35): the cursor is
@@ -283,16 +279,12 @@ export async function RunDetailFrame({
         ]}
       />
       <OpenEscalationSection run={run} escalation={escalation} readAt={readAt} />
-      {evaluationReview !== null ? (
-        <EvaluationReview
-          runId={run.runId}
-          result={evaluationReview.result}
-          evaluations={evaluationReview.evaluations}
-          reviewRevision={evaluationReview.reviewRevision}
-          pendingCount={evaluationReview.pendingCount}
-          commandStatuses={evaluationReview.commandStatuses}
-        />
-      ) : null}
+      {/* The pending confirmations are NOT here (UI cleanup 2026-09-22, UX-19). They were
+          rendered by the frame, above `children`, so three historical AI assessments
+          preceded the conclusion on every Result tab and the completed Result page stood
+          7,132px tall. They belong under the triptych, on the Result page, where "what
+          needs the reader now" sits — and where a sealed Result can collapse them into a
+          review history instead of leading with them. */}
       {children}
     </div>
   );

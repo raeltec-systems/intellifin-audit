@@ -1,15 +1,21 @@
-import { OUTCOME_ROWS, type RunResultPublication } from '@intellifin/domain';
+import { OUTCOME_ROWS, type TemplateId, type RunResultPublication } from '@intellifin/domain';
 import type { RunResultRow, RunStopFacts } from '@intellifin/infrastructure';
 
 import { Digest } from '../design/Digest';
 import { Icon } from '../design/Icon';
+import { Reference } from '../design/Reference';
 import { StatusBadge } from '../design/StatusBadge';
+import { TechnicalDetails } from '../design/TechnicalDetails';
+import { Timestamp } from '../design/Timestamp';
+import { countNoun } from '../design/words';
 import {
   EXECUTION_FAILURE_HEADING,
   SAFE_NEXT_ACTION_HEADING,
 } from '../design/copy';
-import { UntrustedList } from './UntrustedText';
+import { Criterion } from './Criterion';
+import { UntrustedList, UntrustedRegion } from './UntrustedText';
 import { countText, evaluationOriginWord, evaluationValueWord, utcStamp } from './labels';
+import { EXCEPTION_WORDS, RESULT_WORDS } from './result-words';
 import { STAGE_WORDS, stopReason } from './stop-reason';
 
 /**
@@ -231,14 +237,13 @@ export function EvidencePackageSection({
   const artifacts = evidence.artifacts;
   return (
     <section className="ls-card ls-stack" aria-labelledby="evidence-package-summary">
-      <h2 id="evidence-package-summary">Evidence this Run froze</h2>
+      <h2 id="evidence-package-summary">{RESULT_WORDS.evidencePackage}</h2>
       <p>
         {evidence.state === 'SEALED'
           ? 'Sealed. Every artifact this Run required is registered and verified.'
           : 'Sealed as incomplete. An artifact this Run required was never registered.'}{' '}
-        Registered artifacts: <span className="ls-mono">{countText(evidence.registered)}</span>.
-        Required: <span className="ls-mono">{countText(evidence.requiredTotal)}</span>. Abandoned
-        reservations: <span className="ls-mono">{countText(evidence.abandoned)}</span>.
+        {countNoun(evidence.registered, 'artifact')} registered, {evidence.requiredTotal.toLocaleString('en-US')}{' '}
+        required, {countNoun(evidence.abandoned, 'abandoned reservation')}.
       </p>
       {artifacts === undefined ? (
         <p>
@@ -248,17 +253,33 @@ export function EvidencePackageSection({
       ) : artifacts.length === 0 ? (
         <p>This Run registered no Evidence at all.</p>
       ) : (
-        <ul className="ls-plain-list">
-          {artifacts.map((artifact) => (
-            <li key={artifact.evidenceId}>
-              {artifactKindWord(artifact.kind)} ·{' '}
-              <a className="ls-mono" href={`/runs/${runId}/evidence#evidence-${artifact.evidenceId}`}>
-                {artifact.evidenceId}
-              </a>{' '}
-              <span className="ls-mono">({artifact.objectKey})</span>
-            </li>
-          ))}
-        </ul>
+        // Thirty-one rows are a provenance record, not the first thing a conclusion is
+        // read through (UI cleanup 2026-09-22, UX-20). Native `<details>`, so the list
+        // works before hydration and with no JavaScript, and it is one line until asked.
+        <details className="ls-disclosure">
+          <summary>
+            {countNoun(artifacts.length, 'artifact')} this Run froze
+          </summary>
+          <div className="ls-disclosure__body">
+            <ul className="ls-plain-list">
+              {artifacts.map((artifact) => (
+                <li key={artifact.evidenceId}>
+                  {artifactKindWord(artifact.kind)} ·{' '}
+                  <a href={`/runs/${runId}/evidence#evidence-${artifact.evidenceId}`}>
+                    <Reference kind="Evidence" value={artifact.evidenceId} />
+                  </a>
+                </li>
+              ))}
+            </ul>
+            <TechnicalDetails
+              items={artifacts.map((artifact) => ({
+                label: artifact.evidenceId,
+                value: artifact.objectKey,
+                mono: true,
+              }))}
+            />
+          </div>
+        </details>
       )}
     </section>
   );
@@ -368,10 +389,13 @@ export function CoverageSection({
 export function ConditionCards({
   publication,
   conditionText,
+  templateId,
 }: {
   readonly publication: RunResultPublication;
   /** The frozen condition's authored text, or `null` when the plan could not be read. */
   readonly conditionText: (conditionId: string) => string | null;
+  /** The frozen Template, which is what turns a compiled condition into a sentence. */
+  readonly templateId: TemplateId | null;
 }): React.JSX.Element {
   return (
     <section className="ls-card ls-stack" aria-labelledby="conditions-heading">
@@ -400,12 +424,12 @@ export function ConditionCards({
                   ) : (
                     <StatusBadge family="evaluation-value" state={value} />
                   )}
-                  <span className="ls-mono">{countText(entry.total)}</span>
+                  <span>{countNoun(entry.total, 'record')}</span>
                 </p>
-                <p className="ls-evaluation__condition">
-                  <span className="ls-mono">{entry.conditionId}</span>
-                  {text === null ? null : <> — {text}</>}
-                </p>
+                {/* The criterion as a sentence, with the compiled text under Technical
+                    details. The condition identifier used to lead this line, which told a
+                    reader `C2` and left them to find out what C2 says. */}
+                <Criterion conditionId={entry.conditionId} text={text} templateId={templateId} />
               </li>
             );
           })}
@@ -425,8 +449,15 @@ export function ConditionCards({
  */
 export function FindingsSection({
   publication,
+  runId,
+  conditionText,
+  templateId,
 }: {
   readonly publication: RunResultPublication;
+  /** The Run, so every named record can be opened where its evidence is. */
+  readonly runId: string;
+  readonly conditionText: (conditionId: string) => string | null;
+  readonly templateId: TemplateId | null;
 }): React.JSX.Element {
   const lists = [
     { key: 'exceptions', heading: 'Exceptions', findings: publication.exceptions },
@@ -438,7 +469,7 @@ export function FindingsSection({
       {lists.map((list) => (
         <div className="ls-stack" key={list.key}>
           <h3 className="ls-overline">
-            {list.heading} · {countText(list.findings.total)}
+            {list.heading} · {countNoun(list.findings.total, 'record')}
           </h3>
           {list.findings.records.length === 0 ? (
             <p>
@@ -449,22 +480,48 @@ export function FindingsSection({
           ) : (
             <ul className="ls-plain-list">
               {list.findings.records.map((record) => (
-                <li className="ls-finding" key={`${record.targetSystem}:${record.populationRecordKey}`}>
-                  <p>
-                    <span className="ls-mono">{record.populationRecordKey}</span> on{' '}
-                    <span className="ls-mono">{record.targetSystem}</span> ·{' '}
-                    <span className="ls-mono">{record.conditionIds.join(', ')}</span>
+                <li className="ls-finding ls-stack" key={`${record.targetSystem}:${record.populationRecordKey}`}>
+                  {/* The record's own identity leads, then where it was inspected. The
+                      condition identifiers that used to end this line are the criteria
+                      below it, in sentences (UI cleanup 2026-09-22, UX-21). */}
+                  <p className="ls-finding__record">
+                    <strong>{record.populationRecordKey}</strong> on {record.targetSystem}
                   </p>
-                  <UntrustedList field="control fields reported by the Target System" values={Object.entries(record.fields).map(([name, value]) => `${name}: ${JSON.stringify(value)}`)} />
-                  <UntrustedList field="evaluation diagnostic" values={record.diagnostics} />
+                  {record.conditionIds.map((conditionId) => (
+                    <Criterion
+                      key={conditionId}
+                      conditionId={conditionId}
+                      text={conditionText(conditionId)}
+                      templateId={templateId}
+                    />
+                  ))}
+                  {/* ONE policy sentence over the whole untrusted set for this record, not
+                      one under each block (UX-27). Each block keeps its own source label. */}
+                  <UntrustedRegion>
+                    <UntrustedList
+                      policy={false}
+                      field="control fields reported by the Target System"
+                      values={Object.entries(record.fields).map(([name, value]) => `${name}: ${JSON.stringify(value)}`)}
+                    />
+                    <UntrustedList policy={false} field="evaluation diagnostic" values={record.diagnostics} />
+                  </UntrustedRegion>
+                  <p className="ls-finding__links">
+                    <a href={`/runs/${runId}/evidence`}>{EXCEPTION_WORDS.openEvidence}</a>
+                    {list.key === 'exceptions' ? (
+                      <>
+                        {' · '}
+                        <a href={`/runs/${runId}/exceptions`}>Open this finding</a>
+                      </>
+                    ) : null}
+                  </p>
                 </li>
               ))}
             </ul>
           )}
           {list.findings.total > list.findings.records.length ? (
             <p>
-              {countText(list.findings.total - list.findings.records.length)} more are counted but
-              not listed; the Result names a bounded sample beside the exact total.
+              {countNoun(list.findings.total - list.findings.records.length, 'further record')} not
+              listed here; the Result names a bounded sample beside the exact total.
             </p>
           ) : null}
         </div>

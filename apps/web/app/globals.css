@@ -2579,6 +2579,68 @@ a {
    UI cleanup — package 5: findings, evidence, Replay and Live View.
    (Rules are added here by package 5 and nowhere else.) */
 
+/* A status badge says a WORD; the line under it says what that word is about, so
+   evidence validity, control compliance and a person's review are never read as one
+   thing (UX-18). Secondary rather than muted: these sit on `surface-card`, and muted is
+   4.39:1 on the sunken surfaces some of them inherit. */
+.ls-triptych__meaning,
+.ls-gate__meaning {
+  margin: 0;
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+  color: var(--color-text-secondary);
+  max-width: 44ch;
+}
+
+/* One criterion, as a sentence. The compiled rule text below it stays inert and
+   monospace, because it is the platform's grammar and not prose. */
+.ls-criterion {
+  gap: var(--spacing-2);
+}
+
+.ls-criterion__sentence {
+  margin: 0;
+  max-width: 76ch;
+}
+
+.ls-criterion__text {
+  margin: 0;
+  padding: var(--spacing-2) var(--spacing-3);
+  background: var(--color-surface-sunken);
+  border-radius: var(--rounded-sm);
+  font-family: var(--type-mono-font-family);
+  font-size: var(--type-body-sm-font-size);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* A finding leads with the record a reader recognises, and ends with the two links
+   EXPERIENCE.md asks every finding to carry. */
+.ls-finding__record {
+  margin: 0;
+}
+
+.ls-finding__links {
+  margin: 0;
+  font-size: var(--type-body-sm-font-size);
+}
+
+/* The untrusted policy sentence, said ONCE above a set of blocks rather than under each
+   field (UX-27). The region has no border of its own: each block already carries the
+   warning treatment, and a second frame around them would read as a third warning. */
+.ls-untrusted-region {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.ls-untrusted-region__policy {
+  margin: 0;
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+  color: var(--color-text-secondary);
+}
+
 
 
 /* ---------------------------------------------------------------------------
