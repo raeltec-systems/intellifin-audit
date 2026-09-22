@@ -24,7 +24,8 @@ describe('read-only executable plan preview', () => {
     const recovery = (draft: ProcedureVersionView) => renderToStaticMarkup(React.createElement(RetryPlanDerivation, { draft, rowVersion: 'row', onRetry: async () => ({ ok: true as const, rowVersion: 'next' }) }));
     expect(recovery(view())).toBe('');
     expect(recovery({ ...view(), planStatus: 'failed', state: 'ACTIVE' })).toBe('');
-    expect(recovery({ ...view(), planStatus: 'failed' })).toContain('Retry plan derivation');
+    // UX-16 (2026-09-22): the recovery is said as preparing the test plan again.
+    expect(recovery({ ...view(), planStatus: 'failed' })).toContain('Try preparing the test plan again');
     expect(render({ ...view(), planStatus: 'failed' })).not.toContain('<button');
   });
   it('keeps the displayed plan’s successful provenance after later failed or unrelated attempts', () => {

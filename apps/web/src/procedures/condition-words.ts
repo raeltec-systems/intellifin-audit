@@ -67,3 +67,17 @@ export function conditionSentence(
 /** What a surface says beside a condition it cannot put into a sentence. */
 export const CONDITION_NOT_IN_WORDS =
   'This criterion is written in the platform’s rule language and is shown as it was approved.';
+
+/**
+ * `C2` → `Condition 2` (UX-13, UX-15).
+ *
+ * A condition id is a stable identifier the compiler freezes; a reader meets it as the
+ * number of a condition. Derived from the id itself rather than a list position, so the
+ * criteria step, the readiness panel and any later surface call one condition by one name
+ * even when a Draft's conditions are C1 and C3. An id outside the `C<n>` shape is quoted
+ * as it was saved rather than renumbered.
+ */
+export function conditionLabel(conditionId: string): string {
+  const numbered = /^C(\d+)$/u.exec(conditionId);
+  return numbered === null ? `Condition “${conditionId}”` : `Condition ${Number(numbered[1])}`;
+}
