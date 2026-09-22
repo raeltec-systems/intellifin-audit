@@ -2625,6 +2625,47 @@ a {
   font-size: var(--type-body-sm-font-size);
 }
 
+/* A finding is headed by the record a reader recognises, with the state badge on the
+   same row (UX-21). The system name is secondary: it is identical on every finding of a
+   Run, so it must not compete with the one value that is not. */
+.ls-exception__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+}
+
+.ls-exception__record {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ls-exception__system {
+  font-size: var(--type-body-sm-font-size);
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+/* Expected against observed, side by side where there is room and stacked where there is
+   not: the comparison is the point, so the two cells share one row above 720px. */
+.ls-exception__compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-3);
+}
+
+@media (max-width: 719px) {
+  .ls-exception__compare {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ls-exception__links {
+  margin: 0;
+  font-size: var(--type-body-sm-font-size);
+}
+
 /* The untrusted policy sentence, said ONCE above a set of blocks rather than under each
    field (UX-27). The region has no border of its own: each block already carries the
    warning treatment, and a second frame around them would read as a third warning. */

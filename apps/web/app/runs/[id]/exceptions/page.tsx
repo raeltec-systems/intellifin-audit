@@ -6,9 +6,9 @@ import { DrizzleProcedureRepository, DrizzleRunDetailRepository } from '@intelli
 import { getRuntime } from '../../../../src/bootstrap';
 import { EmptyState } from '../../../../src/design/EmptyState';
 import { RUN_TAB_EMPTY } from '../../../../src/design/copy';
+import { countNoun } from '../../../../src/design/words';
 import { ExceptionCard } from '../../../../src/runs/ExceptionList';
 import { RunDenied, RunDetailFrame, openRun } from '../../../../src/runs/detail';
-import { countText } from '../../../../src/runs/labels';
 
 export const metadata: Metadata = { title: 'Run · Exceptions · IntelliFin Audit' };
 export const dynamic = 'force-dynamic';
@@ -37,10 +37,15 @@ export default async function RunExceptionsPage({
     detail.readExceptions(run.runId),
     new DrizzleProcedureRepository(runtime.db).findVersion(run.versionId),
   ]);
-  const evaluations = await detail.readEvaluations(
-    run.runId,
-    exceptions.rows.map((row) => row.observationId),
-  );
+  const observationIds = exceptions.rows.map((row) => row.observationId);
+  const [evaluations, observations] = await Promise.all([
+    detail.readEvaluations(run.runId, observationIds),
+    // The Observations these findings were raised on, by id. The bounded Observation PAGE
+    // is ordered by Target System and record key, so a finding past the fiftieth row would
+    // have no captured value to show — an absence a reader takes for "nothing was wrong".
+    detail.readObservationsByIds(run.runId, observationIds),
+  ]);
+  const observationById = new Map(observations.map((row) => [row.observationId, row]));
 
   const plan = version?.compiledPlan ?? null;
   const conditions = plan?.inputs.complianceConditions ?? [];
@@ -53,6 +58,12 @@ export default async function RunExceptionsPage({
     frozen on the Version's source snapshot — so this is read from the contract the Run
     executed under, never from the binding as it stands today.
   */
+  const templateId = plan?.inputs.templateId ?? null;
+  // The Target System's frozen DISPLAY NAME. `run_exception.target_system` is the
+  // registration id, which is a UUID to a reader (the Work Item label rule, 2026-09-17).
+  const targetSystemName = (registrationId: string): string | null =>
+    plan?.inputs.targets.find((target) => target.registrationId === registrationId)?.displayName ?? null;
+
   const lookupColumn = plan === null ? null : adapterLookupColumn(plan.inputs.templateId);
   const sensitive = plan?.inputs.sourceSnapshot?.contract.sensitive_fields ?? [];
   const masked = lookupColumn !== null && sensitive.includes(lookupColumn);
@@ -69,8 +80,9 @@ export default async function RunExceptionsPage({
         <section className="ls-card ls-stack" aria-labelledby="exceptions-heading">
           <h2 id="exceptions-heading">Exceptions</h2>
           <p>
-            {countText(exceptions.rows.length)} of {countText(exceptions.total)} Exceptions are
-            listed.
+            {exceptions.rows.length === exceptions.total
+              ? `${countNoun(exceptions.total, 'record')} did not meet this control.`
+              : `${countNoun(exceptions.total, 'record')} did not meet this control; the first ${exceptions.rows.length.toLocaleString('en-US')} are listed.`}
           </p>
           <ul className="ls-plain-list">
             {exceptions.rows.map((exception) => (
@@ -78,7 +90,11 @@ export default async function RunExceptionsPage({
                 key={exception.exceptionId}
                 exception={exception}
                 evaluations={evaluations.filter((entry) => entry.observationId === exception.observationId)}
+                observation={observationById.get(exception.observationId) ?? null}
                 conditionText={conditionText}
+                templateId={templateId}
+                targetSystemName={targetSystemName(exception.targetSystem)}
+                runId={run.runId}
                 masked={masked}
               />
             ))}
