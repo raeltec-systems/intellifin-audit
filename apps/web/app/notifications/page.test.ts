@@ -22,7 +22,14 @@ it('identifies distinct notices with version/time, refresh and an older-items li
   const html=renderToStaticMarkup(await NotificationsPage({searchParams:Promise.resolve({})}));
   expect(html).toContain('Access review · v1'); expect(html).toContain('Payment review · v2');
   expect(html).toContain('/procedures/p1/versions/v1');expect(html).toContain('/procedures/p2/versions/v2');
-  expect(html).toContain('2026-09-01T00:00:01.123456Z');expect(html).toContain('2026-09-02T00:00:01.123456Z');
+  // `[REWRITTEN 2026-09-22, UX-02/UX-32]` This asserted the raw ISO instant as VISIBLE
+  // text. The revised Formats row makes that a defect on an ordinary screen, so the page
+  // renders `1 Sep 2026, 00:00 UTC` and keeps the exact value in the `datetime` attribute
+  // — nothing is lost, and a machine can still read it.
+  expect(html).toContain('1 Sep 2026, 00:00 UTC');
+  expect(html).toContain('dateTime="2026-09-01T00:00:01.123Z"');
+  expect(html).toContain('2 Sep 2026, 00:00 UTC');
+  expect(html).not.toContain('>2026-09-01T00:00:01.123456Z<');
   expect(html).toContain('Older notifications'); expect(html).toContain('Refresh notifications');
   expect(delivered).toHaveBeenCalledWith({userId:'signed-in',sessionId:'session'},undefined);
   expect(open).toHaveBeenCalledWith({userId:'signed-in',sessionId:'session'});
@@ -40,9 +47,14 @@ it('links a delivered Escalation to its Run with safe metadata only', async()=>{
     deliveredAt:'2026-09-07T09:00:01.123456Z',
   }],nextCursor:null});
   const html=renderToStaticMarkup(await NotificationsPage({searchParams:Promise.resolve({})}));
-  expect(html).toContain('Access review · waiting for your answer');
+  // The words are the shell's own (`BELL_KIND_WORDS`), so the bell's panel, the inbox
+  // and the Overview's attention list describe one wait one way.
+  expect(html).toContain('Access review · v1 · Waiting for your answer');
   expect(html).toContain('/runs/019823ab-0000-7000-8000-000000000001');
   expect(html).toContain('Time remaining:');
+  // The Run is named by a short reference, never by its own UUID as visible text.
+  expect(html).not.toContain('>019823ab-0000-7000-8000-000000000001<');
+  expect(html).toContain('Run <span class="ls-mono">00000001</span>');
   expect(html).not.toContain('Question');
   expect(html).not.toContain('Evidence');
 });
@@ -57,7 +69,7 @@ it('shows authorized open Escalations with a Run link and safe metadata only', a
   delivered.mockResolvedValue({items:[],nextCursor:null});
   const html=renderToStaticMarkup(await NotificationsPage({searchParams:Promise.resolve({})}));
   expect(html).toContain('Runs that need you');
-  expect(html).toContain('Access review · waiting for your answer');
+  expect(html).toContain('Access review · v1 · Waiting for your answer');
   expect(html).toContain('/runs/019823ab-0000-7000-8000-000000000003');
   expect(html).toContain('Time remaining:');
   expect(html).not.toContain('Question');
@@ -76,8 +88,9 @@ it('shows an open flag with the actor as a name and no countdown', async()=>{
   }]);
   delivered.mockResolvedValue({items:[],nextCursor:null});
   const html=renderToStaticMarkup(await NotificationsPage({searchParams:Promise.resolve({})}));
-  expect(html).toContain('Access review · flagged for an Audit Manager');
-  expect(html).toContain('Flagged by Dana Mwansa at');
+  expect(html).toContain('Access review · v1 · Flagged for an Audit Manager');
+  expect(html).toContain('Flagged by Dana Mwansa');
+  expect(html).toContain('7 Sep 2026, 09:00 UTC');
   expect(html).toContain('/runs/019823ab-0000-7000-8000-000000000005/live');
   // A countdown on something with no deadline would be a fact nobody measured.
   expect(html).not.toContain('Time remaining');
@@ -96,7 +109,7 @@ it('falls back to the actor id when no name resolves', async()=>{
   }]);
   delivered.mockResolvedValue({items:[],nextCursor:null});
   const html=renderToStaticMarkup(await NotificationsPage({searchParams:Promise.resolve({})}));
-  expect(html).toContain('Flagged by user-77 at');
+  expect(html).toContain('Flagged by <span class="ls-mono">user-77</span>');
 });
 
 // `openFor` bounds its merged list with Escalations first, so enough open Escalations push every

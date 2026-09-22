@@ -2562,6 +2562,177 @@ a {
    (Rules are added here by package 2 and nowhere else.) */
 
 
+/* The PoC Administrator's landing: three links and the standing facts, as one readable
+   column rather than a refusal banner. */
+.ls-admin-links,
+.ls-facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-width: 68ch;
+}
+
+.ls-admin-links > li > p,
+.ls-facts > li {
+  margin: 0;
+}
+
+.ls-facts > li {
+  border-left: 2px solid var(--color-border-default);
+  padding-left: var(--spacing-3);
+  max-width: 68ch;
+}
+
+/* The Procedures list's search and filters. A GET form, so it lays out as ordinary
+   controls in a row that wraps rather than as a dialog. */
+.ls-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-md);
+}
+
+.ls-filters__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-width: 14rem;
+  flex: 1 1 14rem;
+}
+
+.ls-filters__field > p {
+  margin: 0;
+}
+
+.ls-filters__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  flex: 0 0 auto;
+}
+
+/* One Procedure per card, short enough that twenty of them are a page somebody reads. */
+.ls-procedure-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ls-procedure-card {
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-md);
+  padding: var(--spacing-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.ls-procedure-card__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin: 0;
+  font-family: var(--type-row-title-font-family);
+  font-size: var(--type-row-title-font-size);
+  font-weight: var(--type-row-title-font-weight);
+  line-height: var(--type-row-title-line-height);
+}
+
+.ls-procedure-card > .ls-caption {
+  margin: 0;
+}
+
+/* The facts as a wrapping grid, so a narrow window stacks them instead of scrolling. */
+.ls-procedure-card__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: var(--spacing-2) var(--spacing-4);
+  margin: var(--spacing-1) 0 0;
+}
+
+.ls-procedure-card__facts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ls-procedure-card__facts dt {
+  font-family: var(--type-overline-font-family);
+  font-size: var(--type-overline-font-size);
+  font-weight: var(--type-overline-font-weight);
+  letter-spacing: var(--type-overline-letter-spacing);
+  line-height: var(--type-overline-line-height);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.ls-procedure-card__facts dd {
+  margin: 0;
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+  overflow-wrap: anywhere;
+}
+
+/* The Runs table's Run cell: the Procedure name on one line, the short reference and the
+   effective period beneath it. Six columns fit at 1280px only if the first one is allowed
+   a sensible width and its detail is allowed to wrap. */
+.ls-run-cell__detail {
+  display: block;
+  font-family: var(--type-caption-font-family);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.ls-table th[scope='row'] {
+  min-width: 16rem;
+}
+
+/* The notification bell's panel, which lists what is waiting rather than one link. */
+.ls-bell-panel__heading {
+  margin: 0 0 var(--spacing-2);
+  font-family: var(--type-sub-title-font-family);
+  font-size: var(--type-sub-title-font-size);
+  font-weight: var(--type-sub-title-font-weight);
+  line-height: var(--type-sub-title-line-height);
+}
+
+.ls-bell-panel__items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  margin: 0 0 var(--spacing-3);
+  padding: 0;
+  list-style: none;
+  max-width: 32rem;
+}
+
+.ls-bell-panel__items > li > p {
+  margin: 2px 0 0;
+}
+
+@media (max-width: 1023px) {
+  /* Stacked rows: the first cell is no longer a column, so it takes the row's width. */
+  .ls-table th[scope='row'] {
+    min-width: 0;
+  }
+}
+
+
 
 /* ---------------------------------------------------------------------------
    UI cleanup — package 3: procedure authoring.

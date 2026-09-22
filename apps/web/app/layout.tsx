@@ -1,8 +1,16 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
-import { DrizzleActorNameReader, DrizzleNotificationRepository } from '@intellifin/infrastructure';
+import { authorizeActionRole } from '@intellifin/domain';
+import {
+  DrizzleActiveRunCounter,
+  DrizzleActorNameReader,
+  DrizzleNotificationRepository,
+} from '@intellifin/infrastructure';
 
+import type { SidebarCounts } from '../src/design/Sidebar';
+import { countReviewsAwaiting } from '../src/review/reads';
 import { AppShell } from '../src/shell/AppShell';
+import { BELL_PANEL_LIMIT, bellItems, type BellItem } from '../src/shell/bell-items';
 import { EnvironmentRibbon } from '../src/design/EnvironmentRibbon';
 import { currentIdentity } from '../src/server-session';
 import { getRuntime } from '../src/bootstrap';
@@ -50,6 +58,13 @@ export default async function RootLayout({
   const identity = await currentIdentity();
   let unreadNotifications: number | undefined;
   let signedIn: { userId: string; names: ReadonlyMap<string, string> } | undefined;
+  // EXPERIENCE.md → Information Architecture puts a count of ACTIVE Runs on the Runs item
+  // and one of items awaiting review on Reviews, and nothing had ever supplied either.
+  // An UNREADABLE count stays absent rather than becoming zero: the sidebar shows no
+  // number at all until it knows one, and a fabricated `0` beside Reviews would say every
+  // decision has been taken.
+  let counts: SidebarCounts | undefined;
+  let openNotifications: readonly BellItem[] | undefined;
   if (identity.kind === 'identified') {
     const runtime = await getRuntime();
     // The id alone is what the session carries — an address cannot enter the audit chain
@@ -67,12 +82,44 @@ export default async function RootLayout({
       // records is one nobody can act on.
       runtime.telemetry.captureError('Signed-in name could not be read', error, { outcome: 'failure' });
     }
+    // The Runs count is what the Runs REGISTER lists, so it is read only for a role that
+    // register admits: a number on a nav item has to be the number of rows the item leads
+    // to, or the item lies about where it goes.
+    let activeRuns: number | undefined;
+    if (identity.role !== null && authorizeActionRole(identity.role, 'run.initiate').allowed) {
+      try {
+        activeRuns = await new DrizzleActiveRunCounter(runtime.db).countActiveRuns();
+      } catch (error) {
+        runtime.telemetry.captureError('Notification count could not be read', error, { outcome: 'failure' });
+      }
+    }
+    counts = {
+      runs: activeRuns,
+      review:
+        identity.role === null
+          ? undefined
+          : await countReviewsAwaiting(identity.session, identity.role),
+    };
+    const notifications = new DrizzleNotificationRepository(runtime.db);
     try {
-      unreadNotifications = await new DrizzleNotificationRepository(runtime.db).countOpenFor(identity.session);
+      unreadNotifications = await notifications.countOpenFor(identity.session);
     } catch {
       // A missing count is not zero, and a notification read failure must not remove
       // the auditor's shell or imply that no Run needs attention.
       runtime.telemetry.captureError('Notification count could not be read', new Error('notification-count-query-failed'), { outcome: 'failure' });
+    }
+    // The panel's own rows (UX-32). Read separately from the count, and worded here: the
+    // bell stays a component that renders what somebody else counted and worded. A failed
+    // read leaves the panel with its "Open notifications" link and no invented rows.
+    try {
+      const readAt = new Date();
+      const open = await notifications.openFor(identity.session, BELL_PANEL_LIMIT);
+      const actors = await new DrizzleActorNameReader(runtime.db).namesFor(
+        open.flatMap((item) => (item.kind === 'flag' ? [item.flaggedBy] : [])),
+      );
+      openNotifications = bellItems(open, actors, readAt);
+    } catch (error) {
+      runtime.telemetry.captureError('Notification count could not be read', error, { outcome: 'failure' });
     }
   }
 
@@ -85,7 +132,13 @@ export default async function RootLayout({
             {children}
           </>
         ) : (
-          <AppShell role={identity.kind === 'identified' ? identity.role : null} signedIn={signedIn} unreadNotifications={unreadNotifications}>
+          <AppShell
+            role={identity.kind === 'identified' ? identity.role : null}
+            signedIn={signedIn}
+            counts={counts}
+            unreadNotifications={unreadNotifications}
+            openNotifications={openNotifications}
+          >
             {children}
           </AppShell>
         )}

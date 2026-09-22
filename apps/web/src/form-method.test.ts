@@ -101,6 +101,29 @@ export function declaresPostMethod(tag: string): boolean {
   return /\bmethod\s*=\s*(["'])post\1/i.test(tag);
 }
 
+/**
+ * The ONE exception, and it is declared in the markup rather than kept in a list here
+ * (UI cleanup 2026-09-22, UX-03).
+ *
+ * A search-and-filter form MUTATES NOTHING, so the reason this whole rule exists — a
+ * submission that beats hydration putting a typed value in the URL — is not a defect
+ * there: putting the filter in the URL is the point. It is what makes the filtered list
+ * bookmarkable, restorable by the browser's back button, and usable with no JavaScript at
+ * all, which is the standing rule for every control in this product.
+ *
+ * A path allowlist would exempt whatever a later story puts in those files. A MARKER on
+ * the tag exempts exactly the form that carries it, and the form has to claim it: a
+ * `<form method="get">` with no marker still fails, which is the case the guard's own
+ * tests below pin. The marker is also visible in the rendered DOM, so a browser test can
+ * assert that a form claiming it really does send nothing.
+ */
+export function declaresReadOnlyFilter(tag: string): boolean {
+  return (
+    /\bmethod\s*=\s*(["'])get\1/i.test(tag) &&
+    /\bdata-readonly-filter\s*=\s*(["'])true\1/i.test(tag)
+  );
+}
+
 describe('every form declares method="post"', () => {
   const files = sourceFiles(WEB_ROOT).filter((path) => !path.includes('.test.'));
 
@@ -117,8 +140,8 @@ describe('every form declares method="post"', () => {
   it.each(files)('%s', (path) => {
     for (const tag of formTags(readFileSync(path, 'utf8'))) {
       expect(
-        declaresPostMethod(tag),
-        `${path}: a form must declare method="post" — with no method, or with "get", a submission that beats hydration puts every field in the URL. Tag: ${tag.slice(0, 160)}`,
+        declaresPostMethod(tag) || declaresReadOnlyFilter(tag),
+        `${path}: a form must declare method="post" — with no method, or with "get", a submission that beats hydration puts every field in the URL. A search-and-filter form that mutates nothing may declare method="get" only with data-readonly-filter="true". Tag: ${tag.slice(0, 160)}`,
       ).toBe(true);
     }
   });
@@ -141,6 +164,21 @@ describe('the guard itself', () => {
     const tags = formTags('<form method="get" action="/x">');
     expect(tags).toHaveLength(1);
     expect(declaresPostMethod(tags[0] as string)).toBe(false);
+    // And the exception does not rescue it: an unmarked GET form is still refused.
+    expect(declaresReadOnlyFilter(tags[0] as string)).toBe(false);
+  });
+
+  it('admits a GET form only when it declares itself a read-only filter', () => {
+    const marked = formTags('<form method="get" action="/procedures" data-readonly-filter="true">');
+    expect(declaresReadOnlyFilter(marked[0] as string)).toBe(true);
+    // The marker alone is not the exception: a POST-less, GET-less form still fails, and a
+    // form that carries the marker while posting is judged by the POST rule.
+    expect(declaresReadOnlyFilter(formTags('<form data-readonly-filter="true">')[0] as string)).toBe(false);
+    expect(
+      declaresReadOnlyFilter(
+        formTags('<form method="post" data-readonly-filter="true">')[0] as string,
+      ),
+    ).toBe(false);
   });
 
   it('reads the whole tag when an arrow function precedes the method', () => {

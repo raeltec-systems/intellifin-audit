@@ -4,6 +4,14 @@ import { useEffect, useId, useRef, useState } from 'react';
 
 import Link from 'next/link';
 import { Icon } from '../design/Icon';
+import {
+  BELL_EMPTY,
+  BELL_HEADING,
+  BELL_OPEN_ALL,
+  BELL_TIME_REMAINING,
+  bellBounded,
+  type BellItem,
+} from './bell-items';
 
 interface NotificationBellProps {
   /**
@@ -12,6 +20,11 @@ interface NotificationBellProps {
    * EXPERIENCE.md forbids showing a count before it is known.
    */
   readonly unread?: number | undefined;
+  /**
+   * The open items themselves, already worded on the server (UI cleanup 2026-09-22,
+   * UX-32). Bounded; `unread` is the exact number and may be larger.
+   */
+  readonly items?: readonly BellItem[];
 }
 
 /**
@@ -29,8 +42,9 @@ interface NotificationBellProps {
  * must put focus back on the bell when Escape closes it, or the keyboard user is left
  * on a control that has just been removed.
  */
-export function NotificationBell({ unread }: NotificationBellProps): React.JSX.Element {
+export function NotificationBell({ unread, items = [] }: NotificationBellProps): React.JSX.Element {
   const panelId = useId();
+  const headingId = `${panelId}-heading`;
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -86,9 +100,48 @@ export function NotificationBell({ unread }: NotificationBellProps): React.JSX.E
           </span>
         )}
       </button>
-      <div className="ls-bell-panel" id={panelId} hidden={!open}>
+      {/*
+        The panel LISTS what is waiting. Its last link is still "Open notifications", by
+        that exact name, because two browser suites reach the Notifications surface
+        through it — and because a panel that showed five of twelve has to offer the page
+        that shows the rest.
+      */}
+      <div
+        className="ls-bell-panel"
+        id={panelId}
+        hidden={!open}
+        role="group"
+        aria-labelledby={headingId}
+      >
         {open ? (
-          <Link href="/notifications" onClick={() => setOpen(false)}>Open notifications</Link>
+          <>
+            <p className="ls-bell-panel__heading" id={headingId}>
+              {BELL_HEADING}
+            </p>
+            {items.length === 0 ? (
+              <p className="ls-caption">{BELL_EMPTY}</p>
+            ) : (
+              <ul className="ls-bell-panel__items">
+                {items.map((item) => (
+                  <li key={item.key}>
+                    <Link href={item.href} onClick={() => setOpen(false)}>
+                      {item.title} · {item.kind}
+                    </Link>
+                    <p className="ls-caption">{item.detail}</p>
+                    {item.remaining === null ? null : (
+                      <p className="ls-caption">
+                        {BELL_TIME_REMAINING} {item.remaining}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {count !== null && count > items.length ? (
+              <p className="ls-caption">{bellBounded(items.length, count)}</p>
+            ) : null}
+            <Link href="/notifications" onClick={() => setOpen(false)}>{BELL_OPEN_ALL}</Link>
+          </>
         ) : null}
       </div>
     </div>

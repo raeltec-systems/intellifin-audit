@@ -7,6 +7,8 @@ import type { RunListRow, RunStopFacts } from '@intellifin/infrastructure';
 
 import { RunsPagination, RunsTable, RunsTableSkeleton } from './RunsTable';
 import { FRESHNESS_ADVICE } from './stop-reason';
+import { RUNS_COLUMNS, RUNS_COLUMN_ORDER } from './runs-list-words';
+import { STATUS_COLUMN_WORDS } from '../design/status-words';
 
 /**
  * The Runs table's projection of the read model onto EXPERIENCE.md's ten columns.
@@ -68,21 +70,46 @@ const STALE_SNAPSHOT: RunStopFacts = {
 };
 
 describe('the Runs table', () => {
-  it("shows the contract's ten columns, in the contract's order", () => {
+  it("shows the contract's revised six columns, in the contract's order", () => {
+    // `[REWRITTEN 2026-09-22, UX-17]` This asserted the OLD ten. EXPERIENCE.md's Data
+    // tables row now reads "Runs: Run (the Procedure name, with the short reference and
+    // the effective period beneath it) · Execution · Assessment · Evidence checks ·
+    // Started (by whom, when, and elapsed) · Change", so the ten were the defect this
+    // test would otherwise pin: at a laptop's width they scrolled the whole page sideways.
     const html = render([row()]);
     const headers = [...html.matchAll(/<th scope="col"[^>]*>([^<]*)</g)].map((match) => match[1]);
-    expect(headers).toEqual([
-      'Run',
-      'Procedure',
-      'Effective period',
-      'Lifecycle',
-      'Result outcome',
-      'Gate',
-      'Review',
-      'Initiator',
-      'Elapsed',
-      'Change',
-    ]);
+    expect(headers).toEqual(RUNS_COLUMN_ORDER.map((key) => RUNS_COLUMNS[key]));
+    expect(headers).toEqual(['Run', 'Execution', 'Assessment', 'Evidence checks', 'Started', 'Change']);
+    // The three status questions are the shared words, so the three families can never be
+    // read as one thing.
+    expect(headers).toContain(STATUS_COLUMN_WORDS.execution);
+    expect(headers).toContain(STATUS_COLUMN_WORDS.assessment);
+    expect(headers).toContain(STATUS_COLUMN_WORDS.evidenceChecks);
+  });
+
+  it('names the row by its Procedure, with the short reference and the period beneath it', () => {
+    // UX-17 and UX-02: the first cell used to be the Run's own UUID — thirty-six
+    // characters a reader cannot compare by eye, in the cell that should say what the Run
+    // was about. Proven by mutation: put `row.runId` back as the label and this fails.
+    const html = render([row()]);
+    const header = /<th scope="row"[\s\S]*?<\/th>/.exec(html)![0];
+    expect(header).toContain('>Terminated Users Retaining Access<');
+    expect(header).not.toContain('>019823ab-0000-7000-8000-000000000001<');
+    expect(header).not.toContain('ls-identifier');
+    // The short reference is the LAST eight characters: a UUIDv7 begins with its
+    // timestamp, so two Runs of one minute share their first eight.
+    expect(header).toContain('Run <span class="ls-mono">00000001</span>');
+    // And the effective period, readable rather than in the machine spelling.
+    expect(header).toContain('1–31 Aug 2026');
+    expect(header).not.toContain('2026-08-01 → 2026-08-31');
+  });
+
+  it('says in its caption that the Review column is absent until a Result can be reviewed', () => {
+    // A column silently removed is a reader wondering where it went. The caption is read
+    // by assistive technology before the rows.
+    const html = render([row()]);
+    expect(html).toContain('A Review column joins this table when a Result can be sent for review');
+    expect(html).not.toContain('No Auditor Review has started.');
   });
 
   it('makes the Run cell the row header and the row\'s only link', () => {
@@ -90,6 +117,13 @@ describe('the Runs table', () => {
     expect(html).toContain('<th scope="row"');
     const links = [...html.matchAll(/<a [^>]*href="([^"]*)"/g)].map((match) => match[1]);
     expect(links).toEqual(['/runs/019823ab-0000-7000-8000-000000000001']);
+  });
+
+  it('says a Run still going has taken that long SO FAR', () => {
+    // "took 1h 0m 0s" about a Run that has not finished would state an elapsed time as a
+    // duration, which is a different fact.
+    expect(render([row({ endedAt: null, state: 'RUNNING' })])).toContain('so far');
+    expect(render([row()])).not.toContain('so far');
   });
 
   it('renders every badge with a word, never colour alone', () => {
@@ -113,14 +147,6 @@ describe('the Runs table', () => {
     expect(html).toContain('No conclusion issued');
     expect(html).toContain('Not evaluated');
     expect(html).not.toContain('Passed');
-  });
-
-  it('marks the Review cell absent in words, because Epic 3 creates no review', () => {
-    const html = render([row()]);
-    // The em dash is decorative; the sentence beside it is what a screen reader hears.
-    expect(html).toContain('—');
-    expect(html).toContain('No Auditor Review has started.');
-    expect(html).not.toContain('>Draft<');
   });
 
   it('measures Elapsed to the sealed Result, and to the read time while running', () => {
@@ -160,15 +186,12 @@ describe('the Runs table', () => {
     expect(unnamed).toContain('<span class="ls-mono">auditor-1</span>');
   });
 
-  it('wraps the Run id only at its hyphens, and keeps the period on one line', () => {
+  it('says when a Run started, readably, with the exact instant still in the markup', () => {
+    // The Started cell is one event: who, when, and how long. The instant goes through
+    // `Timestamp`, so a browser test and a screen reader can still read the exact value.
     const html = render([row()]);
-    // Four hyphens, four break opportunities, inside the row header's link and nowhere
-    // else — a hyphen followed by a digit is not one on its own in any browser.
-    const header = /<th scope="row"[\s\S]*?<\/th>/.exec(html)![0];
-    expect(header.match(/<wbr\/>/g) ?? []).toHaveLength(4);
-    expect(header).toContain('class="ls-identifier"');
-    expect(header).toContain('019823ab-<wbr/>0000-<wbr/>7000-<wbr/>8000-<wbr/>000000000001');
-    expect(html).toContain('<span class="ls-mono ls-nowrap">2026-08-01 → 2026-08-31</span>');
+    expect(html).toContain('6 Sep 2026, 09:00 UTC');
+    expect(html).toContain('dateTime="2026-09-06T09:00:00.000Z"');
   });
 
   it('refuses to present an empty list as anything but an empty list', () => {
