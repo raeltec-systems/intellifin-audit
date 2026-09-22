@@ -4,6 +4,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { BUILDER_CONTROL_NAME_EDITABLE_SENTENCE, BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE, PROCEDURE_CARD_ABSENT, DECLARED_COUNT_MISSING_SENTENCE, MANUAL_UPLOAD_SENTENCE } from '../../apps/web/src/design/copy';
 import { NEXT_RUN_MANUAL, NO_RUN_YET } from '../../apps/web/src/procedures/last-run-words';
 import { DESKTOP_DEFAULT_LEFT_OUT, TARGET_SELECTION_MISSING, targetCoverageMissing } from '../../apps/web/src/procedures/labels';
+import { CARD_ACTIVE_VERSION } from '../../apps/web/src/procedures/list/procedures-list-words';
 
 import { DENIAL_REASONS, COMPLIANCE_MESSAGES, POPULATION_DRAFT_MESSAGES, bindingDigest, registrationDigest } from '@intellifin/domain';
 
@@ -945,22 +946,36 @@ test.describe('as an Auditor', () => {
     expect(objectives.size).toBe(4);
   });
 
-  test('the card states all four cells in words, never a dash', async ({ page }) => {
+  // `[REWRITTEN 2026-09-22, UI cleanup UX-03/UX-04]` The card used to be four `<dl>` cells
+  // and repeated `NEXT_RUN_MANUAL` on every row; it is one compact line of five facts now,
+  // and the list says `NEXT_RUN_MANUAL` ONCE, above every card, instead. A blanket
+  // `not.toContainText('Draft')` also stopped being the right check the moment a "Newest
+  // version" cell was added beside "Active version": the newest version of a fresh
+  // Procedure genuinely IS a Draft, so the assertion that must hold is scoped to the
+  // Active-version cell alone, never to the card as a whole.
+  test('the card states its five facts in words, never a dash, and Draft never rides Active version', async ({
+    page,
+  }) => {
     await page.goto('/procedures');
+    // Said once for the whole list (UX-04), not per card any more.
+    await expect(page.getByText(NEXT_RUN_MANUAL)).toBeVisible();
     const card = page
       .locator('.ls-card')
       .filter({ hasText: nameFor('P-1') })
       .first();
     await expect(card).toBeVisible();
-    // "Active version: Draft" would be worse than the dash the rule forbids: it states
-    // a fact that is not true. Nothing this story writes is ever ACTIVE.
-    await expect(card).toContainText(PROCEDURE_CARD_ABSENT.activeVersion);
-    await expect(card).not.toContainText('Draft');
+    await expect(card).not.toContainText(NEXT_RUN_MANUAL);
+    // "Active version: Draft" would be worse than the dash the rule forbids: it states a
+    // fact that is not true. Nothing this test creates is ever ACTIVE, so this ONE cell —
+    // and only this cell — must never say Draft.
+    const activeVersionCell = card
+      .locator('.ls-procedure-card__facts > div')
+      .filter({ has: page.locator('dt', { hasText: CARD_ACTIVE_VERSION }) });
+    await expect(activeVersionCell.locator('dd')).toHaveText(PROCEDURE_CARD_ABSENT.activeVersion);
     await expect(card).toContainText(PROCEDURE_CARD_ABSENT.schedule);
-    // Next Run and Last outcome are no longer absent sentences (owner finding RUN-05):
-    // there is no scheduler, so the future cell says who starts a Run, and the history
-    // cell distinguishes "nothing has run" from "a Run concluded nothing".
-    await expect(card).toContainText(NEXT_RUN_MANUAL);
+    // The newest version's own state is a SECOND, honest fact beside it — this is what
+    // stops "show me my drafts" and "Active version" being read as one question again.
+    await expect(card).toContainText('Draft');
     await expect(card).toContainText(NO_RUN_YET);
     // The Control name and Template identity are on the card (UX-DR7).
     await expect(card).toContainText(nameFor('P-1'));

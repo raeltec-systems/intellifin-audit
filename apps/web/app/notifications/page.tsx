@@ -15,6 +15,7 @@ import { EMPTY_STATES, NOTIFICATIONS_BOUNDED } from '../../src/design/copy';
 import { EmptyState } from '../../src/design/EmptyState';
 import { PageHeader } from '../../src/design/PageHeader';
 import { Reference } from '../../src/design/Reference';
+import { TechnicalDetails } from '../../src/design/TechnicalDetails';
 import { Timestamp } from '../../src/design/Timestamp';
 import { escalationQuestion, TIME_REMAINING } from '../../src/overview/overview-words';
 import { ActorName } from '../../src/runs/ActorName';
@@ -53,7 +54,18 @@ const INVALID_CURSOR =
   'That older-notifications link is invalid. Showing the latest delivered items.';
 const NO_DELIVERED_ON_PAGE =
   'No delivered notification on this page. A new one may take a moment to appear. Refresh to check.';
-const VERSION_DECISION_LINK = 'Open the version review';
+const VERSION_DECISION_LINK = 'Open version review';
+/**
+ * What a delivered version-decision row is called.
+ *
+ * `Procedure Version {kind}` is unchanged: three browser journeys reach the version review
+ * through a link of that name, and renaming it would make each of them resolve to nothing
+ * — the "a renamed surface leaves a `getByRole` that resolves to NOTHING, and nothing
+ * fails" defect this codebase has already paid for once.
+ */
+const VERSION_DECISION = 'Procedure Version';
+/** The identifier a person does not need, where the contract puts it. */
+const RUN_IDENTIFIER = 'Run identifier';
 
 function escalationItem(
   notification: Pick<
@@ -78,6 +90,9 @@ function escalationItem(
       <p className="ls-caption">
         {TIME_REMAINING} {formatNotificationTimeRemaining(notification.deadline, readAt)}
       </p>
+      {/* Nothing is deleted, only moved: EXPERIENCE.md's rule is "move implementation
+          detail into deliberate technical views instead of deleting useful provenance". */}
+      <TechnicalDetails items={[{ label: RUN_IDENTIFIER, value: notification.runId, mono: true }]} />
     </>
   );
 }
@@ -105,6 +120,7 @@ function flagItem(
         {BELL_FLAGGED_BY} <ActorName id={notification.flaggedBy} names={names} /> ·{' '}
         <Timestamp value={notification.flaggedAt} precision="minute" />
       </p>
+      <TechnicalDetails items={[{ label: RUN_IDENTIFIER, value: notification.runId, mono: true }]} />
     </>
   );
 }
@@ -123,12 +139,15 @@ function deliveredItem(notification: DeliveredNotification, readAt: Date): React
   if (notification.kind === 'escalation') return escalationItem(notification, readAt);
   if (notification.kind === 'flag') {
     return (
-      <p>
-        <Link href={`/runs/${notification.runId}/live`}>
-          {notification.procedureName} · v{notification.versionNumber} · {BELL_KIND_WORDS.flag}
-        </Link>{' '}
-        <Reference kind="Run" value={notification.runId} />
-      </p>
+      <>
+        <p>
+          <Link href={`/runs/${notification.runId}/live`}>
+            {notification.procedureName} · v{notification.versionNumber} · {BELL_KIND_WORDS.flag}
+          </Link>{' '}
+          <Reference kind="Run" value={notification.runId} />
+        </p>
+        <TechnicalDetails items={[{ label: RUN_IDENTIFIER, value: notification.runId, mono: true }]} />
+      </>
     );
   }
   // A version decision: approved, rejected, or sent for review. The stored kind is the
@@ -136,8 +155,8 @@ function deliveredItem(notification: DeliveredNotification, readAt: Date): React
   return (
     <p>
       <Link href={`/procedures/${notification.procedureId}/versions/${notification.versionId}`}>
-        {notification.procedureName} · v{notification.versionNumber} · {notification.kind} ·{' '}
-        {VERSION_DECISION_LINK}
+        {VERSION_DECISION} {notification.kind} · {notification.procedureName} · v
+        {notification.versionNumber} · {VERSION_DECISION_LINK}
       </Link>
     </p>
   );

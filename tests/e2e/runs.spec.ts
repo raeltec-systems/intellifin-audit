@@ -225,6 +225,38 @@ test.describe('Run initiation as an Auditor', () => {
     expect(accessibility.violations.map(v => ({ id: v.id, impact: v.impact, help: v.help }))).toEqual([]);
   });
 
+  // `[ADDED 2026-09-22, UI cleanup UX-17]` Ten columns and a raw UUID as the row's own name
+  // scrolled the WHOLE PAGE sideways at a laptop's width — the one thing EXPERIENCE.md's
+  // responsive rules forbid. The revised six columns must fit at both sizes the owner's
+  // walkthrough was taken at, and the Procedure name — the row's one link — must stay a
+  // readable column rather than collapsing into a strip of one-word lines.
+  test('the Runs table fits at 1366×768 and 1280×720 with no page scroll, and the Run cell stays readable', async ({
+    page,
+  }) => {
+    const runId = ids.next();
+    // A genuinely wide row: a long Procedure name, a badge, a reason sentence and advice —
+    // exactly the row that scrolled the page before the repair.
+    await stoppedAtAcquisition(runId, { from: '2026-09-01', to: '2026-09-15' }, '2026-09-01T00:00:00Z');
+    for (const size of [{ width: 1366, height: 768 }, { width: 1280, height: 720 }]) {
+      await page.setViewportSize(size);
+      await page.goto('/runs');
+      const link = page.getByRole('link', { name: runId, exact: true });
+      await expect(link).toBeVisible();
+      // The contract's own rule: no list or table scrolls the whole page sideways.
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      );
+      expect(overflow, `page scrolled sideways by ${overflow}px at ${size.width}×${size.height}`).toBeLessThanOrEqual(0);
+      // The row header's own min-width (`.ls-table th[scope='row']`, 16rem) is what stops
+      // the Procedure name wrapping one word per line; a column collapsed to the link's
+      // own glyph width would fail this long before it failed a scroll check.
+      const cell = page.locator("th[scope='row']").filter({ has: link });
+      const box = await cell.boundingBox();
+      expect(box, 'the Run cell must have a measurable box').not.toBeNull();
+      expect(box!.width).toBeGreaterThanOrEqual(200);
+    }
+  });
+
   test('the Overview and the Procedure card say what the Runs register says', async ({ page }) => {
     // Owner findings RUN-04 and RUN-05. The Overview rendered its two empty states
     // UNCONDITIONALLY — "Nothing needs attention", "none is Inconclusive or Run Failed",
@@ -253,10 +285,13 @@ test.describe('Run initiation as an Auditor', () => {
     expect(accessibility.violations.map(v => ({ id: v.id, impact: v.impact, help: v.help }))).toEqual([]);
 
     await page.goto('/procedures');
+    // `[REWRITTEN 2026-09-22, UX-04]` The card no longer repeats `NEXT_RUN_MANUAL` on every
+    // row; the list says it ONCE, above every card, and the card itself names the PLANNED
+    // frequency or that none is set — a different fact from "nothing schedules a Run".
+    await expect(page.getByText(NEXT_RUN_MANUAL)).toBeVisible();
     const card = page.locator('li.ls-card').filter({ hasText: controlName });
     await expect(card).toBeVisible();
-    // The Next Run cell answers a question about the FUTURE, and nothing schedules a Run.
-    await expect(card).toContainText(NEXT_RUN_MANUAL);
+    await expect(card).not.toContainText(NEXT_RUN_MANUAL);
     // A Run that issued no conclusion is not a Procedure that never ran.
     await expect(card).toContainText('No conclusion issued');
     await expect(card).toContainText(FRESHNESS_ADVICE);

@@ -52,9 +52,14 @@ it('links a delivered Escalation to its Run with safe metadata only', async()=>{
   expect(html).toContain('Access review · v1 · Waiting for your answer');
   expect(html).toContain('/runs/019823ab-0000-7000-8000-000000000001');
   expect(html).toContain('Time remaining:');
-  // The Run is named by a short reference, never by its own UUID as visible text.
-  expect(html).not.toContain('>019823ab-0000-7000-8000-000000000001<');
+  // The Run is named by a short reference in the ORDINARY reading — the raw UUID appears
+  // only inside the Technical details disclosure, never loose as visible text beside it.
+  const ordinaryReading = html.split('<details')[0]!;
+  expect(ordinaryReading).not.toContain('>019823ab-0000-7000-8000-000000000001<');
   expect(html).toContain('Run <span class="ls-mono">00000001</span>');
+  expect(html).toContain(
+    '<dt>Run identifier</dt><dd class="ls-mono">019823ab-0000-7000-8000-000000000001</dd>',
+  );
   expect(html).not.toContain('Question');
   expect(html).not.toContain('Evidence');
 });

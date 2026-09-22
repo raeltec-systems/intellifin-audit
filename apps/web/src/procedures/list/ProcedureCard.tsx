@@ -65,7 +65,14 @@ export function ProcedureCard({
   readonly names: ReadonlyMap<string, string>;
 }): React.JSX.Element {
   return (
-    <li className="ls-procedure-card">
+    /* `ls-card` rides alongside the compact treatment on purpose: it is the generic
+       card primitive every other Builder-entry test in `procedures.spec.ts` locates a
+       Procedure by (`page.locator('.ls-card').filter({ hasText: ... })`), written before
+       this list existed. `.ls-procedure-card`'s own rules are declared LATER in
+       `globals.css`, so they win on every property the two share (padding, gap, radius)
+       and this card stays exactly as compact as it would with `ls-card` left off — the
+       token is free precisely because nothing it sets is the last word. */
+    <li className="ls-procedure-card ls-card">
       <p className="ls-procedure-card__title">
         <Link href={`/procedures/${row.procedureId}`}>{row.controlName}</Link>
         {row.activeVersionState === null ? null : (

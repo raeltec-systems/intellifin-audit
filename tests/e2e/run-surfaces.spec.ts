@@ -212,13 +212,15 @@ test.afterAll(async () => {
 test.describe('the Runs list and Run Detail as an Auditor', () => {
   test.use({ storageState: AUTH_STATE.auditor });
 
-  test('lists the ten contract columns, links only the Run cell, and names the read time', async ({ page }) => {
+  test('lists the six contract columns, links only the Run cell, and names the read time', async ({ page }) => {
     await page.goto('/runs');
     const table = page.getByRole('table');
     await expect(table).toBeVisible();
+    // EXPERIENCE.md's revised Data tables row (UI cleanup 2026-09-22, UX-17): Procedure and
+    // Effective period moved INTO the Run cell, Initiator and Elapsed moved into Started,
+    // and Review is gone until a Result can be sent for review.
     const contract = [
-      'Run', 'Procedure', 'Effective period', 'Lifecycle', 'Result outcome', 'Gate',
-      'Review', 'Initiator', 'Elapsed', 'Change',
+      'Run', 'Execution', 'Assessment', 'Evidence checks', 'Started', 'Change',
     ];
     // EXPERIENCE.md: "Sentence case everywhere; column headers uppercase by CSS only."
     // `textContent` is the markup, `innerText` is what the stylesheet renders — so the

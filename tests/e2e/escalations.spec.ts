@@ -183,6 +183,17 @@ async function openFromNotifications(page: Page): Promise<void> {
   const bell = page.getByRole('button', { name: /^Notifications/ });
   await expect(bell).toContainText('unread');
   await bell.click();
+  // `[ADDED 2026-09-22, UX-32]` The popover LISTS what is waiting now — its only action
+  // used to be "Open notifications", which opened a menu that named nothing and sent the
+  // reader elsewhere to find out. The open Escalation seeded above is a real row here,
+  // with its own way onward, before Notifications is ever reached.
+  const panelItem = page
+    .locator('.ls-bell-panel__items li')
+    .filter({ has: page.locator(`a[href="/runs/${runs.answered}"]`) });
+  await expect(panelItem).toHaveCount(1);
+  await expect(panelItem).toContainText(controlName);
+  await expect(panelItem).toContainText('Waiting for your answer');
+  await expect(panelItem).toContainText('Time remaining:');
   await expect(page.getByRole('link', { name: 'Open notifications', exact: true })).toHaveAttribute('href', '/notifications');
   await page.keyboard.press('Escape');
   const open = page.getByRole('region', { name: OPEN_REGION });
