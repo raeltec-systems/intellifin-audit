@@ -229,7 +229,8 @@ test.describe('the Runs list and Run Detail as an Auditor', () => {
     expect(await table.getByRole('columnheader').allInnerTexts()).toEqual(
       contract.map((header) => header.toUpperCase()),
     );
-    const row = table.getByRole('row').filter({ has: page.getByRole('rowheader').getByText(runs.completed) });
+    // The row header names the Procedure now (UX-17), so the row is found by its link.
+    const row = table.getByRole('row').filter({ has: page.getByRole('rowheader').locator(`a[href="/runs/${runs.completed}"]`) });
     await expect(row).toHaveCount(1);
     // The Run cell is the row's ONLY link: no row-level click handler can exist, because
     // `DataTable` has no prop for one.
