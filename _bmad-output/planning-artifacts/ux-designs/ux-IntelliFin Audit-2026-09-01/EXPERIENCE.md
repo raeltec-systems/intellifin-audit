@@ -134,7 +134,7 @@ Behavioral. Visual specs live in `DESIGN.md.Components`.
 | Procedure Detail | Submitted | Approval pending banner naming who can approve; author sees "You cannot approve a version you authored." |
 | Procedure Detail | Rejected version | Rejected badge with the reviewer's rationale inline; "Edit" returns it to Draft and says so. |
 | Procedure Detail | Platform-authored draft | Draft badge with "Created by the platform after a {model / prompt / tool / registration} change; requires approval"; Schedule of the Active version continues until approval (FR-14). |
-| Version review | First version | Diff against nothing: every section shown expanded; Approve enabled for a non-author Audit Manager. |
+| Version review | First version | "First version: nothing to compare." No section is marked changed; the decision summary leads and the stored sections stay under Technical details, closed. Approve enabled for a non-author Audit Manager. |
 | Version review | Rejected | Reject requires rationale; the version shows Rejected and the author is notified. |
 | Version review | Approved, Regression Run pending | Regression Run row inline with its Run link; activation blocked until it passes (FR-15). |
 | Version review | Regression mismatch | Mismatch listed per golden expectation; activation blocked; Schedule of the prior version continues. |
@@ -276,7 +276,7 @@ Failure: the Population Source binding has no declared-count mechanism → Submi
 
 Maya Lindqvist, Audit Manager.
 
-1. Maya opens the notification and lands on Version review: sections with a diff against nothing (first version), the plan, credential references, and Target System kinds.
+1. Maya opens the notification and lands on Version review: a decision summary that says it is a first version with nothing to compare, the plan, credential references, and Target System kinds.
 2. She checks that both credentials are read-only audit accounts and that the Schedule is weekly.
 3. **Climax:** She approves; the version becomes Active (no regression needed on a first version), the Schedule shows the next Run, and Daniel is notified.
 
