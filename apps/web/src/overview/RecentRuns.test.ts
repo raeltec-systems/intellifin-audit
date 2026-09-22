@@ -76,6 +76,14 @@ describe('Recent Runs on the Overview', () => {
     expect(links).toEqual(['/runs/019823ab-0000-7000-8000-000000000001']);
   });
 
+  it('names the Run by its short reference, never by its raw UUID as visible text', () => {
+    // `[ADDED 2026-09-22, UX-02/UX-31]` The link's own text was the 36-character id.
+    const html = render([row()]);
+    expect(html).toMatch(/<a [^>]*href="\/runs\/019823ab-0000-7000-8000-000000000001"[^>]*>Run 00000001<\/a>/);
+    const visible = html.replace(/<[^>]*>/g, ' ');
+    expect(visible).not.toContain('019823ab-0000-7000-8000-000000000001');
+  });
+
   it('says why a stopped Run stopped, under its outcome badge', () => {
     const stopped = row({ state: 'INCONCLUSIVE', outcome: 'INCONCLUSIVE', gateChecks: 0, period: STALE_SNAPSHOT.period });
     const html = render([stopped], { stops: new Map([[stopped.runId, STALE_SNAPSHOT]]) });
