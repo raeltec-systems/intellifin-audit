@@ -96,6 +96,11 @@ export interface EvaluationReviewRead {
   readonly pendingCount: number | null;
   /** Safe durable command state for the exact current review revision. */
   readonly commandStatuses: readonly EvaluationReviewCommandStatus[];
+  /**
+   * The population record each reviewed Observation is about, keyed by Observation id, so a
+   * review row is headed by the record a reader recognises rather than a UUID (UX-21).
+   */
+  readonly recordKeys: Readonly<Record<string, string>>;
 }
 
 /**
@@ -132,6 +137,7 @@ export async function readEvaluationReview(runId: string): Promise<EvaluationRev
     reviewRevision,
     pendingCount,
     commandStatuses,
+    recordKeys: Object.fromEntries(observations.rows.map((row) => [row.observationId, row.populationRecordKey])),
   };
 }
 

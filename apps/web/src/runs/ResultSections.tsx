@@ -13,7 +13,7 @@ import {
   SAFE_NEXT_ACTION_HEADING,
 } from '../design/copy';
 import { Criterion } from './Criterion';
-import { UntrustedList, UntrustedRegion } from './UntrustedText';
+import { UntrustedList, UntrustedPolicy } from './UntrustedText';
 import { countText, evaluationOriginWord, evaluationValueWord, utcStamp } from './labels';
 import { EXCEPTION_WORDS, RESULT_WORDS } from './result-words';
 import { STAGE_WORDS, stopReason } from './stop-reason';
@@ -347,8 +347,11 @@ export function ScopeSection({
 /** Per-Target-System coverage, exactly as the sealed Result reports it. */
 export function CoverageSection({
   publication,
+  systemName = () => null,
 }: {
   readonly publication: RunResultPublication;
+  /** The frozen display name for a registration id; the id itself when the plan has none. */
+  readonly systemName?: (registrationId: string) => string | null;
 }): React.JSX.Element {
   return (
     <section className="ls-card ls-stack" aria-labelledby="coverage-heading">
@@ -359,7 +362,9 @@ export function CoverageSection({
         <ul className="ls-plain-list">
           {publication.coverage.map((entry) => (
             <li key={entry.targetSystem}>
-              <span className="ls-mono">{entry.targetSystem}</span> ·{' '}
+              {systemName(entry.targetSystem) === null
+                ? <span className="ls-mono">{entry.targetSystem}</span>
+                : <strong>{systemName(entry.targetSystem)}</strong>} ·{' '}
               <span className="ls-mono">{countText(entry.inspected)}</span> inspected ·{' '}
               <span className={entry.uninspected > 0 ? 'ls-mono ls-difference' : 'ls-mono'}>
                 {countText(entry.uninspected)}
@@ -452,20 +457,32 @@ export function FindingsSection({
   runId,
   conditionText,
   templateId,
+  systemName = () => null,
 }: {
   readonly publication: RunResultPublication;
   /** The Run, so every named record can be opened where its evidence is. */
   readonly runId: string;
   readonly conditionText: (conditionId: string) => string | null;
   readonly templateId: TemplateId | null;
+  /**
+   * A Target System's frozen display NAME from its registration id, read from the Version
+   * the Run executed. The Result stores the id, which is a UUID to a reader (UX-21, the
+   * Work Item label rule of 2026-09-17); an id the plan does not name is shown as it is.
+   */
+  readonly systemName?: (registrationId: string) => string | null;
 }): React.JSX.Element {
   const lists = [
     { key: 'exceptions', heading: 'Exceptions', findings: publication.exceptions },
     { key: 'unevaluated', heading: 'Records left Unevaluated', findings: publication.unevaluated },
   ] as const;
+  // Whether any named record carries source content, so the policy is said once above the
+  // lists when it has something to govern and not at all when it does not (UX-27).
+  const untrusted = lists.some((list) => list.findings.records.some((record) =>
+    Object.keys(record.fields).length > 0 || record.diagnostics.length > 0));
   return (
     <section className="ls-card ls-stack" aria-labelledby="findings-heading">
       <h2 id="findings-heading">Records the Result names</h2>
+      {untrusted ? <UntrustedPolicy /> : null}
       {lists.map((list) => (
         <div className="ls-stack" key={list.key}>
           <h3 className="ls-overline">
@@ -485,7 +502,7 @@ export function FindingsSection({
                       condition identifiers that used to end this line are the criteria
                       below it, in sentences (UI cleanup 2026-09-22, UX-21). */}
                   <p className="ls-finding__record">
-                    <strong>{record.populationRecordKey}</strong> on {record.targetSystem}
+                    <strong>{record.populationRecordKey}</strong> on {systemName(record.targetSystem) ?? record.targetSystem}
                   </p>
                   {record.conditionIds.map((conditionId) => (
                     <Criterion
@@ -495,16 +512,14 @@ export function FindingsSection({
                       templateId={templateId}
                     />
                   ))}
-                  {/* ONE policy sentence over the whole untrusted set for this record, not
-                      one under each block (UX-27). Each block keeps its own source label. */}
-                  <UntrustedRegion>
-                    <UntrustedList
-                      policy={false}
-                      field="control fields reported by the Target System"
-                      values={Object.entries(record.fields).map(([name, value]) => `${name}: ${JSON.stringify(value)}`)}
-                    />
-                    <UntrustedList policy={false} field="evaluation diagnostic" values={record.diagnostics} />
-                  </UntrustedRegion>
+                  {/* The section states the policy ONCE above every record (UX-27); each block
+                      keeps its own source label. */}
+                  <UntrustedList
+                    policy={false}
+                    field="control fields reported by the Target System"
+                    values={Object.entries(record.fields).map(([name, value]) => `${name}: ${JSON.stringify(value)}`)}
+                  />
+                  <UntrustedList policy={false} field="evaluation diagnostic" values={record.diagnostics} />
                   <p className="ls-finding__links">
                     <a href={`/runs/${runId}/evidence`}>{EXCEPTION_WORDS.openEvidence}</a>
                     {list.key === 'exceptions' ? (
@@ -618,7 +633,7 @@ export function ExecutionFailurePanel({
         <ul className="ls-plain-list">
           {steps.map((step) => (
             <li key={step.name}>
-              {step.name} · {countText(step.attempts)} attempts ·{' '}
+              {step.name} · {countNoun(step.attempts, 'attempt')} ·{' '}
               <code className="ls-mono">{step.diagnostic ?? 'no error class recorded'}</code>
             </li>
           ))}

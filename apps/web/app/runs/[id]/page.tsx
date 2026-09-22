@@ -116,6 +116,10 @@ export default async function RunResultPage({
   const conditionText = (conditionId: string): string | null =>
     conditions.find((condition) => condition.conditionId === conditionId)?.text ?? null;
   const templateId = version?.compiledPlan?.inputs.templateId ?? null;
+  // A Target System's frozen display name, from the Version the Run executed. The Result
+  // stores the registration id, which is a UUID to a reader (UX-21).
+  const systemName = (registrationId: string): string | null =>
+    version?.compiledPlan?.inputs.targets.find((target) => target.registrationId === registrationId)?.displayName ?? null;
 
   const declaredCountPassed =
     population?.summary?.checks.find((check) => check.name === 'declared-count')?.passed ?? null;
@@ -134,6 +138,7 @@ export default async function RunResultPage({
       reviewRevision={review.reviewRevision}
       pendingCount={review.pendingCount}
       commandStatuses={review.commandStatuses}
+      recordKeys={review.recordKeys}
     />
   );
 
@@ -175,10 +180,11 @@ export default async function RunResultPage({
             runId={run.runId}
             conditionText={conditionText}
             templateId={templateId}
+            systemName={systemName}
           />
 
           {/* 4. Coverage, scope and the reconciliation, compact. */}
-          <CoverageSection publication={publication} />
+          <CoverageSection publication={publication} systemName={systemName} />
           <ScopeSection publication={publication} />
           <ConditionCards
             publication={publication}

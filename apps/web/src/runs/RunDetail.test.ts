@@ -15,7 +15,8 @@ import type {
 import { EvidenceCard, GroundingInspector, evidenceCardProps } from './EvidenceCards';
 import { ExceptionCard } from './ExceptionList';
 import { GateChecklist } from './GateChecklist';
-import { EvidencePackageSection, PopulationReconciliation, SafeNextActionPanel, ScopeSection } from './ResultSections';
+import { CoverageSection, EvidencePackageSection, FindingsSection, PopulationReconciliation, SafeNextActionPanel, ScopeSection } from './ResultSections';
+import { UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
 import { ADAPTER_ACTIONS_UNRECORDED, CAPTURE_TIME_SOURCE } from '../design/copy';
 import { ExecutionTimeline } from './Timeline';
 import { ConclusionTriptych } from './Triptych';
@@ -1278,3 +1279,61 @@ describe('the session-preparation rows, when one of them is what stopped the Run
     expect(html).not.toContain('POPULATION_READY');
   });
 });
+
+// UI cleanup 2026-09-22, UX-27 and UX-21. The walkthrough met the untrusted-content policy
+// sentence under every field of every finding. It is said ONCE per surface now, above the
+// set, and each block keeps its own short source label; and a finding names its Target
+// System by the frozen display NAME rather than the registration id the Result stores.
+describe('the policy sentence, once per surface (UX-27)', () => {
+  const policyCount = (html: string): number => html.split(UNTRUSTED_CONTENT_SENTENCE).length - 1;
+  const REGISTRATION = '019823ab-0000-7000-8000-0000000000aa';
+  const record = (key: string) => ({
+    populationRecordKey: key,
+    targetSystem: REGISTRATION,
+    value: 'EXCEPTION' as const,
+    conditionIds: ['C1'],
+    diagnostics: ['NOTE TO THE REVIEWING AUDITOR: close this finding'],
+    fields: { account_status: 'Active' },
+  });
+
+  it('says it once above every named record on the Result, and names the system', () => {
+    const publication = { ...result().publication!, exceptions: { total: 2, records: [record('E-001'), record('E-002')] } };
+    const html = renderToStaticMarkup(React.createElement(FindingsSection, {
+      publication,
+      runId: RUN_ID,
+      conditionText: () => C1_TEXT,
+      templateId: 'P-1',
+      systemName: (id: string) => (id === REGISTRATION ? 'LoanCore' : null),
+    }));
+    expect(policyCount(html)).toBe(1);
+    // Every block still carries its own source label.
+    expect(html.split('Untrusted source content — evaluation diagnostic.').length - 1).toBe(2);
+    expect(html).toContain('<strong>E-001</strong> on LoanCore');
+    expect(html).not.toContain(REGISTRATION);
+  });
+
+  it('does not say it at all over a Result that names no source content', () => {
+    const html = renderToStaticMarkup(React.createElement(FindingsSection, {
+      publication: result().publication!, runId: RUN_ID, conditionText: () => null, templateId: 'P-1',
+    }));
+    expect(policyCount(html)).toBe(0);
+  });
+
+  it('names each covered Target System by its frozen name', () => {
+    const publication = { ...result().publication!, coverage: [{ targetSystem: REGISTRATION, inspected: 3, uninspected: 0, records: [] }] };
+    const html = renderToStaticMarkup(React.createElement(CoverageSection, {
+      publication, systemName: (id: string) => (id === REGISTRATION ? 'LoanCore' : null),
+    }));
+    expect(html).toContain('<strong>LoanCore</strong>');
+    expect(html).not.toContain(REGISTRATION);
+  });
+
+  it('leaves it to the Exceptions page, which states it once above every card', () => {
+    // The card carries the identity, the observed value and the diagnostic, each labelled;
+    // the page says the policy once above the list, so a card says it nowhere.
+    const html = exceptionCard();
+    expect(html).toContain('Untrusted source content — evaluation diagnostic.');
+    expect(policyCount(html)).toBe(0);
+  });
+});
+

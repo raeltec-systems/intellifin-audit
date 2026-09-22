@@ -9,7 +9,7 @@ import { MASKED_BY_BINDING, MASKED_VALUE } from '../design/copy';
 import { readSimpleCondition } from '../procedures/simple-condition';
 import { fieldWords } from '../procedures/condition-words';
 import { Criterion } from './Criterion';
-import { UntrustedList, UntrustedRegion, UntrustedText } from './UntrustedText';
+import { UntrustedList, UntrustedText } from './UntrustedText';
 import { evaluationOriginWord, evaluationValueWord, utcStamp } from './labels';
 import { EXCEPTION_WORDS } from './result-words';
 
@@ -93,7 +93,7 @@ export function ExceptionCard({
           Observation captured one. It is a value a Target System controls, so it is
           rendered inert and labelled — never as the platform's own words. */}
       {observation?.identity == null || masked ? null : (
-        <UntrustedText field={`${fieldWords(observation.identity.name)}, as ${system} shows it`}>
+        <UntrustedText field={`${fieldWords(observation.identity.name)}, as ${system} shows it`} policy={false}>
           {groundedText(observation.identity.originalValue)}
         </UntrustedText>
       )}
@@ -128,16 +128,17 @@ export function ExceptionCard({
                   masked={masked}
                 />
                 {/* A rule's own reason and, for a later origin, its rationale. Both come
-                    from outside this platform, so ONE policy sentence covers the set. */}
+                    from outside this platform; the page states the policy ONCE above every
+                    Exception, so each block carries only its source label (UX-27). */}
                 {(evaluation?.rationale ?? null) === null && (evaluation?.diagnostic ?? null) === null ? null : (
-                  <UntrustedRegion>
+                  <>
                     {evaluation?.rationale ? (
                       <UntrustedList policy={false} field="evaluation rationale" values={[evaluation.rationale]} />
                     ) : null}
                     {evaluation?.diagnostic ? (
                       <UntrustedList policy={false} field="evaluation diagnostic" values={[evaluation.diagnostic]} />
                     ) : null}
-                  </UntrustedRegion>
+                  </>
                 )}
                 <TechnicalDetails
                   items={[
@@ -194,7 +195,7 @@ export function ExceptionCard({
           pair" lives. A diagnostic MUST name an unknown value, so a Target System that
           answers with a sentence addressed to the auditor gets it stored here. It is data.
         */}
-        <UntrustedList field="diagnostics recorded when this finding was raised" values={exception.diagnostics} />
+        <UntrustedList policy={false} field="diagnostics recorded when this finding was raised" values={exception.diagnostics} />
       </TechnicalDetails>
     </li>
   );
@@ -251,7 +252,7 @@ function ExpectedAgainstObserved({
             masked && observed !== null ? MASKED_VALUE : EXCEPTION_WORDS.noObservedValue
           ) : (
             // The captured value came from the Target System, so it is inert and labelled.
-            <UntrustedText field={`${fieldWords(field!)}, as the Target System showed it`}>{observed}</UntrustedText>
+            <UntrustedText field={`${fieldWords(field!)}, as the Target System showed it`} policy={false}>{observed}</UntrustedText>
           )}
         </dd>
       </div>

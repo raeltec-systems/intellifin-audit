@@ -10,6 +10,7 @@ import {
 import type { RunObservationRow } from '@intellifin/infrastructure';
 
 import { GroundingInspector } from './EvidenceCards';
+import { UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
 
 const RUN_ID = '01990000-0000-7000-8000-00000000d401';
 const SNAPSHOT_ID = '01990000-0000-7000-8000-00000000d402';
@@ -170,3 +171,16 @@ describe('GroundingInspector web_tree support', () => {
     expect(html).not.toContain('Snapshot at locator</dt><dd><div class="ls-untrusted">');
   });
 });
+
+// UI cleanup 2026-09-22, UX-27. Each grounded attribute carries up to six source values —
+// presented, normalized, label, re-read cell, re-read label, extracted text — and each one
+// used to repeat the policy sentence. The Evidence tab says it once above the list; each
+// block keeps its own label.
+describe('GroundingInspector and the policy sentence (UX-27)', () => {
+  it('labels every source value and leaves the policy to the page', () => {
+    const html = render();
+    expect(html.split('Untrusted source content —').length - 1).toBeGreaterThan(2);
+    expect(html.split(UNTRUSTED_CONTENT_SENTENCE).length - 1).toBe(0);
+  });
+});
+

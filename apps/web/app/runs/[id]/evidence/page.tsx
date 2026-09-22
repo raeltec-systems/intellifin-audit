@@ -13,6 +13,7 @@ import { Digest } from '../../../../src/design/Digest';
 import { EmptyState } from '../../../../src/design/EmptyState';
 import { RUN_TAB_EMPTY } from '../../../../src/design/copy';
 import { EvidenceCard, GroundingInspector, evidenceCardProps } from '../../../../src/runs/EvidenceCards';
+import { UntrustedPolicy } from '../../../../src/runs/UntrustedText';
 import { RunDenied, RunDetailFrame, openRun } from '../../../../src/runs/detail';
 import { Timestamp } from '../../../../src/design/Timestamp';
 import { countNoun } from '../../../../src/design/words';
@@ -272,6 +273,9 @@ export default async function RunEvidencePage({
               ? '.'
               : `; the first ${observations.rows.length.toLocaleString('en-US')} are listed.`}
           </p>
+          {/* The policy sentence ONCE for every source value below it, not under each of
+              them (UX-27): each block keeps its own short label naming where it came from. */}
+          <UntrustedPolicy />
           <ul className="ls-plain-list">
             {observations.rows.map((observation) => (
               <GroundingInspector

@@ -16,7 +16,8 @@ import { Banner } from '../../../../../src/design/Banner';
 import { RunDenied, RunDetailFrame, openRun } from '../../../../../src/runs/detail';
 import { groundingValueText } from '../../../../../src/runs/grounding-inspector';
 import { readSnapshotCellWithGrant, type EvidenceSnapshotReadFailure } from '../../../../../src/runs/evidence-snapshot-reader';
-import { UntrustedText } from '../../../../../src/runs/UntrustedText';
+import { UntrustedPolicy, UntrustedText } from '../../../../../src/runs/UntrustedText';
+import { TechnicalDetails } from '../../../../../src/design/TechnicalDetails';
 import { currentCorrelationId, requireServerAction } from '../../../../../src/server-session';
 
 export const metadata: Metadata = { title: 'Stored snapshot · IntelliFin Audit' };
@@ -97,19 +98,15 @@ export default async function StoredSnapshotPage({
     <RunDetailFrame run={access.run} tab="evidence" readAt={access.readAt}>
       <section className="ls-card ls-stack" aria-labelledby="stored-snapshot-heading">
         <h2 id="stored-snapshot-heading">Stored Structural Snapshot</h2>
+        {/* The policy sentence once, for the two source values on this page (UX-27). The
+            Evidence identifier and the locator are the platform's addresses for this cell,
+            not something a reader judges by, so they are under Technical details (UX-24). */}
+        <UntrustedPolicy />
         <dl className="ls-definition">
-          <div>
-            <dt>Evidence ID</dt>
-            <dd className="ls-mono">{evidenceId}</dd>
-          </div>
-          <div>
-            <dt>Locator</dt>
-            <dd className="ls-mono">{locator}</dd>
-          </div>
           <div>
             <dt>{absence === null ? 'Field label' : 'Snapshot view'}</dt>
             <dd>
-              <UntrustedText field="recorded grounding field label">{grounding?.grounding?.label ?? 'Captured empty-result page'}</UntrustedText>
+              <UntrustedText field="recorded grounding field label" policy={false}>{grounding?.grounding?.label ?? 'Captured empty-result page'}</UntrustedText>
             </dd>
           </div>
         </dl>
@@ -118,10 +115,16 @@ export default async function StoredSnapshotPage({
             {FAILURE_COPY[read.failure]}
           </Banner>
         ) : (
-          <UntrustedText field={`${absence === null ? grounding!.name : 'empty-result page'}, as read at the stored snapshot locator`}>
+          <UntrustedText field={`${absence === null ? grounding!.name : 'empty-result page'}, as read at the stored snapshot locator`} policy={false}>
             {groundingValueText(read.cell.value)}
           </UntrustedText>
         )}
+        <TechnicalDetails
+          items={[
+            { label: 'Evidence identifier', value: evidenceId, mono: true },
+            { label: 'Locator', value: locator, mono: true },
+          ]}
+        />
       </section>
     </RunDetailFrame>
   );

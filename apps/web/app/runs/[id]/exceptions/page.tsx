@@ -8,6 +8,7 @@ import { EmptyState } from '../../../../src/design/EmptyState';
 import { RUN_TAB_EMPTY } from '../../../../src/design/copy';
 import { countNoun } from '../../../../src/design/words';
 import { ExceptionCard } from '../../../../src/runs/ExceptionList';
+import { UntrustedPolicy } from '../../../../src/runs/UntrustedText';
 import { RunDenied, RunDetailFrame, openRun } from '../../../../src/runs/detail';
 
 export const metadata: Metadata = { title: 'Run · Exceptions · IntelliFin Audit' };
@@ -84,6 +85,9 @@ export default async function RunExceptionsPage({
               ? `${countNoun(exceptions.total, 'record')} did not meet this control.`
               : `${countNoun(exceptions.total, 'record')} did not meet this control; the first ${exceptions.rows.length.toLocaleString('en-US')} are listed.`}
           </p>
+          {/* The policy sentence ONCE for every source value on this page — identities,
+              observed values, rationales and diagnostics — not under each (UX-27). */}
+          <UntrustedPolicy />
           <ul className="ls-plain-list">
             {exceptions.rows.map((exception) => (
               <ExceptionCard
