@@ -1,3 +1,4 @@
+import { draftCreatedBanner } from '../../apps/web/src/procedures/new-procedure-words';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
@@ -103,9 +104,8 @@ test.describe('as an Auditor', () => {
     test.setTimeout(60_000);
     await page.goto('/procedures/new');
     await page.getByLabel('Template').selectOption('P-4');
-    await page.getByLabel('Control name').fill(`E2E period conflict ${stamp}`);
+    await page.getByLabel('Procedure name').fill(`E2E period conflict ${stamp}`);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
     await expect(page.getByRole('heading', { level: 2, name: 'Prepare an audit procedure' })).toBeVisible();
     await expect(async () => {
       await page.getByLabel('Scope statement').focus();
@@ -165,9 +165,8 @@ test.describe('as an Auditor', () => {
     test.setTimeout(60000);
     await page.goto('/procedures/new');
     await page.getByLabel('Template').selectOption('P-1');
-    await page.getByLabel('Control name').fill(`E2E compliance lost response ${stamp}`);
+    await page.getByLabel('Procedure name').fill(`E2E compliance lost response ${stamp}`);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
     // P-1's C1 opens in the SIMPLE editor; prose has no simple form, so the advanced
     // mode is where it is written. Checking the radio is also this test's hydration
     // proof: the radios exist only once React has rendered the client tree.
@@ -222,26 +221,24 @@ test.describe('as an Auditor', () => {
       const picker = page.getByLabel('Template');
       await expect(picker).toHaveValue('');
 
-      // The hero is marked "(recommended)" — the flag is data on the record.
-      if (template.hero) {
-        await expect(picker).toContainText('recommended');
-      }
+      // UX-06 (2026-09-22): no Template is recommended over another; each is described
+      // by its own purpose once chosen.
+      await expect(picker).not.toContainText('recommended');
+      void template.hero;
 
       await picker.selectOption(template.id);
-      await page.getByLabel('Control name').fill(controlName);
+      await page.getByLabel('Procedure name').fill(controlName);
+      // The Template's control statement is shown beside the name, read-only (UX-05).
+      await expect(page.locator('[data-template-preview]')).toBeVisible();
       await page.getByRole('button', { name: 'Create Procedure' }).click();
 
-      // EXPERIENCE.md requires a confirmation dialog on every mutating action, and
-      // creating a Draft writes two rows and an immutable audit event. The dialog
-      // stands between the click and the change, and states the consequence.
-      const dialog = page.getByRole('dialog');
-      await expect(dialog).toBeVisible();
-      await expect(dialog).toContainText(template.label);
-      await dialog.getByRole('button', { name: 'Create Procedure' }).click();
-
-      // Creation lands on the Builder for the new Draft, with the Control name and
-      // Template identity in the header (UX-DR7).
+      // UX-07 (2026-09-22): creating a harmless Draft is ONE action — no dialog stands
+      // between the click and it. It lands on the Builder for the new Draft, with the
+      // Procedure name and Template identity in the header (UX-DR7), and a Banner there
+      // naming the new Draft is the confirmation.
       await expect(page.getByRole('heading', { level: 1, name: controlName })).toBeVisible();
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(page.locator('.ls-banner--success')).toContainText(draftCreatedBanner(controlName));
       await expect(page.getByText(`Template ${template.id} · ${template.label}`)).toBeVisible();
 
       // Template context is pre-filled and editable for this procedure only.
@@ -307,22 +304,27 @@ test.describe('as an Auditor', () => {
     });
   }
 
-  test('a cancelled confirmation creates nothing', async ({ page }) => {
-    const abandoned = `${nameFor('P-1')} abandoned`;
+  /**
+   * UX-07 (2026-09-22): this used to be "a cancelled confirmation creates nothing". The
+   * confirmation is gone — creating a harmless Draft is one action — so the test proves
+   * the new contract: one click creates exactly one Draft, and the Builder names it.
+   */
+  test('one click creates exactly one Draft and the Builder names it', async ({ page }) => {
+    const created = `E2E one-action create ${stamp}`;
     await page.goto('/procedures/new');
+    await expect(page.locator('[data-new-procedure-ready]')).toHaveAttribute('data-new-procedure-ready', 'true');
     await page.getByLabel('Template').selectOption('P-1');
-    await page.getByLabel('Control name').fill(abandoned);
+    await page.getByLabel('Procedure name').fill(created);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: created })).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.ls-banner--success')).toContainText(draftCreatedBanner(created));
 
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
-    await expect(dialog).toBeHidden();
-
-    // Reload first: a list rendered BEFORE the click cannot prove nothing was stored.
+    // Reload the list: exactly one Procedure carries the name.
     await page.goto('/procedures');
     await page.reload();
-    await expect(page.locator('.ls-card').filter({ hasText: abandoned })).toHaveCount(0);
+    // By its link, not by the card markup: the list's layout is package 2's to change.
+    await expect(page.getByRole('link', { name: created, exact: true })).toHaveCount(1);
   });
 
   test('edits Period and Population Source with accessible confirmation and persistent blockers', async ({ page }) => {
@@ -343,9 +345,8 @@ test.describe('as an Auditor', () => {
     } finally { await sql.end({ timeout: 5 }); }
     await page.goto('/procedures/new');
     await page.getByLabel('Template').selectOption('P-1');
-    await page.getByLabel('Control name').fill(`E2E population control ${stamp}`);
+    await page.getByLabel('Procedure name').fill(`E2E population control ${stamp}`);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
     await expect(page.getByLabel('Period start')).toBeVisible();
     await page.getByLabel('Period start').fill('2026-08-01');
     await page.getByLabel('Period end').fill('2026-08-31');
@@ -402,9 +403,8 @@ test.describe('as an Auditor', () => {
     const controlName = `E2E compliance control ${stamp}`;
     await page.goto('/procedures/new');
     await page.getByLabel('Template').selectOption('P-1');
-    await page.getByLabel('Control name').fill(controlName);
+    await page.getByLabel('Procedure name').fill(controlName);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
     await expect(page).toHaveURL(/\/procedures\/[^/]+\/builder$/);
     await expect(page).toHaveTitle('Builder · IntelliFin Audit');
     const c1 = page.locator('[data-condition-id="C1"]');
@@ -423,8 +423,8 @@ test.describe('as an Auditor', () => {
       await expect(c1.getByText('Agent-Judged (pending)', { exact: true })).toBeVisible({ timeout: 1_000 });
     }).toPass({ timeout: 20_000 });
     await threshold.fill('0.8500');
-    await page.getByLabel('New Control name').fill(`${controlName} renamed`);
-    await page.getByRole('button', { name: 'Save Control name', exact: true }).click();
+    await page.getByLabel('New Procedure name').fill(`${controlName} renamed`);
+    await page.getByRole('button', { name: 'Save Procedure name', exact: true }).click();
     await expect(page.getByRole('heading', { level: 1, name: `${controlName} renamed` })).toBeVisible();
     await expect(c1Text).toHaveValue(prose);
     await expect(threshold).toHaveValue('0.8500');
@@ -503,9 +503,8 @@ test.describe('as an Auditor', () => {
     test.setTimeout(90_000);
     await page.goto('/procedures/new');
     await page.getByLabel('Template').selectOption('P-3');
-    await page.getByLabel('Control name').fill(`E2E comparison control ${stamp}`);
+    await page.getByLabel('Procedure name').fill(`E2E comparison control ${stamp}`);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
     const boundary = page.getByLabel('A record exactly at the limit C1', { exact: true });
     const amount = page.getByLabel('Limit C1', { exact: true });
     const tolerance = page.getByLabel('Allowed difference C1', { exact: true });
@@ -536,9 +535,8 @@ test.describe('as an Auditor', () => {
 
     await page.goto('/procedures/new');
     await page.getByLabel('Template').selectOption('P-1');
-    await page.getByLabel('Control name').fill(`E2E window control ${stamp}`);
+    await page.getByLabel('Procedure name').fill(`E2E window control ${stamp}`);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
     // The 24-hour window is P-1's optional THIRD condition, added from the Timing controls
     // beside the account-status rule. It never replaces C1: an Active account has no
     // disablement instant at all, so C1 is what makes that account an Exception.
@@ -571,9 +569,8 @@ test.describe('as an Auditor', () => {
     test.setTimeout(90_000);
     await page.goto('/procedures/new');
     await page.getByLabel('Template').selectOption('P-1');
-    await page.getByLabel('Control name').fill(`E2E evidence control ${stamp}`);
+    await page.getByLabel('Procedure name').fill(`E2E evidence control ${stamp}`);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
 
     // P-1's structured defaults are platform-captured: no agent-driven Target System is
     // selected yet, so nothing here starts platform-captured, but the Template still
@@ -649,13 +646,12 @@ test.describe('as an Auditor', () => {
     test.setTimeout(90_000);
     await page.goto('/procedures/new');
     await page.getByLabel('Template').selectOption('P-1');
-    await page.getByLabel('Control name').fill(`E2E schedule refresh ${stamp}`);
+    await page.getByLabel('Procedure name').fill(`E2E schedule refresh ${stamp}`);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
     await page.getByLabel('Frequency', { exact: true }).selectOption('daily');
     await page.getByLabel('Start time (UTC)').fill('06:00');
-    await page.getByLabel('New Control name').fill(`E2E schedule refresh renamed ${stamp}`);
-    await page.getByRole('button', { name: 'Save Control name', exact: true }).click();
+    await page.getByLabel('New Procedure name').fill(`E2E schedule refresh renamed ${stamp}`);
+    await page.getByRole('button', { name: 'Save Procedure name', exact: true }).click();
     await expect(page.getByRole('heading', { level: 1, name: `E2E schedule refresh renamed ${stamp}` })).toBeVisible();
     await expect(page.getByLabel('Frequency', { exact: true })).toHaveValue('daily');
     await expect(page.getByLabel('Start time (UTC)')).toHaveValue('06:00');
@@ -716,9 +712,8 @@ test.describe('as an Auditor', () => {
     } finally { await sql.end({ timeout: 5 }); }
     await page.goto('/procedures/new');
     await page.getByLabel('Template').selectOption('P-1');
-    await page.getByLabel('Control name').fill(`E2E capture ${stamp}`);
+    await page.getByLabel('Procedure name').fill(`E2E capture ${stamp}`);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
     const first = page.getByRole('group', { name: 'Evidence item 1', exact: true });
     await first.getByLabel('A saved copy of the page it was read from').uncheck();
     await first.getByLabel('Screenshot of the page').uncheck();
@@ -793,9 +788,8 @@ test.describe('as an Auditor', () => {
 
     await page.goto('/procedures/new');
     await page.getByLabel('Template').selectOption('P-1');
-    await page.getByLabel('Control name').fill(`E2E targets control ${stamp}`);
+    await page.getByLabel('Procedure name').fill(`E2E targets control ${stamp}`);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
     await expect(page.getByLabel('Add a system')).toBeVisible();
 
     // Template guidance is visible, but no registration is selected or silently inferred.
@@ -843,8 +837,8 @@ test.describe('as an Auditor', () => {
     await expect(page.getByText(DESKTOP_DEFAULT_LEFT_OUT)).toHaveCount(0);
 
     const pendingName = `E2E targets control ${stamp} pending`;
-    await page.getByLabel('New Control name').fill(pendingName);
-    await page.getByRole('button', { name: 'Save Control name', exact: true }).click();
+    await page.getByLabel('New Procedure name').fill(pendingName);
+    await page.getByRole('button', { name: 'Save Procedure name', exact: true }).click();
     await expect(page.getByRole('heading', { level: 1, name: pendingName })).toBeVisible();
     await expect(loancoreCard).toBeVisible();
     await expect(page.locator('li.ls-card').filter({ hasText: `E2E LedgerDesk ${stamp}` })).toBeVisible();
@@ -863,8 +857,8 @@ test.describe('as an Auditor', () => {
     // saved yet. Renaming is a separate guarded Draft edit and forces that refresh.
     const unsavedInstruction = 'Open the account record and keep this unsaved note.';
     await instruction.fill(unsavedInstruction);
-    await page.getByLabel('New Control name').fill(`E2E targets control ${stamp} renamed`);
-    await page.getByRole('button', { name: 'Save Control name', exact: true }).click();
+    await page.getByLabel('New Procedure name').fill(`E2E targets control ${stamp} renamed`);
+    await page.getByRole('button', { name: 'Save Procedure name', exact: true }).click();
     await expect(page.getByRole('heading', { level: 1, name: `E2E targets control ${stamp} renamed` })).toBeVisible();
     await expect(instruction).toHaveValue(unsavedInstruction);
 
@@ -977,8 +971,8 @@ test.describe('as an Auditor', () => {
     await page.getByRole('link', { name: 'Open Builder' }).click();
 
     const renamed = `${nameFor('P-1')} renamed`;
-    await page.getByLabel('New Control name').fill(renamed);
-    await page.getByRole('button', { name: 'Save Control name' }).click();
+    await page.getByLabel('New Procedure name').fill(renamed);
+    await page.getByRole('button', { name: 'Save Procedure name' }).click();
 
     // An ordinary Draft section save is DIRECT (owner decision 2026-09-08): no dialog
     // stands between the click and the change, and the Banner names the value that was
@@ -986,7 +980,7 @@ test.describe('as an Auditor', () => {
     // before it. The audit chain still records who made the change.
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.locator('.ls-banner--success')).toContainText(
-      'The Control name is now',
+      'The Procedure name is now',
     );
     await expect(page.locator('.ls-banner--success')).toContainText(renamed);
 
@@ -1006,8 +1000,8 @@ test.describe('as an Auditor', () => {
 
     // Submit the name the Draft already carries — the honest idle save.
     const current = await page.getByRole('heading', { level: 1 }).innerText();
-    await page.getByLabel('New Control name').fill(current);
-    await page.getByRole('button', { name: 'Save Control name' }).click();
+    await page.getByLabel('New Procedure name').fill(current);
+    await page.getByRole('button', { name: 'Save Procedure name' }).click();
 
     await expect(page.locator('.ls-banner--success')).toContainText('Nothing changed');
   });
@@ -1051,7 +1045,7 @@ test.describe('as a PoC Administrator', () => {
     );
     // Not the picker, not the field, not one Template name.
     await expect(page.getByLabel('Template')).toHaveCount(0);
-    await expect(page.getByLabel('Control name')).toHaveCount(0);
+    await expect(page.getByLabel('Procedure name')).toHaveCount(0);
     await expect(page.getByText('Terminated Users Retaining Access')).toHaveCount(0);
   });
 
@@ -1071,7 +1065,7 @@ test.describe('as a PoC Administrator', () => {
       DENIAL_REASONS.ADMIN_CANNOT_AUTHOR,
     );
     // No section content, no editable field.
-    await expect(page.getByLabel('New Control name')).toHaveCount(0);
+    await expect(page.getByLabel('New Procedure name')).toHaveCount(0);
     await expect(page.getByText(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE)).toHaveCount(0);
   });
 });

@@ -389,11 +389,12 @@ test('an auditor prepares and accepts a draft, revises it after manager review, 
   /* ------------------------------------------------------------ 1. create --- */
   await page.goto('/procedures/new');
   await page.getByLabel('Template').selectOption('P-2');
-  await expect(page.getByLabel('Control name', { exact: true })).toHaveValue('Segregation-of-Duties Conflicts');
+  await expect(page.getByLabel('Procedure name', { exact: true })).toHaveValue('Segregation-of-Duties Conflicts');
   await expect(page.getByRole('region', { name: 'Selected Template context', exact: true })).toContainText('Roles assigned in AccessGate must not grant prohibited permission pairs');
   await attachAuthoringScreenshot(page, testInfo, 'owner-seeded-template-selection');
-  await page.getByLabel('Control name').fill(CONTROL);
-  await confirmed(page, 'Create Procedure');
+  await page.getByLabel('Procedure name').fill(CONTROL);
+  // UX-07: creating a Draft is one action, with no confirmation dialog.
+  await page.getByRole('button', { name: 'Create Procedure', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: CONTROL })).toBeVisible();
   await expect(page.locator('[data-guided-preparation]')).toHaveAttribute('data-guided-ready', 'true');
   procedureId = new URL(page.url()).pathname.split('/')[2] ?? '';

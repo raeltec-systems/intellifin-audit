@@ -42,9 +42,9 @@ test('guided preparation preserves edits, records saved review and stays keyboar
   test.setTimeout(90_000);
   await page.goto('/procedures/new');
   await page.getByLabel('Template').selectOption('P-1');
-  await page.getByLabel('Control name').fill(CONTROL);
+  await page.getByLabel('Procedure name').fill(CONTROL);
+  // UX-07: creating a Draft is one action; no dialog stands between the click and it.
   await page.getByRole('button', { name: 'Create Procedure' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
   await expect(page.getByRole('heading', { level: 1, name: CONTROL })).toBeVisible();
   await expect(page.locator('[data-guided-ready="true"]')).toBeVisible();
   await expect(page.locator('[data-preparation-progress]')).toContainText('0 of 6 sections reviewed');

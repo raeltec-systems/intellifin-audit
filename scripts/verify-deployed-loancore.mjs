@@ -165,8 +165,9 @@ async function authorApproveAndRun({ control, sourceName, prefix, accounts }) {
   await auditor.goto(`${BASE}/procedures/new`, { waitUntil: 'domcontentloaded' });
   await expect(auditor.locator('[data-new-procedure-ready]')).toHaveAttribute('data-new-procedure-ready', 'true');
   await auditor.getByLabel('Template').selectOption('P-1');
-  await auditor.getByLabel('Control name', { exact: true }).fill(control);
-  await confirmed(auditor, 'Create Procedure');
+  await auditor.getByLabel('Procedure name', { exact: true }).fill(control);
+  // UX-07: creating a Draft is one action, with no confirmation dialog.
+  await auditor.getByRole('button', { name: 'Create Procedure', exact: true }).click();
   await expect(auditor.getByRole('heading', { level: 1, name: control })).toBeVisible();
   const procedureId = new URL(auditor.url()).pathname.split('/')[2];
   emit('procedure-created-through-ui', { procedureId, control });

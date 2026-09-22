@@ -62,9 +62,8 @@ test('a fresh Template leads through choices, a precise test-design reply, saved
   await page.goto('/procedures/new');
   await page.getByLabel('Template', { exact: true }).selectOption('P-4');
   const controlName = `Synthetic production configuration review ${ids.next()}`;
-  await page.getByLabel('Control name', { exact: true }).fill(controlName);
+  await page.getByLabel('Procedure name', { exact: true }).fill(controlName);
   await page.getByRole('button', { name: 'Create Procedure', exact: true }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: controlName })).toBeVisible();
   procedureId = /\/procedures\/([^/]+)\/builder/.exec(page.url())![1]!;
   const [created] = await sql<{ version_id: string }[]>`SELECT version_id FROM procedure_version WHERE procedure_id = ${procedureId} AND state = 'DRAFT' ORDER BY version_number DESC LIMIT 1`;
