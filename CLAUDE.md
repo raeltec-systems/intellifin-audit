@@ -1,3 +1,37 @@
+## 2026-09-22 — Production follows a draft branch, and `main` cannot start against it
+
+The owner's 21 September UI/UX walkthrough (49 findings, 17 P1) was made against the DEPLOYED
+product, and the deployed product is not `main`: Railway's `web` and `worker` services are
+connected to `feat/auditor-workspace-v1-1` (PR #51, a 44-commit draft) at `ec673a0`, deployed
+outside the Release workflow, and the production database is at schema generation **61**.
+`main` supports 50..50, so a `main` image REFUSES to start there — its 21 September redeploy
+failed twice on exactly that guard. Read `describe-service` (source branch and commit) and
+`/api/health` (`schema`) before assuming a screenshot, a finding or a failed deploy is about
+`main`.
+
+- **A finding can name a surface `main` does not have.** The walkthrough's record queue and
+  inspector (UX-22..26) are PR #51's `RecordReview`/`RunWorkspaceShell`; the rule each one
+  needs is written down in the cleanup reports so it can be applied on top of that branch
+  rather than rebuilt on `main` and thrown away at the merge.
+- **The UI cleanup is based on `main`, in one shared layer plus five packages.** `design/time`,
+  `Timestamp`, `references`, `Reference`, `TechnicalDetails`, `status-words`, `PageHeader`,
+  `words` and `procedures/condition-words` are the one place a readable instant, a short
+  reference, a technical disclosure, a status meaning or a condition sentence comes from;
+  a raw UUID, a raw ISO instant or a `1 Observations` on an ordinary surface is a defect
+  against EXPERIENCE.md's revised Formats row. The contract was revised in place and the
+  walkthrough's decisions appended as their own section, BEFORE the packages were built, so
+  five parallel agents never touched the contract or `CLAUDE.md`.
+- **Five worktrees, five databases, five port pairs.** Each package agent got its own
+  worktree (`.claude/worktrees/ui-pN`), its own install and build, its own migrated database
+  (`ui_pN_test`, a name the throwaway guard accepts) and `PLAYWRIGHT_PORT`/`NORTHSTAR_PORT`,
+  because two browser suites on one database is the trap recorded on 2026-09-10, and one
+  `next dev` port is one suite. `globals.css` carries one labelled region per package so
+  five branches append CSS without merging into one another's hunks.
+- **A gate run beside two worktree builds fails on load, not on the code.** The package 1
+  unit gate reported 2 failures in 1 file while two `pnpm build`s ran; alone it passed
+  4610/4610. Read a red gate's failing file before believing it, and never run the gate while
+  a build is going on the same four cores.
+
 ## 2026-09-17 — The Work Item label, on all four surfaces this time
 
 The Timeline was repaired so a Work Item row names the RECORD rather than the Target System,
