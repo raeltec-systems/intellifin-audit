@@ -103,7 +103,10 @@ describe('the Flag to Audit Manager control', () => {
         note: 'The LoanCore step looks wrong.',
       }],
     });
-    expect(html).toContain('Flagged by Dana Mwansa at 2026-09-07T10:00:00.000Z');
+    // The instant reads as a person reads it; the exact ISO value belongs under Technical
+    // details, never in a sentence about who did something (UI cleanup 2026-09-22, UX-02).
+    expect(html).toContain('Flagged by Dana Mwansa at 7 Sep 2026, 10:00:00 UTC');
+    expect(html).not.toContain('2026-09-07T10:00:00.000Z');
     expect(html).toContain('The LoanCore step looks wrong.');
   });
 

@@ -2,6 +2,8 @@ import type { ObservationAttribute, SnapshotSubstrate, StoredSnapshot } from '@i
 import type { RunEvidenceItem, RunObservationRow } from '@intellifin/infrastructure';
 
 import { Digest } from '../design/Digest';
+import { Timestamp } from '../design/Timestamp';
+import { countNoun } from '../design/words';
 import { CAPTURE_TIME_UNRECORDED } from '../design/copy';
 import { CorroborationBadge, EvidenceKindBadge } from './MinorBadge';
 import { UntrustedText } from './UntrustedText';
@@ -113,7 +115,7 @@ export function EvidenceCard(props: EvidenceCardProps): React.JSX.Element {
             <dd>{CAPTURE_TIME_UNRECORDED}</dd>
           ) : (
             <dd>
-              <span className="ls-mono">{utcStamp(props.capturedAt)}</span>
+              <Timestamp value={props.capturedAt} />
               {/* Said beside the instant, never instead of it: a recovered time and a
                   measured one are both real and are not the same claim. */}
               {captureTimeSource === null ? null : <> · {captureTimeSource}</>}
@@ -130,7 +132,7 @@ export function EvidenceCard(props: EvidenceCardProps): React.JSX.Element {
         </div>
         <div>
           <dt>Stored bytes</dt>
-          <dd className="ls-mono">{props.size === null ? 'Not registered' : countText(props.size)}</dd>
+          <dd className="ls-mono">{props.size === null ? 'Not registered' : countNoun(props.size, 'byte')}</dd>
         </div>
         <div>
           <dt>Evidence state</dt>
@@ -230,7 +232,7 @@ export function GroundingInspector({
         </div>
         <div>
           <dt>Observed at (UTC)</dt>
-          <dd className="ls-mono">{utcStamp(observation.observedAt)}</dd>
+          <dd><Timestamp value={observation.observedAt} /></dd>
         </div>
         <div>
           <dt>Observed at, as the source stated it</dt>

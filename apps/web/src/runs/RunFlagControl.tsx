@@ -7,7 +7,7 @@ import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { FLAG_COPY, RUN_LOST_RESPONSE, fillTemplate } from '../design/copy';
 import { useLiveGate } from './LiveGate';
-import { utcStamp } from './labels';
+import { readableStamp } from '../design/time';
 
 /**
  * Flag a Run to the Audit Managers, from Live View (Story 5.5, FR-27, FR-28, UX-DR24).
@@ -100,7 +100,7 @@ export function RunFlagControl({ runId, flaggable, flags }: RunFlagControlProps)
       <ul className="ls-stack">
         {flags.map((item) => (
           <li key={item.flagId}>
-            <p>{fillTemplate(FLAG_COPY.by, { actor: item.flaggedBy, time: utcStamp(item.flaggedAt) })}</p>
+            <p>{fillTemplate(FLAG_COPY.by, { actor: item.flaggedBy, time: readableStamp(item.flaggedAt) })}</p>
             {item.note === null ? null : <p className="ls-quote">{item.note}</p>}
           </li>
         ))}

@@ -15,7 +15,8 @@ import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { UntrustedText } from './UntrustedText';
-import { evaluationOriginWord, evaluationValueWord, utcStamp } from './labels';
+import { Timestamp } from '../design/Timestamp';
+import { evaluationOriginWord, evaluationValueWord } from './labels';
 import { StatusBadge } from '../design/StatusBadge';
 import {
   confirmEvaluationAction,
@@ -345,7 +346,7 @@ export function EvaluationReview({
                       </div>
                       <div>
                         <dt>Decided at (UTC)</dt>
-                        <dd className="ls-mono"><time dateTime={reviewDecision.decidedAt}>{utcStamp(reviewDecision.decidedAt)}</time></dd>
+                        <dd><Timestamp value={reviewDecision.decidedAt} /></dd>
                       </div>
                     </dl>
                     {reviewDecision.rejectionRationale === null ? null : (
