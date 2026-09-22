@@ -41,10 +41,19 @@ export default async function NewProcedurePage(): Promise<React.JSX.Element> {
     <div className="ls-stack">
       <header className="ls-page-header">
         <h1>New procedure</h1>
+        {/*
+          UX-06: ONE task-specific introduction. It used to repeat itself — this
+          paragraph and a near-identical one on the form below — and named no Template
+          by its purpose, only the hero's name as "the starting point for most audits".
+          Each Template's own purpose is read from its record (`findProcedureTemplate`)
+          once it is chosen, in the "Selected Template context" panel; nothing here
+          recommends one over another.
+        */}
         <p>
-          Choose an established control from a Template. Its risk, control and objective
-          are filled in for you. Then choose the evidence and systems, and prepare the
-          test with the assistant before submitting it for independent approval.
+          Choose an established control from a Template — these are synthetic Northstar
+          examples for this demo. Its risk, control and objective are filled in for you;
+          review them, then choose your evidence and systems, and prepare the test with
+          the assistant before submitting it for independent approval.
         </p>
       </header>
       <NewProcedureForm onCreate={createProcedureAction} />

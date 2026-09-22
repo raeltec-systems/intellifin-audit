@@ -154,9 +154,14 @@ export const BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE =
 /**
  * Keeps the procedure's name distinct from its editable control statement. Avoid
  * positional directions: the guided Builder groups the name with the context.
+ *
+ * `[REWORDED 2026-09-21, UX-05]` "Control name" named the domain's field, not the
+ * question in an auditor's head: a Procedure has a Procedure name, and its Template's
+ * control statement is a separate, read-only fact shown beside it. The stored field
+ * stays `controlName` — this is the word a person reads, not the column.
  */
 export const BUILDER_CONTROL_NAME_EDITABLE_SENTENCE =
-  'Use the Control name form to edit the name saved on this Draft. Editing a Draft never changes the Template it came from.';
+  'Use the Procedure name form to edit the name saved on this Draft. Editing a Draft never changes the Template it came from.';
 
 /**
  * The responsive floor for the Builder (NFR-11, EXPERIENCE.md → Responsive breakpoints).

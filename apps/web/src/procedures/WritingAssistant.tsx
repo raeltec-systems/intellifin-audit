@@ -664,7 +664,7 @@ function PreparationContextSummary({ draft }: { readonly draft: ProcedureVersion
   const criteria = draft.complianceConditions.length === 0 ? 'No criteria saved' : `${draft.complianceConditions.length} saved ${draft.complianceConditions.length === 1 ? 'criterion' : 'criteria'}; agent-judged assessment uses the saved threshold.`;
   return <div className="ls-writing__context" role="group" aria-label="Saved assignment context">
     <dl>
-      <div><dt>Control name</dt><dd>{draft.controlName}</dd></div>
+      <div><dt>Procedure name</dt><dd>{draft.controlName}</dd></div>
       <div><dt>Control statement</dt><dd>{savedTemplateSection(draft, 'Control')}</dd></div>
       <div><dt>Objective</dt><dd>{savedTemplateSection(draft, 'Objective')}</dd></div>
       <div><dt>Period</dt><dd>{preparationPeriodLabel(draft)}</dd></div>

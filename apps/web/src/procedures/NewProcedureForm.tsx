@@ -3,30 +3,35 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { heroProcedureTemplate, PROCEDURE_TEMPLATES, type TemplateId } from '@intellifin/domain';
+import { PROCEDURE_TEMPLATES } from '@intellifin/domain';
 import { PROCEDURE_REFUSALS } from '@intellifin/application';
 
 import Link from 'next/link';
 
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
-import { ConfirmDialog } from '../design/ConfirmDialog';
 import { NEW_PROCEDURE_PREPARING, NEW_PROCEDURE_REQUIRES_JAVASCRIPT } from './new-procedure-words';
 import type { NewProcedureActionResult, NewProcedureFormFields } from '../../app/procedures/new/actions';
 
 /**
- * The New-procedure form: pick a Template, name the Control (FR-4).
+ * The New-procedure form: pick a Template, name the Procedure (FR-4).
  *
  * **There is no default Template.** Story 1.7 shipped a form defaulting to
  * `OPTIONS[0]`, which made every fresh form open as the most restricted kind — showing
  * a restriction to somebody who had chosen nothing, and two browser assertions true
  * before the selection they tested. A choice with a default is a choice the form made.
  * The select therefore opens on a disabled placeholder option, and the submit handler
- * refuses an unchosen Template before the dialog opens.
+ * refuses an unchosen Template before the request is sent.
  *
- * The dialog is `weight="routine"`: creating a Draft changes nothing that exists and
- * is recorded in the audit chain, but it is still the moment the person confirms what
- * they are about to make.
+ * **Creating a Draft is ONE action (UX-07).** It used to stand behind a focus-trapping
+ * confirmation dialog restating what the click already said; the owner's confirmation
+ * table reserves that weight for decisions a person cannot take back from THIS page —
+ * submit, approve, reject, activation, scope expansion, cancel, rerun — and creating a
+ * harmless Draft is not one of them. A click creates it at once, and the success is a
+ * Banner naming the new Draft on the Builder it lands on
+ * (`DRAFT_CREATED_TEMPLATE` in `new-procedure-words.ts`), which is what the dialog used
+ * to restate after the fact instead of before it. The hydration guard and the
+ * lost-response recovery are unchanged.
  */
 
 /**
@@ -69,7 +74,6 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
   const [result, setResult] = useState<NewProcedureActionResult | null>(null);
   const [announcement, setAnnouncement] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [confirming, setConfirming] = useState(false);
   /** Written and read in the same tick; `busy` is a render behind. See `BindingForm`. */
   const submittingRef = useRef(false);
   const [unknownOutcome, setUnknownOutcome] = useState(false);
@@ -77,15 +81,17 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
   async function submit(): Promise<void> {
     if (!clientReady || submittingRef.current || unknownOutcome) return;
     submittingRef.current = true;
-    setConfirming(false);
     setBusy(true);
     try {
       const outcome = await onCreate({ templateId: template, controlName });
       setResult(outcome);
       setAnnouncement((count) => count + 1);
       if (outcome.ok) {
-        // The Draft exists. The Builder is where the pre-filled sections are read.
-        router.push(`/procedures/${outcome.procedureId}/builder`);
+        // The Draft exists. The Builder is where the pre-filled sections are read, and
+        // `created=1` is what tells it to name the new Draft in a Banner (UX-07) — the
+        // one place a person actually sees the confirmation, since this page is about
+        // to navigate away from under them.
+        router.push(`/procedures/${outcome.procedureId}/builder?created=1`);
       }
     } catch {
       // A rejected Server Action — a network drop, a deploy mid-request — must not end
@@ -116,9 +122,11 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
       setAnnouncement((count) => count + 1);
       return;
     }
-    // EXPERIENCE.md requires a confirmation dialog on every mutating action. Creating a
-    // Draft is a mutation: it writes two rows and an immutable audit event.
-    setConfirming(true);
+    // UX-07: creating a harmless Draft is ONE action. It writes two rows and an
+    // immutable audit event, but nothing that EXISTS changes and nothing can be lost —
+    // the owner's confirmation table reserves the focus-trapping dialog for decisions a
+    // person cannot take back from this page, and this is not one of them.
+    void submit();
   }
 
   return (
@@ -148,11 +156,6 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
       */}
       <form method="post" onSubmit={onRequestSubmit} className="ls-admin__form" data-new-procedure-ready={clientReady} aria-busy={!clientReady}>
         <h2>Start a new procedure</h2>
-        <p className="ls-caption">
-          Choose the control you want to test. These Templates contain synthetic
-          Northstar examples for the demo. Review the populated context, choose your
-          evidence and systems, then design the test with assistance.
-        </p>
         {!clientReady ? <p role="status">{NEW_PROCEDURE_PREPARING}</p> : null}
         {!clientReady ? <p>{NEW_PROCEDURE_REQUIRES_JAVASCRIPT}</p> : null}
         {/* Native disabling also works BEFORE handlers exist. The reason stays
@@ -190,8 +193,13 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
                 </option>
               ))}
             </select>
+            {/*
+              UX-06: no universal recommendation. Each Template is described by its own
+              purpose — read from the Template record, never a fixed opinion about
+              which one to pick — in the panel below once one is chosen.
+            */}
             <p className="ls-caption" id={`${templateId}-hint`}>
-              {heroProcedureTemplate().name} is the starting point for most audits.
+              Choosing a Template shows its risk, control and objective below.
             </p>
           </div>
 
@@ -206,7 +214,7 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
             <p className="ls-caption">This context will be copied into your Draft. You can adapt it there without changing the Template.</p>
           </section> : null}
           <div className="ls-dialog__field">
-            <label htmlFor={controlNameId}>Control name</label>
+            <label htmlFor={controlNameId}>Procedure name</label>
             <input
               className="ls-input"
               id={controlNameId}
@@ -219,8 +227,9 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
               onChange={(event) => setControlName(event.target.value)}
             />
             <p className="ls-caption">
-              What you call this control. It appears everywhere this procedure is listed,
-              and in the audit record. Up to 200 characters.
+              What you call this procedure. It appears everywhere it is listed, and in
+              the audit record. Up to 200 characters. The Template&rsquo;s control
+              statement, shown above, is separate and stays as the Template wrote it.
             </p>
           </div>
         </div>
@@ -232,24 +241,6 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
         </div>
         </fieldset>
       </form>
-
-      <ConfirmDialog
-        open={confirming}
-        weight="routine"
-        title="Create this Procedure?"
-        consequence={`A Draft Procedure Version is created from ${chosenTemplateName(template)}, pre-filled from the Template. Nothing runs, and the creation is recorded in the audit chain against your name.`}
-        confirmLabel="Create Procedure"
-        onConfirm={() => {
-          void submit();
-        }}
-        onCancel={() => setConfirming(false)}
-      />
     </div>
   );
-}
-
-/** The chosen Template's name, for the dialog's consequence sentence. */
-function chosenTemplateName(templateId: string): string {
-  const template = PROCEDURE_TEMPLATES.find((candidate) => candidate.id === templateId);
-  return template === undefined ? 'the chosen Template' : template.name;
 }
