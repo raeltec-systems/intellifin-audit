@@ -6,10 +6,11 @@ import {
   DrizzleRunDetailRepository,
   PostgresProceduresUnitOfWork,
   RUN_DETAIL_PAGE_SIZE,
+  REPLAY_PAGE_SIZE,
   type Database,
   type Sql,
 } from '@intellifin/infrastructure';
-import { logicalStepProgress } from '../../apps/web/src/runs/live-view.js';
+import { currentStepExecution, logicalStepProgress } from '../../apps/web/src/runs/live-view.js';
 import { activeRunVersion } from '../fixtures/active-run-version.js';
 
 /**
@@ -109,6 +110,25 @@ describe.skipIf(!url)('the exact logical step progress read', () => {
     const page = await detail.readStepExecutions(runId);
     expect(page.total).toBe(FIRST_STEP_ATTEMPTS + 4);
     expect(logicalStepProgress(page.rows, PLAN).started).toBe(1);
+  });
+
+  it('reads the step a long Run is on now, beyond the first page, and one step by id (UI cleanup 2026-09-23)', async () => {
+    const detail = new DrizzleRunDetailRepository(db);
+    const every = await detail.readStepExecutions(runId, REPLAY_PAGE_SIZE);
+    expect(every.rows).toHaveLength(every.total);
+    const latest = await detail.readLatestStepExecution(runId);
+    // The exact read and the pure rule in live-view.ts agree over every row ...
+    expect(latest).toEqual(currentStepExecution(every.rows));
+    expect(latest?.planStepId).toBe('not-in-the-plan');
+    // ... and the same rule over the first page names an attempt the Run finished long ago:
+    // the defect Live View and the Auditor Workspace had.
+    expect(currentStepExecution((await detail.readStepExecutions(runId)).rows)?.planStepId).toBe('s1');
+
+    expect(await detail.readStepExecution(runId, latest!.stepExecutionId)).toEqual(latest);
+    // Another Run's id, a malformed id and a malformed Run all read as nothing.
+    expect(await detail.readStepExecution(ids.next(), latest!.stepExecutionId)).toBeNull();
+    expect(await detail.readStepExecution(runId, 'not-a-step-id')).toBeNull();
+    expect(await detail.readLatestStepExecution('not-a-run-id')).toBeNull();
   });
 
   it('counts every distinct step when the plan could not be read, and none when it declares none', async () => {

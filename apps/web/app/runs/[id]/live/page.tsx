@@ -6,6 +6,7 @@ import {
   DrizzleActorNameReader,
   DrizzleFrozenExecutionReader,
   DrizzleRunDetailRepository,
+  readRecordNames,
   readTimelineHead,
 } from '@intellifin/infrastructure';
 
@@ -27,9 +28,9 @@ import { LiveViewer } from '../../../../src/runs/LiveViewer';
 import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
 import { planActionWord, runLifecycleWord, utcStamp } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
+import { recordNaming, recordWords } from '../../../../src/runs/record-words';
 import {
   LIVE_VIEW_STAGE,
-  currentStepExecution,
   frameNarration,
   liveViewChrome,
   plannedStepCount,
@@ -71,9 +72,12 @@ export default async function RunLivePage({
 
   const runtime = await getRuntime();
   const detail = new DrizzleRunDetailRepository(runtime.db);
-  const [timeline, frame, agentWork, evidence, plan, liveCursor, flagRows] = await Promise.all([
+  const [timeline, frame, current, agentWork, evidence, plan, liveCursor, flagRows] = await Promise.all([
     detail.readTimeline(run.runId),
     detail.readLatestFrame(run.runId),
+    // The step the Run is on now, read on its own: the Timeline's page is the OLDEST fifty
+    // Step Executions, so its newest row names a step a long Run finished long ago.
+    detail.readLatestStepExecution(run.runId),
     detail.readAgentWorkPosition(run.runId),
     detail.readEvidenceItems(run.runId),
     new DrizzleFrozenExecutionReader(runtime.db).readFrozenExecution(run.versionId, run.procedureId),
@@ -91,11 +95,13 @@ export default async function RunLivePage({
       : plan?.inputs.targets.find((target) => target.registrationId === registrationId)?.displayName ?? null;
 
   // The Step the frame belongs to, so the frame's alt text and the rail's narration are
-  // the SAME sentence (UX-DR37). A frame whose Step Execution has fallen off the bounded
-  // read narrates from the action instead, which is why `frameNarration` takes both.
+  // the SAME sentence (UX-DR37). It is read by id when it is not on the Timeline's bounded
+  // page; a frame whose Step Execution cannot be read at all narrates from the action
+  // instead, which is why `frameNarration` takes both.
   const frameStep = frame === null
     ? null
-    : timeline.stepExecutions.rows.find((row) => row.stepExecutionId === frame.stepExecutionId) ?? null;
+    : timeline.stepExecutions.rows.find((row) => row.stepExecutionId === frame.stepExecutionId)
+      ?? await detail.readStepExecution(run.runId, frame.stepExecutionId);
   /** The system a Step Execution is working, through the Work Item that names its registration. */
   const systemOf = (workItemId: string | null): string | null =>
     workItemId === null
@@ -106,14 +112,25 @@ export default async function RunLivePage({
    * tell two Work Items of the same Run apart. `displayName` cannot: it is the Target
    * System's name and is identical on every Work Item.
    */
-  const subjectOf = (workItemId: string | null): string | null =>
+  const subjectKeyOf = (workItemId: string | null): string | null =>
     workItemId === null
       ? null
       : timeline.workItems.find((item) => item.workItemId === workItemId)?.subjectKey ?? null;
-  const current = currentStepExecution(timeline.stepExecutions.rows);
   const workItem = agentWork?.workItemId === undefined || agentWork.workItemId === null
     ? null
     : timeline.workItems.find((item) => item.workItemId === agentWork.workItemId) ?? null;
+  // UX-25: a record is named the way the record review names it — the key, then the
+  // person's name — and masked wherever the version's frozen binding says so (FR-41).
+  const naming = recordNaming(plan);
+  const subjectKeys = [
+    subjectKeyOf(frameStep?.workItemId ?? frame?.workItemId ?? null),
+    subjectKeyOf(current?.workItemId ?? null),
+    workItem?.subjectKey ?? null,
+  ].filter((key): key is string => key !== null);
+  const recordNames = plan === null ? new Map<string, string>() : await readRecordNames(runtime.db, run.runId, plan, subjectKeys);
+  const subjectLabel = (key: string | null): string | null =>
+    key === null ? null : recordWords({ key, name: recordNames.get(key) ?? null }, naming);
+  const subjectOf = (workItemId: string | null): string | null => subjectLabel(subjectKeyOf(workItemId));
 
   const chrome = liveViewChrome(run.state);
   const lifecycle = runLifecycleWord(run.state);
@@ -305,7 +322,7 @@ export default async function RunLivePage({
                   // The record, which the rail renders in front of the system name. It was
                   // hard-coded `null` here, so Watch said "LoanCore · RUNNING · 1
                   // Observations" whichever leaver the Agent was inspecting.
-                  subjectKey: workItem.subjectKey,
+                  subjectKey: subjectLabel(workItem.subjectKey),
                   observations: workItem.observations,
                 }
           }

@@ -1,8 +1,15 @@
 'use client';
 import { useEffect, useState } from 'react';
 import type { WorkspacePreviewMetadata } from '@intellifin/application';
+import { Timestamp } from '../design/Timestamp';
 import { WorkspaceCaptureView } from './WorkspaceCaptureView';
 import { startWorkspacePreviewPolling } from './workspace-preview-polling';
+import {
+  WORKSPACE_PREVIEW_ALT,
+  WORKSPACE_PREVIEW_LABEL,
+  WORKSPACE_PREVIEW_STATUS,
+  type WorkspacePreviewStatus,
+} from './workspace-words';
 
 type Sample = { metadata: WorkspacePreviewMetadata; image: string | null };
 export function matchingPreview(a: WorkspacePreviewMetadata, b: WorkspacePreviewMetadata, now: number): boolean {
@@ -15,15 +22,35 @@ export function matchingPreview(a: WorkspacePreviewMetadata, b: WorkspacePreview
     && a.capturedAt !== null && a.captureCompletedAt !== null && a.captureCompletedAt >= a.capturedAt
     && a.capturedAt <= now && a.capturedAt + 3000 > now && a.expiresAt > now && b.expiresAt > now;
 }
+/**
+ * When the shown picture was taken, and when the page last checked it (AW-060: capture
+ * age and connection age are two facts, shown as two). Both are `<Timestamp>`s, so the
+ * reader sees `21 Sep 2026, 12:24:45 UTC` and the exact instant stays in `dateTime`
+ * (UI cleanup 2026-09-23, UX-24: the line used to print two raw ISO instants). The
+ * capture time is marked, so a browser proof reads it from the attribute, not the words.
+ */
+export function PreviewSampleTimes({ capturedAt, checkedAt }: {
+  readonly capturedAt: number;
+  readonly checkedAt: number;
+}): React.JSX.Element {
+  return <p className="ls-caption">
+    Screen taken <span data-preview-captured-at><Timestamp value={new Date(capturedAt)} /></span>.
+    {' '}Connection checked <Timestamp value={new Date(checkedAt)} />.
+  </p>;
+}
+
 /** Every decode is followed by fresh authority/epoch verification. A newer sample
  * in that same public epoch does not invalidate still-fresh decoded pixels; their
- * original capture time remains authoritative and is never relabelled. */
+ * original capture time remains authoritative and is never relabelled.
+ *
+ * Its words come only from `WORKSPACE_PREVIEW_STATUS` (UX-24): the status is typed as
+ * that table's values, so an inline sentence here does not compile. */
 export function WorkspacePreview({ runId, enabled }: { readonly runId: string; readonly enabled: boolean }): React.JSX.Element {
   const [view, setView] = useState<{ url: string; capturedAt: number; checkedAt: number } | null>(null);
-  const [status, setStatus] = useState('Near-live preview unavailable.');
+  const [status, setStatus] = useState<WorkspacePreviewStatus>(WORKSPACE_PREVIEW_STATUS.unavailable);
   useEffect(() => {
     setView(null);
-    if (!enabled) { setStatus('Near-live preview unavailable in this deployment.'); return; }
+    if (!enabled) { setStatus(WORKSPACE_PREVIEW_STATUS.off); return; }
     let disposed = false, objectUrl: string | null = null, candidateUrl: string | null = null;
     let expiry: ReturnType<typeof setTimeout> | undefined;
     const controller = new AbortController();
@@ -38,11 +65,11 @@ export function WorkspacePreview({ runId, enabled }: { readonly runId: string; r
     const poll = async () => {
       let pendingUrl: string | null = null;
       try {
-        if (document.hidden) { clear(); setStatus('Near-live preview paused while this tab is hidden.'); return; }
+        if (document.hidden) { clear(); setStatus(WORKSPACE_PREVIEW_STATUS.hidden); return; }
         const sample = await read(true);
         if (disposed) return;
         if (!sample?.metadata || !sample.image || !matchingPreview(sample.metadata, sample.metadata, Date.now())) {
-          clear(); setStatus(sample?.metadata?.mode === 'private' ? 'Private step — preview hidden.' : 'Near-live preview unavailable or stale.'); return;
+          clear(); setStatus(sample?.metadata?.mode === 'private' ? WORKSPACE_PREVIEW_STATUS.private : WORKSPACE_PREVIEW_STATUS.noRecentScreen); return;
         }
         if (sample.metadata.runId !== runId || sample.image.length > 699052) { clear(); return; }
         const binary = atob(sample.image); const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
@@ -57,19 +84,19 @@ export function WorkspacePreview({ runId, enabled }: { readonly runId: string; r
         // reauthorized. Withdraw immediately on refusal/private state or expiry.
         candidateUrl = null; clear(); objectUrl = pendingUrl; pendingUrl = null;
         setView({ url: objectUrl, capturedAt: sample.metadata.capturedAt!, checkedAt: Date.now() });
-        setStatus('Near-live preview · synthetic workspace · not registered evidence.');
-        expiry = setTimeout(() => { clear(); setStatus('Near-live preview stale.'); }, Math.max(0, Math.min(sample.metadata.capturedAt! + 3000, latest.metadata.expiresAt) - Date.now()));
-      } catch { if (!disposed) { clear(); setStatus('Near-live preview unavailable.'); } }
+        setStatus(WORKSPACE_PREVIEW_STATUS.showing);
+        expiry = setTimeout(() => { clear(); setStatus(WORKSPACE_PREVIEW_STATUS.outOfDate); }, Math.max(0, Math.min(sample.metadata.capturedAt! + 3000, latest.metadata.expiresAt) - Date.now()));
+      } catch { if (!disposed) { clear(); setStatus(WORKSPACE_PREVIEW_STATUS.unavailable); } }
       finally { if (pendingUrl !== null) { URL.revokeObjectURL(pendingUrl); if (candidateUrl === pendingUrl) candidateUrl = null; } }
     };
-    const hide = () => { if (document.hidden) { clear(); setStatus('Near-live preview paused while this tab is hidden.'); } };
+    const hide = () => { if (document.hidden) { clear(); setStatus(WORKSPACE_PREVIEW_STATUS.hidden); } };
     document.addEventListener('visibilitychange', hide);
     const stopPolling = startWorkspacePreviewPolling(poll);
     return () => { disposed = true; controller.abort(); stopPolling(); clear(); document.removeEventListener('visibilitychange', hide); };
   }, [runId, enabled]);
-  return <section aria-label="Near-live workspace preview">
+  return <section className="workspace-preview" aria-label={WORKSPACE_PREVIEW_LABEL}>
     <p role="status" aria-live="polite">{status}</p>
-    {view && <><p className="ls-caption">Sample started {new Date(view.capturedAt).toISOString()}. Connection checked {new Date(view.checkedAt).toISOString()}.</p>
-      <WorkspaceCaptureView hasCapture><img className="ls-session__frame" src={view.url} alt="Near-live synthetic workspace sample" /></WorkspaceCaptureView></>}
+    {view && <><PreviewSampleTimes capturedAt={view.capturedAt} checkedAt={view.checkedAt} />
+      <WorkspaceCaptureView hasCapture><img className="ls-session__frame" src={view.url} alt={WORKSPACE_PREVIEW_ALT} /></WorkspaceCaptureView></>}
   </section>;
 }

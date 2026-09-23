@@ -8,6 +8,7 @@ import { PostgresWorkspacePreviewStore, createDb } from '@intellifin/infrastruct
 import { ACCOUNTS, AUTH_STATE, signIn } from './accounts';
 import { CREDENTIAL_TOKENS, EXCEPTION_FINGERPRINT_KEY, EXCEPTION_FINGERPRINT_KEY_ID } from './credentials';
 import { preparePreviewWorkerFixture, closePreviewWorkerFixture, startPreviewRun, sql, storage } from '../fixtures/workspace-preview-worker';
+import { WORKSPACE_PREVIEW_ALT, WORKSPACE_PREVIEW_LABEL, WORKSPACE_PREVIEW_STATUS } from '../../apps/web/src/runs/workspace-words';
 
 type Marker = { previewProof: true; pid: number; kind: string; id?: number; runId?: string;
   pageId?: number; preview?: boolean; digest?: string; runtimeId?: string; revision?: number; epoch?: number; pagesClosed?: boolean };
@@ -20,8 +21,8 @@ let closed = true;
 let exit: Promise<void>;
 const startedRuns = new Set<string>();
 const consumed = new Set<number>();
-const stage = (page: Page) => page.getByLabel('Near-live workspace preview', { exact: true });
-const image = (page: Page) => stage(page).getByAltText('Near-live synthetic workspace sample');
+const stage = (page: Page) => page.getByLabel(WORKSPACE_PREVIEW_LABEL, { exact: true });
+const image = (page: Page) => stage(page).getByAltText(WORKSPACE_PREVIEW_ALT);
 
 async function launch() {
   ready = false; failed = false; closed = false; expectedExit = false;
@@ -109,7 +110,7 @@ async function waitForFrame(page: Page, runId: string, timeout = 10_000) {
 async function privateProof(page: Page, runId: string) {
   const gate = await nextGate('private-input', runId);
   await page.goto(`/runs/${runId}/workspace`);
-  await expect(stage(page)).toContainText('Private step');
+  await expect(stage(page)).toContainText(WORKSPACE_PREVIEW_STATUS.private);
   await expect(image(page)).toHaveCount(0);
   const before = await metadata(runId);
   expect(before?.mode).toBe('private');
@@ -185,7 +186,7 @@ test.describe('composed compiled-worker near-live preview', () => {
 
       await secondContext.setOffline(true);
       await expect(image(second)).toHaveCount(0);
-      await expect(stage(second)).toContainText(/unavailable|stale/);
+      await expect(stage(second)).toContainText(/Live preview (unavailable|out of date)/);
       await waitForFrame(page, runId);
       await secondContext.setOffline(false);
       await waitForFrame(second, runId);
@@ -258,7 +259,7 @@ test.describe('composed compiled-worker near-live preview', () => {
     const pid = worker.pid;
     await shutdown('SIGKILL');
     await expect(image(page)).toHaveCount(0);
-    await expect(stage(page)).toContainText(/unavailable|stale/);
+    await expect(stage(page)).toContainText(/Live preview (unavailable|out of date)/);
     await expect.poll(async () => await sample(page, runId)).toBeNull();
     const store = new PostgresWorkspacePreviewStore(createDb(sql));
     await expect.poll(() => store.current(oldSample!.metadata)).toBe(false);

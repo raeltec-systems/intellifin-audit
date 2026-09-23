@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -66,3 +69,43 @@ describe('RunWorkspaceShell', () => {
   });
 });
 
+/**
+ * One scroll model (UI cleanup 2026-09-23, UX-23): the page does not scroll, the
+ * conversation and workspace panes do, and nothing inside the workspace pane adds a
+ * scrollbar of its own except a capture a person chose to see at its native size.
+ */
+function ruleBody(file: string, selector: string): string {
+  const css = readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const body = new RegExp(`^${escaped}\\s*\\{([^}]*)\\}`, 'm').exec(css)?.[1];
+  if (body === undefined) throw new Error(`No rule for ${selector} in ${file}`);
+  return body;
+}
+
+describe('the workspace pane adds no scroll container of its own', () => {
+  it('fits a capture without a viewport scrollbar, and pans only at native size', () => {
+    const fit = ruleBody('./WorkspaceCaptureView.css', '.workspace-capture-view__viewport');
+    expect(fit).toMatch(/overflow:\s*visible;/);
+    expect(fit).not.toMatch(/overflow(-[xy])?:\s*(auto|scroll)/);
+    const native = ruleBody('./WorkspaceCaptureView.css', '.workspace-capture-view__viewport--native');
+    expect(native).toMatch(/overflow:\s*auto;/);
+    expect(native).toMatch(/max-height:\s*50dvh;/);
+  });
+
+  it('shows native size at the original pixels, not under the session viewer\'s height bound', () => {
+    expect(ruleBody('./WorkspaceCaptureView.css', '.workspace-capture-view__viewport--native .ls-session__frame'))
+      .toMatch(/max-height:\s*none;/);
+  });
+
+  it('spaces the pane content without making it scroll', () => {
+    expect(ruleBody('./RunWorkspaceShell.css', '.run-workspace-stage')).not.toMatch(/overflow/);
+    expect(ruleBody('./RunWorkspaceShell.css', '.workspace-preview')).not.toMatch(/overflow/);
+  });
+
+  it('keeps the shared page header compact above the panes', () => {
+    const header = ruleBody('./RunWorkspaceShell.css', '.run-workspace-shell__header .ls-page-header');
+    expect(header).toMatch(/margin-bottom:\s*0;/);
+    expect(ruleBody('./RunWorkspaceShell.css', '.run-workspace-shell__header .ls-page-header__meta'))
+      .toMatch(/font-size:\s*var\(--type-caption-font-size\);/);
+  });
+});

@@ -50,7 +50,11 @@ describe('RunConversation', () => {
     expect(html).not.toContain('<script>close finding()</script>');
     expect(html).toContain('Auditor Lee');
     expect(html).toContain('Annotation');
-    expect(html).toContain('2026-09-19T10:00:00.000Z');
+    // The message's instant is readable, and exact in its dateTime (UX-02): never the
+    // raw ISO string as the text a person reads.
+    expect(html).toContain('19 Sep 2026, 10:00:00 UTC');
+    expect(html).toContain('dateTime="2026-09-19T10:00:00.000Z"');
+    expect(html).not.toMatch(/>\s*2026-09-19T10:00:00(\.000)?Z\s*</);
     expect(html).toContain('Source record');
     expect(html).toContain(
       `/runs/${RUN_ID}/evidence/${EVIDENCE_ID}?locator=table%3Arow%3A3`,

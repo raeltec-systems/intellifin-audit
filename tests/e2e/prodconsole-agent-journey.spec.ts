@@ -18,6 +18,7 @@ import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 import { NORTHSTAR_BASE_URL } from './northstar';
 import { EXCEPTION_FINGERPRINT_KEY, EXCEPTION_FINGERPRINT_KEY_ID } from './credentials';
+import { SAVED_SCREEN_HEADING } from '../../apps/web/src/runs/workspace-words';
 
 // Actual compiled worker, real canonical Northstar HTTP/browser and production S3 adapter.
 // The named HTTP provider fixture selects opaque tools only; this is local synthetic model
@@ -688,7 +689,8 @@ test.describe('canonical P-4 through the real compiled worker', () => {
     const registered = artifacts.find(artifact => artifact.evidence_id === evidenceId);
     expect(registered?.kind).toBe('screenshot');
     expect(sha256HexOfBytes(bytes)).toBe(registered?.digest);
-    await expect(page.getByText('Action-linked captures', { exact: false })).toBeVisible();
+    // The saved screen is named as what it is: evidence, not a live picture (UX-24).
+    await expect(page.getByRole('heading', { name: SAVED_SCREEN_HEADING, exact: true })).toBeVisible();
     await scan(page);
     await page.screenshot({ path: 'test-results/auditor-workspace-worker-capture-1440.png', fullPage: true, caret: 'initial' });
     await page.reload();
@@ -717,9 +719,9 @@ test.describe('canonical P-4 through the real compiled worker', () => {
       expect(await sql`SELECT cancel_requested_at FROM audit_run WHERE run_id=${runId}`).toEqual([{ cancel_requested_at: null }]);
       await page.getByRole('button', { name: 'Review Stop', exact: true }).click();
       await page.getByRole('dialog', { name: 'Stop this Run?', exact: true }).getByRole('button', { name: 'Stop Run', exact: true }).click();
-      await expect(page.getByLabel('Conversation history')).toContainText('Stop request: awaiting worker boundary.');
+      await expect(page.getByLabel('Conversation history')).toContainText('Stop request: waiting for the agent to finish its current action.');
       await page.reload();
-      await expect(page.getByLabel('Conversation history')).toContainText('Stop request: awaiting worker boundary.');
+      await expect(page.getByLabel('Conversation history')).toContainText('Stop request: waiting for the agent to finish its current action.');
       expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`).toEqual([{ state: 'RUNNING' }]);
       // Lose the process only after acceptance. A fresh worker must recover the durable
       // command and honor the existing lease/recovery boundary without another request.

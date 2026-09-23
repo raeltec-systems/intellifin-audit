@@ -2,6 +2,7 @@ import { expect, test as base, type Page } from '@playwright/test';
 import type { WorkspacePreviewMetadata } from '@intellifin/application';
 import { ACCOUNTS, AUTH_STATE, signIn } from './accounts';
 import { createPreviewBrowserFixture, digest, type PreviewBrowserFixture } from '../fixtures/workspace-preview-browser';
+import { SAVED_SCREEN_HEADING, WORKSPACE_PREVIEW_ALT, WORKSPACE_PREVIEW_LABEL } from '../../apps/web/src/runs/workspace-words';
 
 interface Display { url: string; at: number; capturedAt: number; width: number; height: number }
 interface Probe {
@@ -14,7 +15,7 @@ interface Delivery { metadata: WorkspacePreviewMetadata; digest: string; receive
  * A race test can hold ONE completed decode; it never replaces decoding with success.
  */
 async function observeViewer(page: Page) {
-  await page.addInitScript(() => {
+  await page.addInitScript(({ label }) => {
     const probe: Probe = { displays: [], revoked: [], holdNextDecode: false, waiting: null, release: null };
     window.__previewProof = probe;
     const decode = HTMLImageElement.prototype.decode;
@@ -30,10 +31,12 @@ async function observeViewer(page: Page) {
     URL.revokeObjectURL = value => { probe.revoked.push(value); revoke(value); };
     const seen = new Set<string>();
     const inspect = () => {
-      const stage = document.querySelector('[aria-label="Near-live workspace preview"]');
+      const stage = document.querySelector(`[aria-label="${label}"]`);
       const image = stage?.querySelector<HTMLImageElement>('img');
       if (!image?.complete || image.naturalWidth === 0 || seen.has(image.src)) return;
-      const stamp = stage?.textContent?.match(/Sample started ([^.]+\.\d{3}Z)/)?.[1];
+      // The sample's capture instant is exact in its <time> element's `datetime`; the
+      // visible words are the readable form (UX-24), so the proof reads the attribute.
+      const stamp = stage?.querySelector('[data-preview-captured-at] time')?.getAttribute('datetime');
       if (!stamp) return;
       seen.add(image.src);
       probe.displays.push({ url: image.src, at: performance.timeOrigin + performance.now(), capturedAt: Date.parse(stamp),
@@ -41,7 +44,7 @@ async function observeViewer(page: Page) {
     };
     new MutationObserver(inspect).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['src'] });
     document.addEventListener('load', inspect, true);
-  });
+  }, { label: WORKSPACE_PREVIEW_LABEL });
 }
 function trackDeliveries(page: Page, viewer: string, output: Delivery[]) {
   const pending = new Set<Promise<void>>();
@@ -56,8 +59,8 @@ function trackDeliveries(page: Page, viewer: string, output: Delivery[]) {
   });
   return async () => { await Promise.all(pending); return failures; };
 }
-const stage = (page: Page) => page.locator('[aria-label="Near-live workspace preview"]');
-const visibleFrame = (page: Page) => stage(page).getByAltText('Near-live synthetic workspace sample');
+const stage = (page: Page) => page.locator(`[aria-label="${WORKSPACE_PREVIEW_LABEL}"]`);
+const visibleFrame = (page: Page) => stage(page).getByAltText(WORKSPACE_PREVIEW_ALT);
 const percentile = (values: number[], fraction: number) => [...values].sort((a, b) => a - b)[Math.max(0, Math.ceil(values.length * fraction) - 1)] ?? null;
 const summary = (values: number[]) => ({ count: values.length, p50: percentile(values, .5), p95: percentile(values, .95), max: values.length ? Math.max(...values) : null });
 
@@ -250,14 +253,15 @@ test.describe('protected preview through compiled adapter, PostgreSQL, broker an
       }
       else await f.execution.release(f.ref, 5000);
       await expect(visibleFrame(viewer)).toHaveCount(0);
-      await expect(stage(viewer)).toContainText(/unavailable|stale/);
+      await expect(stage(viewer)).toContainText(/Live preview (unavailable|out of date)/);
       const response = await viewer.request.get(`/api/runs/${f.runId}/preview?image=1`);
       expect(response.ok()).toBe(false);
       await expect.poll(() => f.page.isClosed()).toBe(true);
       const count = f.screenshots.length, observedAt = Date.now();
       await expect.poll(() => Date.now() - observedAt, { timeout: 3500, intervals: [100] }).toBeGreaterThan(2200);
       expect(f.screenshots).toHaveLength(count);
-      await expect(viewer.getByText('Registered action-linked capture', { exact: false })).toBeVisible();
+      // The saved-screen section outlives the withdrawn live picture.
+      await expect(viewer.getByRole('heading', { name: SAVED_SCREEN_HEADING, exact: true })).toBeVisible();
     });
   }
 });

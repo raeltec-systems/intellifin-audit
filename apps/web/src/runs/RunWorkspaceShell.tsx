@@ -73,7 +73,7 @@ export interface RunWorkspaceShellProps {
   readonly conversation: ReactNode;
   /** A composer pinned below the conversation. */
   readonly composer: ReactNode;
-  /** The actual action-linked workspace stage supplied by the route. */
+  /** The workspace screens supplied by the route: the live preview and the latest saved screen. */
   readonly workspace: ReactNode;
   /** Only pane preferences are stored under this key. */
   readonly storageKey?: string;

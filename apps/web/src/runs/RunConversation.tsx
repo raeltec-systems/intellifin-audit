@@ -25,7 +25,7 @@ import {
   type FormEvent,
 } from 'react';
 
-import { utcStamp } from './labels';
+import { Timestamp } from '../design/Timestamp';
 import { useActionGate } from '../design/action-gate';
 import { Button } from '../design/Button';
 import './RunWorkspaceShell.css';
@@ -236,9 +236,8 @@ function ConversationMessage({
             <span className="run-conversation__source">{sourceLabel(message.source)}</span>
             <span className="run-conversation__kind">{kindLabel(message.kind)}</span>
           </div>
-          <time dateTime={message.createdAt} className="run-conversation__time">
-            {utcStamp(message.createdAt)}
-          </time>
+          {/* A readable instant; the exact one stays in the element's dateTime (UX-02). */}
+          <span className="run-conversation__time"><Timestamp value={message.createdAt} /></span>
         </header>
         <p className="run-conversation__actor">{messageActorLabel(message)}</p>
         {message.command?.kind === 'answer' && message.contentState === 'available' ? <>
@@ -247,8 +246,8 @@ function ConversationMessage({
             : <details className="run-conversation__question-source"><summary>Recorded answer proposal — source content</summary><div className="run-conversation__source-scroll" role="region" aria-label="Recorded answer proposal source" tabIndex={0}><UntrustedText field="recorded question and choice">{conversationBody(message)}</UntrustedText></div></details>}
         </> : <p className="run-conversation__body">{conversationBody(message)}</p>}
         {message.command && <p className="run-conversation__command-status">
-          <strong>{message.command.kind === 'answer' ? 'Answer' : message.command.kind === 'stop' ? 'Stop' : message.command.kind === 'resume' ? 'Resume' : 'Pause'} request: {message.command.state === 'queued' ? (message.command.kind === 'pause-after-inspection' ? 'waiting for the named inspection to settle' : 'awaiting worker boundary') : message.command.state === 'interpreted' && message.command.kind !== 'pause-now' ? (message.command.reason ? 'no longer available for confirmation' : 'awaiting your confirmation') : message.command.state}.</strong>{' '}
-          Recorded at <time dateTime={message.command.at}>{utcStamp(message.command.at)}</time>.
+          <strong>{message.command.kind === 'answer' ? 'Answer' : message.command.kind === 'stop' ? 'Stop' : message.command.kind === 'resume' ? 'Resume' : 'Pause'} request: {message.command.state === 'queued' ? (message.command.kind === 'pause-after-inspection' ? 'waiting for the named inspection to settle' : 'waiting for the agent to finish its current action') : message.command.state === 'interpreted' && message.command.kind !== 'pause-now' ? (message.command.reason ? 'no longer available for confirmation' : 'awaiting your confirmation') : message.command.state}.</strong>{' '}
+          Recorded at <Timestamp value={message.command.at} />.
         </p>}
 
         {message.command?.reason && <p>{message.command.reason}</p>}

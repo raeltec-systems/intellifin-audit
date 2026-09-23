@@ -807,9 +807,9 @@ test.describe('durable Run controller lease', () => {
       await expect(dialog).toHaveCount(0);
       expect(dispatches).toHaveLength(2);
       expect(dispatches[1]).toBe(dispatches[0]);
-      await expect(page.getByLabel('Conversation history')).toContainText('Stop request: awaiting worker boundary.');
+      await expect(page.getByLabel('Conversation history')).toContainText('Stop request: waiting for the agent to finish its current action.');
       await page.reload();
-      await expect(page.getByLabel('Conversation history')).toContainText('Stop request: awaiting worker boundary.');
+      await expect(page.getByLabel('Conversation history')).toContainText('Stop request: waiting for the agent to finish its current action.');
       expect(await sql`SELECT event_id,sequence FROM audit_events
         WHERE aggregate_id=${runId} AND event_type='lifecycle.run-cancel-requested'`).toEqual(beforeRetry);
       expect(await sql`SELECT state FROM run_interaction_transition WHERE command_id=${proposal.command_id} ORDER BY sequence`)

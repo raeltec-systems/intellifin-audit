@@ -10,6 +10,7 @@ import {
   RUN_WORKSPACE_SUBMITTED_TEXT,
   type RunWorkspaceBrowserFixture,
 } from '../fixtures/run-workspace-browser';
+import { SAVED_SCREEN_HEADING, WORKSPACE_PREVIEW_LABEL, WORKSPACE_PREVIEW_STATUS, noSavedScreenSentence } from '../../apps/web/src/runs/workspace-words';
 import { AUTH_STATE } from './accounts';
 
 const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
@@ -52,10 +53,22 @@ async function screenshot(page: Page, testInfo: TestInfo, name: string): Promise
 async function assertShellLoaded(page: Page): Promise<void> {
   await expect(shell(page)).toBeVisible();
   await expect(page.getByRole('heading', { name: /^Auditor Workspace · / })).toBeVisible();
+  // UX-23: the shared page header, with the state as a badge on the title's row and the
+  // period in words. The fixture's period is 2026-08-01 to 2026-08-31.
+  const header = shell(page).locator('.run-workspace-shell__header');
+  await expect(header.locator('.ls-page-header__title .ls-badge')).toHaveCount(1);
+  await expect(header.locator('.ls-page-header__meta')).toContainText('Period 1–31 Aug 2026');
+  await expect(header).not.toContainText('2026-08-01');
   await expect(conversationPane(page).getByLabel('Message the Run')).toBeVisible();
   await expect(page.locator('.run-conversation__composer-form')).toContainText('Current question:');
-  await expect(shell(page).locator('.run-workspace-shell__workspace-pane')).toContainText('Action-linked captures');
-  await expect(shell(page).locator('.run-workspace-shell__workspace-pane')).toContainText('No registered workspace capture is available yet.');
+  // UX-24: the pane says what the reader is looking at, never the mechanism behind it.
+  // This fixture's Run has an open browser and no saved screen, and shows no live picture.
+  const workspacePane = shell(page).locator('.run-workspace-shell__workspace-pane');
+  await expect(workspacePane.getByRole('heading', { name: SAVED_SCREEN_HEADING, exact: true })).toBeVisible();
+  await expect(workspacePane).toContainText(noSavedScreenSentence({ browserOpened: true, active: true }));
+  await expect(workspacePane.getByLabel(WORKSPACE_PREVIEW_LABEL, { exact: true })).toContainText(/Live preview unavailable/);
+  await expect(workspacePane).not.toContainText(WORKSPACE_PREVIEW_STATUS.showing);
+  await expect(workspacePane).not.toContainText(/action-linked|registered/i);
   await expect(shell(page).locator('.run-workspace-shell__decision').getByRole('heading', { name: 'Open Escalation', exact: true })).toBeVisible();
   await expect(shell(page).locator('.run-workspace-shell__decision')).toContainText('The captured record needs an auditor decision');
   await expect(shell(page).locator('.run-workspace-shell__decision').getByRole('button', { name: 'Select candidate 1', exact: true })).toBeVisible();

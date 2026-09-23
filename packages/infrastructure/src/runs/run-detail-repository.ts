@@ -1312,21 +1312,57 @@ export class DrizzleRunDetailRepository {
       .where(eq(runStepExecution.runId, runId))
       .orderBy(asc(runStepExecution.startedAt), asc(runStepExecution.stepExecutionId))
       .limit(Math.min(limit, REPLAY_PAGE_SIZE));
-    return {
-      total,
-      rows: rows.map((row): RunStepExecutionRow => ({
-        stepExecutionId: row.stepExecutionId,
-        planStepId: row.planStepId,
-        workItemId: row.workItemId,
-        action: row.action,
-        state: row.state,
-        attempt: row.attempt,
-        startedAt: row.startedAt.toISOString(),
-        completedAt: row.completedAt === null ? null : row.completedAt.toISOString(),
-        diagnostic: row.diagnostic,
-      })),
-    };
+    return { total, rows: rows.map(stepExecutionRow) };
   }
+
+  /**
+   * The Step Execution a Run is on now: its NEWEST, read on its own (UI cleanup
+   * 2026-09-23).
+   *
+   * Live View and the Auditor Workspace both name the step a Run is working. They took the
+   * newest row of the page `readStepExecutions` returns — which is the OLDEST fifty — so a
+   * Run with more attempts than a page holds was said to be on a step it finished long ago.
+   * The order is that page's, reversed, so the answer is the one `currentStepExecution` in
+   * `live-view.ts` gives over EVERY row, and the integration test holds the two together.
+   */
+  async readLatestStepExecution(runId: string): Promise<RunStepExecutionRow | null> {
+    if (!isUuidText(runId)) return null;
+    const [row] = await this.db
+      .select()
+      .from(runStepExecution)
+      .where(eq(runStepExecution.runId, runId))
+      .orderBy(desc(runStepExecution.startedAt), desc(runStepExecution.stepExecutionId))
+      .limit(1);
+    return row === undefined ? null : stepExecutionRow(row);
+  }
+
+  /**
+   * One Step Execution of this Run by id, wherever it sits in the Run's history: the one
+   * a frame was captured in is not necessarily on the first page of a long Run.
+   */
+  async readStepExecution(runId: string, stepExecutionId: string): Promise<RunStepExecutionRow | null> {
+    if (!isUuidText(runId) || !isUuidText(stepExecutionId)) return null;
+    const [row] = await this.db
+      .select()
+      .from(runStepExecution)
+      .where(and(eq(runStepExecution.runId, runId), eq(runStepExecution.stepExecutionId, stepExecutionId)))
+      .limit(1);
+    return row === undefined ? null : stepExecutionRow(row);
+  }
+}
+
+function stepExecutionRow(row: typeof runStepExecution.$inferSelect): RunStepExecutionRow {
+  return {
+    stepExecutionId: row.stepExecutionId,
+    planStepId: row.planStepId,
+    workItemId: row.workItemId,
+    action: row.action,
+    state: row.state,
+    attempt: row.attempt,
+    startedAt: row.startedAt.toISOString(),
+    completedAt: row.completedAt === null ? null : row.completedAt.toISOString(),
+    diagnostic: row.diagnostic,
+  };
 }
 
 function frameRow(row: {

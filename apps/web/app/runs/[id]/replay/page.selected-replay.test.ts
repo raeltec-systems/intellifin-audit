@@ -2,9 +2,9 @@ import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const calls = vi.hoisted(() => ({ openRun: vi.fn(), read: vi.fn(), prefix: vi.fn(), plan: vi.fn() }));
+const calls = vi.hoisted(() => ({ openRun: vi.fn(), read: vi.fn(), prefix: vi.fn(), plan: vi.fn(), names: vi.fn() }));
 vi.mock('@intellifin/infrastructure', () => ({
-  REPLAY_INSPECTION_PAGE_SIZE: 100, REPLAY_PAGE_SIZE: 500,
+  REPLAY_INSPECTION_PAGE_SIZE: 100, REPLAY_PAGE_SIZE: 500, readRecordNames: calls.names,
   DrizzleRunDetailRepository: class { readInspectionReplay = calls.read; readTimeline = calls.prefix; },
   DrizzleFrozenExecutionReader: class { readFrozenExecution = calls.plan; },
 }));
@@ -24,6 +24,7 @@ beforeEach(() => {
   calls.openRun.mockResolvedValue({ allowed: true, run: { runId: id, state: 'COMPLETED',
     procedureName: 'Selected Replay', versionId: 'version', procedureId: 'procedure' }, readAt: new Date('2026-09-20T00:00:00Z') });
   calls.plan.mockResolvedValue(null);
+  calls.names.mockResolvedValue(new Map());
   calls.read.mockResolvedValue({ kind: 'inspection', workItem: { workItemId, subjectKey: 'E-LATE',
     displayName: 'LoanCore', registrationId: 'loancore' }, workspace: null, rows: [], total: 0, framesTotal: 600,
     cursor: 0, previousCursor: null, nextCursor: null });
@@ -69,5 +70,27 @@ describe('selected Replay route', () => {
     expect(html).not.toContain('PRIVATE_DIAGNOSTIC'); expect(html).not.toContain('PRIVATE_TOOL_ID');
     expect(html).not.toContain('downloads'); expect(html).not.toContain('mediaType');
     expect(calls.prefix).not.toHaveBeenCalled();
+  });
+  it('names the selected record the way the record review does, and masks what the binding hides (UX-25)', async () => {
+    const stored = { evidenceId: 'late-evidence', toolActionId: 'late-action', stepExecutionId: 'late-step', workItemId,
+      action: 'read-attribute', digest: 'a'.repeat(64), size: 10, mediaType: 'image/png', sourceLocation: 'https://loancore.invalid/late',
+      capturedAt: '2026-09-20T10:00:00Z', actionStartedAt: '2026-09-20T10:00:00Z' };
+    calls.read.mockResolvedValue({ ...(await calls.read()), rows: [{ frame: stored, globalOrdinal: 506,
+      inspectionOrdinal: 1, observations: 512, step: { action: 'inspect-record', planStepId: 'late-plan-step', startedAt: stored.actionStartedAt },
+      action: { action: 'read-attribute', method: 'GET', startedAt: stored.actionStartedAt } }], total: 1 });
+    const p1 = { sessionSteps: [], targetSystems: [], inputs: { templateId: 'P-1', instructions: [],
+      targets: [{ registrationId: 'loancore', displayName: 'Frozen LoanCore' }] } };
+    calls.plan.mockResolvedValue(p1);
+    calls.names.mockResolvedValue(new Map([['E-LATE', 'Late Person']]));
+    const named = renderToStaticMarkup(await view({ workItem: workItemId }));
+    expect(named).toContain('E-LATE · Late Person');
+    expect(calls.names).toHaveBeenCalledWith({}, id, p1, ['E-LATE']);
+
+    // A key the frozen binding designates sensitive is never printed (FR-41).
+    calls.plan.mockResolvedValue({ ...p1, inputs: { ...p1.inputs, sourceSnapshot: { contract: { sensitive_fields: ['employee_id', 'full_name'] } } } });
+    const masked = renderToStaticMarkup(await view({ workItem: workItemId }));
+    expect(masked).not.toContain('E-LATE');
+    expect(masked).not.toContain('Late Person');
+    expect(masked).toContain('••••');
   });
 });

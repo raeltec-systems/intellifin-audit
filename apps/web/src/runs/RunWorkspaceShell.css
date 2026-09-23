@@ -28,6 +28,19 @@
   line-height: var(--type-body-sm-line-height);
 }
 
+/* The shared page header (UI cleanup 2026-09-23, UX-23) in two short rows: the title with
+   the Run's state beside it, then one caption line of facts. Its page-level bottom margin
+   is dropped here because the conversation and workspace panes below need the height. */
+.run-workspace-shell__header .ls-page-header {
+  gap: var(--spacing-1);
+  margin-bottom: 0;
+}
+
+.run-workspace-shell__header .ls-page-header__meta {
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
 .run-workspace-shell__meta {
   display: grid;
   gap: var(--spacing-2);
@@ -855,6 +868,25 @@
   max-height: 5rem;
   overflow: auto;
   overscroll-behavior: contain;
+}
+
+/* The workspace pane's content: the live preview, then the latest saved screen and where
+   it came from. Spacing only; the pane's one scroll container is the shell's own. */
+.run-workspace-stage {
+  display: grid;
+  gap: var(--spacing-2);
+  min-width: 0;
+  padding: var(--spacing-2);
+}
+
+.run-workspace-stage > h3 {
+  margin-top: var(--spacing-2);
+}
+
+.workspace-preview {
+  display: grid;
+  gap: var(--spacing-1);
+  min-width: 0;
 }
 
 /* Source values cannot expand the status chrome or move an answer below its pane. */
