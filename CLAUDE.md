@@ -18,6 +18,12 @@ surfaces only PR #51's branch has; `p5-report.md` states the rule each one needs
   Procedure through the form package 3 renamed ("Procedure name", one-click creation,
   `?created=1`, the Builder's words for a missing source). No text conflict, red on the
   first run. At a merge, grep every spec for the words each package renamed.
+- **A package can move a line a mutation harness pins, and no local gate runs the harnesses.**
+  Package 5 gave the Escalation question `policy={false}` (UX-27); the agent-guard harness
+  anchors on that exact line, so the integrated branch's first CI run stopped with
+  "Mutation anchor drift" after every test had passed. Before pushing a merge of UI work,
+  run the three harnesses CI runs (`verify-agent-guard-mutations.mjs --browser`,
+  `verify-prodconsole-…`, `verify-escalation-review-…`) in a detached worktree of HEAD.
 - **A report is only as true as the tests it names.** Checking each "proven by" against the
   test file found two findings nothing pinned (a stop-reason sentence, the Review tab).
 - **Fifty green layout checks did not find three false sentences; reading the screenshots
