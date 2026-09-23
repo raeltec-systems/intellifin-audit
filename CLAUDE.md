@@ -46,6 +46,14 @@ surfaces only PR #51's branch has; `p5-report.md` states the rule each one needs
   (`aggregation_update.rs`, "Aborting.") at test 23 of 238; the other 195 failures were
   `ERR_CONNECTION_REFUSED`. Delete `apps/web/.next` and run with `INTELLIFIN_LOW_DISK=1`
   (no on-disk cache); the next full run finished.
+- **A streamed table is in the DOM before it has a box.** React holds a streamed Suspense
+  segment in a `hidden` block until it reveals it, so `toHaveText` passes there while
+  `boundingBox()` answers `null` and a page-width check measures the skeleton. CI's first
+  run on `2a31831` failed `runs.spec.ts` on exactly this. Measure only after `toBeVisible()`.
+- **A transitional confirmation goes when the state it announced settles (UX-49), so a
+  spec must not race it.** `flag-run.spec.ts` asserted the settled banner and the absent
+  transitional sentence; `runs.spec.ts` still raced "Run canceled." twice and lost on a
+  fast machine. When a package makes a sentence transitional, grep every spec for it.
 - **Playwright empties `test-results/` at the start of every run.** Read a failure's
   `error-context.md` and attachments before starting the next run, or they are gone. When a
   context has no page snapshot, a throwaway copy of the spec that prints `innerText()` at

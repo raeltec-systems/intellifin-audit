@@ -263,6 +263,11 @@ test.describe('Run initiation as an Auditor', () => {
       await page.setViewportSize(size);
       await page.goto('/runs');
       const link = page.locator(`a[href="/runs/${runId}"]`);
+      // VISIBLE, not only present. The table streams in behind a Suspense boundary, and
+      // React holds a streamed segment in a `hidden` block until it reveals it: the link is
+      // in the DOM with its text before it has a box. Measured then, the width check below
+      // read a cell with no box, and the overflow check measured the skeleton, not the table.
+      await expect(link).toBeVisible();
       await expect(link).toHaveText(controlName);
       // The contract's own rule: no list or table scrolls the whole page sideways.
       const overflow = await page.evaluate(
@@ -273,6 +278,7 @@ test.describe('Run initiation as an Auditor', () => {
       // the Procedure name wrapping one word per line; a column collapsed to the link's
       // own glyph width would fail this long before it failed a scroll check.
       const cell = page.locator("th[scope='row']").filter({ has: link });
+      await expect(cell).toBeVisible();
       const box = await cell.boundingBox();
       expect(box, 'the Run cell must have a measurable box').not.toBeNull();
       expect(box!.width).toBeGreaterThanOrEqual(200);
@@ -402,7 +408,12 @@ test.describe('Run initiation as an Auditor', () => {
     await expect(confirm).toBeVisible();
     await expect(confirm.getByText('Evidence already collected is preserved')).toBeVisible();
     await confirm.getByRole('button', { name: 'Cancel Run', exact: true }).click();
-    await expect(page.getByText('Run canceled.', { exact: true })).toBeVisible();
+    // Once the page has re-read the Run, the server's own banner names the person, and the
+    // control's transitional "Run canceled." is gone: the state it announced has settled
+    // (UI cleanup UX-49). Asserting the transitional sentence raced that re-read, which a
+    // fast machine wins — `flag-run.spec.ts` asserts the same pair for a RUNNING Run.
+    await expect(page.getByText(new RegExp(`Canceled by ${auditorName} at `))).toBeVisible();
+    await expect(page.getByText('Run canceled.', { exact: true })).toHaveCount(0);
 
     await page.reload();
     await expect(page.getByText('Canceled', { exact: true }).first()).toBeVisible();
@@ -441,7 +452,8 @@ test.describe('Run initiation as an Auditor', () => {
     await expect(page.locator('#run-lifecycle')).toHaveAttribute('data-client-ready', 'true');
     await page.getByRole('button', { name: 'Cancel Run', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Cancel Run', exact: true }).click();
-    await expect(page.getByText('Run canceled.', { exact: true })).toBeVisible();
+    await expect(page.getByText(new RegExp(`Canceled by ${auditorName} at `))).toBeVisible();
+    expect(await sql`SELECT state FROM audit_run WHERE run_id=${successor!.id as string}`).toMatchObject([{ state: 'CANCELED' }]);
   });
 
   test('returns safe not-found pages for malformed and absent Run IDs', async ({ page }) => {
