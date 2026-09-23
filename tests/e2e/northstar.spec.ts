@@ -79,6 +79,9 @@ test.afterAll(async () => {
 /** Register one Target System through the real interface and its confirmation dialog. */
 async function registerSystem(page: Page, name: string, origin: string): Promise<void> {
   await page.goto('/administration/registrations');
+  // The inventory comes first and the form opens from "Add a system" (UI cleanup UX-38).
+  const add = page.locator('details').filter({ has: page.locator(':scope > summary', { hasText: 'Add a system' }) });
+  if (!(await add.evaluate((node) => (node as HTMLDetailsElement).open))) await add.locator(':scope > summary').click();
   await page.getByLabel('Display name').fill(name);
   await page.getByLabel('What kind of system is it').selectOption('web');
   await page.getByLabel('Web addresses the agent may open').fill(origin);

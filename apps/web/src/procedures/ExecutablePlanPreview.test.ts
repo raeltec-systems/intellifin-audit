@@ -11,6 +11,15 @@ import { RetryPlanDerivation } from './RetryPlanDerivation';
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.stubGlobal('React', React);
 
+
+/**
+ * Which attempt's instant the preview shows. `<Timestamp>` carries the exact instant in
+ * `dateTime` (ISO 8601 with milliseconds; React's server rendering keeps the camelCase)
+ * and a readable form as its text, so provenance is pinned on the attribute and does not
+ * depend on how a time is worded.
+ */
+const shownAt = (iso: string): string => `dateTime="${new Date(iso).toISOString()}"`;
+
 function view(): ProcedureVersionView {
   const input = executablePlanInputs();
   const result = deriveExecutablePlan(input);
@@ -35,10 +44,10 @@ describe('read-only executable plan preview', () => {
       { ...draft.planAttempts[0]!, attemptId: 'other-digest', inputDigest: 'unrelated', attemptedAt: '2026-09-04T03:00:00Z' },
       { ...draft.planAttempts[0]!, attemptId: 'duplicate-success', attemptedAt: '2026-09-04T04:00:00Z' },
     ] });
-    expect(html).toContain('2026-09-04T01:00:00Z');
-    expect(html).not.toContain('2026-09-04T02:00:00Z');
-    expect(html).not.toContain('2026-09-04T03:00:00Z');
-    expect(html).not.toContain('2026-09-04T04:00:00Z');
+    expect(html).toContain(shownAt('2026-09-04T01:00:00Z'));
+    expect(html).not.toContain(shownAt('2026-09-04T02:00:00Z'));
+    expect(html).not.toContain(shownAt('2026-09-04T03:00:00Z'));
+    expect(html).not.toContain(shownAt('2026-09-04T04:00:00Z'));
     expect(html).not.toContain('failed-provider');
   });
   it('renders the stored execution meaning, provenance and timestamp without edit controls', () => {
@@ -72,8 +81,8 @@ it('shows the publishing attempt when same-digest successes finish out of start 
     { ...draft.planAttempts[0]!, attemptId: 'started-first-finished-last', published: false, attemptedAt: '2026-09-04T01:00:00Z' },
     { ...draft.planAttempts[0]!, attemptId: 'publisher', published: true, attemptedAt: '2026-09-04T02:00:00Z' },
   ] });
-  expect(html).toContain('2026-09-04T02:00:00Z');
-  expect(html).not.toContain('2026-09-04T01:00:00Z');
+  expect(html).toContain(shownAt('2026-09-04T02:00:00Z'));
+  expect(html).not.toContain(shownAt('2026-09-04T01:00:00Z'));
 });
 
 it('shows the latest publisher when authoring returns to an earlier successful digest', () => {
@@ -83,8 +92,8 @@ it('shows the latest publisher when authoring returns to an earlier successful d
     { ...draft.planAttempts[0]!, attemptId: 'B', published: false, inputDigest: 'other', completedAt: '2026-09-04T02:00:00Z' },
     { ...draft.planAttempts[0]!, attemptId: 'new-A', published: true, completedAt: '2026-09-04T03:00:00Z' },
   ] });
-  expect(html).toContain('2026-09-04T03:00:00Z');
-  expect(html).not.toContain('2026-09-04T01:00:00Z');
+  expect(html).toContain(shownAt('2026-09-04T03:00:00Z'));
+  expect(html).not.toContain(shownAt('2026-09-04T01:00:00Z'));
 });
 
 /**

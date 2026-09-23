@@ -100,10 +100,12 @@ test('all Procedure Detail states remain visible and New version is keyboard acc
     await expect(page.getByText(`Retired; this version is read-only. Superseded by v${successor.versionNumber}.`)).toBeVisible();
     // The Active source lies on the newest history page despite its older number;
     // its direct review remains reachable independently of history pagination.
-    await page.goto(`/procedures/${procedureId}/builder`);await expect(page.getByText(/Version 103 · Draft/)).toBeVisible();
+    // The Builder's compact header (UI cleanup UX-08) names the version in its meta line and
+    // shows its state as a badge beside the title, where "Version 103 · Draft" used to be one line.
+    await page.goto(`/procedures/${procedureId}/builder`);await expect(page.locator('.ls-page-header')).toContainText('Version 103');await expect(page.locator('.ls-page-header')).toContainText('Draft');
     await page.goto(`/procedures/${procedureId}`);
     await page.getByRole('button',{name:'New version',exact:true}).click();
-    await expect(page).toHaveURL(/builder\?version=/,{timeout:30000});await expect(page.getByText(/Version 104 · Draft/)).toBeVisible();
+    await expect(page).toHaveURL(/builder\?version=/,{timeout:30000});await expect(page.locator('.ls-page-header')).toContainText('Version 104');await expect(page.locator('.ls-page-header')).toContainText('Draft');
     await page.goto(`/procedures/${procedureId}`);
     let requests=0;const address=page.url();
     await page.route(address,async route=>{if(route.request().method()!=='POST')return route.continue();requests++;await route.fetch();await route.abort('failed');});

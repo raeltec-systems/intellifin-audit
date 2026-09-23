@@ -311,7 +311,9 @@ async function askForProposal(page: Page, section: 'objective' | 'scope', notes:
     const writing = page.locator(`[data-writing-section="${section}"]`);
     await writing.getByLabel('Your answer', { exact: true }).fill(notes);
     await writing.getByRole('button', { name: 'Send message', exact: true }).click();
-    const prepared = writing.getByRole('heading', { name: 'Proposed wording — not saved' });
+    // A scope that names its dates is proposed WITH them (UI cleanup UX-09), under its own
+    // heading; wording alone keeps the ordinary one.
+    const prepared = writing.getByRole('heading', { name: section === 'scope' ? 'Proposed dates and scope — not saved' : 'Proposed wording — not saved' });
     const stale = writing.getByText(STALE, { exact: false });
     await expect(prepared.or(stale).first()).toBeVisible();
     if (await prepared.isVisible()) return;
@@ -429,19 +431,23 @@ test('an auditor prepares and accepts a draft, revises it after manager review, 
   await executionIsRefused(page, 'an accepted and reviewed section in a Draft');
 
   /* ------------------------------------------------- 2. Period and scope ---- */
+  // `[REWRITTEN 2026-09-23, UI cleanup UX-09]` The owner's scope names its month, and the
+  // assistant used to ask for the scope and then refuse it for want of a saved period. It
+  // now proposes the dates and the scope together, read from the auditor's own words, and
+  // ONE acceptance saves both through the existing writers — so the manual period step
+  // this journey needed before is gone, and the saved row is checked instead.
   await askForProposal(page, 'scope', SCOPE);
   const scopeWriting = page.locator('[data-writing-section="scope"]');
-  await scopeWriting.getByRole('button', { name: 'Use this draft', exact: true }).click();
-  await expect(page.getByLabel('Period start', { exact: true })).toBeVisible();
+  await expect(scopeWriting).toContainText('I’ll use 1–31 Aug 2026 as the testing period');
+  await scopeWriting.getByRole('button', { name: 'Use these dates and this scope', exact: true }).click();
+  await expect(scopeWriting.getByText('Your draft is saved. Review the section, then mark it reviewed when you are satisfied.', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Period start', { exact: true })).toHaveValue('2026-08-01');
+  await expect(page.getByLabel('Period end', { exact: true })).toHaveValue('2026-08-31');
   await expect(page.getByLabel('Scope statement', { exact: true })).toHaveValue(SCOPE);
-  await expect(page.getByLabel('Scope statement', { exact: true })).toBeHidden();
-  await step(page, 'Period and scope', async () => {
-    await page.getByLabel('Period start', { exact: true }).fill('2026-08-01');
-    await page.getByLabel('Period end', { exact: true }).fill('2026-08-31');
-    await page.getByLabel('Scope statement').fill(SCOPE);
-  }, async () => {
-    await page.getByRole('button', { name: 'Save Period and scope', exact: true }).click();
-  }, 'Saved. The Draft change is recorded in the audit chain.');
+  await expect.poll(async () => {
+    const [draft] = await sql`SELECT period, scope FROM procedure_version WHERE procedure_id = ${procedureId} AND state = 'DRAFT'`;
+    return draft;
+  }).toMatchObject({ period: { from: '2026-08-01', to: '2026-08-31' }, scope: SCOPE });
 
   /* ------------------------------------------------- 3. records to test ----- */
   await step(page, 'Population Source binding', async () => {
