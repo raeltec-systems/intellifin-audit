@@ -42,6 +42,14 @@ both branches rewrote.
   while a control re-read had them disabled (by design) and were not retried; and three
   tests left a held network route running into the next test. `tests/e2e/run-control.ts`
   holds the one way the specs now acquire, resume and compare a Run's events.
+- **After the deployment, two more races in the preview worker spec** (`20d35d2`,
+  `e42f2e8`). The sweep above did not reach `workspace-preview-worker.spec.ts`, which only
+  the preview job runs: its Acquire loop and its single Resume click now use
+  `run-control.ts`. It also let its held model turn go at the same moment it clicked "Stop
+  Run" (and "Pause Run"). The worker could then answer the turn, act and start another held
+  turn before the command was saved, so the Stop never reached a boundary and the Run
+  stayed running. Two cold local runs failed this way. The spec now waits for the Run's
+  saved pause or cancellation marker first. Test-only: no product code changed.
 
 The deployed commit before this work, `ec673a0`, was itself red in CI (6 browser and 2
 preview failures). Those are among the fixes above.
@@ -76,6 +84,9 @@ Locally, against this worktree's own PostgreSQL 18 database, before each push:
   them. No rows were left behind by any run.
 - Mutation proofs: the Replay key (unit and browser), the record queue order, masking and
   names (three PostgreSQL cases, four SSR cases), the current step read (integration).
+- For `e42f2e8`: both preview specs from a cold cache, 12 of 12. A throwaway copy that
+  holds every command request for two seconds passes with the new wait and fails at the
+  Stop without it ("Received: RUNNING"), the same failure the cold runs showed.
 
 ## Deployment
 
