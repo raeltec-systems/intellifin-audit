@@ -2,17 +2,33 @@ import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const calls = vi.hoisted(() => ({ openRun: vi.fn(), read: vi.fn(), prefix: vi.fn(), plan: vi.fn(), names: vi.fn() }));
+const calls = vi.hoisted(() => ({ openRun: vi.fn(), read: vi.fn(), prefix: vi.fn(), plan: vi.fn(), names: vi.fn(), frames: vi.fn() }));
 vi.mock('@intellifin/infrastructure', () => ({
   REPLAY_INSPECTION_PAGE_SIZE: 100, REPLAY_PAGE_SIZE: 500, readRecordNames: calls.names,
-  DrizzleRunDetailRepository: class { readInspectionReplay = calls.read; readTimeline = calls.prefix; },
+  DrizzleRunDetailRepository: class {
+    readInspectionReplay = calls.read; readTimeline = calls.prefix; readFrames = calls.frames;
+    readWaits = async () => []; readObservationDeltas = async () => []; readExceptions = async () => ({ rows: [] });
+    readEvidenceItems = async () => [];
+  },
   DrizzleFrozenExecutionReader: class { readFrozenExecution = calls.plan; },
 }));
 vi.mock('../../../../src/bootstrap', () => ({ getRuntime: async () => ({ db: {} }) }));
 vi.mock('../../../../src/runs/detail', () => ({ openRun: calls.openRun,
   RunDenied: () => React.createElement('p', null, 'Run denied'), runTabHref: (id: string) => `/runs/${id}` }));
 vi.mock('../../../../src/runs/ReplayViewer', () => ({ ReplayViewer: (props: unknown) => React.createElement('pre', null, JSON.stringify(props)) }));
+import { ReplayViewer } from '../../../../src/runs/ReplayViewer';
 import RunReplayPage from './page';
+
+/** The key React gives the viewer in the page's tree: what decides whether it starts again. */
+function viewerKey(node: unknown): string | null {
+  if (Array.isArray(node)) {
+    for (const child of node) { const key = viewerKey(child); if (key !== null) return key; }
+    return null;
+  }
+  if (!React.isValidElement(node)) return null;
+  if (node.type === ReplayViewer) return node.key;
+  return viewerKey((node.props as { readonly children?: unknown }).children);
+}
 
 const id = '019823ab-0000-7000-8000-000000000001';
 const workItemId = '019823ab-0000-7000-8000-000000000002';
@@ -92,5 +108,27 @@ describe('selected Replay route', () => {
     expect(masked).not.toContain('E-LATE');
     expect(masked).not.toContain('Late Person');
     expect(masked).toContain('••••');
+  });
+  it('keys the viewer by the request and never by the read, so a re-read keeps the reader\'s frame', async () => {
+    // The shell's bell re-reads every page whenever any Run ends (BellLive). With the read
+    // time in the key, each re-read restarted the viewer at its first frame under a reader
+    // who was stepping through it (selected-replay.spec.ts found it on the live branch).
+    const readAt = (iso: string) => calls.openRun.mockResolvedValue({ allowed: true, run: { runId: id, state: 'COMPLETED',
+      procedureName: 'Selected Replay', versionId: 'version', procedureId: 'procedure' }, readAt: new Date(iso) });
+    calls.prefix.mockResolvedValue({ workItems: [], stepExecutions: { rows: [] }, toolActions: { rows: [] }, sessionSteps: [], workspace: null });
+    calls.frames.mockResolvedValue({ rows: [], total: 0 });
+    for (const request of [{ workItem: workItemId, cursor: '100' }, {}, { workItem: [workItemId, workItemId] }]) {
+      readAt('2026-09-20T00:00:00.000Z');
+      const first = viewerKey(await view(request));
+      readAt('2026-09-20T00:00:07.123Z');
+      const reread = viewerKey(await view(request));
+      expect(first).not.toBeNull();
+      expect(reread).toBe(first);
+    }
+    // A different request still starts again at its own first frame: every page of an
+    // inspection, the whole session and an unavailable request are distinct keys.
+    const keys = await Promise.all([{ workItem: workItemId }, { workItem: workItemId, cursor: '100' }, {}, { cursor: '100' }]
+      .map(async request => viewerKey(await view(request))));
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });

@@ -37,6 +37,24 @@ has (`ed12dfd` record review, `857b08b` workspace, Live View and chat).
   had no git writes, no shared-database suites, and a list of files. It named four defects it
   was not allowed to fix (a stale spec, raw chat times, the bounded current step, an
   unmasked key). All four were real and fixed here.
+- **A React key built from the read time remounts the component on every re-read, and
+  the shell re-reads every page whenever ANY Run ends** (`BellLive`). The Replay viewer's
+  key carried `readAt`, so a reader stepping through frames was thrown back to the first
+  one whenever some other Run ended. `replayViewerKey` keys by the Run and the REQUEST.
+  Found because `selected-replay.spec.ts` failed "Frame 606" after End, ArrowLeft; a
+  throwaway spec that logged each RSC request and the viewer node's identity showed the
+  re-read and the new node in one trace. Proven by mutation in a unit test (the page's
+  element key) and in the browser (a real cancel of another Run, then the same node).
+- **The re-read in that spec came from the spec's own fixture.** Its extra QUEUED Run had
+  no held checkpoint, so the spec's own worker picked it up and ended it mid-walk. Seed a
+  fixture Run WITH its checkpoint, in one transaction, and end it on purpose when the
+  test is about a Run ending. `cancelRun` on a RUNNING Run only records a request; on a
+  QUEUED or PAUSED one the command ends it at once.
+- **A spec only this branch has was never updated by the packages.** `.ls-session__caption`
+  was removed by the cleanup (UX-28) and `selected-replay.spec.ts` still asserted it; no
+  run had reached that line, because the test failed earlier. After fixing an early
+  failure, run the test to its end before calling it fixed. All 68 `ls-` classes the specs
+  use were then checked against the app.
 
 ## 2026-09-23 — The UI cleanup landed as five packages, and what integrating them found
 

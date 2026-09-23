@@ -16,7 +16,7 @@ import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
 import { planActionWord, runLifecycleWord, workItemLabel } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
 import { frameNarration, plannedStepCount, stepNarration } from '../../../../src/runs/live-view';
-import { effectiveFrameWorkItemId, replayInitialSelection, replayJumpTargets, replayObservationsThrough, replayRequest, resolveFrameWorkItems } from '../../../../src/runs/replay';
+import { effectiveFrameWorkItemId, replayInitialSelection, replayJumpTargets, replayObservationsThrough, replayRequest, replayViewerKey, resolveFrameWorkItems } from '../../../../src/runs/replay';
 import { recordNaming, recordWords } from '../../../../src/runs/record-words';
 
 export const metadata: Metadata = { title: 'Run · Replay · IntelliFin Audit' };
@@ -131,8 +131,9 @@ export default async function RunReplayPage({
     return (
       <div className="ls-stack">
         {header}
+        {/* Keyed by the REQUEST, never by the read: see `replayViewerKey`. */}
         <ReplayViewer
-          key={`${run.runId}:${request.kind === 'inspection' ? `${request.workItemId}:${request.cursor}` : 'unavailable'}:${readAt.toISOString()}`}
+          key={replayViewerKey(run.runId, request)}
           runId={run.runId}
           runState={run.state}
           stateSentence={`Session REPLAY. This Run ended: ${run.state}.`}
@@ -260,7 +261,7 @@ export default async function RunReplayPage({
     <div className="ls-stack">
       {header}
       <ReplayViewer
-        key={`${run.runId}:${readAt.toISOString()}`}
+        key={replayViewerKey(run.runId, request)}
         runId={run.runId}
         runState={run.state}
         stateSentence={`Session REPLAY. This Run ended: ${run.state}.`}

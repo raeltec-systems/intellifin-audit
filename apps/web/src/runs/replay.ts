@@ -77,6 +77,26 @@ export function replayRequest(query: {
   return { kind: 'inspection', workItemId: query.workItem.toLowerCase(), cursor };
 }
 
+/**
+ * The Replay viewer's React key: the Run and the REQUEST, and never the time it was read.
+ *
+ * The key decides when the viewer starts again from its requested frame, paused. A new
+ * request must do that — another inspection, another page of one, the whole session —
+ * so each is its own key. A re-read of the SAME request must not: the shell's bell
+ * re-reads every page whenever any Run ends or a question opens anywhere (`BellLive`),
+ * and a key that carried the read time restarted the viewer at its first frame under a
+ * reader who was stepping through it. A terminal Run's frames never change, so a re-read
+ * has nothing to reset. A full reload still starts paused at the request, because a
+ * reload mounts everything anew.
+ */
+export function replayViewerKey(runId: string, request: ReplayRequest): string {
+  switch (request.kind) {
+    case 'prefix': return `${runId}:prefix`;
+    case 'unavailable': return `${runId}:unavailable`;
+    case 'inspection': return `${runId}:inspection:${request.workItemId}:${request.cursor}`;
+  }
+}
+
 export function replayInspectionHref(runId: string, workItemId: string, cursor = 0): string {
   return `/runs/${encodeURIComponent(runId)}/replay?workItem=${encodeURIComponent(workItemId)}${cursor === 0 ? '' : `&cursor=${cursor}`}`;
 }

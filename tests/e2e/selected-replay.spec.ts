@@ -3,13 +3,17 @@ import { expect, test } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 
+import { cancelRun, type CancelRunDependencies } from '@intellifin/application';
 import { sha256HexOfBytes } from '@intellifin/domain';
 import {
   createDb,
   createSqlClient,
   CryptoUuidV7Generator,
+  DrizzleRoleRepository,
   PostgresProceduresUnitOfWork,
+  PostgresRunCancellationRepository,
   PostgresRunsUnitOfWork,
+  SystemClock,
   type Sql,
 } from '@intellifin/infrastructure';
 
@@ -44,6 +48,13 @@ let stopWorker: (() => Promise<void>) | undefined;
 let workerLog = '';
 let author = '';
 const runs: string[] = [];
+
+/** The real cancel command, so a Run ending elsewhere is the platform's own event. */
+const cancelDependencies = (): CancelRunDependencies => {
+  const db = createDb(sql);
+  return { roles: new DrizzleRoleRepository(db), unitOfWork: new PostgresRunsUnitOfWork(db),
+    repository: new PostgresRunCancellationRepository(db), ids, clock: new SystemClock() };
+};
 
 interface Replayed {
   readonly runId: string;
@@ -248,10 +259,19 @@ test.describe('an inspection beyond the first 500 Replay captures', () => {
     const seeded = await seedReplayRun();
     // The other Run has no capture. Its Work Item is real, and still cannot be selected here.
     const foreignRun = ids.next(), foreignWork = ids.next();
-    await sql`INSERT INTO audit_run(request_token,run_id,correlation_id,procedure_id,version_id,version_number,
-      procedure_name,period_from,period_to,state,kind,initiator_id,session_id,authorization_role,initiated_at)
-      VALUES(${ids.next()},${foreignRun},${ids.next()},${procedureId},${versionId},1,${controlName},
-      '2026-07-28','2026-07-28','QUEUED','STANDARD',${author},'selected-replay-foreign','auditor',now())`;
+    // Held, and committed WITH its population checkpoint: a QUEUED Run with no checkpoint is
+    // exactly what the real worker's population recovery sweep picks up, and a sweep that
+    // took this Run would end it at a moment nobody chose — a run-ending event mid-walk.
+    // It ends below, when this test says so, through the real cancel command.
+    const held = new Date(Date.now() + 3_600_000).toISOString();
+    await sql.begin(async (tx) => {
+      await tx`INSERT INTO audit_run(request_token,run_id,correlation_id,procedure_id,version_id,version_number,
+        procedure_name,period_from,period_to,state,kind,initiator_id,session_id,authorization_role,initiated_at)
+        VALUES(${ids.next()},${foreignRun},${ids.next()},${procedureId},${versionId},1,${controlName},
+        '2026-07-28','2026-07-28','QUEUED','STANDARD',${author},'selected-replay-foreign','auditor',now())`;
+      await tx`INSERT INTO population_execution(run_id,revision,status,attempts,started_at,attempt_started_at,lease_until,step_id,attempt_id)
+        VALUES(${foreignRun},1,'POPULATION_READY',1,now(),now(),${held},'session-1',${ids.next()})`;
+    });
     runs.push(foreignRun);
     await sql`INSERT INTO run_work_item(work_item_id,run_id,step_id,ordinal,registration_id,display_name,subject_key,state,attempts,cycles,observations)
       VALUES(${foreignWork},${foreignRun},'target-1-1',1,'loancore','LoanCore','E-FOREIGN','OBSERVED',1,0,0)`;
@@ -308,6 +328,21 @@ test.describe('an inspection beyond the first 500 Replay captures', () => {
     await viewer.press('Home'); await assertFrame(605);
     await viewer.press('ArrowRight'); await assertFrame(606);
     await viewer.press('End'); await viewer.press('ArrowLeft'); await assertFrame(608);
+    // Any Run ending anywhere makes the shell's bell re-read this page (BellLive). The
+    // re-read must leave the reader on the frame they chose: with the read time in the
+    // viewer's key it restarted at this page's first frame, which is how this spec failed
+    // on the live branch whenever another Run happened to end mid-walk. Here a real
+    // run-ending event, from the real cancel command on the other Run, drives it.
+    const readAt = page.locator('p.ls-caption', { hasText: 'Read at' }).locator('time');
+    const readBefore = await readAt.getAttribute('datetime');
+    expect(readBefore).not.toBeNull();
+    await page.evaluate(() => { (window as unknown as { __viewer: Element | null }).__viewer = document.querySelector('.ls-session'); });
+    expect(await cancelRun(cancelDependencies(), { session: { userId: author, sessionId: 'selected-replay-cancel' },
+      request: { runId: foreignRun, reason: null } })).toEqual({ ok: true, state: 'CANCELED', pending: false });
+    await expect(readAt).not.toHaveAttribute('datetime', readBefore ?? '', { timeout: 15_000 });
+    expect(await page.evaluate(() => document.querySelector('.ls-session')
+      === (window as unknown as { __viewer: Element | null }).__viewer)).toBe(true);
+    await assertFrame(608);
     await page.getByRole('button', { name: 'Play', exact: true }).click();
     await assertFrame(609);
     await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
@@ -339,9 +374,14 @@ test.describe('an inspection beyond the first 500 Replay captures', () => {
     await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
     await expect(page.getByText('Frame 581 of 610', { exact: false })).toBeVisible();
     await expect(page.getByRole('status')).toHaveAttribute('aria-live', 'polite');
-    await expect(page.locator('.ls-session__caption')).toContainText(LOCATIONS[1]!);
-    await expect(page.locator('.ls-session__caption')).toContainText('Captured');
-    await expect(page.locator('.ls-session__caption')).toContainText(DIGEST);
+    // The frame's facts stay when its bytes are refused. The UI cleanup moved them out of
+    // one caption line (UX-28): where and when the screen was captured is its own section,
+    // and the integrity digest is under the rail's Technical details.
+    const source = page.getByRole('region', { name: 'Where this screen was captured', exact: true });
+    await expect(source).toContainText(LOCATIONS[1]!);
+    await expect(source).toContainText('Captured');
+    await expect(page.locator('details.ls-technical', { has: page.locator('dt', { hasText: 'Frame integrity digest' }) }))
+      .toContainText(DIGEST);
     storage.objects.set(`screenshot/${seeded.runId}/${seeded.frames[580]}`, new Uint8Array(PNG));
     imageRequests.length = 0;
     await page.getByRole('button', { name: 'Retry this frame', exact: true }).click();

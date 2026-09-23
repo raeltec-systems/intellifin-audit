@@ -47,6 +47,13 @@ Step, record and frozen target name. Reload preserves that request. Invalid, dup
 cross-Run selections render no image. A valid inspection with no registered captures says
 so without substituting another record's frame.
 
+**A re-read is not a reload.** The shell's bell re-reads every page whenever any Run ends
+or a question opens anywhere (`BellLive`). The viewer is therefore keyed by the Run and the
+request (`replayViewerKey` in `replay.ts`), never by the time the page was read: a re-read
+keeps the reader's frame and playback, and a new request (another inspection, another page
+of one, the whole session) starts again, paused, at its own first frame. A terminal Run's
+frames do not change, so a re-read has nothing to reset.
+
 `readInspectionReplay` returns at most `REPLAY_INSPECTION_PAGE_SIZE` (100) frames. Explicit
 previous/next links retain `workItem` and add `cursor=<offset>`: a canonical nonnegative
 decimal multiple of 100, bounded to 2,147,483,600. A cursor without an inspection, duplicate
