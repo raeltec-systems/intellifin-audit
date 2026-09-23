@@ -67,6 +67,13 @@ both branches rewrote.
   the dialog between the two reads. The text read then waited for a dialog that never came
   back, and the check timed out with its earlier answer. The spec now reads both facts in
   one read. Test-only.
+- **CI on `d1a3f30` then passed the browser suite, and the abuse mutation job failed once
+  before any of its tests ran.** Its case `model-response-credential-containment` waited 180
+  seconds for the web server and stopped, and the job log said nothing more: the harness kept
+  only Playwright's JSON report, which holds no web server lines. The one re-run passed, so
+  all 7 jobs were green. `5ceb420` makes the harness keep the web server's own lines when a
+  run fails before its tests: a bounded tail, secret values replaced by their names, repeated
+  health polls folded. If it happens again, the log says why. Test-only.
 
 The deployed commit before this work, `ec673a0`, was itself red in CI (6 browser and 2
 preview failures). Those are among the fixes above.
@@ -113,6 +120,15 @@ Locally, against this worktree's own PostgreSQL 18 database, before each push:
   failed 5 of 5 with CI's message ("Received: false" after "exceeded while waiting on the
   predicate"), and 0 of 5 with one read. Then `run-controller-lease.spec.ts` from a cold
   cache, 16 of 16, and the fixed test 5 more times, 5 of 5. No rows left behind.
+- For `5ceb420`, in a clean detached copy with its own database: two failures forced before
+  any test ran. Without `BETTER_AUTH_SECRET`, the kept lines say "Refusing to start" and name
+  the key. With the database unreachable, they say "Startup checks deferred" with
+  `ECONNREFUSED`, and three minutes of health polls fold into three lines. No secret value
+  and no worktree path in either. Then the full harness from a cold cache: 7 of 7 cases,
+  every baseline green and every mutant caught, and nothing kept for a green run. Each
+  Playwright run printed 10 to 45 KB. (That run was on `4345b42`, which differs from
+  `5ceb420` only in three comments.) The unit test has 9 cases; 13 mutations of the tail
+  rules each fail it.
 
 ## Deployment
 

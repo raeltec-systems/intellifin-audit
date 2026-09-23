@@ -117,6 +117,29 @@ has (`ed12dfd` record review, `857b08b` workspace, Live View and chat).
   The product was right: one resume event, receipt applied, dialog closed. Read every fact
   of a poll in ONE page read (`evaluateAll` never waits). A throwaway spec that closed the
   dialog between the reads failed 5 of 5 with the same message, and 0 of 5 with one read.
+- **The abuse harness threw away the web server's own words.** CI on `d1a3f30` (attempt 1)
+  failed "Agent abuse mutations" in case 5 with only "Timed out waiting 180000ms from
+  config.webServer.": no test ran, and nothing said why. `verify-agent-abuse-e2e-mutations.mjs`
+  read only Playwright's JSON report, which keeps nothing that belongs to no test, so every
+  `[WebServer]` line was lost. A server can be up and never ready: on a transient error
+  `runStartupChecks` logs "Startup checks deferred" and stays up, `/api/health` answers 503,
+  and Playwright waits its full 180 s. The harness now adds the `line` reporter and, ONLY for
+  a run that failed outside its tests, keeps a tail of the child's stdout and stderr
+  (`scripts/playwright-output-tail.mjs`): escapes stripped, the worktree path named, the value
+  of every variable whose NAME marks it secret replaced by that name, same-shape lines (the
+  503 polls) folded to first, count and last, and only then cut to 80 lines of 400 characters.
+  Two forced local runs named their causes: "Refusing to start" with `configKeys:
+  BETTER_AUTH_SECRET`, and "Startup checks deferred" with `ECONNREFUSED`. The `d1a3f30` re-run
+  passed, so that failure's own cause is still unknown; the next one will say it.
+- **When you want the END of a child's output, send it to a file, not to a pipe
+  `spawnSync` buffers.** Past `maxBuffer` (16 MiB here) `spawnSync` kills the run and keeps
+  the FIRST bytes, so its tail is not where the run stopped. The harness's child writes to
+  files in its scratch directory, and `readTail` reads back at most the last 8 MiB, whole
+  lines only: a window that starts inside a line can start inside a secret, and half a secret
+  is a value the redaction cannot recognize. Each run of a full local harness printed 10–45
+  KB, far below the limit. **`/proc/<pid>/io` `wchar` is not a process's stdout**: it counts
+  every write, it read 3–22 MB for these same runs, and it first sent this change after a
+  limit it was nowhere near. Measure the file the output lands in.
 - **`live-escalation.spec.ts` still waited to SEE "Pause requested." and "Run resumed."**
   after UX-49 made both transitional; `pause-resume.spec.ts` had already moved to the
   settled banner. When a sentence becomes transitional, grep every spec for it — this
