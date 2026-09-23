@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 import {
   createDb,
@@ -10,6 +10,7 @@ import {
 } from '@intellifin/infrastructure';
 
 import { FLAG_COPY } from '../../apps/web/src/design/copy';
+import { FLAG_MENU_LABEL } from '../../apps/web/src/runs/session-words';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 
@@ -95,6 +96,17 @@ async function seedRun(state: 'RUNNING' | 'QUEUED' = 'RUNNING'): Promise<string>
   return runId;
 }
 
+/**
+ * Open the flag disclosure in Live View's header (UI cleanup 2026-09-22, UX-48). The form
+ * was a full card on the header's action row and pushed the workspace screen below the
+ * first viewport; it opens from one native `<details>` now, which needs no JavaScript.
+ */
+async function openFlag(page: Page): Promise<void> {
+  const menu = page.locator('#run-flag');
+  await menu.locator('> summary').click();
+  await expect(menu).toHaveAttribute('open', '');
+}
+
 test.describe('flagging a Run from Live View', () => {
   test.use({ storageState: AUTH_STATE.auditor });
 
@@ -106,6 +118,10 @@ test.describe('flagging a Run from Live View', () => {
     await page.goto(`/runs/${runId}/live`);
     await expect(page.getByRole('heading', { name: /^Live View · / })).toBeVisible();
     const panel = page.locator('#run-flag');
+    // Closed until somebody opens it, and the opener says no flag is raised yet.
+    await expect(panel.getByLabel(FLAG_COPY.noteLabel)).toBeHidden();
+    await expect(panel.locator('> summary')).toHaveText(FLAG_MENU_LABEL);
+    await openFlag(page);
     await expect(panel.getByRole('heading', { name: FLAG_COPY.heading })).toBeVisible();
     // The sentence an auditor needs before pressing it.
     await expect(panel.getByText(FLAG_COPY.explanation)).toBeVisible();
@@ -147,6 +163,8 @@ test.describe('flagging a Run from Live View', () => {
     try {
       const page = await context.newPage();
       await page.goto(`/runs/${runId}/live`);
+      // A native disclosure opens with no script at all.
+      await openFlag(page);
       await expect(page.locator('#run-flag form')).toHaveAttribute('method', /post/i);
       await page.getByLabel(FLAG_COPY.noteLabel).fill('Typed without script.');
       const submission = page.waitForRequest(request => request.method() === 'POST'
@@ -168,6 +186,7 @@ test.describe('flagging a Run from Live View', () => {
     const runId = await seedRun();
     await page.goto(`/runs/${runId}/live`);
     const panel = page.locator('#run-flag');
+    await openFlag(page);
     await expect(panel.getByRole('heading', { name: FLAG_COPY.heading })).toBeVisible();
 
     // Commit the Server Action, then drop its acknowledgement — the `runs.spec.ts`
@@ -205,6 +224,7 @@ test.describe('flagging a Run from Live View', () => {
     const runId = await seedRun('QUEUED');
     await page.goto(`/runs/${runId}/live`);
     const panel = page.locator('#run-flag');
+    await openFlag(page);
     await expect(panel.getByRole('heading', { name: FLAG_COPY.heading })).toBeVisible();
     await expect(panel.getByRole('button', { name: FLAG_COPY.submit })).toHaveCount(0);
     await expect(panel.getByText(FLAG_COPY.none)).toBeVisible();
@@ -214,6 +234,7 @@ test.describe('flagging a Run from Live View', () => {
     test.setTimeout(120_000);
     const runId = await seedRun();
     await page.goto(`/runs/${runId}/live`);
+    await openFlag(page);
     await page.getByLabel(FLAG_COPY.noteLabel).fill('Look at this one.');
     await page.getByRole('button', { name: FLAG_COPY.submit }).click();
     await expect(page.getByText(FLAG_COPY.raised, { exact: true })).toBeVisible();
@@ -260,8 +281,13 @@ test.describe('flagging a Run from Live View', () => {
     await expect(dialog.getByText('Evidence already collected is preserved', { exact: false })).toBeVisible();
     await dialog.getByRole('button', { name: 'Cancel Run', exact: true }).click();
 
-    // A RUNNING Run is held by a worker, so the COMMAND only records the request.
-    await expect(page.getByText('Cancellation requested.', { exact: true })).toBeVisible();
+    // A RUNNING Run is held by a worker, so the COMMAND only records the request. Once the
+    // page has re-read the Run the server's own banner says so, naming the person, and the
+    // control's transitional "Cancellation requested." is gone: the state it announced has
+    // settled (UI cleanup 2026-09-22, UX-49). This spec used to require the transitional
+    // sentence, which on the walkthrough's screen stood beside the settled state.
+    await expect(page.getByText(`Cancellation requested by ${authorName} at`, { exact: false })).toBeVisible();
+    await expect(page.getByText('Cancellation requested.', { exact: true })).toHaveCount(0);
     const [row] = await sql`SELECT state, cancel_requested_by FROM audit_run WHERE run_id=${runId}`;
     expect(row).toMatchObject({ state: 'RUNNING', cancel_requested_by: author });
   });

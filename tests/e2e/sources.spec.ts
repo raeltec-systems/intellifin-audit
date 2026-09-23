@@ -65,6 +65,19 @@ async function scan(page: Page): Promise<void> {
   expect(summary, JSON.stringify(summary, null, 2)).toEqual([]);
 }
 
+/**
+ * Open the "Add a population source" disclosure the create form now sits behind
+ * (UX-43): the inventory is first in the viewport. Idempotent.
+ */
+async function openAddSource(page: Page): Promise<void> {
+  const summary = page.locator('summary', { hasText: 'Add a population source' });
+  const disclosure = page.locator('details.ls-disclosure', {
+    has: page.locator(':scope > summary', { hasText: 'Add a population source' }),
+  });
+  if (await disclosure.evaluate((element) => (element as HTMLDetailsElement).open)) return;
+  await summary.click();
+}
+
 /** Fill the create form. The kind decides whether a location field exists at all. */
 async function fillForm(
   page: Page,
@@ -77,6 +90,7 @@ async function fillForm(
     sensitive?: string;
   },
 ): Promise<void> {
+  await openAddSource(page);
   await page.getByLabel('Display name').fill(options.name);
   await page.getByLabel('How the records arrive').selectOption(options.kind);
   if (options.kind !== 'manual-upload') {
@@ -172,14 +186,22 @@ test.describe('as a PoC Administrator', () => {
       `Registered ${versionedName}.`,
     );
 
-    // The digest is on the surface, in full: it is the value an auditor compares.
     const row = page.getByRole('row', { name: new RegExp(versionedName) });
     await expect(row).toBeVisible();
-    expect(await row.locator('.ls-digest').innerText()).toMatch(/^[0-9a-f]{64}$/);
-    // And what it froze is beside it: the location, the schema and the masked field.
-    await expect(row).toContainText('s3://synthetic-bucket/hr/leavers/2026-08.csv');
-    await expect(row).toContainText('termination_date');
     await expect(row).toContainText('A signed cover sheet');
+
+    // The digest, the location, the schema and the masked field all moved to the
+    // source's own page, under Technical details (UX-43): they are what an auditor
+    // compares, not what a reader scans across a row.
+    await row.getByRole('link', { name: versionedName }).click();
+    await page.locator('summary', { hasText: 'Technical details' }).click();
+    expect(await page.locator('dd.ls-digest-cell .ls-digest').innerText()).toMatch(
+      /^[0-9a-f]{64}$/,
+    );
+    await expect(page.locator('.ls-technical')).toContainText(
+      's3://synthetic-bucket/hr/leavers/2026-08.csv',
+    );
+    await expect(page.locator('.ls-technical')).toContainText('termination_date');
   });
 
   test('registers a read-only API, and its digest differs from the file binding', async ({
@@ -198,18 +220,27 @@ test.describe('as a PoC Administrator', () => {
 
     await page.reload();
     const apiRow = page.getByRole('row', { name: new RegExp(apiName) });
+    await expect(apiRow).toContainText('The system reports its own total');
+
+    await apiRow.getByRole('link', { name: apiName }).click();
+    await page.locator('summary', { hasText: 'Technical details' }).click();
+    const apiDigest = await page.locator('dd.ls-digest-cell .ls-digest').innerText();
+    await expect(page.locator('.ls-technical')).toContainText('No fields are hidden.');
+
+    await page.goto('/administration/sources');
     const fileRow = page.getByRole('row', { name: new RegExp(versionedName) });
-    const apiDigest = await apiRow.locator('.ls-digest').innerText();
-    const fileDigest = await fileRow.locator('.ls-digest').innerText();
+    await fileRow.getByRole('link', { name: versionedName }).click();
+    await page.locator('summary', { hasText: 'Technical details' }).click();
+    const fileDigest = await page.locator('dd.ls-digest-cell .ls-digest').innerText();
+
     expect(apiDigest).toMatch(/^[0-9a-f]{64}$/);
     // Two different contracts freeze two different numbers.
     expect(apiDigest).not.toBe(fileDigest);
-    await expect(apiRow).toContainText('The system reports its own total');
-    await expect(apiRow).toContainText('No fields are hidden.');
   });
 
   test('marks a manual upload upload-only and states the `once` restriction', async ({ page }) => {
     await page.goto('/administration/sources');
+    await openAddSource(page);
 
     // Both assertions below were true BEFORE the selection, because the form used to
     // open on `manual-upload`: they could not fail from the branch they name. The
@@ -242,9 +273,13 @@ test.describe('as a PoC Administrator', () => {
     const row = page.getByRole('row', { name: new RegExp(uploadName) });
     await expect(row).toContainText('Uploaded by hand each time');
     await expect(row).toContainText('valid only for a `once` Schedule');
-    // The location cell says what it means rather than being empty, which a reader takes
-    // for a missing value.
-    await expect(row).toContainText('Supplied with each Run');
+
+    // The location moved to the source's own page, under Technical details (UX-43). It
+    // says what it means rather than being empty, which a reader takes for a missing
+    // value.
+    await row.getByRole('link', { name: uploadName }).click();
+    await page.locator('summary', { hasText: 'Technical details' }).click();
+    await expect(page.locator('.ls-technical')).toContainText('Supplied with each Run');
   });
 
   test('SAVES a binding with no declared count, and warns what it costs', async ({ page }) => {
@@ -304,6 +339,7 @@ test.describe('as a PoC Administrator', () => {
     await page.getByRole('link', { name: versionedName }).click();
 
     await expect(page.getByRole('heading', { name: versionedName, level: 1 })).toBeVisible();
+    await page.locator('summary', { hasText: 'Technical details' }).click();
     const shown = page.locator('dd.ls-digest-cell .ls-digest');
     const before = await shown.innerText();
     expect(before).toMatch(/^[0-9a-f]{64}$/);
@@ -313,6 +349,7 @@ test.describe('as a PoC Administrator', () => {
     await submitAndConfirm(page, 'Save changes');
     await expect(page.locator('.ls-banner--success')).toContainText('The fingerprint did not change');
     await page.reload();
+    await page.locator('summary', { hasText: 'Technical details' }).click();
     await expect(page.locator('dd.ls-digest-cell .ls-digest')).toHaveText(before);
 
     // Reordering the declared schema IS a change: a schema declares field positions, and a
@@ -325,6 +362,7 @@ test.describe('as a PoC Administrator', () => {
     // chain" appears on the annotated path too, so this would pass with nothing published.
     await expect(page.locator('.ls-banner--success')).toContainText('The fingerprint is now ');
     await page.reload();
+    await page.locator('summary', { hasText: 'Technical details' }).click();
     await expect(page.locator('dd.ls-digest-cell .ls-digest')).not.toHaveText(before);
   });
 
@@ -338,6 +376,7 @@ test.describe('as a PoC Administrator', () => {
     // The two Banners are the only markup this story adds that the registrations surface
     // does not have, so they get their own scan rather than relying on the default state.
     await page.goto('/administration/sources');
+    await openAddSource(page);
     await page.getByLabel('How the records arrive').selectOption('manual-upload');
     await page.getByLabel('How the record count is confirmed').selectOption('none');
     await expect(page.locator('.ls-banner--warning')).toBeVisible();

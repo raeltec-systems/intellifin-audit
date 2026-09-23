@@ -171,6 +171,17 @@ a {
    * every control the moment it takes focus. */
 }
 
+/* A date or time field has keyboard stops INSIDE it: Tab visits each segment (day,
+ * month, year; hour, minute) and then the browser's own calendar or clock button. At that
+ * last stop Chromium matches neither `:focus` nor `:focus-visible` on the input — only
+ * `:focus-within` — so the one rule above drew no ring there, on the Run period, the
+ * Draft period and the Schedule's start time. `:focus-within` covers every stop inside
+ * the field; the segments already matched `:focus-visible`, so they look the same. */
+input:is([type='date'], [type='time'], [type='datetime-local'], [type='month'], [type='week']):focus-within {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
 /* The ring is the same #0F766E on the navy sidebar, where teal-700 alone would sit at
  * 2.7:1 against the ground.
  *
@@ -2449,8 +2460,769 @@ a {
   gap: var(--spacing-1);
 }
 
+/* ---------------------------------------------------------------------------
+   UI cleanup, 2026-09-22 — package 1: the shared language and layout layer.
+
+   The owner's 21 September walkthrough (49 findings, 17 P1) found ordinary screens
+   spending most of a laptop viewport on chrome — a title, a paragraph, a badge and a
+   card-sized "Updated" banner each on their own row — and printing identifiers where a
+   person expected a name. These rules are what `PageHeader`, the `line` Banner variant,
+   `Reference`, `TechnicalDetails` and the Run toolbar paint. Packages 2–6 add their own
+   rules in the labelled regions below, one region each, so five branches merge without
+   touching one another's lines. */
+
+/* The title row: name and state on one line, page controls on the right. */
+.ls-page-header__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-3) var(--spacing-5);
+}
+
+.ls-page-header__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-3);
+  min-width: 0;
+}
+
+.ls-page-header__title h1 {
+  overflow-wrap: anywhere;
+}
+
+.ls-page-header__actions {
+  flex: none;
+}
+
+/* The meta line reads at caption size: it is facts about the thing named, not prose. */
+.ls-page-header__meta {
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+/* A Banner as one row of caption text. The role and the tone are the same as the card;
+   only the space it costs changes. The title and the body sit on one line and wrap
+   together when the viewport is narrow. */
+.ls-banner--line {
+  padding: var(--spacing-1) var(--spacing-3);
+  align-items: center;
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+.ls-banner--line > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--spacing-2);
+}
+
+.ls-banner--line .ls-banner__title {
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+  font-weight: 600;
+}
+
+.ls-banner--line p {
+  margin: 0;
+}
+
+/* `Run bf4ea3e7`: the kind in prose, the reference in monospace, together on one line. */
+.ls-reference {
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+}
+
+/* Technical details: the one disclosure identifiers, digests and exact instants live
+   under. Closed by default; the reading order of a surface never meets a UUID first. */
+.ls-technical summary {
+  color: var(--color-text-secondary);
+}
+
+.ls-technical__body {
+  max-width: none;
+}
+
+.ls-technical .ls-definition dd {
+  overflow-wrap: anywhere;
+}
+
+/* The Run toolbar: every control that belongs to the whole Run, in one row, with any
+   message a control has to show on the row beneath it. */
+.ls-toolbar__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.ls-toolbar__group .ls-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.ls-toolbar__message {
+  max-width: 68ch;
+}
+
+/* ---------------------------------------------------------------------------
+   UI cleanup — package 2: role landing pages, Reviews, searchable lists, compact tables.
+   (Rules are added here by package 2 and nowhere else.) */
+
+
+/* The PoC Administrator's landing: three links and the standing facts, as one readable
+   column rather than a refusal banner. */
+.ls-admin-links,
+.ls-facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-width: 68ch;
+}
+
+.ls-admin-links > li > p,
+.ls-facts > li {
+  margin: 0;
+}
+
+.ls-facts > li {
+  border-left: 2px solid var(--color-border-default);
+  padding-left: var(--spacing-3);
+  max-width: 68ch;
+}
+
+/* The Procedures list's search and filters. A GET form, so it lays out as ordinary
+   controls in a row that wraps rather than as a dialog. */
+.ls-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-md);
+}
+
+.ls-filters__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-width: 14rem;
+  flex: 1 1 14rem;
+}
+
+.ls-filters__field > p {
+  margin: 0;
+}
+
+.ls-filters__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  flex: 0 0 auto;
+}
+
+/* One Procedure per card, short enough that twenty of them are a page somebody reads. */
+.ls-procedure-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ls-procedure-card {
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-md);
+  padding: var(--spacing-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.ls-procedure-card__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin: 0;
+  font-family: var(--type-row-title-font-family);
+  font-size: var(--type-row-title-font-size);
+  font-weight: var(--type-row-title-font-weight);
+  line-height: var(--type-row-title-line-height);
+}
+
+.ls-procedure-card > .ls-caption {
+  margin: 0;
+}
+
+/* The facts as a wrapping grid, so a narrow window stacks them instead of scrolling. */
+.ls-procedure-card__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: var(--spacing-2) var(--spacing-4);
+  margin: var(--spacing-1) 0 0;
+}
+
+.ls-procedure-card__facts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ls-procedure-card__facts dt {
+  font-family: var(--type-overline-font-family);
+  font-size: var(--type-overline-font-size);
+  font-weight: var(--type-overline-font-weight);
+  letter-spacing: var(--type-overline-letter-spacing);
+  line-height: var(--type-overline-line-height);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.ls-procedure-card__facts dd {
+  margin: 0;
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+  overflow-wrap: anywhere;
+}
+
+/* The Runs table's Run cell: the Procedure name on one line, the short reference and the
+   effective period beneath it. Six columns fit at 1280px only if the first one is allowed
+   a sensible width and its detail is allowed to wrap. */
+.ls-run-cell__detail {
+  display: block;
+  font-family: var(--type-caption-font-family);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.ls-table th[scope='row'] {
+  min-width: 16rem;
+}
+
+/* The notification bell's panel, which lists what is waiting rather than one link. */
+.ls-bell-panel__heading {
+  margin: 0 0 var(--spacing-2);
+  font-family: var(--type-sub-title-font-family);
+  font-size: var(--type-sub-title-font-size);
+  font-weight: var(--type-sub-title-font-weight);
+  line-height: var(--type-sub-title-line-height);
+}
+
+.ls-bell-panel__items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  margin: 0 0 var(--spacing-3);
+  padding: 0;
+  list-style: none;
+  max-width: 32rem;
+}
+
+.ls-bell-panel__items > li > p {
+  margin: 2px 0 0;
+}
+
+@media (max-width: 1023px) {
+  /* Stacked rows: the first cell is no longer a column, so it takes the row's width. */
+  .ls-table th[scope='row'] {
+    min-width: 0;
+  }
+}
+
+
+
+/* ---------------------------------------------------------------------------
+   UI cleanup — package 3: procedure authoring.
+   (Rules are added here by package 3 and nowhere else.) */
+
+
+
+/* ---------------------------------------------------------------------------
+   UI cleanup — package 4: manager procedure review.
+   (Rules are added here by package 4 and nowhere else.) */
+
+
+/* The decision, kept in front of the person taking it (UX-34).
+
+   Approve and Reject used to sit at the bottom of a 13,887px page. This bar sticks to the
+   top of the CONTENT column — the shell's own top bar scrolls away with the document, so
+   `top: 0` is the viewport's top and nothing overlaps it. It is inside the page, not the
+   shell, because it belongs to ONE version and must leave with it. */
+.ls-decision-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: var(--spacing-card-padding);
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--rounded-lg);
+  gap: var(--spacing-3);
+}
+
+.ls-decision-bar__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+.ls-decision-bar__title {
+  margin: 0;
+  font-size: var(--type-card-title-font-size);
+  line-height: var(--type-card-title-line-height);
+  font-weight: var(--type-card-title-font-weight);
+}
+
+.ls-decision-bar__version {
+  margin: 0;
+  font-weight: var(--type-card-title-font-weight);
+}
+
+.ls-decision-bar__meta,
+.ls-decision-bar__saved {
+  margin: 0;
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+  color: var(--color-text-secondary);
+}
+
+/* The decision summary: what is being decided, before anything that is not (UX-33).
+
+   Two columns at 1024px and up, so the seven blocks fit a laptop viewport without the
+   page becoming a single tall column; the four blocks whose content is prose or a list
+   of criteria take the whole width. One column below that, where a table would stack
+   anyway. */
+.ls-review-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--spacing-5);
+}
+
+@media (min-width: 1024px) {
+  .ls-review-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ls-review-block--wide {
+    grid-column: 1 / -1;
+  }
+}
+
+.ls-review-block {
+  min-width: 0;
+}
+
+.ls-review-list {
+  margin: 0;
+  padding-left: var(--spacing-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.ls-review-system {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  padding-top: var(--spacing-3);
+  border-top: 1px solid var(--color-border-default);
+}
+
+.ls-review-system:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.ls-review-system__name {
+  margin: 0;
+  font-weight: var(--type-card-title-font-weight);
+}
+
+/* What changed, section by section, in words. */
+.ls-review-change {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.ls-change__before {
+  color: var(--color-text-secondary);
+  text-decoration: line-through;
+}
+
+.ls-change__after {
+  font-weight: var(--type-card-title-font-weight);
+}
+
+.ls-review-history {
+  margin: 0;
+  padding-left: var(--spacing-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.ls-review-history p {
+  margin: 0;
+}
+
+
+
+/* ---------------------------------------------------------------------------
+   UI cleanup — package 5: findings, evidence, Replay and Live View.
+   (Rules are added here by package 5 and nowhere else.) */
+
+/* A status badge says a WORD; the line under it says what that word is about, so
+   evidence validity, control compliance and a person's review are never read as one
+   thing (UX-18). Secondary rather than muted: these sit on `surface-card`, and muted is
+   4.39:1 on the sunken surfaces some of them inherit. */
+.ls-triptych__meaning,
+.ls-gate__meaning {
+  margin: 0;
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+  color: var(--color-text-secondary);
+  max-width: 44ch;
+}
+
+/* One criterion, as a sentence. The compiled rule text below it stays inert and
+   monospace, because it is the platform's grammar and not prose. */
+.ls-criterion {
+  gap: var(--spacing-2);
+}
+
+.ls-criterion__sentence {
+  margin: 0;
+  max-width: 76ch;
+}
+
+.ls-criterion__text {
+  margin: 0;
+  padding: var(--spacing-2) var(--spacing-3);
+  background: var(--color-surface-sunken);
+  border-radius: var(--rounded-sm);
+  font-family: var(--type-mono-font-family);
+  font-size: var(--type-body-sm-font-size);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* A finding leads with the record a reader recognises, and ends with the two links
+   EXPERIENCE.md asks every finding to carry. */
+.ls-finding__record {
+  margin: 0;
+}
+
+.ls-finding__links {
+  margin: 0;
+  font-size: var(--type-body-sm-font-size);
+}
+
+/* The selected record's position, beside the global counter and never instead of it. */
+.ls-session__record-position {
+  font-size: var(--type-body-sm-font-size);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The Agent's current action, said as a sentence. It is the rail's first line and the
+   frame's own caption for a screen-reader user, so it reads as prose (UX-28). */
+.ls-session__narration {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* A finding is headed by the record a reader recognises, with the state badge on the
+   same row (UX-21). The system name is secondary: it is identical on every finding of a
+   Run, so it must not compete with the one value that is not. */
+.ls-exception__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+}
+
+.ls-exception__record {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ls-exception__system {
+  font-size: var(--type-body-sm-font-size);
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+/* Expected against observed, side by side where there is room and stacked where there is
+   not: the comparison is the point, so the two cells share one row above 720px. */
+.ls-exception__compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-3);
+}
+
+@media (max-width: 719px) {
+  .ls-exception__compare {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ls-exception__links {
+  margin: 0;
+  font-size: var(--type-body-sm-font-size);
+}
+
+/* The untrusted policy sentence, said ONCE above a set of blocks rather than under each
+   field (UX-27). The region has no border of its own: each block already carries the
+   warning treatment, and a second frame around them would read as a third warning. */
+.ls-untrusted-region {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.ls-untrusted-region__policy {
+  margin: 0;
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+  color: var(--color-text-secondary);
+}
+
+
+
+/* The session viewer's layout, restated here rather than edited in place above, because
+   this region is package 5's and the rules above are shared (UX-29, UX-48).
+
+   Grid's default is to STRETCH a row to its tallest cell, and the narration rail is
+   routinely taller than a screen: a stretched stage centred its frame in a box as tall as
+   the rail and pushed the frame, and on Replay the playback controls under it, below the
+   first viewport. `align-items: start` is on the CONTAINER, so it holds whichever element
+   is the grid item. Replay's playback controls and scrubber are at the top of the rail,
+   beside the screen, because the stage's 430px floor leaves no room under it at 1366x768. */
+.ls-session__body {
+  align-items: start;
+}
+
+/* A real frame starts at the top of the stage; only the "no frame yet" sentence is
+   centred in the 430px floor. */
+.ls-session__stage--frame {
+  align-items: flex-start;
+}
+
+/* A frame keeps the column's full width, so an ordinary landscape capture is as large as
+   it ever was, and is BOUNDED in height with `object-fit: contain`, so a capture of an
+   unusual shape (a tall page, a square) is letterboxed inside the stage instead of pushing
+   the controls under it off the screen. The pixels are never cropped or stretched: this is
+   Evidence, and the whole captured screen stays visible. */
+.ls-session__frame {
+  max-height: min(48vh, 400px);
+  object-fit: contain;
+}
+
+/* Live View's flag form opens from one control on the page header's action row (UX-48).
+   The panel floats under its opener rather than growing the header, so the workspace
+   screen stays in the first viewport whether it is open or not. No shadow: DESIGN.md keeps
+   the confirmation dialog's as the only one, so the panel is set off by its border. */
+.ls-flag-menu {
+  position: relative;
+}
+
+.ls-flag-menu > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.ls-flag-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ls-flag-menu__panel {
+  position: absolute;
+  top: calc(100% + var(--spacing-2));
+  right: 0;
+  z-index: 20;
+  width: min(28rem, calc(100vw - 2 * var(--spacing-4)));
+}
+
+/* Below 1024px the header's actions wrap, so a floating panel could open off the page's
+   left edge; it takes its place in the flow instead. */
+@media (max-width: 1023px) {
+  .ls-flag-menu__panel {
+    position: static;
+    width: auto;
+    margin-top: var(--spacing-2);
+  }
+}
+
+/* The population reconciliation stacks each label over its value (UX-19, "coverage and
+   reconciliation, compact"). The shared rule lays them side by side with the value column
+   sized to its content, and a value that is a SENTENCE ("Not recorded — the independent
+   declaration stated no count…") then took the whole row and printed over its own label,
+   measured in the Result-first browser journey at 1366px. */
+.ls-reconciliation > div {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--spacing-1);
+}
+
+/* ---------------------------------------------------------------------------
+   UI cleanup — package 6: administration.
+   (Rules are added here by package 6 and nowhere else.) */
+
+/* The landing's three areas (UX-37, UX-41): a card per area, its exact count leading
+   because "how much is there" is the first question, its name as the link. */
+.ls-admin-areas {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--spacing-4);
+}
+
+.ls-admin-area {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  padding: var(--spacing-5);
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-lg);
+}
+
+.ls-admin-area__count {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.ls-admin-area__title {
+  margin: 0;
+}
+
+/* The four configuration health lines. A line needing attention gets the warning
+   treatment; a clear one stays plain text, because four warning-coloured lines that are
+   all fine would train a reader to stop reading them. */
+.ls-admin-health {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.ls-admin-health__line {
+  padding: var(--spacing-2) var(--spacing-3);
+  border-radius: var(--rounded-md);
+  border: 1px solid transparent;
+}
+
+.ls-admin-health__line--attention {
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning-border);
+  color: var(--color-warning-text);
+}
+
+/* The directory/inventory search (UX-38, UX-43): the field and its submit sit on one
+   line while there is room, and wrap rather than overflow when there is not. */
+.ls-admin-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--spacing-3);
+}
+
+.ls-admin-filter__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+.ls-admin-pages {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+/* The reason a role change is unavailable, or the two guardrails beside it: shown
+   whether or not the control is currently refused (UX-39). */
+.ls-role-control__reason {
+  flex-basis: 100%;
+}
+
+/* One "Change" disclosure per row (UX-39): the select and the button sit beneath the
+   summary rather than beside it, so a narrow "Change" column does not force the row's
+   height to whatever the widest control needs. */
+.ls-row-change {
+  display: inline-block;
+}
+
+.ls-row-change .ls-disclosure__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  min-width: 220px;
+}
+
+/* The onboarding steps (UX-40): a numbered list, because "how does somebody sign in" is
+   a sequence and reads better as one than as three unordered captions. */
+.ls-onboarding {
+  margin: 0;
+  padding-left: var(--spacing-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+/* The live field-list preview (UX-42): what will be saved, read back beneath the
+   textarea it comes from, so the numbered order is checkable rather than asserted. */
+.ls-field-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  padding: var(--spacing-3);
+  background: var(--color-surface-sunken);
+  border-radius: var(--rounded-md);
+}
+
+.ls-field-preview__title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.ls-field-preview__list {
+  margin: 0;
+  padding-left: var(--spacing-5);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ls-field-preview__warning {
+  color: var(--color-warning-text);
+}
+
+/* Auditor Workspace: the Run control transfer dialog (PR #51). */
 /* The reason is source text; its scroll area leaves the decision buttons visible. */
 .run-control-transfer-source { max-height: min(28vh, 220px); overflow: auto; min-width: 0; }
 .run-control-transfer-source .ls-untrusted__body { overflow-wrap: anywhere; white-space: pre-wrap; }
 .ls-dialog:has(.run-control-transfer-source) { max-height: calc(100dvh - 48px); overflow: auto; }
 .ls-dialog:has(.run-control-transfer-source) > :not(.run-control-transfer-source) { flex-shrink: 0; }
+
+/* --------------------------------------------------------------- end of file ---- */

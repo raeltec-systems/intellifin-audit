@@ -13,8 +13,11 @@ import { Digest } from '../../../../../../src/design/Digest';
 import { EmptyState } from '../../../../../../src/design/EmptyState';
 import { RUN_TAB_EMPTY } from '../../../../../../src/design/copy';
 import { EvidenceCard, GroundingInspector, evidenceCardProps } from '../../../../../../src/runs/EvidenceCards';
+import { UntrustedPolicy } from '../../../../../../src/runs/UntrustedText';
 import { RunDenied, RunDetailFrame, openRun } from '../../../../../../src/runs/detail';
-import { countText, utcStamp } from '../../../../../../src/runs/labels';
+import { Timestamp } from '../../../../../../src/design/Timestamp';
+import { countNoun } from '../../../../../../src/design/words';
+import { countText } from '../../../../../../src/runs/labels';
 import {
   indeterminateRowsSentence,
   populationCheckSentence,
@@ -154,7 +157,7 @@ export default async function RunEvidenceArtifactsPage({
                         an unrecorded generation time is "unknown", not "fine". */}
                     {summary.generatedAt === null
                       ? 'Not recorded by the source declaration.'
-                      : utcStamp(summary.generatedAt)}
+                      : <Timestamp value={summary.generatedAt} />}
                   </dd>
                 </div>
                 <div>
@@ -240,9 +243,11 @@ export default async function RunEvidenceArtifactsPage({
                 </table>
               </div>
               <nav className="ls-pagination" aria-label="Excluded row pages">
-                {after > 0 ? <Link href={`/runs/${run.runId}/evidence`}>First rows</Link> : null}
+                {/* This page reads `after`; the Evidence tab itself is the record queue and
+                    ignores it, so the row pages must stay on this route. */}
+                {after > 0 ? <Link href={`/runs/${run.runId}/evidence/technical`}>First rows</Link> : null}
                 {population.next === null ? null : (
-                  <Link href={`/runs/${run.runId}/evidence?after=${population.next}`}>Next rows</Link>
+                  <Link href={`/runs/${run.runId}/evidence/technical?after=${population.next}`}>Next rows</Link>
                 )}
               </nav>
             </>
@@ -265,9 +270,14 @@ export default async function RunEvidenceArtifactsPage({
         <section className="ls-card ls-stack" aria-labelledby="grounding-heading">
           <h2 id="grounding-heading">Observations and grounding</h2>
           <p>
-            {countText(observations.rows.length)} of {countText(observations.total)} Observations
-            are listed.
+            {countNoun(observations.total, 'Observation')} in this Run
+            {observations.rows.length === observations.total
+              ? '.'
+              : `; the first ${observations.rows.length.toLocaleString('en-US')} are listed.`}
           </p>
+          {/* The policy sentence ONCE for every source value below it, not under each of
+              them (UX-27): each block keeps its own short label naming where it came from. */}
+          <UntrustedPolicy />
           <ul className="ls-plain-list">
             {observations.rows.map((observation) => (
               <GroundingInspector
@@ -297,8 +307,8 @@ export default async function RunEvidenceArtifactsPage({
             {evidencePackage.seal.state === 'SEALED'
               ? 'Sealed. Every artifact this Run required is registered and verified.'
               : 'Sealed as incomplete. An artifact this Run required was never registered.'}{' '}
-            Registered artifacts: {countText(evidencePackage.seal.registered)}. Required:{' '}
-            {countText(evidencePackage.seal.requiredTotal)}.
+            {countNoun(evidencePackage.seal.registered, 'artifact')} registered,{' '}
+            {evidencePackage.seal.requiredTotal.toLocaleString('en-US')} required.
           </p>
           {missing.length === 0 ? null : (
             <>
@@ -365,7 +375,7 @@ export default async function RunEvidenceArtifactsPage({
                           )}
                         </td>
                         <td className="ls-mono" data-label="Detected">
-                          {utcStamp(finding.detectedAt)}
+                          <Timestamp value={finding.detectedAt} />
                         </td>
                       </tr>
                     ))}

@@ -4,6 +4,7 @@ import { useId, useRef, useState } from 'react';
 
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
+import { ROLE_GUARDRAILS } from './administration-words';
 import { ROLE_OPTIONS, roleLabelOfValue } from './roles';
 import type { AdministrationActionResult, SetRoleFields } from '../../app/administration/actions';
 
@@ -62,6 +63,7 @@ export function RoleControl({
   onStart,
 }: RoleControlProps): React.JSX.Element {
   const selectId = useId();
+  const reasonId = useId();
   const rendered = currentRole ?? '';
   const [choice, setChoice] = useState<string>(rendered);
   const [confirming, setConfirming] = useState(false);
@@ -92,7 +94,7 @@ export function RoleControl({
     }
   }
 
-  /** Why the control is unavailable, in the order the command applies its refusals. */
+  /** Why the BUTTON is unavailable, in the order the command applies its refusals. */
   const unavailableReason = isSelf
     ? SELF_CHANGE_REASON
     : wouldRemoveLastAdministrator
@@ -102,6 +104,21 @@ export function RoleControl({
           ? `${userName} holds no role, so there is nothing to change.`
           : `${userName} already holds this role.`
         : undefined;
+
+  /**
+   * Why the SELECT is unavailable — `isSelf` alone, not the button's three reasons.
+   *
+   * `wouldRemoveLastAdministrator` and `unchanged` are properties of the value CHOSEN in
+   * this very select, so marking the select itself unavailable for either would disable
+   * the one control that could resolve it: picking a different role is what turns
+   * "already holds this role" false. `isSelf` is the one reason no choice changes — the
+   * command refuses whichever role is picked — so the select stays honestly disabled
+   * only there. Playwright treats `aria-disabled="true"` as not enabled for `selectOption`,
+   * the same as a real screen reader is told the control cannot be operated; marking it
+   * so while it is the ordinary way to choose a new role left every row's select
+   * unusable from first render, since `choice` starts equal to `rendered`.
+   */
+  const selectUnavailableReason = isSelf ? SELF_CHANGE_REASON : undefined;
 
   const consequence =
     choice === ''
@@ -117,7 +134,14 @@ export function RoleControl({
         className="ls-select"
         id={selectId}
         value={choice}
-        disabled={isSelf}
+        /*
+          `aria-disabled`, never `disabled`. A `disabled` element cannot be focused, so
+          its reason is unreachable by keyboard — the tooltip-only explanation DESIGN.md
+          forbids. Nothing is committed from here either way: the control is the command,
+          and the button below refuses with the same sentence.
+        */
+        aria-disabled={selectUnavailableReason === undefined ? undefined : true}
+        aria-describedby={selectUnavailableReason === undefined ? undefined : reasonId}
         onChange={(event) => setChoice(event.target.value)}
       >
         {ROLE_OPTIONS.map((option) => (
@@ -130,11 +154,23 @@ export function RoleControl({
         onClick={() => setConfirming(true)}
         busy={busy}
         // Disabled with its reason stated, never silently: DESIGN.md's rule is that an
-        // unavailable action keeps its position and says why.
+        // unavailable action keeps its position and says why. The sentence is VISIBLE
+        // below and shared, so the button points its description at that one node.
         disabledReason={unavailableReason}
+        disabledReasonId={unavailableReason === undefined ? undefined : reasonId}
       >
         {busy ? 'Saving…' : 'Change role'}
       </Button>
+
+      {/*
+        The reason and the guardrails, in the disclosure rather than only in a refusal.
+        The walkthrough's row repeated "Unavailable for this role" with nothing saying
+        which rule that was; a person must not have to be refused to learn the two
+        changes that would lock a deployment out of itself.
+      */}
+      <p className="ls-caption ls-role-control__reason" id={reasonId}>
+        {unavailableReason ?? ROLE_GUARDRAILS}
+      </p>
 
       <ConfirmDialog
         open={confirming}

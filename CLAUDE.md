@@ -1,3 +1,122 @@
+## 2026-09-23 — The UI cleanup landed as five packages, and what integrating them found
+
+The owner's 21 September walkthrough (49 findings, 17 P1) is implemented on
+`codex/epic-2-procedure-builder`: package 1's shared layer, then packages 2–6 in their own
+worktrees, merged with no text conflict. Findings, one report per package and the release
+checks: `_bmad-output/implementation-artifacts/ui-cleanup-2026-09-22/`. UX-22..26 name
+surfaces only PR #51's branch has; `p5-report.md` states the rule each one needs there.
+
+- **Chromium gives a date or time input a keyboard stop for its own calendar or clock
+  button, and at that stop the input matches only `:focus-within`.** The product's one
+  ring is `:focus-visible`, so it was never drawn there — on the Run period, the Draft
+  period and the Schedule's start time. `globals.css` draws it on `:focus-within` for those
+  inputs. Found by the release checks' keyboard walk; axe cannot see a missing ring.
+- **A keyboard walk under `next dev` reaches `nextjs-portal`**, the dev overlay appended
+  after the page. It is not the product, so the walk ends there.
+- **Packages that each pass their own specs can still break each other: a spec one
+  package owns can drive another package's surface.** `version-review.spec.ts` creates its
+  Procedure through the form package 3 renamed ("Procedure name", one-click creation,
+  `?created=1`, the Builder's words for a missing source). No text conflict, red on the
+  first run. At a merge, grep every spec for the words each package renamed.
+- **A package can move a line a mutation harness pins, and no local gate runs the harnesses.**
+  Package 5 gave the Escalation question `policy={false}` (UX-27); the agent-guard harness
+  anchors on that exact line, so the integrated branch's first CI run stopped with
+  "Mutation anchor drift" after every test had passed. Before pushing a merge of UI work,
+  run the three harnesses CI runs (`verify-agent-guard-mutations.mjs --browser`,
+  `verify-prodconsole-…`, `verify-escalation-review-…`) in a detached worktree of HEAD.
+- **A report is only as true as the tests it names.** Checking each "proven by" against the
+  test file found two findings nothing pinned (a stop-reason sentence, the Review tab).
+- **Fifty green layout checks did not find three false sentences; reading the screenshots
+  did.** An Active version said "Not yet submitted for approval." (it had no submission
+  RECORD, which is a different fact), saved dates were raw ISO, and a frequency read as a
+  schedule. A layout or axe check cannot judge whether a sentence is true: read every
+  screenshot as the reader would. And when a record can be missing for more than one
+  reason, say what the absence means, never the likeliest cause (`missingSubmissionWords`).
+- **Usage limits stop subagents mid-edit; commit early.** Package agents died four times;
+  the worktrees kept everything, but a resumed agent had to rebuild intent from a diff.
+  Commit each coherent piece at once, and brief a resumed agent with the file list and the
+  previous agent's last words.
+- **This machine restarts, and a restart stops the scratch PostgreSQL.** The data survives:
+  `rm -f /tmp/pgdata18/postmaster.pid`, then `pg_ctl -D /tmp/pgdata18 -o '-p 5434' start`.
+- **Test databases hold the Auditor and the Administrator only, as CI's do.** A seeded
+  Audit Manager fails `run-waits` and `flag-run` (they count every manager), and three new
+  specs that REQUIRED one would have thrown in CI, which seeds none. A spec that needs a
+  manager calls `mintAuditManager` (`tests/e2e/accounts.ts`) and removes it in its teardown.
+- **A 4.4 GB `.next` cache that lived through several restarts made Turbopack panic**
+  (`aggregation_update.rs`, "Aborting.") at test 23 of 238; the other 195 failures were
+  `ERR_CONNECTION_REFUSED`. Delete `apps/web/.next` and run with `INTELLIFIN_LOW_DISK=1`
+  (no on-disk cache); the next full run finished.
+- **Playwright empties `test-results/` at the start of every run.** Read a failure's
+  `error-context.md` and attachments before starting the next run, or they are gone. When a
+  context has no page snapshot, a throwaway copy of the spec that prints `innerText()` at
+  the failing line is the quickest look at what the page really said — delete it after.
+- **React's server rendering writes `dateTime`, not `datetime`.** An SSR test that pins a
+  `<time>` by its attribute must spell it the way `renderToStaticMarkup` emits it.
+- **`[FIXED]` "Escalation answered." vanished before anyone could read it.** The banner
+  lived inside the panel that the refresh after the answer removes, so it lasted about
+  300 ms and `live-escalation.spec.ts` could miss it under full-suite load. It now lives in
+  `EscalationOutcomeHost`, which `OpenEscalationSection` renders in EVERY state, so React
+  keeps its state through `router.refresh()`; it steps aside when a different question
+  opens. **A confirmation must live in a component that outlives the thing it confirms**,
+  and the spec that proves it asserts the confirmation AFTER the panel is gone — the
+  old assertion ran before the refresh and could never see the defect.
+
+What the packages learned (each report has the full list):
+
+- **A link's `href` asserted as a string proves nothing about the route.** Both "Open the
+  Result" links went to a route that does not exist and three tests agreed. Pin a link
+  helper to the route folders on disk, and have one browser test follow the link.
+- **A teardown deletes `notification` rows before the versions they name**, or it throws,
+  leaves the Procedure, and fails `procedures.spec.ts`'s empty-list test.
+- **A first version's stored diff flags EVERY section `changed`.** Ask for the baseline
+  before rendering the flag; a section changed only in its frozen contract is counted,
+  never dropped.
+- **`findProcedureTemplate` throws on an unknown id, and the id comes from a stored frozen
+  review.** A surface that names a Template falls back to the stored id.
+- **A dated scope is read from the auditor's words, never from the model's.** A period the
+  model wrote is a period nobody named.
+- **`aria-disabled` on a `<select>` never depends on the value chosen in that select.** A
+  choice-dependent reason belongs on the button that commits.
+- **A mutation that moves a shared summary's counts revalidates the summary's path too.**
+- **A count over a bounded detail page under-reports a long Run.** The logical step
+  counter is an exact SQL aggregate, held to the unit rule by an integration test.
+- **`<details>` can never sit inside `<p>`**: the parser closes the `<p>` early, a
+  hydration mismatch `renderToStaticMarkup` cannot show.
+
+## 2026-09-22 — Production follows a draft branch, and `main` cannot start against it
+
+The owner's 21 September UI/UX walkthrough (49 findings, 17 P1) was made against the DEPLOYED
+product, and the deployed product is not `main`: Railway's `web` and `worker` services are
+connected to `feat/auditor-workspace-v1-1` (PR #51, a 44-commit draft) at `ec673a0`, deployed
+outside the Release workflow, and the production database is at schema generation **61**.
+`main` supports 50..50, so a `main` image REFUSES to start there — its 21 September redeploy
+failed twice on exactly that guard. Read `describe-service` (source branch and commit) and
+`/api/health` (`schema`) before assuming a screenshot, a finding or a failed deploy is about
+`main`.
+
+- **A finding can name a surface `main` does not have.** The walkthrough's record queue and
+  inspector (UX-22..26) are PR #51's `RecordReview`/`RunWorkspaceShell`; the rule each one
+  needs is written down in the cleanup reports so it can be applied on top of that branch
+  rather than rebuilt on `main` and thrown away at the merge.
+- **The UI cleanup is based on `main`, in one shared layer plus five packages.** `design/time`,
+  `Timestamp`, `references`, `Reference`, `TechnicalDetails`, `status-words`, `PageHeader`,
+  `words` and `procedures/condition-words` are the one place a readable instant, a short
+  reference, a technical disclosure, a status meaning or a condition sentence comes from;
+  a raw UUID, a raw ISO instant or a `1 Observations` on an ordinary surface is a defect
+  against EXPERIENCE.md's revised Formats row. The contract was revised in place and the
+  walkthrough's decisions appended as their own section, BEFORE the packages were built, so
+  five parallel agents never touched the contract or `CLAUDE.md`.
+- **Five worktrees, five databases, five port pairs.** Each package agent got its own
+  worktree (`.claude/worktrees/ui-pN`), its own install and build, its own migrated database
+  (`ui_pN_test`, a name the throwaway guard accepts) and `PLAYWRIGHT_PORT`/`NORTHSTAR_PORT`,
+  because two browser suites on one database is the trap recorded on 2026-09-10, and one
+  `next dev` port is one suite. `globals.css` carries one labelled region per package so
+  five branches append CSS without merging into one another's hunks.
+- **A gate run beside two worktree builds fails on load, not on the code.** The package 1
+  unit gate reported 2 failures in 1 file while two `pnpm build`s ran; alone it passed
+  4610/4610. Read a red gate's failing file before believing it, and never run the gate while
+  a build is going on the same four cores.
+
 ## 2026-09-20 — Selected Replay needs exact bounded context
 
 A selected inspection uses its own bounded frame page with global ordinals and full-history

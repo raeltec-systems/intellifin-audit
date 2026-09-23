@@ -8,6 +8,8 @@ import { LiveBanner } from '../../src/runs/LiveBanner';
 import { RunsPagination, RunsTable, RunsTableSkeleton } from '../../src/runs/RunsTable';
 import { isStoppedState } from '../../src/runs/stop-reason';
 import { Banner } from '../../src/design/Banner';
+import { PageHeader } from '../../src/design/PageHeader';
+import { RUNS_LEDE, RUNS_TITLE } from '../../src/runs/runs-list-words';
 import { requireServerAction } from '../../src/server-session';
 
 export const metadata: Metadata = { title: 'Runs · IntelliFin Audit' };
@@ -38,10 +40,7 @@ export default async function RunsPage({
   const after = (await searchParams).after ?? null;
   return (
     <div className="ls-stack">
-      <header className="ls-page-header">
-        <h1>Runs</h1>
-        <p>Runs with their lifecycle, Result outcome, Evidence Quality Gate, and initiator.</p>
-      </header>
+      <PageHeader title={RUNS_TITLE} lede={RUNS_LEDE} />
       {decision.allowed ? (
         <Suspense fallback={<RunsTableSkeleton />}>
           <RunsList after={after} />

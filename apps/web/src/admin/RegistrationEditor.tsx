@@ -2,17 +2,28 @@
 
 import { useState } from 'react';
 
+import type { RegistrationAuditActivity } from '@intellifin/infrastructure';
 import type { TargetSystemRegistration } from '@intellifin/application';
 
 import { Banner } from '../design/Banner';
+import { Reference } from '../design/Reference';
+import { TechnicalDetails } from '../design/TechnicalDetails';
+import { Timestamp } from '../design/Timestamp';
 import { Digest } from '../design/Digest';
 import { FINGERPRINT_EXPLANATION, FINGERPRINT_WORD } from '../design/plain-words';
+import { RegistrationForm, targetKindWord } from './RegistrationForm';
+import { connectivityLabel, statusLabel } from './registrations';
+import { runLifecycleWord } from '../runs/labels';
 import {
-  RegistrationForm,
-  changedStamp,
-  targetKindWord,
-} from './RegistrationForm';
-import { NEVER_PROBED_SENTENCE, connectivityLabel, statusLabel } from './registrations';
+  AUDIT_ACTIVITY_LABEL,
+  AUDIT_ACTIVITY_NONE,
+  AUDIT_ACTIVITY_NONE_SENTENCE,
+  AUTH_ENDPOINT_NONE_SET,
+  CONNECTION_CHECK_LABEL,
+  CONNECTION_CHECK_NOT_RUN,
+  CONNECTION_CHECK_NOT_RUN_SENTENCE,
+  auditActivitySentence,
+} from './administration-words';
 import type {
   ChangeRegistrationFormFields,
   RegistrationActionResult,
@@ -21,13 +32,12 @@ import type {
 /**
  * One target system, and the form that changes it (FR-8, AD-2).
  *
- * The panel above the form is what this system IS, in five lines a person can read
- * without scrolling into the controls: what kind of thing it is, where the agent signs
- * in, whether it is still in use, its fingerprint and when it last moved. The fingerprint
- * is there because it is the value under discussion — changing where the agent may go,
- * what it may do, which credential it uses, the field labels or the confirming field
- * moves it, and changing the name or the note does not. Showing it here makes that
- * observable rather than asserted.
+ * The panel above the form is what this system IS, in the lines a person can read
+ * without scrolling into the controls: what kind of thing it is, whether it is still in
+ * use, and the two facts UX-44 keeps apart — the connection check this page never runs,
+ * and the last audit activity a completed Run recorded. The fingerprint and the full
+ * locator/action lists moved under Technical details (UI cleanup 2026-09-22, UX-43):
+ * they are what an auditor compares, not what a reader scans first.
  *
  * The form is rendered with the row version the server produced for THIS page load, and
  * the Server Action sends it back as `expectedRowVersion`. A tab left open while somebody
@@ -40,6 +50,17 @@ export interface RegistrationEditorProps {
   /** Computed on the server by `registrationRowVersion`; see `RegistrationForm`. */
   readonly rowVersion: string;
   readonly referencingProcedures: number;
+  /** The Active Procedures {@link referencingProcedures} counts, by name (UX-46). */
+  readonly affectedProcedures: readonly string[] | null;
+  /** Reference names this deployment has declared, for the credential field (UX-45). */
+  readonly knownCredentialReferences: readonly string[] | null;
+  /**
+   * The most recent terminal Run that used this system (UX-44).
+   *
+   * `null` means no terminal Run has named it yet — a fact distinct from "this page has
+   * never checked the connection", which the connectivity column already states.
+   */
+  readonly auditActivity: RegistrationAuditActivity | null;
   readonly changeRegistration: (
     fields: ChangeRegistrationFormFields,
   ) => Promise<RegistrationActionResult>;
@@ -49,6 +70,9 @@ export function RegistrationEditor({
   registration,
   rowVersion,
   referencingProcedures,
+  affectedProcedures,
+  knownCredentialReferences,
+  auditActivity,
   changeRegistration,
 }: RegistrationEditorProps): React.JSX.Element {
   const [result, setResult] = useState<RegistrationActionResult | null>(null);
@@ -69,54 +93,126 @@ export function RegistrationEditor({
           <dt>What it is</dt>
           <dd>{targetKindWord(registration.kind)}</dd>
         </div>
+        <div>
+          <dt>Status</dt>
+          <dd>{statusLabel(registration.status)}</dd>
+        </div>
+        <div>
+          <dt>Last changed</dt>
+          <dd>
+            <Timestamp value={registration.updatedAt} precision="minute" />
+          </dd>
+        </div>
+
+        {/*
+          The two facts UX-44 requires. The walkthrough met one sentence claiming "no
+          worker has observed this system yet" on a system a completed Run had just used
+          — a statement about the environment that the environment contradicted. These
+          are two separate reads and two separate rows, so neither can stand in for the
+          other.
+        */}
+        <div>
+          <dt>{CONNECTION_CHECK_LABEL}</dt>
+          <dd>
+            {registration.connectivity.state === 'never-probed' ? (
+              <>
+                <span>{CONNECTION_CHECK_NOT_RUN}</span>
+                <p className="ls-caption">{CONNECTION_CHECK_NOT_RUN_SENTENCE}</p>
+              </>
+            ) : (
+              <>
+                <span>{connectivityLabel(registration.connectivity.state)}</span>
+                <p className="ls-caption">
+                  Seen{' '}
+                  {registration.connectivity.observedAt === null ? null : (
+                    <Timestamp value={registration.connectivity.observedAt} precision="minute" />
+                  )}
+                </p>
+              </>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt>{AUDIT_ACTIVITY_LABEL}</dt>
+          <dd>
+            {auditActivity === null ? (
+              <>
+                <span>{AUDIT_ACTIVITY_NONE}</span>
+                <p className="ls-caption">{AUDIT_ACTIVITY_NONE_SENTENCE}</p>
+              </>
+            ) : (
+              <>
+                <span>
+                  {auditActivitySentence(
+                    auditActivity.procedureName,
+                    runLifecycleWord(auditActivity.state) ?? auditActivity.state,
+                  )}
+                </span>
+                <p className="ls-caption">
+                  <Reference kind="Run" value={auditActivity.runId} />
+                  {' · initiated '}
+                  <Timestamp value={auditActivity.initiatedAt} precision="minute" />
+                  {auditActivity.endedAt === null ? null : (
+                    <>
+                      {', ended '}
+                      <Timestamp value={auditActivity.endedAt} precision="minute" />
+                    </>
+                  )}
+                </p>
+              </>
+            )}
+          </dd>
+        </div>
+
         {registration.kind === 'web' ? (
           <div>
-            <dt>Sign-in form address</dt>
+            <dt>Authentication endpoint</dt>
             <dd>
               {registration.authenticationDestination === undefined ||
               registration.authenticationDestination === '' ? (
-                // Said in words rather than left blank: the agent refuses to enter a
-                // credential without this, and an empty cell reads as "fine".
-                <span>None set, so the agent never signs in here</span>
+                <span>{AUTH_ENDPOINT_NONE_SET}</span>
               ) : (
                 <span className="ls-mono">{registration.authenticationDestination}</span>
               )}
             </dd>
           </div>
         ) : null}
-        <div>
-          <dt>Status</dt>
-          <dd>{statusLabel(registration.status)}</dd>
-        </div>
-        <div>
-          <dt>{FINGERPRINT_WORD}</dt>
-          <Digest as="dd" value={registration.digest} label="System" />
-        </div>
-        <div>
-          <dt>Last checked</dt>
-          <dd>
-            {connectivityLabel(registration.connectivity.state)}
-            {registration.connectivity.state === 'never-probed' ? (
-              <p className="ls-caption">{NEVER_PROBED_SENTENCE}</p>
-            ) : null}
-          </dd>
-        </div>
-        <div>
-          <dt>Last changed</dt>
-          <dd>
-            <time dateTime={registration.updatedAt}>
-              {changedStamp(registration.updatedAt)}
-            </time>
-          </dd>
-        </div>
       </dl>
 
-      <p className="ls-caption">{FINGERPRINT_EXPLANATION}</p>
+      <TechnicalDetails>
+        <dl className="ls-definition">
+          <div>
+            <dt>{FINGERPRINT_WORD}</dt>
+            <Digest as="dd" value={registration.digest} label="System" />
+          </div>
+        </dl>
+        <p className="ls-caption">{FINGERPRINT_EXPLANATION}</p>
+        <div className="ls-dialog__field">
+          <p>Where the agent may go</p>
+          {registration.kind === 'desktop' ? (
+            <p className="ls-mono">{registration.applicationIdentity}</p>
+          ) : (
+            <ol className="ls-plain-list">
+              {registration.allowedOrigins.map((origin) => (
+                <li className="ls-mono" key={origin}>
+                  {origin}
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+        <div className="ls-dialog__field">
+          <p>Which stored credential</p>
+          <p className="ls-mono">{registration.credentialRef}</p>
+        </div>
+      </TechnicalDetails>
 
       <RegistrationForm
         registration={registration}
         rowVersion={rowVersion}
         referencingProcedures={referencingProcedures}
+        affectedProcedures={affectedProcedures}
+        knownCredentialReferences={knownCredentialReferences}
         onChange={changeRegistration}
         onResult={(outcome) => {
           setResult(outcome);

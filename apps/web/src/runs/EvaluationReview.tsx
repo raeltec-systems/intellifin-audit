@@ -14,8 +14,11 @@ import type { RunEvaluationRow, RunResultRow } from '@intellifin/infrastructure'
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
-import { UntrustedText } from './UntrustedText';
-import { evaluationOriginWord, evaluationValueWord, utcStamp } from './labels';
+import { UntrustedPolicy, UntrustedText } from './UntrustedText';
+import { Reference } from '../design/Reference';
+import { TechnicalDetails } from '../design/TechnicalDetails';
+import { Timestamp } from '../design/Timestamp';
+import { evaluationOriginWord, evaluationValueWord } from './labels';
 import { StatusBadge } from '../design/StatusBadge';
 import {
   confirmEvaluationAction,
@@ -46,6 +49,12 @@ export interface EvaluationReviewProps {
   readonly pendingCount: number | null;
   /** Durable command state for the exact target/revision read by the server. */
   readonly commandStatuses?: readonly EvaluationReviewCommandStatus[];
+  /**
+   * Observation id to the population record it is about. A row is headed by that record,
+   * and the Observation's own UUID is under Technical details (UX-21, UX-02); a row whose
+   * record is not in the map says so rather than printing the UUID in its place.
+   */
+  readonly recordKeys?: Readonly<Record<string, string>>;
   /** Human labels for a focused record. Opaque ids remain available in technical details. */
   readonly observationLabels?: Readonly<Record<string, string>>;
   readonly conditionLabels?: Readonly<Record<string, string>>;
@@ -136,6 +145,7 @@ export function EvaluationReview({
   reviewRevision,
   pendingCount,
   commandStatuses = [],
+  recordKeys = {},
   observationLabels,
   conditionLabels,
   reviewerNames,
@@ -288,6 +298,9 @@ export function EvaluationReview({
       {rows.length === 0 ? (
         <p>No Agent-Judged evaluation proposal is available in the bounded review read.</p>
       ) : (
+        <>
+        {/* The policy sentence once, above every rationale in the list (UX-27). */}
+        <UntrustedPolicy />
         <ul className="ls-plain-list">
           {rows.map((row) => {
             const key = reviewKey(row);
@@ -303,12 +316,17 @@ export function EvaluationReview({
             return (
               <li className="ls-evaluation ls-stack" key={key}>
                 <p className="ls-evaluation__condition">
-                  {observationLabels === undefined
-                    ? row.observationId
-                    : observationLabels[row.observationId] ?? 'Selected observation'}{' / '}
-                  {conditionLabels === undefined
-                    ? row.conditionId
-                    : conditionLabels[row.conditionId] ?? 'Recorded condition'}
+                  {/* The record inspector names the focused record's systems and conditions
+                      in words; the Result tab heads each row by its record. Neither prints
+                      an Observation UUID in the heading (UX-21, UX-02). */}
+                  {observationLabels !== undefined
+                    ? (Object.hasOwn(observationLabels, row.observationId) ? observationLabels[row.observationId] : 'Selected observation')
+                    : Object.hasOwn(recordKeys, row.observationId)
+                      ? <span className="ls-mono">{recordKeys[row.observationId]}</span>
+                      : <Reference kind="Observation" value={row.observationId} />}
+                  {conditionLabels !== undefined
+                    ? <>{' / '}{Object.hasOwn(conditionLabels, row.conditionId) ? conditionLabels[row.conditionId] : 'Recorded condition'}</>
+                    : <>{' · condition '}<span className="ls-mono">{row.conditionId}</span></>}
                 </p>
                 <div className="ls-evaluation__badges">
                   {originBadge(row)}
@@ -331,7 +349,7 @@ export function EvaluationReview({
                           <dd className="ls-mono">{proposal.confidence}</dd>
                         </div>
                       </dl>
-                      <UntrustedText field="AGENT-GENERATED evaluation rationale">
+                      <UntrustedText field="AGENT-GENERATED evaluation rationale" policy={false}>
                         {proposal.rationale}
                       </UntrustedText>
                     </>
@@ -353,31 +371,20 @@ export function EvaluationReview({
                       <div>
                         <dt>Reviewer</dt>
                         <dd>{reviewerNames === undefined
-                          ? reviewDecision.actorId
-                          : reviewerNames[reviewDecision.actorId] ?? 'Reviewer name unavailable'}</dd>
+                          ? <span className="ls-mono">{reviewDecision.actorId}</span>
+                          : Object.hasOwn(reviewerNames, reviewDecision.actorId)
+                            ? reviewerNames[reviewDecision.actorId]
+                            : 'Reviewer name unavailable'}</dd>
                       </div>
                       <div>
                         <dt>Decided at (UTC)</dt>
-                        <dd className="ls-mono"><time dateTime={reviewDecision.decidedAt}>{utcStamp(reviewDecision.decidedAt)}</time></dd>
+                        <dd><Timestamp value={reviewDecision.decidedAt} /></dd>
                       </div>
                     </dl>
                     {reviewDecision.rejectionRationale === null ? null : (
                       <p><strong>Rejection rationale:</strong> {reviewDecision.rejectionRationale}</p>
                     )}
                   </section>
-                ) : null}
-
-                {observationLabels !== undefined || conditionLabels !== undefined || reviewerNames !== undefined ? (
-                  <details className="ls-disclosure">
-                    <summary>Technical details</summary>
-                    <div className="ls-disclosure__body">
-                      <dl className="ls-definition">
-                        <div><dt>Observation reference</dt><dd className="ls-mono">{row.observationId}</dd></div>
-                        <div><dt>Condition reference</dt><dd className="ls-mono">{row.conditionId}</dd></div>
-                        {reviewDecision === null ? null : <div><dt>Reviewer reference</dt><dd className="ls-mono">{reviewDecision.actorId}</dd></div>}
-                      </dl>
-                    </div>
-                  </details>
                 ) : null}
 
                 {commandPending ? (
@@ -431,10 +438,18 @@ export function EvaluationReview({
                     </div>
                   </div>
                 ) : null}
+                {/* One technical disclosure per row: the identifiers the heading and the
+                    decision name in words stay reachable here (UX-02). */}
+                <TechnicalDetails items={[
+                  { label: 'Observation identifier', value: row.observationId, mono: true },
+                  { label: 'Condition identifier', value: row.conditionId, mono: true },
+                  ...(reviewDecision === null ? [] : [{ label: 'Reviewer identifier', value: reviewDecision.actorId, mono: true }]),
+                ]} />
               </li>
             );
           })}
         </ul>
+        </>
       )}
 
       <ConfirmDialog

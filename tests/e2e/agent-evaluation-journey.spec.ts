@@ -469,6 +469,9 @@ async function assertFinalReview(page: Page, runId: string, action: 'confirm' | 
 
   const selectedUrl = page.url();
   await page.reload();
+  // The review is read back where it was made: the selected record's inspector. A
+  // sealed Result's Review history disclosure is the Result tab's, proven by
+  // `evaluation-review.spec.ts`.
   await expect(page).toHaveURL(selectedUrl);
   await expect(page.getByRole('region', { name: 'Record inspector', exact: true })).toContainText(EMPLOYEE_ID);
   await expect(page.getByText('Stored human review decision', { exact: true })).toBeVisible();

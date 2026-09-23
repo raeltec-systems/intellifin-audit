@@ -143,6 +143,18 @@ describe('the stage sentences', () => {
     expect(stopped('extraction', 'sign-in-denied')).toBe(unknownStopSentence('extraction', 'sign-in-denied'));
   });
 
+  // UI cleanup 2026-09-22 (plan copy table): the sentence says what to do, and stays
+  // generic because the population is not always employees — P-2, P-3 and P-4 test
+  // accounts, transactions and parameters. It used to say "A population record has no
+  // usable lookup key", which names the mechanism and not the remedy.
+  it('tells the reader what to do about an unresolved record key, in words true of every Template', () => {
+    const sentence = stopped('work', 'population-key-unresolved');
+    expect(sentence).toBe(
+      'A record’s reference is missing, or two records share one. Review the affected source records before running this test again.',
+    );
+    expect(sentence).not.toMatch(/employee|leaver|lookup key/i);
+  });
+
   it('says a pause nobody resumed, or a question nobody answered, ran out its deadline', () => {
     // Codex (PR 39): a timed-out wait ends the Run INCONCLUSIVE with no terminal stage
     // checkpoint and no §H row, so the first version fell through to "nothing recorded why"

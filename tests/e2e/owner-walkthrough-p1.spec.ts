@@ -473,7 +473,7 @@ async function waitForPlanAttempt(page: Page): Promise<void> {
   await openPlanDetail(page);
   await expect(
     page.getByTestId('executable-plan-preview').locator(':scope > [role="status"]'),
-  ).toContainText(/Re-derived|Cannot derive:/, { timeout: 120_000 });
+  ).toContainText(/Test plan prepared|could not be prepared/, { timeout: 120_000 });
 }
 
 /** Await this action, not a success or stale banner retained from the preceding save. */
@@ -552,7 +552,7 @@ async function reviewPreparedSections(page: Page): Promise<void> {
     // The step's own title, which UX-09 renamed: the acknowledgement is built from
     // `SECTION_WORDS[section].title`, so a retyped old name waits for a sentence the
     // product no longer writes while the review itself has already been recorded.
-    ['frequency', 'How often this is meant to run'],
+    ['frequency', 'Planned frequency'],
   ]) {
     await markReviewed(page, section!, title!);
   }
@@ -675,11 +675,12 @@ test('an auditor authors P-1, a manager approves it, and the agent Run inspects 
   /* --------------------------------------------------------- 1. create ----- */
   await page.goto('/procedures/new');
   await page.getByLabel('Template').selectOption('P-1');
-  await expect(page.getByLabel('Control name', { exact: true })).toHaveValue(
+  await expect(page.getByLabel('Procedure name', { exact: true })).toHaveValue(
     'Terminated Users Retaining Access',
   );
-  await page.getByLabel('Control name').fill(CONTROL);
-  await confirmed(page, 'Create Procedure');
+  await page.getByLabel('Procedure name').fill(CONTROL);
+  // UX-07: creating a Draft is one action, with no confirmation dialog.
+  await page.getByRole('button', { name: 'Create Procedure', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: CONTROL })).toBeVisible();
   await expect(page.locator('[data-guided-preparation]')).toHaveAttribute('data-guided-ready', 'true');
   procedureId = new URL(page.url()).pathname.split('/')[2] ?? '';

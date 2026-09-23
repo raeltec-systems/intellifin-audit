@@ -21,6 +21,15 @@ import {
   linesToList,
   listToLines,
 } from './registrations';
+import {
+  AUTH_ENDPOINT_ABSENT,
+  AUTH_ENDPOINT_HELP,
+  AUTH_ENDPOINT_LABEL,
+  CREDENTIAL_REFERENCE_KNOWN,
+  CREDENTIAL_REFERENCE_MEANING,
+  CREDENTIAL_REFERENCE_UNKNOWN,
+  affectedProceduresSentence,
+} from './administration-words';
 import type {
   ChangeRegistrationFormFields,
   RegistrationActionResult,
@@ -104,6 +113,22 @@ export interface RegistrationFormProps {
   readonly rowVersion: string;
   /** How many Procedure Versions reference it. */
   readonly referencingProcedures: number;
+  /**
+   * The Active Procedures {@link referencingProcedures} counts, BY NAME (UX-46).
+   *
+   * `null` means the names could not be read. `[]` on a create form: a new system is
+   * referenced by nothing by definition.
+   */
+  readonly affectedProcedures: readonly string[] | null;
+  /**
+   * Reference names this deployment has declared, for a datalist offer (UX-45).
+   *
+   * `null` when this process cannot list them cheaply — a stored value nobody typed is
+   * never invented, so the field falls back to plain text and the help sentence says so.
+   * Names only, never a capability or a value: the manifest is read for exactly this on
+   * the server, and nothing here can turn a name back into a secret.
+   */
+  readonly knownCredentialReferences: readonly string[] | null;
   readonly onCreate?: (fields: RegistrationFormFields) => Promise<RegistrationActionResult>;
   readonly onChange?: (
     fields: ChangeRegistrationFormFields,
@@ -119,6 +144,8 @@ export function RegistrationForm({
   registration,
   rowVersion,
   referencingProcedures,
+  affectedProcedures,
+  knownCredentialReferences,
   onCreate,
   onChange,
   onResult,
@@ -132,6 +159,7 @@ export function RegistrationForm({
   const authenticationDestinationId = useId();
   const identityId = useId();
   const credentialId = useId();
+  const credentialListId = useId();
   const actionsId = useId();
   const patternsId = useId();
   const secondaryId = useId();
@@ -275,7 +303,9 @@ export function RegistrationForm({
     }) !== registration.digest;
   } catch { /* invalid fields are refused by the command */ }
   const referencesWarning =
-    changesConfiguration && referencingProcedures > 0 ? ` ${registrationChangeWarning(referencingProcedures)}` : '';
+    changesConfiguration && referencingProcedures > 0
+      ? ` ${registrationChangeWarning(referencingProcedures)} ${affectedProceduresSentence(affectedProcedures, referencingProcedures)}`
+      : '';
 
   return (
     <>
@@ -372,9 +402,7 @@ export function RegistrationForm({
 
           {kind === 'web' ? (
             <div className="ls-dialog__field">
-              <label htmlFor={authenticationDestinationId}>
-                Exact address of the sign-in form (optional)
-              </label>
+              <label htmlFor={authenticationDestinationId}>{AUTH_ENDPOINT_LABEL}</label>
               <input
                 className="ls-input"
                 id={authenticationDestinationId}
@@ -386,9 +414,7 @@ export function RegistrationForm({
                 onChange={(event) => setAuthenticationDestination(event.target.value)}
               />
               <p className="ls-caption" id={`${authenticationDestinationId}-hint`}>
-                The exact address the sign-in form sends to. It must be inside the list
-                above and carry no query string. Leave it empty if the agent never signs in
-                here: it then refuses to enter a credential at all.
+                {AUTH_ENDPOINT_HELP} {AUTH_ENDPOINT_ABSENT}
               </p>
             </div>
           ) : null}
@@ -402,13 +428,24 @@ export function RegistrationForm({
               type="text"
               autoComplete="off"
               required
+              list={knownCredentialReferences === null ? undefined : credentialListId}
               aria-describedby={`${credentialId}-hint`}
               value={credentialRef}
               onChange={(event) => setCredentialRef(event.target.value)}
             />
+            {knownCredentialReferences === null ? null : (
+              <datalist id={credentialListId}>
+                {knownCredentialReferences.map((reference) => (
+                  <option key={reference} value={reference} />
+                ))}
+              </datalist>
+            )}
             <p className="ls-caption" id={`${credentialId}-hint`}>
-              {CREDENTIAL_REFERENCE_SENTENCE} Never type a password here. A credential that
-              cannot be shown to be read-only is refused.
+              {CREDENTIAL_REFERENCE_MEANING} Never type a password here. A credential that
+              cannot be shown to be read-only is refused.{' '}
+              {knownCredentialReferences === null
+                ? CREDENTIAL_REFERENCE_UNKNOWN
+                : CREDENTIAL_REFERENCE_KNOWN}
             </p>
           </div>
 

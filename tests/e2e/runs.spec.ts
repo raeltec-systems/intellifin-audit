@@ -8,6 +8,7 @@ import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 import { RUN_STARTS_ON_CONFIRM_SENTENCE, START_RUN_LINK_LABEL } from '../../apps/web/src/design/run-start-words';
 import { FRESHNESS_ADVICE, STOP_REASON_TITLE } from '../../apps/web/src/runs/stop-reason';
 import { EMPTY_STATES } from '../../apps/web/src/design/copy';
+import { shortReference } from '../../apps/web/src/design/references';
 import { NEXT_RUN_MANUAL, NO_RUN_YET, OPEN_LAST_RUN } from '../../apps/web/src/procedures/last-run-words';
 
 const ids = new CryptoUuidV7Generator();
@@ -143,18 +144,30 @@ test.describe('Run initiation as an Auditor', () => {
     // the conclusion triptych's own Run lifecycle cell (Story 3.11).
     await expect(page.getByText('Queued', { exact: true }).first()).toBeVisible();
     await expect(page.getByText(controlName, { exact: true }).first()).toBeVisible();
-    await expect(page.getByText(/2026-08-01/).first()).toBeVisible();
-    await expect(page.getByText(/2026-08-31/).first()).toBeVisible();
-    const details = page.getByRole('region', { name: 'Run details' });
-    await expect(details.getByText(runId, { exact: true })).toBeVisible();
-    await expect(details.getByText(auditorId, { exact: true })).toBeVisible();
-    await expect(details.getByText(stored!.correlation_id as string, { exact: true })).toBeVisible();
+    // `[REWRITTEN 2026-09-23, UI cleanup UX-02 and UX-19]` The Result reads conclusion
+    // first. The Run's own facts are "About this test run", in a person's words — the
+    // Procedure and version, the period, who started it and when, the kind and a short
+    // reference — and the exact identifiers and instants are under the frame's closed
+    // Technical details, once, on every Run tab.
+    await expect(page.locator('.ls-page-header')).toContainText('1–31 Aug 2026');
+    const details = page.getByRole('region', { name: 'About this test run' });
+    await expect(details).toContainText('1–31 Aug 2026');
+    await expect(details).toContainText(`Run ${shortReference(runId)}`);
     await expect(details.getByText('Standard', { exact: true })).toBeVisible();
-    await expect(details.getByRole('link', { name: 'v1', exact: true })).toHaveAttribute('href', `/procedures/${procedureId}/versions/${versionId}`);
+    await expect(details.getByRole('link', { name: `${controlName} · v1`, exact: true })).toHaveAttribute('href', `/procedures/${procedureId}/versions/${versionId}`);
+    await expect(details).not.toContainText(runId);
+    const technical = page.locator('details.ls-technical').filter({ hasText: 'Started by (user identifier)' });
+    await expect(technical).not.toHaveAttribute('open', /.*/);
+    await technical.locator('> summary').click();
+    await expect(technical.getByText('2026-08-01 → 2026-08-31', { exact: true })).toBeVisible();
+    await expect(technical.getByText(runId, { exact: true })).toBeVisible();
+    await expect(technical.getByText(auditorId, { exact: true })).toBeVisible();
+    await expect(technical.getByText(stored!.correlation_id as string, { exact: true })).toBeVisible();
     // ISO 8601 UTC with `Z`, which is the format EXPERIENCE.md fixes; Story 3.10 rendered
     // `2026-09-06 09:00:00 UTC`, which is not ISO 8601, and Story 3.11 adopted the
-    // contract's own spelling on every Run surface.
-    await expect(details.getByText(new Date(stored!.initiated_at as string).toISOString(), { exact: true })).toBeVisible();
+    // contract's own spelling on every Run surface. It is the exact instant, so it lives
+    // under Technical details; the page itself says it in words.
+    await expect(technical.getByText(new Date(stored!.initiated_at as string).toISOString(), { exact: true })).toBeVisible();
     const accessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
     expect(accessibility.violations.map(v => ({ id: v.id, impact: v.impact, help: v.help }))).toEqual([]);
     const screenshot = test.info().outputPath('queued-run.png');
@@ -198,7 +211,9 @@ test.describe('Run initiation as an Auditor', () => {
     const runId = ids.next();
     await stoppedAtAcquisition(runId, { from: '2026-09-01', to: '2026-09-15' }, '2026-09-01T00:00:00Z');
     await page.goto('/runs');
-    const row = page.getByRole('row').filter({ has: page.getByRole('link', { name: runId, exact: true }) });
+    // `[REWRITTEN 2026-09-22, UX-17]` The row's one link is the Procedure's NAME now, so
+    // the row is found by where its link goes rather than by a UUID as its text.
+    const row = page.getByRole('row').filter({ has: page.locator(`a[href="/runs/${runId}"]`) });
     await expect(row).toBeVisible();
     // The person, never the id: a user id is what the row holds because an address cannot
     // enter the chain, and printing it here was the platform speaking its own language.
@@ -209,20 +224,59 @@ test.describe('Run initiation as an Auditor', () => {
     await expect(row).toContainText('The source snapshot was generated on 2026-09-01, before the period ended on 2026-09-15.');
     await expect(row).toContainText(FRESHNESS_ADVICE);
     await expect(row).not.toContainText('freshness');
-    // The id wraps only at its hyphens, so it is never a strip of four-character lines:
-    // four explicit break opportunities, and the whole id still selects as one string.
-    const link = row.getByRole('link', { name: runId, exact: true });
-    expect(await link.locator('wbr').count()).toBe(4);
-    await expect(link).toHaveText(runId);
+    // `[REWRITTEN 2026-09-22, UX-17]` This used to pin the raw id AS the link text, wrapped
+    // at its hyphens. The contract's revised Run cell names the Procedure, with the short
+    // reference beneath it, and the whole identifier is no longer loose on the row at all.
+    const link = row.getByRole('link', { name: controlName, exact: true });
+    await expect(link).toHaveAttribute('href', `/runs/${runId}`);
+    await expect(row).toContainText(`Run ${shortReference(runId)}`);
+    await expect(row).not.toContainText(runId);
 
     await page.goto(`/runs/${runId}`);
     await expect(page.getByText(STOP_REASON_TITLE, { exact: true })).toBeVisible();
     await expect(page.getByText(/generated on 2026-09-01, before the period ended on 2026-09-15/)).toBeVisible();
-    const details = page.getByRole('region', { name: 'Run details' });
+    // `[REWRITTEN 2026-09-23, UI cleanup UX-19]` The person is named in "About this test
+    // run"; their user id is under the frame's Technical details, never loose on the page.
+    const details = page.getByRole('region', { name: 'About this test run' });
     await expect(details).toContainText(auditorName);
-    await expect(details.getByText(auditorId, { exact: true })).toBeVisible();
+    await expect(details).not.toContainText(auditorId);
+    const technical = page.locator('details.ls-technical').filter({ hasText: 'Started by (user identifier)' });
+    await technical.locator('> summary').click();
+    await expect(technical.getByText(auditorId, { exact: true })).toBeVisible();
     const accessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
     expect(accessibility.violations.map(v => ({ id: v.id, impact: v.impact, help: v.help }))).toEqual([]);
+  });
+
+  // `[ADDED 2026-09-22, UI cleanup UX-17]` Ten columns and a raw UUID as the row's own name
+  // scrolled the WHOLE PAGE sideways at a laptop's width — the one thing EXPERIENCE.md's
+  // responsive rules forbid. The revised six columns must fit at both sizes the owner's
+  // walkthrough was taken at, and the Procedure name — the row's one link — must stay a
+  // readable column rather than collapsing into a strip of one-word lines.
+  test('the Runs table fits at 1366×768 and 1280×720 with no page scroll, and the Run cell stays readable', async ({
+    page,
+  }) => {
+    const runId = ids.next();
+    // A genuinely wide row: a long Procedure name, a badge, a reason sentence and advice —
+    // exactly the row that scrolled the page before the repair.
+    await stoppedAtAcquisition(runId, { from: '2026-09-01', to: '2026-09-15' }, '2026-09-01T00:00:00Z');
+    for (const size of [{ width: 1366, height: 768 }, { width: 1280, height: 720 }]) {
+      await page.setViewportSize(size);
+      await page.goto('/runs');
+      const link = page.locator(`a[href="/runs/${runId}"]`);
+      await expect(link).toHaveText(controlName);
+      // The contract's own rule: no list or table scrolls the whole page sideways.
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      );
+      expect(overflow, `page scrolled sideways by ${overflow}px at ${size.width}×${size.height}`).toBeLessThanOrEqual(0);
+      // The row header's own min-width (`.ls-table th[scope='row']`, 16rem) is what stops
+      // the Procedure name wrapping one word per line; a column collapsed to the link's
+      // own glyph width would fail this long before it failed a scroll check.
+      const cell = page.locator("th[scope='row']").filter({ has: link });
+      const box = await cell.boundingBox();
+      expect(box, 'the Run cell must have a measurable box').not.toBeNull();
+      expect(box!.width).toBeGreaterThanOrEqual(200);
+    }
   });
 
   test('the Overview and the Procedure card say what the Runs register says', async ({ page }) => {
@@ -246,17 +300,22 @@ test.describe('Run initiation as an Auditor', () => {
     await expect(page.getByText(EMPTY_STATES.overviewNoRuns.sentence)).toHaveCount(0);
 
     const recent = page.getByRole('region', { name: 'Recent Runs' });
-    await expect(recent.getByRole('link', { name: runId, exact: true })).toBeVisible();
+    // `[REWRITTEN 2026-09-22, UX-02]` Named by its short reference, never its raw UUID.
+    await expect(recent.getByRole('link', { name: `Run ${shortReference(runId)}`, exact: true })).toHaveAttribute('href', `/runs/${runId}`);
+    await expect(recent).not.toContainText(runId);
     await expect(recent).toContainText(auditorName);
 
     const accessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
     expect(accessibility.violations.map(v => ({ id: v.id, impact: v.impact, help: v.help }))).toEqual([]);
 
     await page.goto('/procedures');
+    // `[REWRITTEN 2026-09-22, UX-04]` The card no longer repeats `NEXT_RUN_MANUAL` on every
+    // row; the list says it ONCE, above every card, and the card itself names the PLANNED
+    // frequency or that none is set — a different fact from "nothing schedules a Run".
+    await expect(page.getByText(NEXT_RUN_MANUAL)).toBeVisible();
     const card = page.locator('li.ls-card').filter({ hasText: controlName });
     await expect(card).toBeVisible();
-    // The Next Run cell answers a question about the FUTURE, and nothing schedules a Run.
-    await expect(card).toContainText(NEXT_RUN_MANUAL);
+    await expect(card).not.toContainText(NEXT_RUN_MANUAL);
     // A Run that issued no conclusion is not a Procedure that never ran.
     await expect(card).toContainText('No conclusion issued');
     await expect(card).toContainText(FRESHNESS_ADVICE);
@@ -375,7 +434,8 @@ test.describe('Run initiation as an Auditor', () => {
     await page.getByRole('link', { name: 'Open the linked Run', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/runs/${successor!.id as string}$`));
     await expect(page.getByText('Queued', { exact: true }).first()).toBeVisible();
-    await expect(page.getByRole('link', { name: runId, exact: true })).toBeVisible();
+    // The successor names its predecessor by a short reference (UI cleanup UX-31), linked.
+    await expect(page.getByRole('region', { name: 'About this test run' }).getByRole('link', { name: `Run ${shortReference(runId)}`, exact: true })).toHaveAttribute('href', `/runs/${runId}`);
     // Cancel the successor so the Procedure has no active Run left behind. This click is
     // the one that races hydration: the anchor above did a full document navigation.
     await expect(page.locator('#run-lifecycle')).toHaveAttribute('data-client-ready', 'true');

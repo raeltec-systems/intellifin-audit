@@ -183,6 +183,17 @@ async function openFromNotifications(page: Page): Promise<void> {
   const bell = page.getByRole('button', { name: /^Notifications/ });
   await expect(bell).toContainText('unread');
   await bell.click();
+  // `[ADDED 2026-09-22, UX-32]` The popover LISTS what is waiting now — its only action
+  // used to be "Open notifications", which opened a menu that named nothing and sent the
+  // reader elsewhere to find out. The open Escalation seeded above is a real row here,
+  // with its own way onward, before Notifications is ever reached.
+  const panelItem = page
+    .locator('.ls-bell-panel__items li')
+    .filter({ has: page.locator(`a[href="/runs/${runs.answered}"]`) });
+  await expect(panelItem).toHaveCount(1);
+  await expect(panelItem).toContainText(controlName);
+  await expect(panelItem).toContainText('Waiting for your answer');
+  await expect(panelItem).toContainText('Time remaining:');
   await expect(page.getByRole('link', { name: 'Open notifications', exact: true })).toHaveAttribute('href', '/notifications');
   await page.keyboard.press('Escape');
   const open = page.getByRole('region', { name: OPEN_REGION });
@@ -450,6 +461,9 @@ test.describe('the Escalation panel as an Auditor', () => {
       const [run] = await sql`SELECT state FROM audit_run WHERE run_id=${runs.answered}`;
       return run?.state;
     }).toBe('RUNNING');
+    // The refresh after the answer removed the panel, and the confirmation outlives the panel the refresh removed (it used to go with the panel, within about 300 ms).
+    await expect(page.locator('#open-escalation')).toHaveCount(0);
+    await expect(page.locator('[data-escalation-outcome]')).toContainText('Escalation answered.');
     const [answerEvent] = await sql`
       SELECT payload FROM audit_events
       WHERE aggregate_id=${runs.answered} AND event_type='execution.escalation-answered'

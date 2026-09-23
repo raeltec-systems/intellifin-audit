@@ -15,7 +15,9 @@ import { ConfirmDialog } from '../design/ConfirmDialog';
 import { useActionGate } from '../design/action-gate';
 import { ESCALATION_PANEL_COPY, UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
 import { ESCALATION_KIND_WORDS } from '../design/plain-words';
-import { UntrustedText } from './UntrustedText';
+import { useEscalationOutcome } from './EscalationOutcome';
+import { UntrustedPolicy, UntrustedText } from './UntrustedText';
+import { Timestamp } from '../design/Timestamp';
 // The clock's arithmetic, shared with the Paused banner so the two surfaces cannot
 // disagree about how long a reader has left. The markup stays here because this panel
 // also needs the raw number, for `escalationMilestone`.
@@ -139,6 +141,9 @@ function WorkspaceUntrustedText({ field, children }: {
  */
 export function EscalationPanel({ runId, wait, details, runRevision, readAt, workspacePresentation }: EscalationPanelProps): React.JSX.Element {
   const router = useRouter();
+  // Where an answer that committed is confirmed: the host outlives this panel, which the
+  // refresh below removes. Without a host (an SSR test) the panel keeps it itself.
+  const reportOutcome = useEscalationOutcome();
   const headingId = useId();
   const questionId = useId();
   const evidenceId = useId();
@@ -196,13 +201,15 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt, wor
         }
         return;
       }
-      setMessage({
+      const answered: PanelMessage = {
         tone: 'success',
         title: option.id === 'abort' ? 'Run canceled.' : 'Escalation answered.',
         body: option.id === 'abort'
           ? 'The Run is canceled with the Escalation answer recorded in its Timeline.'
           : 'The Run resumes with the Escalation answer recorded in its Timeline.',
-      });
+      };
+      if (reportOutcome === null) setMessage(answered);
+      else reportOutcome({ waitId: wait.waitId, ...answered });
       router.refresh();
     } catch {
       setUnknown(true);
@@ -239,7 +246,7 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt, wor
       {details?.agentQuestion === null || details?.agentQuestion === undefined ? (
         <p>{ESCALATION_PANEL_COPY.noAgentQuestion}</p>
       ) : (
-        <UntrustedText field="AGENT-GENERATED question">{details.agentQuestion}</UntrustedText>
+        <UntrustedText field="AGENT-GENERATED question" policy={false}>{details.agentQuestion}</UntrustedText>
       )}
       <p><strong>Platform question</strong></p>
       <p>{question}</p>
@@ -278,7 +285,7 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt, wor
                   {option.label}
                 </WorkspaceUntrustedText>
               ) : (
-                <UntrustedText field={`AGENT-GENERATED candidate ${candidateOptions.indexOf(option) + 1}`}>
+                <UntrustedText field={`AGENT-GENERATED candidate ${candidateOptions.indexOf(option) + 1}`} policy={false}>
                   {option.label}
                 </UntrustedText>
               )
@@ -379,7 +386,7 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt, wor
         ? ESCALATION_PANEL_COPY.noStep
         : <span className="ls-mono">{details.stepId}</span>}</dd>
       <dt>Deadline</dt>
-      <dd><time dateTime={wait.deadline}>{wait.deadline}</time></dd>
+      <dd><Timestamp value={wait.deadline} /></dd>
     </dl>
   );
 
@@ -443,6 +450,11 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt, wor
         {unknown ? <p><a href={`/runs/${runId}`}>Reload this Run</a></p> : null}
         {workspace ? <p id="open-escalation-source-policy" className="escalation-panel__source-policy">{UNTRUSTED_CONTENT_SENTENCE}</p> : null}
 
+        {/* The policy sentence once, for the question and every candidate below it, rather
+            than under each (UX-27). Stated whenever the panel is, because an Escalation
+            panel exists to put agent-generated text in front of a person. The workspace
+            variant states it above, under the id its compact blocks point at. */}
+        {workspace ? null : <UntrustedPolicy />}
         {workspace ? null : technicalSection}
         {workspace ? workspaceQuestionSection : null}
         {workspace ? answerSection : null}

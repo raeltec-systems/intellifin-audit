@@ -12,6 +12,7 @@ import {
 
 import { CAPTURE_TIME_SOURCE } from '../design/copy';
 import type { StatusState } from '../design/status';
+import { isoStamp } from '../design/time';
 
 /**
  * The words this surface writes, as data.
@@ -29,14 +30,13 @@ import type { StatusState } from '../design/status';
 /**
  * One instant, ISO 8601 in UTC with `Z` (EXPERIENCE.md → Voice and Tone → Formats).
  *
- * Story 3.10 rendered `2026-09-06 09:00:00 UTC`, which is not ISO 8601; this story
- * renders timestamps on five surfaces, so the contract's own format is adopted here and
- * the two places that used the older spelling now come through this function.
+ * Story 3.10 rendered `2026-09-06 09:00:00 UTC`, which is not ISO 8601; Story 3.11 adopted
+ * the contract's own format here. `[REVISED 2026-09-22, UI cleanup UX-02]` The ISO form is
+ * now what a `datetime` attribute and a Technical details row carry; an ordinary surface
+ * renders `<Timestamp>` (`design/Timestamp.tsx`), which says `21 Sep 2026, 12:24:45 UTC`.
+ * One implementation, in `design/time.ts`; this name stays for the thirty call sites.
  */
-export function utcStamp(value: string | Date): string {
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toISOString();
-}
+export const utcStamp = isoStamp;
 
 /** `2026-08-25 → 2026-08-31` (EXPERIENCE.md → Formats → Periods). */
 export function periodText(period: { readonly from: string; readonly to: string }): string {

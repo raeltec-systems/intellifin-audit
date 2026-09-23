@@ -342,14 +342,19 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
     await expect(page.getByRole('button', { name: 'Work Item · E-000105 · LoanCore' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Work Item · E-000106 · LoanCore' })).toBeVisible();
     // The rail names the record the shown frame belongs to, not the system alone.
-    await expect(page.getByText('Work Item: E-000105 · LoanCore', { exact: true })).toBeVisible();
+    // UI cleanup 2026-09-22, UX-28: the rail's own line reads "Record: …" now — the
+    // session viewers narrate in audit words, and "Work Item" is the platform's own
+    // vocabulary rather than a sentence an auditor would say about a screen.
+    await expect(page.getByText('Record: E-000105 · LoanCore', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: `Exception · ${seeded.recordKey}` })).toBeVisible();
     await expect(page.getByRole('button', { name: `Escalation · ${seeded.waitLabel}` })).toBeVisible();
 
     // The adapter Session Step's log row shows the artifact's integrity digest. It printed
     // "No artifact registered." over the Evidence this fixture seeds, because the page
     // hard-coded `digest: null` under a sentence promising the digest.
-    const adapterLog = page.getByRole('region', { name: 'Adapter Session Steps' });
+    // UI cleanup 2026-09-22, UX-28: the section's own heading is "Systems read without a
+    // screen" now, in audit words rather than the platform's "Adapter Session Steps".
+    const adapterLog = page.getByRole('region', { name: 'Systems read without a screen' });
     await expect(adapterLog).toBeVisible();
     await expect(adapterLog).not.toContainText('No artifact registered.');
     await expect(adapterLog.locator('text=/[0-9a-f]{64}/').first()).toBeVisible();
@@ -441,7 +446,8 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
     await page.goto(href);
     await expect(page.locator('.ls-session__frame')).toHaveAttribute('src', expectedFrame);
     await expect.poll(() => page.locator('.ls-session__frame').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(1);
-    await expect(page.getByText('Work Item: E-000106 · LoanCore', { exact: true })).toBeVisible();
+    // The rail names the record the frame belongs to (UX-28's audit words).
+    await expect(page.getByText('Record: E-000106 · LoanCore', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: REPLAY_COPY.play, exact: true })).toBeVisible();
     await page.reload();
     await expect(page.locator('.ls-session__frame')).toHaveAttribute('src', expectedFrame);
@@ -472,6 +478,47 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
     expect(eventsAfter).toEqual(eventsBefore);
     expect(offOrigin).toEqual([]);
     expect((await new AxeBuilder({ page }).withTags(TAGS).analyze()).violations).toEqual([]);
+  });
+
+  // UI cleanup 2026-09-22, UX-29. The walkthrough met two frame counters and the playback
+  // controls below the first viewport at a laptop size. There is one counter now, and the
+  // controls sit WITH the frame rather than below the whole narration rail; this measures
+  // the Play control's real position rather than trusting the layout by eye — the finding's
+  // own method ("the Play control's bounding box top < 768 after load at that viewport").
+  //
+  // Getting here needed three repairs, measured here rather than trusted by eye: the grid
+  // that lays the frame beside the rail STRETCHED the frame's column to the rail's height;
+  // the frame had no height bound, so a capture of an unusual shape — this fixture's 1x1
+  // PNG, deliberately pathological — grew the stage far past its 430px floor; and the
+  // controls and scrubber sat UNDER that floor, which at 1366x768 is past the fold whatever
+  // else is done. They are at the top of the rail now, beside the screen, which is where the
+  // walkthrough asked for them.
+  test('puts the Play control inside the first viewport at 1366x768', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const seeded = await seedReplayRun();
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.goto(`/runs/${seeded.runId}/replay`);
+    const play = page.getByRole('button', { name: REPLAY_COPY.play, exact: true });
+    await expect(play).toBeVisible();
+    // A named file, not a body attachment: the list reporter keeps a body in memory only.
+    const shot = testInfo.outputPath('replay-first-viewport-1366.png');
+    await page.screenshot({ path: shot, fullPage: false });
+    await testInfo.attach('replay-first-viewport-1366', { path: shot, contentType: 'image/png' });
+    const playBox = await play.boundingBox();
+    expect(playBox).not.toBeNull();
+    expect(playBox!.y).toBeLessThan(768);
+    // The scrubber is in the first viewport too, and so is the whole frame: the controls
+    // sit BESIDE the screen at the top of the rail rather than under the stage's 430px floor.
+    const scrubber = page.locator('.ls-session__scrubber');
+    await expect(scrubber).toBeVisible();
+    const scrubberBox = await scrubber.boundingBox();
+    expect(scrubberBox!.y + scrubberBox!.height).toBeLessThanOrEqual(768);
+    const frameBox = await page.locator('.ls-session__frame').boundingBox();
+    expect(frameBox!.y + frameBox!.height).toBeLessThanOrEqual(768);
+    // And nothing pushes the page sideways at this width.
+    const overflow = await page.evaluate(() =>
+      document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
   });
 
   test('offers Replay from a terminal Run’s rail, and says a live Run has none yet', async ({ page }) => {

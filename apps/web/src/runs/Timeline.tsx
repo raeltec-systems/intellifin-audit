@@ -9,6 +9,8 @@ import type {
 
 import { ADAPTER_ACTIONS_UNRECORDED } from '../design/copy';
 import { StatusBadge } from '../design/StatusBadge';
+import { Timestamp } from '../design/Timestamp';
+import { countNoun } from '../design/words';
 import {
   captureSentence,
   countText,
@@ -17,7 +19,6 @@ import {
   sessionStepWord,
   stepExecutionWord,
   toolActionOutcomeWord,
-  utcStamp,
   workItemWord,
   workspaceModeWord,
 } from './labels';
@@ -95,7 +96,7 @@ export function ExecutionTimeline({
             level={0}
             marker="Session Step"
             name="Create the Agent Workspace"
-            detail={`${workspaceModeWord(timeline.workspace.mode)} · ${countText(timeline.workspace.attempts)} attempts`}
+            detail={`${workspaceModeWord(timeline.workspace.mode)} · ${countNoun(timeline.workspace.attempts, 'attempt')}`}
             call={timeline.workspace.stepId}
             status={workspaceStatusWord(timeline.workspace.status)}
             duration={null}
@@ -115,7 +116,7 @@ export function ExecutionTimeline({
           level={0}
           marker="Session Step"
           name="Acquire the population"
-          detail={`${countText(timeline.population.attempts)} attempts`}
+          detail={countNoun(timeline.population.attempts, 'attempt')}
           call={timeline.population.stepId}
           status={populationStatusWord(timeline.population.status)}
           duration={null}
@@ -167,7 +168,7 @@ function SessionStepRow({
         // untrue is worse than one that states nothing, so the ACTION the plan froze is read
         // rather than assumed.
         name={step.displayName}
-        detail={`${planActionWord(step.action)} · ${countText(step.attempts)} attempts`}
+        detail={`${planActionWord(step.action)} · ${countNoun(step.attempts, 'attempt')}`}
         call={step.stepId}
         status={sessionStepWord(step.state)}
         duration={null}
@@ -215,8 +216,8 @@ function WorkItemRow({
           </span>
           <span className="ls-timeline__detail">
             {item.subjectKey === null ? null : <>{item.displayName} · </>}
-            {countText(item.observations)} Observations · {countText(item.attempts)} attempts ·{' '}
-            {countText(item.cycles)} cycles
+            {countNoun(item.observations, 'Observation')} · {countNoun(item.attempts, 'attempt')} ·{' '}
+            {countNoun(item.cycles, 'cycle')}
             {item.diagnostic === null ? null : (
               <>
                 {' '}
@@ -267,7 +268,7 @@ function StepExecutions({
     >
       <details className="ls-expand" open={failed}>
         <summary>
-          {countText(executions.length)} Step Executions
+          {countNoun(executions.length, 'Step Execution')}
           {failed ? ' · one or more failed' : ''}
         </summary>
         <ol className="ls-timeline">
@@ -277,7 +278,7 @@ function StepExecutions({
                 level={0}
                 marker="Step Execution"
                 name={planActionWord(execution.action)}
-                detail={`attempt ${countText(execution.attempt)}`}
+                detail={`attempt ${execution.attempt.toLocaleString('en-US')}`}
                 call={execution.planStepId}
                 status={stepExecutionWord(execution.state)}
                 duration={
@@ -341,7 +342,7 @@ function ToolActionRow({ action }: { readonly action: RunTimelineToolAction }): 
     `${action.method} · ${toolActionOutcomeWord(action.outcome)}`,
     action.status === null ? null : `status ${String(action.status)}`,
     action.redirected ? 'redirected' : null,
-    action.downloads > 0 ? `${countText(action.downloads)} downloads offered` : null,
+    action.downloads > 0 ? `${countNoun(action.downloads, 'download')} offered` : null,
     captureSentence(action.capture, action.captureSuppression),
   ]
     .filter((part): part is string => part !== null)
@@ -352,7 +353,7 @@ function ToolActionRow({ action }: { readonly action: RunTimelineToolAction }): 
       <span className="ls-timeline__name">
         <span className="ls-timeline__title">{action.action}</span>
         <span className="ls-timeline__detail">
-          {detail} · {utcStamp(action.startedAt)}
+          {detail} · <Timestamp value={action.startedAt} />
           {action.denial === null ? null : (
             <>
               {' '}
@@ -406,7 +407,7 @@ function TimelineRow({
         <span className="ls-timeline__title">{name}</span>
         <span className="ls-timeline__detail">
           {detail}
-          {startedAt === null ? null : <> · {utcStamp(startedAt)}</>}
+          {startedAt === null ? null : <> · <Timestamp value={startedAt} /></>}
           {diagnosticSentence === null ? null : <> · {diagnosticSentence}</>}
           {diagnostic === null ? null : (
             <>

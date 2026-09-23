@@ -1,4 +1,4 @@
-import { asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 
 import type {
   PermissionGrantReader, PermissionGrantWriter, PermissionGrantState,
@@ -178,6 +178,40 @@ export class DrizzleActorNameReader implements ActorNameReader {
   }
 }
 
+/**
+ * What the user directory is filtered by (UI cleanup 2026-09-22, UX-38).
+ *
+ * `role` is a role name, `'none'` for an account that holds none, or absent for every
+ * account. `search` matches the name or the address, case-insensitively.
+ */
+export interface UserDirectoryQuery {
+  readonly search?: string;
+  readonly role?: Role | 'none';
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/** The one predicate the page read and the count read share, so they cannot disagree. */
+function userDirectoryPredicate(query: UserDirectoryQuery): SQL | undefined {
+  const clauses: SQL[] = [];
+  const search = (query.search ?? '').trim();
+  if (search !== '') {
+    // `%` and `_` are wildcards a person can type, and `\` escapes them. Escaped here
+    // rather than refused: somebody searching for `a_b` means those three characters.
+    const escaped = search.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
+    const pattern = `%${escaped}%`;
+    const matches = or(
+      sql`${authUser.name} ILIKE ${pattern}`,
+      sql`${authUser.email} ILIKE ${pattern}`,
+    );
+    if (matches !== undefined) clauses.push(matches);
+  }
+  if (query.role === 'none') clauses.push(isNull(userRole.role));
+  else if (query.role !== undefined) clauses.push(eq(userRole.role, query.role));
+  if (clauses.length === 0) return undefined;
+  return clauses.length === 1 ? clauses[0] : and(...clauses);
+}
+
 export class DrizzleUserDirectory implements UserDirectory {
   constructor(
     private readonly db: Database,
@@ -201,6 +235,61 @@ export class DrizzleUserDirectory implements UserDirectory {
       .orderBy(asc(authUser.createdAt), asc(authUser.id))
       .limit(this.limit);
     return rows.map(toManagedUser);
+  }
+
+  /**
+   * One page of the user directory, with the search and the role filter applied in SQL
+   * (UI cleanup 2026-09-22, UX-38).
+   *
+   * The walkthrough met 72 accounts over 7,601 pixels with no way to find one. This is
+   * the read behind the search box: the filter is a predicate the database applies, not
+   * a slice of `listUsers`, because a filter over a bounded page can only ever search
+   * the prefix somebody happened to fetch — and then reports "no matches" about an
+   * account that is really there.
+   *
+   * `role: 'none'` is the account with no `user_role` row. It is a value a person asks
+   * for — "who can sign in and do nothing" is exactly the question an operator has — so
+   * it is part of the vocabulary rather than an absence the filter cannot express.
+   *
+   * The order is the list's own (`created_at`, then id) so a page boundary is stable,
+   * and `limit` is bounded here as well as by the caller: a page size that came only
+   * from a query string is a query whose cost is set by the caller.
+   */
+  async pageUsers(query: UserDirectoryQuery = {}): Promise<readonly ManagedUser[]> {
+    const limit = Math.min(Math.max(1, Math.trunc(query.limit ?? this.limit)), this.limit);
+    const offset = Math.max(0, Math.trunc(query.offset ?? 0));
+    const rows = await this.db
+      .select({
+        userId: authUser.id,
+        name: authUser.name,
+        email: authUser.email,
+        role: userRole.role,
+        createdAt: authUser.createdAt,
+      })
+      .from(authUser)
+      .leftJoin(userRole, eq(userRole.userId, authUser.id))
+      .where(userDirectoryPredicate(query))
+      .orderBy(asc(authUser.createdAt), asc(authUser.id))
+      .limit(limit)
+      .offset(offset);
+    return rows.map(toManagedUser);
+  }
+
+  /**
+   * How many accounts match, EXACTLY.
+   *
+   * The surface states the total beside the page, and `rows.length` of a bounded page
+   * cannot say it: at the cap it reports the cap, which is the "an empty state is a
+   * statement about the environment" rule one step along — a COUNT that is really a
+   * page size is a statement about the query.
+   */
+  async countUsers(query: UserDirectoryQuery = {}): Promise<number> {
+    const rows = await this.db
+      .select({ total: count() })
+      .from(authUser)
+      .leftJoin(userRole, eq(userRole.userId, authUser.id))
+      .where(userDirectoryPredicate(query));
+    return rows[0]?.total ?? 0;
   }
 
   async findUser(userId: string): Promise<ManagedUser | null> {

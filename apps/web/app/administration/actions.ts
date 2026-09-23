@@ -161,6 +161,10 @@ export async function createUserAction(
     });
     if (!outcome.ok) return outcome;
 
+    // The list lives at `/administration/users` and the landing counts it, so both are
+    // stale after a mutation. `revalidatePath` with the default type revalidates one
+    // page, so naming only the landing would leave the list showing the row as it was.
+    revalidatePath('/administration/users');
     revalidatePath('/administration');
     return { ok: true, message: `Created ${fields.email.trim()} as ${roleLabel(outcome.role)}.` };
   } catch (error) {
@@ -211,6 +215,10 @@ export async function setUserRoleAction(
     });
     if (!outcome.ok) return outcome;
 
+    // The list lives at `/administration/users` and the landing counts it, so both are
+    // stale after a mutation. `revalidatePath` with the default type revalidates one
+    // page, so naming only the landing would leave the list showing the row as it was.
+    revalidatePath('/administration/users');
     revalidatePath('/administration');
     return {
       ok: true,

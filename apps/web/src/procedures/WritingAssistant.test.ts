@@ -8,9 +8,11 @@ import { executablePlanInputs } from '../../../../tests/fixtures/executable-plan
 import {
   createWritingAssistantState, isWritingResponse, savedWritingText, writingDifference, writingSectionKey, writingSuggestionIsStale,
   PreparationAssistant, WritingAssistantPanel, WritingAssistantProvider, WritingTools, writingRevisionFor, writingMessageCommand,
+  composerState, proposedScopePeriod,
   type AuthoringDraftFields, type AuthoringSection, type AuthoringSuggestionView, type WritingAssistantActions,
 } from './WritingAssistant';
 import { BuilderSubmissionProvider } from './use-section';
+import { COMPOSER_HINTS, datedScopeLead } from './assistant-words';
 
 function view(overrides: Partial<ProcedureVersionView> = {}): ProcedureVersionView {
   return {
@@ -480,4 +482,43 @@ describe('additive writing help surface', () => {
     expect(html).not.toContain('Mark reviewed');
     expect(actions.generate).not.toHaveBeenCalled();
   });
+});
+
+/**
+ * UX-09 and UX-10: a scope request that names dates is proposed WITH those dates, and
+ * the composer only mentions "record that" when there is something to record.
+ */
+describe('dated scope proposals and state-specific composer hints', () => {
+  function answered(notes: string, overrides: Partial<AuthoringSuggestionView> = {}, draft: ProcedureVersionView = view({ period: null })) {
+    const machine = createWritingAssistantState(), request = { ...fields(), notes };
+    machine.open(scope, 'draft', draft.scope);
+    machine.edit('scope', 'notes', notes);
+    machine.begin(request, draft);
+    machine.receive(request, response(request, draft, overrides), draft);
+    return { session: machine.snapshot.sessions.get('scope')!, draft };
+  }
+
+  it('reads the period from the auditor’s own words, never from the model’s proposal', () => {
+    const { session, draft } = answered('Employees terminated during August 2026', { proposedText: 'Employees terminated in September 2027.' });
+    expect(proposedScopePeriod(session, draft)).toEqual({ from: '2026-08-01', to: '2026-08-31' });
+    expect(composerState(session, draft, false)).toBe('dated-proposal');
+    expect(COMPOSER_HINTS['dated-proposal']).toContain('record that');
+    expect(datedScopeLead({ from: '2026-08-01', to: '2026-08-31' })).toBe('I’ll use 1–31 Aug 2026 as the testing period, both dates included, with this scope:');
+  });
+
+  it('proposes the scope alone when the dates named are the ones already saved, or none are named', () => {
+    const saved = answered('Employees terminated during August 2026', {}, view({ period: { from: '2026-08-01', to: '2026-08-31' } }));
+    expect(proposedScopePeriod(saved.session, saved.draft)).toBeNull();
+    expect(composerState(saved.session, saved.draft, false)).toBe('proposal');
+    const undated = answered('All terminated employees, excluding contractors');
+    expect(proposedScopePeriod(undated.session, undated.draft)).toBeNull();
+  });
+
+  it('never offers "record that" under a question', () => {
+    const { session, draft } = answered('Check the leavers', { proposedText: null, clarifications: ['Which period should the test cover?'] });
+    expect(composerState(session, draft, false)).toBe('question');
+    expect(COMPOSER_HINTS.question).not.toMatch(/record that/iu);
+    expect(proposedScopePeriod(session, draft)).toBeNull();
+  });
+
 });

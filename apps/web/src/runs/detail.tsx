@@ -17,19 +17,24 @@ import {
 
 import { getRuntime } from '../bootstrap';
 import { Banner } from '../design/Banner';
+import { PageHeader } from '../design/PageHeader';
 import { StatusBadge } from '../design/StatusBadge';
 import { Tabs } from '../design/Tabs';
+import { TechnicalDetails } from '../design/TechnicalDetails';
+import { Timestamp } from '../design/Timestamp';
+import { executionMeaning } from '../design/status-words';
+import { readablePeriod, readableStamp } from '../design/time';
 import { WatchControl } from './WatchControl';
 import { ESCALATION_PANEL_COPY, PAUSE_COPY, STALE_DATA_ACTION, fillTemplate, runCanceledBy, updatedAtTitle } from '../design/copy';
 import { DetailTrail } from '../procedures/DetailTrail';
 import { requireServerAction } from '../server-session';
+import { EscalationOutcomeHost } from './EscalationOutcome';
 import { EscalationPanel, type EscalationWorkspacePresentation } from './EscalationPanel';
-import { EvaluationReview } from './EvaluationReview';
 import { readOpenEscalation, type OpenEscalationRead } from './escalation-read';
 import { LiveBanner } from './LiveBanner';
 import { RunLifecycleActions } from './RunLifecycleActions';
 import { WaitCountdown } from './WaitCountdown';
-import { runLifecycleWord, utcStamp } from './labels';
+import { periodText, runLifecycleWord, utcStamp } from './labels';
 import { ActorName } from './ActorName';
 import { StopReasonBanner } from './StopReason';
 import { isStoppedState } from './stop-reason';
@@ -92,6 +97,17 @@ export interface EvaluationReviewRead {
   readonly pendingCount: number | null;
   /** Safe durable command state for the exact current review revision. */
   readonly commandStatuses: readonly EvaluationReviewCommandStatus[];
+  /**
+   * The population record each reviewed Observation is about, keyed by Observation id, so a
+   * review row is headed by the record a reader recognises rather than a UUID (UX-21).
+   */
+  readonly recordKeys: Readonly<Record<string, string>>;
+  /**
+   * The reviewer of each stored decision, by name: a decision says who made it in words,
+   * and the user id is under the row's Technical details (UX-02), as the record inspector
+   * already does.
+   */
+  readonly reviewerNames: Readonly<Record<string, string>>;
 }
 
 /**
@@ -116,6 +132,12 @@ export async function readEvaluationReview(runId: string): Promise<EvaluationRev
   const evaluations = await detail.readEvaluations(runId, observations.rows.map((row) => row.observationId));
   const commandStatuses = await new PostgresEvaluationReviewRepository(runtime.db)
     .readCommandStatuses(runId, reviewRevision, observations.rows.map((row) => row.observationId));
+  const reviewerIds = [...new Set(evaluations
+    .map((evaluation) => evaluation.reviewDecision?.actorId)
+    .filter((id): id is string => typeof id === 'string'))];
+  const reviewerNames = reviewerIds.length === 0
+    ? new Map<string, string>()
+    : await new DrizzleActorNameReader(runtime.db).namesFor(reviewerIds);
   // The unsealed publication is intentionally unchanged after each review decision. The
   // adjacent query counts the current effective rows, while an unreadable publication
   // keeps the count unavailable rather than presenting a partial Result as complete.
@@ -128,6 +150,8 @@ export async function readEvaluationReview(runId: string): Promise<EvaluationRev
     reviewRevision,
     pendingCount,
     commandStatuses,
+    recordKeys: Object.fromEntries(observations.rows.map((row) => [row.observationId, row.populationRecordKey])),
+    reviewerNames: Object.fromEntries(reviewerNames),
   };
 }
 
@@ -156,8 +180,11 @@ export function RefreshBanner({
   readonly readAt: Date;
   readonly href: string;
 }): React.JSX.Element {
+  // One line, in readable UTC to the minute (UI cleanup 2026-09-21, UX-02, UX-23): the
+  // contract's sentence is unchanged; what changed is that `{time}` is no longer a
+  // machine spelling and the strip no longer costs a card of every viewport.
   return (
-    <Banner tone="info" title={updatedAtTitle(utcStamp(readAt))}>
+    <Banner tone="info" variant="line" title={updatedAtTitle(readableStamp(readAt, 'minute'))}>
       <p>
         <Link href={href}>{STALE_DATA_ACTION}</Link>
       </p>
@@ -193,9 +220,6 @@ export async function RunDetailFrame({
   const escalation = run.state === 'AWAITING_AUDITOR' || run.state === 'PAUSED'
     ? await readOpenEscalation(run.runId)
     : null;
-  const evaluationReview = tab === '' && (run.state === 'COMPLETED' || run.state === 'INCONCLUSIVE')
-    ? await readEvaluationReview(run.runId)
-    : null;
   const lifecycle = runLifecycleWord(run.state);
   const conversationEnabled = (await getRuntime()).conversationEnabled;
   const here = runTabHref(run.runId, tab);
@@ -219,6 +243,23 @@ export async function RunDetailFrame({
   const stop = isStoppedState(run.state)
     ? await new DrizzleRunStopReader((await getRuntime()).db).readStop(run.runId)
     : null;
+  const lifecycleActions = (
+    <RunLifecycleActions
+      runId={run.runId}
+      active={isActiveRunState(run.state)}
+      awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
+      cancelPending={run.cancellation !== null}
+      paused={run.state === 'PAUSED'}
+      pausePending={run.pauseRequest !== null}
+      pausable={runPauseTransition(run.state) !== null}
+      runRevision={escalation?.runRevision ?? null}
+      requestToken={new CryptoUuidV7Generator().next()}
+      procedureName={run.procedureName}
+    />
+  );
+  // The trail names the Procedure, never the Run's UUID (UI cleanup 2026-09-21, UX-02):
+  // a person follows `Runs / Leaver access review / Evidence`, and the identifier is one
+  // row under Technical details.
   const trail = [
     { href: '/runs', label: 'Runs' },
     { href: runTabHref(run.runId, ''), label: run.procedureName },
@@ -227,24 +268,32 @@ export async function RunDetailFrame({
   return (
     <div className={compact ? 'ls-stack run-detail-frame run-detail-frame--compact' : 'ls-stack'}>
       <DetailTrail trail={trail} />
-      <header className="ls-page-header">
-        <h1>Run · {run.procedureName}</h1>
-        <p>
-          <Link href={`/procedures/${run.procedureId}`}>{run.procedureName}</Link> ·{' '}
-          <Link href={`/procedures/${run.procedureId}/versions/${run.versionId}`}>
-            v{run.versionNumber}
-          </Link>{' '}
-          · {run.kind === 'STANDARD' ? 'Standard' : 'Regression'} Run
-        </p>
-        <p className="ls-caption">Period {run.period.from} to {run.period.to} · Started <time dateTime={run.initiatedAt}>{utcStamp(run.initiatedAt)}</time></p>
-        {/* A state outside the vocabulary is written in words: `StatusBadge` throws on an
-            unknown state, and on a page that is a 500 for the whole Run. */}
-        {lifecycle === null ? (
-          <p>Run lifecycle: {run.state}</p>
-        ) : (
-          <StatusBadge family="run-lifecycle" state={lifecycle} size="md" />
-        )}
-      </header>
+      {/* One row for the title and its state, one meta line, and the controls that belong
+          to the whole Run on the title's right (UI cleanup 2026-09-21, UX-23, UX-48). The
+          walkthrough measured this header at nearly half a laptop viewport. A state
+          outside the vocabulary is still written in words: `StatusBadge` throws on an
+          unknown state, and on a page that is a 500 for the whole Run. Watch — the rail's
+          Session control — and the Auditor Workspace are reached from here: neither is a
+          tab. */}
+      <PageHeader
+        title={<>Run · {run.procedureName}</>}
+        badge={lifecycle === null ? <span>Run lifecycle: {run.state}</span> : <StatusBadge family="run-lifecycle" state={lifecycle} size="md" />}
+        actions={
+          <>
+            <WatchControl runId={run.runId} state={run.state} active={isActiveRunState(run.state)} />
+            {conversationEnabled && <Link href={`/runs/${run.runId}/workspace`}>Open Auditor Workspace</Link>}
+          </>
+        }
+        meta={
+          <>
+            <Link href={`/procedures/${run.procedureId}`}>{run.procedureName}</Link> ·{' '}
+            <Link href={`/procedures/${run.procedureId}/versions/${run.versionId}`}>v{run.versionNumber}</Link> ·{' '}
+            {run.kind === 'STANDARD' ? 'Standard' : 'Regression'} Run · Period {readablePeriod(run.period)} · Started{' '}
+            <Timestamp value={run.initiatedAt} precision="minute" />
+            {lifecycle === null ? null : <> · {executionMeaning(lifecycle)}</>}
+          </>
+        }
+      />
       {liveCursor === null
         ? <RefreshBanner readAt={readAt} href={here} />
         : <LiveBanner url={`/api/runs/${run.runId}/events`} cursor={liveCursor} readAt={readAt.toISOString()} href={here} />}
@@ -253,64 +302,38 @@ export async function RunDetailFrame({
       <CancellationBanners run={run} names={names} />
       <PauseBanners run={run} pause={escalation?.pause ?? null} readAt={readAt} names={names} />
       <RerunLinks runId={run.runId} />
-      {/* Watch: the rail's Session control (EXPERIENCE.md → Run Detail rows). Live View
-          is its own surface, not a sixth tab, so it is reached from here and from a
-          notification rather than from the tab bar. Compact review keeps these links
-          together so the queue can begin in the first viewport. */}
-      {compact ? (
-        <nav className="run-detail-frame__compact-rail" aria-label="Run navigation">
-          <WatchControl runId={run.runId} state={run.state} active={isActiveRunState(run.state)} />
-          {conversationEnabled && <Link href={`/runs/${run.runId}/workspace`}>Open Auditor Workspace</Link>}
-        </nav>
-      ) : (
-        <>
-          <WatchControl runId={run.runId} state={run.state} active={isActiveRunState(run.state)} />
-          {conversationEnabled && <Link href={`/runs/${run.runId}/workspace`}>Open Auditor Workspace</Link>}
-        </>
-      )}
+      {/* Compact record review keeps its queue in the first viewport, so the Run's actions
+          sit behind one disclosure there; ordinary Run Detail shows them as they were. */}
       {compact ? (
         <details className="run-detail-frame__lifecycle">
           <summary>Run actions</summary>
-          <RunLifecycleActions
-            runId={run.runId}
-            active={isActiveRunState(run.state)}
-            awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
-            cancelPending={run.cancellation !== null}
-            paused={run.state === 'PAUSED'}
-            pausePending={run.pauseRequest !== null}
-            pausable={runPauseTransition(run.state) !== null}
-            runRevision={escalation?.runRevision ?? null}
-            requestToken={new CryptoUuidV7Generator().next()}
-            procedureName={run.procedureName}
-          />
+          {lifecycleActions}
         </details>
-      ) : (
-        <RunLifecycleActions
-          runId={run.runId}
-          active={isActiveRunState(run.state)}
-          awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
-          cancelPending={run.cancellation !== null}
-          paused={run.state === 'PAUSED'}
-          pausePending={run.pauseRequest !== null}
-          pausable={runPauseTransition(run.state) !== null}
-          runRevision={escalation?.runRevision ?? null}
-          requestToken={new CryptoUuidV7Generator().next()}
-          procedureName={run.procedureName}
-        />
-      )}
+      ) : lifecycleActions}
+      {/* The Run's identifiers, once, on every tab. The person who started the Run is named
+          in words on the page; their user id is here, because it is what an auditor
+          matches against the audit chain. */}
+      <TechnicalDetails
+        items={[
+          { label: 'Run identifier', value: run.runId, mono: true },
+          { label: 'Correlation identifier', value: run.correlationId, mono: true },
+          { label: 'Procedure Version identifier', value: run.versionId, mono: true },
+          { label: 'Effective period', value: periodText(run.period), mono: true },
+          { label: 'Started', value: utcStamp(run.initiatedAt), mono: true },
+          { label: 'Started by (user identifier)', value: run.initiatorId, mono: true },
+          { label: 'Read at', value: utcStamp(readAt), mono: true },
+        ]}
+      />
       {compact
         ? <CompactOpenEscalationDisclosure run={run} workspaceAvailable={conversationEnabled} />
         : <OpenEscalationSection run={run} escalation={escalation} readAt={readAt} />}
-      {evaluationReview !== null ? (
-        <EvaluationReview
-          runId={run.runId}
-          result={evaluationReview.result}
-          evaluations={evaluationReview.evaluations}
-          reviewRevision={evaluationReview.reviewRevision}
-          pendingCount={evaluationReview.pendingCount}
-          commandStatuses={evaluationReview.commandStatuses}
-        />
-      ) : null}
+      {/* The pending confirmations are NOT here (UI cleanup 2026-09-22, UX-19). They were
+          rendered by the frame, above `children`, so three historical AI assessments
+          preceded the conclusion on every Result tab and the completed Result page stood
+          7,132px tall. They belong under the triptych, on the Result page, where "what
+          needs the reader now" sits — and where a sealed Result can collapse them into a
+          review history instead of leading with them. The record inspector reads its own
+          selected record's review. */}
       {children}
     </div>
   );
@@ -377,7 +400,7 @@ export function RerunLinksBanner({ successors, names }: {
             <Link className="ls-mono" href={runTabHref(successor.runId, '')}>
               {successor.runId}
             </Link>{' '}
-            · started {utcStamp(successor.initiatedAt)} by <ActorName id={successor.initiatorId} names={names} />
+            · started <Timestamp value={successor.initiatedAt} /> by <ActorName id={successor.initiatorId} names={names} />
           </li>
         ))}
       </ul>
@@ -410,24 +433,35 @@ export function RerunLinksBanner({ successors, names }: {
  * means the Run is holding on a question; rendering nothing there would tell a reader the
  * Run is simply busy, which is the "an empty stage that says nothing reads as fine" defect
  * in the one place it costs an audit its answer.
+ *
+ * The outcome host is rendered in EVERY state, and that is what keeps an answer's
+ * confirmation on the page: the refresh after an answer leaves no question open, so the
+ * panel goes, and a confirmation inside it went with it within about 300 ms. The host sits
+ * in the same place either way, so its state survives the refresh.
  */
 export function OpenEscalationSection({ run, escalation, readAt, workspacePresentation }: {
   readonly run: RunRecord;
   readonly escalation: OpenEscalationRead | null;
   readonly readAt: Date;
   readonly workspacePresentation?: EscalationWorkspacePresentation;
-}): React.JSX.Element | null {
-  if (run.state !== 'AWAITING_AUDITOR' || escalation === null) return null;
-  return escalation.wait !== null && escalation.runRevision !== null
-    ? <EscalationPanel
-        runId={run.runId}
-        wait={escalation.wait}
-        details={escalation.details}
-        runRevision={escalation.runRevision}
-        readAt={readAt.toISOString()}
-        {...(workspacePresentation === undefined ? {} : { workspacePresentation })}
-      />
-    : <Banner tone="danger" title={ESCALATION_PANEL_COPY.unavailable} />;
+}): React.JSX.Element {
+  const open = run.state === 'AWAITING_AUDITOR' ? escalation : null;
+  return (
+    <EscalationOutcomeHost openWaitId={open?.wait?.waitId ?? null}>
+      {open === null
+        ? null
+        : open.wait !== null && open.runRevision !== null
+          ? <EscalationPanel
+              runId={run.runId}
+              wait={open.wait}
+              details={open.details}
+              runRevision={open.runRevision}
+              readAt={readAt.toISOString()}
+              {...(workspacePresentation === undefined ? {} : { workspacePresentation })}
+            />
+          : <Banner tone="danger" title={ESCALATION_PANEL_COPY.unavailable} />}
+    </EscalationOutcomeHost>
+  );
 }
 
 /**
@@ -472,8 +506,8 @@ export function PauseBanners({ run, pause, readAt, names }: {
         tone="warning"
         title={fillTemplate(PAUSE_COPY.banner, {
           actor: names.get(pause.openedBy) ?? pause.openedBy,
-          time: utcStamp(pause.openedAt),
-          ends: utcStamp(pause.deadline),
+          time: readableStamp(pause.openedAt),
+          ends: readableStamp(pause.deadline),
         })}
       >
         {/* EXPERIENCE.md asks for a COUNTDOWN here, in three places (lines 115, 149 and
@@ -495,7 +529,7 @@ export function PauseBanners({ run, pause, readAt, names }: {
     return (
       <Banner
         tone="warning"
-        title={`Pause requested by ${names.get(run.pauseRequest.requestedBy) ?? run.pauseRequest.requestedBy} at ${utcStamp(run.pauseRequest.requestedAt)}`}
+        title={`Pause requested by ${names.get(run.pauseRequest.requestedBy) ?? run.pauseRequest.requestedBy} at ${readableStamp(run.pauseRequest.requestedAt)}`}
       >
         <p>The Run holds at its next Tool Action, before any further Target System work.</p>
       </Banner>
@@ -522,7 +556,7 @@ export function CancellationBanners({ run, names }: {
     return (
       <Banner
         tone="warning"
-        title={runCanceledBy(actor, utcStamp(run.cancellation.requestedAt))}
+        title={runCanceledBy(actor, readableStamp(run.cancellation.requestedAt))}
       >
         <p>{run.cancellation.reason}</p>
         <p>Evidence already collected is preserved. No conclusion was issued.</p>
@@ -532,7 +566,7 @@ export function CancellationBanners({ run, names }: {
   return (
     <Banner
       tone="warning"
-      title={`Cancellation requested by ${actor} at ${utcStamp(run.cancellation.requestedAt)}`}
+      title={`Cancellation requested by ${actor} at ${readableStamp(run.cancellation.requestedAt)}`}
     >
       {isActiveRunState(run.state) ? (
         <p>The Run stops at its next checkpoint, before any further Target System work.</p>

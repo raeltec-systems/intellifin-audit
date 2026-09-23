@@ -106,7 +106,13 @@ export function UserForm({ onSubmit, onResult, onStart }: UserFormProps): React.
         submission be SAFE and visibly do nothing, rather than quietly leak a credential.
       */}
       <form className="ls-admin__form" method="post" onSubmit={onRequestSubmit}>
-        <h2>Add a user</h2>
+        {/*
+          `h3`, not `h2`: the form sits inside the "Add a user" disclosure, under the
+          block that says how the person signs in, and a heading level that jumped back
+          up would put the page's outline out of order for anybody reading it by headings
+          (UI cleanup 2026-09-22, UX-40). The disclosure's own summary names the action.
+        */}
+        <h3>Account details</h3>
         <div className="ls-admin__fields">
           <div className="ls-dialog__field">
             <label htmlFor={emailId}>Email address</label>

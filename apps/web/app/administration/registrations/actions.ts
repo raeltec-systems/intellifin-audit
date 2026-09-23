@@ -198,6 +198,10 @@ export async function createRegistrationAction(
     if (!outcome.ok) return outcome;
 
     revalidatePath('/administration/registrations');
+    // The landing states the EXACT system count and the "never checked" health line
+    // (UX-37, UI cleanup 2026-09-22); naming only the list here would leave both stale
+    // until something else happened to revalidate the path.
+    revalidatePath('/administration');
     return {
       ok: true,
       registrationId: outcome.registrationId,
@@ -261,6 +265,9 @@ export async function changeRegistrationAction(
 
     revalidatePath('/administration/registrations');
     revalidatePath(`/administration/registrations/${fields.registrationId}`);
+    // Same reason as the create path: a status change moves the landing's system count
+    // and its "never checked" line, and retiring or reactivating one moves it too.
+    revalidatePath('/administration');
     return {
       ok: true,
       registrationId: outcome.registrationId,

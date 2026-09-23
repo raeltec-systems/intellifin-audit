@@ -1,6 +1,7 @@
 import type { RunListRow, RunStopFacts } from '@intellifin/infrastructure';
 
 import { DataTable } from '../design/DataTable';
+import { referenceLabel } from '../design/references';
 import { StatusBadge } from '../design/StatusBadge';
 import { EMPTY_STATES } from '../design/copy';
 import { ActorName } from '../runs/ActorName';
@@ -43,8 +44,11 @@ export function RecentRuns({
       first={{
         header: 'Run',
         href: (row) => `/runs/${row.runId}`,
-        label: (row) => row.runId,
-        mono: true,
+        // `[REPAIRED 2026-09-22, UX-02/UX-31]` The raw UUID was the row's own name. The
+        // contract keeps a Run column here, and names it by its short reference; the
+        // Procedure it tested is the very next cell, and the whole identifier is one click
+        // away under the Run's own Technical details.
+        label: (row) => referenceLabel('Run', row.runId),
       }}
       columns={[
         {

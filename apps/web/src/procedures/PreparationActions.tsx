@@ -5,6 +5,7 @@ import { AuthoringChat, ChatMessage } from './AuthoringChat';
 import { Button } from '../design/Button';
 import { Banner } from '../design/Banner';
 import { useSubmissionGuard } from './use-section';
+import { CHOICES_LISTED_BESIDE, clarifyCommandReply } from './assistant-words';
 import { PREPARATION_NAMES, preparationCommand, preparationWritingCommand, resolvePreparationChoice, type PreparationChoice, type PreparationDestination } from './preparation-commands';
 
 export interface PreparationActionResult { readonly ok: boolean; readonly message: string }
@@ -15,6 +16,12 @@ export interface PreparationChoices {
   readonly active: boolean;
   readonly choices: readonly PreparationChoice[];
   readonly select: (id: string) => Promise<PreparationActionResult>;
+  /**
+   * `false` when the surface beside the chat already lists the choices as clickable rows
+   * (the evidence-source chooser, UX-11), so the chat does not print the whole catalogue
+   * a second time. Selection by name still works either way.
+   */
+  readonly listed?: boolean;
 }
 interface GuideCommands {
   readonly navigate: (step: PreparationDestination) => void;
@@ -98,7 +105,7 @@ export function PreparationActionsProvider({ children }: { readonly children: Re
         registry.focused = null;
         if (guide) { guide.navigate(command.destination); result = { ok: true, message: `Opened ${PREPARATION_NAMES[command.destination]}. Your content and review status were not changed.` }; }
         else result = noChange('Section navigation is not available here. Use the procedure outline.');
-      } else if (command.kind === 'clarify') result = noChange('What would you like me to do? Say “record that” to save the displayed proposal, “select” followed by an option’s name, or “I’ve reviewed this; continue” to review saved content. Nothing has been changed.');
+      } else if (command.kind === 'clarify') result = noChange(clarifyCommandReply(options.hasProposal === true));
       else if (command.kind === 'restricted') result = noChange('Use Review and submission for the procedure approval process. This chat cannot approve, activate or execute a procedure.');
       else if (command.kind === 'save') result = options.save ? await options.save() : noChange('There is no completed writing proposal to save here. Use the section’s editor to prepare a change, or name the source or system you want me to select.');
       else if (command.kind === 'reject') result = options.reject ? await options.reject() : noChange('There is no writing proposal to discard here. Your saved content is unchanged.');
@@ -114,7 +121,7 @@ export function PreparationActionsProvider({ children }: { readonly children: Re
           const basis = choiceBasis(capability);
           const focusId = registry.focused?.surface === capability.surface && registry.focused.basis === basis ? registry.focused.id : null;
           const choice = resolvePreparationChoice(capability.choices, command.name, focusId);
-          if (!choice) result = noChange('Which option do you mean? Use one exact name from Available choices. If names repeat, use the full label or identifier. Nothing has been selected.');
+          if (!choice) result = noChange('Which option do you mean? Use one exact name from the list. If names repeat, use the full label or identifier. Nothing has been selected.');
           else if (command.kind === 'discuss') {
             registry.focused = { surface: capability.surface, basis, id: choice.id };
             result = { ok: true, message: `${choice.label}: ${choice.description} Say “yes, select that” to select this option. It has not been selected by this message.` };
@@ -202,7 +209,8 @@ export function PreparationActionPanel({ step, question }: { readonly step: Prep
     <div className="ls-chat__header"><h3 id={`${id}-heading`}>Procedure assistant</h3><span className="ls-caption">{PREPARATION_NAMES[step]}</span></div>
     <AuthoringChat busy={context.busy} requestId={String(context.turns.at(-1)?.id ?? '')} composer={composer}>
       <ChatMessage from="assistant"><p>{question ?? 'Tell me which option to select, or say “I’ve reviewed this; continue” when the saved section is correct.'}</p>
-        {capability && capability.choices.length > 0 ? <details className="ls-disclosure" open><summary>Available choices</summary>
+        {capability && capability.choices.length > 0 && capability.listed === false ? <p className="ls-caption" data-choices-listed-beside>{CHOICES_LISTED_BESIDE}</p> : null}
+        {capability && capability.choices.length > 0 && capability.listed !== false ? <details className="ls-disclosure" open><summary>Available choices</summary>
           <ul>{capability.choices.map(choice => <li key={choice.id}><strong>{choice.label}</strong> — {choice.description}</li>)}</ul>
           <p>Say “select” followed by the name. You can also ask “tell me about” an option first.</p></details> : null}
       </ChatMessage>

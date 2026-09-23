@@ -1,3 +1,5 @@
+import type { Frequency } from '@intellifin/domain';
+
 /**
  * How a Run is started, said once.
  *
@@ -30,6 +32,29 @@ export const START_RUN_LINK_LABEL = 'Start a Run now';
 
 /** The `id` of the Initiate Run box; every link to it is built by `initiateRunHref`. */
 export const INITIATE_RUN_ANCHOR = 'initiate-run';
+
+/**
+ * The Schedule's own frequency, said as a PLAN rather than a promise (UX-14).
+ *
+ * A version card showed "Weekly" beside a UTC start time with nothing saying that
+ * nothing runs by itself yet — the same fact {@link NO_AUTOMATIC_RUNS_SENTENCE} states
+ * everywhere else, missing from the one place a reader meets the saved frequency
+ * without opening the Builder. It is a NEW sentence, not a reuse of that constant's
+ * exact words, because "Planned: weekly (nothing runs by itself yet)" is a label for a
+ * SAVED VALUE and the pinned sentence is a caption under a field; the fact the two say
+ * is one fact, restated once each for the surface it is on.
+ */
+const FREQUENCY_WORDS: Readonly<Record<Frequency, string>> = {
+  once: 'once', daily: 'daily', weekly: 'weekly', monthly: 'monthly',
+};
+
+export function plannedFrequencyLine(frequency: Frequency): string {
+  return `Planned: ${FREQUENCY_WORDS[frequency]} (nothing runs by itself yet)`;
+}
+
+/** Said on a version with no saved Schedule at all — distinct from the Procedure
+ * list card's own absent-cell wording, which is a different surface's constant. */
+export const SCHEDULE_NOT_SAVED_LINE = 'No frequency saved yet.';
 
 /**
  * A link to the Initiate Run box, optionally carrying the dates to fill in.

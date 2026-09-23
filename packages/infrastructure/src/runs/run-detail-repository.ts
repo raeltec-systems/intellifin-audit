@@ -190,6 +190,36 @@ export interface RunObservationRow {
   readonly checks: readonly { readonly check: string; readonly outcome: string; readonly diagnostic: string | null }[];
 }
 
+/**
+ * One stored Observation row, projected. ONE mapping, shared by the bounded page and by
+ * the id-list read: two copies would diverge on the first column nobody added to both.
+ */
+function observationRow(
+  row: typeof runObservation.$inferSelect,
+  absence: ReadonlyMap<string, RunObservationAbsence>,
+  checks: ReadonlyMap<string, { check: string; outcome: string; diagnostic: string | null }[]>,
+): RunObservationRow {
+  return {
+    ...(absence.has(row.observationId) ? { absence: absence.get(row.observationId)! } : {}),
+    observationId: row.observationId,
+    workItemId: row.workItemId,
+    populationRecordKey: row.populationRecordKey,
+    targetSystem: row.targetSystem,
+    found: row.found as ObservationFound,
+    coverage: row.coverage as ObservationCoverage,
+    corroboration: row.corroboration,
+    observedAt: row.observedAt.toISOString(),
+    observedAtSource: row.observedAtSource,
+    captureMethod: row.captureMethod,
+    matchOrigin: row.matchOrigin,
+    digest: row.digest,
+    identity: row.identity,
+    attributes: row.attributes,
+    evidenceIds: row.evidenceIds,
+    checks: checks.get(row.observationId) ?? [],
+  };
+}
+
 export interface RunEvaluationRow {
   readonly observationId: string;
   readonly conditionId: string;
@@ -883,12 +913,15 @@ export class DrizzleRunDetailRepository {
   }
 
   /**
-   * Exact Observation rows for a selected record, independent of the overview's page.
+   * Exact Observation rows by id, independent of the overview's page.
    *
-   * Selection ids come from the authorized record-review projection. The Run predicate
-   * is repeated here so a stale or forged id can only resolve to an Observation in this
-   * Run, and the list is bounded even if a caller supplies more ids than the inspector
-   * can display.
+   * Two callers: the record inspector (the selected record's Observations, from the
+   * authorized record-review projection) and the Exceptions tab (the Observations its
+   * findings were raised on — `readObservations` is a bounded PAGE ordered by Target System
+   * and record key, so resolving a finding from it would leave one past the fiftieth row
+   * with no captured value to show). The Run predicate is repeated so a stale or forged id
+   * can only resolve to an Observation in this Run, and the list is bounded at the page
+   * size both callers' own reads already have.
    */
   async readObservationsByIds(
     runId: string,
@@ -925,25 +958,7 @@ export class DrizzleRunDetailRepository {
       list.push({ check: check.checkName, outcome: check.outcome, diagnostic: check.diagnostic });
       byObservation.set(check.observationId, list);
     }
-    return rows.map((row): RunObservationRow => ({
-        ...(absence.has(row.observationId) ? { absence: absence.get(row.observationId)! } : {}),
-        observationId: row.observationId,
-        workItemId: row.workItemId,
-        populationRecordKey: row.populationRecordKey,
-        targetSystem: row.targetSystem,
-        found: row.found as ObservationFound,
-        coverage: row.coverage as ObservationCoverage,
-        corroboration: row.corroboration,
-        observedAt: row.observedAt.toISOString(),
-        observedAtSource: row.observedAtSource,
-        captureMethod: row.captureMethod,
-        matchOrigin: row.matchOrigin,
-        digest: row.digest,
-        identity: row.identity,
-        attributes: row.attributes,
-        evidenceIds: row.evidenceIds,
-        checks: byObservation.get(row.observationId) ?? [],
-      }));
+    return rows.map((row): RunObservationRow => observationRow(row, absence, byObservation));
   }
 
   /**
@@ -1241,6 +1256,48 @@ export class DrizzleRunDetailRepository {
   }
 
   /** Every Step Execution, oldest first — the order the Timeline is read in. */
+  /**
+   * How far through its plan a Run has got, in LOGICAL steps, counted EXACTLY
+   * (UI cleanup 2026-09-22, UX-47).
+   *
+   * Live View's counter read "Step 7 of 6" after a pause and a resume, because its
+   * numerator was `run_step_execution`'s row total — ATTEMPTS, and a pause supersedes one
+   * attempt and the resume starts another. Counting distinct plan steps over the bounded
+   * page `readStepExecutions` returns would trade that defect for its opposite: a long Run
+   * whose first fifty attempts had not yet reached a later plan step would report fewer
+   * steps than it had started. So the three facts are aggregates over EVERY row:
+   *
+   * - `started`: distinct plan steps with at least one Step Execution, restricted to the
+   *   ids the frozen plan declares when the caller has them — so `started` can never pass
+   *   the plan's own step count, by construction rather than by clamping;
+   * - `units`: distinct (plan step, Work Item) pairs, the work actually done;
+   * - `retries`: every attempt beyond the first.
+   */
+  async readLogicalStepProgress(
+    runId: string,
+    planStepIds: readonly string[] | null,
+  ): Promise<{ readonly started: number; readonly units: number; readonly retries: number }> {
+    if (!isUuidText(runId)) return { started: 0, units: 0, retries: 0 };
+    const declared = planStepIds === null
+      ? sql`true`
+      : planStepIds.length === 0
+        ? sql`false`
+        : inArray(runStepExecution.planStepId, [...planStepIds]);
+    const [row] = await this.db
+      .select({
+        started: sql<number>`count(DISTINCT ${runStepExecution.planStepId}) FILTER (WHERE ${declared})::int`,
+        units: sql<number>`count(DISTINCT ${runStepExecution.planStepId} || '|' || coalesce(${runStepExecution.workItemId}::text, ''))::int`,
+        retries: sql<number>`count(*) FILTER (WHERE ${runStepExecution.attempt} > 1)::int`,
+      })
+      .from(runStepExecution)
+      .where(eq(runStepExecution.runId, runId));
+    return {
+      started: Number(row?.started ?? 0),
+      units: Number(row?.units ?? 0),
+      retries: Number(row?.retries ?? 0),
+    };
+  }
+
   async readStepExecutions(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<Bounded<RunStepExecutionRow>> {
     if (!isUuidText(runId)) return { rows: [], total: 0 };
     const counted = await this.db

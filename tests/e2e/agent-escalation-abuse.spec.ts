@@ -209,6 +209,8 @@ test.describe('hydrated golden escalation questions remain untrusted', () => {
     // is disabled and an accessibility violation is never retried into a pass.
     await expect(page.locator('#open-escalation')).toHaveCount(0);
     await expect(page).toHaveTitle('Run · Result · IntelliFin Audit');
+    // The confirmation outlives the panel the refresh removed (it used to go with the panel, within about 300 ms), and it is scanned with the page.
+    await expect(page.locator('[data-escalation-outcome]')).toContainText('Escalation answered.');
     await scan(page);
   });
 });

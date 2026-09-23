@@ -1,3 +1,5 @@
+import { fillTemplate } from '../design/copy';
+
 /**
  * The two sentences the New-procedure form shows before its handlers attach.
  *
@@ -10,6 +12,27 @@
 /** Shown while the server-rendered fields are still unavailable. */
 export const NEW_PROCEDURE_PREPARING =
   'Preparing the form. Choices will be available when loading finishes.';
+
+/**
+ * What the Builder says the instant a Draft is created (UX-07).
+ *
+ * Creating a Draft used to stand behind a confirmation dialog that restated the same
+ * fact the click already implied — "A Draft Procedure Version is created from…" — and
+ * then asked the auditor to confirm doing the thing they had just asked to do. It is
+ * one action now: the click creates the Draft and lands on its Builder, and THIS is
+ * where the person actually sees the confirmation, because the form they clicked from
+ * is gone by the time they would read one there.
+ *
+ * A retyped name is a name that drifts: `fillTemplate` from `design/copy.ts` is the one
+ * substitution mechanism this codebase uses for a value that could contain `$&`.
+ */
+export const DRAFT_CREATED_TEMPLATE = 'Draft “{name}” created.';
+export const DRAFT_CREATED_BODY =
+  'Prepare it below, then submit it for independent approval when it is ready.';
+
+export function draftCreatedBanner(name: string): string {
+  return fillTemplate(DRAFT_CREATED_TEMPLATE, { name });
+}
 
 /**
  * Said beside the preparing status, and NOT inside a `<noscript>`.
@@ -29,3 +52,11 @@ export const NEW_PROCEDURE_PREPARING =
  */
 export const NEW_PROCEDURE_REQUIRES_JAVASCRIPT =
   'Creating a Procedure needs JavaScript. If the choices stay unavailable, enable JavaScript and reload this page.';
+
+/**
+ * Said when the create response was lost. It never claims nothing was created, because
+ * this path cannot know: `createProcedure` mints its ids inside the command and carries
+ * no request token, so a retry after a lost response creates a SECOND Procedure.
+ */
+export const UNKNOWN_CREATE_OUTCOME =
+  'The create response was lost. The Procedure may have been created. Open Procedures to check before creating another.';

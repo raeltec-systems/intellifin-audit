@@ -501,6 +501,12 @@ async function assertSealed(page: Page, runId: string, expected: { readonly outc
   });
   expect(Number((await sql`SELECT count(*)::int AS count FROM run_exception WHERE run_id=${runId}`)[0]?.count ?? 0)).toBe(0);
   await page.reload();
+  // A sealed Result's decisions are history, behind a closed "Review history" disclosure
+  // under the conclusion (UI cleanup 2026-09-22, UX-19): the reader opens it to read them.
+  const history = page.locator('details').filter({ has: page.locator('summary', { hasText: 'Review history' }) });
+  await expect(history).not.toHaveAttribute('open', /.*/);
+  await history.locator('> summary').click();
+  await expect(history).toHaveAttribute('open', '');
   await expect(page.getByText('Stored human review decision', { exact: true })).toBeVisible();
   await expect(page.getByText('The Result is sealed. Review history is read-only.', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Confirm evaluation', exact: true })).toHaveCount(0);

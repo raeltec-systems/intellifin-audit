@@ -25,7 +25,7 @@ The primary mental model is **Procedure → Run → Agent Workspace → Evidence
 
 | Surface | Reached from | Purpose | Primary object |
 | --- | --- | --- | --- |
-| Overview | Sidebar (default) | What ran, what needs attention, what changed, whether Evidence is trustworthy | Needs-attention list |
+| Overview | Sidebar (default) | Your audit work and the items that need your attention, by role: an Auditor's drafts, tests and assessments to confirm; an Audit Manager's approvals, escalated Runs and Results to review; a PoC Administrator's users, sources and systems | Needs-attention list |
 | Procedures | Sidebar | Procedures with their Active version, Schedule, next Run, last outcome; "New procedure" | Procedure card |
 | Procedure Builder | Procedures → New procedure; Procedure Detail → New version | Author or revise a Procedure from a Template (FR-4..FR-12) | Plan preview |
 | Procedure Detail | Procedures → name | Versions and their states, approval, Schedule, Run history, Initiate Run | Active version |
@@ -35,11 +35,11 @@ The primary mental model is **Procedure → Run → Agent Workspace → Evidence
 | Live View | Run Detail (active Run) → Watch; notification | Watch, pause, cancel, answer Escalations, flag (FR-24..FR-28) | Session viewer |
 | Replay | Run Detail (terminal Run) → Replay | Replay from the Timeline and Replay asset set (FR-30) | Session viewer |
 | Exception Detail | Run Detail → Exceptions → identifier | Provenance, grounding, per-condition evaluations, disposition (FR-41, FR-42) | Provenance chain |
-| Review | Sidebar | Results awaiting decision; finalized Results (FR-43) | Queue row |
+| Reviews | Sidebar | Two tabs: Procedures — Procedure Versions awaiting approval; Results — Results awaiting decision and finalized Results (FR-43). Until Result review exists the Results tab says so and links to the implemented next action; it never shows an ordinary empty queue | Queue row |
 | Notifications | Top bar bell; email link | Awaiting Auditor and flagged Runs with time remaining (FR-28) | Notification row |
-| Administration | Sidebar (PoC Administrator only) | Users and roles, Target System registrations, Population Source bindings, Workspace Provider and Audit Runner health, diagnostics (FR-7, FR-49) | Registration row |
+| Administration | Sidebar (PoC Administrator only) | Three tabs, each a searchable inventory with its create form apart from the list: Users (users and roles), Population sources (Population Source bindings), Systems (Target System registrations); Workspace Provider and Audit Runner health, diagnostics (FR-7, FR-49). A detail page trails itself with the item's name | Registration row |
 
-Sidebar areas: Overview · Procedures · Runs · Review · Administration, with counts on Runs (active) and Review (awaiting). Run Detail, Exception Detail, Live View, and Replay keep the Runs sidebar item highlighted; Builder, Procedure Detail, and Version review keep Procedures highlighted. Breadcrumbs on every detail surface ("Runs / RUN-2437 / Live"). Modal stacks one level deep.
+Sidebar areas: Overview · Procedures · Runs · Reviews · Administration, with counts on Runs (active) and Reviews (awaiting). Run Detail, Exception Detail, Live View, and Replay keep the Runs sidebar item highlighted; Builder, Procedure Detail, and Version review keep Procedures highlighted. Breadcrumbs on every detail surface ("Runs / RUN-2437 / Live"). Modal stacks one level deep.
 
 Closure: every UJ lands on a surface above; every surface is entered by a Key Flow below (Notifications in Flow 2, Administration in Flow 0).
 
@@ -65,13 +65,15 @@ Rules:
 
 Formats:
 
-- Identifiers — monospace, strings that keep leading zeros.
-- Timestamps — ISO 8601 UTC with `Z`; original offset retained beside the normalized value.
+- Identifiers — monospace, strings that keep leading zeros. A UUID is never the ordinary label of a row, a heading or a pill: the row is named by what a person recognises (the Procedure, the record, the person) with a short reference beside it (`Run bf4ea3e7`, the identifier's last eight characters) and the full identifier under Technical details.
+- Timestamps — readable UTC on ordinary surfaces (`21 Sep 2026, 12:24 UTC`; with seconds where events are ordered), the exact ISO 8601 `Z` instant in the element's `datetime` attribute and under Technical details; original offset retained beside the normalized value where a source supplied one. UTC is spelled out every time.
 - Amounts — currency code first, thousands separators, two decimals: `USD 250,000.00`.
 - Counts — thousands separators; comparisons as `1,842 = 1,842`.
 - Periods — `2026-08-25 → 2026-08-31`.
 - Durations — `3m 41s`; countdowns `28m 10s left`.
 - Absent values — `—`; source nulls as literal `null`.
+- Counts with a noun — pluralised by the count (`1 Observation`, `2 Observations`), never `1 Observations`.
+- Technical detail — identifiers, digests, plan-step ids, HTTP methods and status codes live under one closed disclosure labelled `Technical details`, on every surface that has them; the ordinary reading of a surface never meets one first.
 
 ## Component Patterns
 
@@ -80,7 +82,7 @@ Behavioral. Visual specs live in `DESIGN.md.Components`.
 | Component | Use | Behavioral rules |
 | --- | --- | --- |
 | Status badge | Everywhere | Family + icon + word from `DESIGN.md.Colors`; never color alone. Badge text is the state's exact name. |
-| Conclusion triptych | Run Detail → Result | Cells are lifecycle, Gate, outcome. Outcome cell shows Pending Confirmation with the count of pending evaluations while unsealed, the sealed marker once sealed, and the Result version always. Statement below is generated from the Result (FR-40). No cell is clickable; the tabs are the navigation. |
+| Conclusion triptych | Run Detail → Result | Cells are Execution (lifecycle), Assessment (Result outcome) and Evidence checks (Gate), in that order and under those labels, each with a one-line meaning under its badge so that evidence validity, control compliance and a person's review are never read as one thing. Outcome cell shows Pending Confirmation with the count of pending evaluations while unsealed, the sealed marker once sealed, and the Result version always. Statement below is generated from the Result (FR-40). No cell is clickable; the tabs are the navigation. |
 | Gate checklist | Result (compact), Evidence (expanded) | Rows from addendum §H in two groups. `[ASSUMPTION]` Per-Observation (update live during a Run, FR-20): required Evidence, identity corroboration, Observation corroboration, search completeness, ambiguous match, unnamed value, Target System freshness. Run-level (at end of execution): every other §H row. Each failed row links to the affected Work Items. Header count derived. |
 | Population reconciliation | Result | File-level then inclusion-level rows (FR-33). Excluded rows expand to the exclusion reason list. Empty post-inclusion population renders as Inconclusive unless the version opted in (FR-6). |
 | Evaluation card | Result, Exception Detail | One per condition per record, showing origin (Rule-Classified · Agent-Judged · Human-classified) and value (Compliant · Exception · Unevaluated). Unevaluated is a value; its origin is still shown. Rule-Classified cards have no controls; "Record disagreement" lives beside them (FR-44). Low-confidence Agent-Judged evaluations show value Unevaluated with the confidence and no controls. |
@@ -98,7 +100,7 @@ Behavioral. Visual specs live in `DESIGN.md.Components`.
 | Action bar + unavailable actions | Run Detail, Exception Detail, Procedure Detail | A disabled action keeps its position; its reason appears in the "Unavailable actions" panel and as the button's accessible description — never tooltip-only. This is the canonical statement of the rule. Export Workpaper Bundle is available on any terminal Run (FR-46). |
 | Confirmation dialog | Mutating actions, except ordinary Draft section saves | Three weights. *Routine* (submit, approve, rerun, export, pause, cancel, answer or abort an Escalation, and a Target System save that adds a registration): restates the consequence. *Routine with rationale* (reject a Result, record disagreement, Not an Exception, reject an Agent-Judged evaluation): adds a rationale field validated non-empty. *Finalization*: destructive button, title names irreversibility. Focus trapped; Escape cancels; initial focus on the first field or Cancel. The result shows as a Banner on the surface the user is on. **Revised 2026-09-08 by owner decision: ordinary Draft section saves in the Builder are direct saves with a visible saved / unsaved / error state and no dialog; confirmations remain for submit for approval, approve/reject, activation, scope expansion (a Target Systems save that adds a registration), and cancellation/rerun.** A dialog on every keystroke-level save trained people to dismiss the one thing that was meant to stop them. |
 | Filter bar | Runs, Review | Procedure select lists every Procedure; status chips single-select over all eight lifecycle states plus Pending Confirmation and Regression Run; initiator chips Manual · Schedule (FR-48). Search matches identifier, Procedure, initiator. Clear filters resets the three filters and the search. |
-| Data tables | Overview, Procedures, Runs, Run history, Review, Administration | Columns — Overview Recent Runs: Run · Procedure · Lifecycle · Result outcome · Gate. Runs: Run · Procedure · Effective period · Lifecycle · Result outcome · Gate · Review · Initiator · Elapsed · Change. Run history: Run · Effective period · Lifecycle · Result outcome. Review queue: Run · Procedure · Result outcome · Exceptions · Gate · Review state · Open. Administration registrations: System · Kind · Origin or application · Credential reference · Permitted actions · Registration digest · Connectivity. Every row's first cell is a link; no row-level click handlers. |
+| Data tables | Overview, Procedures, Runs, Run history, Review, Administration | Columns — Overview Recent Runs: Run · Procedure · Lifecycle · Result outcome · Gate. Runs: Run (the Procedure name, with the short reference and the effective period beneath it) · Execution · Assessment · Evidence checks · Started (by whom, when, and elapsed) · Change; the Review column joins the table when Result review exists. Every list — Procedures, Runs, Users, Sources, Systems — is searchable and filterable, and no list or table scrolls the whole page sideways at 1366×768 or 1280×720. Run history: Run · Effective period · Lifecycle · Result outcome. Review queue: Run · Procedure · Result outcome · Exceptions · Gate · Review state · Open. Administration registrations: System · Kind · Origin or application · Credential reference · Permitted actions · Registration digest · Connectivity. Every row's first cell is a link; no row-level click handlers. |
 | Exception list row | Run Detail → Result, Exceptions | Identifier, state badge, condition violated, origin badge, masked identity per the binding (FR-41), persistent "Open" link. Ordered by identifier (Open Question 2). Rows whose only Exception evaluation is Agent-Judged pending show "counts after confirmation". |
 | Evidence item card | Run Detail → Evidence | One card per Evidence item with the FR-31 fields and its kind; Structural Snapshots open the grounding inspector; recording segments open Replay at that Tool Action; partial or preserved-after-cancel items carry a note. Original artifacts are never truncated or transformed in place. |
 | Notification row | Notifications, top-bar menu | One row per Awaiting Auditor or flagged Run: Procedure, Run, Escalation kind, time remaining; opens Live View. Delivered in-app and by email; delivery recorded on the Audit Trail (FR-28). |
@@ -132,7 +134,7 @@ Behavioral. Visual specs live in `DESIGN.md.Components`.
 | Procedure Detail | Submitted | Approval pending banner naming who can approve; author sees "You cannot approve a version you authored." |
 | Procedure Detail | Rejected version | Rejected badge with the reviewer's rationale inline; "Edit" returns it to Draft and says so. |
 | Procedure Detail | Platform-authored draft | Draft badge with "Created by the platform after a {model / prompt / tool / registration} change; requires approval"; Schedule of the Active version continues until approval (FR-14). |
-| Version review | First version | Diff against nothing: every section shown expanded; Approve enabled for a non-author Audit Manager. |
+| Version review | First version | "First version: nothing to compare." No section is marked changed; the decision summary leads and the stored sections stay under Technical details, closed. Approve enabled for a non-author Audit Manager. |
 | Version review | Rejected | Reject requires rationale; the version shows Rejected and the author is notified. |
 | Version review | Approved, Regression Run pending | Regression Run row inline with its Run link; activation blocked until it passes (FR-15). |
 | Version review | Regression mismatch | Mismatch listed per golden expectation; activation blocked; Schedule of the prior version continues. |
@@ -148,7 +150,7 @@ Behavioral. Visual specs live in `DESIGN.md.Components`.
 | Run Detail | Running | Live Gate rows updating; "Watch" in rail; Cancel and Pause enabled. |
 | Run Detail | Paused | Banner with countdown "Paused by Daniel Okonjo at {time}. Resumes on your action; ends Inconclusive at {time}." Resume and Cancel enabled. |
 | Run Detail | Awaiting Auditor | Escalation panel at the top of every tab; countdown; Answer, Cancel enabled; Pause disabled with reason "A Run waiting on an answer cannot be paused." |
-| Run Detail | Completed, unsealed | Outcome Pending Confirmation with "{n} Agent-Judged evaluations await confirmation"; Submit disabled: "Submission is unavailable while the Result is unsealed." |
+| Run Detail | Completed, unsealed | Outcome Pending Confirmation with "{n} Agent-Judged evaluations await confirmation"; the Result tab leads with the conclusion and the confirmations it needs, before any review history; Submit disabled: "Submission is unavailable while the Result is unsealed." |
 | Run Detail | Completed, sealed | Pass or Control Failure; Submit enabled for Auditor and Audit Manager. |
 | Run Detail | Inconclusive | Failed Gate rows first; Safe next action panel; Submit disabled: "Submission is unavailable for an Inconclusive Run. No conclusion exists to review." Export enabled. |
 | Run Detail | Run Failed | Execution-failure panel naming the Session Step, retries, error class; Safe next action; Export enabled. |
@@ -171,8 +173,9 @@ Behavioral. Visual specs live in `DESIGN.md.Components`.
 | Exception Detail | Finalized Run | Every disposition action disabled with the finalization reason; notes read-only. |
 | Exception Detail | Masked field | Value shown as `••••` with "Masked by the Population Source binding"; unmasked in Exception Detail for Auditor and Audit Manager only. |
 | Exception Detail | Untrusted content present | Untrusted block; never rendered as markup. |
-| Review | Queue empty | EmptyState: "No Result awaits your decision." |
-| Review | Awaiting decision | Rows ordered by submission time; Regression and Pending Confirmation Runs never appear here. |
+| Reviews | Procedures tab empty | EmptyState: "No Procedure Version is waiting for your approval." |
+| Reviews | Results tab, no Result review in this release | A statement that Result submission and review are not yet available, with a link to the Runs whose evaluations await confirmation; never an ordinary empty queue. |
+| Reviews | Awaiting decision | Rows ordered by submission time; Regression and Pending Confirmation Runs never appear here. |
 | Notifications | None | EmptyState: "No Run is waiting on you." |
 | Administration | Registration change | Saving a Target System registration warns: "This change creates a platform-authored draft for {n} Procedures and requires approval." (FR-14) |
 | Any | Permission denied | Action visible, disabled, reason stated; Administration hidden from non-administrators. |
@@ -273,7 +276,7 @@ Failure: the Population Source binding has no declared-count mechanism → Submi
 
 Maya Lindqvist, Audit Manager.
 
-1. Maya opens the notification and lands on Version review: sections with a diff against nothing (first version), the plan, credential references, and Target System kinds.
+1. Maya opens the notification and lands on Version review: a decision summary that says it is a first version with nothing to compare, the plan, credential references, and Target System kinds.
 2. She checks that both credentials are read-only audit accounts and that the Schedule is weekly.
 3. **Climax:** She approves; the version becomes Active (no regression needed on a first version), the Schedule shows the next Run, and Daniel is notified.
 
@@ -364,3 +367,22 @@ Section acknowledgements support preparation; they do not replace full-version a
 assent at submission. Existing required-field and plan-readiness gates still apply. A
 section explicitly marked Needs clarification blocks submission until explicitly resolved.
 No mandatory six-click ceremony is added to historical or experienced-author submission.
+
+## UI cleanup — owner decisions from the 21 September 2026 walkthrough (2026-09-22)
+
+The owner walked the deployed product as all three roles and filed forty-nine findings (seventeen P1) with a cleanup plan: *make the product speak in audit tasks — prepare a procedure, start a test, supervise the agent, investigate a record, review the work — and move implementation detail into deliberate technical views instead of deleting provenance.* The rows above that changed are edited in place; this section records the rest, so that no surface can quote a superseded line.
+
+- **Every ordinary screen is in the auditor's language.** No raw UUID as a primary label, no transport, worker, schema or specification-section language (`FR-8`, `plan step 01a0…-1`, `HTTP GET 200`, `bytes load only`, `selected-record projection`, `inert presentation content`) in the ordinary view; all of it stays available under `Technical details`. The untrusted-content rule is unchanged and stated ONCE per block, as a short source label, never repeated under each field.
+- **Status is three questions, not three tables.** Execution (the Run lifecycle), Assessment (the Result outcome) and Evidence checks (the Evidence Quality Gate) are labelled as such wherever they appear together, each with its one-line meaning. "Evidence checks passed" is never "the control passed"; "Completed" is never "reviewed".
+- **Role landing pages.** The Overview leads with the signed-in role's next actions: an Auditor's drafts, tests needing attention and assessments to confirm; an Audit Manager's Procedure Versions awaiting approval, escalated Runs and (when it exists) Results to review; a PoC Administrator's users, sources and systems. Historic stopped Runs never displace current work. A PoC Administrator lands on an administration summary, not on a refusal.
+- **New procedure asks for a Procedure name**, and shows the selected control separately. Creating a Draft is one action with visible success; the confirmation dialog is kept for the consequential actions the table above lists. One task-specific introduction; Templates are described by purpose, never as "the starting point for most audits".
+- **The Builder's first viewport shows the current step's task and its next action** at 1366×768. The assistant proposes dates and scope TOGETHER from a natural-language request and asks for confirmation, then persists through the ordinary safeguards; it never refuses a scope because the period is not yet saved. Its helper copy says "record that" only when there is a proposal to record. The evidence-source chooser is a searchable list of clickable, context-relevant sources with readable field labels, and it names an incompatible source as such; compatibility errors wait until a source is chosen.
+- **Criteria are stated in audit language** ("Acceptable: no account is found after all required searches, or the account is disabled. Exception: the account is active. Other statuses need review."), with the compiled form under Technical details. Readiness names the section the way the Builder names it, links to the exact control, and says the remedy; a plan that could not be prepared says "Try preparing the test plan again", never "Retry plan derivation".
+- **Frequency is a planned frequency until a scheduler exists.** Saving a frequency never implies automatic execution; the manual start is the one clear action.
+- **The Version review leads with a decision summary** — scope, sources, criteria, evidence, access limits and what changed — with a persistent decision bar carrying the exact version and author context, history collapsed, and the frozen technical contract behind a disclosure. Exact-version and different-person approval are unchanged.
+- **A completed test reads conclusion first**: outcome, affected records, coverage and the next action; then review history and successful checks, collapsed; then technical evidence. A finding names the person or account with its business reference, states expected against actual, and links in one click to its record's evidence, capture and Replay. An Exception is never headed by its UUID.
+- **Replay and Live View narrate audit actions** ("Searching LoanCore for E-000103", "Reading the account status") and keep playback and supervision controls beside the frame; progress counts logical steps and never exceeds its total after a pause and resume; a transitional message ("Pause requested.") is replaced the moment the state settles.
+- **Evidence verification labels say what was checked.** "Fingerprint recorded" is not "verified"; a value is "Verified" only after a verification succeeded, and an unverified state says so with its next action.
+- **Administration says what is true.** A system used by a completed Run never reads "No worker has observed this system yet": the connection check and the last recorded audit activity are two facts, shown as two. The sign-in page address and the authentication endpoint are named as the contract distinguishes them; a material change previews the named procedures it affects before it is saved.
+- **What this cleanup does not deliver, said out loud:** Result submission, manager approval and finalization; automatic scheduling; source and connection validation; user invitation and password recovery. Each surface states its availability truthfully rather than showing an ordinary empty state.
+

@@ -5,24 +5,14 @@ import { useRouter } from 'next/navigation';
 import type { ProcedureVersionView } from '@intellifin/application';
 import { Banner } from '../design/Banner';
 import { StatusBadge } from '../design/StatusBadge';
+import { Timestamp } from '../design/Timestamp';
 import { IDENTITY_KEYS_EXACT_SENTENCE } from '../design/plain-words';
 import { policyText, predicateText, ruleText } from './plan-condition-text';
 import { startPlanPolling } from './plan-polling';
 import { countWords, durationWords } from './plan-numbers';
+import { PLAN_PREVIEW_WORDS, planFailureSentence } from './plan-preview-words';
 
 import { ACTION_LABELS } from './plan-step-labels';
-
-/**
- * `2026-09-11T07:00:13.726Z` → `2026-09-11T07:00:13Z`.
- *
- * The `datetime` attribute keeps the stored value exactly; only the visible text is
- * trimmed. Both are ISO 8601 UTC with a `Z` (EXPERIENCE.md → Formats), and the
- * milliseconds of a derivation are not a fact anybody reads.
- */
-function toSeconds(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : `${date.toISOString().slice(0, 19)}Z`;
-}
 
 /** The saved durable contract only. This component never compiles or executes a plan. */
 export function ExecutablePlanPreview({
@@ -53,10 +43,10 @@ export function ExecutablePlanPreview({
     <p className="ls-caption">This plan is read-only. The platform composes it from your saved sections; the agent reads it and cannot change a word of it. Change the originating Builder section to revise it.</p>
     <div role="status" aria-live="polite">
       {draft.planStatus === 'pending'
-        ? <p className="ls-caption">{prolongedKey === pendingKey ? 'The executable plan is still pending. Automatic checks have paused after two minutes; this does not mean derivation failed. Reload the page to check again.' : 'Re-deriving the executable plan…'}</p>
+        ? <p className="ls-caption">{prolongedKey === pendingKey ? PLAN_PREVIEW_WORDS.stillPreparing : PLAN_PREVIEW_WORDS.preparing}</p>
         : draft.planStatus === 'failed' || plan === null
-          ? <Banner tone="warning" title={`Cannot derive: ${draft.planFailureReason ?? 'No valid stored plan is available.'}`} />
-          : <p className="ls-caption">Re-derived{derivedAt === null ? '' : ' at '}{derivedAt === null ? null : <time dateTime={derivedAt}>{toSeconds(derivedAt)}</time>}.</p>}
+          ? <Banner tone="warning" title={PLAN_PREVIEW_WORDS.failedTitle}><p>{planFailureSentence(draft.planFailureReason)}</p></Banner>
+          : <p className="ls-caption">{PLAN_PREVIEW_WORDS.prepared}{derivedAt === null ? '.' : <> <Timestamp value={derivedAt} />.</>}</p>}
     </div>
     {draft.planStatus === 'succeeded' && plan !== null ? <div className="ls-plan-groups">
 

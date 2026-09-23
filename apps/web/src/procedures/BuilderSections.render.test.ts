@@ -76,7 +76,7 @@ describe('the Builder an auditor opens', () => {
       'Instructions for the agent',
       'What counts as a finding',
       'Evidence to capture',
-      'How often this is meant to run',
+      'Planned frequency',
     ]) {
       expect(html, title).toContain(title);
     }
@@ -97,7 +97,7 @@ describe('the Builder an auditor opens', () => {
    */
   it('does not promise the Schedule step runs anything by itself', () => {
     const html = render(draft());
-    expect(html).toContain('How often this is meant to run');
+    expect(html).toContain('Planned frequency');
     expect(html).not.toContain('How often it runs');
     expect(html).not.toContain('run on its own');
   });

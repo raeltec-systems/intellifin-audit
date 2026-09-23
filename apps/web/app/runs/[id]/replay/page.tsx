@@ -9,8 +9,11 @@ import { Banner } from '../../../../src/design/Banner';
 import { REPLAY_COPY } from '../../../../src/design/copy';
 import { DetailTrail } from '../../../../src/procedures/DetailTrail';
 import { ReplayViewer, type ReplayFrameView } from '../../../../src/runs/ReplayViewer';
+import { PageHeader } from '../../../../src/design/PageHeader';
+import { Reference } from '../../../../src/design/Reference';
+import { Timestamp } from '../../../../src/design/Timestamp';
 import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
-import { planActionWord, runLifecycleWord, utcStamp, workItemLabel } from '../../../../src/runs/labels';
+import { planActionWord, runLifecycleWord, workItemLabel } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
 import { frameNarration, plannedStepCount, stepNarration } from '../../../../src/runs/live-view';
 import { effectiveFrameWorkItemId, replayInitialSelection, replayJumpTargets, replayObservationsThrough, replayRequest, resolveFrameWorkItems } from '../../../../src/runs/replay';
@@ -54,22 +57,25 @@ export default async function RunReplayPage({
       <DetailTrail
         trail={[
           { href: '/runs', label: 'Runs' },
+          // The Procedure, as Run Detail's own trail names it; the Run's identifier is under
+          // Technical details and its short reference is on the meta line (UX-02).
           { href: runTabHref(run.runId, ''), label: run.procedureName },
           { href: here, label: 'Replay' },
         ]}
       />
-      <header className="ls-page-header">
-        <h1>Replay · {run.procedureName}</h1>
-        <p>
-          <Link href={runTabHref(run.runId, '')}>Open Run Detail</Link> for the Result, the
-          Evidence Quality Gate and the Execution Timeline.
-        </p>
-        {lifecycle === null ? (
-          <p>Run lifecycle: {run.state}</p>
-        ) : (
-          <StatusBadge family="run-lifecycle" state={lifecycle} size="md" />
-        )}
-      </header>
+      {/* ONE header row: the title, the lifecycle badge beside it and one meta line, so
+          the session's first frame is inside the first viewport (UI cleanup, UX-29). */}
+      <PageHeader
+        title={<>Replay · {run.procedureName}</>}
+        badge={lifecycle === null ? <span>{run.state}</span> : <StatusBadge family="run-lifecycle" state={lifecycle} size="md" />}
+        meta={
+          <>
+            <Link href={runTabHref(run.runId, '')}>Open Run Detail</Link> ·{' '}
+            <Reference kind="Run" value={run.runId} /> · started{' '}
+            <Timestamp value={run.initiatedAt} precision="minute" />
+          </>
+        }
+      />
     </>
   );
 
@@ -106,6 +112,7 @@ export default async function RunReplayPage({
       const narration = frameNarration(row.frame, row.step, system, owner?.subjectKey ?? null);
       return {
         evidenceId: row.frame.evidenceId, narration, stepNarration: narration, workItemLabel: label,
+        workItemId: owner?.workItemId ?? null, subjectKey: owner?.subjectKey ?? null,
         sourceLocation: row.frame.sourceLocation, digest: row.frame.digest, capturedAt: row.frame.capturedAt,
         action: { action: row.action.action, method: row.action.method, destination: row.action.destination,
           outcome: row.action.outcome, status: row.action.status, denial: row.action.denial,
@@ -119,6 +126,7 @@ export default async function RunReplayPage({
         <ReplayViewer
           key={`${run.runId}:${request.kind === 'inspection' ? `${request.workItemId}:${request.cursor}` : 'unavailable'}:${readAt.toISOString()}`}
           runId={run.runId}
+          runState={run.state}
           stateSentence={`Session REPLAY. This Run ended: ${run.state}.`}
           workspace={selected.kind === 'inspection' ? selected.workspace : null}
           frames={views}
@@ -142,7 +150,7 @@ export default async function RunReplayPage({
           }))}
           adapterSteps={[]}
         />
-        <p className="ls-caption">Read at {utcStamp(readAt)}.</p>
+        <p className="ls-caption">Read at <Timestamp value={readAt} precision="minute" />.</p>
       </div>
     );
   }
@@ -176,11 +184,13 @@ export default async function RunReplayPage({
 
   const views: readonly ReplayFrameView[] = frames.rows.map((frame) => {
     const step = timeline.stepExecutions.rows.find((row) => row.stepExecutionId === frame.stepExecutionId) ?? null;
-    const system = systemOf(effectiveFrameWorkItemId(frame, step));
+    // The Step-first owner, the same rule the stored selected-inspection read uses.
+    const workItemId = effectiveFrameWorkItemId(frame, step);
+    const system = systemOf(workItemId);
     // The record, so the frame's `alt` and each scrubber pill's label can tell two Work
     // Items of the same Run apart. `system` is identical on both.
     const subject = timeline.workItems
-      .find((item) => item.workItemId === (effectiveFrameWorkItemId(frame, step)))?.subjectKey ?? null;
+      .find((item) => item.workItemId === workItemId)?.subjectKey ?? null;
     // The frame's `alt` and the rail's Step narration are the SAME string (UX-DR37): a
     // reader who cannot see the picture hears exactly what the picture is captioned with.
     const narration = frameNarration(frame, step, system, subject);
@@ -188,6 +198,8 @@ export default async function RunReplayPage({
     return {
       evidenceId: frame.evidenceId,
       narration,
+      workItemId,
+      subjectKey: subject,
       sourceLocation: frame.sourceLocation,
       digest: frame.digest,
       capturedAt: frame.capturedAt,
@@ -196,7 +208,7 @@ export default async function RunReplayPage({
       // is nullable, so a frame whose Work Item is known only through its Step Execution
       // reported no Work Item at all while the narration beside it named the system.
       workItemLabel: (() => {
-        const owner = timeline.workItems.find((item) => item.workItemId === (effectiveFrameWorkItemId(frame, step)));
+        const owner = timeline.workItems.find((item) => item.workItemId === workItemId);
         return owner === undefined ? null : workItemLabel(owner);
       })(),
       action: action === null ? null : {
@@ -233,6 +245,7 @@ export default async function RunReplayPage({
       <ReplayViewer
         key={`${run.runId}:${readAt.toISOString()}`}
         runId={run.runId}
+        runState={run.state}
         stateSentence={`Session REPLAY. This Run ended: ${run.state}.`}
         workspace={
           timeline.workspace === null
@@ -259,7 +272,7 @@ export default async function RunReplayPage({
             digest: step.evidenceId === null ? null : (digestByEvidence.get(step.evidenceId) ?? null),
           }))}
       />
-      <p className="ls-caption">Read at {utcStamp(readAt)}.</p>
+      <p className="ls-caption">Read at <Timestamp value={readAt} precision="minute" />.</p>
     </div>
   );
 }

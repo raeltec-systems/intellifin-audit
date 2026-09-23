@@ -1,14 +1,21 @@
 import type { Metadata } from 'next';
 
-import { DrizzleUserDirectory, USER_LIST_LIMIT } from '@intellifin/infrastructure';
+import {
+  BINDING_LIST_LIMIT,
+  DrizzleBindingRepository,
+  DrizzleRegistrationRepository,
+  DrizzleUserDirectory,
+  REGISTRATION_LIST_LIMIT,
+  USER_LIST_LIMIT,
+} from '@intellifin/infrastructure';
 
-import Link from 'next/link';
-
-import { UsersPanel } from '../../src/admin/UsersPanel';
+import { AdministrationSummary } from '../../src/admin/AdministrationSummary';
+import { AdministrationTabs } from '../../src/admin/AdministrationTabs';
+import { ADMINISTRATION_LEDE } from '../../src/admin/administration-words';
 import { Banner } from '../../src/design/Banner';
+import { PageHeader } from '../../src/design/PageHeader';
 import { getRuntime } from '../../src/bootstrap';
 import { requireServerAction } from '../../src/server-session';
-import { createUserAction, setUserRoleAction, setUserRunControlTransferGrantAction } from './actions';
 
 export const metadata: Metadata = { title: 'Administration · IntelliFin Audit' };
 
@@ -16,7 +23,7 @@ export const metadata: Metadata = { title: 'Administration · IntelliFin Audit' 
 export const dynamic = 'force-dynamic';
 
 /**
- * Administration — Users and roles.
+ * Administration — the operator's summary (UI cleanup 2026-09-22, UX-37, UX-41).
  *
  * The sidebar removes this item for everybody but a PoC Administrator, and that removal
  * is presentation: anybody can type the path. So the surface itself asks the audited
@@ -24,17 +31,15 @@ export const dynamic = 'force-dynamic';
  * domain policy, and appends the refusal to the audit chain before returning it.
  *
  * On refusal the page renders the reason and NOTHING else — no headings, no counts, no
- * user list, no "you could ask an administrator for X" that discloses what X is.
+ * tab bar naming areas a refused caller may not reach.
  *
- * The check here protects THIS PAGE. The two Server Actions passed to `UsersPanel` are
- * separate POST endpoints that Next exposes by id, and each authorizes for itself before
- * it reads its input; see `actions.ts`. Passing them from inside this branch is a
- * convenience of composition, never the control.
+ * This page used to be the user list with the other two areas linked from a sentence of
+ * prose. It is the parent of all three now: each one's exact total, four configuration
+ * health lines, and the tabs. The Users directory moved to `/administration/users`,
+ * which is the breadcrumb label package 1 already registered for it.
  *
- * Target System registrations (`/administration/registrations`, Story 1.6) and Population
- * Source bindings (`/administration/sources`, Story 1.7) have their own surfaces, each of
- * which authorizes for itself in exactly the same way. Diagnostics are Story 9.2; this
- * surface says nothing about them.
+ * Six `count(*)` reads, no list. A total taken from a bounded list reports the list limit
+ * once a deployment passes it, which is the one number on this page nobody would check.
  */
 export default async function AdministrationPage(): Promise<React.JSX.Element> {
   const decision = await requireServerAction('administration.users.manage');
@@ -49,26 +54,42 @@ export default async function AdministrationPage(): Promise<React.JSX.Element> {
   }
 
   const runtime = await getRuntime();
-  const users = await new DrizzleUserDirectory(runtime.db, USER_LIST_LIMIT).listUsers();
+  const users = new DrizzleUserDirectory(runtime.db, USER_LIST_LIMIT);
+  const sources = new DrizzleBindingRepository(runtime.db, BINDING_LIST_LIMIT);
+  const systems = new DrizzleRegistrationRepository(runtime.db, REGISTRATION_LIST_LIMIT);
+
+  const [
+    userTotal,
+    usersWithoutRole,
+    administrators,
+    sourceTotal,
+    sourcesWithoutConfirmedCount,
+    systemTotal,
+    systemsNeverChecked,
+  ] = await Promise.all([
+    users.countUsers(),
+    users.countUsers({ role: 'none' }),
+    users.countUsers({ role: 'poc-administrator' }),
+    sources.countBindings(),
+    sources.countBindings({ declaredCountMechanism: 'none' }),
+    systems.countRegistrations(),
+    systems.countRegistrations({ connectivity: 'never-probed' }),
+  ]);
 
   return (
     <div className="ls-stack">
-      <header className="ls-page-header">
-        <h1>Administration</h1>
-        <p>
-          Users and roles,{' '}
-          <Link href="/administration/registrations">Target System registrations</Link>, and{' '}
-          <Link href="/administration/sources">Population Source bindings</Link>. Platform
-          diagnostics are not part of this release.
-        </p>
-      </header>
-      <UsersPanel
-        users={users}
-        currentUserId={decision.session.userId}
-        limit={USER_LIST_LIMIT}
-        createUser={createUserAction}
-        setRole={setUserRoleAction}
-        setTransferGrant={setUserRunControlTransferGrantAction}
+      <PageHeader title="Administration" lede={ADMINISTRATION_LEDE} />
+      <AdministrationTabs />
+      <AdministrationSummary
+        totals={{
+          users: userTotal,
+          usersWithoutRole,
+          administrators,
+          sources: sourceTotal,
+          sourcesWithoutConfirmedCount,
+          systems: systemTotal,
+          systemsNeverChecked,
+        }}
       />
     </div>
   );

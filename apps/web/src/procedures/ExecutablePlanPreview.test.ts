@@ -11,6 +11,15 @@ import { RetryPlanDerivation } from './RetryPlanDerivation';
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.stubGlobal('React', React);
 
+
+/**
+ * Which attempt's instant the preview shows. `<Timestamp>` carries the exact instant in
+ * `dateTime` (ISO 8601 with milliseconds; React's server rendering keeps the camelCase)
+ * and a readable form as its text, so provenance is pinned on the attribute and does not
+ * depend on how a time is worded.
+ */
+const shownAt = (iso: string): string => `dateTime="${new Date(iso).toISOString()}"`;
+
 function view(): ProcedureVersionView {
   const input = executablePlanInputs();
   const result = deriveExecutablePlan(input);
@@ -24,7 +33,8 @@ describe('read-only executable plan preview', () => {
     const recovery = (draft: ProcedureVersionView) => renderToStaticMarkup(React.createElement(RetryPlanDerivation, { draft, rowVersion: 'row', onRetry: async () => ({ ok: true as const, rowVersion: 'next' }) }));
     expect(recovery(view())).toBe('');
     expect(recovery({ ...view(), planStatus: 'failed', state: 'ACTIVE' })).toBe('');
-    expect(recovery({ ...view(), planStatus: 'failed' })).toContain('Retry plan derivation');
+    // UX-16 (2026-09-22): the recovery is said as preparing the test plan again.
+    expect(recovery({ ...view(), planStatus: 'failed' })).toContain('Try preparing the test plan again');
     expect(render({ ...view(), planStatus: 'failed' })).not.toContain('<button');
   });
   it('keeps the displayed plan’s successful provenance after later failed or unrelated attempts', () => {
@@ -34,21 +44,26 @@ describe('read-only executable plan preview', () => {
       { ...draft.planAttempts[0]!, attemptId: 'other-digest', inputDigest: 'unrelated', attemptedAt: '2026-09-04T03:00:00Z' },
       { ...draft.planAttempts[0]!, attemptId: 'duplicate-success', attemptedAt: '2026-09-04T04:00:00Z' },
     ] });
-    expect(html).toContain('2026-09-04T01:00:00Z');
-    expect(html).not.toContain('2026-09-04T02:00:00Z');
-    expect(html).not.toContain('2026-09-04T03:00:00Z');
-    expect(html).not.toContain('2026-09-04T04:00:00Z');
+    expect(html).toContain(shownAt('2026-09-04T01:00:00Z'));
+    expect(html).not.toContain(shownAt('2026-09-04T02:00:00Z'));
+    expect(html).not.toContain(shownAt('2026-09-04T03:00:00Z'));
+    expect(html).not.toContain(shownAt('2026-09-04T04:00:00Z'));
     expect(html).not.toContain('failed-provider');
   });
   it('renders the stored execution meaning, provenance and timestamp without edit controls', () => {
     const html = render(view());
-    for (const label of ['Session Steps', 'Ordered Plan Steps', 'Observations to capture', 'Evidence and grounding', 'Conditions', 'Sign-in credentials', 'Execution limits', 'Rule-Classified', 'Re-derived', '2026-09-04T01:00:00Z', 'No model was used', 'vault://synthetic/prod', 'Compiled applicability']) expect(html).toContain(label);
+    for (const label of ['Session Steps', 'Ordered Plan Steps', 'Observations to capture', 'Evidence and grounding', 'Conditions', 'Sign-in credentials', 'Execution limits', 'Rule-Classified', 'Test plan prepared', '4 Sep 2026, 01:00:00 UTC', 'No model was used', 'vault://synthetic/prod', 'Compiled applicability']) expect(html).toContain(label);
     expect(html).not.toMatch(/<(?:input|textarea|select|button|form)\b/);
   });
   it('hides stale plan details while re-deriving and states a failed attempt reason', () => {
-    expect(render({ ...view(), planStatus: 'pending' })).toContain('Re-deriving');
+    expect(render({ ...view(), planStatus: 'pending' })).toContain('Preparing the test plan');
     expect(render({ ...view(), planStatus: 'pending' })).not.toContain('vault://synthetic/prod');
-    expect(render({ ...view(), planStatus: 'failed', compiledPlan: null, planFailureReason: 'Choose a Population Source.' })).toContain('Cannot derive: Choose a Population Source.');
+    const failed = render({ ...view(), planStatus: 'failed', compiledPlan: null, planFailureReason: 'Choose a Population Source.' });
+    // UX-16: a gap in the draft is said in the Builder's words, with no worker mechanics.
+    expect(failed).toContain('The test plan could not be prepared.');
+    expect(failed).toContain('Choose where the records come from');
+    expect(failed).not.toContain('Cannot derive');
+    expect(failed).not.toContain('Choose a Population Source.');
   });
   it('renders model identity from the successful attempt and escapes authored text', () => {
     const draft = view();
@@ -66,8 +81,8 @@ it('shows the publishing attempt when same-digest successes finish out of start 
     { ...draft.planAttempts[0]!, attemptId: 'started-first-finished-last', published: false, attemptedAt: '2026-09-04T01:00:00Z' },
     { ...draft.planAttempts[0]!, attemptId: 'publisher', published: true, attemptedAt: '2026-09-04T02:00:00Z' },
   ] });
-  expect(html).toContain('2026-09-04T02:00:00Z');
-  expect(html).not.toContain('2026-09-04T01:00:00Z');
+  expect(html).toContain(shownAt('2026-09-04T02:00:00Z'));
+  expect(html).not.toContain(shownAt('2026-09-04T01:00:00Z'));
 });
 
 it('shows the latest publisher when authoring returns to an earlier successful digest', () => {
@@ -77,8 +92,8 @@ it('shows the latest publisher when authoring returns to an earlier successful d
     { ...draft.planAttempts[0]!, attemptId: 'B', published: false, inputDigest: 'other', completedAt: '2026-09-04T02:00:00Z' },
     { ...draft.planAttempts[0]!, attemptId: 'new-A', published: true, completedAt: '2026-09-04T03:00:00Z' },
   ] });
-  expect(html).toContain('2026-09-04T03:00:00Z');
-  expect(html).not.toContain('2026-09-04T01:00:00Z');
+  expect(html).toContain(shownAt('2026-09-04T03:00:00Z'));
+  expect(html).not.toContain(shownAt('2026-09-04T01:00:00Z'));
 });
 
 /**

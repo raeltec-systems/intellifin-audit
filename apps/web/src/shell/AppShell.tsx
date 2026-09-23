@@ -6,6 +6,7 @@ import { EnvironmentRibbon } from '../design/EnvironmentRibbon';
 import { Sidebar, type SidebarCounts } from '../design/Sidebar';
 import { Breadcrumbs } from './Breadcrumbs';
 import { BellLive } from './BellLive';
+import type { BellItem } from './bell-items';
 import { NotificationBell } from './NotificationBell';
 import { SignedInAs } from './SignedInAs';
 import { SignOutButton } from './SignOutButton';
@@ -30,13 +31,15 @@ interface AppShellProps {
     readonly names: ReadonlyMap<string, string>;
   };
   /**
-   * Active Runs and Results awaiting a decision. Nothing supplies them yet: counting
-   * them means querying Runs and Results, which Epics 2 and 4 create. Until then the
-   * sidebar shows no count rather than a fabricated zero.
+   * Active Runs and items awaiting this person's review, supplied by `layout.tsx`
+   * (UI cleanup 2026-09-22). An absent count is one that could not be read, and the
+   * sidebar then shows no number rather than a fabricated zero.
    */
   readonly counts?: SidebarCounts;
   /** Unread notifications. Supplied by the Notifications surface (FR-28), Epic 4. */
   readonly unreadNotifications?: number | undefined;
+  /** The open items themselves, for the bell's panel (UX-32). Bounded; the count is not. */
+  readonly openNotifications?: readonly BellItem[];
   readonly children: ReactNode;
 }
 
@@ -58,6 +61,7 @@ export function AppShell({
   signedIn,
   counts,
   unreadNotifications,
+  openNotifications,
   children,
 }: AppShellProps): React.JSX.Element {
   return (
@@ -87,7 +91,7 @@ export function AppShell({
               names={signedIn?.names ?? EMPTY_NAMES}
               role={role}
             />
-            <NotificationBell unread={unreadNotifications} />
+            <NotificationBell unread={unreadNotifications} items={openNotifications} />
             {unreadNotifications === undefined ? null : <BellLive />}
             <SignOutButton />
           </div>

@@ -291,6 +291,8 @@ test.describe('Flow 3: supervising a Run from Live View', () => {
 
     // The panel is gone and the chrome is back to LIVE — from the server's own re-read.
     await expect(page.getByRole('heading', { name: 'Open Escalation', exact: true })).toHaveCount(0, { timeout: 30_000 });
+    // And the confirmation outlives the panel the refresh removed (it used to go with the panel, within about 300 ms).
+    await expect(page.locator('[data-escalation-outcome]')).toContainText('Escalation answered.');
     await expect(page.getByText('Session LIVE.', { exact: false })).toBeVisible();
     const [answered] = await sql`SELECT state FROM audit_run WHERE run_id=${runId}`;
     expect(answered).toMatchObject({ state: 'RUNNING' });

@@ -2,11 +2,17 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
 import { registrationRowVersion } from '@intellifin/application';
-import { DrizzleRegistrationRepository, DrizzleProcedureRepository } from '@intellifin/infrastructure';
+import {
+  DrizzleRegistrationRepository,
+  DrizzleProcedureRepository,
+  credentialCapabilityManifest,
+} from '@intellifin/infrastructure';
 
+import { AdministrationTabs } from '../../../../src/admin/AdministrationTabs';
 import { RegistrationEditor } from '../../../../src/admin/RegistrationEditor';
 import { Banner } from '../../../../src/design/Banner';
 import { getRuntime } from '../../../../src/bootstrap';
+import { DetailTrail } from '../../../../src/procedures/DetailTrail';
 import { requireServerAction } from '../../../../src/server-session';
 import { changeRegistrationAction } from '../actions';
 
@@ -51,10 +57,28 @@ export default async function RegistrationPage({
   );
   if (registration === null) notFound();
 
-  const referencingProcedures = await new DrizzleProcedureRepository(runtime.db).countReferencing(registrationId, 'registration');
+  const procedures = new DrizzleProcedureRepository(runtime.db);
+  const registrations = new DrizzleRegistrationRepository(runtime.db);
+  const [referencingProcedures, affected, auditActivity] = await Promise.all([
+    procedures.countReferencing(registrationId, 'registration'),
+    procedures.listReferencing(registrationId, 'registration'),
+    registrations.lastAuditActivity(registrationId),
+  ]);
+  const affectedProcedures = affected.map((row) => row.controlName);
+  const knownCredentialReferences = [...credentialCapabilityManifest(runtime.config).keys()];
 
+  // The page trails itself with the name it knows (UI cleanup 2026-09-21, UX-41): the
+  // shell could only say this row's UUID, which the walkthrough found as the last crumb.
   return (
     <div className="ls-stack">
+      <DetailTrail
+        trail={[
+          { href: '/administration', label: 'Administration' },
+          { href: '/administration/registrations', label: 'Systems' },
+          { href: `/administration/registrations/${registration.registrationId}`, label: registration.displayName },
+        ]}
+      />
+      <AdministrationTabs current="/administration/registrations" />
       <header className="ls-page-header">
         <h1>{registration.displayName}</h1>
         <p>
@@ -68,6 +92,9 @@ export default async function RegistrationPage({
         registration={registration}
         rowVersion={registrationRowVersion(registration)}
         referencingProcedures={referencingProcedures}
+        affectedProcedures={affectedProcedures}
+        knownCredentialReferences={knownCredentialReferences}
+        auditActivity={auditActivity}
         changeRegistration={changeRegistrationAction}
       />
     </div>

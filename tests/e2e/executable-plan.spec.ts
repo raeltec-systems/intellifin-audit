@@ -1,3 +1,4 @@
+import { PLAN_RETRY_CONFIRM, PLAN_RETRY_LABEL } from '../../apps/web/src/procedures/plan-words';
 import AxeBuilder from '@axe-core/playwright';
 import { test, expect } from '@playwright/test';
 import { derivePlan, initialPlanDerivation, queuePlanDerivation, type ProcedureVersionRecord, type ModelGateway } from '@intellifin/application';
@@ -37,13 +38,14 @@ test('queued preview progresses from pending through failure to a read-only acce
     await unitOfWork.execute(async ({ procedures }) => { await procedures.insertProcedure({ procedureId, controlName: row.controlName, templateId: row.templateId }); await procedures.insertVersion(row); });
     await page.goto(`/procedures/${procedureId}/builder`);
     const preview = page.getByTestId('executable-plan-preview');
-    await expect(preview).toContainText('Re-deriving');
-    await page.getByLabel('New Control name').fill(`E2E queued plan ${versionId}`);
-    await page.getByRole('button', { name: 'Save Control name', exact: true }).click();
+    await expect(preview).toContainText('Preparing the test plan');
+    await page.getByLabel('New Procedure name').fill(`E2E queued plan ${versionId}`);
+    await page.getByRole('button', { name: 'Save Procedure name', exact: true }).click();
     await expect.poll(async () => Number((await sql`SELECT count(*) AS n FROM pgboss.job WHERE data->>'versionId' = ${versionId}`)[0]?.['n'])).toBe(1);
-    await expect(preview).toContainText('Re-deriving');
+    await expect(preview).toContainText('Preparing the test plan');
     await startProceduresWorker(queue, (job) => derivePlan(dependencies, job));
-    await expect(preview).toContainText('Cannot derive: Choose a Population Source.');
+    await expect(preview).toContainText('The test plan could not be prepared.');
+    await expect(preview).toContainText('Choose where the records come from');
     expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()).violations).toEqual([]);
     dependencies.model = null;
     await unitOfWork.execute(async ({ procedures, derivationJobs }) => {
@@ -53,9 +55,10 @@ test('queued preview progresses from pending through failure to a read-only acce
     await page.reload();
     await expect(preview).toContainText('The frozen derivation model configuration is unavailable.');
     dependencies.model = model;
-    await page.getByRole('button', { name: 'Retry plan derivation', exact: true }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Queue derivation attempt' }).click();
-    await expect(preview).toContainText('Re-derived');
+    // UX-16 (2026-09-22): the recovery is said as preparing the test plan again.
+    await page.getByRole('button', { name: PLAN_RETRY_LABEL, exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: PLAN_RETRY_CONFIRM }).click();
+    await expect(preview).toContainText('Test plan prepared');
     await expect(preview.getByRole('heading', { name: 'Session Steps', exact: true })).toBeVisible();
     await expect(preview.getByRole('heading', { name: 'Ordered Plan Steps per Target System' })).toBeVisible();
     await expect(preview).toContainText('vault://synthetic/prod');

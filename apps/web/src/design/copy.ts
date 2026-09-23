@@ -32,11 +32,18 @@ export const EMPTY_STATES = {
     sentence:
       'No Result awaits confirmation or review, no Run is waiting on you, and none is Inconclusive or Run Failed. This does not imply that any control passed.',
   },
+  /**
+   * The Reviews area's Procedures tab, with nothing waiting (UI cleanup 2026-09-21,
+   * UX-35). It used to read `No Result awaits your decision.` over a queue that could
+   * hold no Result in this release while a submitted Procedure Version waited elsewhere.
+   * The Results tab has no empty state at all: it states that Result review is not yet
+   * available, which is a different sentence from an empty queue.
+   */
   reviewQueueEmpty: {
-    headline: 'No Result awaits your decision.',
+    headline: 'No Procedure Version is waiting for your approval.',
     /** Not from the contract: EXPERIENCE.md gives this surface a headline only. */
     sentence:
-      'A submitted Result, its outcome, and its Evidence Quality Gate would be listed here. An empty queue does not mean a control passed.',
+      'A submitted Procedure Version, who wrote it, and when it was submitted would be listed here. An empty queue does not mean a control passed.',
   },
   notificationsEmpty: {
     headline: 'No Run is waiting on you.',
@@ -147,9 +154,14 @@ export const BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE =
 /**
  * Keeps the procedure's name distinct from its editable control statement. Avoid
  * positional directions: the guided Builder groups the name with the context.
+ *
+ * `[REWORDED 2026-09-21, UX-05]` "Control name" named the domain's field, not the
+ * question in an auditor's head: a Procedure has a Procedure name, and its Template's
+ * control statement is a separate, read-only fact shown beside it. The stored field
+ * stays `controlName` — this is the word a person reads, not the column.
  */
 export const BUILDER_CONTROL_NAME_EDITABLE_SENTENCE =
-  'Use the Control name form to edit the name saved on this Draft. Editing a Draft never changes the Template it came from.';
+  'Use the Procedure name form to edit the name saved on this Draft. Editing a Draft never changes the Template it came from.';
 
 /**
  * The responsive floor for the Builder (NFR-11, EXPERIENCE.md → Responsive breakpoints).
@@ -638,7 +650,12 @@ export const REPLAY_COPY = {
    * was a definite false statement about a Work Item that captured nothing in a long Run.
    */
   frameNotRead: 'not among the {shown} frames shown',
-  observationsThrough: '{count} Observations had been registered when this frame was captured.',
+  /**
+   * `{count}` arrives already paired with its noun by `countNoun`: the template used to
+   * spell `Observations` itself and rendered `1 Observations` (UI cleanup 2026-09-22,
+   * UX-31). "screen" rather than "frame", because a frame is the platform's word for it.
+   */
+  observationsThrough: '{count} had been registered when this screen was captured.',
   /**
    * No frame, so no moment to count Observations at. `observationsThrough` used to be
    * filled with a zero here, which reads as "this frame saw none" over a Run that captured

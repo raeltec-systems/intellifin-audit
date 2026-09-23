@@ -19,6 +19,13 @@ interface BannerProps {
    * title, in words, inside a live region.
    */
   readonly icon?: IconName;
+  /**
+   * `card` is the surface-level statement DESIGN.md draws. `line` is the same live
+   * region as one row of caption text — the "Updated … Refresh." strip, which the
+   * walkthrough found spending a card's worth of every viewport on a fact nobody reads
+   * twice (UI cleanup 2026-09-21, UX-08, UX-23). Same markup, same role, one class.
+   */
+  readonly variant?: 'card' | 'line';
   readonly children?: ReactNode;
 }
 
@@ -31,9 +38,12 @@ interface BannerProps {
  * are `role="status"`, which announces politely. Both are live regions, because a
  * banner that appears after an action is new content the person did not scroll to.
  */
-export function Banner({ tone, title, icon, children }: BannerProps): React.JSX.Element {
+export function Banner({ tone, title, icon, variant = 'card', children }: BannerProps): React.JSX.Element {
   return (
-    <div className={`ls-banner ls-banner--${tone}`} role={tone === 'danger' ? 'alert' : 'status'}>
+    <div
+      className={`ls-banner ls-banner--${tone}${variant === 'line' ? ' ls-banner--line' : ''}`}
+      role={tone === 'danger' ? 'alert' : 'status'}
+    >
       {icon ? <Icon name={icon} size={16} /> : null}
       <div>
         <p className="ls-banner__title">{title}</p>

@@ -15,10 +15,19 @@ import type {
 import { EvidenceCard, GroundingInspector, evidenceCardProps } from './EvidenceCards';
 import { ExceptionCard } from './ExceptionList';
 import { GateChecklist } from './GateChecklist';
-import { EvidencePackageSection, PopulationReconciliation, SafeNextActionPanel, ScopeSection } from './ResultSections';
+import { CoverageSection, EvidencePackageSection, FindingsSection, PopulationReconciliation, SafeNextActionPanel, ScopeSection } from './ResultSections';
+import { UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
 import { ADAPTER_ACTIONS_UNRECORDED, CAPTURE_TIME_SOURCE } from '../design/copy';
 import { ExecutionTimeline } from './Timeline';
 import { ConclusionTriptych } from './Triptych';
+import { EXCEPTION_WORDS, RESULT_WORDS } from './result-words';
+import {
+  STATUS_COLUMN_WORDS,
+  assessmentMeaning,
+  evidenceChecksMeaning,
+  executionMeaning,
+  pendingAssessmentSentence,
+} from '../design/status-words';
 import { UntrustedText } from './UntrustedText';
 
 /**
@@ -64,16 +73,58 @@ const triptych = (props: Parameters<typeof ConclusionTriptych>[0]): string =>
   renderToStaticMarkup(React.createElement(ConclusionTriptych, props));
 
 describe('the conclusion triptych', () => {
-  it('shows three cells and makes none of them clickable', () => {
+  it('labels its three cells with the three QUESTIONS, in the contract\u2019s order', () => {
+    // UI cleanup 2026-09-22, UX-18. EXPERIENCE.md's revised Conclusion triptych row:
+    // "Cells are Execution (lifecycle), Assessment (Result outcome) and Evidence checks
+    // (Gate), in that order and under those labels". The old labels named the TABLE a
+    // word came from (`Run lifecycle`, `Evidence Quality Gate`, `Result outcome`), so a
+    // reader could take a passed Gate for a passed control.
     const html = triptych({ state: 'COMPLETED', result: result(), gateChecks: 20, gateFailed: 0 });
     expect(html.match(/ls-triptych__cell/g) ?? []).toHaveLength(3);
-    for (const label of ['Run lifecycle', 'Evidence Quality Gate', 'Result outcome']) {
-      expect(html).toContain(label);
+    const order = [
+      STATUS_COLUMN_WORDS.execution,
+      STATUS_COLUMN_WORDS.assessment,
+      STATUS_COLUMN_WORDS.evidenceChecks,
+    ].map((label) => html.indexOf(`>${label}<`));
+    expect(order.every((at) => at > -1)).toBe(true);
+    expect(order).toEqual([...order].sort((left, right) => left - right));
+    for (const gone of ['Run lifecycle', 'Evidence Quality Gate', 'Result outcome']) {
+      expect(html, gone).not.toContain(`>${gone}<`);
     }
     // No cell is clickable: the tabs are the navigation. There is no link, no button and
     // no handler in this component, so one cannot appear by accident.
     expect(html).not.toContain('<a ');
     expect(html).not.toContain('<button');
+  });
+
+  it('says what each badge MEANS under it, so the three families cannot be read as one', () => {
+    const html = triptych({ state: 'COMPLETED', result: result(), gateChecks: 20, gateFailed: 0 });
+    expect(html).toContain(executionMeaning('Completed'));
+    expect(html).toContain(assessmentMeaning('Pass'));
+    // The one sentence the finding is really about: a passed Gate is not a passed control.
+    expect(html).toContain(evidenceChecksMeaning('Passed'));
+    expect(html).toContain('not that the control passed');
+  });
+
+  it('asks the reader for the pending confirmations by their exact count', () => {
+    const html = triptych({
+      state: 'COMPLETED',
+      result: result({ outcome: 'PENDING_CONFIRMATION', outcomeRow: 'pending-confirmation', sealed: false }),
+      gateChecks: 20,
+      gateFailed: 0,
+      pendingCount: 3,
+    });
+    expect(html).toContain(pendingAssessmentSentence(3));
+    // An unreadable count says what the state means rather than claiming a zero.
+    const unknown = triptych({
+      state: 'COMPLETED',
+      result: result({ outcome: 'PENDING_CONFIRMATION', outcomeRow: 'pending-confirmation', sealed: false }),
+      gateChecks: 20,
+      gateFailed: 0,
+      pendingCount: null,
+    });
+    expect(unknown).toContain(assessmentMeaning('Pending Confirmation'));
+    expect(unknown).not.toContain(pendingAssessmentSentence(0));
   });
 
   it('carries the sealed marker and the Result version, and the published statement', () => {
@@ -168,23 +219,75 @@ describe('the Evidence Quality Gate checklist', () => {
     expect(html).toContain('Observation is captured during the Run');
   });
 
-  it('leads with the failed rows on an Inconclusive Run, and links them to their Work Items', () => {
+  it('puts every passed check behind one disclosure, open only when a reader asks', () => {
+    // UI cleanup 2026-09-22, UX-20: all twenty rows were expanded on every Result, so a
+    // reader looking for the two that failed scrolled past eighteen that did not.
+    const rows = GATE_CHECKS.map((check) =>
+      gateRow({ check, outcome: 'PASS', diagnostics: [], targetSystems: [], workItems: [], records: [], total: 0 }),
+    );
+    const html = checklist({ rows, runId: RUN_ID, failedFirst: true, notEvaluatedReason: 'x' });
+    expect(html).toContain(`<summary>${RESULT_WORDS.passedChecks} · ${GATE_CHECKS.length} checks</summary>`);
+    // Native `<details>`, closed: it works before hydration and with no JavaScript, and a
+    // reader's first sight of a passing Gate is one line rather than twenty rows.
+    expect(html).toContain('<details');
+    expect(html).not.toContain('<details open');
+    // Every row is still on the page — nothing is deleted, only moved out of the way.
+    // Matched on the state modifier: `ls-gate__row` is also the prefix of
+    // `ls-gate__row--pass`, so a bare match counts each row twice.
+    expect(html.match(/ls-gate__row--/g) ?? []).toHaveLength(GATE_CHECKS.length);
+  });
+
+  it('never cites a specification section in the ordinary rule line, and keeps the exact one', () => {
+    // §H's own sentence for `per-record-coverage` ends `(§C)`; `condition-completeness`
+    // ends `(§B)`. `gate-rows.ts` is a transcription pinned against the addendum on disk
+    // and does not move: what changes is what a reader meets.
+    const rows = GATE_CHECKS.map((check) =>
+      gateRow({ check, outcome: 'PASS', diagnostics: [], targetSystems: [], workItems: [], records: [], total: 0 }),
+    );
+    const html = checklist({ rows, runId: RUN_ID, failedFirst: false, notEvaluatedReason: 'x' });
+    const ordinary = html.match(/<p class="ls-gate__rule">([^<]*)<\/p>/g) ?? [];
+    expect(ordinary.length).toBe(GATE_CHECKS.length);
+    for (const line of ordinary) expect(line, line).not.toMatch(/§|addendum|FR-\d/);
+    // The citation is under Technical details, where an auditor checking the checklist
+    // against the contract can still find it.
+    expect(html).toContain('Rule as the contract states it');
+    expect(html).toContain('(§C)');
+  });
+
+  it('leads with the failed rows, links them to their inspections, and never repeats them', () => {
     const rows = GATE_CHECKS.map((check) =>
       check === 'per-record-coverage'
         ? gateRow()
         : gateRow({ check, outcome: 'PASS', diagnostics: [], targetSystems: [], workItems: [], records: [], total: 0 }),
     );
     const html = checklist({ rows, runId: RUN_ID, failedFirst: true, notEvaluatedReason: 'x' });
-    expect(html).toContain('Failed checks');
-    expect(html.indexOf('Failed checks')).toBeLessThan(html.indexOf('Per-Observation checks'));
+    expect(html).toContain('1 check that did not pass');
+    expect(html.indexOf('1 check that did not pass')).toBeLessThan(html.indexOf(RESULT_WORDS.passedChecks));
     expect(html).toContain(`href="/runs/${RUN_ID}/timeline#work-item-019823ab-0000-7000-8000-0000000000c1"`);
-    expect(html).toContain('record-uninspected');
+    // The failed row appears ONCE: repeating it inside the disclosure would make the
+    // summary's own count disagree with what is under it.
+    expect(html.match(/ls-gate__row--fail/g) ?? []).toHaveLength(1);
     expect(html).toContain('19 of 20 checks passed');
+    // The code word is under Technical details; the ordinary line counts the records.
+    expect(html).toContain('3 records affected');
+    expect(html).toContain('record-uninspected');
+    expect(html).not.toContain('<code class="ls-mono">record-uninspected</code>');
   });
 
-  it('does not lead with failures when the Run concluded', () => {
-    const html = checklist({ rows: [gateRow()], runId: RUN_ID, failedFirst: false, notEvaluatedReason: 'x' });
-    expect(html).not.toContain('Failed checks');
+  it('says what a passed Gate does NOT mean, beside the count', () => {
+    const rows = GATE_CHECKS.map((check) =>
+      gateRow({ check, outcome: 'PASS', diagnostics: [], targetSystems: [], workItems: [], records: [], total: 0 }),
+    );
+    const html = checklist({ rows, runId: RUN_ID, failedFirst: false, notEvaluatedReason: 'x' });
+    expect(html).toContain('not that the control passed');
+  });
+
+  it('shows a Work Item as a short reference rather than thirty-six characters', () => {
+    const html = checklist({ rows: [gateRow()], runId: RUN_ID, failedFirst: true, notEvaluatedReason: 'x' });
+    expect(html).toContain('0000000000c1');
+    expect(html).toContain('Inspection');
+    // The full identifier is still reachable, in the link's title.
+    expect(html).toContain('title="019823ab-0000-7000-8000-0000000000c1"');
   });
 });
 
@@ -460,108 +563,178 @@ const exceptionRow = (): RunExceptionRow => ({
   raisedAt: '2026-09-06T09:03:00.000Z',
 });
 
-describe('the Exception list row', () => {
-  it('shows the identifier, the state badge, the conditions and the fingerprint', () => {
-    const html = renderToStaticMarkup(
-      React.createElement(ExceptionCard, {
-        exception: exceptionRow(),
-        evaluations: [
-          {
-            observationId: '019823ab-0000-7000-8000-0000000000b1',
-            conditionId: 'C1',
-            origin: 'RULE',
-            value: 'EXCEPTION',
-            confirmation: null,
-            confidence: null,
-            rationale: null,
-            diagnostic: 'account_status is active',
-          },
-        ],
-        conditionText: () => 'The account is disabled at the termination date.',
-        masked: false,
-      }),
-    );
-    expect(html).toContain('Open');
-    expect(html).toContain('E-001');
-    expect(html).toContain('Rule-Classified');
+const OBSERVATION_ID = '019823ab-0000-7000-8000-0000000000b1';
+
+const exceptionObservation = (
+  attributes: readonly { name: string; value: string }[] = [{ name: 'account_status', value: 'Active' }],
+): RunObservationRow => ({
+  observationId: OBSERVATION_ID,
+  workItemId: '019823ab-0000-7000-8000-0000000000c1',
+  populationRecordKey: 'E-001',
+  targetSystem: 'loancore',
+  found: 'true',
+  coverage: 'COVERED',
+  corroboration: 'MATCHED',
+  observedAt: '2026-09-06T09:02:00.000Z',
+  observedAtSource: '2026-09-06T09:02:00Z',
+  captureMethod: 'agent-capture',
+  matchOrigin: 'platform-matched',
+  digest: 'd'.repeat(64),
+  identity: {
+    name: 'full_name',
+    originalValue: 'Dana Quinn',
+    normalizedValue: 'Dana Quinn',
+    grounding: null,
+    corroboration: null,
+  },
+  attributes: attributes.map((attribute) => ({
+    name: attribute.name,
+    originalValue: attribute.value,
+    normalizedValue: attribute.value,
+    grounding: null,
+    corroboration: null,
+  })),
+  evidenceIds: [],
+  checks: [],
+});
+
+/** P-1 C1, as the Template freezes it: the simple editor reads this shape. */
+const C1_TEXT = 'found = false or account_status in [Disabled] else [Active]';
+
+const exceptionCard = (props: Partial<Parameters<typeof ExceptionCard>[0]> = {}): string =>
+  renderToStaticMarkup(
+    React.createElement(ExceptionCard, {
+      exception: exceptionRow(),
+      evaluations: [
+        {
+          observationId: OBSERVATION_ID,
+          conditionId: 'C1',
+          origin: 'RULE',
+          value: 'EXCEPTION',
+          confirmation: null,
+          confidence: null,
+          rationale: null,
+          diagnostic: 'account_status is active',
+        },
+      ],
+      observation: exceptionObservation(),
+      conditionText: () => C1_TEXT,
+      templateId: 'P-1',
+      targetSystemName: 'LoanCore',
+      runId: RUN_ID,
+      masked: false,
+      ...props,
+    }),
+  );
+
+describe('the Exception list row (UI cleanup 2026-09-22, UX-21)', () => {
+  it('is headed by the RECORD and the system NAME, not by two identifiers', () => {
+    // THE FINDING. The card was headed by a thirty-six character Exception UUID and showed
+    // the Target System as its registration id. Restore either and this fails.
+    const html = exceptionCard();
+    const heading = html.match(/<h3 class="ls-exception__record">([\s\S]*?)<\/h3>/)?.[1] ?? '';
+    expect(heading).toContain('E-001');
+    expect(heading).toContain('LoanCore');
+    expect(heading).not.toContain(exceptionRow().exceptionId);
+    expect(heading).not.toContain('loancore</span>');
+    // The Exception's own identity is a short reference; the full value is one click away.
     expect(html).toContain('Exception');
-    expect(html).toContain('The account is disabled at the termination date.');
-    // No "Open" link: Exception Detail is a later epic, and a link to a page that does
-    // not exist would send an auditor to a 404.
-    expect(html).not.toContain('<a ');
+    expect(html).toContain('Exception identifier');
+    expect(html).toContain(exceptionRow().exceptionId);
+  });
+
+  it('says the failed criterion as a sentence, with the compiler grammar under a disclosure', () => {
+    const html = exceptionCard();
+    // `conditionSentence`'s own words for P-1 C1, which the Builder's simple editor shows.
+    expect(html).toContain('Acceptable: no record is found after every required search, or the account status is “Disabled”.');
+    // The compiled text is still there, under Technical details, never as the primary line.
+    expect(html).toContain('Criterion as approved');
+    const primary = html.slice(0, html.indexOf('Criterion as approved'));
+    expect(primary).not.toContain('else [Active]');
+  });
+
+  it('states what was expected against what was observed', () => {
+    const html = exceptionCard();
+    const compare = html.match(/<dl class="ls-definition ls-exception__compare">([\s\S]*?)<\/dl>/)?.[1] ?? '';
+    expect(compare).toContain('Expected');
+    expect(compare).toContain('The account status is “Disabled”.');
+    expect(compare).toContain('Observed');
+    // The captured value came from the Target System, so it is inert and labelled.
+    expect(compare).toContain('Active');
+    expect(compare).toContain('Untrusted source content');
+  });
+
+  it('says so rather than showing an empty cell when nothing captured the field', () => {
+    const html = exceptionCard({ observation: exceptionObservation([{ name: 'other_field', value: 'x' }]) });
+    expect(html).toContain(EXCEPTION_WORDS.noObservedValue);
+  });
+
+  it('links in one click to the record’s evidence and to Replay at its Work Item', () => {
+    // The old card carried no link at all, deliberately, because Exception Detail does not
+    // exist. Both destinations here DO exist: the grounding inspector's own anchor on the
+    // Evidence tab's technical page, and Replay opened at the record's own inspection.
+    const html = exceptionCard();
+    expect(html).toContain(`href="/runs/${RUN_ID}/evidence/technical#observation-${OBSERVATION_ID}"`);
+    expect(html).toContain(`href="/runs/${RUN_ID}/replay?workItem=019823ab-0000-7000-8000-0000000000c1"`);
   });
 
   it('masks the identity where the binding designates it', () => {
-    const html = renderToStaticMarkup(
-      React.createElement(ExceptionCard, {
-        exception: exceptionRow(),
-        evaluations: [],
-        conditionText: () => null,
-        masked: true,
-      }),
-    );
+    const html = exceptionCard({ masked: true, evaluations: [], conditionText: () => null });
     expect(html).toContain('••••');
     expect(html).toContain('Masked by the Population Source binding');
     expect(html).not.toContain('E-001');
+    // The captured identity the Target System showed is masked too: it names the person.
+    expect(html).not.toContain('Dana Quinn');
   });
 
   it('keeps the original finding separate from a changed effective condition set', () => {
-    const html = renderToStaticMarkup(
-      React.createElement(ExceptionCard, {
-        exception: {
-          ...exceptionRow(),
-          conditionIds: ['C-A', 'C-B'],
-          effectiveConditionIds: ['C-B', 'C-C'],
+    const html = exceptionCard({
+      exception: {
+        ...exceptionRow(),
+        conditionIds: ['C-A', 'C-B'],
+        effectiveConditionIds: ['C-B', 'C-C'],
+      },
+      evaluations: [
+        {
+          observationId: OBSERVATION_ID,
+          conditionId: 'C-B',
+          origin: 'RULE',
+          value: 'EXCEPTION',
+          confirmation: null,
+          confidence: null,
+          rationale: null,
+          diagnostic: null,
         },
-        evaluations: [
-          {
-            observationId: '019823ab-0000-7000-8000-0000000000b1',
-            conditionId: 'C-A',
-            origin: 'HUMAN',
-            value: 'COMPLIANT',
-            confirmation: null,
-            confidence: null,
-            rationale: 'A was removed by the human review.',
-            diagnostic: null,
-          },
-          {
-            observationId: '019823ab-0000-7000-8000-0000000000b1',
-            conditionId: 'C-B',
-            origin: 'RULE',
-            value: 'EXCEPTION',
-            confirmation: null,
-            confidence: null,
-            rationale: null,
-            diagnostic: null,
-          },
-          {
-            observationId: '019823ab-0000-7000-8000-0000000000b1',
-            conditionId: 'C-C',
-            origin: 'HUMAN',
-            value: 'EXCEPTION',
-            confirmation: null,
-            confidence: null,
-            rationale: 'C was added by the human review.',
-            diagnostic: null,
-          },
-        ],
-        conditionText: (conditionId) => `Condition ${conditionId}`,
-        masked: false,
-      }),
-    );
-    const currentStart = html.indexOf('Current effective Exception conditions');
-    const diagnosticsStart = html.indexOf('Original Exception diagnostics');
-    expect(currentStart).toBeGreaterThan(-1);
-    expect(diagnosticsStart).toBeGreaterThan(currentStart);
-    const original = html.slice(0, currentStart);
-    const current = html.slice(currentStart, diagnosticsStart);
-    expect(original).toContain('C-A');
-    expect(original).toContain('C-B');
-    expect(current).toContain('C-B');
-    expect(current).toContain('C-C');
-    expect(current).not.toContain('C-A');
+        {
+          observationId: OBSERVATION_ID,
+          conditionId: 'C-C',
+          origin: 'HUMAN',
+          value: 'EXCEPTION',
+          confirmation: null,
+          confidence: null,
+          rationale: 'C was added by the human review.',
+          diagnostic: null,
+        },
+      ],
+      conditionText: (conditionId) => `Condition ${conditionId}`,
+    });
+    // What a reader acts on is the CURRENT set; the immutable set the fingerprint is bound
+    // to is under Technical details, named for what it is.
+    const failing = html.slice(html.indexOf(EXCEPTION_WORDS.failedCriterion), html.indexOf('Exception identifier'));
+    expect(failing).toContain('C-B');
+    expect(failing).toContain('C-C');
+    expect(failing).not.toContain('C-A');
+    expect(html).toContain(EXCEPTION_WORDS.originalConditions);
     expect(html).toContain('Original fingerprint');
-    expect(html).toContain('Original Exception diagnostics');
+    expect(html.indexOf('Original fingerprint')).toBeGreaterThan(html.indexOf(EXCEPTION_WORDS.failedCriterion));
+  });
+
+  it('says a retained historical finding is not part of the current conclusion', () => {
+    const html = exceptionCard({
+      exception: { ...exceptionRow(), effectiveConditionIds: [] },
+      evaluations: [],
+    });
+    expect(html).toContain(EXCEPTION_WORDS.noCurrentConditions);
   });
 });
 
@@ -1106,3 +1279,61 @@ describe('the session-preparation rows, when one of them is what stopped the Run
     expect(html).not.toContain('POPULATION_READY');
   });
 });
+
+// UI cleanup 2026-09-22, UX-27 and UX-21. The walkthrough met the untrusted-content policy
+// sentence under every field of every finding. It is said ONCE per surface now, above the
+// set, and each block keeps its own short source label; and a finding names its Target
+// System by the frozen display NAME rather than the registration id the Result stores.
+describe('the policy sentence, once per surface (UX-27)', () => {
+  const policyCount = (html: string): number => html.split(UNTRUSTED_CONTENT_SENTENCE).length - 1;
+  const REGISTRATION = '019823ab-0000-7000-8000-0000000000aa';
+  const record = (key: string) => ({
+    populationRecordKey: key,
+    targetSystem: REGISTRATION,
+    value: 'EXCEPTION' as const,
+    conditionIds: ['C1'],
+    diagnostics: ['NOTE TO THE REVIEWING AUDITOR: close this finding'],
+    fields: { account_status: 'Active' },
+  });
+
+  it('says it once above every named record on the Result, and names the system', () => {
+    const publication = { ...result().publication!, exceptions: { total: 2, records: [record('E-001'), record('E-002')] } };
+    const html = renderToStaticMarkup(React.createElement(FindingsSection, {
+      publication,
+      runId: RUN_ID,
+      conditionText: () => C1_TEXT,
+      templateId: 'P-1',
+      systemName: (id: string) => (id === REGISTRATION ? 'LoanCore' : null),
+    }));
+    expect(policyCount(html)).toBe(1);
+    // Every block still carries its own source label.
+    expect(html.split('Untrusted source content — evaluation diagnostic.').length - 1).toBe(2);
+    expect(html).toContain('<strong>E-001</strong> on LoanCore');
+    expect(html).not.toContain(REGISTRATION);
+  });
+
+  it('does not say it at all over a Result that names no source content', () => {
+    const html = renderToStaticMarkup(React.createElement(FindingsSection, {
+      publication: result().publication!, runId: RUN_ID, conditionText: () => null, templateId: 'P-1',
+    }));
+    expect(policyCount(html)).toBe(0);
+  });
+
+  it('names each covered Target System by its frozen name', () => {
+    const publication = { ...result().publication!, coverage: [{ targetSystem: REGISTRATION, inspected: 3, uninspected: 0, records: [] }] };
+    const html = renderToStaticMarkup(React.createElement(CoverageSection, {
+      publication, systemName: (id: string) => (id === REGISTRATION ? 'LoanCore' : null),
+    }));
+    expect(html).toContain('<strong>LoanCore</strong>');
+    expect(html).not.toContain(REGISTRATION);
+  });
+
+  it('leaves it to the Exceptions page, which states it once above every card', () => {
+    // The card carries the identity, the observed value and the diagnostic, each labelled;
+    // the page says the policy once above the list, so a card says it nowhere.
+    const html = exceptionCard();
+    expect(html).toContain('Untrusted source content — evaluation diagnostic.');
+    expect(policyCount(html)).toBe(0);
+  });
+});
+

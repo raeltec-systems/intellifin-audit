@@ -20,7 +20,7 @@ test.describe('as an Auditor', () => {
   test('the sidebar shows four items and no Administration', async ({ page }) => {
     await page.goto('/');
     const nav = page.getByRole('navigation', { name: 'Main' });
-    await expect(nav.getByRole('link')).toHaveText(['Overview', 'Procedures', 'Runs', 'Review']);
+    await expect(nav.getByRole('link')).toHaveText(['Overview', 'Procedures', 'Runs', 'Reviews']);
     await expect(nav.getByRole('link', { name: 'Administration' })).toHaveCount(0);
   });
 
@@ -100,7 +100,7 @@ test.describe('as a PoC Administrator', () => {
       'Overview',
       'Procedures',
       'Runs',
-      'Review',
+      'Reviews',
       'Administration',
     ]);
   });
@@ -117,7 +117,12 @@ test.describe('as a PoC Administrator', () => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Administration' }).click();
     await expect(page.getByRole('heading', { name: 'Administration', level: 1 })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Users and roles' })).toBeVisible();
+    // The H1 alone renders identically on a REFUSED request (UI cleanup 2026-09-22,
+    // UX-37, UX-41): the landing is the three areas' summary now, so "Configuration" —
+    // rendered only past the authorization check — is what proves this page is the
+    // authorized content and not the refusal banner under the same heading.
+    await expect(page.getByRole('heading', { name: 'Configuration' })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Administration areas' })).toBeVisible();
   });
 
   test('every nav item is reachable by Tab and shows the #0F766E focus ring', async ({ page }) => {
@@ -162,7 +167,7 @@ test.describe('as a PoC Administrator', () => {
       'Administration',
       'Overview',
       'Procedures',
-      'Review',
+      'Reviews',
       'Runs',
     ]);
   });

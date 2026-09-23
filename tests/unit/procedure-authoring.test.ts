@@ -177,6 +177,33 @@ describe('bounded procedure writing commands (synthetic provider)', () => {
     expect(h.jobs).toBe(1); expect(h.row.sectionPreparation!.revision).toBe(before.sectionPreparation!.revision + 1);
     for (const field of ['period', 'sourceSnapshot', 'targets', 'complianceConditions', 'evidenceRequirements', 'schedule'] as const) expect(h.row[field]).toEqual(before[field]);
   });
+  it('saves the dates the auditor named together with the scope, through the Period-and-scope writer (UX-09)', async () => {
+    const h = harness(), before = structuredClone(h.row);
+    h.row = { ...h.row, period: null }; // No period saved yet: the owner's walkthrough case.
+    await h.generate({ section: { kind: 'scope' }, notes: 'Employees terminated during August 2026' });
+    const scope = 'Employees terminated during August 2026, excluding contractors.';
+    const outcome = await acceptAuthoringSuggestion(h.deps, { ...actor, procedureId, versionId, requestId: requestId(), expectedRowVersion: procedureVersionRowVersion(h.row), replacement: scope, period: { from: '2026-08-01', to: '2026-08-31' } });
+    expect(outcome).toMatchObject({ ok: true, alreadyApplied: false });
+    expect(h.row.period).toEqual({ from: '2026-08-01', to: '2026-08-31' });
+    expect(h.row.scope).toBe(scope);
+    expect(h.row.authorship?.humanAuthorIds).toEqual(['creator', 'editor']);
+    expect(h.jobs).toBe(1);
+    for (const field of ['sourceSnapshot', 'targets', 'complianceConditions', 'evidenceRequirements', 'schedule'] as const) expect(h.row[field]).toEqual(before[field]);
+    // One Period-and-scope change, recorded by that writer's own event, and the notes
+    // themselves ("…during August 2026" with no scope suffix) never reach the chain.
+    expect(h.events.filter(event => event.eventType === 'lifecycle.procedure-draft-changed').map(event => (event.payload as { section: string }).section)).toEqual(['period-scope']);
+    expect(JSON.stringify(h.events)).not.toContain('"Employees terminated during August 2026"');
+  });
+  it('refuses a period on any suggestion that is not a scope proposal, and an invalid period, changing nothing (UX-09)', async () => {
+    const h = harness();
+    await h.generate();
+    const before = structuredClone(h.row);
+    expect(await acceptAuthoringSuggestion(h.deps, { ...actor, procedureId, versionId, requestId: requestId(), expectedRowVersion: procedureVersionRowVersion(h.row), replacement: 'An objective.', period: { from: '2026-08-01', to: '2026-08-31' } }))
+      .toEqual({ ok: false, reason: 'Only a scope proposal can set the testing period.' });
+    expect(await acceptAuthoringSuggestion(h.deps, { ...actor, procedureId, versionId, requestId: requestId(), expectedRowVersion: procedureVersionRowVersion(h.row), replacement: 'An objective.', period: { from: '2026-08-31', to: '2026-08-01' } }))
+      .toMatchObject({ ok: false });
+    expect(h.row).toEqual(before);
+  });
   it('attributes an identical-wording acceptance, including when the editor later becomes a manager', async () => {
     const h = harness(), original = draftContext(h.row.sections).objective;
     await h.generate(); expect(await h.accept(original)).toMatchObject({ ok: true });

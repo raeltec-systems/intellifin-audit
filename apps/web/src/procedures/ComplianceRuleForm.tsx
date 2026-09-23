@@ -399,7 +399,7 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
           </div>
           <div>
             <p className="ls-caption">If you write a rule out yourself, you can use the fields this source and these systems provide, with <code>and</code>, <code>or</code>, <code>not</code> and brackets. For example <code>amount &gt;= 100000</code>, or <code>found = true</code>.</p>
-            <p className="ls-caption"><code>account_status in [disabled] else [active]</code> names the acceptable values first and the finding values second. A value in neither list is left for a person to decide.</p>
+            <p className="ls-caption">A <code>field in [value] else [value]</code> rule names the acceptable values first and the finding values second. A value in neither list is left for a person to decide.</p>
           </div>
         </div>
       </details>
