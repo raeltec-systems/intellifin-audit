@@ -370,9 +370,14 @@ test.describe('the hero workflow', () => {
     const precision = page.locator('[data-readiness-item="termination-time-precision-missing"]');
     const capture = page.locator('[data-readiness-item="disablement-capture-missing"]');
     await expect(precision).toHaveCount(1);
-    await expect(precision).toContainText('termination_effective_time');
+    // Each still names its own subject, in the auditor's words (UX-13/UX-15): the
+    // condition by its number and the gap by what it means, never the stored field id.
+    await expect(precision).toContainText('Condition 3');
+    await expect(precision).toContainText('only a date for when employment ended');
+    await expect(precision).not.toContainText('termination_effective_time');
     await expect(capture).toHaveCount(1);
-    await expect(capture).toContainText('disabled_time');
+    await expect(capture).toContainText('“disabled time”');
+    await expect(capture).not.toContainText('disabled_time');
     await shot(page, 'timing-window-readiness', page.locator('[data-readiness]'));
 
     // The capture gap is closed where it belongs — in Evidence Requirements, whose own
