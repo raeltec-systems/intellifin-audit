@@ -258,9 +258,15 @@ test.describe('pausing and resuming a Run', () => {
     await expectWithin(1);
 
     // Resume through the control; the Run restarts the step as a NEW attempt and goes on to
-    // run every other step of the plan.
+    // run every other step of the plan. v1.1 requires current controller ownership and an
+    // explicit confirmation, exactly as the journey above walks it.
     await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
-    await page.getByRole('button', { name: 'Resume', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Acquire control', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+    await page.getByRole('button', { name: 'Acquire control', exact: true }).click();
+    await expect(page.getByText('You control this Run.', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Resume', exact: true })
+      .and(page.locator(':not([aria-disabled="true"])')).click();
+    await page.getByRole('dialog', { name: 'Resume this Run?', exact: true }).getByRole('button', { name: 'Resume Run', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
     await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at,completed_at)
       VALUES(${ids.next()},${runId},${stepIds[0]!},NULL,'inspect-record','SUCCEEDED',2,${at(2)},${at(3)})`;
