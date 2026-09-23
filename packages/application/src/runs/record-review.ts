@@ -27,7 +27,15 @@ export interface RecordReviewTarget {
 }
 export interface RecordReviewRow {
   readonly sourceOrdinal: number;
+  /** The record KEY (the Template's first frozen lookup column), or a source-row label. */
   readonly recordLabel: string;
+  /**
+   * The record's NAME — the Template's second frozen lookup column (P-1's `full_name`) —
+   * only when the frozen binding does not designate that field sensitive (FR-41, UX-25).
+   * `null` when there is none or it is masked. Absent on a presentation snapshot written
+   * before this field existed; such a snapshot expires within ten minutes.
+   */
+  readonly recordName?: string | null;
   readonly disposition: string;
   readonly duplicateIdentity: boolean;
   readonly missingIdentity: boolean;
@@ -74,7 +82,10 @@ export type RecordReviewResult = RecordReviewPage | {
 export interface RecordReviewSelection {
   readonly status: 'ready';
   readonly row: RecordReviewRow;
+  /** Every source field; a field the frozen binding designates sensitive is `null` here. */
   readonly sourceValues: Readonly<Record<string, JsonValue>>;
+  /** The source fields withheld as sensitive (FR-41), so a surface can say `••••` for them. */
+  readonly maskedFields: readonly string[];
   readonly conditions: readonly { readonly conditionId: string; readonly text: string }[];
   readonly scope: string;
   readonly readAt: string;

@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { and, asc, desc, eq, gt, sql } from 'drizzle-orm';
-import { POPULATION_CHECK_NAMES, adapterLookupColumn, classifyPlanTargets, authorizeActionRole, type ExecutablePlan, type JsonValue } from '@intellifin/domain';
+import { POPULATION_CHECK_NAMES, adapterLookupColumn, adapterSearchKeys, classifyPlanTargets, authorizeActionRole, type ExecutablePlan, type JsonValue } from '@intellifin/domain';
 import { RECORD_REVIEW_FILTERS, type RecordReviewCounts, type RecordReviewFilter, type RecordReviewQuery,
   type RecordReviewResult, type RecordReviewRow, type RecordReviewSelectionResult, type RecordReviewTarget } from '@intellifin/application';
 import type { Database, Transaction } from '../db/client.js';
@@ -18,11 +18,41 @@ type Header = typeof runReviewSnapshot.$inferSelect;
 type Query = { filter: RecordReviewFilter; search: string; pageSize: number };
 type SelectionInput = { runId: string; actorId: string; sourceOrdinal: number; listedRevision?: string };
 type ReadySelection = Extract<RecordReviewSelectionResult, { status: 'ready' }>;
-type Flat = { ordinal: number; key: string | null; disposition: string; duplicate: boolean; target_id: string | null;
+type Flat = { ordinal: number; key: string | null; name: string | null; disposition: string; duplicate: boolean; target_id: string | null;
   target_name: string; observation_id: string | null; work_item_id: string | null; account: string | null;
   captured_status: string | null; found: string | null; inspected: boolean; exception: boolean;
   pending: number; evidence_problem: boolean; evaluation_count: number; unevaluated: boolean };
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+
+/**
+ * What this projection may say about a record, read from the version's FROZEN binding
+ * (FR-41, UX-25). The name is the Template's second frozen lookup column (P-1's
+ * `full_name`) and is withheld entirely when the binding designates it sensitive, so a
+ * masked value is never stored in a presentation snapshot, never searched and never
+ * rendered. A masked KEY stays in the row — it is the join and the row's identity — but it
+ * is not searchable, so typing a key cannot probe whether a masked record exists.
+ */
+function recordNaming(plan: ExecutablePlan): { nameColumn: string | null; keyMasked: boolean; sensitive: readonly string[] } {
+  const keys = adapterSearchKeys(plan.inputs.templateId) ?? [];
+  const sensitive = plan.inputs.sourceSnapshot?.contract.sensitive_fields ?? [];
+  const name = keys[1] ?? null;
+  return {
+    nameColumn: name !== null && !sensitive.includes(name) ? name : null,
+    keyMasked: keys[0] !== undefined && sensitive.includes(keys[0]),
+    sensitive,
+  };
+}
+
+/**
+ * Exceptions first, then records waiting on a person, then everything else, each in
+ * source order (UX-22). The order is decided BEFORE the snapshot is written, so paging a
+ * snapshot is stable and a reader meets the findings on the first page.
+ */
+function reviewPriority(row: RecordReviewRow): number {
+  if (row.targets.some((target) => target.exception)) return 0;
+  if (row.targets.some((target) => target.pendingAssessments > 0)) return 1;
+  return 2;
+}
 const ADMISSION_BUSY = Symbol('record review admission busy');
 const ADMISSION_EXPIRED = Symbol('record review admission expired');
 const ADMISSION_TIMEOUT_MS = 10000;
@@ -176,7 +206,9 @@ export class PostgresRecordReviewRepository {
                   WHERE e.run_id=${input.runId}::uuid AND
                     (CASE WHEN r.decision_id IS NULL THEN e.confirmation ELSE r.effective_confirmation END)='pending') AS pending`);
             const counts = this.counts(rows, context.source, totals!);
-            const filtered = rows.filter(row => this.matches(row, normalized));
+            const keyMasked = recordNaming(context.plan).keyMasked;
+            const filtered = rows.filter(row => this.matches(row, normalized, keyMasked))
+              .sort((a, b) => reviewPriority(a) - reviewPriority(b) || a.sourceOrdinal - b.sourceOrdinal);
             // Remove only bounded expired cache entries; immutable audit/evidence rows
             // are unrelated. The per-owner eviction remains bounded independently.
             await tx.execute(sql`DELETE FROM run_review_snapshot WHERE snapshot_id IN (
@@ -247,7 +279,13 @@ export class PostgresRecordReviewRepository {
       if (!source) return { status: 'missing' as const };
       const rows = await this.project(tx, input.runId, context.plan, input.sourceOrdinal);
       if (!rows[0]) return { status: 'missing' as const };
-      const selection: ReadySelection = { status: 'ready', row: rows[0], sourceValues: source.values as Record<string, JsonValue>,
+      // FR-41: a field the frozen binding designates sensitive never leaves this read.
+      const { sensitive } = recordNaming(context.plan);
+      const values = source.values as Record<string, JsonValue>;
+      const maskedFields = Object.keys(values).filter(field => sensitive.includes(field)).sort();
+      const sourceValues = Object.fromEntries(Object.entries(values)
+        .map(([field, value]) => [field, sensitive.includes(field) ? null : value])) as Record<string, JsonValue>;
+      const selection: ReadySelection = { status: 'ready', row: rows[0], sourceValues, maskedFields,
         conditions: context.plan.inputs.complianceConditions.map(c => ({ conditionId: c.conditionId, text: c.text })),
         scope: context.plan.inputs.scope, readAt: this.now().toISOString(), revision: context.revision,
         changedSinceList: input.listedRevision !== undefined && context.revision !== input.listedRevision };
@@ -269,9 +307,10 @@ export class PostgresRecordReviewRepository {
       unattributedObservations, pendingAssessments: totals.pending,
       evidenceProblemRecords: rows.filter(r=>r.duplicateIdentity || r.missingIdentity || r.targets.some(t=>t.evidenceProblem)).length };
   }
-  private matches(row: RecordReviewRow, q: Query): boolean {
+  private matches(row: RecordReviewRow, q: Query, keyMasked: boolean): boolean {
     const needle = q.search.toLocaleLowerCase('en');
-    if (needle && ![row.recordLabel, ...row.targets.flatMap(t=>[t.targetName,t.account??'',t.capturedStatus??''])]
+    if (needle && ![...(keyMasked ? [] : [row.recordLabel]), row.recordName ?? '',
+      ...row.targets.flatMap(t=>[t.targetName,t.account??'',t.capturedStatus??''])]
       .some(text=>text.toLocaleLowerCase('en').includes(needle))) return false;
     return q.filter === 'all' || (q.filter==='exceptions' && row.targets.some(t=>t.exception)) ||
       (q.filter==='needs-review' && row.targets.some(t=>t.pendingAssessments>0)) ||
@@ -283,10 +322,11 @@ export class PostgresRecordReviewRepository {
    * The optional ordinal filter is AFTER duplicate counting over the whole population. */
   private async project(tx: Transaction, runId: string, plan: ExecutablePlan, ordinal?: number): Promise<RecordReviewRow[]> {
     const flat = await tx.execute<Flat>(recordReviewProjectionQuery(runId, plan, ordinal));
-    const rows = new Map<number, { sourceOrdinal: number; recordLabel: string; disposition: string; duplicateIdentity: boolean; missingIdentity: boolean; targets: RecordReviewTarget[] }>();
+    const rows = new Map<number, { sourceOrdinal: number; recordLabel: string; recordName: string | null; disposition: string; duplicateIdentity: boolean; missingIdentity: boolean; targets: RecordReviewTarget[] }>();
     for (const unit of flat) {
       let row = rows.get(unit.ordinal);
       if (!row) { row = { sourceOrdinal: unit.ordinal, recordLabel: unit.key || `Source row ${unit.ordinal}`,
+        recordName: unit.name === null || unit.name.trim() === '' ? null : unit.name,
         disposition: unit.disposition, duplicateIdentity: unit.duplicate, missingIdentity: !unit.key, targets: [] }; rows.set(unit.ordinal,row); }
       if (unit.target_id === null) continue; // Reference-only plans still retain every source row.
       row.targets.push({ targetId: unit.target_id, targetName: unit.target_name,
@@ -299,6 +339,38 @@ export class PostgresRecordReviewRepository {
     }
     return [...rows.values()];
   }
+}
+
+/** At most this many keys are resolved in one read: one surface's bounded page of records. */
+export const RECORD_NAME_READ_LIMIT = 500;
+
+/**
+ * The permitted NAME for each record key of one Run (UX-25): the Template's second frozen
+ * lookup column (P-1's `full_name`), read from the Run's own population rows.
+ *
+ * Nothing is answered for a Template with no name column, for a name the frozen binding
+ * designates sensitive (FR-41), or for a key the population carries more than once — a
+ * duplicated key names no single person, and picking one row would be a guess. A key with
+ * no answer is shown as the key alone.
+ */
+export async function readRecordNames(
+  db: Database | Transaction,
+  runId: string,
+  plan: ExecutablePlan,
+  keys: readonly string[],
+): Promise<ReadonlyMap<string, string>> {
+  const keyColumn = adapterLookupColumn(plan.inputs.templateId);
+  const { nameColumn } = recordNaming(plan);
+  const wanted = [...new Set(keys)].slice(0, RECORD_NAME_READ_LIMIT);
+  if (keyColumn === null || nameColumn === null || wanted.length === 0 || !isUuidText(runId)) return new Map();
+  const rows = await db.execute<{ key: string; name: string | null }>(sql`
+    SELECT p.values->>${keyColumn} AS key, min(p.values->>${nameColumn}) AS name
+    FROM population_row p
+    WHERE p.run_id=${runId}::uuid AND jsonb_typeof(p.values->${keyColumn})='string'
+      AND p.values->>${keyColumn} IN (${sql.join(wanted.map(key => sql`${key}`), sql`, `)})
+    GROUP BY 1
+    HAVING count(*)=1 AND bool_and(jsonb_typeof(p.values->${nameColumn})='string')`);
+  return new Map(rows.flatMap(row => row.name === null || row.name.trim() === '' ? [] : [[row.key, row.name] as const]));
 }
 
 /** Expired presentation copies are removed even when no auditor opens another page. */
@@ -324,6 +396,13 @@ export function startRecordReviewExpiry(db: Database, onError: () => void): () =
 /** Same query used in production, exported for actual PostgreSQL EXPLAIN acceptance. */
 export function recordReviewProjectionQuery(runId: string, plan: ExecutablePlan, ordinal?: number) {
     const key = adapterLookupColumn(plan.inputs.templateId)!;
+    const { nameColumn, sensitive } = recordNaming(plan);
+    // The observed account and status shown on a row are target attributes named like
+    // source fields; one the binding designates sensitive is never selected (FR-41).
+    const permitted = (names: readonly string[]) => {
+      const allowed = names.filter(name => !sensitive.includes(name));
+      return allowed.length === 0 ? sql`false` : sql`a->>'name' IN (${sql.join(allowed.map(name => sql`${name}`), sql`, `)})`;
+    };
     const classification = classifyPlanTargets(plan);
     const required = [...classification.adapters, ...classification.agents].sort((a,b)=>a.ordinal-b.ordinal);
     const targets = JSON.stringify(required.map(t=>({ id:t.target.registrationId, name:t.target.displayName, step:t.stepId,
@@ -331,6 +410,7 @@ export function recordReviewProjectionQuery(runId: string, plan: ExecutablePlan,
     return sql`
       WITH source AS (
         SELECT p.ordinal,p.disposition, CASE WHEN jsonb_typeof(p.values->${key})='string' THEN p.values->>${key} ELSE NULL END AS key,
+          ${nameColumn === null ? sql`NULL::text` : sql`CASE WHEN jsonb_typeof(p.values->${nameColumn})='string' THEN p.values->>${nameColumn} ELSE NULL END`} AS name,
           count(*) FILTER (WHERE p.disposition='included') OVER (PARTITION BY p.values->${key}) AS duplicates
         FROM population_row p WHERE p.run_id=${runId}::uuid
       ), targets AS (SELECT value->>'id' AS id,value->>'name' AS name,value->>'step' AS step,(value->>'subject')::boolean AS subject,ordinality FROM jsonb_array_elements(${targets}::jsonb) WITH ORDINALITY),
@@ -355,9 +435,9 @@ export function recordReviewProjectionQuery(runId: string, plan: ExecutablePlan,
         SELECT s.*,t.id AS target_id,t.name AS target_name,t.ordinality,
           o.observation_id,o.work_item_id,o.found,o.coverage,o.corroboration,
           (SELECT a->>'normalizedValue' FROM jsonb_array_elements(coalesce(o.attributes,'[]'::jsonb)) a
-            WHERE a->>'name' IN ('username','account_name','account_id') LIMIT 1) AS account,
+            WHERE ${permitted(['username', 'account_name', 'account_id'])} LIMIT 1) AS account,
           (SELECT a->>'normalizedValue' FROM jsonb_array_elements(coalesce(o.attributes,'[]'::jsonb)) a
-            WHERE a->>'name' IN ('account_status','status','enabled') LIMIT 1) AS captured_status,
+            WHERE ${permitted(['account_status', 'status', 'enabled'])} LIMIT 1) AS captured_status,
           coalesce(e.exception,false) AS exception,coalesce(e.pending,0) AS pending,
           coalesce(e.count,0) AS evaluation_count,coalesce(e.unevaluated,false) AS unevaluated,
           coalesce(((o.found='true' AND o.corroboration='MATCHED') OR (o.found='false' AND EXISTS (
@@ -377,7 +457,7 @@ export function recordReviewProjectionQuery(runId: string, plan: ExecutablePlan,
         LEFT JOIN evaluated e ON e.observation_id=o.observation_id
         LEFT JOIN checked c ON c.observation_id=o.observation_id
         ${ordinal === undefined ? sql`` : sql`WHERE s.ordinal=${ordinal}`}
-      ) SELECT ordinal,key,disposition,duplicates>1 AND disposition='included' AS duplicate,
+      ) SELECT ordinal,key,name,disposition,duplicates>1 AND disposition='included' AS duplicate,
         target_id,target_name,observation_id,work_item_id,account,captured_status,found,
         coalesce(disposition='included' AND coverage='COVERED' AND checks_complete AND NOT evidence_problem,false) AS inspected,
         exception,pending,evidence_problem,evaluation_count,unevaluated

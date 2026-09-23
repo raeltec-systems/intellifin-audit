@@ -6,6 +6,8 @@ import { StatusBadge } from '../design/StatusBadge';
 import { TechnicalDetails } from '../design/TechnicalDetails';
 import { Timestamp } from '../design/Timestamp';
 import { MASKED_BY_BINDING, MASKED_VALUE } from '../design/copy';
+import { RecordLabel } from './RecordLabel';
+import { labelPartsWords, recordLabelParts, type RecordNaming } from './record-words';
 import { readSimpleCondition } from '../procedures/simple-condition';
 import { fieldWords } from '../procedures/condition-words';
 import { Criterion } from './Criterion';
@@ -49,6 +51,8 @@ export function ExceptionCard({
   targetSystemName,
   runId,
   masked,
+  recordName = null,
+  naming,
 }: {
   readonly exception: RunExceptionRow;
   /** The per-condition evaluations of this Exception's own Observation. */
@@ -66,8 +70,17 @@ export function ExceptionCard({
   readonly runId: string;
   /** Whether the binding designates this Run's matching key column sensitive (FR-41). */
   readonly masked: boolean;
+  /** The record's permitted name (UX-25), read from the Run's population; `null` if none. */
+  readonly recordName?: string | null;
+  /** Which column names a record and whether the frozen binding masks it. */
+  readonly naming?: Pick<RecordNaming, 'nameColumn' | 'nameMasked'>;
 }): React.JSX.Element {
-  const record = masked ? MASKED_VALUE : exception.populationRecordKey;
+  // ONE label rule for the record queue, the inspector, this card and Replay (UX-25).
+  const label = recordLabelParts(
+    { key: exception.populationRecordKey, name: recordName },
+    { keyMasked: masked, nameMasked: naming?.nameMasked ?? false, nameColumn: naming?.nameColumn ?? null },
+  );
+  const record = labelPartsWords(label);
   const system = targetSystemName ?? exception.targetSystem;
   // The current effective set decides what this record is an Exception FOR. The immutable
   // set the finding was raised under is under Technical details, where it belongs: it is
@@ -77,14 +90,7 @@ export function ExceptionCard({
     <li className="ls-exception ls-stack" id={`exception-${exception.exceptionId}`}>
       <div className="ls-exception__header">
         <h3 className="ls-exception__record">
-          {masked ? (
-            <>
-              <span aria-hidden="true">{MASKED_VALUE}</span>
-              <span className="ls-visually-hidden">{MASKED_BY_BINDING}</span>
-            </>
-          ) : (
-            exception.populationRecordKey
-          )}{' '}
+          <RecordLabel parts={label} />{' '}
           <span className="ls-exception__system">on {system}</span>
         </h3>
         <StatusBadge family="exception" state="Open" />

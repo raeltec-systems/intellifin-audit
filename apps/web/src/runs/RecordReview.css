@@ -105,12 +105,48 @@
   color: var(--color-danger-text);
 }
 
+.record-review__summary {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+}
+
+.record-review__population > summary {
+  cursor: pointer;
+}
+
+.record-review__checks-heading {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+  font-weight: 500;
+}
+
+.record-review__checks {
+  display: grid;
+  gap: var(--spacing-1);
+  margin: 0;
+  padding-left: var(--spacing-5);
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+}
+
+.record-review__check--failed strong {
+  color: var(--color-danger-text);
+}
+
+.record-review__check--passed strong {
+  color: var(--color-success-text);
+}
+
 .record-review__filters {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
   align-items: end;
-  gap: var(--spacing-3);
-  padding: var(--spacing-3);
+  gap: var(--spacing-2) var(--spacing-3);
+  padding: var(--spacing-2) var(--spacing-3);
   border: 1px solid var(--color-border-default);
   border-radius: var(--rounded-md);
   background: var(--color-surface-sunken);
@@ -453,11 +489,12 @@
 }
 
 @media (min-width: 1101px) {
-  /* Keep the queue and the focused record independently usable beside one another.
-     The surrounding Run chrome remains visible while either pane is scrolled. */
-  .record-review__queue,
-  .record-review__inspector {
-    max-height: calc(100vh - 12rem);
+  /* One scroll model (UI cleanup UX-23). The PAGE scrolls and carries the inspector; the
+     record list stays beside it, sticky, and scrolls on its own only when it is taller
+     than the screen. The walkthrough met three scrollbars here — the page, the list and
+     the inspector — and the inspector's was the one that hid its decisions. */
+  .record-review__queue {
+    max-height: calc(100vh - 2 * var(--spacing-3));
     overflow: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;

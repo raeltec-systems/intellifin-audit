@@ -628,6 +628,19 @@ const exceptionCard = (props: Partial<Parameters<typeof ExceptionCard>[0]> = {})
   );
 
 describe('the Exception list row (UI cleanup 2026-09-22, UX-21)', () => {
+  // UX-25: the same record label as the record queue, the inspector and Replay — the key,
+  // then the permitted name — and the name is masked where the frozen binding says so.
+  it('names the record by key and permitted name, masking what the binding designates', () => {
+    const heading = (html: string) => html.match(/<h3 class="ls-exception__record">([\s\S]*?)<\/h3>/)?.[1] ?? '';
+    const named = exceptionCard({ recordName: 'Dana Leaver', naming: { nameColumn: 'full_name', nameMasked: false } });
+    expect(heading(named)).toContain('E-001 · Dana Leaver');
+    const nameMasked = exceptionCard({ recordName: 'Dana Leaver', naming: { nameColumn: 'full_name', nameMasked: true } });
+    expect(nameMasked).not.toContain('Dana Leaver');
+    expect(heading(nameMasked)).toContain('Masked by the Population Source binding');
+    // A Template that names records by key alone gets the key alone.
+    expect(heading(exceptionCard({ recordName: 'Dana Leaver' }))).not.toContain('Dana Leaver');
+  });
+
   it('is headed by the RECORD and the system NAME, not by two identifiers', () => {
     // THE FINDING. The card was headed by a thirty-six character Exception UUID and showed
     // the Target System as its registration id. Restore either and this fails.

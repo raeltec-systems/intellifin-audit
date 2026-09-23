@@ -19,16 +19,22 @@ import type {
 } from '@intellifin/infrastructure';
 
 import { Banner } from '../design/Banner';
+import { CAPTURE_TIME_UNRECORDED, MASKED_BY_BINDING, MASKED_VALUE } from '../design/copy';
 import { Digest } from '../design/Digest';
+import { TechnicalDetails } from '../design/TechnicalDetails';
+import { Timestamp } from '../design/Timestamp';
+import { countNoun } from '../design/words';
 import { EvaluationReview } from './EvaluationReview';
-import { UntrustedList, UntrustedText } from './UntrustedText';
+import { RecordLabel } from './RecordLabel';
+import { UntrustedList, UntrustedPolicy, UntrustedText } from './UntrustedText';
 import {
-  coverageWord,
   evaluationOriginWord,
   evaluationValueWord,
   foundWord,
-  utcStamp,
+  observationCheckOutcomeWord,
+  observationCheckWord,
 } from './labels';
+import { NO_RECORD_NAMING, recordLabelParts, type RecordNaming } from './record-words';
 
 import './RecordReview.css';
 
@@ -104,20 +110,28 @@ export function normalizeRecordReviewNavigation(input: {
   };
 }
 
+/**
+ * The record a reader meets when they arrive without choosing one (UX-22): the first
+ * Exception, else the first record waiting on a person, else the first record. A blank
+ * inspector on arrival spent half the first screen saying "select a record".
+ */
+export function firstReviewOrdinal(rows: readonly RecordReviewRow[]): number | null {
+  const pick = rows.find((row) => row.targets.some((target) => target.exception))
+    ?? rows.find((row) => row.targets.some((target) => target.pendingAssessments > 0))
+    ?? rows[0];
+  return pick === undefined ? null : pick.sourceOrdinal;
+}
+
 function countText(value: number | null): string {
   return value === null ? 'Unavailable' : Number.isFinite(value) ? value.toLocaleString('en-US') : String(value);
 }
 
 function sourceQualityWord(value: RecordReviewCounts['sourceQuality']): string {
   switch (value) {
-    case 'verified': return 'Verified';
-    case 'problems': return 'Problems recorded';
-    case 'unknown': return 'Unknown';
+    case 'verified': return 'Every source check passed';
+    case 'problems': return 'A source check failed';
+    case 'unknown': return 'Not known';
   }
-}
-
-function recordLabel(row: RecordReviewRow): string {
-  return row.recordLabel.trim() === '' ? 'Unnamed source record' : row.recordLabel;
 }
 
 function targetStateWord(state: RecordReviewTarget['assessmentState']): string {
@@ -142,19 +156,47 @@ function targetStateClass(state: RecordReviewTarget['assessmentState']): string 
   }
 }
 
-function rowAssessmentWord(targets: readonly RecordReviewTarget[]): string {
-  if (targets.length === 0) return 'Not recorded';
-  if (targets.some((target) => target.assessmentState === 'exception' || target.exception)) return 'Exception in target';
-  if (targets.some((target) => target.assessmentState === 'needs-review' || target.assessmentState === 'unevaluated' || target.pendingAssessments > 0)) return 'Needs review';
-  if (targets.some((target) => target.assessmentState === 'not-inspected')) return 'Not inspected';
-  if (targets.every((target) => target.assessmentState === 'compliant')) return 'Compliant';
-  if (targets.every((target) => target.assessmentState === 'excluded')) return 'Excluded';
-  return targetStateWord(targets[0]!.assessmentState);
+/** One word for the whole row, the most urgent of its targets' states. */
+function rowAssessment(targets: readonly RecordReviewTarget[]): { readonly word: string; readonly className: string } {
+  if (targets.length === 0) return { word: 'Not recorded', className: 'record-review__state--neutral' };
+  if (targets.some((target) => target.assessmentState === 'exception' || target.exception)) {
+    return { word: 'Exception', className: targetStateClass('exception') };
+  }
+  if (targets.some((target) => target.assessmentState === 'needs-review' || target.pendingAssessments > 0)) {
+    return { word: 'Needs review', className: targetStateClass('needs-review') };
+  }
+  if (targets.some((target) => target.assessmentState === 'unevaluated')) {
+    return { word: 'Unevaluated', className: targetStateClass('unevaluated') };
+  }
+  if (targets.some((target) => target.assessmentState === 'not-inspected')) {
+    return { word: 'Not inspected', className: targetStateClass('not-inspected') };
+  }
+  if (targets.every((target) => target.assessmentState === 'compliant')) {
+    return { word: 'Compliant', className: targetStateClass('compliant') };
+  }
+  if (targets.every((target) => target.assessmentState === 'excluded')) {
+    return { word: 'Excluded', className: targetStateClass('excluded') };
+  }
+  const first = targets[0]!.assessmentState;
+  return { word: targetStateWord(first), className: targetStateClass(first) };
+}
+
+/**
+ * Which evidence checks this record passed, as one phrase (UX-26). "No problem recorded"
+ * could not be told apart from a record nothing ever checked: a record's checks are
+ * complete only when its every target was inspected, which the projection decides from
+ * the stored per-Observation checks.
+ */
+function rowChecksWord(targets: readonly RecordReviewTarget[]): string {
+  if (targets.length === 0) return 'Not checked';
+  if (targets.some((target) => target.evidenceProblem)) return 'A check failed';
+  if (targets.every((target) => target.inspected)) return 'All checks passed';
+  return 'Not checked yet';
 }
 
 function rowSubjectText(targets: readonly RecordReviewTarget[]): string {
   const subjects = [...new Set(targets.map((target) => target.account).filter((value): value is string => value !== null && value.trim() !== ''))];
-  return subjects.length === 0 ? 'Not recorded' : subjects.length === 1 ? subjects[0]! : `${subjects.length} subjects recorded`;
+  return subjects.length === 0 ? 'Not recorded' : subjects.length === 1 ? subjects[0]! : `${subjects.length} accounts recorded`;
 }
 
 function rowCapturedStatusText(targets: readonly RecordReviewTarget[]): string {
@@ -169,6 +211,15 @@ function sourceText(value: string | null): string {
 function targetFound(value: string | null): string {
   if (value === null) return 'Not recorded';
   return foundWord(value) ?? value;
+}
+
+function dispositionWord(disposition: string): string {
+  switch (disposition) {
+    case 'included': return 'In the tested population';
+    case 'excluded': return 'Excluded from the test';
+    case 'indeterminate': return 'Could not be placed in the period';
+    default: return disposition;
+  }
 }
 
 function conditionById(selection: RecordReviewSelection): ReadonlyMap<string, string> {
@@ -186,15 +237,31 @@ function jsonValueText(value: JsonValue): string {
   }
 }
 
+function fieldWords(name: string): string {
+  return name.replaceAll('_', ' ');
+}
+
 function evidenceKindWord(kind: string): string {
   switch (kind) {
     case 'screenshot': return 'Screenshot';
-    case 'structural-snapshot': return 'Recorded page data';
+    case 'structural-snapshot': return 'Saved page data';
     case 'population': return 'Population source';
     case 'reference-source': return 'Reference source';
-    case 'adapter-extraction': return 'Adapter extraction';
-    default: return 'Recorded evidence';
+    case 'adapter-extraction': return 'System extract';
+    default: return 'Saved evidence';
   }
+}
+
+/**
+ * The digest check this platform ran, and when (UX-26). A REGISTERED artifact was read
+ * back from storage when it was saved and matched the digest recorded for it — that is
+ * what registration means. Anything else was never verified, and says so rather than
+ * "Fingerprint recorded", which described a column, not a check.
+ */
+function digestCheckWord(item: RunEvidenceItem): string {
+  return item.state === 'REGISTERED' && item.digest !== null
+    ? 'Matched when the file was saved'
+    : 'Not verified yet';
 }
 
 function evidenceOpenHref(runId: string, item: RunEvidenceItem): string | null {
@@ -216,39 +283,61 @@ function evidenceGroundingHref(runId: string, item: RunEvidenceItem, observation
   return null;
 }
 
+/** The queue's counts, in one line of words (UX-22). */
+export function reviewCountsSummary(counts: RecordReviewCounts): string {
+  const exceptions = counts.exceptionRecords === null
+    ? 'exceptions not yet known'
+    : `${countNoun(counts.exceptionRecords, 'record')} with an exception`;
+  return [
+    countNoun(counts.includedRows, 'included record'),
+    exceptions,
+    `${countNoun(counts.pendingAssessments, 'assessment')} waiting for review`,
+    `${counts.fullyInspectedSubjects.toLocaleString('en-US')} of ${counts.includedRows.toLocaleString('en-US')} fully inspected`,
+  ].join(' · ');
+}
+
 export interface RecordReviewQueueProps {
   readonly runId: string;
   readonly page: RecordReviewPage;
   readonly navigation: RecordReviewNavigation;
+  /** How this Run names a record and what its frozen binding masks (UX-25, FR-41). */
+  readonly naming?: RecordNaming;
+  /** The record the inspector shows when the reader arrived without choosing one. */
+  readonly selectedOrdinal?: number | null;
 }
 
 /**
  * The bounded, server-rendered queue. Links carry the list context explicitly, so a
  * focused record never silently changes the filter or page the reader was reviewing.
+ *
+ * It opens on RECORDS (UX-22): the counts on one line, the filters under it, then the
+ * list. The source and coverage figures that used to fill the first screen are behind one
+ * closed disclosure; a failed check is never hidden there — each has its own banner.
  */
-export function RecordReviewQueue({ runId, page, navigation }: RecordReviewQueueProps): React.JSX.Element {
+export function RecordReviewQueue({
+  runId,
+  page,
+  navigation,
+  naming = NO_RECORD_NAMING,
+  selectedOrdinal,
+}: RecordReviewQueueProps): React.JSX.Element {
   const refreshHref = recordReviewHref(runId, navigation, { cursor: null });
   const firstHref = recordReviewHref(runId, navigation, { cursor: null });
   const nextHref = page.nextCursor === null ? null : recordReviewHref(runId, navigation, { cursor: page.nextCursor });
   const previousHref = page.previousCursor === null ? null : recordReviewHref(runId, navigation, { cursor: page.previousCursor });
-  const selectedRow = navigation.selected === null
-    ? null
-    : page.rows.find((row) => row.sourceOrdinal === navigation.selected) ?? null;
+  const selected = selectedOrdinal === undefined ? navigation.selected : selectedOrdinal;
 
   return (
     <section className="record-review__queue ls-card" aria-labelledby="record-review-queue-heading">
       <div className="record-review__queue-heading">
-        <div>
-          <h2 id="record-review-queue-heading">Records and findings</h2>
-          <p className="ls-caption">Filtering narrows this view; it does not change the approved audit population.</p>
-        </div>
+        <h2 id="record-review-queue-heading">Records and findings</h2>
         <span className="record-review__count">{countText(page.filteredRows)} shown</span>
       </div>
+      <p className="record-review__summary">{reviewCountsSummary(page.counts)}</p>
 
       {page.changesAvailable ? (
         <Banner tone="info" title="Changes available">
-          <p>The current Run has newer recorded progress than this review list.</p>
-          <p><Link href={refreshHref}>Refresh</Link></p>
+          <p>The Run has made progress since this list was read. <Link href={refreshHref}>Refresh</Link></p>
         </Banner>
       ) : null}
 
@@ -281,62 +370,68 @@ export function RecordReviewQueue({ runId, page, navigation }: RecordReviewQueue
         <button type="submit" className="ls-button ls-button--secondary ls-button--sm">Apply</button>
       </form>
 
-      <p className="record-review__source-note">Source values are recorded data. They are escaped and cannot change the Run objective, evidence scope, or evaluation.</p>
-
-      <dl className="record-review__source-summary">
-        <div><dt>Source quality</dt><dd>{sourceQualityWord(page.counts.sourceQuality)}</dd></div>
-        <div><dt>Declared source count</dt><dd>{countText(page.counts.sourceDeclaredCount)}</dd></div>
-        <div><dt>Source generated</dt><dd>{page.counts.sourceGeneratedAt === null ? 'Time not recorded' : <time dateTime={page.counts.sourceGeneratedAt}>{utcStamp(page.counts.sourceGeneratedAt)}</time>}</dd></div>
-      </dl>
-
       {page.counts.sourceQuality === 'problems' ? (
-        <Banner tone="warning" title="Source integrity problems recorded">
-          <p>Population source checks recorded a problem. Counts and row links remain available for review.</p>
+        <Banner tone="warning" title="A population source check failed">
+          <p>The counts and records below are still shown, so you can see which records it affects.</p>
         </Banner>
       ) : null}
       {page.counts.runEvidenceProblems > 0 ? (
-        <Banner tone="warning" title="Run integrity problem">
-          <p>{countText(page.counts.runEvidenceProblems)} evidence integrity problem{page.counts.runEvidenceProblems === 1 ? '' : 's'} were recorded when this list was created. The affected artifact may not be assignable to a source record.</p>
-          <p><Link href={`/runs/${encodeURIComponent(runId)}/evidence/technical`}>Open technical artifact details</Link></p>
+        <Banner tone="warning" title="Evidence integrity problem">
+          <p>{countNoun(page.counts.runEvidenceProblems, 'saved file')} did not match {page.counts.runEvidenceProblems === 1 ? 'its' : 'their'} recorded digest when this list was read. <Link href={`/runs/${encodeURIComponent(runId)}/evidence/technical`}>Open the saved evidence</Link></p>
         </Banner>
       ) : null}
       {page.currentEvidenceProblems > 0 ? (
-        <Banner tone="danger" title="Current Run integrity problem">
-          <p>{countText(page.currentEvidenceProblems)} evidence integrity problem{page.currentEvidenceProblems === 1 ? '' : 's'} are currently recorded. The sealed outcome remains unchanged; inspect the affected artifact before relying on its assignment to a source record.</p>
-          <p><Link href={`/runs/${encodeURIComponent(runId)}/evidence/technical`}>Open technical artifact details</Link></p>
+        <Banner tone="danger" title="Evidence integrity problem now">
+          <p>{countNoun(page.currentEvidenceProblems, 'saved file')} {page.currentEvidenceProblems === 1 ? 'does' : 'do'} not match {page.currentEvidenceProblems === 1 ? 'its' : 'their'} recorded digest. The sealed outcome is unchanged; check the file before you rely on it. <Link href={`/runs/${encodeURIComponent(runId)}/evidence/technical`}>Open the saved evidence</Link></p>
         </Banner>
       ) : null}
       {page.counts.unattributedObservations > 0 ? (
-        <Banner tone="warning" title="Observation relationship unresolved">
-          <p>{countText(page.counts.unattributedObservations)} recorded Observation{page.counts.unattributedObservations === 1 ? '' : 's'} could not be uniquely related to a source record. The exception count is unavailable until that relationship is resolved.</p>
-          <p><Link href={`/runs/${encodeURIComponent(runId)}/evidence/technical`}>Review technical relationship details</Link></p>
+        <Banner tone="warning" title="Some findings are not linked to a record">
+          <p>{countNoun(page.counts.unattributedObservations, 'recorded Observation')} could not be linked to exactly one source record, so the number of records with an exception is not known yet. <Link href={`/runs/${encodeURIComponent(runId)}/evidence/technical`}>Open the saved evidence</Link></p>
         </Banner>
       ) : null}
 
-      <dl className="record-review__metrics">
-        <div><dt>Source rows</dt><dd>{countText(page.counts.sourceRows)}</dd></div>
-        <div><dt>Included</dt><dd>{countText(page.counts.includedRows)}</dd></div>
-        <div><dt>Excluded</dt><dd>{countText(page.counts.excludedRows)}</dd></div>
-        <div><dt>Indeterminate</dt><dd>{countText(page.counts.indeterminateRows)}</dd></div>
-        <div><dt>Fully inspected subjects</dt><dd>{countText(page.counts.fullyInspectedSubjects)}</dd></div>
-        <div><dt>Inspected units</dt><dd>{countText(page.counts.inspectedUnits)} / {countText(page.counts.requiredUnits)}</dd></div>
-        <div><dt>Records with exceptions</dt><dd>{countText(page.counts.exceptionRecords)}</dd></div>
-        <div><dt>Unattributed Observations</dt><dd>{countText(page.counts.unattributedObservations)}</dd></div>
-        <div><dt>Pending assessments</dt><dd>{countText(page.counts.pendingAssessments)}</dd></div>
-        <div><dt>Evidence problem records</dt><dd>{countText(page.counts.evidenceProblemRecords)}</dd></div>
-        <div><dt>Integrity problems at list snapshot</dt><dd>{countText(page.counts.runEvidenceProblems)}</dd></div>
-      </dl>
-
-      <p className="record-review__as-of">
-        {countText(page.filteredRows)} records match this view · Page {page.pageNumber} · List as of{' '}
-        <time dateTime={page.asOf}>{utcStamp(page.asOf)}</time>. Snapshot expires <time dateTime={page.expiresAt}>{utcStamp(page.expiresAt)}</time>.
-      </p>
+      <details className="ls-disclosure record-review__population">
+        <summary>Source and coverage details</summary>
+        <div className="ls-disclosure__body ls-stack">
+          <p className="ls-caption">Filtering changes this view only. It does not change the approved population.</p>
+          <dl className="record-review__metrics">
+            <div><dt>Source checks</dt><dd>{sourceQualityWord(page.counts.sourceQuality)}</dd></div>
+            <div><dt>Declared source count</dt><dd>{countText(page.counts.sourceDeclaredCount)}</dd></div>
+            <div><dt>Source generated</dt><dd>{page.counts.sourceGeneratedAt === null ? 'Time not recorded' : <Timestamp value={page.counts.sourceGeneratedAt} />}</dd></div>
+            <div><dt>Source rows</dt><dd>{countText(page.counts.sourceRows)}</dd></div>
+            <div><dt>Included</dt><dd>{countText(page.counts.includedRows)}</dd></div>
+            <div><dt>Excluded</dt><dd>{countText(page.counts.excludedRows)}</dd></div>
+            <div><dt>Could not be placed</dt><dd>{countText(page.counts.indeterminateRows)}</dd></div>
+            <div><dt>Fully inspected records</dt><dd>{countText(page.counts.fullyInspectedSubjects)}</dd></div>
+            <div><dt>Inspections done</dt><dd>{countText(page.counts.inspectedUnits)} of {countText(page.counts.requiredUnits)}</dd></div>
+            <div><dt>Records with exceptions</dt><dd>{countText(page.counts.exceptionRecords)}</dd></div>
+            <div><dt>Findings not linked to a record</dt><dd>{countText(page.counts.unattributedObservations)}</dd></div>
+            <div><dt>Assessments waiting for review</dt><dd>{countText(page.counts.pendingAssessments)}</dd></div>
+            <div><dt>Records with evidence problems</dt><dd>{countText(page.counts.evidenceProblemRecords)}</dd></div>
+            <div><dt>Integrity problems when read</dt><dd>{countText(page.counts.runEvidenceProblems)}</dd></div>
+          </dl>
+          <p className="ls-caption">
+            {countText(page.filteredRows)} records match this view · Page {page.pageNumber} · List read{' '}
+            <Timestamp value={page.asOf} />. Paging works until <Timestamp value={page.expiresAt} />.
+          </p>
+        </div>
+      </details>
 
       {page.rows.length === 0 ? (
         <p className="record-review__empty">No records match this filter. The approved population counts remain unchanged.</p>
       ) : (
         <ol className="record-review__rows" aria-label="Record review queue">
-          {page.rows.map((row) => <RecordReviewQueueRow key={row.sourceOrdinal} runId={runId} row={row} navigation={navigation} selected={selectedRow?.sourceOrdinal === row.sourceOrdinal} />)}
+          {page.rows.map((row) => (
+            <RecordReviewQueueRow
+              key={row.sourceOrdinal}
+              runId={runId}
+              row={row}
+              navigation={navigation}
+              naming={naming}
+              selected={selected === row.sourceOrdinal}
+            />
+          ))}
         </ol>
       )}
 
@@ -354,50 +449,48 @@ function RecordReviewQueueRow({
   runId,
   row,
   navigation,
+  naming,
   selected,
 }: {
   readonly runId: string;
   readonly row: RecordReviewRow;
   readonly navigation: RecordReviewNavigation;
+  readonly naming: RecordNaming;
   readonly selected: boolean;
 }): React.JSX.Element {
-  const unresolved = row.targets.some((target) => target.assessmentState === 'needs-review' || target.assessmentState === 'unevaluated' || target.assessmentState === 'not-inspected' || target.pendingAssessments > 0);
   const href = recordReviewHref(runId, navigation, { selected: row.sourceOrdinal });
+  const assessment = rowAssessment(row.targets);
   return (
     <li className={`record-review__row${selected ? ' record-review__row--selected' : ''}`} aria-current={selected ? 'true' : undefined}>
       <div className="record-review__row-head">
         <div>
-          <h3>{recordLabel(row)}</h3>
-          <p className="ls-caption">{row.targets.length === 0 ? 'No target recorded' : row.targets.map((target) => target.targetName).join(' · ')}</p>
+          <h3><RecordLabel parts={recordLabelParts({ key: row.recordLabel, name: row.recordName ?? null }, naming)} /></h3>
+          <p className="ls-caption">{row.targets.length === 0 ? 'No target system recorded' : row.targets.map((target) => target.targetName).join(' · ')}</p>
         </div>
-        {unresolved ? <span className="record-review__state record-review__state--info">Review needed</span> : <span className="record-review__state record-review__state--neutral">Recorded</span>}
+        <span className={`record-review__state ${assessment.className}`}>{assessment.word}</span>
       </div>
       <dl className="record-review__row-facts">
-        <div><dt>Observed subject</dt><dd>{rowSubjectText(row.targets)}</dd></div>
+        <div><dt>Observed account</dt><dd>{rowSubjectText(row.targets)}</dd></div>
         <div><dt>Captured status</dt><dd>{rowCapturedStatusText(row.targets)}</dd></div>
-        <div><dt>Assessment</dt><dd>{rowAssessmentWord(row.targets)}</dd></div>
-        <div><dt>Evidence</dt><dd>{row.targets.some((target) => target.evidenceProblem) ? 'Problem recorded' : row.targets.length === 0 ? 'Not recorded' : 'No problem recorded'}</dd></div>
+        <div><dt>Evidence checks</dt><dd>{rowChecksWord(row.targets)}</dd></div>
       </dl>
       {row.duplicateIdentity || row.missingIdentity || row.disposition !== 'included' ? (
         <p className="record-review__row-note">
-          {row.duplicateIdentity ? 'Duplicate source identity. ' : ''}
-          {row.missingIdentity ? 'Source identity is missing. ' : ''}
-          {row.disposition !== 'included' ? `Source disposition: ${row.disposition}.` : ''}
+          {row.duplicateIdentity ? 'The source lists this record more than once. ' : ''}
+          {row.missingIdentity ? 'The source row has no record key. ' : ''}
+          {row.disposition !== 'included' ? `${dispositionWord(row.disposition)}.` : ''}
         </p>
       ) : null}
       <Link className="ls-button ls-button--primary ls-button--sm record-review__review-link" href={href} aria-current={selected ? 'page' : undefined}>
         Review evidence
       </Link>
-      <details className="ls-disclosure record-review__technical">
-        <summary>Technical details</summary>
-        <div className="ls-disclosure__body">
-          <dl className="ls-definition">
-            <div><dt>Source row ordinal</dt><dd className="ls-mono">{row.sourceOrdinal}</dd></div>
-            <div><dt>Observation references</dt><dd className="ls-mono">{row.targets.filter((target) => target.observationId !== null).map((target) => target.observationId).join(', ') || 'None'}</dd></div>
-            <div><dt>Work Item references</dt><dd className="ls-mono">{row.targets.filter((target) => target.workItemId !== null).map((target) => target.workItemId).join(', ') || 'None'}</dd></div>
-          </dl>
-        </div>
-      </details>
+      <TechnicalDetails
+        items={[
+          { label: 'Source row', value: String(row.sourceOrdinal), mono: true },
+          { label: 'Observation identifiers', value: row.targets.filter((target) => target.observationId !== null).map((target) => target.observationId).join(', ') || 'None', mono: true },
+          { label: 'Work Item identifiers', value: row.targets.filter((target) => target.workItemId !== null).map((target) => target.workItemId).join(', ') || 'None', mono: true },
+        ]}
+      />
     </li>
   );
 }
@@ -421,9 +514,17 @@ export interface RecordReviewInspectorProps {
   readonly evaluationReview?: SelectedEvaluationReviewRead | null;
   readonly navigation: RecordReviewNavigation;
   readonly page: RecordReviewPage;
+  readonly naming?: RecordNaming;
 }
 
-/** The selected-record inspector. It receives only the selected Observation/evaluation/evidence rows. */
+/**
+ * The selected-record inspector. It receives only the selected Observation/evaluation/evidence rows.
+ *
+ * It says what an auditor needs to judge the record (UX-24): what the approved test
+ * expected, what was captured and from which system, when, which checks ran and how they
+ * came out, and what the person must decide. How the platform stores or serves any of it
+ * is under Technical details, and the untrusted-content policy is said once (UX-27).
+ */
 export function RecordReviewInspector({
   runId,
   selection,
@@ -434,6 +535,7 @@ export function RecordReviewInspector({
   evaluationReview = null,
   navigation,
   page,
+  naming = NO_RECORD_NAMING,
 }: RecordReviewInspectorProps): React.JSX.Element {
   if (selection === null) {
     return (
@@ -455,44 +557,50 @@ export function RecordReviewInspector({
   const replayTargets = [...new Map(selection.row.targets.filter(target => target.workItemId !== null)
     .map(target => [target.workItemId, target])).values()];
   const nextHref = nextUnresolved === null ? null : recordReviewHref(runId, navigation, { selected: nextUnresolved.sourceOrdinal });
+  const masked = new Set(selection.maskedFields ?? []);
+  const systemOf = (registrationId: string): string | null =>
+    selection.row.targets.find((target) => target.targetId === registrationId)?.targetName ?? null;
 
   return (
     <section className="record-review__inspector ls-card" aria-label="Record inspector">
       <header className="record-review__inspector-head">
         <div>
-          <p className="record-review__overline">Record inspector · {selection.row.targets.map((target) => target.targetName).join(' · ') || 'Target not recorded'}</p>
-          <h2 id="record-review-inspector-heading">{recordLabel(selection.row)}</h2>
-          <p className="ls-caption">Source record {selection.row.sourceOrdinal} · Read at <time dateTime={selection.readAt}>{utcStamp(selection.readAt)}</time></p>
+          <p className="record-review__overline">Record inspector · {selection.row.targets.map((target) => target.targetName).join(' · ') || 'No target system recorded'}</p>
+          <h2 id="record-review-inspector-heading">
+            <RecordLabel parts={recordLabelParts({ key: selection.row.recordLabel, name: selection.row.recordName ?? null }, naming)} />
+          </h2>
+          <p className="ls-caption">Source row {selection.row.sourceOrdinal} · read <Timestamp value={selection.readAt} /></p>
         </div>
-        <span className="record-review__state record-review__state--neutral">{selection.row.disposition === 'included' ? 'Included record' : selection.row.disposition}</span>
+        <span className="record-review__state record-review__state--neutral">{dispositionWord(selection.row.disposition)}</span>
       </header>
 
       {selection.changedSinceList ? (
         <Banner tone="warning" title="Changed since this list loaded">
-          The selected detail is newer than the review list. Review actions use the current revision and recheck authorization.
+          This record changed after the list was read. What you see here is current; refresh the list to update the rest.
         </Banner>
       ) : null}
 
       <section className="record-review__section record-review__expectation" aria-labelledby="record-review-expectation-heading">
         <h3 id="record-review-expectation-heading">What the approved test expected</h3>
         {selection.conditions.length === 0 ? (
-          <p>No frozen expected condition text was recorded for this selected Run.</p>
+          <p>The approved procedure recorded no condition for this Run.</p>
         ) : (
           <ol className="record-review__conditions">
             {selection.conditions.map((condition) => <li key={condition.conditionId}>{condition.text}</li>)}
           </ol>
         )}
         <p>Approved scope: {selection.scope}</p>
-        <p className="ls-caption">Expected text is frozen with this Run and is shown for context only.</p>
       </section>
 
       <section className="record-review__section" aria-labelledby="record-review-captured-heading">
         <h3 id="record-review-captured-heading">What was captured</h3>
-        <p className="record-review__source-note">Recorded values are shown as source data and remain inert presentation content.</p>
+        {/* Captured values, account names and page text all come from outside this
+            platform. The policy is said once here, above every block of it (UX-27). */}
+        <UntrustedPolicy />
         <div className="record-review__target-list">
-          {selection.row.targets.length === 0 ? <p>No target was recorded for this source record.</p> : selection.row.targets.map((target) => {
+          {selection.row.targets.length === 0 ? <p>No target system was recorded for this source record.</p> : selection.row.targets.map((target) => {
             const observation = target.observationId === null ? null : observations.find((row) => row.observationId === target.observationId) ?? null;
-            return <CapturedTarget key={target.targetId} target={target} observation={observation} />;
+            return <CapturedTarget key={target.targetId} target={target} observation={observation} masked={masked} />;
           })}
         </div>
         <section id="recorded-source-values" className="record-review__source-record" aria-labelledby="record-review-source-heading">
@@ -501,21 +609,34 @@ export function RecordReviewInspector({
             <p>No source fields were recorded.</p>
           ) : (
             <table className="record-review__source-table">
-              <caption>Fields captured from the approved population source.</caption>
+              <caption>Fields from the approved population source.</caption>
               <tbody>
                 {Object.entries(selection.sourceValues).sort(([left], [right]) => left.localeCompare(right)).map(([key, value]) => (
-                  <tr key={key}><th scope="row">{key}</th><td><span className="record-review__source-value">{jsonValueText(value)}</span></td></tr>
+                  <tr key={key}>
+                    <th scope="row">{fieldWords(key)}</th>
+                    <td>
+                      {masked.has(key) ? (
+                        <>
+                          <span aria-hidden="true">{MASKED_VALUE}</span>
+                          <span className="ls-visually-hidden">{MASKED_BY_BINDING}</span>
+                        </>
+                      ) : (
+                        <span className="record-review__source-value">{jsonValueText(value)}</span>
+                      )}
+                    </td>
+                  </tr>
                 ))}
               </tbody>
             </table>
           )}
+          {masked.size > 0 ? <p className="ls-caption">{MASKED_BY_BINDING}: {[...masked].map(fieldWords).join(', ')}.</p> : null}
         </section>
       </section>
 
       <section className="record-review__section" aria-labelledby="record-review-assessment-heading">
         <h3 id="record-review-assessment-heading">Condition-by-condition assessment</h3>
         {targetsWithObservations.length === 0 ? (
-          <p>No Observation is recorded for this selected record.</p>
+          <p>No Observation is recorded for this record, so no condition was assessed.</p>
         ) : (
           <div className="record-review__assessment-list">
             {targetsWithObservations.map((target) => <TargetAssessment key={target.targetId} target={target} conditions={conditions} evaluations={evaluations.filter((evaluation) => evaluation.observationId === target.observationId)} />)}
@@ -525,46 +646,50 @@ export function RecordReviewInspector({
 
       <section className="record-review__section" aria-labelledby="record-review-evidence-heading">
         <div className="record-review__section-head">
-          <div><h3 id="record-review-evidence-heading">Supporting evidence</h3><p className="ls-caption">Selected evidence metadata is loaded; bytes load only when you open the protected preview or snapshot route.</p></div>
-          <span className="record-review__state record-review__state--neutral">{evidence.length === 0 ? 'Not captured' : `${evidence.length} item${evidence.length === 1 ? '' : 's'} recorded`}</span>
+          <h3 id="record-review-evidence-heading">Supporting evidence</h3>
+          <span className="record-review__state record-review__state--neutral">{evidence.length === 0 ? 'Not captured' : `${countNoun(evidence.length, 'item')} recorded`}</span>
         </div>
-        <p className="record-review__evidence-note">Opening evidence does not confirm an assessment. Bytes are fetched only by the protected frame or snapshot route.</p>
-        {evidence.length === 0 ? <p>No selected Observation names supporting Evidence metadata.</p> : (
+        <p className="record-review__evidence-note">Opening evidence does not confirm an assessment.</p>
+        {evidence.length === 0 ? <p>No evidence is linked to this record's Observations.</p> : (
           <ul className="record-review__evidence-list">
             {evidence.map((item) => {
               const openHref = evidenceOpenHref(runId, item) ?? evidenceGroundingHref(runId, item, observations);
+              const system = systemOf(item.registrationId);
               return (
                 <li key={item.evidenceId} className="record-review__evidence-item">
-                  <div><h4>{evidenceKindWord(item.kind)}</h4><p className="ls-caption">{item.state === 'REGISTERED' ? 'Registered evidence' : item.state}</p></div>
+                  <div>
+                    <h4>{evidenceKindWord(item.kind)}</h4>
+                    <p className="ls-caption">
+                      {system ?? 'Target system not recorded'}
+                      {item.displayName === null ? null : <> · {item.displayName}</>}
+                    </p>
+                  </div>
                   <dl className="record-review__evidence-facts">
-                    <div><dt>Captured</dt><dd>{item.capturedAt === null ? 'Time not recorded' : <time dateTime={item.capturedAt}>{utcStamp(item.capturedAt)}</time>}</dd></div>
-                    <div><dt>Integrity</dt><dd>{item.digest === null ? 'Fingerprint not recorded' : 'Fingerprint recorded'}</dd></div>
+                    <div><dt>Captured</dt><dd>{item.capturedAt === null ? CAPTURE_TIME_UNRECORDED : <Timestamp value={item.capturedAt} />}</dd></div>
+                    <div><dt>Digest check</dt><dd>{digestCheckWord(item)}</dd></div>
                   </dl>
                   {item.kind === 'screenshot' && openHref !== null ? (
                     <details className="record-review__preview">
                       <summary>Preview account capture</summary>
                       <div className="record-review__preview-frame">
-                        <img src={openHref} alt="Recorded account capture" loading="lazy" />
+                        <img src={openHref} alt="Saved account capture" loading="lazy" />
                       </div>
                       <p><Link href={openHref}>Open account capture</Link></p>
                     </details>
                   ) : openHref === null ? (
-                    <p className="ls-caption">No recorded field link is available for this item.</p>
+                    <p className="ls-caption">This item has no captured field to open.</p>
                   ) : (
                     <Link href={openHref}>Open recorded page data</Link>
                   )}
-                  <details className="ls-disclosure">
-                    <summary>Technical details</summary>
-                    <div className="ls-disclosure__body">
-                      <dl className="ls-definition">
-                        <div><dt>Evidence ID</dt><dd className="ls-mono">{item.evidenceId}</dd></div>
-                        <div><dt>Object key</dt><dd className="ls-mono">{item.objectKey}</dd></div>
-                        <div><dt>Step</dt><dd className="ls-mono">{item.stepId ?? 'Not recorded'}</dd></div>
-                        <div><dt>Work Item</dt><dd className="ls-mono">{item.workItemId ?? 'Not recorded'}</dd></div>
-                        {item.digest === null ? null : <div><dt>Fingerprint</dt><dd><Digest as="span" label="Evidence" value={item.digest} /></dd></div>}
-                      </dl>
-                    </div>
-                  </details>
+                  <TechnicalDetails
+                    items={[
+                      { label: 'Evidence identifier', value: item.evidenceId, mono: true },
+                      { label: 'Object key', value: item.objectKey, mono: true },
+                      { label: 'Step', value: item.stepId ?? 'Not recorded', mono: true },
+                      { label: 'Work Item', value: item.workItemId ?? 'Not recorded', mono: true },
+                      ...(item.digest === null ? [] : [{ label: 'Digest', value: <Digest as="span" label="Evidence" value={item.digest} /> }]),
+                    ]}
+                  />
                 </li>
               );
             })}
@@ -575,7 +700,7 @@ export function RecordReviewInspector({
       {evaluationReview !== null && evaluationReview.evaluations.length > 0 ? (
         <section className="record-review__section" aria-labelledby="record-review-human-heading">
           <h3 id="record-review-human-heading">Human review</h3>
-          <p className="record-review__evidence-note">Opening evidence does not confirm an assessment. Any decision below is independently authorized and uses the current Result and review revision.</p>
+          <p className="record-review__evidence-note">Confirm or reject each proposal below. Your decision is recorded against your name.</p>
           <EvaluationReview
             runId={runId}
             result={evaluationReview.result}
@@ -592,8 +717,8 @@ export function RecordReviewInspector({
 
       <section className="record-review__section" aria-labelledby="record-review-history-heading">
         <h3 id="record-review-history-heading">History</h3>
-        <p>This inspector read the current selected-record projection at <time dateTime={selection.readAt}>{utcStamp(selection.readAt)}</time>. Opening a record does not mark it reviewed.</p>
-        {evaluationReview === null ? <p>Human review history is unavailable to the current role.</p> : <p>Any stored human review decision is shown above with the current Result state.</p>}
+        <p>Read <Timestamp value={selection.readAt} />. Opening a record does not mark it reviewed.</p>
+        {evaluationReview === null ? <p>Your role cannot see human review decisions.</p> : <p>Any review decision is shown above, with the current Result.</p>}
       </section>
 
       <section className="record-review__section record-review__inspector-actions" aria-label="Record actions">
@@ -606,38 +731,58 @@ export function RecordReviewInspector({
         {nextHref === null ? <span className="ls-caption">No other unresolved record on this page.</span> : <Link href={nextHref}>Next unresolved record</Link>}
       </section>
 
-      <details className="ls-disclosure">
-        <summary>Technical details</summary>
-        <div className="ls-disclosure__body">
-          <dl className="ls-definition">
-            <div><dt>Review list revision</dt><dd className="ls-mono">{page.revision}</dd></div>
-            <div><dt>Current detail revision</dt><dd className="ls-mono">{selection.revision}</dd></div>
-            <div><dt>Observation IDs</dt><dd className="ls-mono">{observations.map((observation) => observation.observationId).join(', ') || 'None'}</dd></div>
-          </dl>
-        </div>
-      </details>
+      <TechnicalDetails
+        items={[
+          { label: 'Review list revision', value: page.revision, mono: true },
+          { label: 'Current detail revision', value: selection.revision, mono: true },
+          { label: 'Observation identifiers', value: observations.map((observation) => observation.observationId).join(', ') || 'None', mono: true },
+        ]}
+      />
     </section>
   );
 }
 
-function CapturedTarget({ target, observation }: { readonly target: RecordReviewTarget; readonly observation: RunObservationRow | null }): React.JSX.Element {
+function CapturedTarget({ target, observation, masked }: {
+  readonly target: RecordReviewTarget;
+  readonly observation: RunObservationRow | null;
+  readonly masked: ReadonlySet<string>;
+}): React.JSX.Element {
+  // Captured attributes are named like source fields; one the binding designates
+  // sensitive is masked here exactly as it is in the source table (FR-41).
+  const captured = observation === null ? [] : observation.attributes.map((attribute) =>
+    `${fieldWords(attribute.name)}: ${masked.has(attribute.name) ? MASKED_VALUE : jsonValueText(attribute.originalValue)}`);
+  const failing = observation?.checks.filter((check) => check.outcome !== 'PASS' && check.diagnostic !== null) ?? [];
   return (
     <article className="record-review__captured-target">
       <header className="record-review__section-head">
-        <div><h4>{target.targetName}</h4><p className="ls-caption">{target.account === null ? 'Subject not recorded' : sourceText(target.account)}</p></div>
+        <div><h4>{target.targetName}</h4><p className="ls-caption">{target.account === null ? 'Account not recorded' : sourceText(target.account)}</p></div>
         <span className={`record-review__state ${targetStateClass(target.assessmentState)}`}>{targetStateWord(target.assessmentState)}</span>
       </header>
       <dl className="record-review__captured-facts">
         <div><dt>Captured status</dt><dd>{sourceText(target.capturedStatus)}</dd></div>
         <div><dt>Found</dt><dd>{targetFound(target.found)}</dd></div>
-        <div><dt>Evidence completeness</dt><dd>{target.evidenceProblem ? 'Problem recorded' : observation === null ? 'Not loaded' : 'No problem recorded'}</dd></div>
-        <div><dt>Observed</dt><dd>{observation === null ? 'Not recorded' : <time dateTime={observation.observedAt}>{utcStamp(observation.observedAt)}</time>}</dd></div>
+        <div><dt>Observed</dt><dd>{observation === null ? 'Not recorded' : <Timestamp value={observation.observedAt} />}</dd></div>
       </dl>
-      {observation !== null && observation.attributes.length > 0 ? <UntrustedList
-        field="captured fields"
-        values={observation.attributes.map(attribute => `${attribute.name.replaceAll('_', ' ')}: ${jsonValueText(attribute.originalValue)}`)}
-      /> : null}
-      {observation === null ? <p>No selected Observation was available for this target.</p> : null}
+      <h5 className="record-review__checks-heading">Evidence checks</h5>
+      {observation === null ? (
+        <p>Not checked yet: no Observation was recorded for this system.</p>
+      ) : observation.checks.length === 0 ? (
+        <p>No check was recorded for this Observation.</p>
+      ) : (
+        <ul className="record-review__checks">
+          {observation.checks.map((check) => (
+            <li key={check.check} className={check.outcome === 'PASS' ? 'record-review__check--passed' : 'record-review__check--failed'}>
+              {observationCheckWord(check.check)}: <strong>{observationCheckOutcomeWord(check.outcome)}</strong>
+            </li>
+          ))}
+        </ul>
+      )}
+      {captured.length > 0 ? <UntrustedList policy={false} field="captured fields" values={captured} /> : null}
+      {failing.length === 0 ? null : (
+        <TechnicalDetails
+          items={failing.map((check) => ({ label: `${observationCheckWord(check.check)} — recorded reason`, value: check.diagnostic!, mono: true }))}
+        />
+      )}
     </article>
   );
 }
@@ -667,18 +812,19 @@ function TargetAssessment({
             const origin = evaluation === null ? null : evaluationOriginWord(evaluation.origin, evaluation.confirmation);
             return (
               <li key={conditionId}>
-                <p>{conditions.get(conditionId) ?? 'Expected condition text is unavailable.'}</p>
+                <p>{conditions.get(conditionId) ?? 'The approved wording of this condition is not available.'}</p>
                 <dl className="record-review__condition-facts">
                   <div><dt>Assessment</dt><dd>{value ?? 'Not assessed'}</dd></div>
-                  <div><dt>Origin</dt><dd>{origin ?? 'Not recorded'}</dd></div>
-                  <div><dt>Evidence</dt><dd>{evaluation === null ? 'Not recorded' : 'Recorded in selected metadata'}</dd></div>
+                  <div><dt>Decided by</dt><dd>{origin ?? 'Not recorded'}</dd></div>
                 </dl>
-                {evaluation?.rationale === null || evaluation?.rationale === undefined ? null : (
-                  <p className="record-review__source-copy"><strong>Recorded explanation:</strong> {evaluation.rationale}</p>
-                )}
-                {evaluation?.diagnostic === null || evaluation?.diagnostic === undefined ? null : (
-                  <UntrustedText field="recorded assessment diagnostic">{evaluation.diagnostic}</UntrustedText>
-                )}
+                {/* A rationale is a model's or a person's words and a diagnostic can name a
+                    value a Target System served; neither is the platform's own prose. */}
+                {evaluation?.rationale ? (
+                  <UntrustedText field="recorded explanation" policy={false}>{evaluation.rationale}</UntrustedText>
+                ) : null}
+                {evaluation?.diagnostic ? (
+                  <UntrustedText field="recorded assessment diagnostic" policy={false}>{evaluation.diagnostic}</UntrustedText>
+                ) : null}
               </li>
             );
           })}
@@ -686,9 +832,4 @@ function TargetAssessment({
       )}
     </article>
   );
-}
-
-/** Compact labels for the summary measures, used by tests and future surfaces. */
-export function reviewCountsSummary(counts: RecordReviewCounts): string {
-  return `${countText(counts.sourceRows)} source rows · ${countText(counts.exceptionRecords)} records with exceptions · ${countText(counts.pendingAssessments)} pending assessments`;
 }

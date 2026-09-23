@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { isActiveRunState } from '@intellifin/domain';
-import { DrizzleFrozenExecutionReader, DrizzleRunDetailRepository, REPLAY_INSPECTION_PAGE_SIZE, REPLAY_PAGE_SIZE } from '@intellifin/infrastructure';
+import { DrizzleFrozenExecutionReader, DrizzleRunDetailRepository, REPLAY_INSPECTION_PAGE_SIZE, REPLAY_PAGE_SIZE, readRecordNames } from '@intellifin/infrastructure';
 
 import { getRuntime } from '../../../../src/bootstrap';
 import { Banner } from '../../../../src/design/Banner';
@@ -17,6 +17,7 @@ import { planActionWord, runLifecycleWord, workItemLabel } from '../../../../src
 import { StatusBadge } from '../../../../src/design/StatusBadge';
 import { frameNarration, plannedStepCount, stepNarration } from '../../../../src/runs/live-view';
 import { effectiveFrameWorkItemId, replayInitialSelection, replayJumpTargets, replayObservationsThrough, replayRequest, resolveFrameWorkItems } from '../../../../src/runs/replay';
+import { recordNaming, recordWords } from '../../../../src/runs/record-words';
 
 export const metadata: Metadata = { title: 'Run · Replay · IntelliFin Audit' };
 export const dynamic = 'force-dynamic';
@@ -107,12 +108,19 @@ export default async function RunReplayPage({
     const owner = selected.kind === 'inspection' ? selected.workItem : null;
     const system = owner === null ? null : plan?.inputs.targets
       .find(target => target.registrationId === owner.registrationId)?.displayName ?? null;
-    const label = owner === null ? null : workItemLabel({ ...owner, displayName: system ?? owner.displayName });
+    // The record as the queue, the inspector and the Exception name it (UX-25): the key,
+    // then the permitted name, each masked where the frozen binding says so.
+    const naming = recordNaming(plan);
+    const names = plan === null || owner === null || owner.subjectKey === null
+      ? new Map<string, string>()
+      : await readRecordNames(runtime.db, run.runId, plan, [owner.subjectKey]);
+    const subject = owner?.subjectKey == null ? null : recordWords({ key: owner.subjectKey, name: names.get(owner.subjectKey) ?? null }, naming);
+    const label = owner === null ? null : workItemLabel({ ...owner, subjectKey: subject, displayName: system ?? owner.displayName });
     const views: readonly ReplayFrameView[] = selected.kind === 'unavailable' ? [] : selected.rows.map(row => {
-      const narration = frameNarration(row.frame, row.step, system, owner?.subjectKey ?? null);
+      const narration = frameNarration(row.frame, row.step, system, subject);
       return {
         evidenceId: row.frame.evidenceId, narration, stepNarration: narration, workItemLabel: label,
-        workItemId: owner?.workItemId ?? null, subjectKey: owner?.subjectKey ?? null,
+        workItemId: owner?.workItemId ?? null, subjectKey: subject,
         sourceLocation: row.frame.sourceLocation, digest: row.frame.digest, capturedAt: row.frame.capturedAt,
         action: { action: row.action.action, method: row.action.method, destination: row.action.destination,
           outcome: row.action.outcome, status: row.action.status, denial: row.action.denial,
@@ -171,6 +179,15 @@ export default async function RunReplayPage({
     detail.readEvidenceItems(run.runId),
   ]);
   const digestByEvidence = new Map(evidence.map((item) => [item.evidenceId, item.digest]));
+  // ONE record label with the queue, the inspector and the Exception (UX-25). Every place
+  // below that names a record — a pill, the rail, the frame's narration — says this.
+  const naming = recordNaming(plan);
+  const names = plan === null ? new Map<string, string>() : await readRecordNames(runtime.db, run.runId, plan, [
+    ...timeline.workItems.flatMap((item) => (item.subjectKey === null ? [] : [item.subjectKey])),
+    ...exceptions.rows.map((row) => row.populationRecordKey),
+  ]);
+  const subjectLabel = (key: string | null): string | null =>
+    key === null ? null : recordWords({ key, name: names.get(key) ?? null }, naming);
 
   const targetName = (registrationId: string | null): string | null =>
     registrationId === null
@@ -189,8 +206,8 @@ export default async function RunReplayPage({
     const system = systemOf(workItemId);
     // The record, so the frame's `alt` and each scrubber pill's label can tell two Work
     // Items of the same Run apart. `system` is identical on both.
-    const subject = timeline.workItems
-      .find((item) => item.workItemId === workItemId)?.subjectKey ?? null;
+    const subject = subjectLabel(timeline.workItems
+      .find((item) => item.workItemId === workItemId)?.subjectKey ?? null);
     // The frame's `alt` and the rail's Step narration are the SAME string (UX-DR37): a
     // reader who cannot see the picture hears exactly what the picture is captioned with.
     const narration = frameNarration(frame, step, system, subject);
@@ -209,7 +226,7 @@ export default async function RunReplayPage({
       // reported no Work Item at all while the narration beside it named the system.
       workItemLabel: (() => {
         const owner = timeline.workItems.find((item) => item.workItemId === workItemId);
-        return owner === undefined ? null : workItemLabel(owner);
+        return owner === undefined ? null : workItemLabel({ ...owner, subjectKey: subjectLabel(owner.subjectKey) });
       })(),
       action: action === null ? null : {
         action: action.action,
@@ -229,11 +246,11 @@ export default async function RunReplayPage({
   const targets = replayJumpTargets({
     frames: resolveFrameWorkItems(frames.rows, timeline.stepExecutions.rows),
     framesTotal: frames.total,
-    workItems: timeline.workItems.map((item) => ({ workItemId: item.workItemId, displayName: item.displayName, subjectKey: item.subjectKey })),
+    workItems: timeline.workItems.map((item) => ({ workItemId: item.workItemId, displayName: item.displayName, subjectKey: subjectLabel(item.subjectKey) })),
     exceptions: exceptions.rows.map((row) => ({
       exceptionId: row.exceptionId,
       workItemId: row.workItemId,
-      populationRecordKey: row.populationRecordKey,
+      populationRecordKey: subjectLabel(row.populationRecordKey) ?? row.populationRecordKey,
     })),
     waits,
   });

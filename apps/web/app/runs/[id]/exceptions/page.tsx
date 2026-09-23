@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 
-import { adapterLookupColumn } from '@intellifin/domain';
-import { DrizzleProcedureRepository, DrizzleRunDetailRepository } from '@intellifin/infrastructure';
+import { DrizzleProcedureRepository, DrizzleRunDetailRepository, readRecordNames } from '@intellifin/infrastructure';
 
 import { getRuntime } from '../../../../src/bootstrap';
 import { EmptyState } from '../../../../src/design/EmptyState';
@@ -10,6 +9,7 @@ import { countNoun } from '../../../../src/design/words';
 import { ExceptionCard } from '../../../../src/runs/ExceptionList';
 import { UntrustedPolicy } from '../../../../src/runs/UntrustedText';
 import { RunDenied, RunDetailFrame, openRun } from '../../../../src/runs/detail';
+import { recordNaming } from '../../../../src/runs/record-words';
 
 export const metadata: Metadata = { title: 'Run · Exceptions · IntelliFin Audit' };
 export const dynamic = 'force-dynamic';
@@ -65,9 +65,13 @@ export default async function RunExceptionsPage({
   const targetSystemName = (registrationId: string): string | null =>
     plan?.inputs.targets.find((target) => target.registrationId === registrationId)?.displayName ?? null;
 
-  const lookupColumn = plan === null ? null : adapterLookupColumn(plan.inputs.templateId);
-  const sensitive = plan?.inputs.sourceSnapshot?.contract.sensitive_fields ?? [];
-  const masked = lookupColumn !== null && sensitive.includes(lookupColumn);
+  // ONE naming rule with the record queue and Replay (UX-25): the key, then the record's
+  // permitted name, each masked where the frozen binding designates it sensitive.
+  const naming = recordNaming(plan);
+  const masked = naming.keyMasked;
+  const names = plan === null
+    ? new Map<string, string>()
+    : await readRecordNames(runtime.db, run.runId, plan, exceptions.rows.map((row) => row.populationRecordKey));
 
   return (
     <RunDetailFrame run={run} tab="exceptions" readAt={readAt}>
@@ -100,6 +104,8 @@ export default async function RunExceptionsPage({
                 targetSystemName={targetSystemName(exception.targetSystem)}
                 runId={run.runId}
                 masked={masked}
+                recordName={names.get(exception.populationRecordKey) ?? null}
+                naming={naming}
               />
             ))}
           </ul>

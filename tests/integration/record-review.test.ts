@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  bindingDigest,
+  bindingDigestEnvelope,
   observationDigest,
   observationIdFor,
   POPULATION_CHECK_NAMES,
@@ -37,6 +39,7 @@ import {
 } from '@intellifin/infrastructure';
 import {
   PostgresRecordReviewRepository,
+  readRecordNames,
 } from '../../packages/infrastructure/src/runs/record-review-repository.js';
 import { activeRunVersion } from '../fixtures/active-run-version.js';
 import { executablePlanInputs } from '../fixtures/executable-plan.js';
@@ -828,6 +831,7 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
     expect(selection.row.sourceOrdinal).toBe(1);
     expect(selection.sourceValues).toEqual(seeded.sourceValues.get(1));
     expect(selection.sourceValues.parameter).toBe('Param-0001');
+    expect(selection.maskedFields).toEqual([]);
     expect(selection.conditions).toEqual(seeded.plan.inputs.complianceConditions.map(condition => ({ conditionId: condition.conditionId, text: condition.text })));
     expect(selection.scope).toBe(seeded.plan.inputs.scope);
     expect(selection.changedSinceList).toBe(false);
@@ -840,6 +844,129 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
     expect(otherRunSelection).toMatchObject({ status: 'ready', sourceValues: { parameter: 'OTHER-RUN-ONLY' }, row: { sourceOrdinal: 1 } });
     expect((otherRunSelection as { sourceValues?: Record<string, JsonValue> }).sourceValues?.parameter).not.toBe('Param-0001');
     expect(await repository().readSelection({ runId: seeded.otherRunId, actorId: seeded.actorId, sourceOrdinal: 1000 })).toEqual({ status: 'missing' });
+  });
+
+  it('lists Exceptions first, then records waiting on a person, each in source order (UX-22)', async () => {
+    // The seed's Exception is source row 1 and its pending assessment is row 2, so source
+    // order alone would already put them first. A second Exception at row 101 is what shows
+    // the queue ORDERS by what needs attention rather than merely starting where it does.
+    await addSecondaryObservation(101, 'EXCEPTION');
+    const first = await repository().readPage({ runId: seeded.runId, actorId: seeded.actorId, pageSize: 25 });
+    expect(first.status).toBe('ready');
+    if (first.status !== 'ready') return;
+    expect(first.filteredRows).toBe(1000);
+    expect(first.counts.exceptionRecords).toBe(2);
+    expect(first.rows.map(row => row.sourceOrdinal)).toEqual([1, 101, 2, ...Array.from({ length: 22 }, (_, index) => index + 3)]);
+
+    // The order is decided when the snapshot is written, so the next page continues in
+    // source order and never repeats a record that moved to the front.
+    const second = await repository().readPage({ runId: seeded.runId, actorId: seeded.actorId, cursor: first.nextCursor!, pageSize: 25 });
+    expect(second.status).toBe('ready');
+    if (second.status !== 'ready') return;
+    expect(second.rows.map(row => row.sourceOrdinal)).toEqual(Array.from({ length: 25 }, (_, index) => index + 25));
+
+    const exceptions = await repository().readPage({ runId: seeded.runId, actorId: seeded.actorId, filter: 'exceptions', pageSize: 25 });
+    expect(exceptions).toMatchObject({ status: 'ready', filteredRows: 2 });
+    if (exceptions.status === 'ready') expect(exceptions.rows.map(row => row.sourceOrdinal)).toEqual([1, 101]);
+  });
+
+  it('never stores, searches or returns a field the frozen binding designates sensitive (FR-41, UX-25)', async () => {
+    const masked = await seedMaskedRun();
+    try {
+      const page = await repository().readPage({ runId: masked.runId, actorId: seeded.actorId, pageSize: 25 });
+      expect(page.status).toBe('ready');
+      if (page.status !== 'ready') return;
+      expect(page.rows.map(row => row.sourceOrdinal)).toEqual([1, 2]);
+      // The observed account is not sensitive and is shown; the captured status is, and is
+      // withheld from the row altogether rather than stored and hidden later.
+      expect(page.rows[0]!.targets[0]).toMatchObject({ account: 'ACC-1', capturedStatus: null });
+      const stored = await sql`SELECT r.row::text AS row FROM run_review_snapshot_row r
+        JOIN run_review_snapshot s ON s.snapshot_id=r.snapshot_id WHERE s.run_id=${masked.runId}`;
+      expect(stored.length).toBe(2);
+      expect(stored.some(entry => String(entry.row).includes('SECRET-STATUS'))).toBe(false);
+      expect(stored.some(entry => String(entry.row).includes('SECRET-APPROVED'))).toBe(false);
+
+      // A masked KEY is still the row's identity, but typing it finds nothing, so a search
+      // cannot probe whether a masked record exists. Non-sensitive text is still searchable.
+      const byKey = await repository().readPage({ runId: masked.runId, actorId: seeded.actorId, search: 'secret-0001' });
+      expect(byKey).toMatchObject({ status: 'ready', filteredRows: 0, rows: [] });
+      const byStatus = await repository().readPage({ runId: masked.runId, actorId: seeded.actorId, search: 'secret-status' });
+      expect(byStatus).toMatchObject({ status: 'ready', filteredRows: 0, rows: [] });
+      const byAccount = await repository().readPage({ runId: masked.runId, actorId: seeded.actorId, search: 'acc-1' });
+      expect(byAccount).toMatchObject({ status: 'ready', filteredRows: 1, rows: [{ sourceOrdinal: 1 }] });
+
+      const selection = await repository().readSelection({ runId: masked.runId, actorId: seeded.actorId, sourceOrdinal: 1 });
+      expect(selection).toMatchObject({ status: 'ready', maskedFields: ['approved_value', 'parameter', 'status'] });
+      if (selection.status !== 'ready') return;
+      expect(selection.sourceValues).toEqual({
+        parameter: null,
+        observed_value: 'enabled',
+        approved_value: null,
+        observation_time: '2026-09-05T10:00:00.000Z',
+        status: null,
+        account_id: 'ACC-1',
+      });
+      expect(selection.row.targets[0]).toMatchObject({ account: 'ACC-1', capturedStatus: null });
+    } finally {
+      await masked.cleanup();
+    }
+  });
+
+  it('names a record by its frozen name column only when the binding permits it and the key is unique (UX-25)', async () => {
+    const runId = ids.next();
+    await insertRun(runId, seeded.procedureId, seeded.versionId, seeded.actorId, '2026-09-19T12:00:00.000Z', '2026-10-01', '2026-10-31');
+    try {
+      const people: Record<string, JsonValue>[] = [
+        { employee_id: 'E-000101', full_name: 'Dana Leaver' },
+        { employee_id: 'E-000102', full_name: '   ' },
+        { employee_id: 'E-000103', full_name: 'First Person' },
+        { employee_id: 'E-000103', full_name: 'Second Person' },
+        { employee_id: 'E-000104', full_name: 42 },
+        { employee_id: 'E-000105' },
+      ];
+      await db.insert(populationSnapshot).values({
+        runId,
+        included: people.length,
+        excluded: 0,
+        indeterminate: 0,
+        rowsDigest: null,
+        checks: POPULATION_CHECK_NAMES.map(name => ({ name, passed: true })),
+        generatedAt: new Date('2026-09-01T00:00:00.000Z'),
+        declaredCount: people.length,
+        retrievedCount: people.length,
+      });
+      await db.insert(populationRow).values(people.map((values, index) => ({
+        runId, ordinal: index + 1, values, disposition: 'included' as const, reasons: [] as string[],
+      })));
+
+      const keys = ['E-000101', 'E-000102', 'E-000103', 'E-000104', 'E-000105', 'E-404404'];
+      const p1: ExecutablePlan = { ...seeded.plan, inputs: { ...seeded.plan.inputs, templateId: 'P-1' } };
+      // Only the unique key with a real name is answered: a blank name, a duplicated key,
+      // a non-text value, a missing value and an unknown key all leave the key alone.
+      expect([...(await readRecordNames(db, runId, p1, keys))]).toEqual([['E-000101', 'Dana Leaver']]);
+
+      const sensitiveSource = {
+        kind: 'versioned-file' as const,
+        location: 'https://synthetic.invalid/leavers.csv',
+        declaredSchema: ['employee_id', 'full_name'],
+        sensitiveFields: ['full_name'],
+        declaredCountMechanism: 'cover-sheet' as const,
+      };
+      const maskedName: ExecutablePlan = { ...p1, inputs: { ...p1.inputs, sourceSnapshot: {
+        bindingId: ids.next(), displayName: 'Leavers', digest: bindingDigest(sensitiveSource), contract: bindingDigestEnvelope(sensitiveSource),
+      } } };
+      expect((await readRecordNames(db, runId, maskedName, keys)).size).toBe(0);
+      // A Template whose frozen lookup declares no name column names nobody, and another
+      // Run's population is never read.
+      expect((await readRecordNames(db, runId, seeded.plan, keys)).size).toBe(0);
+      expect((await readRecordNames(db, seeded.runId, p1, keys)).size).toBe(0);
+    } finally {
+      await sql`DELETE FROM population_row WHERE run_id=${runId}`;
+      await sql`DELETE FROM population_snapshot WHERE run_id=${runId}`;
+      await sql`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
+      await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
+      await sql`DELETE FROM audit_run WHERE run_id=${runId}`;
+    }
   });
 
   it('proves the production projection query with PostgreSQL EXPLAIN ANALYZE', async () => {
@@ -1044,7 +1171,7 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
     };
   }
 
-  async function addSecondaryObservation(ordinal: number): Promise<void> {
+  async function addSecondaryObservation(ordinal: number, value: 'COMPLIANT' | 'EXCEPTION' = 'COMPLIANT'): Promise<void> {
     const values = seeded.sourceValues.get(ordinal)!;
     const key = values.parameter as string;
     const record = observation({
@@ -1058,7 +1185,8 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
     });
     const checks: ObservationCheckRow[] = CHECKS.map(check => ({ observationId: record.observationId, check, outcome: 'PASS', diagnostic: null }));
     const evaluation: ObservationEvaluationRow = { observationId: record.observationId, coverage: 'COVERED', corroboration: 'MATCHED', evaluation: {
-      conditionId: 'C1', origin: 'RULE', value: 'COMPLIANT', confirmation: null, confidence: null, rationale: null, diagnostic: null, evidenceIds: [seeded.secondaryEvidenceId],
+      conditionId: 'C1', origin: 'RULE', value, confirmation: null, confidence: null,
+      rationale: value === 'EXCEPTION' ? 'Synthetic deviation' : null, diagnostic: null, evidenceIds: [seeded.secondaryEvidenceId],
     }};
     await new PostgresAgentWorkRepository(db).transaction(seeded.runId, async context => {
       await context.saveObservations([{ record, digest: observationDigest(record), coverage: 'COVERED', corroboration: 'MATCHED', observedAtSource: record.observedAt }]);
@@ -1066,6 +1194,114 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
       await context.saveObservationEvaluations([evaluation]);
       await context.saveWorkItem({ workItemId: seeded.secondaryWorkItemId, subjectKey: null, stepId: inspectStep(seeded.plan, seeded.secondaryTarget.registrationId), ordinal: 2, registrationId: seeded.secondaryTarget.registrationId, displayName: seeded.secondaryTarget.displayName, state: 'OBSERVED', attempts: 1, cycles: 0, diagnostic: null, evidenceId: seeded.secondaryEvidenceId, observations: 98 });
     });
+  }
+
+  /**
+   * A P-4 Run whose frozen binding designates the record key, the approved value and the
+   * captured status sensitive. Row 1 is inspected, with a non-sensitive `account_id` and a
+   * sensitive `status` among its captured attributes; row 2 is not inspected.
+   */
+  async function seedMaskedRun(): Promise<{ runId: string; cleanup(): Promise<void> }> {
+    const procedureId = ids.next();
+    const versionId = ids.next();
+    const runId = ids.next();
+    const workItemId = ids.next();
+    const stepExecutionId = ids.next();
+    const evidenceId = ids.next();
+    const source = {
+      kind: 'versioned-file' as const,
+      location: 'https://synthetic.invalid/masked-baseline.csv',
+      declaredSchema: ['parameter', 'observed_value', 'approved_value', 'observation_time', 'status', 'account_id'],
+      sensitiveFields: ['parameter', 'approved_value', 'status'],
+      declaredCountMechanism: 'cover-sheet' as const,
+    };
+    const inputs = {
+      ...executablePlanInputs(),
+      sourceSnapshot: { bindingId: ids.next(), displayName: 'Masked baseline', digest: bindingDigest(source), contract: bindingDigestEnvelope(source) },
+    };
+    const version = activeRunVersion(procedureId, versionId, seeded.actorId, inputs);
+    await new PostgresProceduresUnitOfWork(db).execute(async context => {
+      await context.procedures.insertProcedure(version);
+      await context.procedures.insertVersion(version);
+    });
+    const plan = version.compiledPlan!;
+    const target = plan.inputs.targets[0]!;
+    const cleanup = async () => {
+      await sql`DELETE FROM run_review_snapshot WHERE run_id=${runId}`;
+      await sql`DELETE FROM run_observation_check WHERE run_id=${runId}`;
+      await sql`DELETE FROM run_observation_evaluation WHERE run_id=${runId}`;
+      await sql`DELETE FROM run_observation_absence WHERE run_id=${runId}`;
+      await sql`DELETE FROM run_observation WHERE run_id=${runId}`;
+      await sql`DELETE FROM run_evidence_capture WHERE run_id=${runId}`;
+      await sql`DELETE FROM run_tool_action WHERE run_id=${runId}`;
+      await sql`DELETE FROM run_step_execution WHERE run_id=${runId}`;
+      await sql`DELETE FROM run_work_item WHERE run_id=${runId}`;
+      await sql`DELETE FROM run_evidence WHERE run_id=${runId}`;
+      await sql`DELETE FROM population_row WHERE run_id=${runId}`;
+      await sql`DELETE FROM population_snapshot WHERE run_id=${runId}`;
+      await sql`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
+      await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
+      await sql`DELETE FROM audit_run WHERE run_id=${runId}`;
+      await sql`DELETE FROM procedure_version WHERE procedure_id=${procedureId}`;
+      await sql`DELETE FROM procedure WHERE procedure_id=${procedureId}`;
+    };
+    try {
+      await insertRun(runId, procedureId, versionId, seeded.actorId, '2026-09-19T12:00:00.000Z', '2026-08-01', '2026-08-31');
+      await db.insert(populationSnapshot).values({
+        runId,
+        included: 2,
+        excluded: 0,
+        indeterminate: 0,
+        rowsDigest: null,
+        checks: POPULATION_CHECK_NAMES.map(name => ({ name, passed: true })),
+        generatedAt: new Date('2026-09-01T00:00:00.000Z'),
+        declaredCount: 2,
+        retrievedCount: 2,
+      });
+      await db.insert(populationRow).values([1, 2].map(ordinal => ({
+        runId,
+        ordinal,
+        values: {
+          parameter: `Secret-000${ordinal}`,
+          observed_value: 'enabled',
+          approved_value: 'SECRET-APPROVED',
+          observation_time: '2026-09-05T10:00:00.000Z',
+          status: 'SECRET-STATUS',
+          account_id: `ACC-${ordinal}`,
+        },
+        disposition: 'included' as const,
+        reasons: [] as string[],
+      })));
+
+      const at = '2026-09-05T10:00:00.000Z';
+      const stepId = inspectStep(plan, target.registrationId);
+      const toolAction = action({ runId, workItemId, stepExecutionId, toolActionId: ids.next(), targetSystem: target.registrationId, at });
+      const captured = observation({ runId, target, workItemId, stepExecutionId, key: 'Secret-0001', ordinal: 1, evidenceId });
+      const record: ObservationRecord = {
+        ...captured,
+        attributes: [
+          ...captured.attributes,
+          attribute('account_id', 'ACC-1', evidenceId, '$.parameters[1].account_id'),
+          attribute('status', 'SECRET-STATUS', evidenceId, '$.parameters[1].status'),
+        ],
+      };
+      await new PostgresAgentWorkRepository(db).transaction(runId, async context => {
+        await context.saveEvidence(evidence({ evidenceId, runId, target, objectKey: `record-review/${runId}/masked`, at }));
+        await context.saveWorkItem({ workItemId, subjectKey: null, stepId, ordinal: 1, registrationId: target.registrationId, displayName: target.displayName, state: 'OBSERVED', attempts: 1, cycles: 0, diagnostic: null, evidenceId, observations: 1 });
+        await context.saveStepExecution({ stepExecutionId, planStepId: stepId, workItemId, action: 'inspect-record', state: 'SUCCEEDED', attempt: 1, startedAt: at, completedAt: at, diagnostic: null });
+        await context.saveToolAction(toolAction);
+        await context.saveCapture({ evidenceId, toolActionId: toolAction.toolActionId, sourceLocation: toolAction.destination });
+        await context.saveObservations([{ record, digest: observationDigest(record), coverage: 'COVERED', corroboration: 'MATCHED', observedAtSource: record.observedAt }]);
+        await context.saveObservationChecks(CHECKS.map(check => ({ observationId: record.observationId, check, outcome: 'PASS', diagnostic: null })));
+        await context.saveObservationEvaluations([{ observationId: record.observationId, coverage: 'COVERED', corroboration: 'MATCHED', evaluation: {
+          conditionId: 'C1', origin: 'RULE', value: 'COMPLIANT', confirmation: null, confidence: null, rationale: null, diagnostic: null, evidenceIds: [evidenceId],
+        } }]);
+      });
+    } catch (error) {
+      await cleanup();
+      throw error;
+    }
+    return { runId, cleanup };
   }
 
   async function seedReferenceOnlyRun(): Promise<ReferenceOnlyReviewRun> {

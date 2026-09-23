@@ -11,6 +11,7 @@ import type {
 import { authorizeActionRole } from '@intellifin/domain';
 import {
   DrizzleActorNameReader,
+  DrizzleFrozenExecutionReader,
   DrizzleRoleRepository,
   DrizzleRunDetailRepository,
   PostgresEvaluationReviewRepository,
@@ -24,6 +25,7 @@ import {
 import { getRuntime } from '../../../../src/bootstrap';
 import { Banner } from '../../../../src/design/Banner';
 import {
+  firstReviewOrdinal,
   normalizeRecordReviewNavigation,
   recordReviewHref,
   RecordReviewInspector,
@@ -32,6 +34,7 @@ import {
   type SelectedEvaluationReviewRead,
 } from '../../../../src/runs/RecordReview';
 import { RunDenied, RunDetailFrame, openRun } from '../../../../src/runs/detail';
+import { recordNaming } from '../../../../src/runs/record-words';
 import { currentIdentity, requireServerAction } from '../../../../src/server-session';
 
 export const metadata: Metadata = { title: 'Run · Record review · IntelliFin Audit' };
@@ -185,6 +188,9 @@ export default async function RunEvidencePage({
   });
   const runtime = await getRuntime();
   const repository = new PostgresRecordReviewRepository(runtime.db);
+  // How a record is named and what the frozen binding masks (UX-25, FR-41): read from
+  // the version this Run executed, never from the binding as it stands today.
+  const naming = recordNaming(await new DrizzleFrozenExecutionReader(runtime.db).readFrozenExecution(run.versionId, run.procedureId));
   const pageResult = await repository.readPage({
     runId: run.runId,
     actorId: identity.session.userId,
@@ -214,15 +220,19 @@ export default async function RunEvidencePage({
   }
   const listNavigation: RecordReviewNavigation = { ...navigation, cursor: pageResult.cursor };
 
+  // A reader who arrives without choosing a record meets the first finding rather than an
+  // empty inspector (UX-22). Their links still carry only what THEY chose, so paging or
+  // filtering does not pin this default into the URL.
+  const selectedOrdinal = navigation.selected ?? firstReviewOrdinal(pageResult.rows);
   let selected: SelectedRecordRead | null = null;
-  if (navigation.selected !== null) {
+  if (selectedOrdinal !== null) {
     const reviewDecision = await requireServerAction('evaluation.confirm');
     selected = await readSelectedRecord(
       repository,
       {
         runId: run.runId,
         actorId: identity.session.userId,
-        sourceOrdinal: navigation.selected,
+        sourceOrdinal: selectedOrdinal,
         listedRevision: pageResult.revision,
       },
       reviewDecision.allowed,
@@ -232,7 +242,7 @@ export default async function RunEvidencePage({
   return (
     <RunDetailFrame run={run} tab="evidence" readAt={readAt} compact>
       <div className="record-review__layout">
-        <RecordReviewQueue runId={run.runId} page={pageResult} navigation={listNavigation} />
+        <RecordReviewQueue runId={run.runId} page={pageResult} navigation={listNavigation} naming={naming} selectedOrdinal={selectedOrdinal} />
         <RecordReviewInspector
           runId={run.runId}
           selection={selected?.status === 'ready' ? selected.selection : null}
@@ -243,6 +253,7 @@ export default async function RunEvidencePage({
           evaluationReview={selected?.status === 'ready' ? selected.detail.evaluationReview : null}
           navigation={listNavigation}
           page={pageResult}
+          naming={naming}
         />
       </div>
     </RunDetailFrame>

@@ -5,6 +5,7 @@ import {
   snapshotSubstrateForMediaType,
   type EvaluationOrigin,
   type EvaluationValue,
+  type ObservationCheckName,
   type RunState,
   type SnapshotSubstrate,
   type SystemOutcome,
@@ -443,4 +444,32 @@ export function workItemLabel(item: {
   readonly subjectKey: string | null;
 }): string {
   return item.subjectKey === null ? item.displayName : `${item.subjectKey} · ${item.displayName}`;
+}
+
+/**
+ * What each per-record evidence check asked, in words (UX-26).
+ *
+ * The record inspector used to say "No problem recorded" and "Recorded in selected
+ * metadata", which name no check and cannot be told apart from a check that never ran.
+ * Typed against the domain's own union, so a check added there without words here does
+ * not compile; a stored name this build does not know is shown as itself, never dropped.
+ */
+export const OBSERVATION_CHECK_WORDS: Readonly<Record<ObservationCheckName, string>> = {
+  'identity-corroboration': 'The record found is the one searched for',
+  'search-completeness': 'The search looked everywhere it had to',
+  'ambiguous-match': 'Exactly one record matched',
+  'required-evidence': 'All required evidence was captured',
+  freshness: 'The data was current for the audit period',
+  'observation-corroboration': 'Captured values match the saved page',
+};
+
+export function observationCheckWord(check: string): string {
+  return Object.hasOwn(OBSERVATION_CHECK_WORDS, check)
+    ? OBSERVATION_CHECK_WORDS[check as ObservationCheckName]
+    : check;
+}
+
+/** A check's result, never a code: a failure says so, and so does a pass. */
+export function observationCheckOutcomeWord(outcome: string): string {
+  return outcome === 'PASS' ? 'Passed' : outcome === 'FAIL' ? 'Failed' : 'Not recorded';
 }
