@@ -9,6 +9,7 @@ import { createSqlClient } from '@intellifin/infrastructure';
 import { AUTH_STATE, assertThrowawayDatabase } from './accounts';
 import { LOANCORE_TOKEN, READ_ONLY_CREDENTIAL } from './credentials';
 import { NORTHSTAR_BASE_URL, READ_ONLY_RULE, UNREACHABLE_BASE_URL } from './northstar';
+import { CONNECTION_CHECK_NOT_RUN } from '../../apps/web/src/admin/administration-words';
 
 /**
  * The synthetic Northstar systems, end to end (Story 1.8, FR-3, FR-8, AD-10).
@@ -240,10 +241,11 @@ test.describe('the probe entry point', () => {
     await registerSystem(page, unreachableName, `${UNREACHABLE_BASE_URL}/nothing`);
 
     // Before the probe, both say so in words. A dash or an empty cell is something a
-    // reader takes for "fine".
+    // reader takes for "fine". The Systems table says it as the connection check's own
+    // state since the UI cleanup (UX-44), which keeps it apart from audit activity.
     await page.reload();
     for (const name of [reachableName, unreachableName]) {
-      await expect(page.getByRole('row', { name: new RegExp(name) })).toContainText('Never probed');
+      await expect(page.getByRole('row', { name: new RegExp(name) })).toContainText(CONNECTION_CHECK_NOT_RUN);
     }
 
     // The entry point, started as its own process — which is the whole design. Nothing
@@ -266,14 +268,14 @@ test.describe('the probe entry point', () => {
     await page.reload();
     const reachableRow = page.getByRole('row', { name: new RegExp(reachableName) });
     await expect(reachableRow).toContainText('Reachable');
-    await expect(reachableRow).not.toContainText('Never probed');
+    await expect(reachableRow).not.toContainText(CONNECTION_CHECK_NOT_RUN);
     // The observation carries when it was made, in UTC, so "reachable" is a statement
     // about a moment rather than a standing claim.
     await expect(reachableRow).toContainText('UTC');
 
     const unreachableRow = page.getByRole('row', { name: new RegExp(unreachableName) });
     await expect(unreachableRow).toContainText('Unreachable');
-    await expect(unreachableRow).not.toContainText('Never probed');
+    await expect(unreachableRow).not.toContainText(CONNECTION_CHECK_NOT_RUN);
   });
 
   test('records what it saw and nothing about what it read', async () => {
