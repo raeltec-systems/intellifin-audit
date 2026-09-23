@@ -171,6 +171,17 @@ a {
    * every control the moment it takes focus. */
 }
 
+/* A date or time field has keyboard stops INSIDE it: Tab visits each segment (day,
+ * month, year; hour, minute) and then the browser's own calendar or clock button. At that
+ * last stop Chromium matches neither `:focus` nor `:focus-visible` on the input — only
+ * `:focus-within` — so the one rule above drew no ring there, on the Run period, the
+ * Draft period and the Schedule's start time. `:focus-within` covers every stop inside
+ * the field; the segments already matched `:focus-visible`, so they look the same. */
+input:is([type='date'], [type='time'], [type='datetime-local'], [type='month'], [type='week']):focus-within {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
 /* The ring is the same #0F766E on the navy sidebar, where teal-700 alone would sit at
  * 2.7:1 against the ground.
  *

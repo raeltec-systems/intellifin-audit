@@ -14,14 +14,15 @@ import {
 } from '@intellifin/infrastructure';
 
 import { activeRunVersion } from '../fixtures/active-run-version';
-import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
+import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase, signIn } from './accounts';
 
 /**
  * The UI cleanup's release checks (package 7 of the 21 September 2026 plan).
  *
- * Every ordinary surface, as each role, at the two laptop sizes the plan names: no
- * page-level horizontal scrolling, a level-one heading, no WCAG 2.1 AA violation, and a
- * screenshot per state so the before/after can be read by a person. The seed is the
+ * Every ordinary surface, as each of the three roles, at the two laptop sizes the plan
+ * names: no page-level horizontal scrolling, a level-one heading, no WCAG 2.1 AA violation,
+ * a keyboard walk whose stops are sized, on screen and ringed, and a screenshot per state
+ * so the before/after can be read by a person. The seed is the
  * `run-surfaces.spec.ts` shape — one Active Procedure, a Completed Run with a finding and
  * an Inconclusive one — because those are the surfaces the walkthrough measured.
  *
@@ -74,6 +75,48 @@ async function checkSurface(page: Page, route: string, slug: string, role: strin
   mkdirSync(SHOTS, { recursive: true });
   await page.screenshot({ path: path.join(SHOTS, `${role}-${slug}-${viewport.width}x${viewport.height}.png`), fullPage: false });
   await scan(page);
+  await keyboardWalk(page, route, viewport);
+}
+
+/**
+ * The first stops a keyboard user meets, from the top of the page. Each one has to be a
+ * real, sized element, inside the viewport's width once the browser has scrolled it into
+ * view, and drawn with a focus ring. The first stop is the skip link, because the shell
+ * promises one. A page with fewer stops ends the walk when focus leaves the document, or
+ * reaches the development server's overlay, which is not part of the product.
+ */
+const KEYBOARD_STOPS = 14;
+
+async function keyboardWalk(page: Page, route: string, viewport: { width: number; height: number }): Promise<void> {
+  await page.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    window.scrollTo(0, 0);
+  });
+  for (let stop = 1; stop <= KEYBOARD_STOPS; stop += 1) {
+    await page.keyboard.press('Tab');
+    const focus = await page.evaluate(() => {
+      const element = document.activeElement;
+      if (element === null || element === document.body || element === document.documentElement) return null;
+      // `next dev`'s own overlay is appended after the page and is not the product: reaching
+      // it means every stop the page itself offers has been walked.
+      if (element.tagName.toLowerCase() === 'nextjs-portal') return null;
+      const box = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        name: `${element.tagName.toLowerCase()}${element.id === '' ? '' : `#${element.id}`}${element.getAttribute('type') === null ? '' : `[type=${element.getAttribute('type')}]`} "${(element.getAttribute('aria-label') ?? element.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 48)}"${element.matches(':focus-visible') ? '' : ' (not :focus-visible)'} outline=${style.outlineStyle} ${style.outlineWidth}`,
+        left: box.left,
+        right: box.right,
+        area: box.width * box.height,
+        ring: style.outlineStyle !== 'none' && Number.parseFloat(style.outlineWidth) > 0,
+      };
+    });
+    if (focus === null) break;
+    if (stop === 1) expect(focus.name, `${route}: the first Tab stop is the skip link`).toContain('Skip to content');
+    expect(focus.area, `${route}: Tab stop ${stop} (${focus.name}) has no size`).toBeGreaterThan(0);
+    expect(focus.left, `${route}: Tab stop ${stop} (${focus.name}) starts left of the viewport`).toBeGreaterThanOrEqual(-1);
+    expect(focus.right, `${route}: Tab stop ${stop} (${focus.name}) ends past the viewport`).toBeLessThanOrEqual(viewport.width + 1);
+    expect(focus.ring, `${route}: Tab stop ${stop} (${focus.name}) shows no focus ring`).toBe(true);
+  }
 }
 
 test.beforeAll(async () => {
@@ -201,6 +244,31 @@ for (const viewport of VIEWPORTS) {
           ['/administration/registrations', 'systems'],
         ] as const) {
           await checkSurface(page, route, slug, 'administrator', viewport);
+        }
+      });
+    });
+
+    test.describe('as an Audit Manager', () => {
+      // No saved state for this role: `auth.setup.ts` signs in two roles, and the manager
+      // signs in here through the real form. Required, never skipped — a skipped role
+      // would read as a checked one.
+      test.use({ storageState: { cookies: [], origins: [] } });
+
+      test('the review and approval surfaces fit the viewport and pass the accessibility gate', async ({ page }) => {
+        test.setTimeout(180_000);
+        const managerEmail = process.env['E2E_MANAGER_EMAIL'];
+        if (!managerEmail) throw new Error('E2E_MANAGER_EMAIL is required for the Audit Manager layout checks.');
+        await signIn(page, managerEmail);
+        for (const [route, slug] of [
+          ['/', 'overview'],
+          ['/review', 'reviews'],
+          ['/review/results', 'reviews-results'],
+          [`/procedures/${procedureId}/versions/${versionId}`, 'version-review'],
+          ['/runs', 'runs'],
+          [`/runs/${runs.completed}`, 'run-result'],
+          ['/notifications', 'notifications'],
+        ] as const) {
+          await checkSurface(page, route, slug, 'manager', viewport);
         }
       });
     });

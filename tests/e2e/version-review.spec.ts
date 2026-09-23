@@ -67,9 +67,9 @@ test('P-1 authored Builder → actual worker/SDK HTTP → submitted review → r
     await sql`INSERT INTO auth_user(id,name,email,email_verified) VALUES (${managerId},'Synthetic Audit Manager',${email},true)`;
     await sql`INSERT INTO auth_account(id,issuer,account_id,provider_id,user_id,password) SELECT ${ids.next()},issuer,${managerId},provider_id,${managerId},password FROM auth_account WHERE user_id = (SELECT id FROM auth_user WHERE email = ${ACCOUNTS.auditor.email}) AND provider_id = 'credential'`;
     await sql`INSERT INTO user_role(user_id,role) VALUES (${managerId},'audit-manager')`;
-    await page.goto('/procedures/new'); await page.getByLabel('Template', { exact: true }).selectOption('P-1'); await page.getByLabel('Control name', { exact: true }).fill(controlName); await confirmed(page,'Create Procedure');
-    await expect(page).toHaveURL(/\/builder$/); procedureId = page.url().split('/').at(-2)!;
-    const submit = page.getByRole('button', { name: 'Submit for approval', exact: true }); await expect(submit).toBeDisabled(); await expect(submit).toHaveAccessibleDescription(/Choose a Population Source/);
+    await page.goto('/procedures/new'); await page.getByLabel('Template', { exact: true }).selectOption('P-1'); await page.getByLabel('Procedure name', { exact: true }).fill(controlName); await page.getByRole('button', { name: 'Create Procedure', exact: true }).click();
+    await expect(page).toHaveURL(/\/builder(\?created=1)?$/); procedureId = new URL(page.url()).pathname.split('/').at(-2)!;
+    const submit = page.getByRole('button', { name: 'Submit for approval', exact: true }); await expect(submit).toBeDisabled(); await expect(submit).toHaveAccessibleDescription(/Choose where the records come from/);
     await page.getByLabel('Period start').fill('2026-08-01'); await page.getByLabel('Period end').fill('2026-08-31'); await page.getByLabel('Scope statement').fill('All terminated employees in the Finance department.'); await save(page,'Save Period and scope'); await expect(page.getByRole('button',{name:'Save Period and scope',exact:true})).toBeEnabled(); await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.').first()).toBeVisible();
     await page.getByLabel('Where the records come from').selectOption(sourceId);
     await page.getByRole('button', { name: 'Add a filter', exact: true }).click();
@@ -243,7 +243,7 @@ test('Submit respects every local editor, confirmation rechecks, pending/unknown
       ['Compliance Rule',()=>page.getByLabel('How certain the agent must be',{exact:true}).fill('0.99')],
       ['Evidence Requirements',()=>page.getByRole('button',{name:'Add an evidence item',exact:true}).click()],
       ['Schedule',()=>page.getByLabel('Start time (UTC)').fill('03:45')],
-      ['Control name',()=>page.getByLabel('New Control name').fill('Unsaved Control name')],
+      ['Procedure name',()=>page.getByLabel('New Procedure name').fill('Unsaved Procedure name')],
     ];
     for(const [name,edit] of edits) {
       await edit(); await expect(submit).toBeDisabled(); await expect(submit).toHaveAccessibleDescription(new RegExp(`unsaved changes in ${name}`));
@@ -258,10 +258,10 @@ test('Submit respects every local editor, confirmation rechecks, pending/unknown
     await page.keyboard.press('Escape'); await page.getByRole('button',{name:'Use saved Period and scope',exact:true}).click();
     let entered!:()=>void; const began=new Promise<void>(resolve=>{entered=resolve;});const held=new Promise<void>(resolve=>{release=resolve;});
     await page.route(page.url(),async route=>{if(route.request().method()!=='POST')return route.continue();entered();await held;await route.fetch();await route.abort('failed');});
-    await page.getByLabel('New Control name').fill('Saved name with lost response'); await save(page,'Save Control name'); await began;
+    await page.getByLabel('New Procedure name').fill('Saved name with lost response'); await save(page,'Save Procedure name'); await began;
     await expect(submit).toBeDisabled(); await expect(submit).toHaveAccessibleDescription(/save to be acknowledged/);
-    release!(); await expect(submit).toHaveAccessibleDescription(/unknown save outcome in Control name/);
-    await expect(page.getByLabel('New Control name')).toHaveValue('Saved name with lost response');
+    release!(); await expect(submit).toHaveAccessibleDescription(/unknown save outcome in Procedure name/);
+    await expect(page.getByLabel('New Procedure name')).toHaveValue('Saved name with lost response');
     await page.unroute(page.url());
     const notification={sendKey:ids.next(),recipientId:actor,procedureId,versionId,procedureName:'A delayed review notice',versionNumber:1,kind:'approved' as const};
     await uow.execute(async ({notifications})=>notifications.enqueue(notification));
