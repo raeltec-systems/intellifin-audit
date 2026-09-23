@@ -48,7 +48,24 @@ The Run header, its banners and its action bar use the layer (`detail.tsx`,
 
 ## Packages 2–6
 
-_Filled in from each package's report when it lands._
+Each package worked in its own worktree, database and ports, and wrote its own report. All
+five merged into `codex/epic-2-procedure-builder` without a conflict.
+
+| Package | Findings | What a person now sees | Report |
+| --- | --- | --- | --- |
+| **2** Landing pages, Reviews, lists | UX-01, 03, 04, 17, 30, 32, 35, 36, 37 (Overview) | Each role lands on its own work: an Auditor on drafts, tests needing attention and assessments to confirm; a Manager on versions awaiting approval; an Administrator on users, sources and systems. **Reviews** has Procedures and Results tabs, with real queues and an honest note that Result review is not in this release. The Procedures list is searchable, filtered and paged. The Runs table has six columns and no sideways scroll. The bell lists open items. | `p2-report.md` |
+| **3** Writing a procedure | UX-05 to UX-16 | A **Procedure name**, one-click creation, one introduction. The assistant proposes the period and the scope together. A searchable source chooser, filters that wait for a source, criteria as sentences, a **Planned frequency**, and readiness lines that name the Builder's own sections and link to them. | `p3-report.md` |
+| **4** Manager's version review | UX-33, 34 | A decision summary first, a sticky decision bar with Approve and Reject, "First version: nothing to compare", changes as before → after in words, and the frozen contract once, behind Technical details. | `p4-report.md` |
+| **5** Results, Exceptions, Replay, Live View | UX-18 to 21, 27 to 29, 47 to 49; rules for UX-22 to 26 | The Result reads conclusion first: Execution, Assessment and Evidence checks, each with its meaning. Failed checks are open and passed ones closed. An Exception names the record, the system and the reason, and links to its evidence and replay. Replay and Live View narrate in audit words, with the screen and controls in the first viewport. The step counter never exceeds its total. | `p5-report.md` |
+| **6** Administration | UX-37 (Administration), 38 to 46 | Users, Population sources and Systems tabs; a landing with exact counts and health lines; a searchable user directory; inventories before create forms; guided source and system forms; and the Procedures a change affects, named before it is saved. | `p6-report.md` |
+
+UX-02 (readable instants) and UX-31 (references, counts, sentence case) apply on every
+surface above, through the package 1 layer.
+
+**UX-22 to UX-26 are not in this branch, by design.** They name the record queue and
+inspector that exist only on PR #51's branch. `p5-report.md` states the rule each one needs,
+so the fix is applied on top of that branch rather than rebuilt here and thrown away at the
+merge.
 
 ## Package 7 — release checks
 
