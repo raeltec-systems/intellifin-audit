@@ -645,7 +645,12 @@ export const REPLAY_COPY = {
    * was a definite false statement about a Work Item that captured nothing in a long Run.
    */
   frameNotRead: 'not among the {shown} frames shown',
-  observationsThrough: '{count} Observations had been registered when this frame was captured.',
+  /**
+   * `{count}` arrives already paired with its noun by `countNoun`: the template used to
+   * spell `Observations` itself and rendered `1 Observations` (UI cleanup 2026-09-22,
+   * UX-31). "screen" rather than "frame", because a frame is the platform's word for it.
+   */
+  observationsThrough: '{count} had been registered when this screen was captured.',
   /**
    * No frame, so no moment to count Observations at. `observationsThrough` used to be
    * filled with a zero here, which reads as "this frame saw none" over a Run that captured

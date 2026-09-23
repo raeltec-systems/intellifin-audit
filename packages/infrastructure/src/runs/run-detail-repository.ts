@@ -190,6 +190,36 @@ export interface RunObservationRow {
   readonly checks: readonly { readonly check: string; readonly outcome: string; readonly diagnostic: string | null }[];
 }
 
+/**
+ * One stored Observation row, projected. ONE mapping, shared by the bounded page and by
+ * the id-list read: two copies would diverge on the first column nobody added to both.
+ */
+function observationRow(
+  row: typeof runObservation.$inferSelect,
+  absence: ReadonlyMap<string, RunObservationAbsence>,
+  checks: ReadonlyMap<string, { check: string; outcome: string; diagnostic: string | null }[]>,
+): RunObservationRow {
+  return {
+    ...(absence.has(row.observationId) ? { absence: absence.get(row.observationId)! } : {}),
+    observationId: row.observationId,
+    workItemId: row.workItemId,
+    populationRecordKey: row.populationRecordKey,
+    targetSystem: row.targetSystem,
+    found: row.found as ObservationFound,
+    coverage: row.coverage as ObservationCoverage,
+    corroboration: row.corroboration,
+    observedAt: row.observedAt.toISOString(),
+    observedAtSource: row.observedAtSource,
+    captureMethod: row.captureMethod,
+    matchOrigin: row.matchOrigin,
+    digest: row.digest,
+    identity: row.identity,
+    attributes: row.attributes,
+    evidenceIds: row.evidenceIds,
+    checks: checks.get(row.observationId) ?? [],
+  };
+}
+
 export interface RunEvaluationRow {
   readonly observationId: string;
   readonly conditionId: string;
@@ -714,26 +744,47 @@ export class DrizzleRunDetailRepository {
     }
     return {
       total,
-      rows: rows.map((row): RunObservationRow => ({
-        ...(absence.has(row.observationId) ? { absence: absence.get(row.observationId)! } : {}),
-        observationId: row.observationId,
-        workItemId: row.workItemId,
-        populationRecordKey: row.populationRecordKey,
-        targetSystem: row.targetSystem,
-        found: row.found as ObservationFound,
-        coverage: row.coverage as ObservationCoverage,
-        corroboration: row.corroboration,
-        observedAt: row.observedAt.toISOString(),
-        observedAtSource: row.observedAtSource,
-        captureMethod: row.captureMethod,
-        matchOrigin: row.matchOrigin,
-        digest: row.digest,
-        identity: row.identity,
-        attributes: row.attributes,
-        evidenceIds: row.evidenceIds,
-        checks: byObservation.get(row.observationId) ?? [],
-      })),
+      rows: rows.map((row): RunObservationRow => observationRow(row, absence, byObservation)),
     };
+  }
+
+  /**
+   * The Observations named by an explicit id list, for the Exception view.
+   *
+   * `readObservations` is a bounded PAGE ordered by Target System and record key; an
+   * Exception can name any Observation of the Run, so resolving one from that sample would
+   * leave a finding past the fiftieth row with no captured value to show — an absence a
+   * reader takes for "nothing was observed". The list is the Exceptions already read, so
+   * its cardinality is that read's (a limit belongs to the cardinality of the READ).
+   */
+  async readObservationsByIds(
+    runId: string,
+    observationIds: readonly string[],
+  ): Promise<readonly RunObservationRow[]> {
+    const ids = observationIds.filter((id) => isUuidText(id));
+    if (!isUuidText(runId) || ids.length === 0) return [];
+    const rows = await this.db
+      .select()
+      .from(runObservation)
+      .where(and(eq(runObservation.runId, runId), inArray(runObservation.observationId, ids)))
+      .orderBy(asc(runObservation.observationId))
+      .limit(Math.min(ids.length, REPLAY_PAGE_SIZE));
+    const present = rows.map((row) => row.observationId);
+    const absenceRows = present.length === 0 ? [] : await this.db.select().from(runObservationAbsence)
+      .where(and(eq(runObservationAbsence.runId, runId), inArray(runObservationAbsence.observationId, present)));
+    const absence = new Map(absenceRows.map((row) => [row.observationId, readAbsenceMetadata(row)]));
+    const checks = present.length === 0 ? [] : await this.db
+      .select()
+      .from(runObservationCheck)
+      .where(inArray(runObservationCheck.observationId, present))
+      .orderBy(asc(runObservationCheck.checkName));
+    const byObservation = new Map<string, { check: string; outcome: string; diagnostic: string | null }[]>();
+    for (const check of checks) {
+      const list = byObservation.get(check.observationId) ?? [];
+      list.push({ check: check.checkName, outcome: check.outcome, diagnostic: check.diagnostic });
+      byObservation.set(check.observationId, list);
+    }
+    return rows.map((row) => observationRow(row, absence, byObservation));
   }
 
   /**
@@ -1031,6 +1082,48 @@ export class DrizzleRunDetailRepository {
   }
 
   /** Every Step Execution, oldest first — the order the Timeline is read in. */
+  /**
+   * How far through its plan a Run has got, in LOGICAL steps, counted EXACTLY
+   * (UI cleanup 2026-09-22, UX-47).
+   *
+   * Live View's counter read "Step 7 of 6" after a pause and a resume, because its
+   * numerator was `run_step_execution`'s row total — ATTEMPTS, and a pause supersedes one
+   * attempt and the resume starts another. Counting distinct plan steps over the bounded
+   * page `readStepExecutions` returns would trade that defect for its opposite: a long Run
+   * whose first fifty attempts had not yet reached a later plan step would report fewer
+   * steps than it had started. So the three facts are aggregates over EVERY row:
+   *
+   * - `started`: distinct plan steps with at least one Step Execution, restricted to the
+   *   ids the frozen plan declares when the caller has them — so `started` can never pass
+   *   the plan's own step count, by construction rather than by clamping;
+   * - `units`: distinct (plan step, Work Item) pairs, the work actually done;
+   * - `retries`: every attempt beyond the first.
+   */
+  async readLogicalStepProgress(
+    runId: string,
+    planStepIds: readonly string[] | null,
+  ): Promise<{ readonly started: number; readonly units: number; readonly retries: number }> {
+    if (!isUuidText(runId)) return { started: 0, units: 0, retries: 0 };
+    const declared = planStepIds === null
+      ? sql`true`
+      : planStepIds.length === 0
+        ? sql`false`
+        : inArray(runStepExecution.planStepId, [...planStepIds]);
+    const [row] = await this.db
+      .select({
+        started: sql<number>`count(DISTINCT ${runStepExecution.planStepId}) FILTER (WHERE ${declared})::int`,
+        units: sql<number>`count(DISTINCT ${runStepExecution.planStepId} || '|' || coalesce(${runStepExecution.workItemId}::text, ''))::int`,
+        retries: sql<number>`count(*) FILTER (WHERE ${runStepExecution.attempt} > 1)::int`,
+      })
+      .from(runStepExecution)
+      .where(eq(runStepExecution.runId, runId));
+    return {
+      started: Number(row?.started ?? 0),
+      units: Number(row?.units ?? 0),
+      retries: Number(row?.retries ?? 0),
+    };
+  }
+
   async readStepExecutions(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<Bounded<RunStepExecutionRow>> {
     if (!isUuidText(runId)) return { rows: [], total: 0 };
     const counted = await this.db

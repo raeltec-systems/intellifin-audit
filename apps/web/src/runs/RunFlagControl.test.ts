@@ -24,6 +24,7 @@ vi.mock('react', async () => {
 import { FLAG_COPY, RUN_LOST_RESPONSE } from '../design/copy';
 import type { FlagRunActionResult } from '../../app/runs/actions';
 import { RunFlagControl, type RunFlagView } from './RunFlagControl';
+import { FLAG_MENU_LABEL } from './session-words';
 
 const RUN_ID = '019823ab-0000-7000-8000-000000000001';
 
@@ -103,7 +104,10 @@ describe('the Flag to Audit Manager control', () => {
         note: 'The LoanCore step looks wrong.',
       }],
     });
-    expect(html).toContain('Flagged by Dana Mwansa at 2026-09-07T10:00:00.000Z');
+    // The instant reads as a person reads it; the exact ISO value belongs under Technical
+    // details, never in a sentence about who did something (UI cleanup 2026-09-22, UX-02).
+    expect(html).toContain('Flagged by Dana Mwansa at 7 Sep 2026, 10:00:00 UTC');
+    expect(html).not.toContain('2026-09-07T10:00:00.000Z');
     expect(html).toContain('The LoanCore step looks wrong.');
   });
 
@@ -135,4 +139,28 @@ describe('the Flag to Audit Manager control', () => {
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('&lt;script&gt;');
   });
+
+  // UI cleanup 2026-09-22, UX-48. The form was a full card on the page header's action row,
+  // taller than the header, and pushed the workspace screen below the first viewport. It is
+  // a NATIVE disclosure now, so it still opens with no JavaScript at all.
+  it('opens from a native disclosure whose opener is not the submit button', () => {
+    const html = render({ flaggable: true, flags: [] });
+    expect(html).toMatch(/^<details id="run-flag" class="ls-flag-menu">/);
+    expect(html).toContain(`<summary class="ls-button ls-button--secondary">${FLAG_MENU_LABEL}</summary>`);
+    expect(FLAG_MENU_LABEL).not.toBe(FLAG_COPY.submit);
+    expect(FLAG_COPY.submit.includes(FLAG_MENU_LABEL)).toBe(false);
+  });
+
+  it('says on the opener how many flags are already raised, so a closed opener hides none', () => {
+    const flag = { flagId: 'f1', flaggedBy: 'Dana Auditor', flaggedAt: '2026-09-07T10:00:00.000Z', note: null };
+    expect(render({ flaggable: true, flags: [flag] })).toContain(`${FLAG_MENU_LABEL} · 1 flag raised</summary>`);
+    expect(render({ flaggable: true, flags: [flag, { ...flag, flagId: 'f2' }] })).toContain(`${FLAG_MENU_LABEL} · 2 flags raised</summary>`);
+  });
+
+  it('opens by itself once the form has answered, on the plain POST path too', () => {
+    expect(render({ flaggable: true, flags: [] })).not.toContain('<details id="run-flag" class="ls-flag-menu" open');
+    actionState = { ok: true };
+    expect(render({ flaggable: true, flags: [] })).toContain('<details id="run-flag" class="ls-flag-menu" open=""');
+  });
 });
+

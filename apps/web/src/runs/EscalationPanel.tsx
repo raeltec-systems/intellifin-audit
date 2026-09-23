@@ -15,7 +15,8 @@ import { ConfirmDialog } from '../design/ConfirmDialog';
 import { useActionGate } from '../design/action-gate';
 import { ESCALATION_PANEL_COPY } from '../design/copy';
 import { ESCALATION_KIND_WORDS } from '../design/plain-words';
-import { UntrustedText } from './UntrustedText';
+import { UntrustedPolicy, UntrustedText } from './UntrustedText';
+import { Timestamp } from '../design/Timestamp';
 // The clock's arithmetic, shared with the Paused banner so the two surfaces cannot
 // disagree about how long a reader has left. The markup stays here because this panel
 // also needs the raw number, for `escalationMilestone`.
@@ -203,6 +204,10 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt }: E
         {message !== null ? <Banner tone={message.tone} title={message.title}>{message.body ? <p>{message.body}</p> : null}</Banner> : null}
         {unknown ? <p><a href={`/runs/${runId}`}>Reload this Run</a></p> : null}
 
+        {/* The policy sentence once, for the question and every candidate below it, rather
+            than under each (UX-27). Stated whenever the panel is, because an Escalation
+            panel exists to put agent-generated text in front of a person. */}
+        <UntrustedPolicy />
         <dl className="ls-definition">
           <dt>Kind</dt>
           <dd>{kindLabel}</dd>
@@ -211,7 +216,7 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt }: E
             ? ESCALATION_PANEL_COPY.noStep
             : <span className="ls-mono">{details.stepId}</span>}</dd>
           <dt>Deadline</dt>
-          <dd><time dateTime={wait.deadline}>{wait.deadline}</time></dd>
+          <dd><Timestamp value={wait.deadline} /></dd>
         </dl>
 
         <section aria-labelledby={questionId} className="ls-stack">
@@ -219,7 +224,7 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt }: E
           {details?.agentQuestion === null || details?.agentQuestion === undefined ? (
             <p>{ESCALATION_PANEL_COPY.noAgentQuestion}</p>
           ) : (
-            <UntrustedText field="AGENT-GENERATED question">{details.agentQuestion}</UntrustedText>
+            <UntrustedText field="AGENT-GENERATED question" policy={false}>{details.agentQuestion}</UntrustedText>
           )}
           <p><strong>Platform question</strong></p>
           <p>{question}</p>
@@ -259,7 +264,7 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt }: E
             {options.map((option, index) => (
               <div key={`${option.id}-${index}`} className="ls-stack">
                 {wait.kind === 'choose-candidate' && option.id !== 'mark-ambiguous' ? (
-                  <UntrustedText field={`AGENT-GENERATED candidate ${candidateOptions.indexOf(option) + 1}`}>
+                  <UntrustedText field={`AGENT-GENERATED candidate ${candidateOptions.indexOf(option) + 1}`} policy={false}>
                     {option.label}
                   </UntrustedText>
                 ) : null}

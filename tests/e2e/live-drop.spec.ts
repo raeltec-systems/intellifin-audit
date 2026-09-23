@@ -130,6 +130,9 @@ test.describe('Live View when the stream drops', () => {
 
     // Every live control, disabled and saying why. `aria-disabled`, never `disabled`, so
     // the reason stays reachable by keyboard.
+    // The flag form opens from a disclosure in the page header (UI cleanup 2026-09-22,
+    // UX-48); a role locator does not see a control inside a closed one.
+    await page.locator('#run-flag > summary').click();
     for (const name of ['Pause', 'Cancel Run', FLAG_COPY.submit]) {
       const control = page.getByRole('button', { name, exact: true });
       await expect(control).toHaveAttribute('aria-disabled', 'true');
@@ -276,6 +279,9 @@ test.describe('Live View when the stream drops', () => {
     // The terminal event reached the page over the live channel, and every control the
     // page is still rendering is closed with the reason that is true.
     await expect(page.getByText(LIVE_GATE_REASONS.runEnded).first()).toBeAttached({ timeout: 20_000 });
+    // The flag form opens from a disclosure in the page header (UI cleanup 2026-09-22,
+    // UX-48); a role locator does not see a control inside a closed one.
+    await page.locator('#run-flag > summary').click();
     for (const name of ['Resume', 'Cancel Run', FLAG_COPY.submit]) {
       await expect(page.getByRole('button', { name, exact: true })).toHaveAttribute('aria-disabled', 'true');
     }
@@ -306,5 +312,9 @@ test.describe('Live View when the stream drops', () => {
     await expect(page.getByRole('button', { name: 'Resume', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Cancel Run', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: FLAG_COPY.submit, exact: true })).toHaveCount(0);
+    // A role locator skips a control inside a closed disclosure, so the assertion above
+    // alone would pass over a live form hidden in the header's flag opener; this one
+    // counts hidden elements too.
+    await expect(page.locator('#run-flag button[type="submit"]')).toHaveCount(0);
   });
 });

@@ -20,6 +20,15 @@ import { UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
  * Target-System-sourced value this surface renders, not only to the places a fixture
  * happens to exercise: a rule applied where somebody remembered to apply it is not a rule.
  *
+ * HOW OFTEN IT IS SAID (UI cleanup 2026-09-22, UX-27). The walkthrough met the policy
+ * sentence four times on one Replay frame — under the rationale, the captured values, the
+ * URL and the Replay action — so the warning that exists to make a reader look carefully
+ * became the page's most repeated line. The rule is unchanged and nothing is weakened: a
+ * surface that renders SEVERAL untrusted blocks says the sentence ONCE, in an
+ * `UntrustedRegion` caption above them, and each block keeps its own short source label.
+ * A surface with a single block still says it on the block, which is why `policy` defaults
+ * to `true` and an omission cannot quietly drop the statement.
+ *
  * `<pre>` carries the text, so no markup in it can render and no whitespace in it can be
  * collapsed into something that reads like prose. React escapes the content; this
  * component has no `dangerouslySetInnerHTML` and no way to grow one.
@@ -27,19 +36,50 @@ import { UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
 export function UntrustedText({
   field,
   children,
+  policy = true,
 }: {
   /** Which field the text came from, so the reader knows what they are looking at. */
   readonly field: string;
   readonly children: string;
+  /**
+   * Whether this block states the policy itself. `false` only where an
+   * `UntrustedRegion` above it has already said it for the whole set.
+   */
+  readonly policy?: boolean;
 }): React.JSX.Element {
   return (
     <div className="ls-untrusted">
       <p className="ls-untrusted__label">
-        Untrusted source content — {field}. {UNTRUSTED_CONTENT_SENTENCE}
+        Untrusted source content — {field}.{policy ? ` ${UNTRUSTED_CONTENT_SENTENCE}` : ''}
       </p>
       <pre className="ls-untrusted__body">{children}</pre>
     </div>
   );
+}
+
+/**
+ * The policy sentence, said once above a set of untrusted blocks (UX-27).
+ *
+ * It is a real paragraph rather than a `title` or a tooltip, and it sits immediately above
+ * the blocks it governs, so a reader meets it before the content it is about. The heading
+ * is the caller's: this is the statement, not a section.
+ */
+export function UntrustedRegion({ children }: { readonly children: React.ReactNode }): React.JSX.Element {
+  return (
+    <div className="ls-untrusted-region">
+      <UntrustedPolicy />
+      {children}
+    </div>
+  );
+}
+
+/**
+ * The policy sentence on its own, for a surface whose untrusted blocks are not siblings —
+ * the session viewers' rails, whose blocks sit in separate sections under one heading
+ * each. It is said once, before the first of them, exactly as `UntrustedRegion` says it.
+ */
+export function UntrustedPolicy(): React.JSX.Element {
+  return <p className="ls-untrusted-region__policy">{UNTRUSTED_CONTENT_SENTENCE}</p>;
 }
 
 /**
@@ -50,10 +90,12 @@ export function UntrustedText({
 export function UntrustedList({
   field,
   values,
+  policy = true,
 }: {
   readonly field: string;
   readonly values: readonly string[];
+  readonly policy?: boolean;
 }): React.JSX.Element | null {
   if (values.length === 0) return null;
-  return <UntrustedText field={field}>{values.join('\n')}</UntrustedText>;
+  return <UntrustedText field={field} policy={policy}>{values.join('\n')}</UntrustedText>;
 }

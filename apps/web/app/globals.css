@@ -2875,7 +2875,198 @@ a {
    UI cleanup — package 5: findings, evidence, Replay and Live View.
    (Rules are added here by package 5 and nowhere else.) */
 
+/* A status badge says a WORD; the line under it says what that word is about, so
+   evidence validity, control compliance and a person's review are never read as one
+   thing (UX-18). Secondary rather than muted: these sit on `surface-card`, and muted is
+   4.39:1 on the sunken surfaces some of them inherit. */
+.ls-triptych__meaning,
+.ls-gate__meaning {
+  margin: 0;
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+  color: var(--color-text-secondary);
+  max-width: 44ch;
+}
 
+/* One criterion, as a sentence. The compiled rule text below it stays inert and
+   monospace, because it is the platform's grammar and not prose. */
+.ls-criterion {
+  gap: var(--spacing-2);
+}
+
+.ls-criterion__sentence {
+  margin: 0;
+  max-width: 76ch;
+}
+
+.ls-criterion__text {
+  margin: 0;
+  padding: var(--spacing-2) var(--spacing-3);
+  background: var(--color-surface-sunken);
+  border-radius: var(--rounded-sm);
+  font-family: var(--type-mono-font-family);
+  font-size: var(--type-body-sm-font-size);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* A finding leads with the record a reader recognises, and ends with the two links
+   EXPERIENCE.md asks every finding to carry. */
+.ls-finding__record {
+  margin: 0;
+}
+
+.ls-finding__links {
+  margin: 0;
+  font-size: var(--type-body-sm-font-size);
+}
+
+/* The selected record's position, beside the global counter and never instead of it. */
+.ls-session__record-position {
+  font-size: var(--type-body-sm-font-size);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The Agent's current action, said as a sentence. It is the rail's first line and the
+   frame's own caption for a screen-reader user, so it reads as prose (UX-28). */
+.ls-session__narration {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* A finding is headed by the record a reader recognises, with the state badge on the
+   same row (UX-21). The system name is secondary: it is identical on every finding of a
+   Run, so it must not compete with the one value that is not. */
+.ls-exception__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+}
+
+.ls-exception__record {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ls-exception__system {
+  font-size: var(--type-body-sm-font-size);
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+/* Expected against observed, side by side where there is room and stacked where there is
+   not: the comparison is the point, so the two cells share one row above 720px. */
+.ls-exception__compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-3);
+}
+
+@media (max-width: 719px) {
+  .ls-exception__compare {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ls-exception__links {
+  margin: 0;
+  font-size: var(--type-body-sm-font-size);
+}
+
+/* The untrusted policy sentence, said ONCE above a set of blocks rather than under each
+   field (UX-27). The region has no border of its own: each block already carries the
+   warning treatment, and a second frame around them would read as a third warning. */
+.ls-untrusted-region {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.ls-untrusted-region__policy {
+  margin: 0;
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+  color: var(--color-text-secondary);
+}
+
+
+
+/* The session viewer's layout, restated here rather than edited in place above, because
+   this region is package 5's and the rules above are shared (UX-29, UX-48).
+
+   Grid's default is to STRETCH a row to its tallest cell, and the narration rail is
+   routinely taller than a screen: a stretched stage centred its frame in a box as tall as
+   the rail and pushed the frame, and on Replay the playback controls under it, below the
+   first viewport. `align-items: start` is on the CONTAINER, so it holds whichever element
+   is the grid item. Replay's playback controls and scrubber are at the top of the rail,
+   beside the screen, because the stage's 430px floor leaves no room under it at 1366x768. */
+.ls-session__body {
+  align-items: start;
+}
+
+/* A real frame starts at the top of the stage; only the "no frame yet" sentence is
+   centred in the 430px floor. */
+.ls-session__stage--frame {
+  align-items: flex-start;
+}
+
+/* A frame keeps the column's full width, so an ordinary landscape capture is as large as
+   it ever was, and is BOUNDED in height with `object-fit: contain`, so a capture of an
+   unusual shape (a tall page, a square) is letterboxed inside the stage instead of pushing
+   the controls under it off the screen. The pixels are never cropped or stretched: this is
+   Evidence, and the whole captured screen stays visible. */
+.ls-session__frame {
+  max-height: min(48vh, 400px);
+  object-fit: contain;
+}
+
+/* Live View's flag form opens from one control on the page header's action row (UX-48).
+   The panel floats under its opener rather than growing the header, so the workspace
+   screen stays in the first viewport whether it is open or not. No shadow: DESIGN.md keeps
+   the confirmation dialog's as the only one, so the panel is set off by its border. */
+.ls-flag-menu {
+  position: relative;
+}
+
+.ls-flag-menu > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.ls-flag-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ls-flag-menu__panel {
+  position: absolute;
+  top: calc(100% + var(--spacing-2));
+  right: 0;
+  z-index: 20;
+  width: min(28rem, calc(100vw - 2 * var(--spacing-4)));
+}
+
+/* Below 1024px the header's actions wrap, so a floating panel could open off the page's
+   left edge; it takes its place in the flow instead. */
+@media (max-width: 1023px) {
+  .ls-flag-menu__panel {
+    position: static;
+    width: auto;
+    margin-top: var(--spacing-2);
+  }
+}
+
+/* The population reconciliation stacks each label over its value (UX-19, "coverage and
+   reconciliation, compact"). The shared rule lays them side by side with the value column
+   sized to its content, and a value that is a SENTENCE ("Not recorded — the independent
+   declaration stated no count…") then took the whole row and printed over its own label,
+   measured in the Result-first browser journey at 1366px. */
+.ls-reconciliation > div {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--spacing-1);
+}
 
 /* ---------------------------------------------------------------------------
    UI cleanup — package 6: administration.

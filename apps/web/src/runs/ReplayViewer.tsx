@@ -4,17 +4,24 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
 import { Digest } from '../design/Digest';
+import { TechnicalDetails } from '../design/TechnicalDetails';
+import { countNoun } from '../design/words';
 import { REPLAY_COPY } from '../design/copy';
-import { SessionChrome, SessionStage, type LiveViewerAdapterStep, type LiveViewerFrame } from './LiveViewer';
-import { UntrustedText } from './UntrustedText';
+import { FrameSource, SessionChrome, SessionStage, type LiveViewerAdapterStep, type LiveViewerFrame } from './LiveViewer';
+import { UntrustedPolicy, UntrustedText } from './UntrustedText';
 import { clampReplayIndex, type ReplayFrameAbsence, type ReplayJumpTarget } from './replay';
-import { utcStamp } from './labels';
+import { recordFramePosition, toolActionNarration } from './session-words';
+import { sessionStepWord, utcStamp } from './labels';
 
 /** One frame and everything the platform already stored about the action that took it. */
 export interface ReplayFrameView extends LiveViewerFrame {
   /** The Step narration, which is also this frame's `alt` (UX-DR37). */
   readonly stepNarration: string;
   readonly workItemLabel: string | null;
+  /** Which Work Item this frame belongs to, for the record's own frame position (UX-29). */
+  readonly workItemId: string | null;
+  /** The record the Work Item inspected, or `null` when it inspected no population. */
+  readonly subjectKey: string | null;
   readonly action: {
     readonly action: string;
     readonly method: string;
@@ -34,6 +41,8 @@ export interface ReplayViewerProps {
   readonly runId: string;
   readonly stateSentence: string;
   readonly workspace: { readonly mode: string; readonly reference: string | null } | null;
+  /** The Run's terminal state, said in words on the rail rather than as a stored token. */
+  readonly runState: string;
   readonly frames: readonly ReplayFrameView[];
   /** The exact number of frames this Run holds; larger than `frames` when the read bound. */
   readonly framesTotal: number;
@@ -83,8 +92,12 @@ const JUMP_WORDS: Readonly<Record<ReplayJumpTarget['kind'], string>> = {
 export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
   const [index, setIndex] = useState(() => clampReplayIndex(0, props.frames.length));
   const [playing, setPlaying] = useState(false);
+  const [jumped, setJumped] = useState<ReplayJumpTarget | null>(null);
   const viewer = useRef<HTMLDivElement>(null);
   const frame = index < 0 ? null : props.frames[index] ?? null;
+  // Whether this rail carries source content at all: the frame's captured location and the
+  // page address its Tool Action asked for. No frame, no untrusted block, no policy line.
+  const untrusted = frame !== null;
   const last = props.frames.length - 1;
 
   useEffect(() => {
@@ -94,7 +107,30 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
     return () => window.clearTimeout(timer);
   }, [playing, index, last, props.frames.length]);
 
-  const go = (next: number): void => { setPlaying(false); setIndex(clampReplayIndex(next, props.frames.length)); };
+  const go = (next: number, target: ReplayJumpTarget | null = null): void => {
+    setPlaying(false);
+    setJumped(target);
+    setIndex(clampReplayIndex(next, props.frames.length));
+  };
+
+  /**
+   * `#work-item-<id>` opens Replay at that Work Item (UI cleanup 2026-09-22, UX-21).
+   *
+   * An Exception links here so a reader can follow one record from the finding to the
+   * screen it was captured on. The hash names a WORK ITEM rather than a frame index,
+   * because an index is a position in a bounded read and would move; the resolver has
+   * already decided where that Work Item opens, and a target it could not place keeps its
+   * own sentence rather than silently landing on frame one.
+   */
+  useEffect(() => {
+    const hash = window.location.hash.replace(/^#/, '');
+    if (!hash.startsWith('work-item-')) return;
+    const wanted = hash.slice('work-item-'.length);
+    const target = props.jumpTargets.find((entry) => entry.kind === 'work-item' && entry.id === wanted) ?? null;
+    if (target !== null && target.frameIndex !== null) go(target.frameIndex, target);
+    // The jump targets are a server read of this Run and do not change under the reader.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>): void {
     if (index < 0) return;
@@ -113,9 +149,30 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
     }
   }
 
-  const counter = props.plannedSteps === null
-    ? `Frame ${index + 1} of ${props.frames.length}`
-    : `Frame ${index + 1} of ${props.frames.length} · ${props.plannedSteps} planned Steps`;
+  /**
+   * ONE global counter (UX-29).
+   *
+   * The walkthrough met two — `Frame 6 of 15` on the chrome and a per-inspection count on
+   * the rail — with nothing saying which was which. The planned-Step count that used to
+   * ride beside this is a third number about a different thing and is under Technical
+   * details; what a reader following a session wants is where they are in it.
+   */
+  const counter = index < 0
+    ? 'No frames'
+    : `Frame ${(index + 1).toLocaleString('en-US')} of ${props.frames.length.toLocaleString('en-US')}`;
+
+  /**
+   * The selected record's own position, beside the global one and only when a record is
+   * selected. A count of frames "for this record" over a session nobody jumped into is a
+   * number about nothing.
+   */
+  const ofRecord = ((): string | null => {
+    if (frame === null || jumped === null || jumped.kind !== 'work-item') return null;
+    const mine = props.frames.filter((item) => item.workItemId === jumped.id);
+    const position = mine.findIndex((item) => item.evidenceId === frame.evidenceId);
+    if (position < 0 || mine.length === 0) return null;
+    return recordFramePosition(frame.subjectKey ?? jumped.label, position + 1, mine.length);
+  })();
 
   return (
     <section className="ls-session" aria-labelledby="replay-session-heading">
@@ -124,7 +181,7 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
         chrome="REPLAY"
         stateSentence={props.stateSentence}
         workspace={props.workspace}
-        counter={index < 0 ? 'No frames' : counter}
+        counter={counter}
       />
 
       <p className="ls-session-desktop-only">{REPLAY_COPY.desktopOnly}</p>
@@ -146,30 +203,86 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
         />
 
         <div className="ls-session__rail ls-stack">
+          <section aria-labelledby="replay-playback-heading" className="ls-stack">
+            <h3 id="replay-playback-heading" className="ls-visually-hidden">Playback</h3>
+            {/* The playback controls and the scrubber sit BESIDE the frame, at the top of the
+                rail (UX-29). The walkthrough found both under the first viewport, so a reader
+                had to scroll away from the screen to move it; under the stage they would still
+                sit past the fold at 1366x768, because the stage keeps DESIGN.md's 430px floor.
+                Below 1024px the rail stacks under the stage, so they are directly under it. */}
+            <div className="ls-session__controls">
+              <button
+                type="button"
+                className="ls-button ls-button--secondary ls-button--sm"
+                onClick={() => setPlaying((value) => !value)}
+                aria-disabled={index < 0 ? true : undefined}
+              >{playing ? REPLAY_COPY.pause : REPLAY_COPY.play}</button>
+              {ofRecord === null ? null : <span className="ls-session__record-position">{ofRecord}</span>}
+              <span className="ls-caption">{REPLAY_COPY.keys}</span>
+            </div>
+
+            <div className="ls-session__scrubber" role="group" aria-label={REPLAY_COPY.scrubberLabel}>
+              {props.frames.map((item, position) => (
+                <button
+                  key={item.evidenceId}
+                  type="button"
+                  className={position === index ? 'ls-scrubber-pill ls-scrubber-pill--current' : 'ls-scrubber-pill'}
+                  aria-current={position === index ? 'true' : undefined}
+                  aria-label={`Frame ${position + 1} of ${props.frames.length}: ${item.stepNarration}`}
+                  onClick={() => go(position)}
+                />
+              ))}
+            </div>
+            {props.framesTotal > props.frames.length ? (
+              <p className="ls-caption">
+                {REPLAY_COPY.bounded
+                  .replace('{shown}', String(props.frames.length))
+                  .replace('{total}', String(props.framesTotal))}
+              </p>
+            ) : null}
+          </section>
+
+          {/* The policy sentence ONCE, above the untrusted blocks this rail carries (UX-27). */}
+          {untrusted ? <UntrustedPolicy /> : null}
+
           <section aria-labelledby="replay-step-heading" className="ls-stack">
-            <h3 id="replay-step-heading">Step</h3>
-            {frame === null ? <p>{REPLAY_COPY.noFrames}</p> : <p>{frame.stepNarration}</p>}
+            <h3 id="replay-step-heading">What the Agent was doing</h3>
+            {frame === null ? <p>{REPLAY_COPY.noFrames}</p> : (
+              <p className="ls-session__narration">{frame.stepNarration}</p>
+            )}
             {frame?.workItemLabel === null || frame?.workItemLabel === undefined
               ? null
-              : <p>Work Item: {frame.workItemLabel}</p>}
+              : <p>Record: {frame.workItemLabel}</p>}
           </section>
 
           <section aria-labelledby="replay-action-heading" className="ls-stack">
-            <h3 id="replay-action-heading">Tool Action</h3>
+            <h3 id="replay-action-heading">What this screen is</h3>
             {frame?.action === null || frame?.action === undefined ? (
               <p>{REPLAY_COPY.noAction}</p>
             ) : (
               <>
-                <p>{frame.action.action} · {frame.action.method} · {frame.action.outcome}
-                  {frame.action.status === null ? '' : ` · ${frame.action.status}`}</p>
-                <UntrustedText field="requested destination">{frame.action.destination}</UntrustedText>
-                {frame.action.denial === null ? null : <p>Denied: {frame.action.denial}</p>}
-                <p>Capture {frame.action.capture.toLowerCase()}
-                  {frame.action.captureSuppression === null ? '' : ` · ${frame.action.captureSuppression}`}</p>
-                <p>Started {utcStamp(frame.action.startedAt)}</p>
+                {/* The action, in audit words. `navigate · GET · performed · 200` is the
+                    row as it was stored; the method, the status and the outcome token are
+                    under Technical details (UX-28). */}
+                <p>
+                  {toolActionNarration(frame.action.action, {
+                    subject: frame.subjectKey,
+                    system: null,
+                  })}
+                  {frame.action.outcome === 'denied' ? ' — refused by the platform' : ''}
+                </p>
+                <UntrustedText field="page address the Agent asked for" policy={false}>{frame.action.destination}</UntrustedText>
+                {frame.action.denial === null ? null : <p>Refused: {frame.action.denial}</p>}
+                <p>
+                  {frame.action.capture === 'SUPPRESSED'
+                    ? `Nothing was captured on this request${frame.action.captureSuppression === null ? '.' : ` — ${frame.action.captureSuppression}`}`
+                    : 'The screen above was captured on this request.'}
+                </p>
               </>
             )}
           </section>
+
+          {frame === null ? null : <FrameSource frame={frame} headingId="replay-frame-source-heading" />}
 
           <section aria-labelledby="replay-observations-heading" className="ls-stack">
             <h3 id="replay-observations-heading">Observations</h3>
@@ -179,44 +292,40 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
             <p>
               {frame === null
                 ? REPLAY_COPY.observationsNoFrame
-                : REPLAY_COPY.observationsThrough.replace('{count}', String(frame.observations))}
+                : REPLAY_COPY.observationsThrough.replace('{count}', countNoun(frame.observations, 'Observation'))}
             </p>
             {/* Observations are listed on the Evidence tab, with their grounding; there is
                 no Observations tab and a link to one is a Page not found. */}
             <p><Link href={`/runs/${props.runId}/evidence`}>{REPLAY_COPY.observationsLink}</Link></p>
           </section>
+
+          <TechnicalDetails
+            items={[
+              { label: 'Run state', value: props.runState, mono: true },
+              ...(props.workspace === null ? [] : [
+                { label: 'Agent Workspace reference', value: props.workspace.reference ?? 'Not recorded', mono: true },
+              ]),
+              ...(props.plannedSteps === null
+                ? []
+                : [{ label: 'Plan steps this Version declares', value: String(props.plannedSteps), mono: true }]),
+              ...(frame === null ? [] : [
+                { label: 'Frame Evidence identifier', value: frame.evidenceId, mono: true },
+                { label: 'Frame integrity digest', value: frame.digest, mono: true },
+                ...(frame.capturedAt === null ? [] : [{ label: 'Captured at', value: utcStamp(frame.capturedAt), mono: true }]),
+                ...(frame.workItemId === null ? [] : [{ label: 'Work Item identifier', value: frame.workItemId, mono: true }]),
+              ]),
+              ...(frame?.action == null ? [] : [
+                { label: 'Tool Action', value: frame.action.action, mono: true },
+                { label: 'HTTP method', value: frame.action.method, mono: true },
+                { label: 'Outcome', value: frame.action.outcome, mono: true },
+                { label: 'HTTP status', value: frame.action.status === null ? 'Not recorded' : String(frame.action.status), mono: true },
+                { label: 'Capture state', value: frame.action.capture, mono: true },
+                { label: 'Action started at', value: utcStamp(frame.action.startedAt), mono: true },
+              ]),
+            ]}
+          />
         </div>
       </div>
-
-      <div className="ls-session__controls">
-        <button
-          type="button"
-          className="ls-button ls-button--secondary ls-button--sm"
-          onClick={() => setPlaying((value) => !value)}
-          aria-disabled={index < 0 ? true : undefined}
-        >{playing ? REPLAY_COPY.pause : REPLAY_COPY.play}</button>
-        <span className="ls-caption">{REPLAY_COPY.keys}</span>
-      </div>
-
-      <div className="ls-session__scrubber" role="group" aria-label={REPLAY_COPY.scrubberLabel}>
-        {props.frames.map((item, position) => (
-          <button
-            key={item.evidenceId}
-            type="button"
-            className={position === index ? 'ls-scrubber-pill ls-scrubber-pill--current' : 'ls-scrubber-pill'}
-            aria-current={position === index ? 'true' : undefined}
-            aria-label={`Frame ${position + 1} of ${props.frames.length}: ${item.stepNarration}`}
-            onClick={() => go(position)}
-          />
-        ))}
-      </div>
-      {props.framesTotal > props.frames.length ? (
-        <p className="ls-caption">
-          {REPLAY_COPY.bounded
-            .replace('{shown}', String(props.frames.length))
-            .replace('{total}', String(props.framesTotal))}
-        </p>
-      ) : null}
 
       <section aria-labelledby="replay-jump-heading" className="ls-card ls-stack">
         <h3 id="replay-jump-heading">Jump to</h3>
@@ -237,7 +346,7 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
                   <button
                     type="button"
                     className="ls-button ls-button--ghost ls-button--sm"
-                    onClick={() => go(target.frameIndex)}
+                    onClick={() => go(target.frameIndex, target)}
                   >
                     {JUMP_WORDS[target.kind]} · <span className="ls-mono">{target.label}</span>
                   </button>
@@ -251,7 +360,7 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
       {props.instructions.length === 0 ? null : (
         <section aria-labelledby="replay-instructions-heading" className="ls-card ls-stack">
           <h3 id="replay-instructions-heading">Audit Instructions</h3>
-          <p>The auditor&rsquo;s own words, frozen into this Procedure Version and shown verbatim (FR-8).</p>
+          <p>The auditor&rsquo;s own words, frozen into this Procedure Version and shown verbatim.</p>
           {props.instructions.map((instruction) => (
             <div key={instruction.system} className="ls-stack">
               <h4>{instruction.system}</h4>
@@ -263,15 +372,15 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
 
       {props.adapterSteps.length === 0 ? null : (
         <section aria-labelledby="replay-adapter-heading" className="ls-card ls-stack">
-          <h3 id="replay-adapter-heading">Adapter Session Steps</h3>
-          <p>An Adapter reads without a workspace screen, so each Step is a log row with its state and its integrity digest.</p>
+          <h3 id="replay-adapter-heading">Systems read without a screen</h3>
+          <p>An Adapter reads without a workspace screen, so each step is a log row with its state and its integrity digest.</p>
           <ul className="ls-session__log">
             {props.adapterSteps.map((step) => (
               <li key={step.stepId}>
-                <span className="ls-mono">{step.stepId}</span>
                 <span>{step.displayName}</span>
-                <span>{step.state} · {step.attempts} attempts</span>
+                <span>{sessionStepWord(step.state)} · {countNoun(step.attempts, 'attempt')}</span>
                 {step.digest === null ? <span>No artifact registered.</span> : <Digest value={step.digest} label="Adapter artifact digest" />}
+                <TechnicalDetails items={[{ label: 'Plan step identifier', value: step.stepId, mono: true }]} />
               </li>
             ))}
           </ul>

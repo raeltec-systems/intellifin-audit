@@ -84,6 +84,14 @@ async function startReviewWorker(): Promise<void> {
   }, { timeout: 60_000 }).toBe(true);
 }
 
+/** Open the sealed Result's review history, which is closed by default (UX-19). */
+async function openReviewHistory(page: Page): Promise<void> {
+  const history = page.locator('details').filter({ has: page.locator('summary', { hasText: 'Review history' }) });
+  await expect(history).not.toHaveAttribute('open', /.*/);
+  await history.locator('> summary').click();
+  await expect(history).toHaveAttribute('open', '');
+}
+
 async function scan(page: Page): Promise<void> {
   const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
   const violations = result.violations.map((violation) => ({
@@ -302,6 +310,9 @@ test.describe('the Evaluation Review surface as an Auditor', () => {
       return row;
     }).toMatchObject({ action: 'reject', effective_origin: 'HUMAN', effective_value: 'UNEVALUATED', rejection_rationale: 'The retained evidence does not support the proposal.' });
     await page.reload();
+    // A sealed Result's decisions are history, behind a closed "Review history" disclosure
+    // under the conclusion (UI cleanup 2026-09-22, UX-19): the reader opens it to read them.
+    await openReviewHistory(page);
     await expect(page.getByText('Stored human review decision', { exact: true })).toBeVisible();
     await expect(page.getByText('The Result is sealed. Review history is read-only.', { exact: true })).toBeVisible();
     await expect(page.getByText('Synthetic original machine proposal', { exact: true })).toBeVisible();
@@ -332,6 +343,9 @@ test.describe('the Evaluation Review surface as an Auditor', () => {
       return row;
     }).toMatchObject({ action: 'confirm', effective_origin: 'AGENT_JUDGED', effective_value: 'COMPLIANT', effective_confirmation: 'confirmed' });
     await page.reload();
+    // A sealed Result's decisions are history, behind a closed "Review history" disclosure
+    // under the conclusion (UI cleanup 2026-09-22, UX-19): the reader opens it to read them.
+    await openReviewHistory(page);
     await expect(page.getByText('Stored human review decision', { exact: true })).toBeVisible();
     await expect(page.getByText('The Result is sealed. Review history is read-only.', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Confirm evaluation', exact: true })).toHaveCount(0);

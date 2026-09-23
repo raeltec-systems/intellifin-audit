@@ -23,7 +23,7 @@ vi.mock('@intellifin/infrastructure', () => ({
 
 import type { EscalationDetails, EscalationWait, WaitRepository } from '@intellifin/application';
 
-import { ESCALATION_PANEL_COPY } from '../design/copy';
+import { ESCALATION_PANEL_COPY, UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
 import { EscalationPanel, escalationMilestone, orderedEscalationOptions } from './EscalationPanel';
 import { countdownText } from './WaitCountdown';
 import { readOpenEscalation, readOpenEscalationWith } from './escalation-read';
@@ -287,5 +287,24 @@ describe('Run-detail Escalation read seam', () => {
         work({ wait: null, run: null, readEscalationDetails: async () => null }),
     } as unknown as Pick<WaitRepository, 'transaction'>;
     await expect(readOpenEscalationWith(repository, RUN_ID)).resolves.toEqual({ wait: null, pause: null, runRevision: null, details: null });
+  });
+});
+
+// UI cleanup 2026-09-22, UX-27 and UX-02. The policy sentence followed the agent's question
+// AND every candidate, so a two-candidate Escalation said it three times above the answer
+// controls; and the deadline printed a raw ISO instant.
+describe('the Escalation panel, read once (UX-27)', () => {
+  it('says the policy once above the question and every candidate', () => {
+    const html = renderPanel({ details: { ...DETAILS_NONE, agentQuestion: 'Which candidate is the leaver?' } });
+    expect(html.split('Untrusted source content — AGENT-GENERATED').length - 1).toBe(3);
+    expect(html.split(UNTRUSTED_CONTENT_SENTENCE).length - 1).toBe(1);
+  });
+
+  it('shows the deadline readably, with the exact instant kept in datetime', () => {
+    const html = renderPanel();
+    const deadline = html.slice(html.indexOf('<dt>Deadline</dt>'), html.indexOf('</dd>', html.indexOf('<dt>Deadline</dt>')));
+    expect(deadline).toMatch(/datetime="2026-09-06T13:00:00(\.000)?Z"/i);
+    expect(deadline.replace(/<[^>]*>/g, '')).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+    expect(deadline.replace(/<[^>]*>/g, '')).toContain('6 Sep 2026');
   });
 });
