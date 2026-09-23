@@ -20,7 +20,7 @@ import {
 } from '@intellifin/infrastructure';
 
 import { executablePlanInputs } from '../fixtures/executable-plan';
-import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase, signIn } from './accounts';
+import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase, mintAuditManager, signIn, type MintedAuditManager } from './accounts';
 import {
   OPEN_RESULT,
   OPEN_VERSION_REVIEW,
@@ -58,6 +58,7 @@ const runVersionId = ids.next();
 const runControlName = `E2E Reviews pending Result ${stamp}`;
 
 let sql: Sql;
+let manager: MintedAuditManager | undefined;
 let auditorId: string;
 
 async function scan(page: Page): Promise<void> {
@@ -112,6 +113,7 @@ test.beforeAll(async () => {
   if (!databaseUrl) throw new Error('DATABASE_URL is required for the Reviews journey.');
   assertThrowawayDatabase(databaseUrl);
   sql = createSqlClient(databaseUrl, { max: 2 });
+  manager = await mintAuditManager(sql, 'reviews');
   const db = createDb(sql);
   const [auditor] = await sql`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
   if (!auditor) throw new Error('Seed the E2E Auditor before the Reviews journey.');
@@ -168,6 +170,7 @@ test.afterAll(async () => {
     }
     await sql`DELETE FROM auth_user WHERE id=${foreignAuthorId}`;
   } finally {
+    await manager?.remove();
     await sql.end({ timeout: 5 });
   }
 });
@@ -197,10 +200,8 @@ test.describe('Reviews — Procedures, as the Auditor who submitted one of the t
 
 test.describe('Reviews as an Audit Manager', () => {
   test('sees the whole queue, and the Results tab states what is not available', async ({ page }) => {
-    // Required, never skipped: a skipped manager journey would read as a passed one.
-    const managerEmail = process.env['E2E_MANAGER_EMAIL'];
-    if (!managerEmail) throw new Error('E2E_MANAGER_EMAIL is required for the Reviews manager journey.');
-    await signIn(page, managerEmail);
+    if (manager === undefined) throw new Error('The spec did not mint its Audit Manager: read the FIRST failure in this run.');
+    await signIn(page, manager.email);
 
     await page.goto('/review');
     await expect(page.getByRole('heading', { name: PROCEDURES_TAB_HEADING })).toBeVisible();

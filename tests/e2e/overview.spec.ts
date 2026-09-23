@@ -20,7 +20,7 @@ import {
 } from '@intellifin/infrastructure';
 
 import { executablePlanInputs } from '../fixtures/executable-plan';
-import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase, signIn } from './accounts';
+import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase, mintAuditManager, signIn, type MintedAuditManager } from './accounts';
 import {
   ADMIN_ENVIRONMENT_HEADING,
   ADMIN_OVERVIEW_HEADING,
@@ -53,6 +53,7 @@ const draftControlName = `E2E Overview draft ${stamp}`;
 const submittedControlName = `E2E Overview submitted ${stamp}`;
 
 let sql: Sql;
+let manager: MintedAuditManager | undefined;
 let auditorId: string;
 
 async function scan(page: Page): Promise<void> {
@@ -71,6 +72,7 @@ test.beforeAll(async () => {
   if (!databaseUrl) throw new Error('DATABASE_URL is required for the Overview journey.');
   assertThrowawayDatabase(databaseUrl);
   sql = createSqlClient(databaseUrl, { max: 2 });
+  manager = await mintAuditManager(sql, 'overview');
   const db = createDb(sql);
   const [auditor] = await sql`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
   if (!auditor) throw new Error('Seed the E2E Auditor before the Overview journey.');
@@ -135,6 +137,7 @@ test.afterAll(async () => {
       await sql`DELETE FROM procedure WHERE procedure_id=${procedureId}`;
     }
   } finally {
+    await manager?.remove();
     await sql.end({ timeout: 5 });
   }
 });
@@ -175,10 +178,8 @@ test.describe('the Overview as an Auditor', () => {
 
 test.describe('the Overview as an Audit Manager', () => {
   test('leads the attention list with Procedure Versions awaiting approval', async ({ page }) => {
-    // Required, never skipped: a skipped manager journey would read as a passed one.
-    const managerEmail = process.env['E2E_MANAGER_EMAIL'];
-    if (!managerEmail) throw new Error('E2E_MANAGER_EMAIL is required for the Overview manager journey.');
-    await signIn(page, managerEmail);
+    if (manager === undefined) throw new Error('The spec did not mint its Audit Manager: read the FIRST failure in this run.');
+    await signIn(page, manager.email);
 
     const attention = page.getByRole('region', { name: 'Needs attention' });
     await expect(attention).toBeVisible();

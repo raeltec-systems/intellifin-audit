@@ -14,7 +14,7 @@ import {
 } from '@intellifin/infrastructure';
 
 import { activeRunVersion } from '../fixtures/active-run-version';
-import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase, signIn } from './accounts';
+import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase, mintAuditManager, signIn, type MintedAuditManager } from './accounts';
 
 /**
  * The UI cleanup's release checks (package 7 of the 21 September 2026 plan).
@@ -45,6 +45,7 @@ const versionId = ids.next();
 const controlName = `UI cleanup layout ${procedureId.slice(-8)}`;
 const runs = { completed: ids.next(), inconclusive: ids.next() };
 let sql: Sql;
+let manager: MintedAuditManager | undefined;
 let auditorId: string;
 
 async function scan(page: Page): Promise<void> {
@@ -124,6 +125,7 @@ test.beforeAll(async () => {
   if (!databaseUrl) throw new Error('DATABASE_URL is required for the UI cleanup layout checks.');
   assertThrowawayDatabase(databaseUrl);
   sql = createSqlClient(databaseUrl, { max: 4 });
+  manager = await mintAuditManager(sql, 'layout');
   const db = createDb(sql);
   const [auditor] = await sql`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
   if (!auditor) throw new Error('Seed the E2E Auditor before the UI cleanup layout checks.');
@@ -197,6 +199,7 @@ test.afterAll(async () => {
     await sql`DELETE FROM procedure_version WHERE procedure_id=${procedureId}`;
     await sql`DELETE FROM procedure WHERE procedure_id=${procedureId}`;
   } finally {
+    await manager?.remove();
     await sql.end({ timeout: 5 });
   }
 });
@@ -256,9 +259,8 @@ for (const viewport of VIEWPORTS) {
 
       test('the review and approval surfaces fit the viewport and pass the accessibility gate', async ({ page }) => {
         test.setTimeout(180_000);
-        const managerEmail = process.env['E2E_MANAGER_EMAIL'];
-        if (!managerEmail) throw new Error('E2E_MANAGER_EMAIL is required for the Audit Manager layout checks.');
-        await signIn(page, managerEmail);
+        if (manager === undefined) throw new Error('The spec did not mint its Audit Manager: read the FIRST failure in this run.');
+        await signIn(page, manager.email);
         for (const [route, slug] of [
           ['/', 'overview'],
           ['/review', 'reviews'],
