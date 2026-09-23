@@ -7,7 +7,7 @@ import { decisionWord } from '../version-review-words';
 import {
   AUTHOR_LABEL,
   DECISION_HEADING,
-  NO_SUBMISSION_RECORDED,
+  missingSubmissionWords,
   SAVED_DECISION_LABEL,
   SUBMITTED_BY_LABEL,
 } from './review-words';
@@ -71,7 +71,7 @@ export function DecisionBar({
           </>
         )}
         {submission === null ? (
-          NO_SUBMISSION_RECORDED
+          missingSubmissionWords(state)
         ) : (
           <>
             {SUBMITTED_BY_LABEL} <ActorName id={submission.actorId} names={names} /> on{' '}

@@ -19,11 +19,14 @@ import {
   NO_SOURCE_SENTENCE,
   NO_SYSTEMS_SENTENCE,
   NOT_SUBMITTED_COMPARISON_SENTENCE,
+  NO_SUBMISSION_RECORDED,
   READ_ACTION_WORDS,
   READ_ONLY_ACCESS_SENTENCE,
   REVIEW_HEADINGS,
+  SUBMISSION_NOT_RECORDED,
   SUMMARY_LABELS,
   comparedWithSentence,
+  missingSubmissionWords,
   nothingChangedSentence,
   readActionWord,
   technicalSectionsChangedSentence,
@@ -75,6 +78,8 @@ const PINNED: readonly (readonly [string, string])[] = [
   ['REVIEW_HEADINGS.history', REVIEW_HEADINGS.history],
   ['FIRST_VERSION_SENTENCE', FIRST_VERSION_SENTENCE],
   ['NOT_SUBMITTED_COMPARISON_SENTENCE', NOT_SUBMITTED_COMPARISON_SENTENCE],
+  ['NO_SUBMISSION_RECORDED', NO_SUBMISSION_RECORDED],
+  ['SUBMISSION_NOT_RECORDED', SUBMISSION_NOT_RECORDED],
   ['READ_ONLY_ACCESS_SENTENCE', READ_ONLY_ACCESS_SENTENCE],
   ['NO_CONDITIONS_SENTENCE', NO_CONDITIONS_SENTENCE],
   ['NO_EVIDENCE_SENTENCE', NO_EVIDENCE_SENTENCE],
@@ -147,4 +152,20 @@ describe('the comparison sentences name the version they compare against', () =>
   it('never claims a first version changed anything', () => {
     expect(FIRST_VERSION_SENTENCE).not.toMatch(/\bchanged\b/i);
   });
+});
+
+describe('a missing submission record is described truthfully for the state', () => {
+  it('says a Draft has not been submitted yet', () => {
+    expect(missingSubmissionWords('DRAFT')).toBe(NO_SUBMISSION_RECORDED);
+  });
+
+  // An Active or Approved version with no submission row was inserted by a migration or a
+  // fixture, or predates submission records. "Not yet submitted" would be false about it.
+  it.each(['SUBMITTED', 'APPROVED', 'ACTIVE', 'REJECTED', 'RETIRED'])(
+    'never says a %s version was not submitted',
+    (state) => {
+      expect(missingSubmissionWords(state)).toBe(SUBMISSION_NOT_RECORDED);
+      expect(missingSubmissionWords(state)).not.toMatch(/not yet submitted/i);
+    },
+  );
 });

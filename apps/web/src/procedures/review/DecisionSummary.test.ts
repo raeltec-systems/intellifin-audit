@@ -23,8 +23,10 @@ import {
   NO_CONDITIONS_SENTENCE,
   NO_DECISIONS_SENTENCE,
   NO_SOURCE_SENTENCE,
+  NO_SUBMISSION_RECORDED,
   NO_SYSTEMS_SENTENCE,
   READ_ONLY_ACCESS_SENTENCE,
+  SUBMISSION_NOT_RECORDED,
   SUMMARY_LABELS,
   templateWords,
 } from './review-words';
@@ -198,6 +200,10 @@ describe('the decision is in front of the person taking it', () => {
     );
     expect(withDecision).toContain('data-saved-decision');
     expect(withDecision.split('data-saved-decision').length - 1).toBe(1);
+    // An Active version with no submission record was not "not yet submitted": it has
+    // been decided on. The bar says only what is true — no record names who sent it.
+    expect(withDecision).toContain(SUBMISSION_NOT_RECORDED);
+    expect(withDecision).not.toContain(NO_SUBMISSION_RECORDED);
     const without = renderToStaticMarkup(
       React.createElement(DecisionBar, {
         versionNumber: 1,
@@ -213,6 +219,7 @@ describe('the decision is in front of the person taking it', () => {
       }),
     );
     expect(without).not.toContain('data-saved-decision');
+    expect(without).toContain(NO_SUBMISSION_RECORDED);
   });
 
   it('collapses the history and says how many decisions it holds', () => {

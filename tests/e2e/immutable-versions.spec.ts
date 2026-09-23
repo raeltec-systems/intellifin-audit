@@ -7,6 +7,7 @@ import { executablePlanInputs } from '../fixtures/executable-plan';
 import { READ_ONLY_CREDENTIAL } from './credentials';
 import { AUTH_STATE, ACCOUNTS, assertThrowawayDatabase } from './accounts';
 import { keepBuilderStepsOpen } from './builder';
+import { readableStamp } from '../../apps/web/src/design/time';
 test.use({ storageState: AUTH_STATE.auditor });
 
 /**
@@ -91,7 +92,7 @@ test('all Procedure Detail states remain visible and New version is keyboard acc
     expect((await repo.findVersion(base.versionId))?.state).toBe('ACTIVE');
     await sql`UPDATE procedure_version SET state='RETIRED' WHERE version_id=${base.versionId}`;
     await page.goto(`/procedures/${procedureId}`);await expect(page.getByText(`Retired; this version is read-only. Superseded by v${successor.versionNumber}.`)).toBeVisible();
-    await expect(page.getByText(`First period start after activation: ${successor.lifecycle!.handoverAt}.`)).toBeVisible();
+    await expect(page.getByText(`First period start after activation: ${readableStamp(successor.lifecycle!.handoverAt!)}.`)).toBeVisible();
     await page.goto(`/procedures/${procedureId}/versions/${base.versionId}`);await expect(page.getByText(`Retired; this version is read-only. Superseded by v${successor.versionNumber}.`)).toBeVisible();
     expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()).violations).toEqual([]);
     await uow.execute(async ctx=>{for(let number=successor.versionNumber+1;number<=103;number++)await ctx.procedures.insertVersion({...base,versionId:ids.next(),versionNumber:number,planInputDigest:planAuthoringDigest(base)});});

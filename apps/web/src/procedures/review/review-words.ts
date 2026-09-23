@@ -75,6 +75,18 @@ export const AUTHOR_LABEL = 'Author';
 export const SUBMITTED_BY_LABEL = 'Submitted by';
 export const NO_SUBMISSION_RECORDED = 'Not yet submitted for approval.';
 
+/**
+ * Said when no submission is on record for a version that is past Draft — one inserted by
+ * a migration or a fixture, or older than submission records. "Not yet submitted" would
+ * then be false about an Active version; what is true is that no record says who sent it.
+ */
+export const SUBMISSION_NOT_RECORDED = 'No submission is recorded for this version.';
+
+/** What the decision bar says when it finds no submission record, for this state. */
+export function missingSubmissionWords(state: string): string {
+  return state === 'DRAFT' ? NO_SUBMISSION_RECORDED : SUBMISSION_NOT_RECORDED;
+}
+
 /** The one disclosure the frozen contract lives under. */
 export const FROZEN_CONTRACT_SUMMARY = 'Technical details — the frozen contract';
 export const FROZEN_CONTRACT_SENTENCE =
