@@ -278,11 +278,20 @@ test.describe('the Runs list and Run Detail as an Auditor', () => {
     await expect(page.getByText('Inconclusive', { exact: true }).first()).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Safe next action' })).toBeVisible();
     await expect(page.getByText('Diagnose and request a new Run; cannot submit')).toBeVisible();
-    await expect(page.getByText('Failed checks')).toBeVisible();
+    // UI cleanup 2026-09-22, UX-20: the failed rows are OPEN under a heading that counts
+    // them, the passed ones are behind a disclosure, and the specification citation and the
+    // diagnostic code are under each row's Technical details. This used to require the
+    // heading "Failed checks", the code word `record-uninspected` and the "(§C)" citation
+    // visible on the page — the three things the walkthrough asked to have moved.
+    await expect(page.getByText('1 check that did not pass')).toBeVisible();
     await expect(page.getByText('19 of 20 checks passed')).toBeVisible();
-    // Each failed row names its rule and links to the Work Items it names.
-    await expect(page.getByText('record-uninspected').first()).toBeVisible();
-    await expect(page.getByText("computed over Observations per the Template's coverage rule (§C)").first()).toBeVisible();
+    const failedRow = page.locator('.ls-gate__row--fail');
+    await expect(failedRow).toHaveCount(1);
+    await expect(failedRow.getByText('3 records affected')).toBeVisible();
+    await expect(failedRow.getByText("computed over Observations per the Template's coverage rule").first()).toBeVisible();
+    await expect(failedRow.getByText('record-uninspected')).toBeHidden();
+    await expect(page.locator('main')).not.toContainText('(§C)', { useInnerText: true });
+    await expect(page.locator('.ls-gate__row--pass').first()).toBeHidden();
     await scan(page);
   });
 
@@ -351,7 +360,8 @@ test.describe('the Runs list and Run Detail as an Auditor', () => {
     await expect(page.getByText('AccessGate')).toBeVisible();
     const details = page.locator('details.ls-expand').first();
     await expect(details).not.toHaveAttribute('open', /.*/);
-    await details.getByText(/Step Executions/).click();
+    // `countNoun` agrees with the count now, so one attempt reads "1 Step Execution".
+    await details.locator('> summary').filter({ hasText: /^\d+ Step Executions?/ }).click();
     await expect(page.getByText('Extract through the Adapter').first()).toBeVisible();
     await scan(page);
 
