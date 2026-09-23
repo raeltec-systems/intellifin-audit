@@ -130,12 +130,25 @@ async function privateProof(page: Page, runId: string) {
   expect((await sql`SELECT status FROM run_agent_execution WHERE run_id=${runId}`)[0]?.status).toBe('SIGNED_IN');
   return model;
 }
+// The worker honours a Pause or a Stop at its next boundary, and the held model turn is all
+// that stands between it and that boundary. Release the turn only once the request is saved
+// on the Run: released first, the worker can answer the turn, act, and begin ANOTHER held
+// turn before the command commits, and then nothing reaches a boundary. A cold local run met
+// exactly that at the Stop; the Pause passed only because its commit landed mid-action.
+async function awaitRunRequest(runId: string, kind: 'pause' | 'cancel') {
+  await expect.poll(async () => {
+    const [row] = await sql`SELECT pause_requested_at IS NOT NULL AS pause, cancel_requested_at IS NOT NULL AS cancel
+      FROM audit_run WHERE run_id=${runId}`;
+    return row?.[kind];
+  }, { timeout: 30_000, message: `The ${kind} request must be saved before the held model turn is released` }).toBe(true);
+}
 async function requestStop(page: Page, runId: string, model: Marker) {
   // The workspace's Stop conversation command shares the authoritative cancellation path.
   await page.getByLabel('Message the Run', { exact: true }).fill('Stop');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   await page.getByRole('button', { name: 'Review Stop', exact: true }).click();
   await page.getByRole('dialog', { name: 'Stop this Run?', exact: true }).getByRole('button', { name: 'Stop Run', exact: true }).click();
+  await awaitRunRequest(runId, 'cancel');
   release(model);
   await expect.poll(async () => (await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)[0]?.state, { timeout: 60_000 }).toBe('CANCELED');
   await expect.poll(() => markers.some(row => row.kind === 'released' && row.runId === runId && row.pagesClosed), { timeout: 30_000 }).toBe(true);
@@ -201,6 +214,7 @@ test.describe('composed compiled-worker near-live preview', () => {
 
       await page.getByRole('button', { name: 'Pause', exact: true }).click();
       await page.getByRole('dialog').getByRole('button', { name: 'Pause Run', exact: true }).click();
+      await awaitRunRequest(runId, 'pause');
       release(model);
       await expect.poll(async () => (await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)[0]?.state, { timeout: 60_000 }).toBe('PAUSED');
       await page.reload();

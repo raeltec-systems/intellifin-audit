@@ -76,6 +76,15 @@ has (`ed12dfd` record review, `857b08b` workspace, Live View and chat).
   Resume click. CI on `96c7f51` failed there (the Resume dialog never opened in 240 s);
   `bf06297` passed it by chance. When a class is fixed, grep `tests/` for the control's
   name, not the list of files the main job runs.
+- **A test that holds the worker lets it go only after the command it waits on is saved.**
+  The same spec clicked "Stop Run" and released its held model turn in the same breath.
+  The worker answered the turn, acted, and began ANOTHER held turn before the cancellation
+  committed, so no boundary saw the Stop and the Run stayed `RUNNING`: two cold local runs
+  failed there. The Pause had the same race and won it only because its commit landed while
+  the worker was mid-action. `awaitRunRequest` now waits for the Run's saved marker first,
+  as `prodconsole-agent-journey.spec.ts` already did before releasing its barrier. A
+  throwaway copy that held every command POST for two seconds passed with the wait and
+  failed at the Stop without it, with the same "Received: RUNNING".
 - **A route handler still running when its test ends fails the NEXT test**, as
   `route.fetch: Test ended`. `run-controller-lease.spec.ts:397` failed for a read test 369
   held and never released; a test that holds a request releases it and awaits
