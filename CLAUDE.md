@@ -63,9 +63,17 @@ has (`ed12dfd` record review, `857b08b` workspace, Live View and chat).
   not follow it: `live-escalation.spec.ts`, whose refused cleanup CI met (the
   `procedures.spec.ts` empty-list failure was its shadow), and
   `prodconsole-agent-journey.spec.ts`, which holds control while its worker finishes.
-- **Click Resume through `resumeWithControl`.** Acquiring control starts a re-read, and
-  while it settles the opener is `aria-disabled` and a click on it is refused; CI met that
-  once. The helper clicks only enabled controls, and again only while the dialog is absent.
+- **Click Acquire and Resume through `acquireControl` and `resumeWithControl`.** Every
+  control read (first load, a live event, a renewal, the read after Release) makes the
+  controls `aria-disabled` for a moment, and a click then is refused by design. CI met it
+  three times in one run: a Resume opener, a Resume confirm, and an Acquire right after
+  Release that reached no server action at all. The helpers click only enabled controls,
+  and again only while the click has not taken effect; a repeated acquire is refused by
+  the server (`stale-epoch` or `held`), so a retry cannot move the lease twice.
+- **A route handler still running when its test ends fails the NEXT test**, as
+  `route.fetch: Test ended`. `run-controller-lease.spec.ts:397` failed for a read test 369
+  held and never released; a test that holds a request releases it and awaits
+  `page.unrouteAll` in its `finally`, as the sibling at line 366 already did.
 - **`live-escalation.spec.ts` still waited to SEE "Pause requested." and "Run resumed."**
   after UX-49 made both transitional; `pause-resume.spec.ts` had already moved to the
   settled banner. When a sentence becomes transitional, grep every spec for it — this

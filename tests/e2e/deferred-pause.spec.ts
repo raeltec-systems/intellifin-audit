@@ -4,6 +4,7 @@ import { AUTH_STATE } from './accounts';
 import { createDeferredPauseBrowserFixture, type DeferredPauseBrowserFixture } from '../fixtures/deferred-pause-browser';
 import { acquireRunControlLease, releaseRunControlLease } from '@intellifin/application';
 import { createDb, CryptoUuidV7Generator, DrizzleRoleRepository, PostgresRunsUnitOfWork, PostgresRunControlLeaseRepository } from '@intellifin/infrastructure';
+import { acquireControl } from './run-control';
 
 let fixture: DeferredPauseBrowserFixture | undefined;
 
@@ -58,8 +59,7 @@ async function openWorkspace(page: Page): Promise<void> {
 
 async function acquire(page: Page): Promise<void> {
   const controller = page.getByRole('region', { name: 'Run controller', exact: true });
-  await controller.getByRole('button', { name: 'Acquire control', exact: true }).click();
-  await expect(controller).toContainText('You control this Run.');
+  await acquireControl(controller);
 }
 
 async function propose(page: Page): Promise<NonNullable<Awaited<ReturnType<typeof readProposal>>>> {

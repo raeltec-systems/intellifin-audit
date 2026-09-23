@@ -19,6 +19,7 @@ import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 import { NORTHSTAR_BASE_URL } from './northstar';
 import { EXCEPTION_FINGERPRINT_KEY, EXCEPTION_FINGERPRINT_KEY_ID } from './credentials';
 import { SAVED_SCREEN_HEADING } from '../../apps/web/src/runs/workspace-words';
+import { acquireControl } from './run-control';
 
 // Actual compiled worker, real canonical Northstar HTTP/browser and production S3 adapter.
 // The named HTTP provider fixture selects opaque tools only; this is local synthetic model
@@ -437,8 +438,7 @@ test.describe('canonical P-4 through the real compiled worker', () => {
     await expect(page.getByRole('button', { name: 'Resume', exact: true })).toBeVisible();
     const controller = page.getByRole('region', { name: 'Run controller', exact: true });
     await expect(controller.getByRole('button', { name: 'Acquire control', exact: true })).toBeVisible();
-    await controller.getByRole('button', { name: 'Acquire control', exact: true }).click();
-    await expect(controller).toContainText('You control this Run.');
+    await acquireControl(controller);
     await page.getByLabel('Message the Run', { exact: true }).fill('Resume');
     await page.getByRole('button', { name: 'Send message', exact: true }).click();
     await expect(page.locator('.run-conversation__composer-status')).toHaveText('Message accepted.');

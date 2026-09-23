@@ -4,6 +4,7 @@ import { cancelRun, performCancellation } from '@intellifin/application';
 import { DrizzleRoleRepository, PostgresRunCancellationRepository, PostgresRunsUnitOfWork, SystemClock, createDb, createSqlClient, CryptoUuidV7Generator, PostgresProceduresUnitOfWork, type Sql } from '@intellifin/infrastructure';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, PASSWORD, assertThrowawayDatabase, signIn } from './accounts';
+import { acquireControl } from './run-control';
 
 const ids = new CryptoUuidV7Generator();
 const procedureId = ids.next();
@@ -106,8 +107,7 @@ test('explicit grant, review, reload and lost-response recovery update both auth
     await signIn(manager, email);
     await auditor.goto(`/runs/${runId}/workspace`);
     const auditorControl = auditor.getByRole('region', { name: 'Run controller', exact: true });
-    await auditorControl.getByRole('button', { name: 'Acquire control', exact: true }).click();
-    await expect(auditorControl).toContainText('You control this Run.');
+    await acquireControl(auditorControl);
     await manager.goto(`/runs/${runId}/workspace`);
     const managerControl = manager.getByRole('region', { name: 'Run controller', exact: true });
     await expect(managerControl).toContainText(`Current controller: ${auditorName}.`);
@@ -233,8 +233,7 @@ test('historical and terminal receipt recovery never claims present ownership, a
     await expect(managerControl).toContainText('No auditor currently holds control.');
     await auditor.goto(`/runs/${runId}/workspace`);
     const auditorControl = auditor.getByRole('region', { name: 'Run controller', exact: true });
-    await auditorControl.getByRole('button', { name: 'Acquire control', exact: true }).click();
-    await expect(auditorControl).toContainText('You control this Run.');
+    await acquireControl(auditorControl);
     const epoch = (await sql`SELECT epoch FROM run_control_lease WHERE run_id=${runId}`)[0]!.epoch;
     await manager.evaluate(value => sessionStorage.setItem('intellifin.control-transfers.v2', value), retainedRecovery);
     await manager.reload();

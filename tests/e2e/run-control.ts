@@ -1,5 +1,28 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { RUN_CONTROL_LEASE_ACQUIRED_EVENT, RUN_CONTROL_LEASE_RENEWED_EVENT } from '@intellifin/application';
+
+const HOLDS_CONTROL = 'You control this Run.';
+
+/**
+ * Acquires Run control through the "Run controller" region, and waits until it says so.
+ *
+ * Every control read (the page's first read, a live event's re-read, a renewal, the read
+ * after a Release) puts the controller in "checking" for a moment, and a click that lands
+ * then is refused, as every `aria-disabled` control refuses one. CI met it once: a click
+ * right after Release reached no server action at all. The click is made only on an
+ * enabled Acquire control, and made again only while the region does not yet say this
+ * page holds control. A repeated acquire can never move the lease twice: the server
+ * refuses it as `stale-epoch` or `held`.
+ */
+export async function acquireControl(controller: Locator): Promise<void> {
+  const enabled = controller.page().locator(':not([aria-disabled="true"])');
+  await expect(async () => {
+    if (!((await controller.textContent()) ?? '').includes(HOLDS_CONTROL)) {
+      await controller.getByRole('button', { name: 'Acquire control', exact: true }).and(enabled).click({ timeout: 5_000 });
+    }
+    await expect(controller).toContainText(HOLDS_CONTROL, { timeout: 10_000 });
+  }).toPass({ timeout: 45_000 });
+}
 
 /**
  * Opens the Resume confirmation and confirms it, on a page that already holds control.

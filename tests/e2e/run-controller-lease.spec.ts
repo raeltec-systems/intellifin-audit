@@ -16,6 +16,7 @@ import {
 
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
+import { acquireControl } from './run-control';
 
 /**
  * Controller control is a durable fence around Resume, exercised through two real
@@ -225,8 +226,7 @@ test.describe('durable Run controller lease', () => {
     const runId = await seedRun('RUNNING');
     await page.goto(`/runs/${runId}/workspace`);
     const controller = page.getByRole('region', { name: 'Run controller', exact: true });
-    await controller.getByRole('button', { name: 'Acquire control', exact: true }).click();
-    await expect(controller).toContainText('You control this Run.');
+    await acquireControl(controller);
     let dropped = false;
     const renewalBodies: string[] = [];
     let readRequests = 0;
@@ -324,8 +324,7 @@ test.describe('durable Run controller lease', () => {
     await pauseSeededRun(runId, auditor.id);
     await page.goto(`/runs/${runId}`);
     const controller = page.getByRole('region', { name: 'Run controller', exact: true });
-    await controller.getByRole('button', { name: 'Acquire control', exact: true }).click();
-    await expect(controller).toContainText('You control this Run.');
+    await acquireControl(controller);
     let renewed = false;
     let releaseRead!: () => void;
     const released = new Promise<void>(resolve => { releaseRead = resolve; });
@@ -370,8 +369,7 @@ test.describe('durable Run controller lease', () => {
     const runId = await seedRun('RUNNING');
     await page.goto(`/runs/${runId}`);
     const controller = page.getByRole('region', { name: 'Run controller', exact: true });
-    await controller.getByRole('button', { name: 'Acquire control', exact: true }).click();
-    await expect(controller).toContainText('You control this Run.');
+    await acquireControl(controller);
     let releaseRead!: () => void;
     let captureRead!: () => void;
     const released = new Promise<void>(resolve => { releaseRead = resolve; });
@@ -391,7 +389,9 @@ test.describe('durable Run controller lease', () => {
         FROM audit_run WHERE run_id=${runId}`)[0]?.requested).toBe(true);
       expect(await sql`SELECT event_id FROM audit_events WHERE aggregate_id=${runId}
         AND event_type='lifecycle.run-pause-requested'`).toHaveLength(1);
-    } finally { releaseRead(); }
+      // A handler still inside the route when the test ends fails as "route.fetch: Test
+      // ended" and is reported against the NEXT test; release it and wait for it here.
+    } finally { releaseRead(); await page.unrouteAll({ behavior: 'wait' }); }
   });
 
   test('counts delayed ownership delivery against server expiry even while a later read hangs', async ({ page }) => {
@@ -444,7 +444,10 @@ test.describe('durable Run controller lease', () => {
       await controller.getByRole('button', { name: 'Refresh control', exact: true }).click();
       await expect(controller).toHaveAttribute('data-control-ready', 'true');
       await expect(controller).not.toContainText('The last confirmed control lease expired.');
-    } finally { releaseRead(); await Promise.all(pendingRoutes.map(release => release())); }
+    } finally {
+      releaseRead(); await Promise.all(pendingRoutes.map(release => release()));
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    }
   });
 
   test('a late successful read cannot restore ownership or an open Resume after a newer read fails', async ({ page }) => {
@@ -454,8 +457,7 @@ test.describe('durable Run controller lease', () => {
     await pauseSeededRun(runId, auditor.id);
     await page.goto(`/runs/${runId}`);
     const controller = page.getByRole('region', { name: 'Run controller', exact: true });
-    await controller.getByRole('button', { name: 'Acquire control', exact: true }).click();
-    await expect(controller).toContainText('You control this Run.');
+    await acquireControl(controller);
     // Acquisition can trigger a live refresh between the controller message and
     // activation. Resolve only the currently enabled opener; aria-disabled is
     // intentionally focusable and a plain click on it is a no-op.
@@ -492,7 +494,7 @@ test.describe('durable Run controller lease', () => {
       await expect(controller).toContainText('Run control is unavailable.');
       await expect(page.getByRole('button', { name: 'Resume', exact: true })).toHaveAttribute('aria-disabled', 'true');
       expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`).toEqual([{ state: 'PAUSED' }]);
-    } finally { releaseOld(); }
+    } finally { releaseOld(); await page.unrouteAll({ behavior: 'wait' }); }
   });
 
   test('keeps independent tabs fenced and withdraws hidden ownership until a fresh visible read', async ({ context, page }) => {
@@ -500,8 +502,7 @@ test.describe('durable Run controller lease', () => {
     const runId = await seedRun('RUNNING');
     await page.goto(`/runs/${runId}`);
     const first = page.getByRole('region', { name: 'Run controller', exact: true });
-    await first.getByRole('button', { name: 'Acquire control', exact: true }).click();
-    await expect(first).toContainText('You control this Run.');
+    await acquireControl(first);
     const secondPage = await context.newPage();
     try {
       await secondPage.goto(`/runs/${runId}`);
@@ -518,8 +519,7 @@ test.describe('durable Run controller lease', () => {
       expect(await readLease(runId)).toMatchObject({ epoch: 1 });
       await second.getByRole('button', { name: 'Release control', exact: true }).click();
       await expect(second).toContainText('No auditor currently holds control.');
-      await second.getByRole('button', { name: 'Acquire control', exact: true }).click();
-      await expect(second).toContainText('You control this Run.');
+      await acquireControl(second);
       expect(await readLease(runId)).toMatchObject({ epoch: 3 });
       await page.evaluate(() => {
         Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
@@ -544,8 +544,7 @@ test.describe('durable Run controller lease', () => {
       const waitId = await pauseSeededRun(runId, auditor.id);
       await page.goto(`/runs/${runId}/workspace`);
       const controller = page.getByRole('region', { name: 'Run controller', exact: true });
-      await controller.getByRole('button', { name: 'Acquire control', exact: true }).click();
-      await expect(controller).toContainText('You control this Run.');
+      await acquireControl(controller);
       await page.getByLabel('Message the Run', { exact: true }).fill('Resume');
       await page.getByRole('button', { name: 'Send message', exact: true }).click();
       await expect(page.locator('.run-conversation__composer-status')).toHaveText('Message accepted.');
@@ -606,8 +605,7 @@ test.describe('durable Run controller lease', () => {
     const waitId = await pauseSeededRun(runId, auditor.id);
     await page.goto(`/runs/${runId}/workspace`);
     const controller = page.getByRole('region', { name: 'Run controller', exact: true });
-    await controller.getByRole('button', { name: 'Acquire control', exact: true }).click();
-    await expect(controller).toContainText('You control this Run.');
+    await acquireControl(controller);
     await page.getByLabel('Message the Run', { exact: true }).fill('Resume');
     await page.getByRole('button', { name: 'Send message', exact: true }).click();
     await expect(page.locator('.run-conversation__composer-status')).toHaveText('Message accepted.');
@@ -905,8 +903,7 @@ test.describe('durable Run controller lease', () => {
       await expect(holderController.getByRole('button', { name: 'Acquire control', exact: true })).toBeVisible();
       await expect(holderPage.getByRole('button', { name: 'Resume', exact: true })).toHaveAttribute('aria-disabled', 'true');
       await expect(holderController.getByRole('button', { name: 'Acquire control', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
-      await holderController.getByRole('button', { name: 'Acquire control', exact: true }).click();
-      await expect(holderController).toContainText('You control this Run.');
+      await acquireControl(holderController);
       const firstLease = await readLease(pausedRunId);
       expect(firstLease).toMatchObject({ epoch: 1, holder_id: auditor.id });
       expect(firstLease?.expires_at).not.toBeNull();
@@ -958,8 +955,7 @@ test.describe('durable Run controller lease', () => {
       await holderController.getByRole('button', { name: 'Release control', exact: true }).click();
       await expect(holderController).toContainText('No auditor currently holds control.');
       expect(await readLease(pausedRunId)).toMatchObject({ epoch: 2, holder_id: null, expires_at: null });
-      await holderController.getByRole('button', { name: 'Acquire control', exact: true }).click();
-      await expect(holderController).toContainText('You control this Run.');
+      await acquireControl(holderController);
       expect(await readLease(pausedRunId)).toMatchObject({ epoch: 3, holder_id: auditor.id });
 
       // Forward the unchanged stale request. The lease fence refuses it before the wait

@@ -16,7 +16,7 @@ import { ESCALATION_PANEL_COPY, PAUSE_COPY } from '../../apps/web/src/design/cop
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { executablePlanInputs } from '../fixtures/executable-plan';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
-import { expectRunEvents, resumeWithControl } from './run-control';
+import { acquireControl, expectRunEvents, resumeWithControl } from './run-control';
 
 /**
  * Flow 3: watch a Run, answer its Escalation without leaving Live View, pause it, resume it
@@ -345,8 +345,7 @@ test.describe('Flow 3: supervising a Run from Live View', () => {
 
     await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
     await expect(page.getByRole('button', { name: 'Acquire control', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
-    await page.getByRole('button', { name: 'Acquire control', exact: true }).click();
-    await expect(page.getByText('You control this Run.', { exact: true })).toBeVisible();
+    await acquireControl(page.getByRole('region', { name: 'Run controller', exact: true }));
     await resumeWithControl(page);
     // The settled page, never the transitional "Run resumed.": Pause is offered again and
     // the control's sentence has gone with the state it announced (UX-49).

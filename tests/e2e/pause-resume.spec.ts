@@ -14,7 +14,7 @@ import {
 import { ESCALATION_PANEL_COPY, PAUSE_COPY } from '../../apps/web/src/design/copy';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
-import { expectRunEvents, resumeWithControl } from './run-control';
+import { acquireControl, expectRunEvents, resumeWithControl } from './run-control';
 
 /**
  * Pausing and resuming a Run, in a real browser (Story 5.4, FR-25, AD-16, UX-DR25).
@@ -185,8 +185,7 @@ test.describe('pausing and resuming a Run', () => {
     // v1.1 requires current controller ownership and explicit confirmation on every surface.
     await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
     await expect(page.getByRole('button', { name: 'Acquire control', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
-    await page.getByRole('button', { name: 'Acquire control', exact: true }).click();
-    await expect(page.getByText('You control this Run.', { exact: true })).toBeVisible();
+    await acquireControl(page.getByRole('region', { name: 'Run controller', exact: true }));
     // Acquisition can trigger a live refresh between the controller message and
     // activation; `resumeWithControl` clicks only enabled controls, and again only while
     // the click has not yet taken effect.
@@ -262,8 +261,7 @@ test.describe('pausing and resuming a Run', () => {
     // explicit confirmation, exactly as the journey above walks it.
     await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
     await expect(page.getByRole('button', { name: 'Acquire control', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
-    await page.getByRole('button', { name: 'Acquire control', exact: true }).click();
-    await expect(page.getByText('You control this Run.', { exact: true })).toBeVisible();
+    await acquireControl(page.getByRole('region', { name: 'Run controller', exact: true }));
     await resumeWithControl(page);
     await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
     await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at,completed_at)
