@@ -27,6 +27,12 @@ has (`ed12dfd` record review, `857b08b` workspace, Live View and chat).
 - **A page test whose `vi.mock` factory lists exports breaks when the page imports one
   more**: "No `readRecordNames` export is defined on the mock". Add it to the factory with a
   neutral default, then add a case that proves the new behaviour.
+- **A wait armed before an action must be observed before the next `await`.** Sign-in
+  armed `page.waitForResponse` before the click and awaited it only after; a click that
+  failed left it unobserved, and its later rejection was unhandled, which under Node's
+  default policy stops the worker. The search path already observed both of its armed
+  waits; the sign-in path did not. It was the CI preview failure "a real decoded image
+  cannot enter the stage after private changes", on the deployed commit as well.
 - **A helper agent with a file allowlist reports what is outside it.** The workspace helper
   had no git writes, no shared-database suites, and a list of files. It named four defects it
   was not allowed to fix (a stale spec, raw chat times, the bounded current step, an
