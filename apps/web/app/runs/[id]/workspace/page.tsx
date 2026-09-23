@@ -97,7 +97,9 @@ export default async function RunWorkspacePage({ params, searchParams }: {
           </WorkspaceCaptureView>
           <p className="ls-caption">Registered evidence updates when execution commits a capture. It is separate from the ephemeral preview above.</p>
         </section>} />
-    <details><summary>Flag this Run</summary><RunFlagControl runId={id} flaggable={isFlaggableRunState(run.state)} flags={flags.map(flag => ({ ...flag, flaggedBy: names.get(flag.flaggedBy) ?? 'Auditor' }))} /></details>
+    {/* `RunFlagControl` is its own native disclosure ("Flag to Audit Manager", UX-48), so
+        it is not wrapped in a second one. */}
+    <RunFlagControl runId={id} flaggable={isFlaggableRunState(run.state)} flags={flags.map(flag => ({ ...flag, flaggedBy: names.get(flag.flaggedBy) ?? 'Auditor' }))} />
     </LiveGate>
   </div>;
 }

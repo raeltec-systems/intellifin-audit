@@ -265,9 +265,11 @@ export class DrizzleUserDirectory implements UserDirectory {
         email: authUser.email,
         role: userRole.role,
         createdAt: authUser.createdAt,
+        transferGranted: userPermissionGrant.granted, transferRevision: userPermissionGrant.revision,
       })
       .from(authUser)
       .leftJoin(userRole, eq(userRole.userId, authUser.id))
+      .leftJoin(userPermissionGrant, sql`${userPermissionGrant.userId}=${authUser.id} AND ${userPermissionGrant.permission}='run.control-transfer'`)
       .where(userDirectoryPredicate(query))
       .orderBy(asc(authUser.createdAt), asc(authUser.id))
       .limit(limit)

@@ -62,7 +62,9 @@ describe('selected Replay route', () => {
       action: { action: 'read-attribute', method: 'GET', startedAt: stored.actionStartedAt, diagnostic: 'PRIVATE_DIAGNOSTIC', downloads: 19, toolActionId: 'PRIVATE_TOOL_ID' } }], total: 105, nextCursor: 100 });
     calls.read.mockClear();
     const html = renderToStaticMarkup(await view({ workItem: workItemId }));
-    expect(html).toContain('E-LATE on Frozen LoanCore'); expect(html).toContain('late-plan-step');
+    // The narration is the returned action in audit words, on the frozen target's name; a
+    // plan-step id is never narrated (UI cleanup 2026-09-22, UX-28).
+    expect(html).toContain('Opening the record for E-LATE on Frozen LoanCore'); expect(html).not.toContain('late-plan-step');
     expect(html).toContain('512'); expect(html).toContain('506'); expect(html).toContain('late-evidence');
     expect(html).not.toContain('PRIVATE_DIAGNOSTIC'); expect(html).not.toContain('PRIVATE_TOOL_ID');
     expect(html).not.toContain('downloads'); expect(html).not.toContain('mediaType');

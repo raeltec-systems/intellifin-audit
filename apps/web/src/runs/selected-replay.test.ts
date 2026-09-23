@@ -10,13 +10,13 @@ const runId = '019823ab-0000-7000-8000-000000000001';
 const workItemId = '019823ab-0000-7000-8000-000000000002';
 const evidenceId = '019823ab-0000-7000-8000-000000000003';
 const frame: ReplayFrameView = { evidenceId, globalOrdinal: 606, narration: 'Inspect E-LATE on LoanCore.',
-  stepNarration: 'Inspect E-LATE on LoanCore.', workItemLabel: 'E-LATE · LoanCore',
+  stepNarration: 'Inspect E-LATE on LoanCore.', workItemLabel: 'E-LATE · LoanCore', workItemId, subjectKey: 'E-LATE',
   sourceLocation: 'https://loancore.invalid/accounts/E-LATE', digest: 'a'.repeat(64), capturedAt: '2026-09-20T10:00:00Z',
   action: { action: 'read-attribute', method: 'GET', destination: 'https://loancore.invalid/accounts/E-LATE',
     outcome: 'performed', status: 200, denial: null, capture: 'PERMITTED', captureSuppression: null,
     startedAt: '2026-09-20T10:00:00Z' }, observations: 512 };
 const props: React.ComponentProps<typeof ReplayViewer> = {
-  runId, frames: [frame], framesTotal: 610, stateSentence: 'Session REPLAY. This Run ended: COMPLETED.',
+  runId, runState: 'COMPLETED', frames: [frame], framesTotal: 610, stateSentence: 'Session REPLAY. This Run ended: COMPLETED.',
   workspace: null, plannedSteps: null, stageNote: null, jumpTargets: [], instructions: [], adapterSteps: [],
   window: { kind: 'inspection', workItemId, label: 'E-LATE · LoanCore', cursor: 100, total: 105,
     previousCursor: 0, nextCursor: null },
@@ -85,8 +85,13 @@ describe('bounded selected inspection markup', () => {
     const html = renderToStaticMarkup(React.createElement(SessionStage, { runId, frame,
       imageUnavailable: true, stageNote: 'This recorded frame could not be read.', onRetryFrame: () => {} }));
     expect(html).not.toContain('<img');
-    expect(html).toContain(frame.sourceLocation); expect(html).toContain(frame.digest);
-    expect(html).toContain('Captured'); expect(html).toContain('role="status" aria-live="polite"');
+    expect(html).toContain('role="status" aria-live="polite"');
     expect(html).toContain('Retry this frame');
+    // Where and when the frame was captured, and its digest, are on the rail beside the
+    // stage (UX-29: the stage holds the screen and nothing else), so a frame whose pixels
+    // cannot be read still shows all three: the rail does not depend on the image.
+    const rail = render();
+    expect(rail).toContain(frame.sourceLocation); expect(rail).toContain(frame.digest);
+    expect(rail).toContain('Captured');
   });
 });
