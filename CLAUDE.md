@@ -70,6 +70,12 @@ has (`ed12dfd` record review, `857b08b` workspace, Live View and chat).
   Release that reached no server action at all. The helpers click only enabled controls,
   and again only while the click has not taken effect; a repeated acquire is refused by
   the server (`stale-epoch` or `held`), so a retry cannot move the lease twice.
+- **A spec the main suite skips is still a spec, and the class sweep missed one.**
+  `workspace-preview-worker.spec.ts` runs only in the preview job, so the sweep that moved
+  every Acquire click onto `acquireControl` did not see its own acquire loop or its single
+  Resume click. CI on `96c7f51` failed there (the Resume dialog never opened in 240 s);
+  `bf06297` passed it by chance. When a class is fixed, grep `tests/` for the control's
+  name, not the list of files the main job runs.
 - **A route handler still running when its test ends fails the NEXT test**, as
   `route.fetch: Test ended`. `run-controller-lease.spec.ts:397` failed for a read test 369
   held and never released; a test that holds a request releases it and awaits
