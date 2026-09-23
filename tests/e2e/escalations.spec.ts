@@ -461,6 +461,9 @@ test.describe('the Escalation panel as an Auditor', () => {
       const [run] = await sql`SELECT state FROM audit_run WHERE run_id=${runs.answered}`;
       return run?.state;
     }).toBe('RUNNING');
+    // The refresh after the answer removed the panel, and the confirmation outlives the panel the refresh removed (it used to go with the panel, within about 300 ms).
+    await expect(page.locator('#open-escalation')).toHaveCount(0);
+    await expect(page.locator('[data-escalation-outcome]')).toContainText('Escalation answered.');
     const [answerEvent] = await sql`
       SELECT payload FROM audit_events
       WHERE aggregate_id=${runs.answered} AND event_type='execution.escalation-answered'

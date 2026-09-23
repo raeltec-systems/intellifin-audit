@@ -46,11 +46,14 @@ surfaces only PR #51's branch has; `p5-report.md` states the rule each one needs
   the failing line is the quickest look at what the page really said — delete it after.
 - **React's server rendering writes `dateTime`, not `datetime`.** An SSR test that pins a
   `<time>` by its attribute must spell it the way `renderToStaticMarkup` emits it.
-- **`[NAMED]` "Escalation answered." can vanish before anyone reads it.** The banner lives
-  inside the panel that the refresh after the answer removes, so it lasts about 300 ms; a
-  screen reader may miss it and `live-escalation.spec.ts` can miss it under full-suite load
-  (it passes alone). Older than the cleanup; the fix is to keep the confirmation in a
-  component that outlives the panel.
+- **`[FIXED]` "Escalation answered." vanished before anyone could read it.** The banner
+  lived inside the panel that the refresh after the answer removes, so it lasted about
+  300 ms and `live-escalation.spec.ts` could miss it under full-suite load. It now lives in
+  `EscalationOutcomeHost`, which `OpenEscalationSection` renders in EVERY state, so React
+  keeps its state through `router.refresh()`; it steps aside when a different question
+  opens. **A confirmation must live in a component that outlives the thing it confirms**,
+  and the spec that proves it asserts the confirmation AFTER the panel is gone — the
+  old assertion ran before the refresh and could never see the defect.
 
 What the packages learned (each report has the full list):
 

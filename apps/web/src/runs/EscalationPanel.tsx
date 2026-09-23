@@ -15,6 +15,7 @@ import { ConfirmDialog } from '../design/ConfirmDialog';
 import { useActionGate } from '../design/action-gate';
 import { ESCALATION_PANEL_COPY } from '../design/copy';
 import { ESCALATION_KIND_WORDS } from '../design/plain-words';
+import { useEscalationOutcome } from './EscalationOutcome';
 import { UntrustedPolicy, UntrustedText } from './UntrustedText';
 import { Timestamp } from '../design/Timestamp';
 // The clock's arithmetic, shared with the Paused banner so the two surfaces cannot
@@ -101,6 +102,9 @@ type PanelMessage = {
  */
 export function EscalationPanel({ runId, wait, details, runRevision, readAt }: EscalationPanelProps): React.JSX.Element {
   const router = useRouter();
+  // Where an answer that committed is confirmed: the host outlives this panel, which the
+  // refresh below removes. Without a host (an SSR test) the panel keeps it itself.
+  const reportOutcome = useEscalationOutcome();
   const headingId = useId();
   const questionId = useId();
   const evidenceId = useId();
@@ -158,13 +162,15 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt }: E
         }
         return;
       }
-      setMessage({
+      const answered: PanelMessage = {
         tone: 'success',
         title: option.id === 'abort' ? 'Run canceled.' : 'Escalation answered.',
         body: option.id === 'abort'
           ? 'The Run is canceled with the Escalation answer recorded in its Timeline.'
           : 'The Run resumes with the Escalation answer recorded in its Timeline.',
-      });
+      };
+      if (reportOutcome === null) setMessage(answered);
+      else reportOutcome({ waitId: wait.waitId, ...answered });
       router.refresh();
     } catch {
       setUnknown(true);

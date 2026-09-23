@@ -28,6 +28,7 @@ import { WatchControl } from './WatchControl';
 import { ESCALATION_PANEL_COPY, PAUSE_COPY, STALE_DATA_ACTION, fillTemplate, runCanceledBy, updatedAtTitle } from '../design/copy';
 import { DetailTrail } from '../procedures/DetailTrail';
 import { requireServerAction } from '../server-session';
+import { EscalationOutcomeHost } from './EscalationOutcome';
 import { EscalationPanel } from './EscalationPanel';
 import { readOpenEscalation, type OpenEscalationRead } from './escalation-read';
 import { LiveBanner } from './LiveBanner';
@@ -370,22 +371,33 @@ export function RerunLinksBanner({ successors, names }: {
  * means the Run is holding on a question; rendering nothing there would tell a reader the
  * Run is simply busy, which is the "an empty stage that says nothing reads as fine" defect
  * in the one place it costs an audit its answer.
+ *
+ * The outcome host is rendered in EVERY state, and that is what keeps an answer's
+ * confirmation on the page: the refresh after an answer leaves no question open, so the
+ * panel goes, and a confirmation inside it went with it within about 300 ms. The host sits
+ * in the same place either way, so its state survives the refresh.
  */
 export function OpenEscalationSection({ run, escalation, readAt }: {
   readonly run: RunRecord;
   readonly escalation: OpenEscalationRead | null;
   readonly readAt: Date;
-}): React.JSX.Element | null {
-  if (run.state !== 'AWAITING_AUDITOR' || escalation === null) return null;
-  return escalation.wait !== null && escalation.runRevision !== null
-    ? <EscalationPanel
-        runId={run.runId}
-        wait={escalation.wait}
-        details={escalation.details}
-        runRevision={escalation.runRevision}
-        readAt={readAt.toISOString()}
-      />
-    : <Banner tone="danger" title={ESCALATION_PANEL_COPY.unavailable} />;
+}): React.JSX.Element {
+  const open = run.state === 'AWAITING_AUDITOR' ? escalation : null;
+  return (
+    <EscalationOutcomeHost openWaitId={open?.wait?.waitId ?? null}>
+      {open === null
+        ? null
+        : open.wait !== null && open.runRevision !== null
+          ? <EscalationPanel
+              runId={run.runId}
+              wait={open.wait}
+              details={open.details}
+              runRevision={open.runRevision}
+              readAt={readAt.toISOString()}
+            />
+          : <Banner tone="danger" title={ESCALATION_PANEL_COPY.unavailable} />}
+    </EscalationOutcomeHost>
+  );
 }
 
 /**

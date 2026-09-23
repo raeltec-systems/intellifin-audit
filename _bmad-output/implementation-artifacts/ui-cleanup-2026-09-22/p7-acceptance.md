@@ -64,6 +64,13 @@ not happen.
 - **Report claims checked against tests.** Two package 5 claims had no test behind them.
   The stop sentence for an unresolved record key is now pinned (`c2aa58e`); the report was
   corrected where the claim was wrong.
+- **"Escalation answered." vanished within about 300 ms.** The confirmation sat inside the
+  Escalation panel, and the refresh that follows an answer removes the panel, so nobody
+  could read it and the browser spec could miss it under load. It is older than this
+  cleanup and was first only named; it is now fixed: the confirmation lives in
+  `EscalationOutcomeHost`, rendered whether or not a question is open, so it survives the
+  refresh, and it steps aside when a different question opens. Three specs now assert it
+  AFTER the panel is gone (`live-escalation`, `escalations`, `agent-escalation-abuse`).
 
 ## Results
 
@@ -102,12 +109,8 @@ purpose and the named test had to fail:
 The 1280×720 set is not committed; point `UI_CLEANUP_SCREENSHOTS` at a folder and run the
 spec to produce both sizes.
 
-## Named and not fixed
+## Not in this branch
 
-- **"Escalation answered." can vanish within about 300 ms.** The success banner sits inside
-  the Escalation panel, and the refresh that follows the answer removes the panel. The
-  answer is stored and the Run moves on; only the confirmation is short-lived. It is older
-  than this cleanup and passes when run alone; recorded in `CLAUDE.md` as a follow-up.
 - **UX-22 to UX-26** name PR #51's record queue and inspector, which `main` does not have.
   `p5-report.md` states the rule each one needs.
 
