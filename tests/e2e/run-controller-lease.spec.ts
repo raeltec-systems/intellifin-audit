@@ -16,6 +16,7 @@ import {
 
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
+import { heldRoutes } from './held-routes';
 import { acquireControl } from './run-control';
 
 /**
@@ -235,7 +236,8 @@ test.describe('durable Run controller lease', () => {
     const readReleased = new Promise<void>(resolve => { releaseRead = resolve; });
     let readCaptured!: () => void;
     const readReady = new Promise<void>(resolve => { readCaptured = resolve; });
-    await page.route(`**/api/runs/${runId}/control`, async route => {
+    const held = heldRoutes(page);
+    await held.route(`**/api/runs/${runId}/control`, async route => {
       readRequests += 1;
       if (holdRead) {
         const response = await route.fetch(); readCaptured(); await readReleased;
@@ -243,7 +245,7 @@ test.describe('durable Run controller lease', () => {
       }
       await route.continue();
     });
-    await page.route(`**/runs/${runId}/workspace`, async route => {
+    await held.route(`**/runs/${runId}/workspace`, async route => {
       const request = route.request();
       if (request.method() === 'POST' && request.headers()['next-action']) {
         const args: unknown = JSON.parse(request.postData() ?? 'null');
@@ -309,8 +311,8 @@ test.describe('durable Run controller lease', () => {
         AND event_type='lifecycle.run-control-lease-renewed'`).toEqual(beforeRetry);
       await capture(page, testInfo, 'controller-renewal-recovered');
     } finally {
-      holdRead = false; releaseRead(); stopped = true;
-      await page.unrouteAll({ behavior: 'wait' });
+      stopped = true;
+      await held.settle(releaseRead);
       await progress;
       if (originalAdminRole) await sql`UPDATE user_role SET role=${originalAdminRole.role},assigned_by=${originalAdminRole.assigned_by},assigned_at=${originalAdminRole.assigned_at}::timestamptz WHERE user_id=${adminId}`;
     }
@@ -330,14 +332,15 @@ test.describe('durable Run controller lease', () => {
     const released = new Promise<void>(resolve => { releaseRead = resolve; });
     let capturedRead!: () => void;
     const captured = new Promise<void>(resolve => { capturedRead = resolve; });
-    await page.route(`**/api/runs/${runId}/control`, async route => {
+    const held = heldRoutes(page);
+    await held.route(`**/api/runs/${runId}/control`, async route => {
       if (renewed) {
         const response = await route.fetch(); capturedRead(); await released;
         await route.fulfill({ response }); return;
       }
       await route.continue();
     });
-    await page.route(`**/runs/${runId}`, async route => {
+    await held.route(`**/runs/${runId}`, async route => {
       const request = route.request();
       if (request.method() === 'POST' && request.headers()['next-action']) {
         const args: unknown = JSON.parse(request.postData() ?? 'null');
@@ -362,7 +365,7 @@ test.describe('durable Run controller lease', () => {
       await expect(dialog.getByRole('button', { name: 'Resume Run', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
       await dialog.getByRole('button', { name: 'Go back', exact: true }).click();
       expect(await readLease(runId)).toMatchObject({ epoch: 1 });
-    } finally { releaseRead(); await page.unrouteAll({ behavior: 'wait' }); }
+    } finally { await held.settle(releaseRead); }
   });
 
   test('a pending ownership read does not queue an independent safety Pause behind it', async ({ page }) => {
@@ -374,7 +377,8 @@ test.describe('durable Run controller lease', () => {
     let captureRead!: () => void;
     const released = new Promise<void>(resolve => { releaseRead = resolve; });
     const captured = new Promise<void>(resolve => { captureRead = resolve; });
-    await page.route(`**/api/runs/${runId}/control`, async route => {
+    const held = heldRoutes(page);
+    await held.route(`**/api/runs/${runId}/control`, async route => {
       const response = await route.fetch(); captureRead(); await released;
       await route.fulfill({ response });
     });
@@ -389,9 +393,10 @@ test.describe('durable Run controller lease', () => {
         FROM audit_run WHERE run_id=${runId}`)[0]?.requested).toBe(true);
       expect(await sql`SELECT event_id FROM audit_events WHERE aggregate_id=${runId}
         AND event_type='lifecycle.run-pause-requested'`).toHaveLength(1);
-      // A handler still inside the route when the test ends fails as "route.fetch: Test
-      // ended" and is reported against the NEXT test; release it and wait for it here.
-    } finally { releaseRead(); await page.unrouteAll({ behavior: 'wait' }); }
+      // Every control read the page makes is held here, so more than one can still be
+      // inside `route.fetch()` at this point. `settle` lets each of them answer before the
+      // route goes (see held-routes.ts); CI on d0b4c15 lost one to `unrouteAll` alone.
+    } finally { await held.settle(releaseRead); }
   });
 
   test('counts delayed ownership delivery against server expiry even while a later read hangs', async ({ page }) => {
@@ -412,7 +417,10 @@ test.describe('durable Run controller lease', () => {
     let capturedRead!: () => void;
     const captured = new Promise<void>(resolve => { capturedRead = resolve; });
     const pendingRoutes: Array<() => Promise<void>> = [];
-    await page.route(`**/api/runs/${runId}/control`, async route => {
+    const held = heldRoutes(page);
+    // Lets the delayed first read answer and aborts every parked later read. Safe twice.
+    const releaseAll = async () => { releaseRead(); await Promise.all(pendingRoutes.splice(0).map(release => release())); };
+    await held.route(`**/api/runs/${runId}/control`, async route => {
       reads += 1;
       if (reads === 1) {
         // A full 120-second server lease already 108 seconds old; no production
@@ -439,15 +447,12 @@ test.describe('durable Run controller lease', () => {
       await expect(controller).toContainText('The last confirmed control lease expired.');
       await expect(controller).not.toContainText('You control this Run.');
       await expect(page.getByRole('button', { name: 'Resume', exact: true })).toHaveAttribute('aria-disabled', 'true');
-      await Promise.all(pendingRoutes.splice(0).map(release => release()));
-      await page.unroute(`**/api/runs/${runId}/control`);
+      // No read parks after this: the gate closes before the parked reads are aborted.
+      await held.settle(releaseAll);
       await controller.getByRole('button', { name: 'Refresh control', exact: true }).click();
       await expect(controller).toHaveAttribute('data-control-ready', 'true');
       await expect(controller).not.toContainText('The last confirmed control lease expired.');
-    } finally {
-      releaseRead(); await Promise.all(pendingRoutes.map(release => release()));
-      await page.unrouteAll({ behavior: 'ignoreErrors' });
-    }
+    } finally { await held.settle(releaseAll); }
   });
 
   test('a late successful read cannot restore ownership or an open Resume after a newer read fails', async ({ page }) => {
@@ -471,7 +476,8 @@ test.describe('durable Run controller lease', () => {
     const released = new Promise<void>(resolve => { releaseOld = resolve; });
     let settledOld!: () => void;
     const settled = new Promise<void>(resolve => { settledOld = resolve; });
-    await page.route(`**/api/runs/${runId}/control`, async route => {
+    const held = heldRoutes(page);
+    await held.route(`**/api/runs/${runId}/control`, async route => {
       readCount += 1;
       if (readCount === 1) {
         const response = await route.fetch(); capturedOld();
@@ -494,7 +500,7 @@ test.describe('durable Run controller lease', () => {
       await expect(controller).toContainText('Run control is unavailable.');
       await expect(page.getByRole('button', { name: 'Resume', exact: true })).toHaveAttribute('aria-disabled', 'true');
       expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`).toEqual([{ state: 'PAUSED' }]);
-    } finally { releaseOld(); await page.unrouteAll({ behavior: 'wait' }); }
+    } finally { await held.settle(releaseOld); }
   });
 
   test('keeps independent tabs fenced and withdraws hidden ownership until a fresh visible read', async ({ context, page }) => {
@@ -764,7 +770,8 @@ test.describe('durable Run controller lease', () => {
     let refreshReleased = false;
     let releaseRefresh!: () => void;
     const refreshHeld = new Promise<void>(resolve => { releaseRefresh = () => { refreshReleased = true; resolve(); }; });
-    await page.route(`**/runs/${runId}/workspace*`, async route => {
+    const held = heldRoutes(page);
+    await held.route(`**/runs/${runId}/workspace*`, async route => {
       const request = route.request();
       // The normal authoritative refresh may settle a lost response before a
       // human can retry. Hold that read to exercise the explicit retry path.
@@ -815,7 +822,7 @@ test.describe('durable Run controller lease', () => {
       expect(await sql`SELECT event_id FROM audit_events WHERE aggregate_id=${runId} AND event_type='lifecycle.run-canceled'`).toHaveLength(0);
       await capture(page, testInfo, 'conversation-stop-queued-recovered-1440x900');
       await assertA11y(page);
-    } finally { releaseRefresh(); await page.unrouteAll({ behavior: 'wait' }); }
+    } finally { await held.settle(releaseRefresh); }
   });
 
   test('refuses conversational Stop when the proposing auditor loses authority before confirmation', async ({ page }) => {

@@ -85,10 +85,29 @@ has (`ed12dfd` record review, `857b08b` workspace, Live View and chat).
   as `prodconsole-agent-journey.spec.ts` already did before releasing its barrier. A
   throwaway copy that held every command POST for two seconds passed with the wait and
   failed at the Stop without it, with the same "Received: RUNNING".
-- **A route handler still running when its test ends fails the NEXT test**, as
-  `route.fetch: Test ended`. `run-controller-lease.spec.ts:397` failed for a read test 369
-  held and never released; a test that holds a request releases it and awaits
-  `page.unrouteAll` in its `finally`, as the sibling at line 366 already did.
+- `[EXTENDED by the note below]` **A route handler still running when its test ends fails
+  the NEXT test**, as `route.fetch: Test ended`. `run-controller-lease.spec.ts:397` failed
+  for a read test 369 held and never released; a test that holds a request releases it and
+  awaits `page.unrouteAll` in its `finally`, as the sibling at line 366 already did.
+- **`page.unrouteAll({ behavior: 'wait' })` is not a wait for held requests.** Playwright
+  1.62 empties the route list FIRST and waits after, and the first handler that finishes
+  then finds the list empty and removes the page's interceptor itself (`Page._onRoute`).
+  The browser side passes every other request still inside a handler to the network, and
+  that handler's own `fulfill` then fails "Route is already handled!". CI's re-run on
+  `d0b4c15` failed `run-controller-lease.spec.ts:368` that way: it holds EVERY control read,
+  and two were still inside `route.fetch()` when its `finally` released them.
+  `tests/e2e/held-routes.ts` closes the gate first (a later request falls back at once),
+  releases, waits for every started handler, and only then unroutes; the six held-request
+  tests in that spec use it. A throwaway script with two held requests, one still fetching
+  at release, failed 5 of 5 with the old cleanup and 0 of 5 with `settle`. A handler that
+  answers with no network wait before it (the readiness specs' script holds) cannot lose
+  this race; one that awaits `route.fetch()` or a hold released at cleanup can.
+- **A dev server can stop answering ONE route for a whole CI run.** The first attempt on
+  `d0b4c15` failed 7 frame tests: `next dev` never answered `/api/runs/<id>/frames/<id>`
+  from its first request, while the evidence inspector's reads through the same
+  worker-signed grant passed at the same time. The re-run served that route 39 times. The
+  quick test: diff the set of route patterns the server logged in a green and a red CI log
+  (UUIDs normalized); here exactly one pattern was missing.
 - **`live-escalation.spec.ts` still waited to SEE "Pause requested." and "Run resumed."**
   after UX-49 made both transitional; `pause-resume.spec.ts` had already moved to the
   settled banner. When a sentence becomes transitional, grep every spec for it — this
