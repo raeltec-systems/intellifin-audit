@@ -173,4 +173,50 @@ describe('actual browser authentication confirmation', () => {
       await new Promise<void>(resolve => server.close(() => resolve()));
     }
   });
+
+  it('leaves no unhandled rejection when the submit click fails after the response wait is armed', async () => {
+    // The response wait is armed BEFORE the click. A click that never lands (here an overlay
+    // takes every pointer event) leaves that wait behind, and it rejects later at the action
+    // deadline or when the page closes. Unobserved, that rejection is unhandled — and an
+    // unhandled rejection stops the worker process under Node's default policy.
+    const unhandled: unknown[] = [];
+    const listener = (reason: unknown) => { unhandled.push(reason); };
+    process.on('unhandledRejection', listener);
+    let submissions = 0;
+    const server = createServer((request, response) => {
+      request.resume();
+      request.on('end', () => {
+        if (request.method === 'POST') submissions += 1;
+        response.writeHead(200, { 'content-type': 'text/html' });
+        response.end('<!doctype html><body><form method="post" action="/target/sign-in"><input type="password" name="credential"><button type="submit">Sign in</button></form>'
+          + '<div style="position:fixed;inset:0;z-index:10;background:transparent"></div></body>');
+      });
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}/target`;
+    const browser = new PlaywrightBrowserExecution({ mode: 'local' });
+    try {
+      const workspace = await browser.create({ runId: 'authentication-click-failure-test', policy: { allowedOrigins: [origin] }, timeoutMs: 10000 });
+      const credential = await new ManifestCredentialResolver(new Map([[credentialRef, token]])).resolve(credentialRef, 1000);
+      const action = {
+        action: 'navigate' as const,
+        destination: origin,
+        authenticationDestination: `${origin}/sign-in`,
+        parameters: [],
+        credential,
+      };
+      await expect(browser.perform(workspace.ref, action, 1500)).rejects.toBeDefined();
+      expect(submissions).toBe(0);
+      // Past the action deadline the armed wait has settled one way or the other, and the
+      // failed page is already discarded. Give the event loop a moment to report it.
+      await new Promise(resolve => setTimeout(resolve, 750));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', listener);
+      await browser.close();
+      server.closeAllConnections();
+      await new Promise<void>(resolve => server.close(() => resolve()));
+    }
+  });
 });

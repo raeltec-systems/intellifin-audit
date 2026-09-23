@@ -1832,6 +1832,10 @@ async function signIn(
       ),
       deadline,
     );
+    // The wait is started before the click, so a click that fails leaves it behind. Observe
+    // it now, as the search path does: a later rejection (the deadline, or the page closing)
+    // would otherwise be unhandled, and an unhandled rejection stops the worker process.
+    void settled.catch(() => undefined);
     await withActionDeadline(
       () => submitter.click({ timeout: timeoutForDeadline(deadline, timeoutMs) }),
       deadline,
