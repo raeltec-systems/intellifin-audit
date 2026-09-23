@@ -65,7 +65,7 @@ export function RenameDraftForm({
   const [announcement, setAnnouncement] = useState(0);
   const [busy, setBusy] = useState(false);
   const [unknownOutcome, setUnknownOutcome] = useState(false);
-  useSectionSubmissionStatus('Control name', section, busy, unknownOutcome);
+  useSectionSubmissionStatus('Procedure name', section, busy, unknownOutcome);
   /** Written and read in the same tick; `busy` is a render behind. See `BindingForm`. */
   const submittingRef = useRef(false);
 
@@ -109,7 +109,7 @@ export function RenameDraftForm({
 
   return (
     <div className="ls-stack">
-      <SectionConflict dirty={section.status().dirty} conflict={section.conflict} name="Control name" reset={() => section.reset()} />
+      <SectionConflict dirty={section.status().dirty} conflict={section.conflict} name="Procedure name" reset={() => section.reset()} />
       <UnknownSaveOutcome visible={unknownOutcome} />
       {result === null ? null : (
         <Banner
@@ -118,7 +118,7 @@ export function RenameDraftForm({
           title={
             result.ok
               ? result.changed
-                ? `Saved. The Control name is now ${result.controlName}. The change is recorded in the audit chain.`
+                ? `Saved. The Procedure name is now ${result.controlName}. The change is recorded in the audit chain.`
                 : 'Saved. Nothing changed, so nothing was recorded.'
               : result.reason
           }
@@ -138,9 +138,9 @@ export function RenameDraftForm({
           onRequestSubmit();
         }}
       >
-        <h2>Control name</h2>
+        <h2>Procedure name</h2>
         <div className="ls-dialog__field">
-          <label htmlFor={controlNameId}>New Control name</label>
+          <label htmlFor={controlNameId}>New Procedure name</label>
           <input
             className="ls-input"
             id={controlNameId}
@@ -152,12 +152,12 @@ export function RenameDraftForm({
             onChange={(event) => setControlName(event.target.value)}
           />
           <p className="ls-caption">
-            The Control name is saved on this Draft.
+            The Procedure name is saved on this Draft.
           </p>
         </div>
         <div className="ls-admin__actions">
           <Button type="submit" disabledReason={unknownOutcome ? UNKNOWN_SAVE_OUTCOME : undefined} variant="primary" size="md" busy={busy}>
-            {busy ? 'Saving…' : 'Save Control name'}
+            {busy ? 'Saving…' : 'Save Procedure name'}
           </Button>
         </div>
       </form>

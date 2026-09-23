@@ -658,7 +658,8 @@ describe.skipIf(!databaseUrl)('procedure writing assistance against PostgreSQL 1
     delete legacyRecord['revision'];
     const identity = legacyRecord['identity'];
     if (typeof identity !== 'object' || identity === null || Array.isArray(identity)) throw new Error('receipt identity was not persisted');
-    for (const promptVersion of ['guided-prose-v1', 'guided-test-design-v2']) {
+    // guided-dialogue-v3 joined the historical set when UX-09 moved new receipts to v4.
+    for (const promptVersion of ['guided-prose-v1', 'guided-test-design-v2', 'guided-dialogue-v3']) {
       legacyRecord['identity'] = { ...identity, promptVersion };
       expect(parseAuthoringRecord(legacyRecord)).toMatchObject({
         requestId: secondRequestId,

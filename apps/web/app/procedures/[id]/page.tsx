@@ -11,9 +11,13 @@ import { isExplicitPeriod } from '@intellifin/domain';
 
 import { getRuntime } from '../../../src/bootstrap';
 import { Banner } from '../../../src/design/Banner';
+import { PageHeader } from '../../../src/design/PageHeader';
+import { Timestamp } from '../../../src/design/Timestamp';
 import { DetailTrail } from '../../../src/procedures/DetailTrail';
 import { ProcedureStateBadge } from '../../../src/procedures/ProcedureStateBadge';
 import { templateLabel, versionLabel } from '../../../src/procedures/labels';
+import { draftGapWords } from '../../../src/procedures/readiness-words';
+import { plannedFrequencyLine, SCHEDULE_NOT_SAVED_LINE } from '../../../src/design/run-start-words';
 import { requireServerAction } from '../../../src/server-session';
 import { InitiateRunForm } from '../../../src/runs/InitiateRunForm';
 
@@ -83,12 +87,12 @@ export default async function ProcedurePage({
           { href: `/procedures/${procedure.procedureId}`, label: procedure.controlName },
         ]}
       />
-      <header className="ls-page-header">
-        <h1>{procedure.controlName}</h1>
-        <p>
-          Template {procedure.templateId} · {templateLabel(procedure.templateId)}
-        </p>
-      </header>
+      {/* UX-08/UX-02: one compact header row instead of a title and a paragraph each on
+          their own; the Procedure carries no single state, so there is no badge here. */}
+      <PageHeader
+        title={procedure.controlName}
+        meta={`Template ${procedure.templateId} · ${templateLabel(procedure.templateId)}`}
+      />
 
       {/* The card and the box share this page, so a new suggestion has to REMOUNT the box:
           a mounted form keeps its own state, and a request token, until a full navigation. */}
@@ -105,12 +109,12 @@ export default async function ProcedurePage({
                   <ProcedureStateBadge state={version.state} />
                 </p>
                 <p className="ls-caption">
-                  Created {version.createdAt.replace('T', ' ').slice(0, 19)} UTC · Last
-                  changed {version.updatedAt.replace('T', ' ').slice(0, 19)} UTC
+                  Created <Timestamp value={version.createdAt} /> · Last changed{' '}
+                  <Timestamp value={version.updatedAt} />
                 </p>
                 <VersionStatus version={version} successorNumber={successors.get(version.versionId) ?? null} />
                 {version.state === 'ACTIVE' && <NewVersionButton procedureId={procedure.procedureId} versionId={version.versionId} expectedRowVersion={procedureVersionRowVersion(version)} />}
-                {version.state === 'DRAFT' && <VersionActions procedureId={procedure.procedureId} versionId={version.versionId} rowVersion={procedureVersionRowVersion(version)} actions={[{ decision: 'submit', label: 'Submit for approval', reason: submissionUnavailableReason(version) }]} />}
+                {version.state === 'DRAFT' && <VersionActions procedureId={procedure.procedureId} versionId={version.versionId} rowVersion={procedureVersionRowVersion(version)} actions={[{ decision: 'submit', label: 'Submit for approval', reason: draftGapWords(submissionUnavailableReason(version)) }]} />}
                 {version.state === 'DRAFT' ? (
                   <p>
                     <Link
@@ -149,9 +153,17 @@ function VersionMeta({ version }: { readonly version: ProcedureVersionView }): R
         <dt>Version</dt>
         <dd>{version.versionNumber}</dd>
       </div>
+      {/* No "State" cell: the stored upper-case state (`ACTIVE`) repeated the badge on the
+          card's title in the platform's own spelling. The badge is the one place it is said. */}
+      {/*
+        UX-14: the Schedule's saved frequency, read the way a plan is read — never a
+        claim that anything runs by itself. `run-start-words.ts` is the one place this
+        sentence and the Initiate Run box's own sentences are said, so a rewording of
+        either lands on every surface that reads them.
+      */}
       <div>
-        <dt>State</dt>
-        <dd>{version.state}</dd>
+        <dt>Planned frequency</dt>
+        <dd>{version.schedule === null ? SCHEDULE_NOT_SAVED_LINE : plannedFrequencyLine(version.schedule.frequency)}</dd>
       </div>
     </dl>
   );

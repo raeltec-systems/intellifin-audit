@@ -2,13 +2,14 @@
 
 import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { CONTEXT_TEXT_LIMIT, draftContext, isAgentDrivenKind, type PreparationSectionId } from '@intellifin/domain';
-import { isAuthoringProgress, type AuthoringProgress, type AuthoringDraftFields, type AuthoringSection, type AuthoringSuggestionView, type ProcedureVersionView } from '@intellifin/application';
+import { isAuthoringProgress, periodNamedIn, type AuthoringProgress, type AuthoringDraftFields, type AuthoringSection, type AuthoringSuggestionView, type ProcedureVersionView } from '@intellifin/application';
 
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { AuthoringChat, ChatMessage } from './AuthoringChat';
 import { PreparationActionMessages, PreparationActionPanel, usePreparationActions, type PreparationActionResult } from './PreparationActions';
 import { preparationCommand } from './preparation-commands';
+import { COMPOSER_HINTS, DATED_SCOPE_ACCEPT_LABEL, DATED_SCOPE_CONFIRM, DATED_SCOPE_SAVED, DATED_SCOPE_TITLE, datedScopeLead, type ComposerState } from './assistant-words';
 import { UnknownSaveOutcome } from './UnknownSaveOutcome';
 import { useSectionSubmissionStatus, useSubmissionGuard } from './use-section';
 import './writing-assistant.css';
@@ -18,6 +19,7 @@ export interface WritingAssistantActions {
   readonly generate: (fields: AuthoringDraftFields, onProgress?: (progress: AuthoringProgress) => void) => Promise<{ ok: true; suggestion: AuthoringSuggestionView } | { ok: false; reason: string }>;
   readonly accept: (fields: {
     procedureId: string; versionId: string; expectedRowVersion: string; requestId: string; replacement: string;
+    period?: { from: string; to: string };
   }) => Promise<{ ok: true; rowVersion: string; alreadyApplied: boolean } | { ok: false; reason: string }>;
   readonly reject: (fields: { procedureId: string; versionId: string; requestId: string }) => Promise<{ ok: true } | { ok: false; reason: string }>;
 }
@@ -124,6 +126,31 @@ export function writingRevisionFor(session: WritingSession): AuthoringDraftField
   // working proposal and original ready parent, not the initial rough notes alone.
   return !session.suggestion || session.suggestion.state === 'pending' || session.suggestion.state === 'failed'
     ? session.request?.revision : undefined;
+}
+
+/**
+ * The testing period a scope proposal carries (UX-09): the dates the auditor NAMED in
+ * their own latest words, read by `periodNamedIn`, and only when they differ from the
+ * saved Period. Never read from the model's output — the model cannot move the period.
+ * `null` means the proposal is the scope alone, exactly as before.
+ */
+export function proposedScopePeriod(session: WritingSession, draft: ProcedureVersionView): { readonly from: string; readonly to: string } | null {
+  if (session.section.kind !== 'scope' || session.request === null) return null;
+  if (session.suggestion?.state !== 'ready' && session.suggestion?.state !== 'accepted' || session.suggestion.proposedText === null) return null;
+  const named = periodNamedIn(session.request.changes) ?? periodNamedIn(session.request.notes);
+  if (named === null) return null;
+  return draft.period !== null && draft.period.from === named.from && draft.period.to === named.to && session.suggestion.state === 'ready' ? null : named;
+}
+
+/** What the composer is waiting for, which decides the hint under it (UX-10). */
+export function composerState(session: WritingSession, draft: ProcedureVersionView, commandsOnly: boolean): ComposerState {
+  if (commandsOnly) return 'commands-only';
+  const suggestion = session.suggestion;
+  if (suggestion?.state === 'ready') {
+    if (suggestion.proposedText === null) return 'question';
+    return proposedScopePeriod(session, draft) === null ? 'proposal' : 'dated-proposal';
+  }
+  return session.mode === 'revise' && session.request?.revision !== undefined ? 'correction' : 'first-answer';
 }
 
 export function writingMessageCommand(session: WritingSession, field: 'notes' | 'changes') {
@@ -276,7 +303,7 @@ export function createWritingAssistantState() {
       snapshot = { ...snapshot, accepting: false, acceptanceUnknown: result === 'unknown' || snapshot.acceptanceUnknown };
       update(key, { busy: null, ...(result === 'accepted' && session?.suggestion ? { suggestion: { ...session.suggestion, state: 'accepted' as const }, editing: false, askingForChanges: false } : {}),
         notice: result === 'unknown' ? null : { tone: result === 'accepted' ? 'success' : 'warning', title: result === 'accepted'
-          ? 'Your draft is saved. Review the section, then mark it reviewed when you are satisfied.'
+          ? reason || 'Your draft is saved. Review the section, then mark it reviewed when you are satisfied.'
           : reason || 'This draft could not be saved. Check the saved procedure and try again.' } });
     },
     beginReject(key: string): boolean {
@@ -319,7 +346,8 @@ export interface WritingAssistantProviderProps {
   readonly onRowVersion: (token: string) => void;
   readonly children: ReactNode;
   readonly actions: WritingAssistantActions;
-  readonly onAccepted?: (section: AuthoringSection) => void;
+  /** `periodSaved` is true when a scope proposal saved the dates the auditor named too (UX-09). */
+  readonly onAccepted?: (section: AuthoringSection, outcome: { readonly periodSaved: boolean }) => void;
 }
 
 export function WritingAssistantProvider(props: WritingAssistantProviderProps): React.JSX.Element {
@@ -391,13 +419,17 @@ function WritingAssistantSession({ draft, rowVersion, onRowVersion, children, ac
     if (!session.proposal.trim() || session.proposal.length > writingProposalLimit(session.section) || !session.request || !machine.beginAccept(key)) return { ok: false, message: 'A completed, current proposal is needed before it can be saved.' };
     publish();
     const current = latest.current;
+    // The dates shown beside a scope proposal are part of what the auditor is accepting;
+    // they are saved with it or not at all (UX-09).
+    const period = proposedScopePeriod(session, current.draft);
     try {
       const outcome = await current.actions.accept({ procedureId: current.draft.procedureId, versionId: current.draft.versionId,
-        expectedRowVersion: current.rowVersion, requestId: session.request.requestId, replacement: session.proposal });
+        expectedRowVersion: current.rowVersion, requestId: session.request.requestId, replacement: session.proposal,
+        ...(period === null ? {} : { period: { from: period.from, to: period.to } }) });
       if (!mounted.current) return { ok: false, message: 'The section was closed. Check the saved procedure for this action’s result.' };
-      machine.finishAccept(key, outcome.ok ? 'accepted' : 'failed', outcome.ok ? undefined : outcome.reason);
-      if (outcome.ok) { current.onRowVersion(outcome.rowVersion); if (!stay) latest.current.onAccepted?.(session.section); }
-      return { ok: outcome.ok, message: outcome.ok ? `Saved to ${sectionLabel(current.draft, session.section)}. The exact displayed proposal is recorded. Section review is still a separate action.` : outcome.reason };
+      machine.finishAccept(key, outcome.ok ? 'accepted' : 'failed', outcome.ok ? (period === null ? undefined : DATED_SCOPE_SAVED) : outcome.reason);
+      if (outcome.ok) { current.onRowVersion(outcome.rowVersion); if (!stay) latest.current.onAccepted?.(session.section, { periodSaved: period !== null }); }
+      return { ok: outcome.ok, message: outcome.ok ? `Saved to ${period === null ? sectionLabel(current.draft, session.section) : 'Period and scope'}. The exact displayed proposal is recorded. Section review is still a separate action.` : outcome.reason };
     } catch { if (mounted.current) machine.finishAccept(key, 'unknown'); return { ok: false, message: 'The save could not be confirmed. Reload to inspect the saved version before trying again.' }; }
     finally { publish(); }
   }
@@ -505,7 +537,9 @@ export function WritingAssistantPanel({ section, inline = false, guidedQuestion 
     : writingMessageCommand(session, correction ? 'changes' : 'notes')) !== null;
   const sendReason = conversationActions?.busy ? 'Wait for this action to finish.' : !pending && !retry && (commandsOnly || isCommand)
     ? message.trim() === '' ? 'Add your instruction first.' : undefined : writingReason;
-  const proposalTitle = session.section.kind === 'instructions' ? 'Proposed test steps — not saved' : 'Proposed wording — not saved';
+  const scopePeriod = proposedScopePeriod(session, draft);
+  const hintState = composerState(session, draft, commandsOnly);
+  const proposalTitle = scopePeriod !== null ? DATED_SCOPE_TITLE : session.section.kind === 'instructions' ? 'Proposed test steps — not saved' : 'Proposed wording — not saved';
   const question = guidedQuestion ?? (session.mode === 'improve'
     ? `I have your saved ${sectionLabel(draft, session.section).toLowerCase()}. What would you like me to improve?`
     : `What should this ${sectionLabel(draft, session.section).toLowerCase()} establish? Tell me in your own words.`);
@@ -548,7 +582,7 @@ export function WritingAssistantPanel({ section, inline = false, guidedQuestion 
         }
       }} />
     <div className="ls-chat__composer-footer">
-      <p className="ls-caption" id={`${id}-composer-help`}>{commandsOnly ? 'Ask for a new draft, review this saved section, or open another section.' : correction ? 'Tell me what to keep, drop, add or change. Say “record that” to save this proposal.' : 'A rough answer is enough.'}<br />Shift + Enter for a new line.</p>
+      <p className="ls-caption" id={`${id}-composer-help`} data-composer-hint={hintState}>{COMPOSER_HINTS[hintState]}<br />Shift + Enter for a new line.</p>
       <Button type="button" variant="primary" busy={pending || conversationActions?.busy} disabledReason={sendReason} onClick={() => { void send(); }}>
         {pending ? 'Responding…' : retry ? 'Retry this request' : 'Send message'}
       </Button>
@@ -598,6 +632,7 @@ export function WritingAssistantPanel({ section, inline = false, guidedQuestion 
             {suggestion.clarifications.length > 1 ? <p className="ls-caption">Other questions from this earlier response: {suggestion.clarifications.slice(1).join(' ')}</p> : null}
           </> : <>
             <h4 className="ls-writing__proposal-question">{terminal ? suggestion.state === 'accepted' ? 'Saved draft' : 'Draft not used' : proposalTitle}</h4>
+            {scopePeriod !== null && !terminal ? <p data-proposed-period={`${scopePeriod.from}/${scopePeriod.to}`}>{datedScopeLead(scopePeriod)}</p> : null}
             {session.editing && !terminal ? <div className="ls-dialog__field"><label htmlFor={`${id}-proposal`}>Edit proposed replacement</label>
               <textarea className="ls-input ls-writing__notes" id={`${id}-proposal`} value={session.proposal} maxLength={writingProposalLimit(session.section)} readOnly={fieldsLocked}
                 onChange={event => assistant.edit(key, 'proposal', event.target.value)} />
@@ -610,10 +645,11 @@ export function WritingAssistantPanel({ section, inline = false, guidedQuestion 
                   <div className="ls-writing__version"><h4>Proposed changes</h4><p className="ls-writing__text">{difference.before}{difference.added ? <ins>{difference.added}</ins> : null}{difference.after}</p></div>
                 </div>
               </details>
-              <p><strong>Does this sound right?</strong> Check the steps, quantities, timing and criteria. Tell me what to change, or save this draft.</p>
+              {scopePeriod !== null ? <p><strong>{DATED_SCOPE_CONFIRM}</strong></p>
+                : <p><strong>Does this sound right?</strong> Check the steps, quantities, timing and criteria. Tell me what to change, or save this draft.</p>}
               {acceptReason ? <p className="ls-caption" id={`${id}-accept-reason`}>{acceptReason}</p> : null}
               <div className="ls-actions">
-                <Button type="button" variant="primary" busy={session.busy === 'acceptance'} disabledReason={acceptReason} disabledReasonId={`${id}-accept-reason`} onClick={() => assistant.accept(key)}>Use this draft</Button>
+                <Button type="button" variant="primary" busy={session.busy === 'acceptance'} disabledReason={acceptReason} disabledReasonId={`${id}-accept-reason`} onClick={() => assistant.accept(key)}>{scopePeriod !== null ? DATED_SCOPE_ACCEPT_LABEL : 'Use this draft'}</Button>
                 <Button type="button" disabledReason={fieldsLocked ? acceptanceReason ?? 'Retry this request first.' : undefined} onClick={() => assistant.editProposal(key)}>Edit</Button>
               </div>
               <p className="ls-caption">Saving this draft does not mark the section reviewed.</p>
@@ -664,7 +700,7 @@ function PreparationContextSummary({ draft }: { readonly draft: ProcedureVersion
   const criteria = draft.complianceConditions.length === 0 ? 'No criteria saved' : `${draft.complianceConditions.length} saved ${draft.complianceConditions.length === 1 ? 'criterion' : 'criteria'}; agent-judged assessment uses the saved threshold.`;
   return <div className="ls-writing__context" role="group" aria-label="Saved assignment context">
     <dl>
-      <div><dt>Control name</dt><dd>{draft.controlName}</dd></div>
+      <div><dt>Procedure name</dt><dd>{draft.controlName}</dd></div>
       <div><dt>Control statement</dt><dd>{savedTemplateSection(draft, 'Control')}</dd></div>
       <div><dt>Objective</dt><dd>{savedTemplateSection(draft, 'Objective')}</dd></div>
       <div><dt>Period</dt><dd>{preparationPeriodLabel(draft)}</dd></div>

@@ -1,3 +1,4 @@
+import { PLAN_RETRY_CONFIRM, PLAN_RETRY_LABEL } from '../../apps/web/src/procedures/plan-words';
 import AxeBuilder from '@axe-core/playwright';
 import { test, expect } from '@playwright/test';
 import { derivePlan, initialPlanDerivation, queuePlanDerivation, type ProcedureVersionRecord, type ModelGateway } from '@intellifin/application';
@@ -38,8 +39,8 @@ test('queued preview progresses from pending through failure to a read-only acce
     await page.goto(`/procedures/${procedureId}/builder`);
     const preview = page.getByTestId('executable-plan-preview');
     await expect(preview).toContainText('Re-deriving');
-    await page.getByLabel('New Control name').fill(`E2E queued plan ${versionId}`);
-    await page.getByRole('button', { name: 'Save Control name', exact: true }).click();
+    await page.getByLabel('New Procedure name').fill(`E2E queued plan ${versionId}`);
+    await page.getByRole('button', { name: 'Save Procedure name', exact: true }).click();
     await expect.poll(async () => Number((await sql`SELECT count(*) AS n FROM pgboss.job WHERE data->>'versionId' = ${versionId}`)[0]?.['n'])).toBe(1);
     await expect(preview).toContainText('Re-deriving');
     await startProceduresWorker(queue, (job) => derivePlan(dependencies, job));
@@ -53,8 +54,9 @@ test('queued preview progresses from pending through failure to a read-only acce
     await page.reload();
     await expect(preview).toContainText('The frozen derivation model configuration is unavailable.');
     dependencies.model = model;
-    await page.getByRole('button', { name: 'Retry plan derivation', exact: true }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Queue derivation attempt' }).click();
+    // UX-16 (2026-09-22): the recovery is said as preparing the test plan again.
+    await page.getByRole('button', { name: PLAN_RETRY_LABEL, exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: PLAN_RETRY_CONFIRM }).click();
     await expect(preview).toContainText('Re-derived');
     await expect(preview.getByRole('heading', { name: 'Session Steps', exact: true })).toBeVisible();
     await expect(preview.getByRole('heading', { name: 'Ordered Plan Steps per Target System' })).toBeVisible();

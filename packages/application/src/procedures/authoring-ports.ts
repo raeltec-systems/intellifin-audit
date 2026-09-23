@@ -11,6 +11,13 @@ export interface AuthoringDraftFields {
 export interface AcceptAuthoringFields {
   readonly procedureId: string; readonly versionId: string; readonly expectedRowVersion: string;
   readonly requestId: string; readonly replacement: string;
+  /**
+   * A scope proposal's testing period, read from the auditor's OWN request by
+   * `periodNamedIn` and shown beside the proposed scope (UX-09). Present only on a scope
+   * suggestion; the Period and the scope are then saved together through the existing
+   * Period-and-scope writer, in the acceptance's own transaction.
+   */
+  readonly period?: { readonly from: string; readonly to: string };
 }
 export interface RejectAuthoringFields { readonly procedureId: string; readonly versionId: string; readonly requestId: string }
 export interface AuthoringProposal { readonly proposedText: string | null; readonly clarifications: readonly string[]; readonly explanation?: string }
@@ -28,8 +35,10 @@ export interface AuthoringSuggestionView extends AuthoringProposal {
   readonly state: 'pending' | 'ready' | 'failed' | 'accepted' | 'rejected';
   readonly authoringRevision: number; readonly stale: boolean; readonly message: string | null;
 }
-export const AUTHORING_IDENTITY = { provider: 'openai', modelId: 'gpt-5.6-terra', promptVersion: 'guided-dialogue-v3' } as const;
-export type AuthoringIdentity = Omit<typeof AUTHORING_IDENTITY, 'promptVersion'> & { readonly promptVersion: 'guided-prose-v1' | 'guided-test-design-v2' | typeof AUTHORING_IDENTITY.promptVersion };
+export const AUTHORING_IDENTITY = { provider: 'openai', modelId: 'gpt-5.6-terra', promptVersion: 'guided-dialogue-v4' } as const;
+/** Every prompt version a stored receipt may name. v4 (UI cleanup 2026-09-22, UX-09) lets a
+ * scope note describe a period the auditor names instead of refusing it for want of saved dates. */
+export type AuthoringIdentity = Omit<typeof AUTHORING_IDENTITY, 'promptVersion'> & { readonly promptVersion: 'guided-prose-v1' | 'guided-test-design-v2' | 'guided-dialogue-v3' | typeof AUTHORING_IDENTITY.promptVersion };
 export interface AuthoringRevisionContext {
   readonly draft: string;
   readonly history: readonly { readonly feedback: string; readonly proposedText: string | null; readonly clarifications: readonly string[] }[];

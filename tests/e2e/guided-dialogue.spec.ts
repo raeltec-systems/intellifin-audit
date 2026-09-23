@@ -62,9 +62,8 @@ test('a fresh Template leads through choices, a precise test-design reply, saved
   await page.goto('/procedures/new');
   await page.getByLabel('Template', { exact: true }).selectOption('P-4');
   const controlName = `Synthetic production configuration review ${ids.next()}`;
-  await page.getByLabel('Control name', { exact: true }).fill(controlName);
+  await page.getByLabel('Procedure name', { exact: true }).fill(controlName);
   await page.getByRole('button', { name: 'Create Procedure', exact: true }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: controlName })).toBeVisible();
   procedureId = /\/procedures\/([^/]+)\/builder/.exec(page.url())![1]!;
   const [created] = await sql<{ version_id: string }[]>`SELECT version_id FROM procedure_version WHERE procedure_id = ${procedureId} AND state = 'DRAFT' ORDER BY version_number DESC LIMIT 1`;
@@ -130,7 +129,8 @@ test('a fresh Template leads through choices, a precise test-design reply, saved
   await scope.getByLabel('Period start', { exact: true }).fill('2026-08-01');
   await scope.getByLabel('Period end', { exact: true }).fill('2026-08-31');
   await scope.getByRole('button', { name: 'Save Period and scope', exact: true }).click();
-  await expect(scope.locator('[data-guide-question="confirm"]')).toContainText('2026-08-01 to 2026-08-31');
+  // UX-02 (2026-09-22): the saved period reads as a person reads it.
+  await expect(scope.locator('[data-guide-question="confirm"]')).toContainText('1–31 Aug 2026, both dates included (UTC).');
 
   const scopeChat = scope.locator('[data-preparation-action-panel="scope"]');
   await scopeChat.getByLabel('Your instruction', { exact: true }).fill('I’ve reviewed this; continue');
