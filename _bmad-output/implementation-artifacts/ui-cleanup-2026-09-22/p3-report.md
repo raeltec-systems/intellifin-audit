@@ -203,7 +203,26 @@ section titles are unchanged.
 
 ## Verification
 
-_Filled in below._
+The package's own worktree (database `ui_p3_test`, its own ports) ran its browser specs
+while the work landed, and those runs found defects the next commits fixed: a chooser
+heading that took the section's accessible name, and specs still reading the old period
+and the old Builder URL (`55f0d27`); the timing-window readiness lines (`90b3f72`). The
+last worktree run before `90b3f72` was 42 passed and 1 failed, and that one failure is
+what `90b3f72` repaired.
+
+The package is verified where it meets the other four packages, on the integrated branch:
+on `a8b8341`, typecheck, boundaries (717 modules), unit tests 4,958 of 4,958, integration
+tests 610 of 610 and the whole browser suite 238 of 238 (`p7-acceptance.md`).
+
+The three items under **Needs a change outside my scope** were done at integration:
+
+- `version-review.spec.ts` drives the new words — Procedure name, one-click Create
+  Procedure, Save Procedure name (`c63f504`, `6d4e9ff`).
+- The plan preview says "Preparing the test plan…" and "The test plan could not be
+  prepared." with the Draft's gap in words (`6d4e9ff`). It lists no attempts itself; the
+  attempt list is `RetryPlanDerivation`'s and already sits under Technical details.
+- The version review page passes no `stepHref`, so its readiness lines name the section
+  without a link; only the Builder links them.
 
 ## Left out and why
 

@@ -20,6 +20,12 @@ surfaces only PR #51's branch has; `p5-report.md` states the rule each one needs
   first run. At a merge, grep every spec for the words each package renamed.
 - **A report is only as true as the tests it names.** Checking each "proven by" against the
   test file found two findings nothing pinned (a stop-reason sentence, the Review tab).
+- **Fifty green layout checks did not find three false sentences; reading the screenshots
+  did.** An Active version said "Not yet submitted for approval." (it had no submission
+  RECORD, which is a different fact), saved dates were raw ISO, and a frequency read as a
+  schedule. A layout or axe check cannot judge whether a sentence is true: read every
+  screenshot as the reader would. And when a record can be missing for more than one
+  reason, say what the absence means, never the likeliest cause (`missingSubmissionWords`).
 - **Usage limits stop subagents mid-edit; commit early.** Package agents died four times;
   the worktrees kept everything, but a resumed agent had to rebuild intent from a diff.
   Commit each coherent piece at once, and brief a resumed agent with the file list and the

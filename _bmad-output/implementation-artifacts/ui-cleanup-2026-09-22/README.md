@@ -67,9 +67,23 @@ inspector that exist only on PR #51's branch. `p5-report.md` states the rule eac
 so the fix is applied on top of that branch rather than rebuilt here and thrown away at the
 merge.
 
-## Package 7 — release checks
+## Package 7 — release checks (`p7-acceptance.md`)
 
-_Filled in when the checks run on the integrated branch._
+`tests/e2e/ui-cleanup-layout.spec.ts` visits every ordinary surface as all three roles —
+14 as an Auditor, 4 as a PoC Administrator, 7 as an Audit Manager — at 1366×768 and
+1280×720: fifty checks, each requiring a level-one heading, no sideways page scroll, no
+WCAG 2.1 AA violation, and a 14-stop keyboard walk whose stops are sized, on screen and
+ringed. It runs in the ordinary browser suite, so CI runs it on every pull request.
+
+On `a8b8341`, against a database seeded as CI seeds it: typecheck and boundaries passed,
+unit tests **4,958 of 4,958**, integration tests **610 of 610**, the whole browser suite
+**238 of 238**.
+
+Integrating found what no single package could: the date and time fields' picker stop had
+no focus ring; ten specs pinned a surface another package had changed; the Run page had
+lost the initiator's user id; and three sentences on the version pages were not true (an
+Active version "not yet submitted", raw ISO dates, a frequency stated as a schedule). All
+are fixed; `p7-acceptance.md` has the detail, the mutation proofs and the screenshots.
 
 ## What this cleanup does not deliver (tracked separately, stated on the surfaces)
 
