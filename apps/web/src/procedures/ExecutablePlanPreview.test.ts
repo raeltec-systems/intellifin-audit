@@ -43,13 +43,18 @@ describe('read-only executable plan preview', () => {
   });
   it('renders the stored execution meaning, provenance and timestamp without edit controls', () => {
     const html = render(view());
-    for (const label of ['Session Steps', 'Ordered Plan Steps', 'Observations to capture', 'Evidence and grounding', 'Conditions', 'Sign-in credentials', 'Execution limits', 'Rule-Classified', 'Re-derived', '2026-09-04T01:00:00Z', 'No model was used', 'vault://synthetic/prod', 'Compiled applicability']) expect(html).toContain(label);
+    for (const label of ['Session Steps', 'Ordered Plan Steps', 'Observations to capture', 'Evidence and grounding', 'Conditions', 'Sign-in credentials', 'Execution limits', 'Rule-Classified', 'Test plan prepared', '4 Sep 2026, 01:00:00 UTC', 'No model was used', 'vault://synthetic/prod', 'Compiled applicability']) expect(html).toContain(label);
     expect(html).not.toMatch(/<(?:input|textarea|select|button|form)\b/);
   });
   it('hides stale plan details while re-deriving and states a failed attempt reason', () => {
-    expect(render({ ...view(), planStatus: 'pending' })).toContain('Re-deriving');
+    expect(render({ ...view(), planStatus: 'pending' })).toContain('Preparing the test plan');
     expect(render({ ...view(), planStatus: 'pending' })).not.toContain('vault://synthetic/prod');
-    expect(render({ ...view(), planStatus: 'failed', compiledPlan: null, planFailureReason: 'Choose a Population Source.' })).toContain('Cannot derive: Choose a Population Source.');
+    const failed = render({ ...view(), planStatus: 'failed', compiledPlan: null, planFailureReason: 'Choose a Population Source.' });
+    // UX-16: a gap in the draft is said in the Builder's words, with no worker mechanics.
+    expect(failed).toContain('The test plan could not be prepared.');
+    expect(failed).toContain('Choose where the records come from');
+    expect(failed).not.toContain('Cannot derive');
+    expect(failed).not.toContain('Choose a Population Source.');
   });
   it('renders model identity from the successful attempt and escapes authored text', () => {
     const draft = view();

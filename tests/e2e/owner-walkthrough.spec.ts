@@ -259,7 +259,7 @@ const STALE = 'That procedure changed since this page was loaded. Reload the pag
 async function waitForPlanAttempt(page: Page): Promise<void> {
   await openPlanDetail(page);
   await expect(page.getByTestId('executable-plan-preview').locator(':scope > [role="status"]'))
-    .toContainText(/Re-derived|Cannot derive:/, { timeout: 120_000 });
+    .toContainText(/Test plan prepared|could not be prepared/, { timeout: 120_000 });
 }
 
 /** Await this action, not a success/stale banner retained from the preceding save. */

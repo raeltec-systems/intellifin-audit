@@ -125,7 +125,7 @@ async function planSettled(page) {
   await page.locator('[data-preparation-nav=review]').click();
   const fold = page.locator('[data-plan-detail]');
   if (!await fold.evaluate(node => node.open)) await fold.locator('summary').first().click();
-  await expect(page.getByTestId('executable-plan-preview').locator(':scope > [role=status]')).toContainText(/Re-derived|Cannot derive:/, { timeout: 150000 });
+  await expect(page.getByTestId('executable-plan-preview').locator(':scope > [role=status]')).toContainText(/Test plan prepared|could not be prepared|Re-derived|Cannot derive:/, { timeout: 150000 });
 }
 async function acknowledged(page, action) {
   const url = page.url();

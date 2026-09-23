@@ -92,7 +92,7 @@ test('P-1 authored Builder → actual worker/SDK HTTP → submitted review → r
     // Cold worker imports share the host with the full browser suite; wait for an
     // explicit readiness signal while still failing immediately on process errors.
     await expect.poll(() => { if (workerFailure) throw new Error(workerFailure + ' ' + output); return output.includes('Heartbeat loop started'); }, { timeout: 45000 }).toBe(true);
-    await expect(page.getByTestId('executable-plan-preview')).toContainText('Re-derived', { timeout: 45000 });
+    await expect(page.getByTestId('executable-plan-preview')).toContainText('Test plan prepared', { timeout: 45000 });
     expect(output).toContain('Synthetic Anthropic HTTP response delivered');
     // Author once more with the real worker running, then prove its current result.
     await page.getByLabel('Scope statement').fill('All terminated employees in Finance, reviewed with the worker running.');
