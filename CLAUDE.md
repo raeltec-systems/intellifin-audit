@@ -1,3 +1,37 @@
+## 2026-09-23 — The UI cleanup on the live branch, and what that branch was already failing
+
+The owner approved putting the cleanup on `feat/auditor-workspace-v1-1`, the branch production
+runs: PR #52 merged in (`655a0c4`, `81d9653`), then UX-22..26 on the surfaces only this branch
+has (`ed12dfd` record review, `857b08b` workspace, Live View and chat).
+
+- **Read the deployed commit's own CI before blaming a merge.** `ec673a0` was deployed with
+  6 browser failures and 2 preview-job failures. Five were spec drift: `1dd337d` stopped
+  saying "Action-linked captures" and five specs kept asserting it. A failure present at the
+  base is not the merge's, and it is still ours to fix before the next push.
+- **"Action-linked captures" (AW-060) is now "Latest saved screen".** UX-24 is the later owner
+  decision. The truth AW-060 asks for is kept: the live preview ("a few seconds behind, not
+  saved as evidence") and the saved screen ("saved as evidence from {system}") are named as
+  two different things, in `workspace-words.ts`, which the specs import.
+- **One record label rule: `record-words.ts`.** The key is the Template's first frozen lookup
+  column, the name its second (P-1 `full_name`). Masking comes from the version's FROZEN
+  `sensitive_fields`, never from today's binding. `readRecordNames` answers only for a key
+  that is unique in the Run's population: a duplicated key names no single person. A masked
+  key stays the row's identity but leaves the search haystack, so a search cannot probe it.
+- **Order a snapshot when it is written, not when it is read.** The record queue lists
+  Exceptions, then pending reviews, each in source order, decided before the presentation
+  snapshot is stored, so a cursor can never repeat or skip a record.
+- **A "current step" taken from a bounded page is a guess.** Live View and the workspace used
+  the newest row of the Timeline's page, which holds the OLDEST fifty Step Executions.
+  `readLatestStepExecution` reads it exactly. Fourth appearance of "a limit belongs to the
+  cardinality of the read".
+- **A page test whose `vi.mock` factory lists exports breaks when the page imports one
+  more**: "No `readRecordNames` export is defined on the mock". Add it to the factory with a
+  neutral default, then add a case that proves the new behaviour.
+- **A helper agent with a file allowlist reports what is outside it.** The workspace helper
+  had no git writes, no shared-database suites, and a list of files. It named four defects it
+  was not allowed to fix (a stale spec, raw chat times, the bounded current step, an
+  unmasked key). All four were real and fixed here.
+
 ## 2026-09-23 — The UI cleanup landed as five packages, and what integrating them found
 
 The owner's 21 September walkthrough (49 findings, 17 P1) is implemented on
