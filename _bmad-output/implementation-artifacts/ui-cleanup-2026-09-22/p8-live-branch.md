@@ -61,6 +61,12 @@ both branches rewrote.
   held request answers, and a second held request that was still being fetched lost its
   route. `tests/e2e/held-routes.ts` now lets every held request answer before the routes
   go, and the six tests in that spec that hold requests use it (`d915654`). Test-only.
+- **CI on `fdf499e` then failed 1 of 284, and again the product was right.**
+  `run-controller-lease.spec.ts:606` checked "the dialog is gone, or it offers the retry"
+  in two reads: the count, then the text. The page recorded the resume once, then closed
+  the dialog between the two reads. The text read then waited for a dialog that never came
+  back, and the check timed out with its earlier answer. The spec now reads both facts in
+  one read. Test-only.
 
 The deployed commit before this work, `ec673a0`, was itself red in CI (6 browser and 2
 preview failures). Those are among the fixes above.
@@ -103,6 +109,10 @@ Locally, against this worktree's own PostgreSQL 18 database, before each push:
   are released, failed 5 of 5 with the old cleanup ("Route is already handled!") and 0 of
   5 with the new one. The five specs the first attempt failed (frame tests) passed 22 of
   22 locally from a cold cache.
+- For the `fdf499e` failure: a throwaway spec that closes the dialog between the two reads
+  failed 5 of 5 with CI's message ("Received: false" after "exceeded while waiting on the
+  predicate"), and 0 of 5 with one read. Then `run-controller-lease.spec.ts` from a cold
+  cache, 16 of 16, and the fixed test 5 more times, 5 of 5. No rows left behind.
 
 ## Deployment
 

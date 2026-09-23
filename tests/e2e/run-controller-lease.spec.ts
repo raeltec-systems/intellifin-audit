@@ -644,8 +644,10 @@ test.describe('durable Run controller lease', () => {
     await dialog.getByRole('button', { name: 'Resume Run', exact: true }).click();
     // Either the event refresh has reconciled the applied receipt, or the original
     // confirmation remains available to recover. Both preserve the same command.
-    await expect.poll(async () => await dialog.count() === 0 ||
-      (await dialog.textContent())?.includes('Retry this same confirmation')).toBe(true);
+    // One read: the reconciliation can close the dialog between a count and a text
+    // read, and `textContent()` then waits for a dialog that never returns.
+    await expect.poll(() => dialog.evaluateAll(nodes => nodes.length === 0 ||
+      nodes.some(node => node.textContent?.includes('Retry this same confirmation') === true))).toBe(true);
     expect(dropped).toBe(true);
     expect(forwardedStatus).toBe(200);
     expect(await sql`SELECT state,revision FROM audit_run WHERE run_id=${runId}`)

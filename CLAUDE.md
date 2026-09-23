@@ -108,6 +108,15 @@ has (`ed12dfd` record review, `857b08b` workspace, Live View and chat).
   worker-signed grant passed at the same time. The re-run served that route 39 times. The
   quick test: diff the set of route patterns the server logged in a green and a red CI log
   (UUIDs normalized); here exactly one pattern was missing.
+- **A poll that reads a count and then a text can wait for ever.** `run-controller-lease
+  .spec.ts:606` polled "the dialog is gone, or it offers the retry" as `count() === 0 ||
+  textContent()`. The receipt reconciliation closed the dialog between the two reads, and
+  `textContent()` auto-waits (this config sets no `actionTimeout`) for a dialog that never
+  came back, so the poll's deadline won and it reported the PREVIOUS answer: "Received:
+  false" after "Timeout 10000ms exceeded while waiting on the predicate", CI on `fdf499e`.
+  The product was right: one resume event, receipt applied, dialog closed. Read every fact
+  of a poll in ONE page read (`evaluateAll` never waits). A throwaway spec that closed the
+  dialog between the reads failed 5 of 5 with the same message, and 0 of 5 with one read.
 - **`live-escalation.spec.ts` still waited to SEE "Pause requested." and "Run resumed."**
   after UX-49 made both transitional; `pause-resume.spec.ts` had already moved to the
   settled banner. When a sentence becomes transitional, grep every spec for it — this
