@@ -84,7 +84,7 @@ fix is applied on top of that branch rather than rebuilt:
 ## Left out and why
 
 - **Mutation proofs are the integrator's, not the package's.** The package agents recorded
-  none; the two run on the integrated branch are listed under Verification.
+  none; the two the integrator ran are listed under Verification.
 - **No new browser fixture seeds a Work Item on Live View.** The `[NAMED]` gap in CLAUDE.md
   (2026-09-17) is unchanged; the counter is proven by `pause-resume.spec.ts` and the unit
   and integration tests instead.
@@ -106,5 +106,11 @@ None beyond the PR #51 rules above.
 
 ## Verification
 
-Run on the integrated branch — see the README's package 7 section for the commands and the
-results.
+The suites ran on the integrated branch — see the README's package 7 section for the
+commands and the results. Two mutation proofs ran in this package's own worktree, each
+restored by `git checkout` against the committed fix:
+
+| Mutation | Test run | Result |
+| --- | --- | --- |
+| UX-47: `logicalStepProgress` returns `started: executions.length` (attempts, the old rule) | `live-view.test.ts` | 4 failed, 13 passed; restored: 17 of 17 passed |
+| UX-18: the triptych's first cell says "Run lifecycle" again | `RunDetail.test.ts` | "labels its three cells with the three QUESTIONS, in the contract’s order" failed; 61 others passed |
