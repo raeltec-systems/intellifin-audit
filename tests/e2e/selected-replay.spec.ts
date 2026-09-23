@@ -285,8 +285,9 @@ test.describe('an inspection beyond the first 500 Replay captures', () => {
     await lateJump.getByRole('link', { name: 'Open inspection Replay', exact: true }).click();
     await assertFrame(505);
     await expect(page.getByRole('heading', { name: 'Selected inspection: E-000106 · LoanCore' })).toBeVisible();
-    await expect(page.getByText('Work Item: E-000106 · LoanCore', { exact: true })).toBeVisible();
-    await expect(page.getByText(REPLAY_COPY.observationsThrough.replace('{count}', '1'), { exact: true })).toBeVisible();
+    // The rail names the record and counts in words (UX-28, UX-31).
+    await expect(page.getByText('Record: E-000106 · LoanCore', { exact: true })).toBeVisible();
+    await expect(page.getByText(REPLAY_COPY.observationsThrough.replace('{count}', '1 Observation'), { exact: true })).toBeVisible();
     await expect(page.getByText('Inspection frames 1–100 of 105.', { exact: false })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
     await expect(page.getByText('Showing the first', { exact: false })).toHaveCount(0);

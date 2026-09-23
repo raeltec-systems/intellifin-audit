@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { cancelRun, performCancellation } from '@intellifin/application';
 import { DrizzleRoleRepository, PostgresRunCancellationRepository, PostgresRunsUnitOfWork, SystemClock, createDb, createSqlClient, CryptoUuidV7Generator, PostgresProceduresUnitOfWork, type Sql } from '@intellifin/infrastructure';
 import { activeRunVersion } from '../fixtures/active-run-version';
@@ -17,6 +17,32 @@ let auditorId = '';
 let auditorName = '';
 let retainedRecovery = '';
 test.describe.configure({ mode: 'serial' });
+
+/**
+ * Create an Audit Manager through Administration → Users (UI cleanup 2026-09-22, UX-38):
+ * the directory leads the page and the create form sits behind its own "Add a user"
+ * disclosure, whose "Role" select is scoped because the directory filter has one too.
+ */
+async function createManager(admin: Page, address: string, fullName: string): Promise<void> {
+  await admin.goto('/administration/users');
+  const section = admin.locator('details.ls-disclosure', { has: admin.locator(':scope > summary', { hasText: 'Add a user' }) });
+  if (!(await section.evaluate((element) => (element as HTMLDetailsElement).open))) {
+    await section.locator(':scope > summary').click();
+  }
+  await section.getByLabel('Email address').fill(address);
+  await section.getByLabel('Full name').fill(fullName);
+  await section.getByLabel('Initial password').fill(PASSWORD);
+  await section.getByLabel('Role', { exact: true }).selectOption('audit-manager');
+  await admin.getByRole('button', { name: 'Create user', exact: true }).click();
+  await admin.getByRole('dialog').getByRole('button', { name: 'Create user', exact: true }).click();
+  await expect(admin.getByRole('status')).toContainText(`Created ${address}`);
+}
+
+/** The directory filtered to one address, so its row is on the page however many accounts exist. */
+async function userRow(admin: Page, address: string) {
+  await admin.goto(`/administration/users?q=${encodeURIComponent(address)}`);
+  return admin.getByRole('row').filter({ hasText: address });
+}
 
 test.beforeAll(async () => {
   const databaseUrl = process.env['DATABASE_URL'];
@@ -74,14 +100,8 @@ test('explicit grant, review, reload and lost-response recovery update both auth
   const manager = await managerContext.newPage();
   await manager.setViewportSize({ width: 1280, height: 800 });
   try {
-    await admin.goto('/administration');
-    await admin.getByLabel('Email address').fill(email);
-    await admin.getByLabel('Full name').fill(name);
-    await admin.getByLabel('Initial password').fill(PASSWORD);
-    await admin.getByLabel('Role', { exact: true }).selectOption('audit-manager');
-    await admin.getByRole('button', { name: 'Create user', exact: true }).click();
-    await admin.getByRole('dialog').getByRole('button', { name: 'Create user', exact: true }).click();
-    const row = admin.getByRole('row').filter({ hasText: email });
+    await createManager(admin, email, name);
+    const row = await userRow(admin, email);
     await expect(row).toContainText('Not granted');
     await signIn(manager, email);
     await auditor.goto(`/runs/${runId}/workspace`);
@@ -197,18 +217,12 @@ test('historical and terminal receipt recovery never claims present ownership, a
   const managerContext = await browser.newContext();
   const admin = await adminContext.newPage(); const auditor = await auditorContext.newPage(); const manager = await managerContext.newPage();
   try {
-    await admin.goto('/administration');
-    const row = admin.getByRole('row').filter({ hasText: email });
+    const row = await userRow(admin, email);
     await row.getByRole('button', { name: 'Grant transfer permission' }).click();
     await admin.getByRole('dialog').getByRole('button', { name: 'Grant permission', exact: true }).click();
     await expect(row).toContainText('Granted');
-    await admin.getByLabel('Email address').fill(otherEmail);
-    await admin.getByLabel('Full name').fill('Second transfer manager');
-    await admin.getByLabel('Initial password').fill(PASSWORD);
-    await admin.getByLabel('Role', { exact: true }).selectOption('audit-manager');
-    await admin.getByRole('button', { name: 'Create user', exact: true }).click();
-    await admin.getByRole('dialog').getByRole('button', { name: 'Create user', exact: true }).click();
-    const otherRow = admin.getByRole('row').filter({ hasText: otherEmail });
+    await createManager(admin, otherEmail, 'Second transfer manager');
+    const otherRow = await userRow(admin, otherEmail);
     await otherRow.getByRole('button', { name: 'Grant transfer permission' }).click();
     await admin.getByRole('dialog').getByRole('button', { name: 'Grant permission', exact: true }).click();
     await expect(otherRow).toContainText('Granted');
