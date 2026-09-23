@@ -264,44 +264,50 @@ test.afterAll(async () => {
   await storage?.close();
   if (!sql) { if (shutdownFailure) throw shutdownFailure; return; }
   try {
-    const runs = await sql`SELECT run_id FROM audit_run WHERE procedure_id=${procedureId}`;
-    const runIds = runs.map((row) => String(row.run_id));
-    if (runIds.length > 0) {
-      await sql`DELETE FROM pgboss.job WHERE data->>'runId' = ANY(${runIds})`;
-      await sql`DELETE FROM notification WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM run_wait WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM run_result_review WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM run_result WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM run_evidence_integrity WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM run_evidence_package WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM run_evidence_capture WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM run_tool_action WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM run_agent_turn WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM run_agent_work WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM run_observation_evaluation WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM run_observation_check WHERE run_id = ANY(${runIds}::uuid[])`;
-      // Review ledger/command rows cascade from their evaluation, and Exceptions
-      // cascade from their Observation. Their immutable-parent guards reject direct
-      // deletes while those parents still exist.
-      await sql`DELETE FROM run_observation WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM run_step_execution WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM run_session_step WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM run_work_item WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM run_gate_check WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM run_evidence WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM run_execution WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM population_row WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM population_snapshot WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM population_evidence WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM population_execution WHERE run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM audit_events WHERE aggregate_id = ANY(${runIds})`;
-      await sql`DELETE FROM audit_event_heads WHERE aggregate_id = ANY(${runIds})`;
-      await sql`DELETE FROM run_initiation_request WHERE run_id = ANY(${runIds}::uuid[]) OR refused_run_id = ANY(${runIds}::uuid[])`;
-      await sql`DELETE FROM audit_run WHERE run_id = ANY(${runIds}::uuid[])`;
-    }
-    await sql`DELETE FROM procedure_version WHERE version_id=${versionId}`;
-    await sql`DELETE FROM procedure WHERE procedure_id=${procedureId}`;
-    await sql`DELETE FROM population_source_binding WHERE binding_id=${bindingId}`;
+    // One transaction with the Runs locked first, as `closePreviewWorkerFixture` does. This
+    // journey holds Run control, and a control renewal's receipt survives for as long as
+    // its Run exists, so the Run's events can only leave in the same transaction as the Run;
+    // a separate DELETE is refused and would leave every row here for the next spec.
+    await sql.begin(async (tx) => {
+      const runs = await tx`SELECT run_id FROM audit_run WHERE procedure_id=${procedureId} ORDER BY run_id FOR UPDATE`;
+      const runIds = runs.map((row) => String(row.run_id));
+      if (runIds.length > 0) {
+        await tx`DELETE FROM pgboss.job WHERE data->>'runId' = ANY(${runIds})`;
+        await tx`DELETE FROM notification WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM run_wait WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM run_result_review WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM run_result WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM run_evidence_integrity WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM run_evidence_package WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM run_evidence_capture WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM run_tool_action WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM run_agent_turn WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM run_agent_work WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM run_observation_evaluation WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM run_observation_check WHERE run_id = ANY(${runIds}::uuid[])`;
+        // Review ledger/command rows cascade from their evaluation, and Exceptions
+        // cascade from their Observation. Their immutable-parent guards reject direct
+        // deletes while those parents still exist.
+        await tx`DELETE FROM run_observation WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM run_step_execution WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM run_session_step WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM run_work_item WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM run_gate_check WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM run_evidence WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM run_execution WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM population_row WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM population_snapshot WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM population_evidence WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM population_execution WHERE run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM audit_events WHERE aggregate_id = ANY(${runIds})`;
+        await tx`DELETE FROM audit_event_heads WHERE aggregate_id = ANY(${runIds})`;
+        await tx`DELETE FROM run_initiation_request WHERE run_id = ANY(${runIds}::uuid[]) OR refused_run_id = ANY(${runIds}::uuid[])`;
+        await tx`DELETE FROM audit_run WHERE run_id = ANY(${runIds}::uuid[])`;
+      }
+      await tx`DELETE FROM procedure_version WHERE version_id=${versionId}`;
+      await tx`DELETE FROM procedure WHERE procedure_id=${procedureId}`;
+      await tx`DELETE FROM population_source_binding WHERE binding_id=${bindingId}`;
+    });
   } finally {
     await sql.end({ timeout: 5 });
   }

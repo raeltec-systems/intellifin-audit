@@ -55,6 +55,21 @@ has (`ed12dfd` record review, `857b08b` workspace, Live View and chat).
   run had reached that line, because the test failed earlier. After fixing an early
   failure, run the test to its end before calling it fixed. All 68 `ls-` classes the specs
   use were then checked against the app.
+- **A page that holds Run control writes events on a clock.** It renews every 30 seconds,
+  and each renewal is an event on the Run's chain that cannot be deleted while the Run
+  exists. So an exact event list sets renewals apart (`expectRunEvents` in
+  `tests/e2e/run-control.ts`), and a teardown deletes the Run's events and the Run in ONE
+  transaction, Run locked first. The rule was written on 2026-09-21 and two siblings did
+  not follow it: `live-escalation.spec.ts`, whose refused cleanup CI met (the
+  `procedures.spec.ts` empty-list failure was its shadow), and
+  `prodconsole-agent-journey.spec.ts`, which holds control while its worker finishes.
+- **Click Resume through `resumeWithControl`.** Acquiring control starts a re-read, and
+  while it settles the opener is `aria-disabled` and a click on it is refused; CI met that
+  once. The helper clicks only enabled controls, and again only while the dialog is absent.
+- **`live-escalation.spec.ts` still waited to SEE "Pause requested." and "Run resumed."**
+  after UX-49 made both transitional; `pause-resume.spec.ts` had already moved to the
+  settled banner. When a sentence becomes transitional, grep every spec for it — this
+  one was found only on the second pass.
 
 ## 2026-09-23 — The UI cleanup landed as five packages, and what integrating them found
 

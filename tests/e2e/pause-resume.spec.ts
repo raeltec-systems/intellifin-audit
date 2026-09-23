@@ -14,6 +14,7 @@ import {
 import { ESCALATION_PANEL_COPY, PAUSE_COPY } from '../../apps/web/src/design/copy';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
+import { expectRunEvents, resumeWithControl } from './run-control';
 
 /**
  * Pausing and resuming a Run, in a real browser (Story 5.4, FR-25, AD-16, UX-DR25).
@@ -187,11 +188,9 @@ test.describe('pausing and resuming a Run', () => {
     await page.getByRole('button', { name: 'Acquire control', exact: true }).click();
     await expect(page.getByText('You control this Run.', { exact: true })).toBeVisible();
     // Acquisition can trigger a live refresh between the controller message and
-    // activation. Resolve only the currently enabled opener; aria-disabled is
-    // intentionally focusable and a plain click on it is a no-op.
-    await page.getByRole('button', { name: 'Resume', exact: true })
-      .and(page.locator(':not([aria-disabled="true"])')).click();
-    await page.getByRole('dialog', { name: 'Resume this Run?', exact: true }).getByRole('button', { name: 'Resume Run', exact: true }).click();
+    // activation; `resumeWithControl` clicks only enabled controls, and again only while
+    // the click has not yet taken effect.
+    await resumeWithControl(page);
     // The page re-reads a Running Run: Pause is offered again, the Paused banner is gone,
     // and so is the control's transitional "Run resumed." — the state it announced has
     // settled and the page says so itself (UX-49).
@@ -205,7 +204,8 @@ test.describe('pausing and resuming a Run', () => {
     // `resume`, never `answer`: generation 45 refuses the other pairing outright.
     expect(closed).toMatchObject({ closure_kind: 'resume', answer_option_id: 'resume', actor: author });
     const events = await sql`SELECT event_type FROM audit_events WHERE aggregate_id=${runId} ORDER BY sequence`;
-    expect(events.map((row) => row.event_type)).toEqual([
+    // This page still holds control, so lease renewals are set apart (`expectRunEvents`).
+    expectRunEvents(events.map((row) => String(row.event_type)), [
       'lifecycle.run-pause-requested',
       'lifecycle.run-paused',
       'lifecycle.run-control-lease-acquired',
@@ -264,9 +264,7 @@ test.describe('pausing and resuming a Run', () => {
     await expect(page.getByRole('button', { name: 'Acquire control', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
     await page.getByRole('button', { name: 'Acquire control', exact: true }).click();
     await expect(page.getByText('You control this Run.', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Resume', exact: true })
-      .and(page.locator(':not([aria-disabled="true"])')).click();
-    await page.getByRole('dialog', { name: 'Resume this Run?', exact: true }).getByRole('button', { name: 'Resume Run', exact: true }).click();
+    await resumeWithControl(page);
     await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
     await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at,completed_at)
       VALUES(${ids.next()},${runId},${stepIds[0]!},NULL,'inspect-record','SUCCEEDED',2,${at(2)},${at(3)})`;
