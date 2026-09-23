@@ -50,6 +50,17 @@ both branches rewrote.
   turn before the command was saved, so the Stop never reached a boundary and the Run
   stayed running. Two cold local runs failed this way. The spec now waits for the Run's
   saved pause or cancellation marker first. Test-only: no product code changed.
+- **CI on `d0b4c15` then failed twice, each time on a different test, and neither was a
+  product defect.** The first attempt failed 7 frame tests: `next dev` never answered the
+  frame image route (`/api/runs/<id>/frames/<id>`), from its first request to the end of
+  the run. Every other route answered, and the evidence inspector's reads through the same
+  worker-signed grant passed at the same time. The one re-run served that route 39 times.
+  The re-run failed `run-controller-lease.spec.ts:368` instead, with "Route is already
+  handled!". That came from the test's own cleanup: Playwright's
+  `unrouteAll({ behavior: 'wait' })` removes the page's interceptor as soon as the first
+  held request answers, and a second held request that was still being fetched lost its
+  route. `tests/e2e/held-routes.ts` now lets every held request answer before the routes
+  go, and the six tests in that spec that hold requests use it (`d915654`). Test-only.
 
 The deployed commit before this work, `ec673a0`, was itself red in CI (6 browser and 2
 preview failures). Those are among the fixes above.
@@ -87,6 +98,11 @@ Locally, against this worktree's own PostgreSQL 18 database, before each push:
 - For `e42f2e8`: both preview specs from a cold cache, 12 of 12. A throwaway copy that
   holds every command request for two seconds passes with the new wait and fails at the
   Stop without it ("Received: RUNNING"), the same failure the cold runs showed.
+- For `d915654`: `run-controller-lease.spec.ts` from a cold cache, 16 of 16, no rows left
+  behind. A throwaway script with two held requests, one still being fetched when both
+  are released, failed 5 of 5 with the old cleanup ("Route is already handled!") and 0 of
+  5 with the new one. The five specs the first attempt failed (frame tests) passed 22 of
+  22 locally from a cold cache.
 
 ## Deployment
 
