@@ -144,23 +144,30 @@ test.describe('Run initiation as an Auditor', () => {
     // the conclusion triptych's own Run lifecycle cell (Story 3.11).
     await expect(page.getByText('Queued', { exact: true }).first()).toBeVisible();
     await expect(page.getByText(controlName, { exact: true }).first()).toBeVisible();
-    // `[REWRITTEN 2026-09-22, UI cleanup UX-02]` The header now says the period the way a
-    // person reads it, and the ISO dates moved under Technical details — so an unscoped
-    // `getByText(/2026-08-01/)` first met the CLOSED disclosure's copy and read as hidden.
-    // The readable form is asserted where it is read, and the exact dates in the record's
-    // own Run details section, where they are still shown.
+    // `[REWRITTEN 2026-09-23, UI cleanup UX-02 and UX-19]` The Result reads conclusion
+    // first. The Run's own facts are "About this test run", in a person's words — the
+    // Procedure and version, the period, who started it and when, the kind and a short
+    // reference — and the exact identifiers and instants are under the frame's closed
+    // Technical details, once, on every Run tab.
     await expect(page.locator('.ls-page-header')).toContainText('1–31 Aug 2026');
-    const details = page.getByRole('region', { name: 'Run details' });
-    await expect(details.getByText('2026-08-01 to 2026-08-31 (inclusive)', { exact: true })).toBeVisible();
-    await expect(details.getByText(runId, { exact: true })).toBeVisible();
-    await expect(details.getByText(auditorId, { exact: true })).toBeVisible();
-    await expect(details.getByText(stored!.correlation_id as string, { exact: true })).toBeVisible();
+    const details = page.getByRole('region', { name: 'About this test run' });
+    await expect(details).toContainText('1–31 Aug 2026');
+    await expect(details).toContainText(`Run ${shortReference(runId)}`);
     await expect(details.getByText('Standard', { exact: true })).toBeVisible();
-    await expect(details.getByRole('link', { name: 'v1', exact: true })).toHaveAttribute('href', `/procedures/${procedureId}/versions/${versionId}`);
+    await expect(details.getByRole('link', { name: `${controlName} · v1`, exact: true })).toHaveAttribute('href', `/procedures/${procedureId}/versions/${versionId}`);
+    await expect(details).not.toContainText(runId);
+    const technical = page.locator('details.ls-technical').filter({ hasText: 'Started by (user identifier)' });
+    await expect(technical).not.toHaveAttribute('open', /.*/);
+    await technical.locator('> summary').click();
+    await expect(technical.getByText('2026-08-01 → 2026-08-31', { exact: true })).toBeVisible();
+    await expect(technical.getByText(runId, { exact: true })).toBeVisible();
+    await expect(technical.getByText(auditorId, { exact: true })).toBeVisible();
+    await expect(technical.getByText(stored!.correlation_id as string, { exact: true })).toBeVisible();
     // ISO 8601 UTC with `Z`, which is the format EXPERIENCE.md fixes; Story 3.10 rendered
     // `2026-09-06 09:00:00 UTC`, which is not ISO 8601, and Story 3.11 adopted the
-    // contract's own spelling on every Run surface.
-    await expect(details.getByText(new Date(stored!.initiated_at as string).toISOString(), { exact: true })).toBeVisible();
+    // contract's own spelling on every Run surface. It is the exact instant, so it lives
+    // under Technical details; the page itself says it in words.
+    await expect(technical.getByText(new Date(stored!.initiated_at as string).toISOString(), { exact: true })).toBeVisible();
     const accessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
     expect(accessibility.violations.map(v => ({ id: v.id, impact: v.impact, help: v.help }))).toEqual([]);
     const screenshot = test.info().outputPath('queued-run.png');
@@ -228,9 +235,14 @@ test.describe('Run initiation as an Auditor', () => {
     await page.goto(`/runs/${runId}`);
     await expect(page.getByText(STOP_REASON_TITLE, { exact: true })).toBeVisible();
     await expect(page.getByText(/generated on 2026-09-01, before the period ended on 2026-09-15/)).toBeVisible();
-    const details = page.getByRole('region', { name: 'Run details' });
+    // `[REWRITTEN 2026-09-23, UI cleanup UX-19]` The person is named in "About this test
+    // run"; their user id is under the frame's Technical details, never loose on the page.
+    const details = page.getByRole('region', { name: 'About this test run' });
     await expect(details).toContainText(auditorName);
-    await expect(details.getByText(auditorId, { exact: true })).toBeVisible();
+    await expect(details).not.toContainText(auditorId);
+    const technical = page.locator('details.ls-technical').filter({ hasText: 'Started by (user identifier)' });
+    await technical.locator('> summary').click();
+    await expect(technical.getByText(auditorId, { exact: true })).toBeVisible();
     const accessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
     expect(accessibility.violations.map(v => ({ id: v.id, impact: v.impact, help: v.help }))).toEqual([]);
   });
@@ -422,7 +434,8 @@ test.describe('Run initiation as an Auditor', () => {
     await page.getByRole('link', { name: 'Open the linked Run', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/runs/${successor!.id as string}$`));
     await expect(page.getByText('Queued', { exact: true }).first()).toBeVisible();
-    await expect(page.getByRole('link', { name: runId, exact: true })).toBeVisible();
+    // The successor names its predecessor by a short reference (UI cleanup UX-31), linked.
+    await expect(page.getByRole('region', { name: 'About this test run' }).getByRole('link', { name: `Run ${shortReference(runId)}`, exact: true })).toHaveAttribute('href', `/runs/${runId}`);
     // Cancel the successor so the Procedure has no active Run left behind. This click is
     // the one that races hydration: the anchor above did a full document navigation.
     await expect(page.locator('#run-lifecycle')).toHaveAttribute('data-client-ready', 'true');

@@ -33,7 +33,7 @@ import {
 import { RESULT_WORDS } from '../../../src/runs/result-words';
 import { ConclusionTriptych } from '../../../src/runs/Triptych';
 import { RunDenied, RunDetailFrame, openRun, readEvaluationReview } from '../../../src/runs/detail';
-import { periodText, utcStamp } from '../../../src/runs/labels';
+import { utcStamp } from '../../../src/runs/labels';
 import { isStoppedState } from '../../../src/runs/stop-reason';
 
 export const metadata: Metadata = { title: 'Run · Result · IntelliFin Audit' };
@@ -223,26 +223,25 @@ export default async function RunResultPage({
              provenance record, not the first thing a conclusion is read through. */}
       {publication === null ? null : <EvidencePackageSection publication={publication} runId={run.runId} />}
 
-      {/* 7. The identifiers, the exact instants and the correlation id. */}
-      <TechnicalDetails
-        items={[
-          { label: 'Run identifier', value: run.runId, mono: true },
-          { label: 'Correlation identifier', value: run.correlationId, mono: true },
-          { label: 'Procedure Version identifier', value: run.versionId, mono: true },
-          { label: 'Effective period', value: periodText(run.period), mono: true },
-          { label: 'Initiated at', value: utcStamp(run.initiatedAt), mono: true },
-          ...(result?.sealedAt === null || result?.sealedAt === undefined
-            ? []
-            : [{ label: 'Concluded at', value: utcStamp(result.sealedAt), mono: true }]),
-          ...(run.predecessorRunId === null
-            ? []
-            : [{
-                label: 'Rerun of',
-                value: <Link className="ls-mono" href={`/runs/${run.predecessorRunId}`}>{run.predecessorRunId}</Link>,
-                mono: true,
-              }]),
-        ]}
-      />
+      {/* 7. The Result's own exact facts. The Run's identifiers — its id, correlation id,
+          version, period, start and initiator — are in the frame's Technical details on
+          every tab, so they are not repeated here. */}
+      {(result?.sealedAt === null || result?.sealedAt === undefined) && run.predecessorRunId === null ? null : (
+        <TechnicalDetails
+          items={[
+            ...(result?.sealedAt === null || result?.sealedAt === undefined
+              ? []
+              : [{ label: 'Concluded at', value: utcStamp(result.sealedAt), mono: true }]),
+            ...(run.predecessorRunId === null
+              ? []
+              : [{
+                  label: 'Rerun of',
+                  value: <Link className="ls-mono" href={`/runs/${run.predecessorRunId}`}>{run.predecessorRunId}</Link>,
+                  mono: true,
+                }]),
+          ]}
+        />
+      )}
 
       {/* The Run's own facts, in a person's words: who started it, when, over what. The
           identifiers that used to be this section's first row are above. */}

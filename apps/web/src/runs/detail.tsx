@@ -275,12 +275,17 @@ export async function RunDetailFrame({
         requestToken={new CryptoUuidV7Generator().next()}
         procedureName={run.procedureName}
       />
+      {/* The Run's identifiers, once, on every tab. The person who started the Run is named
+          in words on the page; their user id is here, because it is what an auditor
+          matches against the audit chain. */}
       <TechnicalDetails
         items={[
           { label: 'Run identifier', value: run.runId, mono: true },
+          { label: 'Correlation identifier', value: run.correlationId, mono: true },
           { label: 'Procedure Version identifier', value: run.versionId, mono: true },
           { label: 'Effective period', value: periodText(run.period), mono: true },
           { label: 'Started', value: utcStamp(run.initiatedAt), mono: true },
+          { label: 'Started by (user identifier)', value: run.initiatorId, mono: true },
           { label: 'Read at', value: utcStamp(readAt), mono: true },
         ]}
       />
