@@ -78,6 +78,13 @@ has (`ed12dfd` record review, `857b08b` workspace, Live View and chat).
   after UX-49 made both transitional; `pause-resume.spec.ts` had already moved to the
   settled banner. When a sentence becomes transitional, grep every spec for it — this
   one was found only on the second pass.
+- **A push to this branch deploys nothing.** Railway's `web` and `worker` build from it,
+  but none of the thirteen commits pushed after `ec673a0` reached production until
+  `bf06297` was deployed by name (the Railway agent's deploy with `commitSha`, both
+  services). Then read each deployment's status and commit, `/api/health` (`schema`), the
+  web's "Startup checks passed" and the worker's startup lines. The web switches first;
+  the worker, which installs its browser, finishes minutes later, so for that time the
+  two run different commits.
 
 ## 2026-09-23 — The UI cleanup landed as five packages, and what integrating them found
 

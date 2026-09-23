@@ -3,7 +3,8 @@
 The owner walked the deployed product on 21 September 2026 as all three roles and filed
 forty-nine findings (seventeen P1) with a cleanup plan in eight packages. This folder is
 the record of implementing it: one report per package (`p2-report.md` … `p6-report.md`),
-the release checks (`p7-acceptance.md`) and this summary.
+the release checks (`p7-acceptance.md`), the report on putting it on production's branch
+(`p8-live-branch.md`) and this summary.
 
 ## Baseline (package 0)
 
@@ -65,7 +66,7 @@ surface above, through the package 1 layer.
 **UX-22 to UX-26 are not in this branch, by design.** They name the record queue and
 inspector that exist only on PR #51's branch. `p5-report.md` states the rule each one needs,
 so the fix is applied on top of that branch rather than rebuilt here and thrown away at the
-merge.
+merge. On `feat/auditor-workspace-v1-1` they are applied: see `p8-live-branch.md`.
 
 ## Package 7 — release checks (`p7-acceptance.md`)
 
@@ -84,6 +85,14 @@ no focus ring; ten specs pinned a surface another package had changed; the Run p
 lost the initiator's user id; and three sentences on the version pages were not true (an
 Active version "not yet submitted", raw ISO dates, a frequency stated as a schedule). All
 are fixed; `p7-acceptance.md` has the detail, the mutation proofs and the screenshots.
+
+## Package 8 — on production's branch (`p8-live-branch.md`)
+
+The owner chose to put the cleanup on `feat/auditor-workspace-v1-1` (PR #51), the branch
+production runs. PR #52 was merged in, UX-22 to UX-26 were applied to its record review and
+workspace, and the defects found on the way were fixed, among them a worker crash on a
+failed sign-in click that `main` also has. CI on `bf06297`: 7 of 7 jobs green. Production
+runs `bf06297` since 23 September 2026, 10:19 UTC.
 
 ## What this cleanup does not deliver (tracked separately, stated on the surfaces)
 
