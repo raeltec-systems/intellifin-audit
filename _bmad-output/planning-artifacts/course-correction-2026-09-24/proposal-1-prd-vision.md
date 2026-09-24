@@ -1,6 +1,6 @@
 # Proposal 1 of 7 (revised) — PRD: vision, primary object, journeys, non-goals, scope
 
-Status: revised after owner edits on 2026-09-24; awaiting owner approval.
+Status: revised twice after owner edits on 2026-09-24 (harness capabilities, object relationships, accountability, principle 4, trust seam, journeys, non-goals, scope; then UJ-3 mandate boundary, working material vs evidence, coverage limitations and separate statuses); awaiting owner approval.
 Artifact: `prd.md` §1, §1.1 principle 4, §1.2, §2.3, §7, §8.1, §8.3. New revision (rev 4).
 
 ## §1 Vision — NEW
@@ -25,12 +25,23 @@ Artifact: `prd.md` §1, §1.1 principle 4, §1.2, §2.3, §7, §8.1, §8.3. New 
 
 ```
 ENGAGEMENT
-  ├─ CONVERSATIONS and AGENT TASKS   (directed work, under a Mandate)
-  ├─ EVIDENCE                        (preserved source snapshots; working copies; derived outputs)
-  ├─ ARTIFACTS                       (plan, procedure, request list, working paper, finding, report — versioned, reviewed)
-  ├─ DECISIONS and REVIEW RECORDS    (attributable; approval enforced where required)
+  ├─ CONVERSATIONS and AGENT TASKS
+  │    Directed work, under a Mandate.
+  ├─ SOURCES AND EVIDENCE
+  │    Preserved source snapshots and registered supporting evidence,
+  │    including traceable derived analytical outputs where applicable.
+  ├─ WORKING MATERIAL
+  │    Separate working copies, scripts, temporary extracts and intermediate outputs.
+  ├─ ARTIFACTS
+  │    Versioned plans, procedures, request lists, working papers, findings and reports.
+  ├─ DECISIONS and REVIEW RECORDS
+  │    Attributable; approval enforced where required.
   └─ optionally: PROMOTION → APPROVED RECURRING CHECK → scheduled RUNS → RESULTS
 ```
+
+> Working material is not automatically evidence, and registration does not by itself establish that an interpretation is correct. Derived analytical outputs may support audit assertions when their inputs, method, provenance and validation are traceable. Generated narrative remains distinct from independent source evidence.
+>
+> These are conceptual distinctions; this proposal does not prescribe separate database aggregates for each branch.
 
 ## §1 Accountability, replay and reproducibility — NEW
 
@@ -58,10 +69,16 @@ Six industry-neutral journeys replace UJ-1..6:
 
 - **UJ-1 Establish context and plan.** The auditor opens or continues a draft engagement and states an objective. The agent reads the authorised material, says what it found, what it assumed and what it still needs, and proposes a plan artifact the auditor edits; the edit is versioned.
 - **UJ-2 Perform analysis and testing.** The agent obtains source snapshots, works on separate copies in a controlled environment, and produces derived outputs linked to their inputs, with population completeness and period relevance stated.
-- **UJ-3 Investigate signals.** Patterns outside the literal request are recorded as signals, separate from confirmed findings, with their evidence; the auditor decides whether to investigate, and scope expansion needs approval.
+- **UJ-3 Investigate signals.** The agent may identify and investigate relevant patterns beyond the auditor's literal request when the investigation remains within the agreed objective, authorised sources, permitted operations and execution limits of the current Mandate. It records material investigative steps and distinguishes hypotheses, signals and confirmed findings. New access, material scope expansion, or changes to approved criteria or recurring-check definitions require the applicable approval. Within an approved recurring run, adjacent investigation must not silently change the formal check or its result.
 - **UJ-4 Correct and review artifacts.** The auditor corrects an overstated result; the agent revises the artifact, preserves its history, flags related conclusions and approvals for reconsideration, and proposes — never silently applies — retaining the correction in memory at the appropriate scope.
 - **UJ-5 Coordinate evidence requests, correspondence and walkthroughs.** The agent reads relevant correspondence and attachments to update or propose updates to the request record, and prepares meetings and messages; an external action is presented with its material details and confirmed before it is performed, and the confirmed result is linked to the engagement.
-- **UJ-6 Promote to a recurring check and run it.** Suitable work is promoted to a versioned procedure with its execution requirements; approval is by someone other than the author where independence requires it; a scheduled run reports Pass / Exception / Inconclusive / Failed-to-run truthfully.
+- **UJ-6 Promote to a recurring check and run it.** Suitable work is promoted to a versioned procedure with its execution requirements; approval is by someone other than the author where independence requires it; a scheduled run reports Pass / Exception / Inconclusive / Failed-to-run truthfully. Execution status, input and coverage status, audit assessment, and review or issue status remain separate. "Pass / Exception / Inconclusive / Failed-to-run" is user-facing summary vocabulary, not a single interchangeable state model. Successful execution can produce an inconclusive assessment; a completed draft is not an approved or issued result.
+
+**Coverage limitations (applies to UJ-2, UJ-3 and UJ-6):**
+
+> Missing, incomplete, stale or out-of-period inputs must constrain the assessment they affect, whether encountered during supervised analysis or scheduled execution. The agent may continue useful work on the available material, but must not imply assurance over an untested or unsupported population. Supported exceptions remain visible even when the broader assessment is inconclusive.
+
+In the first acceptance case the post-exit login is an investigative signal, while the partial application-user population is a coverage limitation that constrains the relevant conclusion immediately, independent of whether the signal is investigated. Proposal 6 carries these distinctions into the acceptance criteria: deferring advanced scheduling or drift management does not defer the basic checks that establish that the approved definition ran against authorised, suitable inputs.
 
 **First acceptance case (owner decision 2), mapped onto the journeys:** a synthetic leaver-access engagement. UJ-1: the control wording, period and sources are discovered in Google Drive files and one assumption is stated. UJ-2: the leaver list, directory extract and application user list are snapshotted and traced on working copies. UJ-3: a post-exit login and a partial user population surface as signals. UJ-5: a Gmail evidence thread is read to update the request record, and one calendar invitation to a designated test recipient is proposed, confirmed and created. UJ-4: the auditor corrects an overstated result and the memory proposal appears. UJ-6: the analysis is promoted to a monthly check, approved by a second person, and one scheduled rerun runs, including a deliberately incomplete input reported Inconclusive. Prohibited source changes are refused and a connection failure is reported honestly. The scenario is acceptance data, not harness behaviour.
 
