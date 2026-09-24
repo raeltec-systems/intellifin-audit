@@ -1,6 +1,6 @@
 # Proposal 1 of 7 (revised) — PRD: vision, primary object, journeys, non-goals, scope
 
-Status: revised twice after owner edits on 2026-09-24 (harness capabilities, object relationships, accountability, principle 4, trust seam, journeys, non-goals, scope; then UJ-3 mandate boundary, working material vs evidence, coverage limitations and separate statuses); awaiting owner approval.
+Status: APPROVED by the owner on 2026-09-24 as the basis for PRD revision 4. The approval settles product direction and wording; it does not authorise implementation or pre-approve the contracts in Proposals 2–7.
 Artifact: `prd.md` §1, §1.1 principle 4, §1.2, §2.3, §7, §8.1, §8.3. New revision (rev 4).
 
 ## §1 Vision — NEW
