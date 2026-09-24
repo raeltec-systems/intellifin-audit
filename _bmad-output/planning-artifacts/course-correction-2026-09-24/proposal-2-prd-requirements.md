@@ -1,6 +1,6 @@
 # Proposal 2 of 7 (revised) — PRD: new requirement sections and FR-3 revision
 
-Status: revised after owner edits on 2026-09-24 (ten edit groups); awaiting owner approval.
+Status: APPROVED by the owner on 2026-09-24 as the requirements baseline for PRD revision 4, consistent with Proposal 1. Settles what the product must support; not the technical choices or deployment topology. No implementation authorised.
 Artifact: `prd.md` §4 (new §4.14–§4.21), §4.1 FR-3, §4.4 (promotion), §4.5 FR-20/FR-22 scope note. Numbering continues from FR-50; FR-83–FR-90 were appended in the revision. Existing FRs named as HOLDS in `analysis-prd-epics.md` are unchanged.
 
 Carried forward from Proposal 1: investigation within the Mandate without unnecessary prompts; working material distinct from evidence; coverage limitations constrain conclusions immediately; execution, coverage, assessment and review statuses separate.
