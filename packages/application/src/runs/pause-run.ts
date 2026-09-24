@@ -20,6 +20,7 @@ import {
 } from './escalation-kind.js';
 import type { RunPauseContext } from './execution-ports.js';
 import type { WaitRepository } from './waits.js';
+import { DEFERRED_PAUSE_SUPERSEDED_EVENT } from './deferred-pause-run.js';
 
 /**
  * `PauseRun` and `ResumeRun`: stop a Running Run on a person's word, and start it again
@@ -103,6 +104,10 @@ export async function performPause(
     /** The Step Execution this pause superseded, when a stage had one in flight. */
     readonly stepExecutionId?: string | null;
     readonly workItemId?: string | null;
+    /** Deferred steering names the settled logical unit in the applied event. */
+    readonly pauseMode?: 'immediate' | 'after-inspection';
+    readonly subjectKey?: string | null;
+    readonly registrationId?: string | null;
   },
 ): Promise<RunWait> {
   const wait = pauseWaitFor({
@@ -133,8 +138,16 @@ export async function performPause(
       requestedAt: input.request.requestedAt,
       occurredAt: input.at,
       deadline: wait.deadline,
+      ...(input.request.commandId !== undefined && input.request.commandId !== null
+        ? { commandId: input.request.commandId }
+        : {}),
       ...(input.stepExecutionId ? { stepExecutionId: input.stepExecutionId } : {}),
       ...(input.workItemId ? { workItemId: input.workItemId } : {}),
+      pauseMode: input.pauseMode ?? 'immediate',
+      ...(input.pauseMode === 'after-inspection' ? {
+        subjectKey: input.subjectKey ?? null,
+        registrationId: input.registrationId ?? null,
+      } : {}),
     },
   });
   await context.notifyTimeline(stored.sequence);
@@ -148,6 +161,8 @@ export interface PauseRunDependencies {
   readonly repository: WaitRepository;
   readonly ids: UuidV7Generator;
   readonly clock: Clock;
+  /** Server-assigned ownership for this request; never accepted from the client body. */
+  readonly commandId?: string | null;
 }
 
 export type PauseRunOutcome =
@@ -164,7 +179,7 @@ export type ResumeRunOutcome =
   | { readonly ok: true; readonly state: 'RUNNING'; readonly waitId: string }
   | { readonly ok: false; readonly reason: string; readonly code: ResumeRefusalCode };
 
-export type ResumeRefusalCode = 'malformed' | 'unknown' | 'not-paused' | 'stale-revision' | 'timed-out' | 'closed';
+export type ResumeRefusalCode = 'malformed' | 'unknown' | 'not-paused' | 'stale-revision' | 'timed-out' | 'closed' | 'control-required' | 'stale-control';
 
 export const PAUSE_REQUEST_MALFORMED = 'Choose a Run that is still running.';
 export const RESUME_REQUEST_MALFORMED = 'Choose a Paused Run and the revision you read.';
@@ -190,6 +205,8 @@ export const RESUME_RUN_REFUSALS: Readonly<Record<ResumeRefusalCode, string>> = 
    * and says `closed` otherwise; this is that rule, one command along.
    */
   closed: 'This pause was already closed. Reload the Run to see its state.',
+  'control-required': 'Acquire control of this Run before confirming Resume.',
+  'stale-control': 'Your control lease changed or expired. Reload the Run before confirming Resume.',
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -231,11 +248,16 @@ function parsePauseRequest(value: unknown): { runId: string } | null {
   return { runId: record.runId.toLowerCase() };
 }
 
-function parseResumeRequest(value: unknown): { runId: string; expectedRunRevision: number } | null {
+function internalCommandId(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  return typeof value === 'string' && UUID.test(value) ? value.toLowerCase() : null;
+}
+
+function parseResumeRequest(value: unknown): { runId: string; expectedRunRevision: number; expectedControlEpoch: number | null } | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   const keys = Object.keys(record);
-  if (keys.length !== 2 || !Object.hasOwn(record, 'runId') || !Object.hasOwn(record, 'expectedRunRevision'))
+  if ((keys.length !== 2 && keys.length !== 3) || keys.some(key => !['runId', 'expectedRunRevision', 'expectedControlEpoch'].includes(key)) || !Object.hasOwn(record, 'runId') || !Object.hasOwn(record, 'expectedRunRevision'))
     return null;
   if (typeof record.runId !== 'string' || !UUID.test(record.runId)) return null;
   if (
@@ -244,7 +266,9 @@ function parseResumeRequest(value: unknown): { runId: string; expectedRunRevisio
     record.expectedRunRevision < 0
   )
     return null;
-  return { runId: record.runId.toLowerCase(), expectedRunRevision: record.expectedRunRevision };
+  const epoch = record.expectedControlEpoch;
+  if (Object.hasOwn(record, 'expectedControlEpoch') && (typeof epoch !== 'number' || !Number.isSafeInteger(epoch) || epoch <= 0)) return null;
+  return { runId: record.runId.toLowerCase(), expectedRunRevision: record.expectedRunRevision, expectedControlEpoch: typeof epoch === 'number' ? epoch : null };
 }
 
 /** Record one person's pause request. The worker honours it at its next boundary. */
@@ -258,6 +282,8 @@ export async function pauseRun(
   if (!permission.allowed) return { ok: false, reason: permission.reason };
   const request = parsePauseRequest(input.request);
   if (request === null) return { ok: false, reason: PAUSE_REQUEST_MALFORMED };
+  const commandId = internalCommandId(dependencies.commandId);
+  if (commandId === null) return { ok: false, reason: RUN_PAUSE_REFUSALS.INVALID_COMMAND_ID };
   try {
     return await dependencies.repository.transaction(request.runId, async (context) => {
       const role = await context.authorizationRoles.findRole(input.session.userId);
@@ -272,14 +298,37 @@ export async function pauseRun(
       if (runPauseTransition(run.state) === null)
         return { ok: false, reason: RUN_PAUSE_REFUSALS.NOT_RUNNING };
       // Idempotent: one marker, one pause, one event. A second request must not overwrite
-      // the first requester or the first time, which the Paused banner then reports.
-      if (run.pauseRequest !== null) return { ok: true, state: run.state, pending: true };
+      // the first requester or the first time, which the Paused banner then reports. A
+      // server-owned retry may replay only its own marker; a legacy caller without a
+      // command id retains the historical behavior for old and new markers.
+      if (run.pauseRequest !== null) {
+        if (commandId !== undefined && (internalCommandId(run.pauseRequest.commandId) !== commandId || run.pauseRequest.requestedBy !== input.session.userId))
+          return { ok: false, reason: RUN_PAUSE_REFUSALS.ALREADY_REQUESTED };
+        return { ok: true, state: run.state, pending: true };
+      }
       const pause: RunPauseRequest = {
         requestedBy: input.session.userId,
         sessionId: input.session.sessionId,
         requestedAt: dependencies.clock.now().toISOString(),
+        ...(commandId === undefined ? {} : { commandId }),
       };
       await context.requestPause(pause);
+      // Installing the stronger safety request atomically retires any deferred latch.
+      // The worker still owns the actual pause; this records only the superseded intent.
+      const deferred = await context.readDeferredPause?.();
+      if (deferred != null) {
+        if (context.settleDeferredPause === undefined) throw new Error('Deferred pause settlement unavailable');
+        await context.settleDeferredPause('SUPERSEDED', pause.requestedAt, 'immediate-pause');
+        const superseded = await context.auditEvents.append({
+          actor: { type: 'system', id: 'deferred-pause-coordinator' },
+          eventType: DEFERRED_PAUSE_SUPERSEDED_EVENT, source: 'web', outcome: 'failure',
+          aggregateId: run.runId, correlationId, sessionId: deferred.sessionId,
+          payload: { commandId: deferred.commandId, requestedBy: deferred.requestedBy,
+            workItemId: deferred.workItemId, subjectKey: deferred.subjectKey,
+            registrationId: deferred.registrationId, reason: 'immediate-pause' },
+        });
+        await context.notifyTimeline(superseded.sequence);
+      }
       const stored = await context.auditEvents.append({
         actor: { type: 'human', id: pause.requestedBy },
         eventType: PAUSE_REQUESTED_EVENT,
@@ -294,6 +343,9 @@ export async function pauseRun(
           // The Run is still owned by a worker: this records the REQUEST, and the worker's
           // own event records the transition it then performs.
           performedBy: 'worker',
+          ...(pause.commandId !== undefined && pause.commandId !== null
+            ? { commandId: pause.commandId }
+            : {}),
         },
       });
       await context.notifyTimeline(stored.sequence);
@@ -308,7 +360,18 @@ export async function pauseRun(
   }
 }
 
-export interface ResumeRunDependencies extends PauseRunDependencies {}
+export interface ResumeRunDependencies extends PauseRunDependencies {
+  /** Server policy for Runs never enrolled in control. Existing lease rows ALWAYS fence. */
+  readonly requireControllerLease: boolean;
+  /** Server-owned, persisted proposal context; never accepted in the public request. */
+  readonly confirmedInteraction?: {
+    readonly commandId: string;
+    readonly planDigest: string;
+    readonly waitId: string;
+    readonly pausedAt: string;
+    readonly deadline: string;
+  };
+}
 
 /**
  * Close the pause wait and put the Run back to `RUNNING`.
@@ -328,6 +391,10 @@ export async function resumeRun(
   if (!permission.allowed) return { ok: false, reason: permission.reason, code: 'malformed' };
   const request = parseResumeRequest(input.request);
   if (request === null) return { ok: false, reason: RESUME_REQUEST_MALFORMED, code: 'malformed' };
+  const interaction = dependencies.confirmedInteraction;
+  if (interaction !== undefined && (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(interaction.commandId) ||
+    !/^[0-9a-f]{64}$/.test(interaction.planDigest)))
+    return { ok: false, reason: RESUME_REQUEST_MALFORMED, code: 'malformed' };
   try {
     return await dependencies.repository.transaction(request.runId, async (context) => {
       const role = await context.authorizationRoles.findRole(input.session.userId);
@@ -343,7 +410,18 @@ export async function resumeRun(
         return { ok: false, reason: RESUME_RUN_REFUSALS['not-paused'], code: 'not-paused' };
       if (run.state !== 'PAUSED')
         return { ok: false, reason: RESUME_RUN_REFUSALS['not-paused'], code: 'not-paused' };
-      const now = dependencies.clock.now().toISOString();
+      if (interaction !== undefined && (wait.waitId !== interaction.waitId ||
+        wait.openedAt !== interaction.pausedAt || wait.deadline !== interaction.deadline))
+        return { ok: false, reason: 'The pause changed after this Resume was proposed. Review the current pause.', code: 'stale-revision' };
+      const control = await context.readResumeControl();
+      const controlRequired = dependencies.requireControllerLease === true || interaction !== undefined || control.lease !== null || request.expectedControlEpoch !== null;
+      if (controlRequired && (control.lease === null || request.expectedControlEpoch === null))
+        return { ok: false, reason: RESUME_RUN_REFUSALS['control-required'], code: 'control-required' };
+      if (controlRequired && (control.lease!.holderId !== input.session.userId || control.lease!.epoch !== request.expectedControlEpoch ||
+          control.lease!.expiresAt === null || !Number.isFinite(Date.parse(control.lease!.expiresAt)) ||
+          !Number.isFinite(control.now.getTime()) || Date.parse(control.lease!.expiresAt) <= control.now.getTime()))
+        return { ok: false, reason: RESUME_RUN_REFUSALS['stale-control'], code: 'stale-control' };
+      const now = (controlRequired ? control.now : dependencies.clock.now()).toISOString();
       const operation = await context.closeWait({
         waitId: wait.waitId,
         expectedRunRevision: request.expectedRunRevision,
@@ -390,6 +468,10 @@ export async function resumeRun(
           waitId: wait.waitId,
           closureKind: 'resume',
           pausedAt: wait.openedAt,
+          ...(controlRequired ? { controlEpoch: control.lease!.epoch } : {}),
+          ...(interaction === undefined ? {} : { commandId: interaction.commandId,
+            planDigest: interaction.planDigest, expectedRunRevision: request.expectedRunRevision,
+            deadline: interaction.deadline }),
           occurredAt: now,
         },
       });

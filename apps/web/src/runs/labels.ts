@@ -5,6 +5,7 @@ import {
   snapshotSubstrateForMediaType,
   type EvaluationOrigin,
   type EvaluationValue,
+  type ObservationCheckName,
   type RunState,
   type SnapshotSubstrate,
   type SystemOutcome,
@@ -12,6 +13,7 @@ import {
 
 import { CAPTURE_TIME_SOURCE } from '../design/copy';
 import type { StatusState } from '../design/status';
+import { isoStamp } from '../design/time';
 
 /**
  * The words this surface writes, as data.
@@ -29,14 +31,13 @@ import type { StatusState } from '../design/status';
 /**
  * One instant, ISO 8601 in UTC with `Z` (EXPERIENCE.md → Voice and Tone → Formats).
  *
- * Story 3.10 rendered `2026-09-06 09:00:00 UTC`, which is not ISO 8601; this story
- * renders timestamps on five surfaces, so the contract's own format is adopted here and
- * the two places that used the older spelling now come through this function.
+ * Story 3.10 rendered `2026-09-06 09:00:00 UTC`, which is not ISO 8601; Story 3.11 adopted
+ * the contract's own format here. `[REVISED 2026-09-22, UI cleanup UX-02]` The ISO form is
+ * now what a `datetime` attribute and a Technical details row carry; an ordinary surface
+ * renders `<Timestamp>` (`design/Timestamp.tsx`), which says `21 Sep 2026, 12:24:45 UTC`.
+ * One implementation, in `design/time.ts`; this name stays for the thirty call sites.
  */
-export function utcStamp(value: string | Date): string {
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toISOString();
-}
+export const utcStamp = isoStamp;
 
 /** `2026-08-25 → 2026-08-31` (EXPERIENCE.md → Formats → Periods). */
 export function periodText(period: { readonly from: string; readonly to: string }): string {
@@ -443,4 +444,32 @@ export function workItemLabel(item: {
   readonly subjectKey: string | null;
 }): string {
   return item.subjectKey === null ? item.displayName : `${item.subjectKey} · ${item.displayName}`;
+}
+
+/**
+ * What each per-record evidence check asked, in words (UX-26).
+ *
+ * The record inspector used to say "No problem recorded" and "Recorded in selected
+ * metadata", which name no check and cannot be told apart from a check that never ran.
+ * Typed against the domain's own union, so a check added there without words here does
+ * not compile; a stored name this build does not know is shown as itself, never dropped.
+ */
+export const OBSERVATION_CHECK_WORDS: Readonly<Record<ObservationCheckName, string>> = {
+  'identity-corroboration': 'The record found is the one searched for',
+  'search-completeness': 'The search looked everywhere it had to',
+  'ambiguous-match': 'Exactly one record matched',
+  'required-evidence': 'All required evidence was captured',
+  freshness: 'The data was current for the audit period',
+  'observation-corroboration': 'Captured values match the saved page',
+};
+
+export function observationCheckWord(check: string): string {
+  return Object.hasOwn(OBSERVATION_CHECK_WORDS, check)
+    ? OBSERVATION_CHECK_WORDS[check as ObservationCheckName]
+    : check;
+}
+
+/** A check's result, never a code: a failure says so, and so does a pass. */
+export function observationCheckOutcomeWord(outcome: string): string {
+  return outcome === 'PASS' ? 'Passed' : outcome === 'FAIL' ? 'Failed' : 'Not recorded';
 }

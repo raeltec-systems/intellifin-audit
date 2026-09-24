@@ -1,7 +1,8 @@
 import { createServer, type Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
-  acquirePopulation, executeAdapterSteps, executeAgentSteps, initiateRun, provisionWorkspace, raiseEscalation,
+  proposeRunControlTransfer, confirmRunControlTransfer, setUserRunControlTransferGrant, type AuditUnitOfWork, type IdentityUnitOfWorkContext,
+  acquireRunControlLease, releaseRunControlLease, acquirePopulation, executeAdapterSteps, executeAgentSteps, initiateRun, provisionWorkspace, raiseEscalation,
   WorkspaceProvisionError, type AgentModelGateway, type EvidenceStore,
 } from '@intellifin/application';
 import {
@@ -9,9 +10,10 @@ import {
   initialDraftSections, registrationDigest, sha256Hex, sha256HexOfBytes, snapshotFromRegistration, utf8Bytes,
 } from '@intellifin/domain';
 import {
+  createAuditEventWriter, DrizzleRoleWriter, DrizzlePermissionGrantWriter, DrizzleUserDirectory, PostgresRunControlTransferRepository,
   createDb, createExceptionFingerprinter, createSqlClient, CryptoUuidV7Generator, DrizzleRoleRepository,
-  PostgresAdapterExecutionRepository, PostgresAgentExecutionRepository, PostgresPopulationRepository,
-  PostgresProceduresUnitOfWork, PostgresRunsUnitOfWork, PostgresWaitRepository, PostgresWorkspaceRepository,
+  PostgresAdapterExecutionRepository, PostgresAgentExecutionRepository, PostgresAuditChainReader, PostgresPopulationRepository,
+  PostgresRunControlLeaseRepository, PostgresProceduresUnitOfWork, PostgresRunsUnitOfWork, PostgresWaitRepository, PostgresWorkspaceRepository,
   SystemClock, type Database, type Sql,
 } from '@intellifin/infrastructure';
 import { PlaywrightBrowserExecution } from '@intellifin/infrastructure/browser';
@@ -19,6 +21,8 @@ import { ManifestCredentialResolver } from '@intellifin/infrastructure/credentia
 import { executeAgentWorkItem } from '../../packages/application/src/runs/execute-agent-work-item.js';
 import { PostgresAgentWorkRepository } from '../../packages/infrastructure/src/runs/agent-work-repository.js';
 import { activeRunVersion } from '../fixtures/active-run-version.js';
+import { ConversationContentCipher } from '../../packages/infrastructure/src/runs/conversation-content.js';
+import { PostgresRunConversationRepository } from '../../packages/infrastructure/src/runs/run-conversation-repository.js';
 
 // Real PostgreSQL + local Chromium + synthetic HTTP target. The proposal gateway is a
 // fixture stub: this proves the worker path, not live model or Solari acceptance.
@@ -29,6 +33,7 @@ const REF = 'cred://synthetic/agent-journey';
 describe.skipIf(!url)('local browser agent journeys through PostgreSQL registration', () => {
   let sql: Sql; let db: Database; let server: Server; let origin: string;
   const ids = new CryptoUuidV7Generator(), clock = new SystemClock(), author = ids.next();
+  const transferManager=ids.next(),grantAdministrator=ids.next();
   const runs: string[] = [], procedures: string[] = [], bindings: string[] = [];
   const browsers: PlaywrightBrowserExecution[] = [];
   const requests: { method: string; path: string; authenticated: boolean }[] = [];
@@ -41,6 +46,15 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
     sql = createSqlClient(url!, { max: 5 }); db = createDb(sql);
     await sql`INSERT INTO auth_user(id,name,email) VALUES (${author},'Agent journey',${author + '@test.invalid'})`;
     await sql`INSERT INTO user_role(user_id,role) VALUES (${author},'auditor')`;
+    await sql`INSERT INTO auth_user(id,name,email) VALUES (${transferManager},'Journey transfer manager',${transferManager+'@test.invalid'}),(${grantAdministrator},'Journey grant administrator',${grantAdministrator+'@test.invalid'})`;
+    await sql`INSERT INTO user_role(user_id,role) VALUES (${transferManager},'audit-manager'),(${grantAdministrator},'poc-administrator')`;
+    const unitOfWork: AuditUnitOfWork<IdentityUnitOfWorkContext> = {execute:work=>db.transaction(tx=>work({
+      auditEvents:createAuditEventWriter(tx,clock,ids),roles:new DrizzleRoleWriter(tx),permissions:new DrizzlePermissionGrantWriter(tx),
+      users:{createUser:async()=>{throw new Error('Not used');}},sessions:{revokeSession:async()=>{}},
+    }))};
+    expect(await setUserRunControlTransferGrant({roles:new DrizzleRoleRepository(db),users:new DrizzleUserDirectory(db),unitOfWork},
+      {session:{userId:grantAdministrator,sessionId:grantAdministrator},correlationId:ids.next(),userId:transferManager,granted:true,expectedGrantRevision:0})).toMatchObject({ok:true});
+
     server = createServer((request, response) => {
       const chunks: Buffer[] = [];
       request.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -77,41 +91,48 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
     if (server) await new Promise<void>(resolve => server.close(() => resolve()));
     if (!sql) return;
     try {
-      for (const runId of runs) {
-        await sql`DELETE FROM notification WHERE run_id=${runId}`;
-        await sql`DELETE FROM pgboss.job WHERE name IN ('runs','waits') AND data->>'runId'=${runId}`;
-        await sql`DELETE FROM run_wait WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_agent_turn WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_agent_work WHERE run_id=${runId}`;
+      for (const runId of runs) await sql.begin(async tx => {
+        await tx`DELETE FROM notification WHERE run_id=${runId}`;
+        await tx`DELETE FROM pgboss.job WHERE name IN ('runs','waits') AND data->>'runId'=${runId}`;
+        await tx`DELETE FROM run_wait WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_agent_turn WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_agent_work WHERE run_id=${runId}`;
         // Tear down the whole disposable Run before its protected capture metadata.
-        await sql`DELETE FROM run_result_review WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_result WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_evidence_integrity WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_observation_evaluation WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_observation_check WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_observation WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_exception WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_evidence_capture WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_tool_action WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_step_execution WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_session_step WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_work_item WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_gate_check WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_evidence WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_execution WHERE run_id=${runId}`;
-        await sql`DELETE FROM population_row WHERE run_id=${runId}`;
-        await sql`DELETE FROM population_snapshot WHERE run_id=${runId}`;
-        await sql`DELETE FROM population_evidence WHERE run_id=${runId}`;
-        await sql`DELETE FROM population_execution WHERE run_id=${runId}`;
-        await sql`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
-        await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
-        await sql`DELETE FROM run_initiation_request WHERE run_id=${runId} OR refused_run_id=${runId}`;
-        await sql`DELETE FROM audit_run WHERE run_id=${runId}`;
-      }
+        await tx`DELETE FROM run_result_review WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_result WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_evidence_integrity WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_observation_evaluation WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_observation_check WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_observation WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_exception WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_evidence_capture WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_tool_action WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_step_execution WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_session_step WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_work_item WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_gate_check WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_evidence WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_execution WHERE run_id=${runId}`;
+        await tx`DELETE FROM population_row WHERE run_id=${runId}`;
+        await tx`DELETE FROM population_snapshot WHERE run_id=${runId}`;
+        await tx`DELETE FROM population_evidence WHERE run_id=${runId}`;
+        await tx`DELETE FROM population_execution WHERE run_id=${runId}`;
+        await tx`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
+        await tx`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
+        await tx`DELETE FROM run_initiation_request WHERE run_id=${runId} OR refused_run_id=${runId}`;
+        await tx`DELETE FROM audit_run WHERE run_id=${runId}`;
+      });
       for (const procedureId of procedures) { await sql`DELETE FROM procedure_version WHERE procedure_id=${procedureId}`; await sql`DELETE FROM procedure WHERE procedure_id=${procedureId}`; }
       for (const bindingId of bindings) await sql`DELETE FROM population_source_binding WHERE binding_id=${bindingId}`;
-      await sql`DELETE FROM auth_user WHERE id=${author}`;
+      await sql.begin(async tx=>{
+        // Account cleanup cannot remove an event from the shared platform hash chain.
+        await tx`DELETE FROM auth_user WHERE id IN (${author},${transferManager},${grantAdministrator})`;
+      });
+      const chain = await new PostgresAuditChainReader(db).verify('platform');
+      expect(chain.valid).toBe(true);
+      if (!chain.valid) throw new Error('Journey cleanup damaged the platform audit chain');
+      expect(chain.eventCount).toBeGreaterThan(0);
     } finally { await sql.end({ timeout: 5 }); }
   });
 
@@ -154,6 +175,84 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
     const dependencies = { repository: new PostgresAgentWorkRepository(db), browser, credentials, model, store, clock, ids, exceptions, waits: { raiseEscalation: (input: Parameters<typeof raiseEscalation>[1]) => raiseEscalation({ repository: new PostgresWaitRepository(db), clock, ids }, input) } };
     return { job, dependencies, objects, selectedTools, plan: version.compiledPlan! };
   }
+
+  it.each([{finalInspection:false,transfer:false},{finalInspection:true,transfer:false},{finalInspection:false,transfer:true},{finalInspection:true,transfer:true}])('executes a confirmed deferred pause through real PostgreSQL and Chromium (final inspection: $finalInspection, manager transfer: $transfer)', async ({finalInspection,transfer}) => {
+    const seeded = await seed('E-101', 'Esther Kabwe', finalInspection ? [] : [{ employeeId: 'E-202', name: 'Absent Person' }]);
+    const session = { userId: author, sessionId: author };
+    const leaseDependencies = { roles: new DrizzleRoleRepository(db), unitOfWork: new PostgresRunsUnitOfWork(db),
+      repository: new PostgresRunControlLeaseRepository(db), ids, allowEnrollment: true };
+    expect(await acquireRunControlLease(leaseDependencies, { session, request: { runId: seeded.job.runId, expectedEpoch: 0 } }))
+      .toMatchObject({ ok: true, lease: { epoch: 1 } });
+    const conversation = new PostgresRunConversationRepository(db, new ConversationContentCipher('56'.repeat(32)));
+    let commandId: string | null = null;
+    let inspectedWorkItemId: string | null = null;
+    const originalModel = seeded.dependencies.model;
+    const model: AgentModelGateway = { ...originalModel, async propose(request) {
+      if (commandId === null) {
+        const inspection = await conversation.readCurrentInspection({ runId: seeded.job.runId, actorId: author });
+        expect(inspection.status).toBe('ready');
+        if (inspection.status !== 'ready') throw new Error('Current worker inspection was not available');
+        expect(inspection.anchor.subjectKey).toBe('E-101');
+        inspectedWorkItemId = inspection.anchor.workItemId;
+        const proposal = await conversation.append({ actorId: author, sessionId: author, request: {
+          runId: seeded.job.runId, idempotencyKey: ids.next(), text: 'pause after this employee',
+          selectedSourceOrdinal: null, replyToWaitId: null, currentInspection: inspection.anchor,
+        } });
+        expect(proposal.ok).toBe(true);
+        if (!proposal.ok) throw new Error(proposal.reason);
+        const [command] = await sql<{ command_id: string }[]>`SELECT command_id::text FROM run_interaction_command WHERE message_id=${proposal.messageId}`;
+        if (!command) throw new Error('Deferred command was not persisted');
+        commandId = command.command_id;
+        expect(await sql`SELECT command_id FROM run_deferred_pause WHERE run_id=${seeded.job.runId}`).toHaveLength(0);
+        expect(await conversation.confirmDeferredPause({ actorId: author, sessionId: author,
+          request: { runId: seeded.job.runId, commandId } })).toMatchObject({ ok: true, state: 'queued' });
+        // Once accepted this is a safety latch, not a continuing discretionary lease.
+        if (transfer) {
+          const managerSession={userId:transferManager,sessionId:transferManager};
+          const transferDependencies={...leaseDependencies,repository:new PostgresRunControlTransferRepository(db,new ConversationContentCipher('56'.repeat(32)))};
+          const before=await sql`SELECT to_jsonb(p) body FROM run_deferred_pause p WHERE command_id=${commandId}`;
+          const review=await proposeRunControlTransfer(transferDependencies,{session:managerSession,request:{runId:seeded.job.runId,expectedEpoch:1,requestKey:ids.next(),reason:'The prior controller is unavailable during inspection.'}});
+          if(!review.ok)throw new Error(review.reason);
+          expect(await confirmRunControlTransfer(transferDependencies,{session:managerSession,request:{runId:seeded.job.runId,commandId:review.proposal.commandId}})).toMatchObject({ok:true,receipt:{epoch:2,holderId:transferManager}});
+          expect(await sql`SELECT to_jsonb(p) body FROM run_deferred_pause p WHERE command_id=${commandId}`).toEqual(before);
+        } else {
+          expect(await releaseRunControlLease(leaseDependencies, { session, request: { runId: seeded.job.runId, expectedEpoch: 1 } }))
+            .toMatchObject({ ok: true, lease: { epoch: 2, holderId: null } });
+        }
+      }
+      return originalModel.propose(request);
+    } };
+    await executeAgentWorkItem({ ...seeded.dependencies, model }, seeded.job);
+    expect(commandId).not.toBeNull();
+    const items = await sql`SELECT work_item_id::text,subject_key,state,attempts FROM run_work_item WHERE run_id=${seeded.job.runId} ORDER BY ordinal`;
+    expect(items[0]).toMatchObject({ work_item_id: inspectedWorkItemId, subject_key: 'E-101', state: 'OBSERVED', attempts: 1 });
+    const transitions = await sql`SELECT state FROM run_interaction_transition WHERE command_id=${commandId} ORDER BY sequence`;
+    const [marker] = await sql`SELECT state,superseded_reason FROM run_deferred_pause WHERE command_id=${commandId}`;
+    const waits = await sql`SELECT kind,opened_by FROM run_wait WHERE run_id=${seeded.job.runId} AND closed_at IS NULL`;
+    if (finalInspection) {
+      expect(marker).toMatchObject({ state: 'SUPERSEDED', superseded_reason: 'run-finalized' });
+      expect(transitions.map(row => row.state)).toEqual(['received','interpreted','queued','superseded']);
+      expect(waits).toHaveLength(0);
+      expect(await sql`SELECT run_id FROM run_result WHERE run_id=${seeded.job.runId}`).toHaveLength(1);
+    } else {
+      expect(items[1]).toMatchObject({ subject_key: 'E-202', state: 'PENDING', attempts: 0 });
+      expect(marker).toMatchObject({ state: 'APPLIED', superseded_reason: null });
+      expect(transitions.map(row => row.state)).toEqual(['received','interpreted','queued','applied']);
+      expect(waits).toMatchObject([{ kind: 'pause', opened_by: author }]);
+      expect((await sql`SELECT state FROM audit_run WHERE run_id=${seeded.job.runId}`)[0]?.state).toBe('PAUSED');
+      expect(await sql`SELECT run_id FROM run_result WHERE run_id=${seeded.job.runId}`).toHaveLength(0);
+      expect(await sql`SELECT tool_action_id FROM run_tool_action WHERE run_id=${seeded.job.runId} AND work_item_id=${items[1]!.work_item_id}`).toHaveLength(0);
+    }
+    const evidenceBefore = await sql`SELECT evidence_id,digest,object_key FROM run_evidence WHERE run_id=${seeded.job.runId} ORDER BY evidence_id`;
+    const observationsBefore = await sql`SELECT observation_id,digest FROM run_observation WHERE run_id=${seeded.job.runId} ORDER BY observation_id`;
+    expect(observationsBefore).toHaveLength(1);
+    const turnsBefore = seeded.selectedTools.length;
+    await executeAgentWorkItem({ ...seeded.dependencies, model, repository: new PostgresAgentWorkRepository(db) }, seeded.job);
+    expect(seeded.selectedTools.length).toBe(turnsBefore);
+    expect(await sql`SELECT evidence_id,digest,object_key FROM run_evidence WHERE run_id=${seeded.job.runId} ORDER BY evidence_id`).toEqual(evidenceBefore);
+    expect(await sql`SELECT observation_id,digest FROM run_observation WHERE run_id=${seeded.job.runId} ORDER BY observation_id`).toEqual(observationsBefore);
+    expect(await sql`SELECT state FROM run_interaction_transition WHERE command_id=${commandId} ORDER BY sequence`).toEqual(transitions);
+  }, 120_000);
 
   it('defers a competing credential retry while the original workspace is being reattached', async () => {
     const seeded = await seed('E-101', 'Esther Kabwe');

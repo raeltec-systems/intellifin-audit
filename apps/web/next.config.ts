@@ -17,6 +17,10 @@ const nextConfig: NextConfig = {
     '@intellifin/infrastructure',
   ],
   reactStrictMode: true,
+  // The private Codespaces manual-check port uses its own HTTPS origin.
+  ...(process.env['CODESPACE_NAME'] ? {
+    allowedDevOrigins: [`${process.env['CODESPACE_NAME']}-3103.app.github.dev`],
+  } : {}),
   // Server Action arguments can contain passwords or authored text. Framework logs
   // bypass the application telemetry sanitizer, including during local development.
   logging: { serverFunctions: false },
@@ -25,6 +29,9 @@ const nextConfig: NextConfig = {
   experimental: {
     turbopackFileSystemCacheForDev: process.env['INTELLIFIN_LOW_DISK'] !== '1',
     turbopackFileSystemCacheForBuild: process.env['INTELLIFIN_LOW_DISK'] !== '1',
+    // Eviction requires the disk cache. On memory-constrained verification hosts,
+    // use this mode with sufficient disk instead of INTELLIFIN_LOW_DISK.
+    turbopackMemoryEviction: process.env['INTELLIFIN_LOW_MEMORY'] === '1' ? 'full' : 'auto',
   },
   // `next dev` otherwise writes its own AGENTS.md and CLAUDE.md into apps/web. This
   // repository already owns both file names as the shared decision log and the agent

@@ -18,6 +18,12 @@ import { GuidedPreparation } from './GuidedPreparation';
 import { GuidedQuestions } from './GuidedQuestions';
 import { PreparationActionsProvider, PreparationActionPanel, PreparationActionFeedback, usePreparationChoices, type PreparationActionResult } from './PreparationActions';
 import { RenameDraftForm } from './RenameDraftForm';
+import { SourceChooser } from './SourceChooser';
+import { draftGapWords } from './readiness-words';
+import { preparationPanelHref } from './preparation-anchors';
+import { readablePeriod } from '../design/time';
+import { NO_SOURCE_FIELDS_YET, NO_SOURCE_ON_SAVE } from './source-words';
+import { rankSources, sourceChoiceDescription } from './source-choice';
 import { TargetSelectionForm } from './TargetSelectionForm';
 import { AuditInstructionsForm } from './AuditInstructionsForm';
 import { ComplianceRuleForm } from './ComplianceRuleForm';
@@ -68,6 +74,9 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
   const setDuplicates = (value: boolean) => populationSection.edit({ ...populationSection.current.current.value, duplicates: value });
   const [periodTouched, setPeriodTouched] = useState(false);
   const [ruleTouched, setRuleTouched] = useState(false);
+  // UX-12: a source-compatibility error is a statement about a source, so none is made
+  // before one is chosen; saving without one says what to do instead.
+  const [populationSaveAttempted, setPopulationSaveAttempted] = useState(false);
   const [result, setResult] = useState<UpdatePopulationDraftResult | null>(null);
   const [announcement, setAnnouncement] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -103,6 +112,7 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
       void save({ section, period: { from, to }, scope });
     } else {
       setRuleTouched(true);
+      setPopulationSaveAttempted(true);
       if (bindingError !== null) return;
       void save({ section, source: selection === 'retain' ? { mode: 'retain' } : { mode: 'bind', bindingId: selected!.bindingId, expectedDigest: selected!.digest }, inclusionRule: rule, zeroRecordPass, allowVersionedDuplicates: duplicates });
     }
@@ -140,19 +150,28 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
     choices: [{ id: draft.templateId, label: draft.controlName, aliases: ['this control', 'that control', 'the current control'], description: 'The control already selected for this procedure. Its saved risk, control and objective are shown above.' }],
     async select() { return { ok: true, message: `${draft.controlName} is already selected for this procedure. No Template or context was replaced. Say “I’ve reviewed this; continue” when you have checked the saved context.` }; },
   });
+  // UX-11: ONE way to choose a source, whichever surface asked — the chooser's Choose
+  // button and a chat "select <name>" both land here, so the saved record filters are
+  // kept, and refused, by exactly one rule.
+  async function chooseSource(bindingId: string): Promise<PreparationActionResult> {
+    if (draft.state !== 'DRAFT') return { ok: false, message: 'Only a Draft can select a different source.' };
+    const source = sources.find(item => item.bindingId === bindingId);
+    if (!source) return { ok: false, message: 'That source is no longer available. Refresh the available choices.' };
+    if (!isInclusionRule(rule, source.declaredSchema)) return { ok: false, message: 'The existing record filters do not fit this source. Review the filters in the records editor before saving.' };
+    return save({ section: 'population-source', source: draft.sourceSnapshot?.bindingId === bindingId ? { mode: 'retain' } : { mode: 'bind', bindingId, expectedDigest: source.digest }, inclusionRule: rule, zeroRecordPass, allowVersionedDuplicates: duplicates });
+  }
+  const rankedSources = rankSources(sources, draft.templateId, predicates);
+  const sourceDescriptions = new Map([...rankedSources.suggested, ...rankedSources.other].map(choice => [choice.bindingId, sourceChoiceDescription(choice)]));
   usePreparationChoices({
     step: 'evidence', surface: 'evidence:source', active: activeStep === 'evidence' && evidenceQuestion === 'source', basis: `${draft.versionId}:${draft.sectionPreparation?.revision ?? 0}`,
+    // The chooser beside the chat is the list; the chat keeps selection by name
+    // (the 2026-09-13 conversational rules) without printing every source a second time.
+    listed: false,
     choices: sources.map(source => ({ id: source.bindingId, aliases: [source.displayName],
       label: sources.filter(other => other.displayName.toLowerCase() === source.displayName.toLowerCase()).length > 1 ? `${source.displayName} · ${source.bindingId}` : source.displayName,
-      description: `${source.kind}. Fields: ${source.declaredSchema.join(', ')}. Existing record filters are retained.`,
+      description: sourceDescriptions.get(source.bindingId) ?? 'Existing record filters are retained.',
     })),
-    async select(bindingId) {
-      if (draft.state !== 'DRAFT') return { ok: false, message: 'Only a Draft can select a different source.' };
-      const source = sources.find(item => item.bindingId === bindingId);
-      if (!source) return { ok: false, message: 'That source is no longer available. Refresh the available choices.' };
-      if (!isInclusionRule(rule, source.declaredSchema)) return { ok: false, message: 'The existing record filters do not fit this source. Review the filters in the records editor before saving.' };
-      return save({ section: 'population-source', source: draft.sourceSnapshot?.bindingId === bindingId ? { mode: 'retain' } : { mode: 'bind', bindingId, expectedDigest: source.digest }, inclusionRule: rule, zeroRecordPass, allowVersionedDuplicates: duplicates });
-    },
+    select: chooseSource,
   });
   const periodEditor = <form method="post" className="ls-stack" onSubmit={(e) => { e.preventDefault(); requestSave('period-scope'); }} onBlur={() => setPeriodTouched(true)}>
     <SectionConflict dirty={periodSection.status().dirty} conflict={periodSection.conflict} name="Period and scope" reset={() => periodSection.reset()} />
@@ -189,13 +208,15 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
     <fieldset className="ls-stack"><legend>Which records to test</legend>
       <p className="ls-caption">Every record is tested unless you add a filter. A record is tested only when it matches every filter you add. Changing the source keeps your filters so you can check them.</p>
       {predicates.length === 0 ? <p data-no-filters>No filters. Every record in the source is tested.</p> : null}
+      {contract === undefined && predicates.length > 0 ? <p className="ls-caption" data-filters-await-source>{NO_SOURCE_FIELDS_YET}</p> : null}
       {predicates.map((predicate, index) => <fieldset key={index} className="ls-stack ls-filter" data-filter={index}><legend>Filter {index + 1}</legend>
         <div className="ls-filter__row">
           <div className="ls-dialog__field">
             <label htmlFor={`${id}-column-${index}`}>Field {index + 1}</label>
             <select className="ls-input" id={`${id}-column-${index}`} value={predicate.column} onChange={(e) => changePredicate(index, { ...predicate, column: e.target.value })}>
               <option value="">Choose a field</option>
-              {predicate.column !== '' && !contract?.declared_schema.includes(predicate.column) ? <option value={predicate.column}>{predicate.column} (this source does not provide it)</option> : null}
+              {predicate.column !== '' && !contract?.declared_schema.includes(predicate.column)
+                ? <option value={predicate.column}>{contract === undefined ? predicate.column : `${predicate.column} (this source does not provide it)`}</option> : null}
               {contract?.declared_schema.map((column) => <option key={column} value={column}>{column}</option>)}
             </select>
           </div>
@@ -234,7 +255,9 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
         <p className="ls-caption">Off by default. Turn it on only when the source legitimately lists one record several times.</p>
       </div>
     </details>
-    <div id={`${id}-binding-error`} aria-live="polite">{(ruleTouched || contract?.kind === 'manual-upload') && bindingError !== null ? <Banner tone="warning" title={bindingError} /> : null}</div>
+    <div id={`${id}-binding-error`} aria-live="polite">{contract === undefined
+      ? populationSaveAttempted ? <Banner tone="warning" title={NO_SOURCE_ON_SAVE} /> : null
+      : (ruleTouched || contract.kind === 'manual-upload') && bindingError !== null ? <Banner tone="warning" title={bindingError} /> : null}</div>
     <Button type="submit" busy={busy} disabledReason={unknownOutcome ? UNKNOWN_SAVE_OUTCOME : undefined} variant="primary">Save records to test</Button>
   </form>;
   // Every target editor shares the Draft's row-version token: a save through one moves the
@@ -271,7 +294,7 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
   const evidenceRequirementsEditor = <EvidenceRequirementsForm draft={draft} rowVersion={token} onSave={saveEvidence} />;
   const scheduleEditor = <ScheduleForm draft={draft} rowVersion={token} onSave={saveEvidence} />;
   return <WritingAssistantProvider draft={draft} rowVersion={token} onRowVersion={setToken} actions={{ ...onWriting, generate: streamAuthoringSuggestion }}
-    onAccepted={section => { if (section.kind === 'scope') setScopeQuestion(current => current === 'intent' ? 'period' : current); }}><div className="ls-stack">
+    onAccepted={(section, outcome) => { if (section.kind === 'scope') setScopeQuestion(current => current === 'intent' ? outcome.periodSaved ? 'confirm' : 'period' : current); }}><div className="ls-stack">
     <UnknownSaveOutcome visible={unknownOutcome} />
     <PreparationActionFeedback step={activeStep} />
     {activeStep === 'evidence' && guidedNotice?.question === evidenceQuestion ? <Banner tone="success" title={guidedNotice.title} /> : null}
@@ -286,13 +309,16 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
         </> },
         { id: 'period', label: 'Choose dates', question: 'What period should the test cover?', content: <>{activeStep === 'scope' && scopeQuestion === 'period' ? <PreparationActionPanel step="scope" question="Enter the exact dates below. You can ask me to open another section, or review the saved scope and dates when they are complete." /> : null}{periodEditor}</> },
         { id: 'confirm', label: 'Check scope', question: 'Does this saved scope match your assignment?', content: <>{activeStep === 'scope' && scopeQuestion === 'confirm' ? <PreparationActionPanel step="scope" /> : null}<div className="ls-guide-facts">
-          <p>{draft.scope || 'No scope statement has been saved.'}</p><p>{draft.period ? `${draft.period.from} to ${draft.period.to}, inclusive (UTC).` : 'No dates have been saved.'}</p>
+          <p>{draft.scope || 'No scope statement has been saved.'}</p><p>{draft.period ? `${readablePeriod(draft.period)}, both dates included (UTC).` : 'No dates have been saved.'}</p>
           <p>Confirm your review below when the scope and dates are right.</p>
         </div></> },
       ]} />,
       evidence: <GuidedQuestions label="Evidence questions" selected={evidenceQuestion} onSelect={setEvidenceQuestion} questions={[
         { id: 'source', label: 'Choose records', question: 'Where is the list of records we should test?', content: <>
-          <p>Choose a source already set up for this institution. It supplies the population; we’ll choose the systems and proof next.</p>{populationEditor}
+          <p>Choose a source already set up for this institution. It supplies the population; we’ll choose the systems and proof next.</p>
+          <SourceChooser sources={sources} templateId={draft.templateId} predicates={predicates} selectedBindingId={draft.sourceSnapshot?.bindingId ?? null}
+            busy={busy} disabledReason={unknownOutcome ? UNKNOWN_SAVE_OUTCOME : draft.state !== 'DRAFT' ? 'Only a Draft can select a different source.' : undefined} onChoose={chooseSource} />
+          {populationEditor}
           {draft.sourceSnapshot ? <Button type="button" onClick={() => setEvidenceQuestion('systems')}>Keep this source and choose systems</Button> : null}
         </> },
         { id: 'systems', label: 'Choose systems', question: 'Which registered systems should I inspect?', content: <>
@@ -310,12 +336,14 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
       ]} />,
       instructions: auditInstructionsEditor,
       assessment: complianceRuleEditor,
-      frequency: <>{scheduleEditor}<p className="ls-caption">The frequency is saved with the procedure. A Run needs an approved version that is Active.</p></>,
+      // UX-14: the step saves a plan; the one action that starts a Run is on the Procedure
+      // page, said with the pinned run-start words rather than a retyped copy of them.
+      frequency: <>{scheduleEditor}<p className="ls-caption" data-frequency-start-run>The frequency is saved as a plan. Once this version is Active, <Link href={initiateRunHref(draft.procedureId)}>start a Run from the Procedure page</Link>: its version card offers “{START_RUN_LINK_LABEL}”.</p></>,
     }} review={<>
       <dl className="ls-stack" aria-label="Saved procedure context">
         {Object.entries({ Risk: draftContext(draft.sections).risk, Control: draftContext(draft.sections).control, Objective: draftContext(draft.sections).objective, 'Criterion reference': draftContext(draft.sections).criterionReference, 'Scope note': draft.scope }).map(([label, content]) => <div key={label}><dt>{label}</dt><dd className="ls-whitespace">{content || 'Not supplied'}</dd></div>)}
       </dl>
-    <ReadinessPanel inputs={{ templateId: draft.templateId, targets: draft.targets, sourceSnapshot: draft.sourceSnapshot, complianceConditions: draft.complianceConditions, evidenceRequirements: draft.evidenceRequirements }} headingId={`${id}-readiness`} />
+    <ReadinessPanel inputs={{ templateId: draft.templateId, targets: draft.targets, sourceSnapshot: draft.sourceSnapshot, complianceConditions: draft.complianceConditions, evidenceRequirements: draft.evidenceRequirements }} headingId={`${id}-readiness`} stepHref={preparationPanelHref} />
     {/* Review comes after preparation. Show the compiler's actual work before the
         auditor submits; an assistant's proposed prose is not a second plan. */}
     <div className="ls-card">
@@ -327,7 +355,7 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
         </div>
       </details>
     </div>
-    <VersionActions procedureId={draft.procedureId} versionId={draft.versionId} rowVersion={token} beforeConfirm={submissionGuard.check} actions={[{ decision: 'submit', label: 'Submit for approval', reason: submissionGuard.reason ?? submissionUnavailableReason(draft) }]} />
+    <VersionActions procedureId={draft.procedureId} versionId={draft.versionId} rowVersion={token} beforeConfirm={submissionGuard.check} actions={[{ decision: 'submit', label: 'Submit for approval', reason: submissionGuard.reason ?? draftGapWords(submissionUnavailableReason(draft)) }]} />
     {/* Where a Run is started, said where the Builder ends: nothing before this step names
         the Initiate Run box, and the Schedule step reads as though the time were the start.
         "Once this version is Active", not "after approval": a configuration-changing revision

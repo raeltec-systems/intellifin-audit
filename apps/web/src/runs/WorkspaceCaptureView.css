@@ -1,0 +1,72 @@
+.workspace-capture-view {
+  display: grid;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.workspace-capture-view__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}
+
+.workspace-capture-view__controls button {
+  min-height: var(--spacing-control-sm);
+  padding: var(--spacing-1) var(--spacing-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--rounded-sm);
+  background: var(--color-surface-card);
+  color: var(--color-text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.workspace-capture-view__controls button[aria-pressed='true'] {
+  background: var(--color-surface-selected);
+  border-color: var(--color-border-selected);
+}
+
+/* Fit capture: the picture is sized to the pane, so this viewport is never a scroll
+   container of its own. Anything taller simply lengthens the pane, which the shell's one
+   workspace scroll container already handles; a second scrollbar here would be a third on
+   the page (UX-23). */
+.workspace-capture-view__viewport {
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+}
+
+.workspace-capture-view__viewport:focus-visible,
+.workspace-capture-view__controls button:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.workspace-capture-view .ls-session__stage {
+  min-height: 0;
+  padding: var(--spacing-2);
+}
+
+/* Native size: the original pixels, panned inside a bounded viewport. */
+.workspace-capture-view__viewport--native {
+  max-height: 50dvh;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.workspace-capture-view__viewport--native .ls-session__stage {
+  width: max-content;
+}
+
+.workspace-capture-view__viewport--native .ls-session__figure {
+  width: min-content;
+}
+
+/* The session viewer bounds every frame's height (`globals.css`, UX-29). Native size
+   is the one place that bound must not apply, or "Original image size" would be a
+   scaled copy of it. */
+.workspace-capture-view__viewport--native .ls-session__frame {
+  width: auto;
+  max-width: none;
+  max-height: none;
+}

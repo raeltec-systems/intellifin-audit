@@ -79,7 +79,7 @@ vi.mock('next/headers', () => ({
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
-const { createUserAction, setUserRoleAction } = await import('./actions');
+const { createUserAction, setUserRoleAction, setUserRunControlTransferGrantAction } = await import('./actions');
 
 const CREATE = {
   email: 'dana@synthetic.invalid',
@@ -159,4 +159,12 @@ describe('the administration Server Actions, through the real authorization path
     await createUserAction(CREATE);
     expect(state.appended[0]?.correlationId).toBe('corr-audit');
   });
+});
+
+
+it('audits a denied transfer-grant mutation through the real authorization path', async () => {
+  state.role = 'audit-manager'; state.appended = [];
+  expect(await setUserRunControlTransferGrantAction({ userId: 'another-manager', granted: true, expectedGrantRevision: 0 })).toMatchObject({ ok: false });
+  expect(state.appended).toHaveLength(1);
+  expect(state.appended[0]).toMatchObject({ eventType: 'security.denied', payload: { action: 'administration.users.manage' } });
 });

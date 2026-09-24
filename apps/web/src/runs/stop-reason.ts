@@ -197,7 +197,10 @@ export const EXTRACTION_WORDS: Readonly<Record<AdapterExecutionDiagnostic, strin
 
 export const WORK_WORDS: Readonly<Record<AgentWorkDiagnostic, string>> = {
   ...LIMIT_WORDS,
-  'population-key-unresolved': 'A population record has no usable lookup key, or two records share one.',
+  // Deliberately generic: the population is not always employees, and a sentence naming
+  // one would be wrong on P-2, P-3 and P-4 (UI cleanup 2026-09-22, plan copy table).
+  'population-key-unresolved':
+    'A record’s reference is missing, or two records share one. Review the affected source records before running this test again.',
   'extraction-incomplete': 'An Adapter extraction this Run needs is not complete.',
   'prerequisites-incomplete': 'A stage this Run needs before inspection did not finish.',
   'workspace-missing': 'No Agent Workspace was available for this Run.',

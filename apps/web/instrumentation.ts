@@ -14,7 +14,8 @@
  * inside the Node.js branch keeps all of that out of the edge bundle.
  */
 export async function register(): Promise<void> {
-  if (process.env['NEXT_RUNTIME'] !== 'nodejs') return;
-  const { runStartupChecks } = await import('./src/boot');
-  await runStartupChecks();
+  if (process.env['NEXT_RUNTIME'] === 'nodejs') {
+    const { runStartupChecks } = await import('./src/boot');
+    await runStartupChecks();
+  }
 }

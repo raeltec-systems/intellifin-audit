@@ -250,8 +250,8 @@ describe('the Builder read-only sentences', () => {
     expect(source).not.toContain(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE);
   });
 
-  it('names where the Control name is edited, rather than claiming it cannot be', () => {
-    expect(BUILDER_CONTROL_NAME_EDITABLE_SENTENCE).toContain('Control name');
+  it('names where the Procedure name is edited, rather than claiming it cannot be', () => {
+    expect(BUILDER_CONTROL_NAME_EDITABLE_SENTENCE).toContain('Procedure name');
     expect(source).toContain('BUILDER_CONTROL_NAME_EDITABLE_SENTENCE');
     expect(source).not.toContain(BUILDER_CONTROL_NAME_EDITABLE_SENTENCE);
   });

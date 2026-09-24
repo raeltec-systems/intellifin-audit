@@ -11,6 +11,7 @@ vi.mock('./evaluation-review-actions', () => ({
 import type { RunEvaluationRow, RunResultRow } from '@intellifin/infrastructure';
 
 import { EvaluationReview } from './EvaluationReview';
+import { UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
 
 const RUN_ID = '019823ab-0000-7000-8000-000000000001';
 const OBSERVATION_ID = '019823ab-0000-7000-8000-000000000002';
@@ -199,5 +200,32 @@ describe('Evaluation review surface', () => {
     }] });
     expect(html).toContain('The review worker refused this command: You are not allowed to review this evaluation.');
     expect(html).not.toContain('secret');
+  });
+});
+
+// UI cleanup 2026-09-22, UX-27 and UX-21. Each proposal's rationale carried the policy
+// sentence, and each row was headed by the Observation's UUID.
+describe('the review list, read by record (UX-21, UX-27)', () => {
+  it('says the policy once above every rationale', () => {
+    const html = render({ evaluations: [evaluation(), evaluation({ conditionId: 'C3' })] });
+    expect(html.split('Untrusted source content — AGENT-GENERATED evaluation rationale.').length - 1).toBe(2);
+    expect(html.split(UNTRUSTED_CONTENT_SENTENCE).length - 1).toBe(1);
+  });
+
+  it('heads each row by the record, with the Observation id under Technical details', () => {
+    const html = render({ recordKeys: { [OBSERVATION_ID]: 'E-000103' } });
+    const heading = html.slice(html.indexOf('ls-evaluation__condition'), html.indexOf('ls-evaluation__badges'));
+    expect(heading).toContain('E-000103');
+    expect(heading).toContain('C2');
+    expect(heading).not.toContain(OBSERVATION_ID);
+    expect(html).toContain(OBSERVATION_ID);
+  });
+
+  it('falls back to a short reference, never the whole UUID, when the record is not known', () => {
+    const html = render();
+    const heading = html.slice(html.indexOf('ls-evaluation__condition'), html.indexOf('ls-evaluation__badges'));
+    const visible = heading.replace(/<[^>]*>/g, '');
+    expect(visible).toContain('Observation 00000002');
+    expect(visible).not.toContain(OBSERVATION_ID);
   });
 });

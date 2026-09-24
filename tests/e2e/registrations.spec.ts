@@ -65,11 +65,27 @@ async function scan(page: Page): Promise<void> {
   expect(summary, JSON.stringify(summary, null, 2)).toEqual([]);
 }
 
+/**
+ * Open the "Add a system" disclosure the create form now sits behind (UX-43): the
+ * inventory is first in the viewport, and adding is a path a person opens rather than a
+ * form that precedes every row. Idempotent, because more than one test opens it once and
+ * fills the form twice.
+ */
+async function openAddSystem(page: Page): Promise<void> {
+  const summary = page.locator('summary', { hasText: 'Add a system' });
+  const disclosure = page.locator('details.ls-disclosure', {
+    has: page.locator(':scope > summary', { hasText: 'Add a system' }),
+  });
+  if (await disclosure.evaluate((element) => (element as HTMLDetailsElement).open)) return;
+  await summary.click();
+}
+
 /** Fill the create form. The kind decides which locator field exists. */
 async function fillForm(
   page: Page,
   options: { name: string; credential: string; origin: string },
 ): Promise<void> {
+  await openAddSystem(page);
   await page.getByLabel('Display name').fill(options.name);
   await page.getByLabel('What kind of system is it').selectOption('web');
   await page.getByLabel('Web addresses the agent may open').fill(options.origin);
@@ -86,7 +102,7 @@ test.describe('as a PoC Administrator', () => {
   }) => {
     await page.goto('/administration/registrations');
     await expect(
-      page.getByRole('heading', { name: 'Target systems', level: 1 }),
+      page.getByRole('heading', { name: 'Systems', level: 1 }),
     ).toBeVisible();
 
     // A submission that beats hydration must not put every field in the URL. With no
@@ -128,15 +144,20 @@ test.describe('as a PoC Administrator', () => {
 
     await expect(page.getByRole('status')).toContainText(`Registered ${systemName}.`);
 
-    // The digest is on the surface, in full: it is the value an auditor compares.
+    // The connectivity column states only that the check has not run — never that "no
+    // worker has observed this system", which the inventory can no longer say honestly
+    // once a Run has used a system (UX-44).
     const row = page.getByRole('row', { name: new RegExp(systemName) });
     await expect(row).toBeVisible();
-    const digest = await row.locator('.ls-digest').innerText();
-    expect(digest).toMatch(/^[0-9a-f]{64}$/);
+    await expect(row).toContainText('Not yet run');
+    await expect(row).toContainText('This page never contacts a system');
 
-    // And connectivity says plainly that nothing has been observed.
-    await expect(row).toContainText('Never probed');
-    await expect(row).toContainText('This page never contacts a Target System.');
+    // The digest moved to the system's own page, under Technical details (UX-43): it is
+    // what an auditor compares, not what a reader scans across a row.
+    await row.getByRole('link', { name: systemName }).click();
+    await page.locator('summary', { hasText: 'Technical details' }).click();
+    const digest = await page.locator('dd.ls-digest-cell .ls-digest').innerText();
+    expect(digest).toMatch(/^[0-9a-f]{64}$/);
   });
 
   test('refuses a write-capable credential with the verbatim sentence', async ({ page }) => {
@@ -181,6 +202,7 @@ test.describe('as a PoC Administrator', () => {
     await page.getByRole('link', { name: systemName }).click();
 
     await expect(page.getByRole('heading', { name: systemName, level: 1 })).toBeVisible();
+    await page.locator('summary', { hasText: 'Technical details' }).click();
     const shown = page.locator('dd.ls-digest-cell .ls-digest');
     const before = await shown.innerText();
     expect(before).toMatch(/^[0-9a-f]{64}$/);
@@ -191,6 +213,7 @@ test.describe('as a PoC Administrator', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Save changes' }).click();
     await expect(page.getByRole('status')).toContainText('The fingerprint did not change');
     await page.reload();
+    await page.locator('summary', { hasText: 'Technical details' }).click();
     await expect(page.locator('dd.ls-digest-cell .ls-digest')).toHaveText(before);
 
     // An address is.
@@ -204,6 +227,7 @@ test.describe('as a PoC Administrator', () => {
     // with the event never published.
     await expect(page.getByRole('status')).toContainText('The fingerprint is now ');
     await page.reload();
+    await page.locator('summary', { hasText: 'Technical details' }).click();
     await expect(page.locator('dd.ls-digest-cell .ls-digest')).not.toHaveText(before);
   });
 

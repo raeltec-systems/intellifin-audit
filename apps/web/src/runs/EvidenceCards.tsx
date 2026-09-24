@@ -2,6 +2,8 @@ import type { ObservationAttribute, SnapshotSubstrate, StoredSnapshot } from '@i
 import type { RunEvidenceItem, RunObservationRow } from '@intellifin/infrastructure';
 
 import { Digest } from '../design/Digest';
+import { Timestamp } from '../design/Timestamp';
+import { countNoun } from '../design/words';
 import { CAPTURE_TIME_UNRECORDED } from '../design/copy';
 import { CorroborationBadge, EvidenceKindBadge } from './MinorBadge';
 import { UntrustedText } from './UntrustedText';
@@ -113,7 +115,7 @@ export function EvidenceCard(props: EvidenceCardProps): React.JSX.Element {
             <dd>{CAPTURE_TIME_UNRECORDED}</dd>
           ) : (
             <dd>
-              <span className="ls-mono">{utcStamp(props.capturedAt)}</span>
+              <Timestamp value={props.capturedAt} />
               {/* Said beside the instant, never instead of it: a recovered time and a
                   measured one are both real and are not the same claim. */}
               {captureTimeSource === null ? null : <> · {captureTimeSource}</>}
@@ -130,7 +132,7 @@ export function EvidenceCard(props: EvidenceCardProps): React.JSX.Element {
         </div>
         <div>
           <dt>Stored bytes</dt>
-          <dd className="ls-mono">{props.size === null ? 'Not registered' : countText(props.size)}</dd>
+          <dd className="ls-mono">{props.size === null ? 'Not registered' : countNoun(props.size, 'byte')}</dd>
         </div>
         <div>
           <dt>Evidence state</dt>
@@ -199,6 +201,10 @@ export function GroundingInspector({
   readonly snapshotHrefOf?: (evidenceId: string, locator: string) => string | null;
   readonly absenceHrefOf?: (evidenceId: string, observationId: string) => string | null;
 }): React.JSX.Element {
+  // An omitted resolver is the overview composition saying that the detail was not
+  // fetched. Keep that state separate from a resolver that was supplied and returned
+  // null: the latter is an actual unavailable-artifact result.
+  const snapshotLoaded = snapshotOf !== undefined;
   const snapshotResolver = snapshotOf ?? (() => null);
   // No link is emitted until an authorized server composition supplies one. A guessed
   // `/api/evidence` URL would be a dead placeholder and could suggest that access happened.
@@ -230,7 +236,7 @@ export function GroundingInspector({
         </div>
         <div>
           <dt>Observed at (UTC)</dt>
-          <dd className="ls-mono">{utcStamp(observation.observedAt)}</dd>
+          <dd><Timestamp value={observation.observedAt} /></dd>
         </div>
         <div>
           <dt>Observed at, as the source stated it</dt>
@@ -277,6 +283,7 @@ export function GroundingInspector({
                   ? null
                   : snapshotResolver(observation.identity.grounding.evidenceId)
               }
+              snapshotLoaded={snapshotLoaded}
               snapshotHref={
                 observation.identity.grounding === null
                   ? null
@@ -311,6 +318,7 @@ export function GroundingInspector({
                     ? null
                     : snapshotResolver(attribute.grounding.evidenceId)
                 }
+                snapshotLoaded={snapshotLoaded}
                 snapshotHref={
                   attribute.grounding === null
                     ? null
@@ -330,6 +338,7 @@ function AttributeGrounding({
   attribute,
   substrate,
   snapshot,
+  snapshotLoaded,
   snapshotHref,
   corroborationDiagnostic,
   populationRecordKey,
@@ -339,13 +348,17 @@ function AttributeGrounding({
   readonly attribute: ObservationAttribute;
   readonly substrate: SnapshotSubstrate | null;
   readonly snapshot: StoredSnapshot | null;
+  readonly snapshotLoaded: boolean;
   readonly snapshotHref: string | null;
   readonly corroborationDiagnostic: string | null;
   readonly populationRecordKey?: string;
   readonly isIdentity?: boolean;
   readonly identityMatchOrigin?: string;
 }): React.JSX.Element {
-  const inspection = inspectStoredGrounding(attribute, substrate, snapshot);
+  const inspection =
+    !snapshotLoaded && substrate !== null && attribute.grounding !== null
+      ? { cell: null, failure: 'snapshot-not-loaded' as const }
+      : inspectStoredGrounding(attribute, substrate, snapshot);
   const reason = corroborationReason(attribute.corroboration, corroborationDiagnostic);
   return (
     <li className="ls-grounding">
@@ -359,7 +372,7 @@ function AttributeGrounding({
         <div>
           <dt>Original value</dt>
           <dd>
-            <UntrustedText field={`${attribute.name}, as the Target System presented it`}>
+            <UntrustedText field={`${attribute.name}, as the Target System presented it`} policy={false}>
               {groundingValueText(attribute.originalValue)}
             </UntrustedText>
           </dd>
@@ -367,7 +380,7 @@ function AttributeGrounding({
         <div>
           <dt>Normalized value</dt>
           <dd>
-            <UntrustedText field={`${attribute.name}, normalized`}>
+            <UntrustedText field={`${attribute.name}, normalized`} policy={false}>
               {groundingValueText(attribute.normalizedValue)}
             </UntrustedText>
           </dd>
@@ -406,7 +419,7 @@ function AttributeGrounding({
             <div>
               <dt>Field label</dt>
               <dd className="ls-mono">
-                <UntrustedText field={`${attribute.name}, field label`}>
+                <UntrustedText field={`${attribute.name}, field label`} policy={false}>
                   {attribute.grounding.label}
                 </UntrustedText>
               </dd>
@@ -418,10 +431,12 @@ function AttributeGrounding({
                   <p>
                     {inspection.failure === null
                       ? 'No snapshot cell was read.'
-                      : groundingInspectionReason(inspection.failure)}
+                      : inspection.failure === 'snapshot-not-loaded'
+                        ? 'The stored snapshot has not been loaded for this page.'
+                        : groundingInspectionReason(inspection.failure)}
                   </p>
                 ) : (
-                  <UntrustedText field={`${attribute.name}, as read at the stored snapshot locator`}>
+                  <UntrustedText field={`${attribute.name}, as read at the stored snapshot locator`} policy={false}>
                     {groundingValueText(inspection.cell.value)}
                   </UntrustedText>
                 )}
@@ -431,7 +446,7 @@ function AttributeGrounding({
               <div>
                 <dt>Snapshot field label</dt>
                 <dd className="ls-mono">
-                  <UntrustedText field={`${attribute.name}, field label re-read from the snapshot`}>
+                  <UntrustedText field={`${attribute.name}, field label re-read from the snapshot`} policy={false}>
                     {inspection.cell.label}
                   </UntrustedText>
                 </dd>
@@ -440,7 +455,7 @@ function AttributeGrounding({
             <div>
               <dt>Extracted text</dt>
               <dd>
-                <UntrustedText field={`${attribute.name}, as extracted from the snapshot`}>
+                <UntrustedText field={`${attribute.name}, as extracted from the snapshot`} policy={false}>
                   {attribute.grounding.extractedText}
                 </UntrustedText>
               </dd>
@@ -480,13 +495,13 @@ function AbsenceProof({ observation, hrefOf }: {
         <h4>Values actually searched</h4>
         <p>Recorded by the platform from the executed search, not from agent narration.</p>
         <ul className="ls-plain-list">{proof.queryKeys.map(query => <li key={query.key}>
-          <UntrustedText field="search key">{query.key}</UntrustedText>
-          <UntrustedText field="value actually searched">{query.value}</UntrustedText>
+          <UntrustedText field="search key" policy={false}>{query.key}</UntrustedText>
+          <UntrustedText field="value actually searched" policy={false}>{query.value}</UntrustedText>
         </li>)}</ul>
         <p>Declared search keys: {metadata.expectedQueryKeys.length}.</p>
         <ul className="ls-plain-list">{metadata.expectedQueryKeys.map(query => <li key={query.key}>
-          <UntrustedText field="declared search key">{query.key}</UntrustedText>
-          <UntrustedText field="expected population value">{query.value}</UntrustedText>
+          <UntrustedText field="declared search key" policy={false}>{query.key}</UntrustedText>
+          <UntrustedText field="expected population value" policy={false}>{query.value}</UntrustedText>
         </li>)}</ul>
         <dl className="ls-definition">
           <div><dt>Empty-result Evidence</dt><dd className="ls-mono">{href ? <a href={href}>{proof.emptyResultEvidenceId}</a> : proof.emptyResultEvidenceId}</dd></div>

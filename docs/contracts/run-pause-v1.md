@@ -2,8 +2,10 @@
 
 Story 5.4 (FR-25, AD-16, UX-DR25). Generation 45.
 
-A person may hold a Running Run and start it again later, without cancelling it and
-without the agent losing its place.
+A person may hold a Running Run and start it again later without cancelling it.
+Committed work remains recorded. Resume restarts the interrupted Step Execution as a
+new attempt from the frozen plan; it does not resume a hidden model conversation or
+promise to continue at the next browser action. See the attempt semantics below.
 
 ## A pause is a WAIT, and it is not an Escalation
 

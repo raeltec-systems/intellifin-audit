@@ -190,6 +190,36 @@ export interface RunObservationRow {
   readonly checks: readonly { readonly check: string; readonly outcome: string; readonly diagnostic: string | null }[];
 }
 
+/**
+ * One stored Observation row, projected. ONE mapping, shared by the bounded page and by
+ * the id-list read: two copies would diverge on the first column nobody added to both.
+ */
+function observationRow(
+  row: typeof runObservation.$inferSelect,
+  absence: ReadonlyMap<string, RunObservationAbsence>,
+  checks: ReadonlyMap<string, { check: string; outcome: string; diagnostic: string | null }[]>,
+): RunObservationRow {
+  return {
+    ...(absence.has(row.observationId) ? { absence: absence.get(row.observationId)! } : {}),
+    observationId: row.observationId,
+    workItemId: row.workItemId,
+    populationRecordKey: row.populationRecordKey,
+    targetSystem: row.targetSystem,
+    found: row.found as ObservationFound,
+    coverage: row.coverage as ObservationCoverage,
+    corroboration: row.corroboration,
+    observedAt: row.observedAt.toISOString(),
+    observedAtSource: row.observedAtSource,
+    captureMethod: row.captureMethod,
+    matchOrigin: row.matchOrigin,
+    digest: row.digest,
+    identity: row.identity,
+    attributes: row.attributes,
+    evidenceIds: row.evidenceIds,
+    checks: checks.get(row.observationId) ?? [],
+  };
+}
+
 export interface RunEvaluationRow {
   readonly observationId: string;
   readonly conditionId: string;
@@ -366,6 +396,32 @@ export interface RunFrameRow {
   readonly actionStartedAt: string;
 }
 
+/** Rich inspection pages are bounded independently of the chronological Replay prefix. */
+export const REPLAY_INSPECTION_PAGE_SIZE = 100;
+
+export interface RunInspectionReplayFrame {
+  readonly frame: RunFrameRow;
+  readonly step: RunStepExecutionRow;
+  readonly action: RunTimelineToolAction;
+  readonly globalOrdinal: number;
+  readonly inspectionOrdinal: number;
+  readonly observations: number;
+}
+
+export type RunInspectionReplayRead =
+  | { readonly kind: 'unavailable' }
+  | {
+      readonly kind: 'inspection';
+      readonly workItem: Pick<RunTimelineWorkItem, 'workItemId' | 'subjectKey' | 'displayName' | 'registrationId'>;
+      readonly workspace: { readonly mode: string; readonly reference: string } | null;
+      readonly rows: readonly RunInspectionReplayFrame[];
+      readonly total: number;
+      readonly framesTotal: number;
+      readonly cursor: number;
+      readonly previousCursor: number | null;
+      readonly nextCursor: number | null;
+    };
+
 /** One wait a Run held, closed or open — a Replay jump target (Story 5.8). */
 export interface RunReplayWait {
   readonly waitId: string;
@@ -475,15 +531,19 @@ export class DrizzleRunDetailRepository {
       .from(runEvidence)
       .innerJoin(runEvidenceCapture, and(eq(runEvidenceCapture.evidenceId, runEvidence.evidenceId), eq(runEvidenceCapture.runId, runId)))
       .innerJoin(runToolAction, and(eq(runToolAction.toolActionId, runEvidenceCapture.toolActionId), eq(runToolAction.runId, runId)))
+      .innerJoin(runStepExecution, and(eq(runStepExecution.stepExecutionId, runToolAction.stepExecutionId), eq(runStepExecution.runId, runId)))
+      .leftJoin(runWorkItem, and(eq(runWorkItem.workItemId, sql`coalesce(${runStepExecution.workItemId}, ${runToolAction.workItemId})`), eq(runWorkItem.runId, runId)))
       .where(and(
         eq(runEvidence.runId, runId),
         eq(runEvidence.kind, 'screenshot'),
         eq(runEvidence.state, 'REGISTERED'),
+        sql`(coalesce(${runStepExecution.workItemId}, ${runToolAction.workItemId}) IS NULL OR ${runWorkItem.workItemId} IS NOT NULL)`,
         ...(evidenceId === undefined ? [] : [eq(runEvidence.evidenceId, evidenceId)]),
       ))
       .orderBy(
         direction === 'asc' ? asc(runToolAction.startedAt) : desc(runToolAction.startedAt),
         direction === 'asc' ? asc(runToolAction.toolActionId) : desc(runToolAction.toolActionId),
+        direction === 'asc' ? asc(runEvidence.evidenceId) : desc(runEvidence.evidenceId),
       );
   }
 
@@ -502,7 +562,10 @@ export class DrizzleRunDetailRepository {
       .from(runEvidence)
       .innerJoin(runEvidenceCapture, and(eq(runEvidenceCapture.evidenceId, runEvidence.evidenceId), eq(runEvidenceCapture.runId, runId)))
       .innerJoin(runToolAction, and(eq(runToolAction.toolActionId, runEvidenceCapture.toolActionId), eq(runToolAction.runId, runId)))
-      .where(and(eq(runEvidence.runId, runId), eq(runEvidence.kind, 'screenshot'), eq(runEvidence.state, 'REGISTERED')));
+      .innerJoin(runStepExecution, and(eq(runStepExecution.stepExecutionId, runToolAction.stepExecutionId), eq(runStepExecution.runId, runId)))
+      .leftJoin(runWorkItem, and(eq(runWorkItem.workItemId, sql`coalesce(${runStepExecution.workItemId}, ${runToolAction.workItemId})`), eq(runWorkItem.runId, runId)))
+      .where(and(eq(runEvidence.runId, runId), eq(runEvidence.kind, 'screenshot'), eq(runEvidence.state, 'REGISTERED'),
+        sql`(coalesce(${runStepExecution.workItemId}, ${runToolAction.workItemId}) IS NULL OR ${runWorkItem.workItemId} IS NOT NULL)`));
     const total = Number(counted[0]?.total ?? 0);
     if (total === 0) return { rows: [], total: 0 };
     const rows = await this.frames(runId, undefined, 'asc').limit(Math.min(limit, REPLAY_FRAME_LIMIT));
@@ -511,6 +574,96 @@ export class DrizzleRunDetailRepository {
     // unserveable row is one the scrubber does not offer instead of a pill that opens
     // nothing. `total` stays the exact count of bound registered screenshots either way.
     return { total, rows: rows.map(frameRow).filter((row): row is RunFrameRow => row !== null) };
+  }
+
+  /**
+   * Exact same-Run inspection selection, independent of every chronological prefix.
+   * SQL ranks all retained captures but serializes at most one inspection page. Context
+   * joins happen after that bound; no provider handles or storage keys are projected.
+   * Cursor is the zero-based inspection offset, always a whole page boundary.
+   */
+  async readInspectionReplay(runId: string, workItemId: string, cursor = 0): Promise<RunInspectionReplayRead> {
+    if (!isUuidText(runId) || !isUuidText(workItemId) || !Number.isSafeInteger(cursor) ||
+      cursor < 0 || cursor > 2_147_483_600 || cursor % REPLAY_INSPECTION_PAGE_SIZE !== 0)
+      return { kind: 'unavailable' };
+    const [owner] = await this.db.select({
+      workItemId: runWorkItem.workItemId, subjectKey: runWorkItem.subjectKey,
+      displayName: runWorkItem.displayName, registrationId: runWorkItem.registrationId,
+    }).from(runWorkItem).where(and(eq(runWorkItem.runId, runId), eq(runWorkItem.workItemId, workItemId))).limit(1);
+    if (owner === undefined) return { kind: 'unavailable' };
+    const result = await this.db.execute<{
+      total: number; frames_total: number; rows: RunInspectionReplayFrame[];
+    }>(sql`
+      WITH ranked AS MATERIALIZED (
+        SELECT e.evidence_id, a.tool_action_id, a.step_execution_id, a.started_at AS action_started_at,
+          coalesce(s.work_item_id, a.work_item_id) AS work_item_id,
+          row_number() OVER (ORDER BY a.started_at, a.tool_action_id, e.evidence_id)::int AS global_ordinal
+        FROM run_evidence e
+        JOIN run_evidence_capture c ON c.evidence_id = e.evidence_id AND c.run_id = ${runId}::uuid
+        JOIN run_tool_action a ON a.tool_action_id = c.tool_action_id AND a.run_id = ${runId}::uuid
+        JOIN run_step_execution s ON s.step_execution_id = a.step_execution_id AND s.run_id = ${runId}::uuid
+        LEFT JOIN run_work_item w ON w.work_item_id = coalesce(s.work_item_id, a.work_item_id) AND w.run_id = ${runId}::uuid
+        WHERE e.run_id = ${runId}::uuid AND e.kind = 'screenshot' AND e.state = 'REGISTERED'
+          AND (coalesce(s.work_item_id, a.work_item_id) IS NULL OR w.work_item_id IS NOT NULL)
+      ), selected AS MATERIALIZED (
+        SELECT *, row_number() OVER (ORDER BY global_ordinal)::int AS inspection_ordinal
+        FROM ranked WHERE work_item_id = ${workItemId}::uuid
+      ), page AS (
+        SELECT * FROM selected ORDER BY inspection_ordinal LIMIT ${REPLAY_INSPECTION_PAGE_SIZE} OFFSET ${cursor}
+      ), observation_times AS (
+        SELECT ev.occurred_at AS instant,
+          sum(CASE WHEN jsonb_typeof(ev.payload->'registered') = 'number'
+            THEN (ev.payload->>'registered')::numeric ELSE 0 END) AS delta
+        FROM audit_events ev WHERE ev.aggregate_id = ${runId}
+          AND ev.event_type = 'execution.observations-registered'
+          AND ev.occurred_at <= (SELECT max(action_started_at) FROM page)
+        GROUP BY ev.occurred_at
+        UNION ALL
+        SELECT DISTINCT action_started_at AS instant, 0::numeric AS delta FROM page
+      ), observation_totals AS MATERIALIZED (
+        SELECT instant, sum(sum(delta)) OVER (ORDER BY instant ROWS UNBOUNDED PRECEDING) AS observations
+        FROM observation_times GROUP BY instant
+      )
+      SELECT (SELECT count(*)::int FROM selected) AS total,
+        (SELECT count(*)::int FROM ranked) AS frames_total,
+        coalesce((SELECT jsonb_agg(jsonb_build_object(
+          'globalOrdinal', p.global_ordinal, 'inspectionOrdinal', p.inspection_ordinal,
+          'frame', jsonb_build_object(
+            'evidenceId', e.evidence_id, 'toolActionId', a.tool_action_id,
+            'stepExecutionId', s.step_execution_id, 'workItemId', p.work_item_id,
+            'action', a.action, 'digest', e.digest, 'size', e.size, 'mediaType', e.media_type,
+            'sourceLocation', c.source_location, 'capturedAt', e.captured_at, 'actionStartedAt', a.started_at),
+          'step', jsonb_build_object(
+            'stepExecutionId', s.step_execution_id, 'planStepId', s.plan_step_id, 'workItemId', s.work_item_id,
+            'action', s.action, 'state', s.state, 'attempt', s.attempt, 'startedAt', s.started_at,
+            'completedAt', s.completed_at, 'diagnostic', s.diagnostic),
+          'action', jsonb_build_object(
+            'toolActionId', a.tool_action_id, 'stepExecutionId', a.step_execution_id, 'surface', a.surface,
+            'action', a.action, 'method', a.method, 'destination', a.destination, 'outcome', a.outcome,
+            'denial', a.denial, 'status', a.status, 'redirected', a.redirected, 'downloads', a.downloads,
+            'capture', a.capture, 'captureSuppression', a.capture_suppression, 'startedAt', a.started_at,
+            'completedAt', a.completed_at, 'diagnostic', a.diagnostic),
+          'observations', totals.observations
+        ) ORDER BY p.inspection_ordinal)
+        FROM page p
+        JOIN run_evidence e ON e.evidence_id = p.evidence_id AND e.run_id = ${runId}::uuid
+        JOIN run_evidence_capture c ON c.evidence_id = e.evidence_id AND c.run_id = ${runId}::uuid
+        JOIN run_tool_action a ON a.tool_action_id = p.tool_action_id AND a.run_id = ${runId}::uuid
+        JOIN run_step_execution s ON s.step_execution_id = p.step_execution_id AND s.run_id = ${runId}::uuid
+        JOIN observation_totals totals ON totals.instant = a.started_at
+        ), '[]'::jsonb) AS rows
+    `);
+    const read = result[0];
+    if (read === undefined || (cursor > 0 && cursor >= read.total)) return { kind: 'unavailable' };
+    const [workspace] = await this.db.select({ mode: runWorkspace.mode }).from(runWorkspace)
+      .where(eq(runWorkspace.runId, runId)).limit(1);
+    return {
+      kind: 'inspection', workItem: owner,
+      workspace: workspace === undefined ? null : { mode: workspace.mode, reference: workspaceReference(runId) },
+      rows: read.rows, total: read.total, framesTotal: read.frames_total, cursor,
+      previousCursor: cursor === 0 ? null : cursor - REPLAY_INSPECTION_PAGE_SIZE,
+      nextCursor: cursor + REPLAY_INSPECTION_PAGE_SIZE < read.total ? cursor + REPLAY_INSPECTION_PAGE_SIZE : null,
+    };
   }
 
   /**
@@ -677,6 +830,65 @@ export class DrizzleRunDetailRepository {
   }
 
   /**
+   * Evidence metadata for a bounded set of selected Observation references.
+   *
+   * The Evidence tab's overview read is intentionally capped and ordered for the
+   * artifact list. A record inspector can select an Observation beyond that sample,
+   * so it must resolve only the exact ids named by that Observation rather than treating
+   * the overview sample as an authorization boundary. This read never touches object
+   * storage or returns bytes; the protected frame and snapshot routes do that on demand.
+   */
+  async readEvidenceItemsByIds(
+    runId: string,
+    evidenceIds: readonly string[],
+  ): Promise<readonly RunEvidenceItem[]> {
+    if (!isUuidText(runId)) return [];
+    const ids = [...new Set(evidenceIds.filter(isUuidText))].slice(0, 64);
+    if (ids.length === 0) return [];
+    const items = await this.db
+      .select()
+      .from(runEvidence)
+      .where(and(eq(runEvidence.runId, runId), inArray(runEvidence.evidenceId, ids)))
+      .orderBy(asc(runEvidence.kind), asc(runEvidence.objectKey));
+    if (items.length === 0) return [];
+    const steps = await this.db
+      .select({ stepId: runSessionStep.stepId, displayName: runSessionStep.displayName, evidenceId: runSessionStep.evidenceId })
+      .from(runSessionStep)
+      .where(and(eq(runSessionStep.runId, runId), inArray(runSessionStep.evidenceId, ids)));
+    const workItems = await this.db
+      .select({ stepId: runWorkItem.stepId, displayName: runWorkItem.displayName, evidenceId: runWorkItem.evidenceId, workItemId: runWorkItem.workItemId })
+      .from(runWorkItem)
+      .where(and(eq(runWorkItem.runId, runId), inArray(runWorkItem.evidenceId, ids)));
+    const producers = new Map<string, { stepId: string; displayName: string; workItemId: string | null }>();
+    for (const step of steps) {
+      if (step.evidenceId !== null) producers.set(step.evidenceId, { stepId: step.stepId, displayName: step.displayName, workItemId: null });
+    }
+    for (const item of workItems) {
+      if (item.evidenceId !== null) producers.set(item.evidenceId, { stepId: item.stepId, displayName: item.displayName, workItemId: item.workItemId });
+    }
+    return items.map((item): RunEvidenceItem => {
+      const producer = producers.get(item.evidenceId) ?? null;
+      return {
+        evidenceId: item.evidenceId,
+        kind: item.kind,
+        registrationId: item.registrationId,
+        objectKey: item.objectKey,
+        mediaType: item.mediaType,
+        digest: item.digest,
+        size: item.size,
+        state: item.state,
+        required: item.required,
+        stepId: producer?.stepId ?? null,
+        displayName: producer?.displayName ?? null,
+        workItemId: producer?.workItemId ?? null,
+        capturedAt: item.capturedAt === null ? null : item.capturedAt.toISOString(),
+        captureMethod: item.captureMethod,
+        captureTimeSource: item.captureTimeSource,
+      };
+    });
+  }
+
+  /**
    * A bounded sample of Observations with their grounding, and the exact total.
    *
    * Ordered by the record key so two reads of the same Run show the same records: the
@@ -697,6 +909,40 @@ export class DrizzleRunDetailRepository {
       .where(eq(runObservation.runId, runId))
       .orderBy(asc(runObservation.targetSystem), asc(runObservation.populationRecordKey))
       .limit(Math.min(limit, RUN_DETAIL_PAGE_SIZE));
+    return { total, rows: await this.projectObservations(runId, rows) };
+  }
+
+  /**
+   * Exact Observation rows by id, independent of the overview's page.
+   *
+   * Two callers: the record inspector (the selected record's Observations, from the
+   * authorized record-review projection) and the Exceptions tab (the Observations its
+   * findings were raised on — `readObservations` is a bounded PAGE ordered by Target System
+   * and record key, so resolving a finding from it would leave one past the fiftieth row
+   * with no captured value to show). The Run predicate is repeated so a stale or forged id
+   * can only resolve to an Observation in this Run, and the list is bounded at the page
+   * size both callers' own reads already have.
+   */
+  async readObservationsByIds(
+    runId: string,
+    observationIds: readonly string[],
+  ): Promise<readonly RunObservationRow[]> {
+    if (!isUuidText(runId)) return [];
+    const ids = [...new Set(observationIds.filter(isUuidText))].slice(0, RUN_DETAIL_PAGE_SIZE);
+    if (ids.length === 0) return [];
+    const rows = await this.db
+      .select()
+      .from(runObservation)
+      .where(and(eq(runObservation.runId, runId), inArray(runObservation.observationId, ids)))
+      .orderBy(asc(runObservation.targetSystem), asc(runObservation.populationRecordKey));
+    return this.projectObservations(runId, rows);
+  }
+
+  private async projectObservations(
+    runId: string,
+    rows: readonly (typeof runObservation.$inferSelect)[],
+  ): Promise<readonly RunObservationRow[]> {
+    if (rows.length === 0) return [];
     const ids = rows.map((row) => row.observationId);
     const absenceRows = ids.length === 0 ? [] : await this.db.select().from(runObservationAbsence)
       .where(and(eq(runObservationAbsence.runId, runId), inArray(runObservationAbsence.observationId, ids)));
@@ -712,28 +958,7 @@ export class DrizzleRunDetailRepository {
       list.push({ check: check.checkName, outcome: check.outcome, diagnostic: check.diagnostic });
       byObservation.set(check.observationId, list);
     }
-    return {
-      total,
-      rows: rows.map((row): RunObservationRow => ({
-        ...(absence.has(row.observationId) ? { absence: absence.get(row.observationId)! } : {}),
-        observationId: row.observationId,
-        workItemId: row.workItemId,
-        populationRecordKey: row.populationRecordKey,
-        targetSystem: row.targetSystem,
-        found: row.found as ObservationFound,
-        coverage: row.coverage as ObservationCoverage,
-        corroboration: row.corroboration,
-        observedAt: row.observedAt.toISOString(),
-        observedAtSource: row.observedAtSource,
-        captureMethod: row.captureMethod,
-        matchOrigin: row.matchOrigin,
-        digest: row.digest,
-        identity: row.identity,
-        attributes: row.attributes,
-        evidenceIds: row.evidenceIds,
-        checks: byObservation.get(row.observationId) ?? [],
-      })),
-    };
+    return rows.map((row): RunObservationRow => observationRow(row, absence, byObservation));
   }
 
   /**
@@ -1031,6 +1256,48 @@ export class DrizzleRunDetailRepository {
   }
 
   /** Every Step Execution, oldest first — the order the Timeline is read in. */
+  /**
+   * How far through its plan a Run has got, in LOGICAL steps, counted EXACTLY
+   * (UI cleanup 2026-09-22, UX-47).
+   *
+   * Live View's counter read "Step 7 of 6" after a pause and a resume, because its
+   * numerator was `run_step_execution`'s row total — ATTEMPTS, and a pause supersedes one
+   * attempt and the resume starts another. Counting distinct plan steps over the bounded
+   * page `readStepExecutions` returns would trade that defect for its opposite: a long Run
+   * whose first fifty attempts had not yet reached a later plan step would report fewer
+   * steps than it had started. So the three facts are aggregates over EVERY row:
+   *
+   * - `started`: distinct plan steps with at least one Step Execution, restricted to the
+   *   ids the frozen plan declares when the caller has them — so `started` can never pass
+   *   the plan's own step count, by construction rather than by clamping;
+   * - `units`: distinct (plan step, Work Item) pairs, the work actually done;
+   * - `retries`: every attempt beyond the first.
+   */
+  async readLogicalStepProgress(
+    runId: string,
+    planStepIds: readonly string[] | null,
+  ): Promise<{ readonly started: number; readonly units: number; readonly retries: number }> {
+    if (!isUuidText(runId)) return { started: 0, units: 0, retries: 0 };
+    const declared = planStepIds === null
+      ? sql`true`
+      : planStepIds.length === 0
+        ? sql`false`
+        : inArray(runStepExecution.planStepId, [...planStepIds]);
+    const [row] = await this.db
+      .select({
+        started: sql<number>`count(DISTINCT ${runStepExecution.planStepId}) FILTER (WHERE ${declared})::int`,
+        units: sql<number>`count(DISTINCT ${runStepExecution.planStepId} || '|' || coalesce(${runStepExecution.workItemId}::text, ''))::int`,
+        retries: sql<number>`count(*) FILTER (WHERE ${runStepExecution.attempt} > 1)::int`,
+      })
+      .from(runStepExecution)
+      .where(eq(runStepExecution.runId, runId));
+    return {
+      started: Number(row?.started ?? 0),
+      units: Number(row?.units ?? 0),
+      retries: Number(row?.retries ?? 0),
+    };
+  }
+
   async readStepExecutions(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<Bounded<RunStepExecutionRow>> {
     if (!isUuidText(runId)) return { rows: [], total: 0 };
     const counted = await this.db
@@ -1045,21 +1312,57 @@ export class DrizzleRunDetailRepository {
       .where(eq(runStepExecution.runId, runId))
       .orderBy(asc(runStepExecution.startedAt), asc(runStepExecution.stepExecutionId))
       .limit(Math.min(limit, REPLAY_PAGE_SIZE));
-    return {
-      total,
-      rows: rows.map((row): RunStepExecutionRow => ({
-        stepExecutionId: row.stepExecutionId,
-        planStepId: row.planStepId,
-        workItemId: row.workItemId,
-        action: row.action,
-        state: row.state,
-        attempt: row.attempt,
-        startedAt: row.startedAt.toISOString(),
-        completedAt: row.completedAt === null ? null : row.completedAt.toISOString(),
-        diagnostic: row.diagnostic,
-      })),
-    };
+    return { total, rows: rows.map(stepExecutionRow) };
   }
+
+  /**
+   * The Step Execution a Run is on now: its NEWEST, read on its own (UI cleanup
+   * 2026-09-23).
+   *
+   * Live View and the Auditor Workspace both name the step a Run is working. They took the
+   * newest row of the page `readStepExecutions` returns — which is the OLDEST fifty — so a
+   * Run with more attempts than a page holds was said to be on a step it finished long ago.
+   * The order is that page's, reversed, so the answer is the one `currentStepExecution` in
+   * `live-view.ts` gives over EVERY row, and the integration test holds the two together.
+   */
+  async readLatestStepExecution(runId: string): Promise<RunStepExecutionRow | null> {
+    if (!isUuidText(runId)) return null;
+    const [row] = await this.db
+      .select()
+      .from(runStepExecution)
+      .where(eq(runStepExecution.runId, runId))
+      .orderBy(desc(runStepExecution.startedAt), desc(runStepExecution.stepExecutionId))
+      .limit(1);
+    return row === undefined ? null : stepExecutionRow(row);
+  }
+
+  /**
+   * One Step Execution of this Run by id, wherever it sits in the Run's history: the one
+   * a frame was captured in is not necessarily on the first page of a long Run.
+   */
+  async readStepExecution(runId: string, stepExecutionId: string): Promise<RunStepExecutionRow | null> {
+    if (!isUuidText(runId) || !isUuidText(stepExecutionId)) return null;
+    const [row] = await this.db
+      .select()
+      .from(runStepExecution)
+      .where(and(eq(runStepExecution.runId, runId), eq(runStepExecution.stepExecutionId, stepExecutionId)))
+      .limit(1);
+    return row === undefined ? null : stepExecutionRow(row);
+  }
+}
+
+function stepExecutionRow(row: typeof runStepExecution.$inferSelect): RunStepExecutionRow {
+  return {
+    stepExecutionId: row.stepExecutionId,
+    planStepId: row.planStepId,
+    workItemId: row.workItemId,
+    action: row.action,
+    state: row.state,
+    attempt: row.attempt,
+    startedAt: row.startedAt.toISOString(),
+    completedAt: row.completedAt === null ? null : row.completedAt.toISOString(),
+    diagnostic: row.diagnostic,
+  };
 }
 
 function frameRow(row: {

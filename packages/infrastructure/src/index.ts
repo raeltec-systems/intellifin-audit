@@ -13,6 +13,7 @@ export * from './telemetry/index.js';
 export * from './notifications/notification-repository.js';
 export * from './runs/run-repository.js';
 export * from './runs/run-list-repository.js';
+export * from './runs/pending-results.js';
 export * from './runs/run-stop-repository.js';
 export * from './runs/run-detail-repository.js';
 export * from './runs/runs-unit-of-work.js';
@@ -63,3 +64,15 @@ export * from './runs/evidence-read-grant-queue.js';
 
 export * from './procedures/authoring-model.js';
 export * from './procedures/authoring-store.js';
+
+export * from './runs/record-review-repository.js';
+export * from './runs/conversation-content.js';
+export * from './runs/run-conversation-repository.js';
+export * from './runs/run-control-lease-repository.js';
+export * from './runs/deferred-pause-repository.js';
+
+export * from './runs/run-control-transfer-repository.js';
+
+export * from './runs/workspace-preview-repository.js';
+
+export { WorkspacePreviewProxy } from './runs/workspace-preview-transport.js';

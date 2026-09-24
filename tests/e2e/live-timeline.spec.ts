@@ -146,7 +146,9 @@ test.describe('the live Timeline channel', () => {
     await expect(status).toHaveAttribute('data-live-status', 'live', { timeout: 15_000 });
     await page.evaluate(() => { (window as unknown as { __liveMarker: number }).__liveMarker = 2; });
     const runId = await queuedRun();
-    await expect(page.getByRole('link', { name: runId })).toBeVisible({ timeout: 5_000 });
+    // The row's link is the Procedure's name since the UI cleanup (UX-17), so the new row
+    // is found by where it leads rather than by a raw id it no longer prints.
+    await expect(page.locator(`a[href="/runs/${runId}"]`)).toBeVisible({ timeout: 5_000 });
     expect(await page.evaluate(() => (window as unknown as { __liveMarker?: number }).__liveMarker)).toBe(2);
     await cancelRun(cancelDependencies(), { session: session(), request: { runId, reason: null } });
   });

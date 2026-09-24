@@ -49,6 +49,8 @@ import type { RunCancellationRepository } from './ports.js';
  */
 
 export interface CancelRunDependencies {
+  /** Trusted conversation adapter only; never parsed from the request envelope. */
+  readonly commandId?: string;
   readonly roles: RoleRepository;
   /** Where a refusal's `security.denied` event is appended, after the refusal. */
   readonly unitOfWork: AuditUnitOfWork;
@@ -119,6 +121,7 @@ export async function performCancellation(
     correlationId: input.run.correlationId,
     sessionId: input.request.sessionId,
     payload: {
+      ...(input.request.commandId === undefined ? {} : { commandId: input.request.commandId }),
       priorState: input.run.state,
       state: 'CANCELED',
       reason: input.request.reason,
@@ -177,8 +180,11 @@ export async function cancelRun(
       // Idempotent: one marker, one transition, one event. A second cancellation of a Run
       // a worker still owns must not overwrite the first requester, the first time or the
       // first reason with a later person's.
-      if (run.cancellation !== null) return { ok: true, state: run.state, pending: true };
+      if (run.cancellation !== null) return dependencies.commandId === undefined
+        ? { ok: true, state: run.state, pending: true }
+        : { ok: false, reason: 'Another cancellation request already owns this Run.' };
       const cancellation: RunCancellationRequest = {
+        ...(dependencies.commandId === undefined ? {} : { commandId: dependencies.commandId }),
         requestedBy: input.session.userId,
         sessionId: input.session.sessionId,
         requestedAt: dependencies.clock.now().toISOString(),
@@ -195,6 +201,7 @@ export async function cancelRun(
           correlationId,
           sessionId: cancellation.sessionId,
           payload: {
+            ...(cancellation.commandId === undefined ? {} : { commandId: cancellation.commandId }),
             state: run.state,
             reason: cancellation.reason,
             requestedAt: cancellation.requestedAt,

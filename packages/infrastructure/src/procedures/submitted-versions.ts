@@ -70,6 +70,44 @@ export class DrizzleSubmittedVersionReader {
    * reading as a complete one.
    */
   async listSubmitted(limit = SUBMITTED_VERSION_LIMIT): Promise<SubmittedVersionPage> {
+    return this.page(sql`true`, limit);
+  }
+
+  /**
+   * The versions in `SUBMITTED` that THIS person sent, for the reader who cannot approve
+   * (UI cleanup 2026-09-22, UX-30).
+   *
+   * The Reviews area shows an Auditor where their own submitted work got to. Showing them
+   * `listSubmitted` would put every other auditor's work under a heading that says "yours"
+   * — a label stating something untrue, which this product treats as worse than no label.
+   *
+   * "Theirs" is EITHER submission or authorship: the person who pressed Submit is waiting
+   * for the answer, and the responsible author is accountable for what the version says.
+   * A version whose row records neither — an older build's, or one whose decisions payload
+   * this build cannot read — belongs to nobody and is not claimed for anybody.
+   */
+  async listSubmittedFor(
+    userId: string,
+    limit = SUBMITTED_VERSION_LIMIT,
+  ): Promise<SubmittedVersionPage> {
+    if (typeof userId !== 'string' || userId === '') return { rows: [], total: 0 };
+    return this.page(
+      sql`(submitted.actor_id = ${userId} OR v.authorship->>'responsibleAuthorId' = ${userId})`,
+      limit,
+    );
+  }
+
+  /**
+   * One page of the queue under an extra predicate, and its EXACT total.
+   *
+   * The two callers share this rather than each writing the join, so "waiting for a
+   * decision" cannot come to mean two different row sets. The count is its own statement:
+   * `rows.length` after a `LIMIT` is the bound, never a count.
+   */
+  private async page(
+    scope: ReturnType<typeof sql>,
+    limit: number,
+  ): Promise<SubmittedVersionPage> {
     const size =
       Number.isSafeInteger(limit) && limit > 0
         ? Math.min(limit, SUBMITTED_VERSION_LIMIT)
@@ -87,13 +125,20 @@ export class DrizzleSubmittedVersionReader {
         ORDER BY d->>'occurredAt' DESC
         LIMIT 1
       ) submitted ON true
-      WHERE v.state = 'SUBMITTED'
+      WHERE v.state = 'SUBMITTED' AND ${scope}
       ORDER BY submitted.occurred_at DESC NULLS LAST, v.version_id DESC
       LIMIT ${size}`);
-    // Its own statement: `rows.length` after a `LIMIT` is the bound, never a count.
-    const counted = await this.db.execute<{ total: number }>(
-      sql`SELECT count(*)::int AS total FROM procedure_version v WHERE v.state = 'SUBMITTED'`,
-    );
+    const counted = await this.db.execute<{ total: number }>(sql`
+      SELECT count(*)::int AS total
+      FROM procedure_version v
+      LEFT JOIN LATERAL (
+        SELECT d->>'actorId' AS actor_id
+        FROM jsonb_array_elements(v.decisions) d
+        WHERE d->>'decision' = 'submit'
+        ORDER BY d->>'occurredAt' DESC
+        LIMIT 1
+      ) submitted ON true
+      WHERE v.state = 'SUBMITTED' AND ${scope}`);
     return {
       rows: rows.map((row): SubmittedVersionRow => ({
         versionId: row.version_id,

@@ -1,0 +1,366 @@
+import AxeBuilder from '@axe-core/playwright';
+import { expect, test, type Page, type TestInfo } from '@playwright/test';
+
+import { ConversationContentCipher } from '@intellifin/infrastructure';
+
+import {
+  createRunWorkspaceBrowserFixture,
+  RUN_WORKSPACE_CONVERSATION_KEY,
+  RUN_WORKSPACE_RECORD_ORDINAL,
+  RUN_WORKSPACE_SUBMITTED_TEXT,
+  type RunWorkspaceBrowserFixture,
+} from '../fixtures/run-workspace-browser';
+import { SAVED_SCREEN_HEADING, WORKSPACE_PREVIEW_LABEL, WORKSPACE_PREVIEW_STATUS, noSavedScreenSentence } from '../../apps/web/src/runs/workspace-words';
+import { AUTH_STATE } from './accounts';
+
+const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
+
+let fixture: RunWorkspaceBrowserFixture;
+
+function shell(page: Page): ReturnType<Page['getByTestId']> {
+  return page.getByTestId('run-workspace-shell');
+}
+
+function conversationPane(page: Page): ReturnType<Page['locator']> {
+  return shell(page).locator('.run-workspace-shell__conversation-pane');
+}
+
+function history(page: Page): ReturnType<Page['getByLabel']> {
+  return conversationPane(page).getByLabel('Conversation history');
+}
+
+function workspaceUrl(): string {
+  return `/runs/${fixture.runId}/workspace?record=${fixture.sourceOrdinal}`;
+}
+
+async function scan(page: Page): Promise<void> {
+  const result = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+  const violations = result.violations.map((violation) => ({
+    id: violation.id,
+    impact: violation.impact,
+    help: violation.help,
+    nodes: violation.nodes.map((node) => node.target.join(' ')),
+  }));
+  expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
+}
+
+async function screenshot(page: Page, testInfo: TestInfo, name: string): Promise<void> {
+  const path = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({ path, fullPage: false, caret: 'initial' });
+  await testInfo.attach(name, { path, contentType: 'image/png' });
+}
+
+async function assertShellLoaded(page: Page): Promise<void> {
+  await expect(shell(page)).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^Auditor Workspace · / })).toBeVisible();
+  // UX-23: the shared page header, with the state as a badge on the title's row and the
+  // period in words. The fixture's period is 2026-08-01 to 2026-08-31.
+  const header = shell(page).locator('.run-workspace-shell__header');
+  await expect(header.locator('.ls-page-header__title .ls-badge')).toHaveCount(1);
+  await expect(header.locator('.ls-page-header__meta')).toContainText('Period 1–31 Aug 2026');
+  await expect(header).not.toContainText('2026-08-01');
+  await expect(conversationPane(page).getByLabel('Message the Run')).toBeVisible();
+  await expect(page.locator('.run-conversation__composer-form')).toContainText('Current question:');
+  // UX-24: the pane says what the reader is looking at, never the mechanism behind it.
+  // This fixture's Run has an open browser and no saved screen, and shows no live picture.
+  const workspacePane = shell(page).locator('.run-workspace-shell__workspace-pane');
+  await expect(workspacePane.getByRole('heading', { name: SAVED_SCREEN_HEADING, exact: true })).toBeVisible();
+  await expect(workspacePane).toContainText(noSavedScreenSentence({ browserOpened: true, active: true }));
+  await expect(workspacePane.getByLabel(WORKSPACE_PREVIEW_LABEL, { exact: true })).toContainText(/Live preview unavailable/);
+  await expect(workspacePane).not.toContainText(WORKSPACE_PREVIEW_STATUS.showing);
+  await expect(workspacePane).not.toContainText(/action-linked|registered/i);
+  await expect(shell(page).locator('.run-workspace-shell__decision').getByRole('heading', { name: 'Open Escalation', exact: true })).toBeVisible();
+  await expect(shell(page).locator('.run-workspace-shell__decision')).toContainText('The captured record needs an auditor decision');
+  await expect(shell(page).locator('.run-workspace-shell__decision').getByRole('button', { name: 'Select candidate 1', exact: true })).toBeVisible();
+  // Server-rendered history is visible before its scroll handler and initial positioning
+  // effect attach. Exercise manual scrolling only after the existing hydrated control is ready.
+  await expect(conversationPane(page).getByRole('button', { name: 'Load older messages', exact: true })).toBeEnabled();
+}
+
+async function captureWorkspaceBounds(page: Page, testInfo: TestInfo, name: string): Promise<void> {
+  const bounds = await page.evaluate(() => {
+    const rect = (element: Element | null): Record<string, number> | null => {
+      if (!(element instanceof HTMLElement)) return null;
+      const box = element.getBoundingClientRect();
+      return { top: box.top, right: box.right, bottom: box.bottom, left: box.left, width: box.width, height: box.height };
+    };
+    const shell = document.querySelector('[data-testid="run-workspace-shell"]');
+    const decision = shell?.querySelector('.run-workspace-shell__decision') ?? null;
+    return {
+      viewport: { width: window.innerWidth, height: window.innerHeight, scrollY: window.scrollY },
+      shell: rect(shell),
+      decision: rect(decision),
+      question: rect(decision?.querySelector('.escalation-panel__question .ls-untrusted') ?? null),
+      history: rect(shell?.querySelector('.run-conversation__thread') ?? null),
+      composer: rect(shell?.querySelector('.run-workspace-shell__composer') ?? null),
+      send: rect(shell?.querySelector('.run-conversation__send') ?? null),
+      firstChoice: rect(decision?.querySelector('button') ?? null),
+    };
+  });
+  const path = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({ path, fullPage: false, caret: 'initial' });
+  await testInfo.attach(name, { path, contentType: 'image/png' });
+  await testInfo.attach(`${name}-bounds`, {
+    body: JSON.stringify(bounds, null, 2),
+    contentType: 'application/json',
+  });
+}
+
+async function assertWorkspaceFitsViewport(page: Page, testInfo: TestInfo): Promise<void> {
+  // Visibility alone allows an offscreen or clipped element. Inspect the actual bounds
+  // before clicking/scrollIntoView can conceal a broken initial composition.
+  const send = shell(page).getByRole('button', { name: 'Send message', exact: true });
+  try {
+    await expect.poll(() => send.evaluate(element => {
+      const box = element.getBoundingClientRect();
+      const composer = element.closest('.run-workspace-shell__composer')!.getBoundingClientRect();
+      const pane = element.closest('.run-workspace-shell__conversation-pane')!.getBoundingClientRect();
+      return box.top >= Math.max(0, composer.top, pane.top)
+        && box.bottom <= Math.min(window.innerHeight, composer.bottom, pane.bottom)
+        && box.left >= Math.max(0, composer.left, pane.left)
+        && box.right <= Math.min(window.innerWidth, composer.right, pane.right);
+    })).toBe(true);
+  } catch (error) {
+    await captureWorkspaceBounds(page, testInfo, `workspace-bounds-send-${page.viewportSize()?.width ?? 'unknown'}x${page.viewportSize()?.height ?? 'unknown'}`);
+    throw error;
+  }
+  const firstChoice = shell(page).getByRole('button', { name: 'Select candidate 1', exact: true });
+  try {
+    await expect.poll(() => firstChoice.evaluate(element => {
+      const box = element.getBoundingClientRect();
+      const decision = element.closest('.run-workspace-shell__decision')!.getBoundingClientRect();
+      return box.top >= Math.max(0, decision.top) && box.bottom <= Math.min(window.innerHeight, decision.bottom)
+        && box.left >= Math.max(0, decision.left) && box.right <= Math.min(window.innerWidth, decision.right);
+    })).toBe(true);
+  } catch (error) {
+    await captureWorkspaceBounds(page, testInfo, `workspace-bounds-choice-${page.viewportSize()?.width ?? 'unknown'}x${page.viewportSize()?.height ?? 'unknown'}`);
+    throw error;
+  }
+  const question = shell(page).locator('.escalation-panel__question .ls-untrusted');
+  try {
+    await expect.poll(() => question.evaluate(element => {
+      const box = element.getBoundingClientRect();
+      const decision = element.closest('.run-workspace-shell__decision')!.getBoundingClientRect();
+      return box.top >= Math.max(0, decision.top) && box.bottom <= Math.min(window.innerHeight, decision.bottom)
+        && box.left >= Math.max(0, decision.left) && box.right <= Math.min(window.innerWidth, decision.right);
+    })).toBe(true);
+  } catch (error) {
+    await captureWorkspaceBounds(page, testInfo, `workspace-bounds-question-${page.viewportSize()?.width ?? 'unknown'}x${page.viewportSize()?.height ?? 'unknown'}`);
+    throw error;
+  }
+  const conversationHistory = history(page);
+  try {
+    await expect.poll(() => conversationHistory.evaluate(element => {
+      const box = element.getBoundingClientRect();
+      return box.height >= 120 && box.top >= 0 && box.bottom <= window.innerHeight && box.left >= 0 && box.right <= window.innerWidth;
+    })).toBe(true);
+  } catch (error) {
+    await captureWorkspaceBounds(page, testInfo, `workspace-bounds-history-${page.viewportSize()?.width ?? 'unknown'}x${page.viewportSize()?.height ?? 'unknown'}`);
+    throw error;
+  }
+}
+
+test.beforeAll(async () => {
+  test.setTimeout(120_000);
+  fixture = await createRunWorkspaceBrowserFixture();
+});
+
+test.afterAll(async () => {
+  await fixture?.cleanup();
+});
+
+test.describe('Run Workspace through the authenticated application', () => {
+  test.use({ storageState: AUTH_STATE.auditor });
+
+  test('renders the persisted decision, submits encrypted Q&A, and survives reload', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const consoleErrors: string[] = [];
+    page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+    page.on('pageerror', (error) => consoleErrors.push(error.message));
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    await page.goto(workspaceUrl());
+    await assertShellLoaded(page);
+    await assertWorkspaceFitsViewport(page, testInfo);
+    await screenshot(page, testInfo, 'run-workspace-decision-1440x900');
+
+    // The selected source ordinal is carried into the workspace from request state. The
+    // link remains a protected Record Review navigation, not a client-side mock or a label.
+    const recordLink = shell(page).locator('.run-workspace-shell__decision').getByRole('link', { name: 'Open record inspector', exact: true });
+    await expect(recordLink).toHaveAttribute('href', /\/runs\/[^/]+\/evidence\?selected=1$/);
+    await recordLink.click();
+    await expect(page).toHaveURL(/\/runs\/[^/]+\/evidence\?(?:[^#]*&)?(?:selected|record)=1$/);
+    const inspector = page.getByRole('region', { name: 'Record inspector', exact: true });
+    await expect(inspector).toBeVisible();
+    await inspector.scrollIntoViewIfNeeded();
+    await expect(inspector).toBeInViewport();
+    await screenshot(page, testInfo, 'run-workspace-record-inspector-1440x900');
+    await expect(inspector.getByRole('heading', { name: 'parameter-0001', exact: true })).toBeVisible();
+    // This fixture has a source row and a real registered wait Evidence reference, but no
+    // Observation for the selected row. The inspector's typed Not captured state is the
+    // honest result and does not claim that metadata alone made bytes available.
+    await expect(inspector.getByText('Not captured', { exact: true })).toBeVisible();
+    await page.goto(workspaceUrl());
+    await assertShellLoaded(page);
+
+    const thread = history(page);
+    await expect(thread.locator('article[data-message-sequence]')).toHaveCount(50);
+    await expect(thread.locator(`[data-message-sequence="${fixture.initialMessageCount - 49}"]`)).toBeVisible();
+    await expect(thread.locator('[data-message-sequence="55"]')).toContainText('historical decision context');
+    await expect(conversationPane(page).getByRole('button', { name: 'Load older messages', exact: true })).toBeVisible();
+
+    // Conversation and workspace have separate scroll surfaces. The composer is pinned
+    // outside the history, so changing history position does not hide the action surface.
+    const scrollMetrics = await thread.evaluate((element) => ({
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+    }));
+    expect(scrollMetrics.scrollHeight).toBeGreaterThan(scrollMetrics.clientHeight);
+    await thread.evaluate((element) => { element.scrollTop = 0; element.dispatchEvent(new Event('scroll')); });
+    await expect.poll(() => thread.evaluate((element) => element.scrollTop)).toBe(0);
+    await expect(conversationPane(page).getByLabel('Message the Run')).toBeVisible();
+
+    const separator = shell(page).getByRole('separator', { name: 'Resize conversation and workspace panes', exact: true });
+    await expect(separator).toHaveAttribute('aria-valuenow', '40');
+    const composer = conversationPane(page).getByLabel('Message the Run');
+    await composer.fill('Draft survives pane resize and focus changes.');
+    await separator.press('ArrowRight');
+    await expect(separator).toHaveAttribute('aria-valuenow', '45');
+    await shell(page).getByRole('button', { name: 'Focus workspace', exact: true }).click();
+    await expect(conversationPane(page)).toBeHidden();
+    await shell(page).getByRole('button', { name: 'Show conversation', exact: true }).click();
+    await expect(composer).toHaveValue('Draft survives pane resize and focus changes.');
+    await separator.press('End');
+    await expect(separator).toHaveAttribute('aria-valuenow', '65');
+    await composer.fill(RUN_WORKSPACE_SUBMITTED_TEXT);
+    await shell(page).getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect(conversationPane(page).locator('.run-conversation__composer-status')).toHaveText('Message accepted.');
+
+    // The receipt is followed by a direct database assertion: metadata and governed content
+    // were committed, ciphertext contains no plaintext, and the request text decrypts only
+    // with the disposable synthetic key used by the browser server.
+    await expect.poll(async () => (await fixture.readConversationRows()).length, { timeout: 10_000 }).toBe(fixture.initialMessageCount + 2);
+    const rows = await fixture.readConversationRows();
+    const submitted = rows.find((row) => row.sequence === fixture.initialMessageCount + 1);
+    expect(submitted).toBeDefined();
+    expect(submitted!.ciphertext).not.toBeNull();
+    expect(submitted!.ciphertext).not.toContain(RUN_WORKSPACE_SUBMITTED_TEXT);
+    const cipher = new ConversationContentCipher(RUN_WORKSPACE_CONVERSATION_KEY);
+    const opened = JSON.parse(cipher.open(fixture.runId, submitted!.message_id, submitted!.ciphertext!)) as { text?: unknown };
+    expect(opened.text).toBe(RUN_WORKSPACE_SUBMITTED_TEXT);
+
+    await page.reload();
+    await assertShellLoaded(page);
+    await expect(history(page).locator(`[data-message-sequence="${fixture.initialMessageCount + 1}"]`)).toContainText(RUN_WORKSPACE_SUBMITTED_TEXT);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await screenshot(page, testInfo, 'run-workspace-persisted-1440x900');
+    await scan(page);
+    expect(consoleErrors).toEqual([]);
+  });
+
+  test('keeps older history bounded and the split surface usable at 1280×800', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const consoleErrors: string[] = [];
+    page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+    page.on('pageerror', (error) => consoleErrors.push(error.message));
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(workspaceUrl());
+    await assertShellLoaded(page);
+    await assertWorkspaceFitsViewport(page, testInfo);
+
+    // Starting an answer draft expands its inspection/question context. The first
+    // decision and history must still fit beside the real, populated composer.
+    const composer = conversationPane(page).getByLabel('Message the Run');
+    await composer.fill('Reviewing the captured question.');
+    await assertWorkspaceFitsViewport(page, testInfo);
+    await composer.fill('');
+
+    const thread = history(page);
+    const rowsBeforePaging = await fixture.readConversationRows();
+    const latestSequence = rowsBeforePaging.at(-1)?.sequence ?? 0;
+    const olderCount = Math.max(0, rowsBeforePaging.length - 50);
+    await expect(thread.locator('article[data-message-sequence]')).toHaveCount(50);
+    await conversationPane(page).getByRole('button', { name: 'Load older messages', exact: true }).click();
+    await expect(conversationPane(page).getByRole('button', { name: 'Return to latest messages', exact: true })).toBeVisible();
+    // The older controller replaces the current page, rather than appending unbounded
+    // stale content. Its expected size is derived from the durable fixture state so this
+    // viewport test remains independently runnable before the submit test.
+    await expect(thread.locator('article[data-message-sequence]')).toHaveCount(olderCount);
+    await expect(thread.locator('[data-message-sequence="1"]')).toBeVisible();
+    await expect(thread.locator(`[data-message-sequence="${latestSequence}"]`)).toHaveCount(0);
+    await conversationPane(page).getByRole('button', { name: 'Return to latest messages', exact: true }).click();
+    await expect(thread.locator('article[data-message-sequence]')).toHaveCount(50);
+    await expect(thread.locator(`[data-message-sequence="${latestSequence}"]`)).toBeVisible();
+
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await screenshot(page, testInfo, 'run-workspace-bounded-1280x800');
+    await scan(page);
+    expect(consoleErrors).toEqual([]);
+  });
+
+  test('does not reuse the workspace view after the auditor role is revoked', async ({ page }) => {
+    test.setTimeout(120_000);
+    const consoleErrors: string[] = [];
+    let checkingRevocation = false;
+    page.on('console', (message) => {
+      if (message.type() !== 'error') return;
+      const resource = message.location().url;
+      const expectedRefusal = checkingRevocation
+        && message.text() === 'Failed to load resource: the server responded with a status of 403 (Forbidden)'
+        && resource.startsWith(new URL(page.url()).origin + '/')
+        && ['/api/runs/events', `/api/runs/${fixture.runId}/events`, `/api/runs/${fixture.runId}/control`, `/api/runs/${fixture.runId}/preview`].includes(new URL(resource).pathname);
+      if (!expectedRefusal) consoleErrors.push(`${message.text()} [${resource}]`);
+    });
+    page.on('pageerror', (error) => consoleErrors.push(error.message));
+    await page.goto(workspaceUrl());
+    await assertShellLoaded(page);
+
+    expect(consoleErrors).toEqual([]);
+    checkingRevocation = true;
+    await fixture.revokeAuditor();
+    try {
+      await page.reload();
+      await expect(page.getByRole('alert')).toContainText('Your role does not permit this action.');
+      await expect(page.getByTestId('run-workspace-shell')).toHaveCount(0);
+      await expect(page.getByRole('region', { name: 'Run conversation', exact: true })).toHaveCount(0);
+      await expect(page.getByText(RUN_WORKSPACE_SUBMITTED_TEXT, { exact: true })).toHaveCount(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    } finally {
+      await fixture.restoreAuditor();
+    }
+    expect(consoleErrors).toEqual([]);
+  });
+});
+
+
+test.describe('Workspace with maximum question context', () => {
+  test.use({ storageState: AUTH_STATE.auditor });
+  test('keeps full source content and working controls at supported desktop sizes', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    await fixture.cleanup();
+    const questionText = 'The captured record needs an auditor decision ' + 'source text '.repeat(200);
+    const optionLabel = 'Synthetic candidate A '.padEnd(500, 'x');
+    fixture = await createRunWorkspaceBrowserFixture({ questionText: questionText.slice(0, 2000), subjectKey: 'record-'.padEnd(512, 'x'), optionLabel });
+    for (const viewport of [{ width: 1280, height: 800 }, { width: 1440, height: 900 }]) {
+      await page.setViewportSize(viewport);
+      await page.goto(workspaceUrl());
+      await assertShellLoaded(page);
+      await assertWorkspaceFitsViewport(page, testInfo);
+      const composer = conversationPane(page).getByLabel('Message the Run');
+      await composer.fill('candidate-a');
+      await expect(page.locator('.run-conversation__composer-form')).toContainText('Question at draft start:');
+      await assertWorkspaceFitsViewport(page, testInfo);
+      const disclosure = page.locator('.run-conversation__composer-form .run-conversation__question-source').filter({
+        has: page.locator('summary').filter({ hasText: 'Question at draft start:' }),
+      });
+      await disclosure.locator('summary').click();
+      await expect(disclosure.locator('pre')).toHaveText(`record-${'x'.repeat(505)}\n${questionText.slice(0, 2000)}`);
+      await expect(disclosure.getByRole('region')).toBeVisible();
+      const candidateSource = shell(page).getByRole('region', { name: 'AGENT-GENERATED candidate 1 source content', exact: true });
+      await expect(candidateSource.locator('pre')).toHaveText(optionLabel);
+      await expect(candidateSource).toBeVisible();
+      await assertWorkspaceFitsViewport(page, testInfo);
+      await scan(page);
+    }
+  });
+});

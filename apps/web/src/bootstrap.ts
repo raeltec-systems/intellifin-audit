@@ -1,5 +1,5 @@
 import {
-  ConfigError,
+  ConfigError, WorkspacePreviewProxy, PostgresWorkspacePreviewStore,
   ManifestCredentialProvider,
   TimerDeadline,
   UnsupportedDatabaseError,
@@ -14,6 +14,8 @@ import {
   loadConfig,
   modelIdentityFromConfig,
   createProcedureAuthoringModel,
+  ConversationContentCipher,
+  PostgresRunConversationRepository,
   type AppConfig,
   type Auth,
   type AuthConfig,
@@ -36,6 +38,9 @@ import { telemetry } from './telemetry';
  */
 
 export interface WebRuntime {
+  readonly workspacePreview?: WorkspacePreviewProxy | null;
+  readonly conversation: PostgresRunConversationRepository;
+  readonly conversationEnabled: boolean;
   readonly config: AppConfig;
   readonly derivationModel: ModelIdentity | null;
   readonly authoringModel: ProcedureAuthoringModel | null;
@@ -148,6 +153,7 @@ async function start(): Promise<WebRuntime> {
     // that cannot fail in a way boot could report.
     let db: Database | undefined;
     let auth: Auth | undefined;
+    let conversation: PostgresRunConversationRepository | undefined;
     const database = (): Database => (db ??= createDb(sql));
     // The manifest is parsed once, here, and the provider is a plain object over it.
     const manifest = credentialCapabilityManifest(config);
@@ -155,6 +161,13 @@ async function start(): Promise<WebRuntime> {
 
     return {
       config,
+      workspacePreview: config.WORKSPACE_PREVIEW_MODE === 'synthetic-local' ? new WorkspacePreviewProxy(config.WORKSPACE_PREVIEW_PORT, config.WORKSPACE_PREVIEW_SECRET!, new PostgresWorkspacePreviewStore(database())) : null,
+      conversationEnabled: config.RUN_CONVERSATION_MODE === 'synthetic',
+      get conversation(): PostgresRunConversationRepository {
+        return conversation ??= new PostgresRunConversationRepository(database(),
+          config.RUN_CONVERSATION_MODE === 'synthetic'
+            ? new ConversationContentCipher(config.RUN_CONVERSATION_CONTENT_KEY!) : null);
+      },
       derivationModel: modelIdentityFromConfig(config),
       authoringModel: createProcedureAuthoringModel(config),
       sql,

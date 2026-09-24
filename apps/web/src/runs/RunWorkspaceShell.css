@@ -1,0 +1,904 @@
+.run-workspace-shell {
+  --run-workspace-gap: var(--spacing-3);
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  width: 100%;
+  height: var(--run-workspace-available-height, min(76dvh, 760px));
+  min-height: 0;
+  max-height: calc(100dvh - var(--spacing-2));
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-family: var(--type-body-font-family);
+}
+
+.run-workspace-shell__header,
+.run-workspace-shell__meta {
+  min-width: 0;
+}
+
+.run-workspace-shell__header h1 {
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.run-workspace-shell__header p,
+.run-workspace-shell__progress {
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+}
+
+/* The shared page header (UI cleanup 2026-09-23, UX-23) in two short rows: the title with
+   the Run's state beside it, then one caption line of facts. Its page-level bottom margin
+   is dropped here because the conversation and workspace panes below need the height. */
+.run-workspace-shell__header .ls-page-header {
+  gap: var(--spacing-1);
+  margin-bottom: 0;
+}
+
+.run-workspace-shell__header .ls-page-header__meta {
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+.run-workspace-shell__meta {
+  display: grid;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) 0 var(--spacing-3);
+}
+
+.run-workspace-shell__progress,
+.run-workspace-shell__controls {
+  min-width: 0;
+}
+
+.run-workspace-shell__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-height: var(--spacing-control-md);
+}
+
+.run-workspace-shell__controls-content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.run-workspace-shell__focus-button {
+  flex: 0 0 auto;
+  min-height: var(--spacing-control-sm);
+  padding: 0 var(--spacing-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--rounded-sm);
+  background: var(--color-surface-card);
+  color: var(--color-text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.run-workspace-shell__navigation-button {
+  flex: 0 0 auto;
+  min-height: var(--spacing-control-sm);
+  padding: 0 var(--spacing-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--rounded-sm);
+  background: var(--color-surface-card);
+  color: var(--color-text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.run-workspace-shell__navigation-button:hover,
+.run-workspace-shell__navigation-button[aria-expanded='true'] {
+  border-color: var(--color-border-selected);
+  background: var(--color-surface-selected);
+  color: var(--color-text-link);
+}
+
+.run-workspace-shell__focus-button:hover {
+  border-color: var(--color-border-selected);
+  color: var(--color-text-link);
+}
+
+.run-workspace-shell__focus-button[aria-pressed='true'] {
+  border-color: var(--color-border-selected);
+  background: var(--color-surface-selected);
+}
+
+.run-workspace-shell__split {
+  display: grid;
+  grid-template-columns:
+    minmax(0, var(--run-conversation-percent))
+    16px
+    minmax(0, calc(100% - var(--run-conversation-percent) - 16px));
+  min-width: 0;
+  min-height: 0;
+  gap: 0;
+}
+
+.run-workspace-shell__pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-md);
+  background: var(--color-surface-card);
+}
+
+.run-workspace-shell__conversation-pane {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.run-workspace-shell__workspace-pane {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.run-workspace-shell__scroll {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.run-workspace-shell__conversation-scroll,
+.run-workspace-shell__workspace-scroll {
+  flex: 1 1 auto;
+}
+
+.run-workspace-shell__pinned {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: var(--spacing-3);
+  border-top: 1px solid var(--color-border-default);
+  background: var(--color-surface-card);
+}
+
+.run-workspace-shell__decision {
+  max-height: min(14rem, 35%);
+  overflow: auto;
+  border-top: 0;
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+/* An open decision belongs above the history, but its answer must still be reachable before
+   the composer. The generic 35% cap was sized for an ordinary notice and clipped the question
+   before the first candidate in the workspace. The panel owns its own compact spacing below. */
+.run-workspace-shell__decision:has(.escalation-panel--workspace) {
+  max-height: min(13rem, calc(100% - 9rem));
+}
+
+.run-workspace-shell__conversation-pane .run-workspace-shell__composer {
+  padding: var(--spacing-2);
+}
+
+.run-workspace-shell__conversation-pane .run-conversation__composer {
+  padding: var(--spacing-2);
+}
+
+.run-workspace-shell__conversation-pane .run-conversation__composer-input {
+  height: 3.5rem;
+  min-height: 3.5rem;
+}
+
+/* The workspace keeps the live banner and its freshness link, but the route has less
+   vertical chrome than a normal detail page so the two working panes can share one desktop
+   viewport. Nothing here removes status or gating: it only tightens the route's spacing. */
+.run-workspace-route {
+  gap: var(--spacing-2);
+}
+
+.run-workspace-route > .ls-breadcrumbs {
+  margin-bottom: var(--spacing-1);
+}
+
+.run-workspace-route .ls-banner {
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-3);
+}
+
+.run-workspace-route > .ls-banner > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--spacing-3);
+}
+
+@media (min-width: 1024px) {
+  /* Reserve actual history/composer space; clipping the transcript to fit a decision
+     would make the split appear successful while removing the working conversation. */
+  .run-workspace-route .run-workspace-shell__conversation-scroll {
+    flex: 1 0 120px;
+    min-height: 120px;
+  }
+
+  .run-workspace-route .run-workspace-shell__decision:has(.escalation-panel--workspace) {
+    /* Let the actual composer height and history floor determine the remaining room.
+       A fixed 17rem reservation clipped the first answer at 1280×800 even though
+       the history still had spare height. The decision alone shrinks and scrolls. */
+    flex: 0 1 15rem;
+    min-height: 0;
+    max-height: 15rem;
+    padding: var(--spacing-1);
+  }
+
+  /* Keep the question context visible without making Send a separate full-width row.
+     The textarea and its footer share a row; DOM and keyboard order stay unchanged. */
+  .run-workspace-route .run-conversation__composer-form {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    gap: var(--spacing-1) var(--spacing-2);
+  }
+
+  .run-workspace-route .run-conversation__composer-form > label,
+  .run-workspace-route .run-conversation__composer-form > p {
+    grid-column: 1 / -1;
+  }
+
+  .run-workspace-route .run-conversation__composer-footer {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: var(--spacing-1);
+  }
+}
+
+.run-workspace-route .run-workspace-shell__meta {
+  gap: var(--spacing-1);
+  padding: var(--spacing-1) 0 var(--spacing-2);
+}
+
+.run-workspace-route .run-workspace-shell__controls {
+  gap: var(--spacing-1);
+  min-height: var(--spacing-control-sm);
+}
+
+.run-workspace-route .run-workspace-shell__controls-content {
+  gap: var(--spacing-1);
+}
+
+.run-workspace-route .run-workspace-shell__conversation-pane .run-workspace-shell__composer,
+.run-workspace-route .run-workspace-shell__conversation-pane .run-conversation__composer {
+  padding: var(--spacing-1);
+}
+
+/* The workspace decision keeps source text visibly untrusted while using the tighter rhythm
+   needed beside a pinned composer. Candidate controls stay in normal document order so the
+   first answer is visible without focus or scroll side effects. */
+.escalation-panel--workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  column-gap: var(--spacing-2);
+  gap: var(--spacing-1);
+  padding: var(--spacing-1);
+}
+
+.escalation-panel--workspace > h2,
+.escalation-panel--workspace > .ls-banner,
+.escalation-panel--workspace > .escalation-panel__note,
+.escalation-panel--workspace > .escalation-panel__time,
+.escalation-panel--workspace > .escalation-panel__technical,
+.escalation-panel--workspace > p {
+  grid-column: 1 / -1;
+}
+
+.escalation-panel--workspace > .escalation-panel__question {
+  grid-column: 1;
+}
+
+.escalation-panel--workspace > .escalation-panel__answers {
+  grid-column: 2;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.escalation-panel--workspace .escalation-panel__source-policy {
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+  color: var(--color-text-secondary);
+}
+
+.escalation-panel--workspace > .escalation-panel__question,
+.escalation-panel--workspace .escalation-panel__workspace-context,
+.escalation-panel--workspace > .escalation-panel__answers,
+.escalation-panel--workspace > .escalation-panel__note,
+.escalation-panel--workspace > .escalation-panel__time {
+  gap: var(--spacing-1);
+}
+
+.escalation-panel--workspace .escalation-panel__workspace-context .ls-definition {
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--spacing-1) var(--spacing-2);
+}
+
+.escalation-panel--workspace .escalation-panel__platform-question,
+.escalation-panel--workspace .escalation-panel__workspace-context,
+.escalation-panel--workspace .escalation-panel__note,
+.escalation-panel--workspace .escalation-panel__technical {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.escalation-panel--workspace .escalation-panel__answer-options {
+  gap: var(--spacing-1);
+}
+
+.escalation-panel--workspace .escalation-panel__answer-option {
+  gap: var(--spacing-1);
+}
+
+.escalation-panel--workspace .ls-definition {
+  gap: var(--spacing-2);
+}
+
+.escalation-panel--workspace .ls-untrusted {
+  padding: var(--spacing-1);
+}
+
+.escalation-panel--workspace .escalation-panel__note,
+.escalation-panel--workspace .escalation-panel__technical {
+  color: var(--color-text-secondary);
+}
+
+.escalation-panel--workspace .escalation-panel__note > summary,
+.escalation-panel--workspace .escalation-panel__platform-question > summary,
+.escalation-panel--workspace .escalation-panel__workspace-context > summary,
+.escalation-panel--workspace .escalation-panel__technical > summary {
+  cursor: pointer;
+  color: var(--color-text-link);
+  font-weight: 500;
+}
+
+.run-workspace-shell__composer:empty,
+.run-workspace-shell__decision:empty {
+  display: none;
+}
+
+.run-workspace-shell__separator {
+  position: relative;
+  z-index: 1;
+  width: 16px;
+  min-width: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.run-workspace-shell__separator::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 7px;
+  width: 2px;
+  background: var(--color-border-default);
+  content: '';
+}
+
+.run-workspace-shell__separator:hover::before,
+.run-workspace-shell__separator:focus-visible::before {
+  background: var(--color-border-selected);
+}
+
+.run-workspace-shell__separator:focus-visible,
+.run-workspace-shell__focus-button:focus-visible,
+.run-workspace-shell__navigation-button:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* The workspace is a focused reading surface. Keep the existing shell available through the
+   named Navigation button, while reclaiming its application rail by default. */
+.ls-app:has(.run-workspace-shell:not(.run-workspace-shell--navigation-open)) .ls-shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ls-app:has(.run-workspace-shell:not(.run-workspace-shell--navigation-open)) .ls-sidebar {
+  display: none;
+}
+
+.run-workspace-shell--focus-workspace .run-workspace-shell__split {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.run-workspace-shell--focus-workspace .run-workspace-shell__separator,
+.run-workspace-shell__conversation-pane[hidden] {
+  display: none;
+}
+
+.run-workspace-shell--focus-workspace .run-workspace-shell__workspace-pane {
+  border-radius: var(--rounded-md);
+}
+
+@media (max-width: 1023px) {
+  .run-workspace-shell {
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .run-workspace-shell__controls {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .run-workspace-shell__focus-button {
+    margin-left: auto;
+  }
+
+  .run-workspace-shell__navigation-button {
+    margin-left: auto;
+  }
+
+  .run-workspace-shell__split {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(18rem, 42vh) 16px minmax(24rem, 52vh);
+    gap: 0;
+  }
+
+  .run-workspace-shell__conversation-pane,
+  .run-workspace-shell__workspace-pane {
+    border-radius: var(--rounded-md);
+  }
+
+  .run-workspace-shell__decision {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .run-workspace-shell__decision:has(.escalation-panel--workspace) {
+    max-height: none;
+  }
+
+  .run-workspace-shell__separator {
+    width: 100%;
+    height: 16px;
+    min-width: 0;
+    min-height: 16px;
+    cursor: row-resize;
+  }
+
+  .run-workspace-shell__separator::before {
+    top: 7px;
+    right: 0;
+    bottom: auto;
+    left: 0;
+    width: auto;
+    height: 2px;
+  }
+
+  .run-workspace-shell--focus-workspace .run-workspace-shell__split {
+    grid-template-rows: minmax(24rem, 70vh);
+  }
+}
+
+@media (max-height: 700px) and (min-width: 1024px) {
+  .run-workspace-shell {
+    height: var(--run-workspace-available-height, calc(100dvh - 120px));
+    min-height: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .escalation-panel--workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .escalation-panel--workspace > .escalation-panel__question,
+  .escalation-panel--workspace > .escalation-panel__answers {
+    grid-column: 1 / -1;
+  }
+
+  .escalation-panel--workspace .escalation-panel__workspace-context .ls-definition {
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+}
+
+/* ---------------------------------------------------------------- conversation --- */
+
+.run-conversation {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  color: var(--color-text-primary);
+  background: var(--color-surface-card);
+}
+
+.run-conversation__thread {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--spacing-3);
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.run-conversation__thread:focus-visible,
+.run-conversation__send:focus-visible,
+.run-conversation__older-button:focus-visible,
+.run-conversation__activity:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.run-conversation__message-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.run-conversation__message-item {
+  min-width: 0;
+}
+
+.run-conversation__message {
+  min-width: 0;
+  padding: var(--spacing-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-md);
+  background: var(--color-surface-card);
+}
+
+.run-conversation__message-header,
+.run-conversation__composer-footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+}
+
+.run-conversation__message-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.run-conversation__source,
+.run-conversation__kind {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--spacing-badge-sm);
+  padding: 1px var(--spacing-2);
+  border-radius: var(--rounded-full);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+.run-conversation__source {
+  background: var(--color-surface-selected);
+  color: var(--color-teal-800);
+  font-weight: 600;
+}
+
+.run-conversation__kind {
+  background: var(--color-neutral-bg);
+  color: var(--color-neutral-text);
+}
+
+.run-conversation__time,
+.run-conversation__composer-help {
+  color: var(--color-text-muted);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+.run-conversation__time {
+  flex: 0 0 auto;
+  font-family: var(--type-mono-font-family);
+}
+
+.run-conversation__actor {
+  margin: var(--spacing-2) 0 0;
+  color: var(--color-text-secondary);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+.run-conversation__body {
+  margin: var(--spacing-2) 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  color: var(--color-text-primary);
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-relaxed-line-height);
+}
+
+.run-conversation__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  margin-top: var(--spacing-3);
+}
+
+.run-conversation__link {
+  color: var(--color-text-link);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.run-conversation__technical {
+  margin-top: var(--spacing-3);
+  color: var(--color-text-secondary);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-relaxed-line-height);
+}
+
+.run-conversation__technical summary {
+  cursor: pointer;
+  color: var(--color-text-link);
+}
+
+.run-conversation__technical dl {
+  display: grid;
+  grid-template-columns: minmax(7rem, auto) minmax(0, 1fr);
+  gap: var(--spacing-1) var(--spacing-2);
+  margin: var(--spacing-2) 0 0;
+}
+
+.run-conversation__technical dl > div {
+  display: contents;
+}
+
+.run-conversation__technical dt {
+  color: var(--color-text-muted);
+}
+
+.run-conversation__technical dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--type-mono-font-family);
+}
+
+.run-conversation__older,
+.run-conversation__activity-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 0 0 var(--spacing-3);
+}
+
+.run-conversation__older-button,
+.run-conversation__activity,
+.run-conversation__send {
+  min-height: var(--spacing-control-sm);
+  padding: 0 var(--spacing-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--rounded-sm);
+  background: var(--color-surface-card);
+  color: var(--color-text-link);
+  font: inherit;
+  font-size: var(--type-body-sm-font-size);
+  cursor: pointer;
+}
+
+.run-conversation__older-button:hover,
+.run-conversation__activity:hover,
+.run-conversation__send:hover:not(:disabled) {
+  border-color: var(--color-border-selected);
+  background: var(--color-surface-selected);
+}
+
+.run-conversation__older-button:disabled,
+.run-conversation__send:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.run-conversation__activity-wrap {
+  position: sticky;
+  bottom: var(--spacing-2);
+  z-index: 1;
+  padding-top: var(--spacing-2);
+}
+
+.run-conversation__activity {
+  border-color: var(--color-border-selected);
+  background: var(--color-surface-selected);
+}
+
+.run-conversation__empty,
+.run-conversation__read-error {
+  margin: var(--spacing-3) 0;
+  padding: var(--spacing-3);
+  border-radius: var(--rounded-md);
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+}
+
+.run-conversation__empty {
+  background: var(--color-surface-sunken);
+  color: var(--color-text-secondary);
+}
+
+.run-conversation__read-error {
+  border: 1px solid var(--color-danger-border);
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+}
+
+.run-conversation__composer {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: var(--spacing-3);
+  border-top: 1px solid var(--color-border-default);
+  background: var(--color-surface-card);
+}
+
+.run-conversation__composer-form {
+  display: grid;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.run-conversation__composer-label {
+  color: var(--color-text-secondary);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+  font-weight: 600;
+}
+
+.run-conversation__composer-input {
+  display: block;
+  width: 100%;
+  min-height: 4.5rem;
+  resize: vertical;
+  padding: var(--spacing-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--rounded-sm);
+  background: var(--color-surface-card);
+  color: var(--color-text-primary);
+  font: inherit;
+  line-height: var(--type-body-sm-line-height);
+}
+
+.run-conversation__composer-input:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
+.run-conversation__composer-footer {
+  align-items: center;
+}
+
+.run-conversation__send {
+  background: var(--color-teal);
+  border-color: var(--color-teal);
+  color: var(--color-text-inverse);
+}
+
+.run-conversation__composer-note,
+.run-conversation__composer-error,
+.run-conversation__composer-status {
+  margin: 0;
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-relaxed-line-height);
+}
+
+.run-conversation__composer-note {
+  color: var(--color-text-secondary);
+}
+
+.run-conversation__composer-error {
+  color: var(--color-danger-text);
+}
+
+.run-conversation__composer-status {
+  color: var(--color-success-text);
+}
+
+@media (max-width: 640px) {
+  .run-conversation__message-header,
+  .run-conversation__composer-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .run-conversation__send {
+    width: 100%;
+  }
+}
+
+/* Keep named control beside the safety actions without consuming the conversation pane. */
+.run-workspace-route #run-pause,
+.run-workspace-route .run-controller {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+.run-workspace-route .run-controller p {
+  margin: 0;
+}
+
+/* Full source text stays accessible without expanding the pinned composer indefinitely. */
+.run-conversation__question-source {
+  min-width: 0;
+  grid-column: 1 / -1;
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+.run-conversation__question-source > summary {
+  cursor: pointer;
+  color: var(--color-text-link);
+}
+.run-conversation__source-scroll {
+  max-height: 8rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
+}
+.run-conversation__composer-form .run-conversation__source-scroll {
+  max-height: 2.5rem;
+}
+.run-conversation__source-scroll .ls-untrusted {
+  padding: var(--spacing-1);
+}
+.run-conversation__source-scroll .ls-untrusted__body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.escalation-panel--workspace .escalation-panel__question .ls-untrusted {
+  max-height: 5rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+/* The workspace pane's content: the live preview, then the latest saved screen and where
+   it came from. Spacing only; the pane's one scroll container is the shell's own. */
+.run-workspace-stage {
+  display: grid;
+  gap: var(--spacing-2);
+  min-width: 0;
+  padding: var(--spacing-2);
+}
+
+.run-workspace-stage > h3 {
+  margin-top: var(--spacing-2);
+}
+
+.workspace-preview {
+  display: grid;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+/* Source values cannot expand the status chrome or move an answer below its pane. */
+.run-workspace-current-action {
+  max-height: 1.25rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
+}
+.escalation-panel--workspace .escalation-panel__answer-option .ls-untrusted {
+  max-height: 3rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
+}

@@ -125,7 +125,7 @@ async function planSettled(page) {
   await page.locator('[data-preparation-nav=review]').click();
   const fold = page.locator('[data-plan-detail]');
   if (!await fold.evaluate(node => node.open)) await fold.locator('summary').first().click();
-  await expect(page.getByTestId('executable-plan-preview').locator(':scope > [role=status]')).toContainText(/Re-derived|Cannot derive:/, { timeout: 150000 });
+  await expect(page.getByTestId('executable-plan-preview').locator(':scope > [role=status]')).toContainText(/Test plan prepared|could not be prepared|Re-derived|Cannot derive:/, { timeout: 150000 });
 }
 async function acknowledged(page, action) {
   const url = page.url();
@@ -165,8 +165,9 @@ async function authorApproveAndRun({ control, sourceName, prefix, accounts }) {
   await auditor.goto(`${BASE}/procedures/new`, { waitUntil: 'domcontentloaded' });
   await expect(auditor.locator('[data-new-procedure-ready]')).toHaveAttribute('data-new-procedure-ready', 'true');
   await auditor.getByLabel('Template').selectOption('P-1');
-  await auditor.getByLabel('Control name', { exact: true }).fill(control);
-  await confirmed(auditor, 'Create Procedure');
+  await auditor.getByLabel('Procedure name', { exact: true }).fill(control);
+  // UX-07: creating a Draft is one action, with no confirmation dialog.
+  await auditor.getByRole('button', { name: 'Create Procedure', exact: true }).click();
   await expect(auditor.getByRole('heading', { level: 1, name: control })).toBeVisible();
   const procedureId = new URL(auditor.url()).pathname.split('/')[2];
   emit('procedure-created-through-ui', { procedureId, control });
@@ -196,7 +197,7 @@ async function authorApproveAndRun({ control, sourceName, prefix, accounts }) {
   await step('Schedule', () => auditor.getByLabel('Frequency', { exact: true }).selectOption('once'),
     () => auditor.getByRole('button', { name: 'Save Schedule', exact: true }).click(), 'Saved. The Schedule is recorded in the audit chain.');
   phase = `${prefix}review-sections`;
-  for (const [section, title] of [['context','Risk, control and objective'],['scope','Scope and period'],['evidence','Evidence to review'],['instructions','Audit steps'],['assessment','Assessment criteria'],['frequency','How often this is meant to run']]) {
+  for (const [section, title] of [['context','Risk, control and objective'],['scope','Scope and period'],['evidence','Evidence to review'],['instructions','Audit steps'],['assessment','Assessment criteria'],['frequency','Planned frequency']]) {
     let reviewed = false;
     for (let attempt = 0; attempt < 3 && !reviewed; attempt++) {
       await planSettled(auditor); await auditor.locator(`[data-preparation-nav="${section}"]`).click();

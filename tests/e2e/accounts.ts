@@ -1,4 +1,8 @@
+import { randomUUID } from 'node:crypto';
+
 import { expect, type Page } from '@playwright/test';
+
+import type { Sql } from '@intellifin/infrastructure';
 
 /**
  * The two accounts the browser specs sign in as, and the sessions they reuse.
@@ -63,6 +67,45 @@ export async function signIn(page: Page, email: string): Promise<void> {
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible({
     timeout: process.env['INTELLIFIN_LOW_DISK'] === '1' ? 90_000 : 10_000,
   });
+}
+
+/** A temporary Audit Manager a spec minted for itself, and how to remove it again. */
+export interface MintedAuditManager {
+  readonly id: string;
+  readonly email: string;
+  remove(): Promise<void>;
+}
+
+/**
+ * Mint an Audit Manager for one spec, the way `version-review.spec.ts` always has.
+ *
+ * CI seeds only the two roles `auth.setup.ts` signs in as, so a spec that needs a manager
+ * brings its own — and takes it away again: `runNotificationRecipients` reads EVERY Audit
+ * Manager in the database, so one left behind changes the recipient counts of suites that
+ * never created one (CLAUDE.md, 2026-09-16). The account reuses the seeded Auditor's
+ * password hash, so `E2E_PASSWORD` signs it in and no new secret exists anywhere.
+ */
+export async function mintAuditManager(sql: Sql, label: string): Promise<MintedAuditManager> {
+  const id = `manager-${label}-${randomUUID()}`;
+  const email = `${id}@example.test`;
+  await sql`INSERT INTO auth_user(id,name,email,email_verified) VALUES (${id},${`Synthetic Audit Manager (${label})`},${email},true)`;
+  const [account] = await sql`
+    INSERT INTO auth_account(id,issuer,account_id,provider_id,user_id,password)
+    SELECT ${randomUUID()},issuer,${id},provider_id,${id},password FROM auth_account
+    WHERE user_id = (SELECT id FROM auth_user WHERE email = ${ACCOUNTS.auditor.email}) AND provider_id = 'credential'
+    RETURNING id`;
+  if (!account) throw new Error('Seed the E2E Auditor first: the minted Audit Manager reuses its password.');
+  await sql`INSERT INTO user_role(user_id,role) VALUES (${id},'audit-manager')`;
+  return {
+    id,
+    email,
+    async remove() {
+      // A notification names its recipient with a foreign key that does not cascade; the
+      // account, its sessions and its role do.
+      await sql`DELETE FROM notification WHERE recipient_id=${id}`;
+      await sql`DELETE FROM auth_user WHERE id=${id}`;
+    },
+  };
 }
 
 /**

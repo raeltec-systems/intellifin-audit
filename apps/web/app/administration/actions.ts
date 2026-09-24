@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import {
   createUserWithRole,
   setUserRole,
+  setUserRunControlTransferGrant,
   type ManageUsersDependencies,
 } from '@intellifin/application';
 import { isRole, type Role } from '@intellifin/domain';
@@ -160,6 +161,10 @@ export async function createUserAction(
     });
     if (!outcome.ok) return outcome;
 
+    // The list lives at `/administration/users` and the landing counts it, so both are
+    // stale after a mutation. `revalidatePath` with the default type revalidates one
+    // page, so naming only the landing would leave the list showing the row as it was.
+    revalidatePath('/administration/users');
     revalidatePath('/administration');
     return { ok: true, message: `Created ${fields.email.trim()} as ${roleLabel(outcome.role)}.` };
   } catch (error) {
@@ -210,6 +215,10 @@ export async function setUserRoleAction(
     });
     if (!outcome.ok) return outcome;
 
+    // The list lives at `/administration/users` and the landing counts it, so both are
+    // stale after a mutation. `revalidatePath` with the default type revalidates one
+    // page, so naming only the landing would leave the list showing the row as it was.
+    revalidatePath('/administration/users');
     revalidatePath('/administration');
     return {
       ok: true,
@@ -220,5 +229,34 @@ export async function setUserRoleAction(
     };
   } catch (error) {
     return unavailable('Set user role failed', error, correlationId);
+  }
+}
+
+export interface SetTransferGrantFields {
+  readonly userId: string;
+  readonly granted: boolean;
+  readonly expectedGrantRevision: number;
+}
+
+/** Authority is checked before even enumerating the untrusted request. */
+export async function setUserRunControlTransferGrantAction(fields: unknown): Promise<AdministrationActionResult> {
+  const decision = await requireServerAction('administration.users.manage');
+  if (!decision.allowed) return { ok: false, reason: decision.reason };
+  if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return { ok: false, reason: MALFORMED };
+  const input = fields as Record<string, unknown>;
+  if (Object.keys(input).length !== 3 || !boundedString(input.userId, 255) || input.userId.trim() === '' ||
+    typeof input.granted !== 'boolean' || typeof input.expectedGrantRevision !== 'number' ||
+    !Number.isSafeInteger(input.expectedGrantRevision) || input.expectedGrantRevision < 0 || input.expectedGrantRevision > 2_147_483_647)
+    return { ok: false, reason: MALFORMED };
+  try {
+    const outcome = await setUserRunControlTransferGrant(await dependencies(), {
+      session: decision.session, correlationId: await currentCorrelationId(), userId: input.userId,
+      granted: input.granted, expectedGrantRevision: input.expectedGrantRevision,
+    });
+    if (!outcome.ok) return outcome;
+    revalidatePath('/administration');
+    return { ok: true, message: outcome.grant.granted ? 'Run control transfer permission granted.' : 'Run control transfer permission revoked.' };
+  } catch {
+    return { ok: false, reason: 'The permission change could not be confirmed. Refresh the user list before trying again.' };
   }
 }

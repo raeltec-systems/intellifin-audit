@@ -16,6 +16,7 @@ import { ESCALATION_PANEL_COPY, PAUSE_COPY } from '../../apps/web/src/design/cop
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { executablePlanInputs } from '../fixtures/executable-plan';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
+import { acquireControl, expectRunEvents, resumeWithControl } from './run-control';
 
 /**
  * Flow 3: watch a Run, answer its Escalation without leaving Live View, pause it, resume it
@@ -45,6 +46,7 @@ const stepExecutionId = ids.next();
 
 let sql: Sql;
 let author = '';
+let authorName = '';
 const runs: string[] = [];
 
 test.beforeAll(async () => {
@@ -52,9 +54,10 @@ test.beforeAll(async () => {
   if (!databaseUrl) throw new Error('DATABASE_URL is required for the Live View Escalation journey.');
   assertThrowawayDatabase(databaseUrl);
   sql = createSqlClient(databaseUrl, { max: 4 });
-  const [auditor] = await sql`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
+  const [auditor] = await sql`SELECT id, name FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
   if (!auditor) throw new Error('Seed the E2E Auditor before the Live View Escalation journey.');
   author = auditor.id as string;
+  authorName = auditor.name as string;
   // The name goes through the fixture's INPUTS, never spread over the row it returns.
   // `controlName` is a plan authoring input, so overriding it afterwards leaves the row
   // disagreeing with its own frozen review — and `findPeriodOwner` then refuses the
@@ -71,21 +74,30 @@ test.afterAll(async () => {
   if (!sql) return;
   try {
     for (const runId of runs) {
-      await sql`DELETE FROM pgboss.job WHERE data->>'runId'=${runId}`;
-      await sql`DELETE FROM notification WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_agent_turn WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_agent_work WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_step_execution WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_work_item WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_result WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_evidence_integrity WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_evidence WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_wait WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_execution WHERE run_id=${runId}`;
-      await sql`DELETE FROM population_execution WHERE run_id=${runId}`;
-      await sql`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
-      await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
+      // One transaction per Run, with the Run locked first. A Run whose control was held
+      // long enough to renew keeps its renewal receipts for as long as the Run exists, so
+      // its events can only be removed in the same transaction as the Run itself; a
+      // separate DELETE is refused and would leave this file's rows for the next spec.
+      await sql.begin(async (tx) => {
+        await tx`SELECT 1 FROM audit_run WHERE run_id=${runId} FOR UPDATE`;
+        await tx`DELETE FROM pgboss.job WHERE data->>'runId'=${runId}`;
+        await tx`DELETE FROM notification WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_agent_turn WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_agent_work WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_step_execution WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_work_item WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_result WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_evidence_integrity WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_evidence WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_wait WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_execution WHERE run_id=${runId}`;
+        await tx`DELETE FROM population_execution WHERE run_id=${runId}`;
+        await tx`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
+        await tx`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
+        await tx`DELETE FROM run_initiation_request WHERE run_id=${runId} OR refused_run_id=${runId}`;
+        await tx`DELETE FROM audit_run WHERE run_id=${runId}`;
+      });
     }
     // A refusal record names a Procedure that may not exist and carries a NULL `run_id`,
     // so it is deleted by this journey's own initiator rather than by Run.
@@ -291,6 +303,8 @@ test.describe('Flow 3: supervising a Run from Live View', () => {
 
     // The panel is gone and the chrome is back to LIVE — from the server's own re-read.
     await expect(page.getByRole('heading', { name: 'Open Escalation', exact: true })).toHaveCount(0, { timeout: 30_000 });
+    // And the confirmation outlives the panel the refresh removed (it used to go with the panel, within about 300 ms).
+    await expect(page.locator('[data-escalation-outcome]')).toContainText('Escalation answered.');
     await expect(page.getByText('Session LIVE.', { exact: false })).toBeVisible();
     const [answered] = await sql`SELECT state FROM audit_run WHERE run_id=${runId}`;
     expect(answered).toMatchObject({ state: 'RUNNING' });
@@ -310,7 +324,12 @@ test.describe('Flow 3: supervising a Run from Live View', () => {
     await expect(pauseDialog).toBeVisible();
     await expect(pauseDialog.getByText('ends Inconclusive if it is still paused after 30 minutes', { exact: false })).toBeVisible();
     await pauseDialog.getByRole('button', { name: 'Pause Run', exact: true }).click();
-    await expect(page.getByText(PAUSE_COPY.requested, { exact: true })).toBeVisible();
+    // The server's own banner once the page re-reads, never the control's transitional
+    // "Pause requested.": that sentence goes as soon as the state it announced has
+    // settled (UX-49), so waiting to see it races the re-read. pause-resume.spec.ts asserts
+    // the same two facts on Run Detail.
+    await expect(page.getByText(`Pause requested by ${authorName}`, { exact: false })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(PAUSE_COPY.requested, { exact: true })).toHaveCount(0);
 
     const pauseWaitId = await honourPause(runId);
     const [pauseWait] = await sql`SELECT opened_at, deadline FROM run_wait WHERE wait_id=${pauseWaitId}`;
@@ -325,8 +344,13 @@ test.describe('Flow 3: supervising a Run from Live View', () => {
     await scan(page);
 
     await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
-    await page.getByRole('button', { name: 'Resume', exact: true }).click();
-    await expect(page.getByText(PAUSE_COPY.resumed, { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('button', { name: 'Acquire control', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+    await acquireControl(page.getByRole('region', { name: 'Run controller', exact: true }));
+    await resumeWithControl(page);
+    // The settled page, never the transitional "Run resumed.": Pause is offered again and
+    // the control's sentence has gone with the state it announced (UX-49).
+    await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(PAUSE_COPY.resumed, { exact: true })).toHaveCount(0);
     const [resumed] = await sql`SELECT state FROM audit_run WHERE run_id=${runId}`;
     expect(resumed).toMatchObject({ state: 'RUNNING' });
 
@@ -344,12 +368,14 @@ test.describe('Flow 3: supervising a Run from Live View', () => {
     await expect(announcement).toHaveText(ESCALATION_PANEL_COPY.milestones['ten-minutes']);
 
     const events = await sql`SELECT event_type FROM audit_events WHERE aggregate_id=${runId} ORDER BY sequence`;
-    expect(events.map(row => row.event_type)).toEqual([
+    // This page still holds control, so lease renewals are set apart (`expectRunEvents`).
+    expectRunEvents(events.map(row => String(row.event_type)), [
       'lifecycle.run-queued',
       'execution.escalation-raised',
       'execution.escalation-answered',
       'lifecycle.run-pause-requested',
       'lifecycle.run-paused',
+      'lifecycle.run-control-lease-acquired',
       'lifecycle.run-resumed',
       'execution.escalation-raised',
     ]);

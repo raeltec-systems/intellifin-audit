@@ -57,7 +57,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     );
   });
 
-  it('has exactly the generation-36 tables and nothing was auto-migrated at startup', async () => {
+  it('has exactly the generation-61 tables and nothing was auto-migrated at startup', async () => {
     const rows = await sql<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
@@ -97,6 +97,13 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       'run_agent_execution',
       'run_agent_turn',
       'run_agent_work',
+      'run_control_lease',
+      'run_control_transfer',
+      'run_control_transfer_content',
+      'run_control_transfer_receipt',
+      'run_conversation_content',
+      'run_conversation_message',
+      'run_deferred_pause',
       // Story 4.9. Human decisions retain the original Agent-Judged proposal in an
       // immutable ledger beside the mutable Result review revision.
       'run_evaluation_review',
@@ -119,6 +126,8 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       // written once when the last Work Item completes and never updated.
       'run_gate_check',
       'run_initiation_request',
+      'run_interaction_command',
+      'run_interaction_transition',
       'run_observation',
       'run_observation_absence',
       // Story 3.4. Observation registration: the per-Observation Gate check outcomes and
@@ -134,6 +143,9 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       'run_replay_recording',
       'run_result',
       'run_result_review',
+      // AW-P1: expiring, immutable presentation copies; not a second audit ledger.
+      'run_review_snapshot',
+      'run_review_snapshot_row',
       'run_session_step',
       'run_step_execution',
       'run_tool_action',
@@ -142,9 +154,11 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       // Story 4.1. The isolated Agent Workspace one Run gets: its provider identity, the
       // guarantee its mode actually had, and the provider deadline it must respect.
       'run_workspace',
+      'run_workspace_preview',
       'schema_meta',
       'target_system_probe',
       'target_system_registration',
+      'user_permission_grant',
       'user_role',
       'worker_heartbeat',
     ]);

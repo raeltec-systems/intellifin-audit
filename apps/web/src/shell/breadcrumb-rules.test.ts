@@ -22,12 +22,12 @@ describe('which routes get a trail', () => {
   });
 
   it('gives a detail route one crumb per segment, the last one current', () => {
-    // Not a Run route: Story 3.11 made Run Detail trail itself, so the shell stands
-    // down there. Administration still gets the shell's trail.
-    expect(crumbsFor('/administration/registrations/REG-1')).toEqual([
-      { href: '/administration', label: 'Administration', mono: false },
-      { href: '/administration/registrations', label: 'Target systems', mono: false },
-      { href: '/administration/registrations/REG-1', label: 'REG-1', mono: true },
+    // Not a Run route and not an Administration detail: both trail themselves. A route
+    // the shell has no name for still gets one crumb per segment.
+    expect(crumbsFor('/badges/gallery/ROW-1')).toEqual([
+      { href: '/badges', label: 'Status vocabulary', mono: false },
+      { href: '/badges/gallery', label: 'gallery', mono: true },
+      { href: '/badges/gallery/ROW-1', label: 'ROW-1', mono: true },
     ]);
   });
 
@@ -59,6 +59,7 @@ describe('hostile path segments', () => {
     expect(() => crumbsFor('/runs/%E0%A4%A')).not.toThrow();
     expect(() => crumbsFor('/administration/%E0%A4%A')).not.toThrow();
     expect(crumbsFor('/administration/%E0%A4%A')[1]?.label).toBe('%E0%A4%A');
+    expect(() => crumbsFor('/administration/sources/%E0%A4%A')).not.toThrow();
   });
 
   it('decodes an escape sequence that is valid', () => {
@@ -70,7 +71,11 @@ describe('a named sub-route', () => {
   it('reads as its name, not as an identifier', () => {
     expect(crumbsFor('/administration/registrations')).toEqual([
       { href: '/administration', label: 'Administration', mono: false },
-      { href: '/administration/registrations', label: 'Target systems', mono: false },
+      { href: '/administration/registrations', label: 'Systems', mono: false },
+    ]);
+    expect(crumbsFor('/administration/users')).toEqual([
+      { href: '/administration', label: 'Administration', mono: false },
+      { href: '/administration/users', label: 'Users', mono: false },
     ]);
   });
 
@@ -83,13 +88,14 @@ describe('a named sub-route', () => {
     ]);
   });
 
-  it('still treats a real identifier under it as one', () => {
-    const crumbs = crumbsFor('/administration/registrations/018f0000-0000-7000-8000-000000000001');
-    expect(crumbs[2]).toEqual({
-      href: '/administration/registrations/018f0000-0000-7000-8000-000000000001',
-      label: '018f0000-0000-7000-8000-000000000001',
-      mono: true,
-    });
+  it('leaves an Administration detail surface to trail itself with the name it knows', () => {
+    // The shell could only say the UUID here, which is what the walkthrough found as the
+    // last crumb (UX-41). The page knows the display name and renders its own trail.
+    const id = '018f0000-0000-7000-8000-000000000001';
+    expect(rendersOwnTrail(`/administration/registrations/${id}`)).toBe(true);
+    expect(crumbsFor(`/administration/registrations/${id}`)).toEqual([]);
+    expect(rendersOwnTrail(`/administration/sources/${id}`)).toBe(true);
+    expect(crumbsFor(`/administration/sources/${id}`)).toEqual([]);
   });
 
   it('does not inherit a label from Object.prototype', () => {

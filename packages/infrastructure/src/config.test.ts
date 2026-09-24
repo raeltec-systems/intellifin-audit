@@ -20,6 +20,16 @@ describe('model deployment policy', () => {
 });
 
 describe('loadConfig', () => {
+  it('keeps conversation off unless synthetic mode has its dedicated content key', () => {
+    expect(loadConfig(validEnv).RUN_CONVERSATION_MODE).toBe('off');
+    expect(() => loadConfig({ ...validEnv, RUN_CONVERSATION_MODE: 'synthetic' })).toThrow(/RUN_CONVERSATION_CONTENT_KEY/);
+    expect(() => loadConfig({ ...validEnv, RUN_CONVERSATION_MODE: 'production', RUN_CONVERSATION_CONTENT_KEY: 'ab'.repeat(32) })).toThrow(/RUN_CONVERSATION_MODE/);
+    expect(loadConfig({ ...validEnv, RUN_CONVERSATION_MODE: 'synthetic', RUN_CONVERSATION_CONTENT_KEY: 'ab'.repeat(32) }).RUN_CONVERSATION_MODE).toBe('synthetic');
+    const invalidKey = 'never-print-this-content-key';
+    try { loadConfig({ ...validEnv, RUN_CONVERSATION_MODE: 'synthetic', RUN_CONVERSATION_CONTENT_KEY: invalidKey }); }
+    catch (error) { expect(String(error)).not.toContain(invalidKey); }
+  });
+
   it('accepts a complete environment', () => {
     const config = loadConfig(validEnv);
     expect(config.SERVICE_NAME).toBe('web');
@@ -329,5 +339,16 @@ describe('agent provider configuration', () => {
   it('retains a deployment commit only when it is a complete SHA', () => {
     expect(loadConfig({ ...validEnv, RAILWAY_GIT_COMMIT_SHA: 'a'.repeat(40) }).RAILWAY_GIT_COMMIT_SHA).toBe('a'.repeat(40));
     expect(() => loadConfig({ ...validEnv, RAILWAY_GIT_COMMIT_SHA: 'latest' })).toThrow(/RAILWAY_GIT_COMMIT_SHA/);
+  });
+});
+
+
+describe('synthetic preview deployment boundary', () => {
+  it('is disabled by default and requires an explicit non-production capability and dedicated secret', () => {
+    expect(loadConfig(validEnv).WORKSPACE_PREVIEW_MODE).toBe('disabled');
+    expect(() => loadConfig({ ...validEnv, WORKSPACE_PREVIEW_MODE: 'synthetic-local' })).toThrow(/WORKSPACE_PREVIEW/);
+    expect(() => loadConfig({ ...validEnv, WORKSPACE_PREVIEW_MODE: 'synthetic-local', WORKSPACE_PREVIEW_SECRET: 's'.repeat(32), NODE_ENV: 'production' })).toThrow(/WORKSPACE_PREVIEW/);
+    expect(loadConfig({ ...validEnv, WORKSPACE_PREVIEW_MODE: 'synthetic-local', WORKSPACE_PREVIEW_SECRET: 's'.repeat(32) }).WORKSPACE_PREVIEW_PORT).toBe(4311);
+    expect(() => loadConfig({ ...validEnv, WORKSPACE_PREVIEW_MODE: 'solari' })).toThrow(/WORKSPACE_PREVIEW/);
   });
 });

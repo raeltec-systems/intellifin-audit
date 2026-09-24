@@ -33,7 +33,8 @@ const currentRequest = cache(async (): Promise<Request> => {
   return new Request('http://server.local/', { headers: new Headers(incoming) });
 });
 
-const currentSession = cache(async () => requireSession(await currentRequest()));
+/** Authentication only; application commands must still authorize their exact action. */
+export const currentSession = cache(async () => requireSession(await currentRequest()));
 
 const findRoleOnce = cache(async (userId: string): Promise<Role | null> => {
   const runtime = await getRuntime();

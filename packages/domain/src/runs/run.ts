@@ -11,6 +11,8 @@ export type RunKind = 'STANDARD' | 'REGRESSION';
  * Run Detail state has to state — beside the reason it records.
  */
 export interface RunCancellationRequest {
+  /** Server-created interaction identity retained through worker restart. */
+  readonly commandId?: string;
   readonly requestedBy: string;
   readonly sessionId: string;
   readonly requestedAt: string;
@@ -39,7 +41,38 @@ export interface RunPauseRequest {
   readonly requestedBy: string;
   readonly sessionId: string;
   readonly requestedAt: string;
+  /** The server-assigned owner of this pause request, when one exists. */
+  readonly commandId?: string | null;
 }
+
+/**
+ * The frozen logical inspection unit a deferred safety pause names.
+ *
+ * `workItemId` is the durable identity that survives retries. `runRevision` and
+ * `planDigest` are admission freshness facts; neither is used as an attempt identity
+ * after the latch has been accepted. The subject and target are retained beside the
+ * opaque id so a reader can prove that the latch was never silently retargeted.
+ */
+export interface DeferredPauseAnchor {
+  readonly workItemId: string;
+  readonly subjectKey: string | null;
+  readonly registrationId: string;
+  readonly runRevision: number;
+  readonly planDigest: string;
+}
+
+/** A deferred safety latch retained until the worker applies or supersedes it. */
+export interface RunDeferredPauseRequest extends DeferredPauseAnchor {
+  readonly runId: string;
+  readonly commandId: string;
+  readonly state: DeferredPauseState;
+  readonly requestedBy: string;
+  readonly sessionId: string;
+  readonly requestedAt: string;
+  readonly expectedControlEpoch: number;
+}
+
+export type DeferredPauseState = 'PENDING' | 'APPLIED' | 'SUPERSEDED';
 export interface RunRecord {
   readonly runId: string; readonly correlationId: string; readonly procedureId: string;
   readonly versionId: string; readonly versionNumber: number; readonly procedureName: string;
@@ -157,6 +190,7 @@ export const RUN_PAUSE_REFUSALS = {
   AWAITING: 'A Run waiting on an answer cannot be paused.',
   NOT_RUNNING: 'Only a Running Run can be paused.',
   ALREADY_REQUESTED: 'A pause has already been requested for this Run.',
+  INVALID_COMMAND_ID: 'The pause command identity was not valid.',
 } as const;
 
 export const RUN_RESUME_REFUSALS = {

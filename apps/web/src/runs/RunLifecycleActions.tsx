@@ -81,24 +81,30 @@ export function RunLifecycleActions({ runId, active, awaitingAuditor = false, ca
     } finally { setBusy(false); setConfirming(false); }
   };
 
-  return <section id="run-lifecycle" data-client-ready={clientReady} className="ls-card ls-stack" aria-labelledby="run-lifecycle-heading">
-    <h2 id="run-lifecycle-heading">Run actions</h2>
-    {message !== null && <div key={attempt} className="ls-stack">
+  // A toolbar, not a card (UI cleanup 2026-09-21, UX-23, UX-48): the walkthrough found
+  // "Run actions" as a card of full-width buttons stacked one per row, under a banner and
+  // above the tabs, which is most of a laptop viewport before the Run's content. The
+  // controls sit in one row now; the heading stays for assistive technology.
+  return <section id="run-lifecycle" data-client-ready={clientReady} className="ls-toolbar__group" aria-labelledby="run-lifecycle-heading">
+    <h2 id="run-lifecycle-heading" className="ls-visually-hidden">Run actions</h2>
+    {message !== null && <div key={attempt} className="ls-stack ls-toolbar__message">
       <Banner tone={message.tone} title={message.title}>{message.body ? <p>{message.body}</p> : null}</Banner>
       {message.runId && <a href={`/runs/${message.runId}`}>Open the linked Run</a>}
     </div>}
-    {unknown && <p><a href={`/runs/${runId}`}>Reload this Run</a></p>}
+    {unknown && <p className="ls-toolbar__message"><a href={`/runs/${runId}`}>Reload this Run</a></p>}
     {/* Pause, Resume and Cancel are DELEGATED, because Live View carries the same three
         controls and one implementation is what stops the two surfaces disagreeing about a
         stale revision or a blocked retry. Rerun stays here: a terminal Run's Live View is
         a Replay and has nothing to rerun from. */}
-    <RunPauseControls runId={runId} procedureName={procedureName} paused={paused}
-      pausePending={pausePending} awaitingAuditor={awaitingAuditor} pausable={pausable}
-      runRevision={runRevision} />
-    <RunCancelControl runId={runId} procedureName={procedureName} active={active} cancelPending={cancelPending} />
-    {active ? null
-      : <Button variant="secondary" busy={busy} onClick={() => setConfirming(true)}
-          {...(unknown ? { disabledReason: 'The last response was lost. Reload this Run before trying again.' } : {})}>Rerun</Button>}
+    <div className="ls-actions">
+      <RunPauseControls runId={runId} procedureName={procedureName} paused={paused}
+        pausePending={pausePending} awaitingAuditor={awaitingAuditor} pausable={pausable}
+        runRevision={runRevision} controlRefreshKey={requestToken} />
+      <RunCancelControl runId={runId} procedureName={procedureName} active={active} cancelPending={cancelPending} />
+      {active ? null
+        : <Button variant="secondary" busy={busy} onClick={() => setConfirming(true)}
+            {...(unknown ? { disabledReason: 'The last response was lost. Reload this Run before trying again.' } : {})}>Rerun</Button>}
+    </div>
     <ConfirmDialog open={confirming} weight="routine"
       title="Start a new Run?"
       consequence={`This queues a new Run for ${procedureName}, recording this Run as its predecessor. ${RUN_UNCHANGED_SENTENCE}`}

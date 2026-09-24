@@ -232,9 +232,13 @@ test.describe('Live View', () => {
     const seeded = await seedRun({ workspace: true, frame: true });
     await page.goto(`/runs/${seeded.runId}/live`);
 
-    // The chrome: state word, workspace identity and the isolation note (UX-DR24).
+    // The chrome: state word, the workspace GUARANTEE as a word, and the isolation note
+    // (UX-DR24). The platform reference used to sit on this strip — thirty-six characters
+    // a reader never types, on the one line that has to be legible at a glance — and is
+    // under Technical details on the rail now (UI cleanup 2026-09-22, UX-28).
     await expect(page.getByText('LIVE', { exact: true })).toBeVisible();
-    await expect(page.locator('.ls-session__workspace')).toContainText(`workspace-${seeded.runId}`);
+    await expect(page.locator('.ls-session__workspace')).not.toContainText(`workspace-${seeded.runId}`);
+    await expect(page.locator('.ls-session__rail .ls-technical')).toContainText(`workspace-${seeded.runId}`);
     // The worker keeps its operational handle, but HTML/RSC must not expose it.
     expect(await page.content()).not.toContain('sess_live_view');
     const [workspace] = await sql`SELECT workspace_id FROM run_workspace WHERE run_id=${seeded.runId}`;
@@ -252,9 +256,14 @@ test.describe('Live View', () => {
       { timeout: 10_000 },
     ).toBeGreaterThan(0);
 
-    // The alt text narrates the Step, and the caption names where it was captured.
+    // The alt text narrates the Step IN AUDIT WORDS, and the caption names where it was
+    // captured. The plan-step id that used to end this sentence is under Technical details
+    // on the rail: it was inside the one string a screen-reader user hears as the
+    // picture's caption (UI cleanup 2026-09-22, UX-28).
     const alt = await frame.getAttribute('alt');
-    expect(alt).toContain('target-1-1');
+    expect(alt).not.toContain('target-1-1');
+    expect(alt).toMatch(/^[A-Z][a-z]+ing /);
+    await expect(page.locator('.ls-session__narration')).toHaveText(alt ?? '');
     await expect(page.getByText(SOURCE_LOCATION)).toBeVisible();
 
     // No object-store URL reaches the browser: every image on this page is same-origin
@@ -318,11 +327,24 @@ test.describe('Live View', () => {
       expect(Math.abs(after.stageOffset)).toBeLessThan(1);
       expect(Math.abs(after.frameOffset - before.frameOffset)).toBeLessThan(1);
       expect(after.stageHeight).toBeLessThan(after.railHeight);
-      // Demonstrate that this assertion distinguishes the old, stretching behavior.
-      await stage.evaluate((node) => { node.style.alignSelf = 'stretch'; });
+      // Demonstrate that this assertion distinguishes the old, stretching behavior. Two
+      // properties, because the repair now works in two layers (UI cleanup 2026-09-22,
+      // UX-29): `.ls-session__body`'s `align-items: start` stops the grid stretching this
+      // cell to the rail's height, and `.ls-session__stage--frame`'s `align-items:
+      // flex-start` keeps a real frame's own top anchored to the stage's top rather than
+      // centred within whatever height the stage ends up. Forcing only the outer stretch
+      // back on is not the old defect any more — the frame stays anchored regardless — so
+      // both are restored together to reproduce what a reader used to see.
+      await stage.evaluate((node) => {
+        node.style.alignSelf = 'stretch';
+        node.style.alignItems = 'center';
+      });
       const oldBehavior = await measure();
       expect(oldBehavior.frameOffset - after.frameOffset).toBeGreaterThan(100);
-      await stage.evaluate((node) => { node.style.removeProperty('align-self'); });
+      await stage.evaluate((node) => {
+        node.style.removeProperty('align-self');
+        node.style.removeProperty('align-items');
+      });
       // Reload, rather than styling the fix back in: the final assertion reads the
       // actual server-rendered component again, not a test-invented repaired value.
       await page.reload();
@@ -343,9 +365,43 @@ test.describe('Live View', () => {
     await expect(page.getByText(LIVE_VIEW_STAGE.adapterOnly)).toBeVisible();
     await expect(page.getByText('No Agent Workspace', { exact: true })).toBeVisible();
     await expect(page.locator('.ls-session__frame')).toHaveCount(0);
-    // UX-DR25's adapter-only row: a log row instead of a screen.
-    await expect(page.getByText('session-2')).toBeVisible();
+    // UX-DR25's adapter-only row: a log row instead of a screen. The plan step's stored
+    // identifier is under that row's own Technical details (UX-28); what is VISIBLE is the
+    // system and what happened to it, in words.
     await expect(page.getByText('AccessGate')).toBeVisible();
+    await expect(page.getByText('session-2')).toBeHidden();
+    await page.locator('.ls-session__log .ls-technical summary').first().click();
+    await expect(page.getByText('session-2')).toBeVisible();
+  });
+
+  // UI cleanup 2026-09-22, UX-48. The walkthrough measured the workspace screen BELOW the
+  // first viewport at a laptop size, under a title, a status, a banner, a full-width
+  // control stack, a workspace id, a warning and a row of hashes. The screen is what this
+  // surface exists to show, so it has to be in the first viewport when the page opens.
+  test('puts the workspace screen inside the first viewport at 1366x768', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const seeded = await seedRun({ workspace: true, frame: true });
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.goto(`/runs/${seeded.runId}/live`);
+    const frame = page.locator('.ls-session__frame');
+    await expect(frame).toBeVisible({ timeout: 15_000 });
+    // A named file, not a body attachment: the list reporter keeps a body in memory only.
+    const shot = testInfo.outputPath('live-first-viewport-1366.png');
+    await page.screenshot({ path: shot, fullPage: false });
+    await testInfo.attach('live-first-viewport-1366', { path: shot, contentType: 'image/png' });
+    const box = await frame.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.y).toBeLessThan(768);
+    // The WHOLE screen, not only its top edge: a frame is bounded in height inside the
+    // stage, so a capture of any shape is seen in full when the page opens.
+    expect(box!.y + box!.height).toBeLessThanOrEqual(768);
+    // And the flag form, which used to be a full card on the header's action row, is one
+    // closed opener that takes no room until somebody opens it.
+    await expect(page.getByLabel(FLAG_COPY.noteLabel)).toBeHidden();
+    // And nothing pushes the page sideways at this width.
+    const overflow = await page.evaluate(() =>
+      document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
   });
 
   test('a Queued Run disables Watch with the contract’s reason, and says so in Live View too', async ({ page }) => {
@@ -392,6 +448,9 @@ test.describe('Live View', () => {
     // viewport did: Pause, Cancel and Flag stayed fully usable from a width the contract
     // defines as read-only. Each is withdrawn and says why, rather than hidden — the
     // Escalation's question and the Paused banner stay readable on a phone.
+    // The flag form opens from a disclosure in the page header (UI cleanup 2026-09-22,
+    // UX-48); a role locator does not see a control inside a closed one.
+    await page.locator('#run-flag > summary').click();
     const controls = ['Pause', 'Cancel Run', FLAG_COPY.submit];
     for (const name of controls) {
       await expect(page.getByRole('button', { name, exact: true })).toHaveAttribute('aria-disabled', 'true');

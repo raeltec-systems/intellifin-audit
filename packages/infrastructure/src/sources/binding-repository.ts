@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, count, eq } from 'drizzle-orm';
 
 import { isUuidText } from '../db/identifier.js';
 
@@ -102,6 +102,19 @@ function toBinding(row: SelectedRow): PopulationSourceBinding | null {
 }
 
 /** Reads bindings for the surface. Outside any transaction; it changes nothing. */
+/**
+ * What the landing counts (UI cleanup 2026-09-22, UX-37).
+ *
+ * `declaredCountMechanism: 'none'` is the one configuration fault an operator can act on
+ * from this surface: a source nothing confirms the record count of stops every Procedure
+ * bound to it from being submitted, and until now the only place that said so was the
+ * row itself.
+ */
+export interface BindingCountQuery {
+  readonly status?: BindingStatus;
+  readonly declaredCountMechanism?: DeclaredCountMechanism;
+}
+
 export class DrizzleBindingRepository implements BindingRepository {
   constructor(
     private readonly db: Database,
@@ -130,6 +143,27 @@ export class DrizzleBindingRepository implements BindingRepository {
    * (found by the automated reviewer on #21 — the same defect Story 1.8 recorded for
    * the probe sweep and Story 2.3 fixed for the Target System picker).
    */
+  /**
+   * How many sources there are, EXACTLY (UI cleanup 2026-09-22, UX-37).
+   *
+   * Not `(await listBindings()).length`: that read is capped at `BINDING_LIST_LIMIT`, so
+   * a summary built from it would report the cap as the total once a deployment passed
+   * it — the "decided by an EXACT count, never by `rows.length` of a bounded page" rule,
+   * in the one place an operator goes to find out how much there is.
+   */
+  async countBindings(query: BindingCountQuery = {}): Promise<number> {
+    const clauses = [];
+    if (query.status !== undefined) clauses.push(eq(populationSourceBinding.status, query.status));
+    if (query.declaredCountMechanism !== undefined) {
+      clauses.push(eq(populationSourceBinding.declaredCountMechanism, query.declaredCountMechanism));
+    }
+    const rows = await this.db
+      .select({ total: count() })
+      .from(populationSourceBinding)
+      .where(clauses.length === 0 ? undefined : and(...clauses));
+    return rows[0]?.total ?? 0;
+  }
+
   async listActiveBindings(): Promise<readonly PopulationSourceBinding[]> {
     const rows = await this.db.select(SELECTION).from(populationSourceBinding)
       .where(eq(populationSourceBinding.status, 'active'))

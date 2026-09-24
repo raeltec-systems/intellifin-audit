@@ -358,6 +358,83 @@
       "when": 1789593585941,
       "tag": "0050_freezing_gladiator",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1789821579644,
+      "tag": "0051_bitter_exodus",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1789825248339,
+      "tag": "0052_dusty_lockheed",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1789830591549,
+      "tag": "0053_run_interaction_commands",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1789835266123,
+      "tag": "0054_run_control_lease",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1789842514684,
+      "tag": "0055_deferred_pause_latch",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1789848779393,
+      "tag": "0056_confirmed_conversation_resume",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1789915325199,
+      "tag": "0057_confirmed_conversation_stop",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1789928217381,
+      "tag": "0058_large_doomsday",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1789933529441,
+      "tag": "0059_confirmed_conversation_answer",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1789938437116,
+      "tag": "0060_same_yellow_claw",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1789979791452,
+      "tag": "0061_hesitant_gertrude_yorkes",
+      "breakpoints": true
     }
   ]
 }

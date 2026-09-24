@@ -72,6 +72,7 @@ import { runRunLevelGate, SECURITY_DENIED_EVENT } from './run-gate.js';
 import { completeRun } from './complete-run.js';
 import { performCancellation } from './cancel-run.js';
 import { performPause } from './pause-run.js';
+import { DEFERRED_PAUSE_SUPERSEDED_EVENT } from './deferred-pause-run.js';
 
 /** The bounded worker input. It is deliberately the same shape as the population job. */
 export type AgentWorkItemJob = PopulationJob;
@@ -723,6 +724,28 @@ export async function executeAgentWorkItem(
       if (pause === null) return;
       stopped = true;
       const at = nowIso(dependencies.clock);
+      const deferred = typeof context.readDeferredPause === 'function' ? await context.readDeferredPause() : null;
+      if (deferred !== null) {
+        await context.settleDeferredPause('SUPERSEDED', at, 'immediate-pause');
+        const superseded = await context.auditEvents.append({
+          actor: { type: 'system', id: 'deferred-pause-coordinator' },
+          eventType: DEFERRED_PAUSE_SUPERSEDED_EVENT,
+          source: 'worker',
+          outcome: 'failure',
+          aggregateId: run.runId,
+          correlationId: run.correlationId,
+          sessionId: deferred.sessionId,
+          payload: {
+            commandId: deferred.commandId,
+            requestedBy: deferred.requestedBy,
+            workItemId: deferred.workItemId,
+            subjectKey: deferred.subjectKey,
+            registrationId: deferred.registrationId,
+            reason: 'immediate-pause',
+          },
+        });
+        await context.notifyTimeline(superseded.sequence);
+      }
       if (inFlight !== undefined) {
         // The attempt is GIVEN BACK. A person pausing is not the agent failing, so it must
         // not spend one of the Work Item's bounded retry cycles — eight pauses would
@@ -760,6 +783,55 @@ export async function executeAgentWorkItem(
         stepExecutionId: inFlight?.execution.stepExecutionId ?? null,
         workItemId: inFlight?.item.workItemId ?? null,
       });
+    });
+    if (!committed) return 'lost';
+    return stopped ? 'stopped' : 'continue';
+  };
+
+  /** Apply only after the named Work Item is durably settled and before another unit. */
+  const deferredBoundary = async (): Promise<'continue' | 'stopped' | 'lost'> => {
+    let stopped = false;
+    const committed = await guarded(async (context) => {
+      // Older in-memory execution fakes do not expose the optional deferred capability;
+      // production AgentWorkRepository always does. Preserve their ordinary boundary.
+      if (typeof context.readDeferredPause !== 'function') return;
+      const marker = await context.readDeferredPause();
+      if (marker === null) return;
+      // Stronger stops are arbitrated by the existing lifecycle boundary. Leave this
+      // latch pending so cancellation or immediate Pause can supersede it atomically.
+      if (context.run?.cancellation !== null || context.run?.pauseRequest !== null) return;
+      const settled = context.workItems.find(candidate => candidate.workItemId === marker.workItemId);
+      const otherPending = context.workItems.some(candidate => candidate.workItemId !== marker.workItemId && !isTerminalWorkItem(candidate));
+      if (settled === undefined || !isTerminalWorkItem(settled) || !otherPending) return;
+      const at = nowIso(dependencies.clock);
+      await context.settleDeferredPause('APPLIED', at);
+      checkpoint = {
+        ...checkpoint,
+        revision: checkpoint.revision + 1,
+        status: 'RETRY',
+        leaseUntil: at,
+        workItemId: marker.workItemId,
+        waitId: null,
+        pendingWait: null,
+        diagnostic: null,
+      };
+      await context.saveCheckpoint(checkpoint, 'PAUSED');
+      await performPause(context, {
+        run,
+        request: {
+          requestedBy: marker.requestedBy,
+          sessionId: marker.sessionId,
+          requestedAt: marker.requestedAt,
+          commandId: marker.commandId,
+        },
+        waitId: dependencies.ids.next(),
+        at,
+        workItemId: marker.workItemId,
+        pauseMode: 'after-inspection',
+        subjectKey: marker.subjectKey,
+        registrationId: marker.registrationId,
+      });
+      stopped = true;
     });
     if (!committed) return 'lost';
     return stopped ? 'stopped' : 'continue';
@@ -1161,9 +1233,14 @@ export async function executeAgentWorkItem(
   try {
     await resolveFrozenCredentials();
     for (const item of items.sort((left, right) => left.ordinal - right.ordinal)) {
-      if (isTerminalWorkItem(item)) continue;
       const itemBoundary = await lifecycleBoundary();
       if (itemBoundary !== 'continue') return { retry: false };
+      // Re-read the sticky latch before every next unit, including after a target that
+      // settled during this very invocation. Checking only initially terminal items
+      // would allow a newly completed target to advance into a different inspection.
+      const deferred = await deferredBoundary();
+      if (deferred !== 'continue') return { retry: false };
+      if (isTerminalWorkItem(item)) continue;
       const entry = targetForItem(item);
       const record = recordForItem(item);
       if (entry === null || record === null) {
@@ -1445,6 +1522,13 @@ export async function executeAgentWorkItem(
           const cause = runLimit(stepExecutions, checkpoint, plan, dependencies.clock) ?? 'run-token-limit';
           await stopRun(cause, cause); return { retry: false };
         }
+        // The P-4 page reader owns a complete model turn, just as the generic action
+        // loop does below. A pause or cancellation may arrive while that turn is in
+        // flight; honour it before interpreting the response or registering its batch.
+        // `lifecycleBoundary` checks cancellation first, preserving the stronger-stop
+        // rule, and marks an in-flight attempt SUPERSEDED so resume gets a fresh read.
+        const pageBoundary = await lifecycleBoundary({ item, execution });
+        if (pageBoundary !== 'continue') return { retry: false };
         if (page.kind === 'uncertain') return persistWait({ item, execution, kind: 'retry-or-skip', options: FIXED_ESCALATION_OPTIONS['retry-or-skip'], diagnostic: 'insufficient-evidence', supportingEvidenceIds: [current.snapshot.evidenceId] });
         if (page.kind === 'refused') {
           if (page.diagnostic === 'model-invalid-action') { await stopRun('model-invalid-action', 'action-denied'); return { retry: false }; }
@@ -1766,6 +1850,29 @@ export async function executeAgentWorkItem(
       if (await stopAtFinalLimit(context)) return true;
       const pending = context.workItems.some((item) => !isTerminalWorkItem(item));
       if (pending) return false;
+      const deferred = typeof context.readDeferredPause === 'function' ? await context.readDeferredPause() : null;
+      if (deferred !== null) {
+        const at = nowIso(dependencies.clock);
+        await context.settleDeferredPause('SUPERSEDED', at, 'run-finalized');
+        const superseded = await context.auditEvents.append({
+          actor: { type: 'system', id: 'deferred-pause-coordinator' },
+          eventType: DEFERRED_PAUSE_SUPERSEDED_EVENT,
+          source: 'worker',
+          outcome: 'failure',
+          aggregateId: run.runId,
+          correlationId: run.correlationId,
+          sessionId: deferred.sessionId,
+          payload: {
+            commandId: deferred.commandId,
+            requestedBy: deferred.requestedBy,
+            workItemId: deferred.workItemId,
+            subjectKey: deferred.subjectKey,
+            registrationId: deferred.registrationId,
+            reason: 'run-finalized',
+          },
+        });
+        await context.notifyTimeline(superseded.sequence);
+      }
       const next: AgentWorkCheckpoint = { ...checkpoint, status: 'COMPLETE', workItemId: null, pendingWait: null, waitId: null, diagnostic: null };
       await context.saveCheckpoint(next, 'RUNNING');
       await appendEvent(context, run, 'agent-work-complete', 'RUNNING', next, {

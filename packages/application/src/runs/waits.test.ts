@@ -77,6 +77,7 @@ class FakeWaitContext implements WaitContext {
   authorizationRoles = { findRole: async (): Promise<typeof this.role> => this.role };
   readWait = async (waitId: string): Promise<RunWait | null> => this.wait?.waitId === waitId ? this.wait : null;
   readEscalationDetails = async (): Promise<null> => null;
+  readResumeControl = async () => ({ lease: null, now: NOW });
   auditEvents = {
     append: async (draft: { eventType: string; payload: Record<string, unknown> }) => {
       this.sequence += 1;

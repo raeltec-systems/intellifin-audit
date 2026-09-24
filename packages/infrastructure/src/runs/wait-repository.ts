@@ -1,3 +1,4 @@
+import { readLockedConversationQuestion } from './run-conversation-question.js';
 import { sql } from 'drizzle-orm';
 import { PgBoss } from 'pg-boss';
 import {
@@ -37,6 +38,7 @@ import {
   sendWaitWake,
 } from './wait-rows.js';
 import { withRunExecutionContext } from './adapter-execution-repository.js';
+import { readLockedRunControlLease, runControlServerTime } from './run-control-lease-repository.js';
 
 /** Queue name for delayed wake jobs. The queue is created by the release migrator. */
 export const WAIT_QUEUE = WAIT_QUEUE_NAME;
@@ -211,7 +213,12 @@ function resultRows(result: unknown): readonly RawRow[] {
 
 /** Shared persistence for all wait producers and the answer/timeout commands. */
 export class PostgresWaitRepository implements WaitRepository {
-  constructor(private readonly db: Database) {}
+  /**
+   * A Database starts the wait unit of work; a Transaction creates a nested savepoint so
+   * the caller can compose pause/resume with its authoritative state change. Both handles
+   * expose the same Drizzle transaction surface, which keeps the connection choice typed.
+   */
+  constructor(private readonly db: Database | Transaction) {}
 
   async transaction<T>(runId: string, work: (context: WaitContext) => Promise<T>): Promise<T> {
     if (!isUuidText(runId)) throw new Error('Invalid Run identity');
@@ -231,6 +238,7 @@ export class PostgresWaitRepository implements WaitRepository {
             if (addressed !== null) currentWait = addressed;
             return addressed;
           },
+          readConversationQuestion: () => readLockedConversationQuestion(tx, runId),
           async readEscalationDetails(waitId: string): Promise<EscalationDetails | null> {
             if (!isUuidText(waitId)) return null;
             const normalizedWaitId = waitId.toLowerCase();
@@ -269,15 +277,18 @@ export class PostgresWaitRepository implements WaitRepository {
             let question: string | null = null;
             if (workItemId !== null) {
               const turnResult = await tx.execute(sql`
-                SELECT response
-                FROM run_agent_turn
-                WHERE run_id = ${runId}
-                  AND work_item_id = ${workItemId}
-                  AND status = 'COMPLETED'
-                ORDER BY sequence DESC
-                LIMIT 1
+                SELECT t.response
+                FROM run_agent_turn t JOIN run_step_execution s
+                  ON s.run_id=t.run_id AND s.step_execution_id=t.step_execution_id
+                WHERE t.run_id = ${runId}
+                  AND t.work_item_id = ${workItemId}
+                  AND t.status = 'COMPLETED'
+                  AND s.plan_step_id = ${eventMetadata?.stepId ?? null}
+                  AND t.snapshot_evidence_id::text IN (SELECT jsonb_array_elements_text(${JSON.stringify(eventMetadata?.supportingEvidenceIds ?? [])}::jsonb))
+                ORDER BY t.sequence DESC
+                LIMIT 2
               `);
-              question = agentQuestion(resultRows(turnResult)[0]?.response);
+              question = resultRows(turnResult).length === 1 ? agentQuestion(resultRows(turnResult)[0]?.response) : null;
             }
 
             return {
@@ -288,6 +299,10 @@ export class PostgresWaitRepository implements WaitRepository {
             };
           },
           authorizationRoles: new DrizzleRoleRepository(tx),
+          async readResumeControl() {
+            const lease = await readLockedRunControlLease(tx, runId);
+            return { lease, now: new Date(await runControlServerTime(tx)) };
+          },
           async saveRunState(state) {
             const current = currentRun;
             if (!current) return;
@@ -303,12 +318,13 @@ export class PostgresWaitRepository implements WaitRepository {
            * then reports.
            */
           async requestPause(request) {
-            await tx.execute(sql`UPDATE audit_run SET pause_requested_at = ${request.requestedAt}::timestamptz, pause_requested_by = ${request.requestedBy}, pause_requested_session = ${request.sessionId} WHERE run_id = ${runId} AND pause_requested_at IS NULL`);
+            const inserted = await tx.execute(sql`UPDATE audit_run SET pause_requested_at = ${request.requestedAt}::timestamptz, pause_requested_by = ${request.requestedBy}, pause_requested_session = ${request.sessionId}, pause_requested_command_id = ${request.commandId ?? null}::uuid WHERE run_id = ${runId} AND pause_requested_at IS NULL RETURNING run_id`);
+            if (resultRows(inserted).length !== 1) throw new Error('Pause marker was not recorded');
             const current = currentRun;
             if (current) currentRun = { ...current, pauseRequest: request };
           },
           async requestCancellation(request) {
-            await tx.execute(sql`UPDATE audit_run SET cancel_requested_at = ${request.requestedAt}::timestamptz, cancel_requested_by = ${request.requestedBy}, cancel_requested_session = ${request.sessionId}, cancel_reason = ${request.reason} WHERE run_id = ${runId} AND cancel_requested_at IS NULL`);
+            await tx.execute(sql`UPDATE audit_run SET cancel_requested_at = ${request.requestedAt}::timestamptz, cancel_requested_by = ${request.requestedBy}, cancel_requested_session = ${request.sessionId}, cancel_reason = ${request.reason}, cancel_requested_command_id = ${request.commandId ?? null}::uuid WHERE run_id = ${runId} AND cancel_requested_at IS NULL`);
             const current = currentRun;
             if (current) currentRun = { ...current, cancellation: request };
           },
@@ -408,7 +424,7 @@ export class PostgresWaitRepository implements WaitRepository {
             // closes by `answer` and a pause by `resume`, and generation 45's CHECK refuses
             // the other pairing outright.
             const closureKind = waitClosureKindFor(lockedWait.kind);
-            const closed = await tx.execute(sql`UPDATE run_wait SET closed_at = ${input.now}::timestamptz, closure_kind = ${closureKind}, answer_option_id = ${input.answerOptionId}, actor = ${input.actor} WHERE wait_id = ${input.waitId} AND run_id = ${runId} AND closed_at IS NULL RETURNING ${WAIT_COLUMNS}`);
+            const closed = await tx.execute(sql`UPDATE run_wait SET closed_at = ${input.now}::timestamptz, closure_kind = ${closureKind}, answer_option_id = ${input.answerOptionId}, actor = ${input.actor}, answer_command_id = ${input.commandId ?? null}::uuid WHERE wait_id = ${input.waitId} AND run_id = ${runId} AND closed_at IS NULL RETURNING ${WAIT_COLUMNS}`);
             const closedWait = parseWait(resultRows(closed)[0] ?? {});
             if (closedWait === null) throw new Error('Escalation wait closed concurrently');
             // Keep the original deadline job. It is the one durable wake for this wait;

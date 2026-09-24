@@ -9,6 +9,7 @@ import {
   clampReplayIndex,
   replayFrameAt,
   replayFrameForWorkItem,
+  replayInitialSelection,
   replayJumpTargets,
   resolveFrameWorkItems,
   replayObservationsThrough,
@@ -53,6 +54,23 @@ function wait(overrides: Partial<RunReplayWait> & { readonly waitId: string; rea
 }
 
 describe('where a Replay jump lands', () => {
+  it('anchors a record deep link to its same-Run stored inspection rather than frame zero', () => {
+    const targets = replayJumpTargets({ frames: FRAMES, framesTotal: 4,
+      workItems: [{ workItemId: WORK_B, displayName: 'LoanCore', subjectKey: 'E-2' }], exceptions: [], waits: [] });
+    expect(replayInitialSelection(WORK_B.toUpperCase(), targets, 4)).toMatchObject({ kind: 'inspection', frameIndex: 2 });
+    expect(replayInitialSelection(undefined, targets, 4)).toEqual({ kind: 'start', frameIndex: 0 });
+    for (const value of [WORK_A, '', 'not-an-id', [WORK_B, WORK_A]])
+      expect(replayInitialSelection(value, targets, 4)).toEqual({ kind: 'unavailable', frameIndex: null });
+  });
+
+  it('keeps a requested bounded-out capture unavailable without claiming none was captured', () => {
+    const targets = replayJumpTargets({ frames: FRAMES.slice(0, 2), framesTotal: 4,
+      workItems: [{ workItemId: WORK_B, displayName: 'LoanCore', subjectKey: 'E-2' }], exceptions: [], waits: [] });
+    expect(replayInitialSelection(WORK_B, targets, 2)).toMatchObject({
+      kind: 'inspection', frameIndex: null, target: { absence: 'not-read' },
+    });
+  });
+
   it('takes a Work Item to its FIRST frame, so a jump starts at it', () => {
     expect(replayFrameForWorkItem(FRAMES, WORK_A)).toBe(0);
     expect(replayFrameForWorkItem(FRAMES, WORK_B)).toBe(2);

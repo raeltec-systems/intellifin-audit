@@ -246,6 +246,66 @@ export function validateAuditEventDraft(draft: AuditEventDraft): AuditEventDraft
   if (Array.isArray(draft.payload)) {
     throw new AuditEventValidationError('payload', 'must be a JSON object');
   }
+  // Conversation cancellation extends the existing fact with one server-owned ID.
+  // Retain a closed payload so arbitrary interaction text cannot enter the audit fact.
+  if (['lifecycle.run-cancel-requested', 'lifecycle.run-canceled'].includes(draft.eventType) &&
+    Object.hasOwn(draft.payload, 'commandId')) {
+    const fields = draft.eventType === 'lifecycle.run-canceled'
+      ? ['commandId', 'priorState', 'state', 'reason', 'requestedAt', 'occurredAt', 'performedBy']
+      : ['commandId', 'state', 'reason', 'requestedAt', 'performedBy'];
+    if (Object.keys(draft.payload).length !== fields.length || fields.some(key => !Object.hasOwn(draft.payload, key)) ||
+      typeof draft.payload.commandId !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(draft.payload.commandId))
+      throw new AuditEventValidationError('payload', 'cancellation interaction identity requires its closed payload');
+  }
+  if (draft.eventType === 'execution.escalation-answered' && Object.hasOwn(draft.payload, 'commandId')) {
+    const fields = ['waitId','kind','answerOptionId','closureKind','priorState','state','occurredAt','commandId','planDigest','expectedRunRevision','questionAnchor'];
+    const rawAnchor = draft.payload.questionAnchor;
+    const anchor = rawAnchor as JsonObject;
+    const keys = ['runId','waitId','kind','runRevision','openedAt','deadline','raisedEventId','questionDigest'];
+    if (Object.keys(draft.payload).length !== fields.length || fields.some(key => !Object.hasOwn(draft.payload, key)) ||
+      typeof draft.payload.commandId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(draft.payload.commandId) ||
+      typeof rawAnchor !== 'object' || rawAnchor === null || Array.isArray(rawAnchor) || Object.keys(anchor).length !== keys.length ||
+      keys.some(key => !Object.hasOwn(anchor, key)) || anchor.runId !== draft.aggregateId || anchor.waitId !== draft.payload.waitId ||
+      anchor.kind !== draft.payload.kind || anchor.runRevision !== draft.payload.expectedRunRevision ||
+      !['runId','waitId','raisedEventId'].every(key => typeof anchor[key] === 'string' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(anchor[key] as string)) ||
+      typeof anchor.runRevision !== 'number' || !Number.isInteger(anchor.runRevision) || anchor.runRevision < 0 || anchor.runRevision > 2147483647 ||
+      !['openedAt','deadline'].every(key => typeof anchor[key] === 'string' && Number.isFinite(Date.parse(anchor[key] as string)) &&
+        new Date(anchor[key] as string).toISOString() === anchor[key]) ||
+      Date.parse(anchor.deadline as string) <= Date.parse(anchor.openedAt as string) ||
+      !['choose-candidate','unnamed-value','retry-or-skip'].includes(anchor.kind as string) ||
+      typeof draft.payload.answerOptionId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(draft.payload.answerOptionId) ||
+      draft.source !== 'web' || draft.actor.type !== 'human' || draft.outcome !== 'success' ||
+      draft.payload.closureKind !== 'answer' || draft.payload.priorState !== 'AWAITING_AUDITOR' ||
+      draft.payload.state !== (draft.payload.answerOptionId === 'abort' ? 'CANCELED' : 'RUNNING') ||
+      typeof anchor.questionDigest !== 'string' || !HASH_PATTERN.test(anchor.questionDigest) ||
+      typeof draft.payload.planDigest !== 'string' || !HASH_PATTERN.test(draft.payload.planDigest))
+      throw new AuditEventValidationError('payload', 'answer interaction requires its exact question identity and closed payload');
+  }
+  if (draft.eventType === 'configuration.user-permission-changed') {
+    const p = draft.payload;
+    if (Object.keys(p).length !== 7 || typeof p.subjectUserId !== 'string' || !p.subjectUserId || p.subjectUserId.includes('@') ||
+      p.permission !== 'run.control-transfer' || typeof p.granted !== 'boolean' || p.priorGranted !== !p.granted ||
+      typeof p.revision !== 'number' || !Number.isInteger(p.revision) || p.revision < 1 || p.revision > 2147483647 || p.priorRevision !== p.revision-1 ||
+      !['administration','role-change'].includes(p.cause as string) || draft.actor.type !== 'human' || draft.source !== 'web' || draft.outcome !== 'success' ||
+      (draft.aggregateId !== undefined && draft.aggregateId !== 'platform'))
+      throw new AuditEventValidationError('payload', 'permission receipt requires its exact grant revision');
+  }
+  if (draft.eventType === 'lifecycle.run-control-lease-transferred') {
+    const p = draft.payload;
+    const fields = ['operation','commandId','requestKey','expectedEpoch','priorEpoch','priorHolderId','epoch','holderId','reasonRef','updatedAt','expiresAt'];
+    if (Object.keys(p).length !== fields.length || fields.some(key => !Object.hasOwn(p,key)) ||
+      p.operation !== 'transfer' || !['commandId','requestKey'].every(key => typeof p[key] === 'string' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(p[key] as string)) ||
+      p.reasonRef !== p.commandId || typeof p.expectedEpoch !== 'number' || !Number.isInteger(p.expectedEpoch) ||
+      p.expectedEpoch < 1 || p.expectedEpoch >= 2147483647 || p.priorEpoch !== p.expectedEpoch || p.epoch !== p.expectedEpoch+1 ||
+      p.holderId !== draft.actor.id || typeof p.priorHolderId !== 'string' || !p.priorHolderId || p.priorHolderId === p.holderId ||
+      !['updatedAt','expiresAt'].every(key => typeof p[key] === 'string' && Number.isFinite(Date.parse(p[key] as string)) &&
+        new Date(p[key] as string).toISOString() === p[key]) || Date.parse(p.expiresAt as string)-Date.parse(p.updatedAt as string) !== 120000 ||
+      draft.actor.type !== 'human' || draft.source !== 'web' || draft.outcome !== 'success')
+      throw new AuditEventValidationError('payload', 'transfer receipt requires its exact proposal and lease transition');
+  }
   return draft;
 }
 

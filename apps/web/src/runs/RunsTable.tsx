@@ -4,38 +4,45 @@ import type { RunListChange, RunListRow, RunStopFacts } from '@intellifin/infras
 
 import { Absent } from '../design/Absent';
 import { DataTable } from '../design/DataTable';
+import { Reference } from '../design/Reference';
 import { StatusBadge } from '../design/StatusBadge';
+import { Timestamp } from '../design/Timestamp';
+import { readablePeriod } from '../design/time';
 import { NOT_COMPARABLE_SENTENCE, RUNS_EMPTY_STATE, runChangeSummary } from '../design/copy';
 import { ActorName } from './ActorName';
 import { StopReasonNote } from './StopReason';
-import {
-  elapsedText,
-  gateWord,
-  periodText,
-  resultOutcomeWord,
-  runLifecycleWord,
-} from './labels';
+import { elapsedText, gateWord, resultOutcomeWord, runLifecycleWord } from './labels';
+import { ELAPSED, RUNS_CAPTION, RUNS_COLUMNS, STARTED_BY, STILL_RUNNING } from './runs-list-words';
 
 /**
- * The Runs table — EXPERIENCE.md's ten columns, in its order.
+ * The Runs table — EXPERIENCE.md's revised six columns, in its order
+ * (UI cleanup 2026-09-22, UX-17).
  *
- * Run · Procedure · Effective period · Lifecycle · Result outcome · Gate · Review ·
- * Initiator · Elapsed · Change. The Run cell is the row header AND the row's only link;
- * `DataTable` has no `onRowClick` prop and there must never be one, so a row cannot
- * become a click target a keyboard never reaches.
+ * `Run` (the Procedure name, with the short reference and the effective period beneath it)
+ * · `Execution` · `Assessment` · `Evidence checks` · `Started` (by whom, when, and elapsed)
+ * · `Change`. The Run cell is the row header AND the row's only link; `DataTable` has no
+ * `onRowClick` prop and there must never be one, so a row cannot become a click target a
+ * keyboard never reaches.
  *
- * Every badge here is derived from a stored value through a guarded lookup. A value
- * outside a family's vocabulary is WRITTEN IN WORDS rather than guessed into a badge:
- * `StatusBadge` throws on an unknown state, and on a server-rendered list that is a 500
- * for every Run on the page rather than one odd cell.
+ * `[REPAIRED 2026-09-22]` It was TEN columns, and the first was a raw UUID rendered as the
+ * row's own name — thirty-six characters a reader cannot compare by eye, in the one cell
+ * that should say what the Run was about. At a laptop's width the table scrolled the WHOLE
+ * PAGE sideways, which is the one thing EXPERIENCE.md's own responsive rules forbid. Four
+ * columns went: Procedure and Effective period moved INTO the Run cell, which is where a
+ * person looks for them; Initiator and Elapsed moved into `Started`, because who started a
+ * Run and how long it took are facts about one event; and `Review` is gone until a Result
+ * can be sent for review, which the caption says out loud.
  *
- * Two things the owner could not read off this table (2026-09-15) are on it now. A Run
- * that stopped before its Gate says WHY under its outcome badge, in words, from the stage
- * checkpoint that ended it — a page of "Inconclusive · No conclusion issued" read as "all
- * the runs failed" with the reason (a stale snapshot) only on the Timeline tab as a code
- * word. And the Initiator is a person's name: a user id is what the row holds, because an
- * address cannot enter the chain, and printing it here was the platform speaking its own
- * language on the one column that names who is accountable.
+ * `Lifecycle`, `Result outcome` and `Gate` are now `Execution`, `Assessment` and `Evidence
+ * checks` — `STATUS_COLUMN_WORDS`, the three questions a Run's status answers. The badge
+ * WORDS are DESIGN.md's and do not move; what changed is that the header now says which of
+ * the three questions its column is answering, so a passed Evidence Quality Gate can never
+ * be read as a passed control.
+ *
+ * Every badge here is derived from a stored value through a guarded lookup. A value outside
+ * a family's vocabulary is WRITTEN IN WORDS rather than guessed into a badge: `StatusBadge`
+ * throws on an unknown state, and on a server-rendered list that is a 500 for every Run on
+ * the page rather than one odd cell.
  */
 export function RunsTable({
   rows,
@@ -53,32 +60,31 @@ export function RunsTable({
 }): React.JSX.Element {
   return (
     <DataTable
-      caption="Runs, newest first, with their lifecycle, Result outcome, Evidence Quality Gate, and change since the previous Run."
+      caption={RUNS_CAPTION}
       first={{
-        header: 'Run',
+        header: RUNS_COLUMNS.run,
         href: (row) => `/runs/${row.runId}`,
-        label: (row) => row.runId,
-        mono: true,
+        // The NAME a person recognises; the short reference and the period sit under it.
+        label: (row) => row.procedureName,
+        detail: (row) => (
+          <span className="ls-run-cell__detail">
+            <Reference kind="Run" value={row.runId} /> · v{row.versionNumber} ·{' '}
+            {readablePeriod(row.period)}
+          </span>
+        ),
       }}
       columns={[
-        { key: 'procedure', header: 'Procedure', render: (row) => row.procedureName },
         {
-          key: 'period',
-          header: 'Effective period',
-          // One line: `2026-08-01 → 2026-08-31` broken after the arrow reads as two dates.
-          render: (row) => <span className="ls-mono ls-nowrap">{periodText(row.period)}</span>,
-        },
-        {
-          key: 'lifecycle',
-          header: 'Lifecycle',
+          key: 'execution',
+          header: RUNS_COLUMNS.execution,
           render: (row) => {
             const word = runLifecycleWord(row.state);
             return word === null ? <>{row.state}</> : <StatusBadge family="run-lifecycle" state={word} />;
           },
         },
         {
-          key: 'outcome',
-          header: 'Result outcome',
+          key: 'assessment',
+          header: RUNS_COLUMNS.assessment,
           render: (row) => {
             const word = resultOutcomeWord(row.outcome);
             const facts = stops.get(row.runId) ?? null;
@@ -91,36 +97,29 @@ export function RunsTable({
           },
         },
         {
-          key: 'gate',
-          header: 'Gate',
+          key: 'evidence-checks',
+          header: RUNS_COLUMNS.evidenceChecks,
           render: (row) => (
             <StatusBadge family="evidence-quality-gate" state={gateWord(row.gateChecks, row.gateFailed)} />
           ),
         },
         {
-          key: 'review',
-          header: 'Review',
-          /*
-            The Auditor Review family — Draft, Submitted, Approved, Finalized. Epic 3
-            creates no review at all and Story 6.3 is what submits one, so every row shows
-            the contract's absent marker. Rendering "Draft" for a review nobody started
-            would state a fact that is not true — Story 2.1's "Active version: Draft"
-            defect in a new column.
-          */
-          render: () => <Absent what="No Auditor Review has started." />,
+          key: 'started',
+          header: RUNS_COLUMNS.started,
+          // Who, when, and how long — one event, one cell. The instant is readable and
+          // carries the exact ISO value in its `datetime` attribute.
+          render: (row) => (
+            <>
+              <Timestamp value={row.initiatedAt} precision="minute" />
+              <span className="ls-caption ls-run-cell__detail">
+                {STARTED_BY} <ActorName id={row.initiatorId} names={names} /> · {ELAPSED}{' '}
+                {elapsedText(row.initiatedAt, row.endedAt, readAt)}
+                {row.endedAt === null ? ` ${STILL_RUNNING}` : ''}
+              </span>
+            </>
+          ),
         },
-        {
-          key: 'initiator',
-          header: 'Initiator',
-          render: (row) => <ActorName id={row.initiatorId} names={names} />,
-        },
-        {
-          key: 'elapsed',
-          header: 'Elapsed',
-          numeric: true,
-          render: (row) => elapsedText(row.initiatedAt, row.endedAt, readAt),
-        },
-        { key: 'change', header: 'Change', render: (row) => <ChangeCell change={row.change} /> },
+        { key: 'change', header: RUNS_COLUMNS.change, render: (row) => <ChangeCell change={row.change} /> },
       ]}
       rows={rows}
       rowKey={(row) => row.runId}

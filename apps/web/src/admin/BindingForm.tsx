@@ -31,6 +31,16 @@ import {
   linesToList,
   listToLines,
 } from './bindings';
+import {
+  FIELD_LIST_BLANK_WARNING,
+  FIELD_LIST_EMPTY,
+  FIELD_LIST_PREVIEW_TITLE,
+  FIELD_ORDER_SENTENCE,
+  SOURCE_NOT_VALIDATED,
+  affectedProceduresSentence,
+  duplicateFieldNames,
+  fieldListDuplicateWarning,
+} from './administration-words';
 import type {
   BindingActionResult,
   BindingFormFields,
@@ -133,6 +143,15 @@ export interface BindingFormProps {
   readonly rowVersion: string;
   /** How many Procedure Versions reference it. */
   readonly referencingProcedures: number;
+  /**
+   * The Active Procedures {@link referencingProcedures} counts, BY NAME (UX-46).
+   *
+   * `null` means the names could not be read — a change that could not read the names is
+   * not a change that affects none, so the confirmation says so rather than showing an
+   * empty list. `[]` on a create form: a new source is referenced by nothing by
+   * definition.
+   */
+  readonly affectedProcedures: readonly string[] | null;
   readonly onCreate?: (fields: BindingFormFields) => Promise<BindingActionResult>;
   readonly onChange?: (fields: ChangeBindingFormFields) => Promise<BindingActionResult>;
   readonly onResult: (result: BindingActionResult) => void;
@@ -158,6 +177,7 @@ export function BindingForm({
   binding,
   rowVersion,
   referencingProcedures,
+  affectedProcedures,
   onCreate,
   onChange,
   onResult,
@@ -277,13 +297,25 @@ export function BindingForm({
   let changesConfiguration = false;
   try { changesConfiguration = binding !== null && bindingDigest({ kind: kind as PopulationSourceKind, location, declaredSchema: linesToList(schema), declaredCountMechanism: mechanism as DeclaredCountMechanism, sensitiveFields: linesToList(sensitive) }) !== binding.digest; } catch { /* invalid fields are refused by the command */ }
   const referencesWarning =
-    changesConfiguration && referencingProcedures > 0 ? ` ${registrationChangeWarning(referencingProcedures)}` : '';
+    changesConfiguration && referencingProcedures > 0
+      ? ` ${registrationChangeWarning(referencingProcedures)} ${affectedProceduresSentence(affectedProcedures, referencingProcedures)}`
+      : '';
 
   const missingCount = declaresNoCount(mechanism);
   const uploadOnly = kind === 'manual-upload';
   const kindWords = sourceKindWords(kind);
   const mechanismWords = countMechanismWords(mechanism);
   const whereWords = locationWords(kind);
+
+  /**
+   * What "Fields this source provides" will be saved as, read back at the reader
+   * (UX-42): the order numbered, so the sentence that the order matters is checkable
+   * rather than asserted, and the duplicate/blank warnings BEFORE a save is refused
+   * for them rather than after.
+   */
+  const fieldNames = linesToList(schema);
+  const duplicateFields = duplicateFieldNames(fieldNames);
+  const hasBlankLines = schema !== '' && schema.split('\n').some((line) => line.trim() === '');
 
   return (
     <>
@@ -376,14 +408,42 @@ export function BindingForm({
               name="declaredSchema"
               rows={4}
               required
-              aria-describedby={`${schemaId}-hint`}
+              aria-describedby={`${schemaId}-hint ${schemaId}-preview`}
               value={schema}
               onChange={(event) => setSchema(event.target.value)}
             />
             <p className="ls-caption" id={`${schemaId}-hint`}>
-              One field name per line, in the order the file has them. The order is part of
-              the {FINGERPRINT_WORD.toLowerCase()}.
+              One field name per line. {FIELD_ORDER_SENTENCE}
             </p>
+
+            {/*
+              The live preview (UX-42): what will actually be saved, numbered in the
+              order it will be saved in — so the sentence above that the order matters
+              is something a reader can check rather than take on trust. It renders as
+              soon as anything is typed, before a save can be refused for it.
+            */}
+            <div className="ls-field-preview" id={`${schemaId}-preview`}>
+              <p className="ls-field-preview__title">{FIELD_LIST_PREVIEW_TITLE}</p>
+              {fieldNames.length === 0 ? (
+                <p className="ls-caption">{FIELD_LIST_EMPTY}</p>
+              ) : (
+                <ol className="ls-field-preview__list">
+                  {fieldNames.map((name, index) => (
+                    <li className="ls-mono" key={`${name}-${index}`}>
+                      {name}
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {duplicateFields.length === 0 ? null : (
+                <p className="ls-caption ls-field-preview__warning">
+                  {fieldListDuplicateWarning(duplicateFields)}
+                </p>
+              )}
+              {hasBlankLines ? (
+                <p className="ls-caption">{FIELD_LIST_BLANK_WARNING}</p>
+              ) : null}
+            </div>
           </div>
 
           <div className="ls-dialog__field">
@@ -505,6 +565,7 @@ export function BindingForm({
               The order of the fields matters because a reader told the wrong order reads
               the wrong column. {RETIRE_SOURCE_SENTENCE}
             </p>
+            <p className="ls-caption">{SOURCE_NOT_VALIDATED}</p>
           </div>
         </details>
 

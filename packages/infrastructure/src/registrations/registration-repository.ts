@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 
 import { isUuidText } from '../db/identifier.js';
 
@@ -13,6 +13,7 @@ import type {
 } from '@intellifin/application';
 import { isRegistrationStatus } from '@intellifin/application';
 import {
+  TERMINAL_RUN_STATES,
   isPermittedReadAction,
   isTargetSystemKind,
   type PermittedReadAction,
@@ -20,7 +21,13 @@ import {
 } from '@intellifin/domain';
 
 import type { Database, Transaction } from '../db/client.js';
-import { targetSystemProbe, targetSystemRegistration } from '../db/schema.js';
+import {
+  auditRun,
+  procedureVersion,
+  runResult,
+  targetSystemProbe,
+  targetSystemRegistration,
+} from '../db/schema.js';
 
 /**
  * The registration read and write adapters (FR-8, AD-8, AD-10).
@@ -114,6 +121,31 @@ function toRegistration(
     updatedAt: row.updatedAt.toISOString(),
     connectivity,
   };
+}
+
+/**
+ * What the landing counts (UI cleanup 2026-09-22, UX-37).
+ *
+ * The same shape as the user directory's query, deliberately: three areas that answer
+ * "how much is there" and "how much of it needs attention" should not answer them three
+ * different ways.
+ */
+export interface RegistrationCountQuery {
+  readonly status?: RegistrationStatus;
+  /** `never-probed` is the absence of a probe row, which is what the column shows. */
+  readonly connectivity?: 'never-probed';
+}
+
+/** The one Run this system was last used by, as the Administration surface shows it. */
+export interface RegistrationAuditActivity {
+  readonly runId: string;
+  /** The Procedure name the Run froze, so the surface names a control and not a UUID. */
+  readonly procedureName: string;
+  /** One of {@link TERMINAL_RUN_STATES}. */
+  readonly state: string;
+  readonly initiatedAt: string;
+  /** When the Run stopped, from its sealed Result; null when no Result can be read. */
+  readonly endedAt: string | null;
 }
 
 const NEVER_PROBED: RegistrationConnectivity = { state: 'never-probed', observedAt: null };
@@ -241,6 +273,90 @@ export class DrizzleRegistrationRepository implements RegistrationRepository {
       row,
       toConnectivity({ state: row.probeState, observedAt: row.probeObservedAt }),
     );
+  }
+
+  /**
+   * How many registrations there are, EXACTLY (UI cleanup 2026-09-22, UX-37).
+   *
+   * Not `(await listRegistrations()).length`: that read is capped at
+   * `REGISTRATION_LIST_LIMIT`, so a summary built from it would say "200 systems" for
+   * ever once a deployment passed two hundred — a number that is wrong in the one place
+   * an operator goes to find out how much there is. A `count(*)` answers the question
+   * that was asked.
+   */
+  async countRegistrations(query: RegistrationCountQuery = {}): Promise<number> {
+    const clauses = [];
+    if (query.status !== undefined) clauses.push(eq(targetSystemRegistration.status, query.status));
+    if (query.connectivity === 'never-probed') {
+      // The LEFT JOIN is the read: "no worker has written a row for this one" is an
+      // absence, and an inner join would answer the opposite question.
+      clauses.push(sql`${targetSystemProbe.registrationId} IS NULL`);
+    }
+    const rows = await this.db
+      .select({ total: count() })
+      .from(targetSystemRegistration)
+      .leftJoin(
+        targetSystemProbe,
+        eq(targetSystemProbe.registrationId, targetSystemRegistration.registrationId),
+      )
+      .where(clauses.length === 0 ? undefined : and(...clauses));
+    return rows[0]?.total ?? 0;
+  }
+
+  /**
+   * The most recent Run that FINISHED against this system (UI cleanup 2026-09-22, UX-44).
+   *
+   * The connectivity column answers "has a worker ever reached this address", and a
+   * system that has served a whole completed audit still reads `never-probed` there,
+   * because no probe sweep has run in this deployment. The walkthrough met that as "No
+   * worker has observed this system yet" on a system a Run had just used — a statement
+   * about the environment that the environment contradicts. These are two facts, so
+   * there are two reads: this is the second.
+   *
+   * A registration id appears in the FROZEN `targets` of the Procedure Version a Run
+   * executed, which is the only record that survives a later change to the registration
+   * — `audit_run` names its version, the version froze which systems it would use, and
+   * neither can be rewritten afterwards. Terminal Runs only: a Run still going has not
+   * observed anything yet, and reporting it as activity would make a queued Run look
+   * like a finished audit.
+   *
+   * One row, ordered by the Run's own identifier as the tiebreak, so the answer is
+   * deterministic when two Runs share an instant. `endedAt` is the Result's seal — the
+   * moment the Run stopped — and is null for a terminal Run whose Result cannot be read,
+   * which the surface says rather than substituting the start time silently.
+   */
+  async lastAuditActivity(registrationId: string): Promise<RegistrationAuditActivity | null> {
+    // A malformed id is absence, not a 500: PostgreSQL raises 22P02 comparing a `uuid`
+    // column against text that is not one, and this id comes from a URL.
+    if (!isUuidText(registrationId)) return null;
+    const rows = await this.db
+      .select({
+        runId: auditRun.runId,
+        procedureName: auditRun.procedureName,
+        state: auditRun.state,
+        initiatedAt: auditRun.initiatedAt,
+        endedAt: runResult.sealedAt,
+      })
+      .from(auditRun)
+      .innerJoin(procedureVersion, eq(procedureVersion.versionId, auditRun.versionId))
+      .leftJoin(runResult, eq(runResult.runId, auditRun.runId))
+      .where(
+        and(
+          inArray(auditRun.state, [...TERMINAL_RUN_STATES]),
+          sql`EXISTS (SELECT 1 FROM jsonb_array_elements(${procedureVersion.targets}) target WHERE target->>'registrationId' = ${registrationId})`,
+        ),
+      )
+      .orderBy(desc(auditRun.initiatedAt), desc(auditRun.runId))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      runId: row.runId,
+      procedureName: row.procedureName,
+      state: row.state,
+      initiatedAt: row.initiatedAt.toISOString(),
+      endedAt: row.endedAt === null ? null : row.endedAt.toISOString(),
+    };
   }
 }
 

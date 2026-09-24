@@ -12,6 +12,8 @@ import {
   type ExecutablePlan,
   type ProcedureTargetSnapshot,
   type RunRecord,
+  type RunDeferredPauseRequest,
+  type AuditEventDraft,
   type StoredSnapshot,
   type ToolActionParameter,
 } from '@intellifin/domain';
@@ -161,6 +163,9 @@ class FakeRepository implements AgentWorkRepository {
   actions: AgentWorkContext['toolActions'][number][] = [];
   captures: AgentWorkContext['captures'][number][] = [];
   pauseWaits: RunWait[] = [];
+  deferred: RunDeferredPauseRequest | null = null;
+  deferredSettlements: { state: string; reason?: string }[] = [];
+  auditDrafts: AuditEventDraft[] = [];
   turns: AgentTurnRecord[] = [];
   executions: StepExecutionRecord[] = [];
   eventOrder: string[] = [];
@@ -241,7 +246,8 @@ class FakeRepository implements AgentWorkRepository {
         this.captures.push({ ...binding });
       },
       auditEvents: {
-        append: async (event: { eventType: string }) => {
+        append: async (event: AuditEventDraft) => {
+          this.auditDrafts.push(event);
           this.eventOrder.push(`event:${event.eventType}`);
           return { sequence: this.eventOrder.length };
         },
@@ -252,6 +258,11 @@ class FakeRepository implements AgentWorkRepository {
       openPauseWait: async (wait: RunWait) => { this.pauseWaits.push(wait); },
       clearPauseRequest: async () => { this.run = { ...this.run, pauseRequest: null }; },
       readPauseRequest: async () => this.run.pauseRequest,
+      readDeferredPause: async () => this.deferred,
+      settleDeferredPause: async (state: 'APPLIED' | 'SUPERSEDED', _at: string, reason?: string) => {
+        this.deferredSettlements.push({ state, ...(reason === undefined ? {} : { reason }) });
+        this.deferred = null;
+      },
       saveTurn: async (turn: AgentTurnRecord) => {
         const index = this.turns.findIndex((current) => current.sequence === turn.sequence);
         if (index < 0) this.turns.push({ ...turn });
@@ -546,6 +557,89 @@ describe('executeAgentWorkItem', () => {
     expect(repository.workItems[0]?.state).toBe('IN_PROGRESS');
   });
 
+  it.each([false, true])('honours a deferred latch after the exact inspection settles in this invocation (final unit: %s)', async finalUnit => {
+    const gateCall = vi.spyOn(gate, 'runRunLevelGate').mockResolvedValue(undefined as never);
+    const repository = new FakeRepository();
+    if (!finalUnit) repository.records = [RECORD, { ordinal: 2, values: { employee_id: 'E-000106', full_name: 'Second person' } }];
+    const browser = browserFor(repository);
+    const perform = browser.perform.bind(browser);
+    browser.perform = async (...args) => {
+      const result = await perform(...args);
+      if (args[1].action !== 'search') return result;
+      // An incomplete result settles honestly as UNINSPECTED; the latch must still fire
+      // before any other employee is inspected, without inventing a compliant result.
+      return { ...result, artifacts: result.artifacts!.map(artifact => artifact.kind === 'structural-snapshot'
+        ? { ...artifact, bytes: utf8Bytes(JSON.stringify({ schemaVersion: 1, nodes: SNAPSHOT_NODES,
+          completion: { returned: 1, complete: false } })) } : artifact) };
+    };
+    const model: AgentModelGateway = { identity: identity(), propose: vi.fn(async (request: AgentModelRequest) => {
+      const item = repository.workItems[0]!;
+      repository.deferred = { runId: RUN_ID, commandId: '01920000-0000-7000-8000-000000000990',
+        workItemId: item.workItemId, subjectKey: item.subjectKey ?? null, registrationId: item.registrationId,
+        runRevision: 4, planDigest: 'a'.repeat(64), requestedBy: 'original-controller', sessionId: 'original-session',
+        requestedAt: '2026-09-07T00:00:01.000Z', expectedControlEpoch: 9, state: 'PENDING' };
+      return response(request.tools.find(tool => tool.action === 'search')?.toolId ?? null);
+    }) };
+    await executeAgentWorkItem(deps(repository, browser, model, durableWaitPort(repository)), JOB);
+    expect(repository.workItems[0]).toMatchObject({ state: 'UNINSPECTED', attempts: 1 });
+    expect(repository.actions.filter(action => action.action === 'search')).toHaveLength(1);
+    expect(repository.executions).toHaveLength(1);
+    expect(repository.executions[0]?.state).toBe('SUCCEEDED');
+    expect(repository.deferred).toBeNull();
+    if (finalUnit) {
+      expect(repository.pauseWaits).toHaveLength(0);
+      expect(repository.deferredSettlements).toEqual([{ state: 'SUPERSEDED', reason: 'run-finalized' }]);
+      expect(gateCall).toHaveBeenCalledOnce();
+    } else {
+      expect(repository.run.state).toBe('PAUSED');
+      expect(repository.workItems[1]).toMatchObject({ state: 'PENDING', attempts: 0 });
+      expect(repository.pauseWaits).toHaveLength(1);
+      expect(repository.pauseWaits[0]?.openedBy).toBe('original-controller');
+      expect(repository.deferredSettlements).toEqual([{ state: 'APPLIED' }]);
+      expect(repository.auditDrafts.find(event => event.eventType === 'lifecycle.run-paused')).toMatchObject({
+        actor: { type: 'human', id: 'original-controller' }, payload: { pauseMode: 'after-inspection',
+          workItemId: repository.workItems[0]!.workItemId, subjectKey: RECORD.values.employee_id, registrationId: TARGET.registrationId },
+      });
+      expect(gateCall).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each(['retry', 'skip'] as const)('retains the exact deferred target through an open question and %s before pausing', async answer => {
+    const repository = new FakeRepository();
+    repository.records = [RECORD, { ordinal: 2, values: { employee_id: 'E-000106', full_name: 'Second person' } }];
+    const model: AgentModelGateway = { identity: identity(), propose: vi.fn(async () => {
+      if (repository.deferred === null) {
+        const item = repository.workItems[0]!;
+        repository.deferred = { runId: RUN_ID, commandId: '01920000-0000-7000-8000-000000000991',
+          workItemId: item.workItemId, subjectKey: item.subjectKey ?? null, registrationId: item.registrationId,
+          runRevision: 4, planDigest: 'a'.repeat(64), requestedBy: 'original-controller', sessionId: 'original-session',
+          requestedAt: '2026-09-07T00:00:01.000Z', expectedControlEpoch: 9, state: 'PENDING' };
+      }
+      return response(null, { kind: 'insufficient-evidence', rationale: 'Synthetic question' });
+    }) };
+    const dependencies = deps(repository, browserFor(repository), model, durableWaitPort(repository));
+    await executeAgentWorkItem(dependencies, JOB);
+    const marker = repository.deferred;
+    expect(marker).not.toBeNull();
+    expect(repository.run.state).toBe('AWAITING_AUDITOR');
+    expect(repository.pauseWaits).toHaveLength(0);
+    expect(repository.waits).toHaveLength(1);
+    answerLast(repository, answer);
+    // Retry retains the logical target through the bounded extra attempt cycle. A skip
+    // settles immediately; either terminal boundary must hold before the next employee.
+    for (let attempt = 0; repository.run.state === 'RUNNING' && attempt < PLAN.limits.retriesPerStep + 2; attempt++) {
+      await executeAgentWorkItem(dependencies, JOB);
+      if (repository.deferred !== null) expect(repository.deferred).toEqual(marker);
+    }
+    expect(repository.workItems[0]?.workItemId).toBe(marker!.workItemId);
+    expect(['UNINSPECTED', 'FAILED']).toContain(repository.workItems[0]?.state);
+    expect(repository.workItems[1]).toMatchObject({ state: 'PENDING', attempts: 0 });
+    expect(repository.run.state).toBe('PAUSED');
+    expect(repository.pauseWaits).toHaveLength(1);
+    expect(repository.deferredSettlements).toEqual([{ state: 'APPLIED' }]);
+    expect(repository.waits.every(wait => wait.closedAt !== null)).toBe(true);
+  });
+
   /**
    * A pause at a Tool Action boundary (Story 5.4, AD-16).
    *
@@ -615,6 +709,88 @@ describe('executeAgentWorkItem', () => {
     // spend one of the Work Item's bounded retry cycles.
     expect(repository.workItems[0]?.attempts).toBe(0);
     expect(repository.workItems[0]?.state).toBe('IN_PROGRESS');
+  });
+
+  it('holds a P-4 page model read at its response boundary, then resumes with a fresh attempt', async () => {
+    vi.spyOn(gate, 'runRunLevelGate').mockResolvedValue(undefined as never);
+    const p4TargetFields = {
+      kind: 'web' as const,
+      allowedOrigins: ['https://loancore.example.test'],
+      applicationIdentity: '',
+      credentialRef: 'cred://loancore',
+      permittedActions: ['navigate', 'read-attribute', 'read-metadata', 'capture-screenshot'] as const,
+      attributeLabelPatterns: ['Parameter', 'Value', 'Snapshot identifier', 'Expected parameter count', 'Snapshot taken at'],
+      secondaryKey: '',
+    };
+    const p4Target: ProcedureTargetSnapshot = {
+      registrationId: TARGET.registrationId,
+      displayName: 'ProdConsole',
+      digest: registrationDigest(p4TargetFields),
+      contract: registrationDigestEnvelope(p4TargetFields),
+    };
+    const repository = new FakeRepository();
+    repository.plan = {
+      ...PLAN,
+      inputs: {
+        ...PLAN.inputs,
+        templateId: 'P-4',
+        ...initialDraftCompliance('P-4'),
+        ...initialDraftEvidence('P-4'),
+        targets: [p4Target],
+        instructions: [{ registrationId: p4Target.registrationId, text: 'Read the frozen configuration page.' }],
+      },
+    } as unknown as ExecutablePlan;
+    repository.records = [{ ordinal: 1, values: {
+      parameter: 'feature.alpha', approved_value: 'enabled', effective_time: '2026-08-01T00:00:00Z', disposition: 'approved',
+    } }];
+    const landing = [{ group: 'page', role: 'link', label: 'Configuration', value: 'Open configuration', target: 'https://loancore.example.test/loancore/config' }];
+    const page = [
+      { group: 'page', role: 'datum', label: 'Parameter', value: 'feature.alpha', target: null },
+      { group: 'page', role: 'datum', label: 'Value', value: 'enabled', target: null },
+      { group: 'page', role: 'datum', label: 'Snapshot identifier', value: 'snapshot-1', target: null },
+      { group: 'page', role: 'datum', label: 'Expected parameter count', value: '1', target: null },
+      { group: 'page', role: 'datum', label: 'Snapshot taken at', value: '2026-08-31T00:00:00Z', target: null },
+    ];
+    let pauseRequested = false;
+    const model: AgentModelGateway = {
+      identity: identity(),
+      propose: vi.fn(async (request: AgentModelRequest): Promise<AgentModelResponse> => {
+        const actions = request.tools.map(tool => ({
+          toolId: tool.toolId, action: tool.action, destination: tool.destination, locator: tool.locator, parameters: [] as const,
+        }));
+        if (!pauseRequested && actions.some(action => action.action === 'read-attribute')) {
+          pauseRequested = true;
+          repository.run = {
+            ...repository.run,
+            pauseRequest: { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-07T03:30:00.000Z' },
+          };
+        }
+        return {
+          schemaVersion: 1, phase: 'actions', route: 'anthropic', model: identity(), actions,
+          uncertainty: { kind: 'none', rationale: null }, usage: { inputTokens: 10, outputTokens: 4, totalTokens: 14 },
+        };
+      }),
+    };
+    const dependencies = deps(repository, browserForPages(repository, [landing, page, landing, page]), model, durableWaitPort(repository));
+
+    expect(await executeAgentWorkItem(dependencies, JOB)).toEqual({ retry: false });
+    expect(repository.run.state).toBe('PAUSED');
+    expect(repository.checkpoint).toMatchObject({ status: 'RETRY', workItemId: repository.workItems[0]?.workItemId });
+    expect(repository.pauseWaits).toHaveLength(1);
+    expect(repository.workItems[0]).toMatchObject({ state: 'IN_PROGRESS', attempts: 0, observations: 0 });
+    expect(repository.executions).toHaveLength(1);
+    expect(repository.executions[0]).toMatchObject({ state: 'SUPERSEDED', supersededBy: 'resume', diagnostic: null });
+    expect(repository.observations).toHaveLength(0);
+    expect(repository.turns.filter(turn => turn.response?.actions.some(action => action.action === 'read-attribute'))).toHaveLength(1);
+
+    answerLast(repository, 'resume');
+    expect(await executeAgentWorkItem(dependencies, JOB)).toEqual({ retry: false });
+    expect(repository.run.state).toBe('RUNNING');
+    expect(repository.checkpoint).toMatchObject({ status: 'COMPLETE', workItemId: null });
+    expect(repository.workItems[0]).toMatchObject({ state: 'OBSERVED', attempts: 1, observations: 1 });
+    expect(repository.executions.map(execution => execution.state)).toEqual(['SUPERSEDED', 'SUCCEEDED']);
+    expect(repository.observations).toHaveLength(1);
+    expect(repository.turns.filter(turn => turn.response?.actions.some(action => action.action === 'read-attribute'))).toHaveLength(2);
   });
 
   it('follows a model-selected landing link before offering the search control', async () => {

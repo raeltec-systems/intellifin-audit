@@ -1,3 +1,4 @@
+import type { RunConversationQuestionContext, RunConversationQuestionAnchor } from './run-conversation.js';
 import {
   AWAITING_AUDITOR_TIMEOUT_MS,
   ESCALATION_KINDS,
@@ -52,6 +53,7 @@ import type { RoleRepository, SessionSnapshot } from '../identity/ports.js';
 import { completeRun } from './complete-run.js';
 import { performCancellation } from './cancel-run.js';
 import type { RunResultContext } from './execution-ports.js';
+import type { RunControlLeaseState } from './run-control-lease.js';
 
 /** The durable wait wire contract. A wait is intentionally kind-agnostic. */
 export const WAIT_SCHEMA_VERSION = 1 as const;
@@ -127,9 +129,12 @@ export interface WaitContext extends RunResultContext {
   /** Read the addressed wait under the same transaction, including an already-closed row. */
   readWait(waitId: string): Promise<RunWait | null>;
   /** Read bounded Escalation provenance while the same Run transaction is held. */
+  readConversationQuestion?(): Promise<RunConversationQuestionContext | null>;
   readEscalationDetails(waitId: string): Promise<EscalationDetails | null>;
   /** Role lookup bound to the same transaction, for the second authorization check. */
   readonly authorizationRoles: RoleRepository;
+  /** Resume alone uses this fence; Pause and exact wait answers remain independent. */
+  readResumeControl(): Promise<{ readonly lease: RunControlLeaseState | null; readonly now: Date }>;
   /** The frozen plan used when a timeout must complete the Run. */
   frozenPlan(): Promise<ExecutablePlan | null>;
   /** Persist the abort marker before the sole CANCELED transition. */
@@ -145,6 +150,8 @@ export interface WaitContext extends RunResultContext {
 }
 
 export interface CloseWaitInput {
+  /** Trusted conversation identity; direct answers omit it. */
+  readonly commandId?: string;
   readonly waitId: string;
   readonly expectedRunRevision: number;
   readonly answerOptionId: string;
@@ -323,6 +330,8 @@ export async function raiseEscalation(
 }
 
 export interface AnswerEscalationDependencies {
+  /** Trusted conversation metadata; never accepted in the answer request. */
+  readonly confirmedInteraction?: { readonly commandId: string; readonly planDigest: string; readonly questionAnchor: RunConversationQuestionAnchor };
   readonly repository: WaitRepository;
   readonly roles: RoleRepository;
   readonly unitOfWork: AuditUnitOfWork;
@@ -398,6 +407,7 @@ export async function answerEscalation(
       if (!option) return { ok: false, reason: ANSWER_ESCALATION_REFUSALS['invalid-option'], code: 'invalid-option' };
       const operation = await context.closeWait({
         waitId: request.waitId,
+        ...(dependencies.confirmedInteraction === undefined ? {} : { commandId: dependencies.confirmedInteraction.commandId }),
         expectedRunRevision: request.expectedRunRevision,
         answerOptionId: request.answerOptionId,
         actor: input.session.userId,
@@ -431,6 +441,12 @@ export async function answerEscalation(
           state: request.answerOptionId === ESCALATION_OPTION_IDS.abort ? 'CANCELED' : 'RUNNING',
           occurredAt: now,
           ...(request.note === null ? {} : { recordedNote: request.note }),
+          ...(dependencies.confirmedInteraction === undefined ? {} : {
+            commandId: dependencies.confirmedInteraction.commandId,
+            planDigest: dependencies.confirmedInteraction.planDigest,
+            expectedRunRevision: request.expectedRunRevision,
+            questionAnchor: { ...dependencies.confirmedInteraction.questionAnchor },
+          }),
         },
       });
       await context.notifyTimeline(event.sequence);

@@ -64,6 +64,21 @@ export const PROCEDURE_LIST_LIMIT = 200;
 /** How many versions one Detail surface renders. */
 export const VERSION_LIST_LIMIT = 100;
 
+/**
+ * How many affected Procedures a confirmation names (UI cleanup 2026-09-22, UX-46).
+ *
+ * The dialog states the exact total; this bounds the NAMES beside it. Ten is the most a
+ * person reads in a confirmation before they stop reading it, which would turn the list
+ * back into the number it replaced.
+ */
+export const REFERENCING_NAME_LIMIT = 10;
+
+/** One Active Procedure that a registration or source change would affect. */
+export interface ReferencingProcedure {
+  readonly procedureId: string;
+  readonly controlName: string;
+}
+
 const PROCEDURE_SELECTION = {
   procedureId: procedure.procedureId,
   // Keep this correlation explicitly qualified: Drizzle strips Column qualifiers in
@@ -391,6 +406,49 @@ export class DrizzleProcedureRepository implements ProcedureRepository, Referenc
     const rows = await this.db.select({ procedureId: procedureVersion.procedureId }).from(procedureVersion).where(and(eq(procedureVersion.state, 'ACTIVE'), predicate, sql`NOT EXISTS (SELECT 1 FROM procedure_succession s WHERE s.predecessor_id = ${procedureVersion.versionId} AND s.activated_at IS NOT NULL)`));
     return new Set(rows.map(row => row.procedureId)).size;
   }
+
+  /**
+   * The Active Procedures that reference this registration or source, BY NAME
+   * (UI cleanup 2026-09-22, UX-46).
+   *
+   * `countReferencing` answers "how many", which is what the pinned warning sentence
+   * needs; the walkthrough's finding is that a person about to give a system a new
+   * fingerprint is told a NUMBER of procedures that will need approving again and never
+   * which ones. The predicate and the "current" rule are `countReferencing`'s own — one
+   * definition of "references this", so the confirmation cannot name a different set
+   * from the one it counts.
+   *
+   * Bounded: the dialog states the exact total beside the names, so this read only has
+   * to supply enough of them to be useful. A list of two hundred names in a
+   * confirmation is not a confirmation.
+   */
+  async listReferencing(
+    id: string,
+    kind: 'registration' | 'source' = 'registration',
+    limit: number = REFERENCING_NAME_LIMIT,
+  ): Promise<readonly ReferencingProcedure[]> {
+    const predicate = kind === 'source'
+      ? sql`${procedureVersion.sourceSnapshot}->>'bindingId' = ${id}`
+      : sql`EXISTS (SELECT 1 FROM jsonb_array_elements(${procedureVersion.targets}) target WHERE target->>'registrationId' = ${id})`;
+    const rows = await this.db
+      .selectDistinctOn([procedureVersion.procedureId], {
+        procedureId: procedureVersion.procedureId,
+        controlName: procedure.controlName,
+      })
+      .from(procedureVersion)
+      .innerJoin(procedure, eq(procedure.procedureId, procedureVersion.procedureId))
+      .where(and(
+        eq(procedureVersion.state, 'ACTIVE'),
+        predicate,
+        sql`NOT EXISTS (SELECT 1 FROM procedure_succession s WHERE s.predecessor_id = ${procedureVersion.versionId} AND s.activated_at IS NOT NULL)`,
+      ))
+      .orderBy(asc(procedureVersion.procedureId));
+    return rows
+      .map((row) => ({ procedureId: row.procedureId, controlName: row.controlName }))
+      .sort((left, right) => left.controlName.localeCompare(right.controlName))
+      .slice(0, Math.max(0, Math.trunc(limit)));
+  }
+
   /** Only displayed metadata is selected; full plans/history never enter summary reads. */
   private async activeSummaries(procedureIds: readonly string[]): Promise<Map<string, { state: 'ACTIVE'; versionNumber: number }>> {
     if (procedureIds.length === 0) return new Map();

@@ -1,4 +1,5 @@
 import type { RunRecord, SanitizedToolAction } from '@intellifin/domain';
+import type { DeferredPauseExecutionContext } from './deferred-pause-run.js';
 import type { AdapterExecutionContext, WorkspaceRef } from './execution-ports.js';
 import type { RunWait, EscalationKind, EscalationOption } from './waits.js';
 import type { AgentModelIdentity, AgentModelResponse } from './agent-ports.js';
@@ -36,7 +37,7 @@ export interface AgentTurnRecord {
 
 export interface AgentWaitRaise { readonly runId: string; readonly waitId: string; readonly stepId: string; readonly supportingEvidenceIds: readonly string[] }
 
-export interface AgentWorkContext extends Omit<AdapterExecutionContext, 'checkpoint' | 'saveCheckpoint'> {
+export interface AgentWorkContext extends Omit<AdapterExecutionContext, 'checkpoint' | 'saveCheckpoint' | 'readDeferredPause' | 'settleDeferredPause'>, DeferredPauseExecutionContext {
   checkpoint: AgentWorkCheckpoint | null;
   workspace: WorkspaceRef | null;
   /** Sign-in and extraction completed, with no pending workspace provisioning/retry. */

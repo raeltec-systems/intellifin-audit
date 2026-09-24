@@ -1,4 +1,4 @@
-import { CONTEXT_TEXT_LIMIT, utf8Bytes, canonicalJson, draftContext, isAgentDrivenKind, preparationBasis, sha256Hex, type JsonValue, type PreparationSectionId } from '@intellifin/domain';
+import { CONTEXT_TEXT_LIMIT, isExplicitPeriod, utf8Bytes, canonicalJson, draftContext, isAgentDrivenKind, preparationBasis, sha256Hex, type JsonValue, type PreparationSectionId } from '@intellifin/domain';
 import type { Clock } from '../audit/clock.js';
 import { authorizeCommand } from '../identity/authorize.js';
 import type { SessionSnapshot } from '../identity/ports.js';
@@ -8,6 +8,7 @@ import type { ProceduresUnitOfWorkContext, ProcedureVersionRecord } from './port
 import { updateContextDraft } from './update-context-draft.js';
 import { updatePopulationDraft } from './update-population-draft.js';
 import { updateTargetDraft } from './update-target-draft.js';
+export { periodNamedIn } from './authoring-period.js';
 import { AUTHORING_FAILURE_MESSAGES, AUTHORING_IDENTITY, AUTHORING_LIMITS, AuthoringProviderError, AuthoringProgressError, isAuthoringProgress, type AuthoringProgress, type AcceptAuthoringFields, type AuthoringDraftFields, type AuthoringProposal, type AuthoringRequestRecord, type AuthoringRevisionContext, type AuthoringSection, type AuthoringSuggestionView, type ProcedureAuthoringModel, type RejectAuthoringFields } from './authoring-ports.js';
 
 type Actor = { readonly session: SessionSnapshot; readonly correlationId: string };
@@ -39,7 +40,10 @@ export function isAuthoringDraftFields(value: unknown): value is AuthoringDraftF
       && uuid(value['revision']['requestId']) && value['revision']['requestId'] !== value['requestId'] && text(value['revision']['draft'], AUTHORING_LIMITS.outputText))) && storable(value);
 }
 export function isAcceptAuthoringFields(value: unknown): value is AcceptAuthoringFields {
-  return object(value) && Object.keys(value).length === 5 && uuid(value['procedureId']) && uuid(value['versionId']) && uuid(value['requestId']) && hash(value['expectedRowVersion'])
+  // A scope proposal may carry the Period the auditor named (UX-09); nothing else is optional.
+  const period = object(value) ? value['period'] : undefined;
+  if (period !== undefined && !(object(period) && Object.keys(period).length === 2 && isExplicitPeriod(period))) return false;
+  return object(value) && Object.keys(value).length === (period === undefined ? 5 : 6) && uuid(value['procedureId']) && uuid(value['versionId']) && uuid(value['requestId']) && hash(value['expectedRowVersion'])
     && text(value['replacement'], AUTHORING_LIMITS.outputText) && typeof value['replacement'] === 'string' && value['replacement'].trim() !== '' && storable(value);
 }
 export function isRejectAuthoringFields(value: unknown): value is RejectAuthoringFields {
@@ -255,6 +259,9 @@ export async function acceptAuthoringSuggestion(deps: AuthoringDependencies, inp
       }
       if (record.state !== 'ready' || record.proposedText === null || record.clarifications.length) throw new Refused('This suggestion has no confirmed replacement to accept.');
       if (!sameDraft(record, row, deps.clock.now())) throw new Refused('This suggestion is stale. Review the current saved section and request a new draft to reconcile the changes.');
+      // A Period rides only on a scope proposal: it is part of "what does this test
+      // cover", and nowhere else does a writing suggestion touch structured fields.
+      if (input.period !== undefined && record.section.kind !== 'scope') throw new Refused('Only a scope proposal can set the testing period.');
       if (procedureVersionRowVersion(row) !== input.expectedRowVersion) throw new Refused(PROCEDURE_REFUSALS.STALE_ROW);
       // Reuse the authorised draft commands INSIDE this transaction. No second writer,
       // no second plan, and no platform-author exception for model-assisted prose.
@@ -264,7 +271,11 @@ export async function acceptAuthoringSuggestion(deps: AuthoringDependencies, inp
       const instructionId = selectedSection.kind === 'instructions' ? selectedSection.registrationId : '';
       const instructions = row.instructions.some(i => i.registrationId === instructionId) ? row.instructions.map(i => i.registrationId === instructionId ? { ...i, text: input.replacement } : i) : [...row.instructions, { registrationId: instructionId, text: input.replacement }];
       const outcome = record.section.kind === 'objective' ? await updateContextDraft(within, { ...common, edit: { ...draftContext(row.sections), objective: input.replacement } })
-        : record.section.kind === 'scope' ? await updatePopulationDraft(within, { ...common, edit: { section: 'scope-note', scope: input.replacement } })
+        : record.section.kind === 'scope' ? await updatePopulationDraft(within, { ...common, edit: input.period === undefined
+          ? { section: 'scope-note', scope: input.replacement }
+          // The dates and the scope the auditor confirmed together are saved together,
+          // through the existing Period-and-scope writer and its validation (UX-09).
+          : { section: 'period-scope', period: { from: input.period.from, to: input.period.to }, scope: input.replacement } })
         : await updateTargetDraft(within, { ...common, edit: { section: 'audit-instructions', instructions } });
       if (!outcome.ok) return outcome;
       // Accepting the same wording is still a human authoring decision. Existing

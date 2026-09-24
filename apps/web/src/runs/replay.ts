@@ -41,10 +41,93 @@ export type ReplayJumpTarget = {
   readonly kind: ReplayJumpKind;
   readonly id: string;
   readonly label: string;
+  /** Exact inspection route when its capture is outside the prefix. */
+  readonly workItemId?: string;
 } & (
   | { readonly frameIndex: number; readonly absence: null }
   | { readonly frameIndex: null; readonly absence: ReplayFrameAbsence }
 );
+
+/** A page is an explicit, stable inspection offset; it never changes the prefix limit. */
+export type ReplayRequest =
+  | { readonly kind: 'prefix' }
+  | { readonly kind: 'unavailable' }
+  | { readonly kind: 'inspection'; readonly workItemId: string; readonly cursor: number };
+
+export type ReplayWindow =
+  | { readonly kind: 'unavailable' }
+  | { readonly kind: 'inspection'; readonly workItemId: string; readonly label: string;
+      readonly total: number; readonly cursor: number;
+      readonly previousCursor: number | null; readonly nextCursor: number | null };
+
+export function replayRequest(query: {
+  readonly workItem?: string | readonly string[];
+  readonly cursor?: string | readonly string[];
+}, pageSize: number): ReplayRequest {
+  if (query.workItem === undefined && query.cursor === undefined) return { kind: 'prefix' };
+  if (typeof query.workItem !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(query.workItem))
+    return { kind: 'unavailable' };
+  // Canonical decimal offsets only: duplicates, signs, exponents and leading zeroes refuse.
+  if (query.cursor !== undefined && (typeof query.cursor !== 'string' || !/^(0|[1-9][0-9]{0,9})$/.test(query.cursor)))
+    return { kind: 'unavailable' };
+  const cursor = query.cursor === undefined ? 0 : Number(query.cursor);
+  if (!Number.isSafeInteger(cursor) || cursor > 2_147_483_600 || cursor % pageSize !== 0)
+    return { kind: 'unavailable' };
+  return { kind: 'inspection', workItemId: query.workItem.toLowerCase(), cursor };
+}
+
+/**
+ * The Replay viewer's React key: the Run and the REQUEST, and never the time it was read.
+ *
+ * The key decides when the viewer starts again from its requested frame, paused. A new
+ * request must do that — another inspection, another page of one, the whole session —
+ * so each is its own key. A re-read of the SAME request must not: the shell's bell
+ * re-reads every page whenever any Run ends or a question opens anywhere (`BellLive`),
+ * and a key that carried the read time restarted the viewer at its first frame under a
+ * reader who was stepping through it. A terminal Run's frames never change, so a re-read
+ * has nothing to reset. A full reload still starts paused at the request, because a
+ * reload mounts everything anew.
+ */
+export function replayViewerKey(runId: string, request: ReplayRequest): string {
+  switch (request.kind) {
+    case 'prefix': return `${runId}:prefix`;
+    case 'unavailable': return `${runId}:unavailable`;
+    case 'inspection': return `${runId}:inspection:${request.workItemId}:${request.cursor}`;
+  }
+}
+
+export function replayInspectionHref(runId: string, workItemId: string, cursor = 0): string {
+  return `/runs/${encodeURIComponent(runId)}/replay?workItem=${encodeURIComponent(workItemId)}${cursor === 0 ? '' : `&cursor=${cursor}`}`;
+}
+
+/** The same Step-first owner used by the stored selected-inspection read. */
+export function effectiveFrameWorkItemId(
+  frame: Pick<RunFrameRow, 'workItemId'>,
+  step: { readonly workItemId: string | null } | null | undefined,
+): string | null {
+  return step?.workItemId ?? frame.workItemId;
+}
+
+export type ReplayInitialSelection =
+  | { readonly kind: 'start'; readonly frameIndex: number }
+  | { readonly kind: 'inspection'; readonly target: ReplayJumpTarget; readonly frameIndex: number | null }
+  | { readonly kind: 'unavailable'; readonly frameIndex: null };
+
+/** Resolve only against this authorized Run's stored targets. A bad or bounded-out
+ * deep link must never silently show a different record's first capture. */
+export function replayInitialSelection(
+  workItem: string | readonly string[] | undefined,
+  targets: readonly ReplayJumpTarget[],
+  frameCount: number,
+): ReplayInitialSelection {
+  if (workItem === undefined) return { kind: 'start', frameIndex: clampReplayIndex(0, frameCount) };
+  if (typeof workItem !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(workItem))
+    return { kind: 'unavailable', frameIndex: null };
+  const target = targets.find(item => item.kind === 'work-item' && item.id === workItem.toLowerCase());
+  return target === undefined ? { kind: 'unavailable', frameIndex: null }
+    : { kind: 'inspection', target, frameIndex: target.frameIndex };
+}
 
 function landing(frameIndex: number | null, whenMissing: ReplayFrameAbsence):
   | { readonly frameIndex: number; readonly absence: null }
@@ -79,10 +162,9 @@ export function resolveFrameWorkItems(
   frames: readonly RunFrameRow[],
   stepExecutions: readonly { readonly stepExecutionId: string; readonly workItemId: string | null }[],
 ): readonly RunFrameRow[] {
-  const byStep = new Map(stepExecutions.map((step) => [step.stepExecutionId, step.workItemId]));
+  const byStep = new Map(stepExecutions.map((step) => [step.stepExecutionId, step]));
   return frames.map((frame) => {
-    const viaStep = byStep.get(frame.stepExecutionId);
-    return viaStep === undefined || viaStep === null ? frame : { ...frame, workItemId: viaStep };
+    return { ...frame, workItemId: effectiveFrameWorkItemId(frame, byStep.get(frame.stepExecutionId)) };
   });
 }
 
@@ -148,6 +230,7 @@ export function replayJumpTargets(input: {
     targets.push({
       kind: 'work-item',
       id: item.workItemId,
+      workItemId: item.workItemId,
       label: workItemLabel(item),
       ...landing(replayFrameForWorkItem(input.frames, item.workItemId), whenNoFrame),
     });
@@ -156,6 +239,7 @@ export function replayJumpTargets(input: {
     targets.push({
       kind: 'exception',
       id: exception.exceptionId,
+      workItemId: exception.workItemId,
       label: exception.populationRecordKey,
       ...landing(replayFrameForWorkItem(input.frames, exception.workItemId), whenNoFrame),
     });

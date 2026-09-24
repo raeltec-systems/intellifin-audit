@@ -1,3 +1,5 @@
+import { draftCreatedBanner } from '../../apps/web/src/procedures/new-procedure-words';
+import { draftGapWords } from '../../apps/web/src/procedures/readiness-words';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -156,13 +158,14 @@ test.describe('the hero workflow', () => {
     /* ---------------------------------------------------- create from P-1 ---- */
     await page.goto('/procedures/new');
     await page.getByLabel('Template').selectOption('P-1');
-    await page.getByLabel('Control name').fill(CONTROL);
+    await page.getByLabel('Procedure name').fill(CONTROL);
     await shot(page, 'new-procedure-form');
     await page.getByRole('button', { name: 'Create Procedure' }).click();
-    // Creation writes two rows and an immutable event, and it keeps its confirmation.
-    await expect(page.getByRole('dialog')).toBeVisible();
-    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
+    // UX-07 (2026-09-22): creating a harmless Draft is ONE action. No dialog stands
+    // between the click and it; the Builder names the new Draft in a Banner instead.
     await expect(page.getByRole('heading', { level: 1, name: CONTROL })).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.ls-banner--success')).toContainText(draftCreatedBanner(CONTROL));
     await openStep(page, 'Objective');
     await shot(page, 'builder-opened');
 
@@ -367,9 +370,14 @@ test.describe('the hero workflow', () => {
     const precision = page.locator('[data-readiness-item="termination-time-precision-missing"]');
     const capture = page.locator('[data-readiness-item="disablement-capture-missing"]');
     await expect(precision).toHaveCount(1);
-    await expect(precision).toContainText('termination_effective_time');
+    // Each still names its own subject, in the auditor's words (UX-13/UX-15): the
+    // condition by its number and the gap by what it means, never the stored field id.
+    await expect(precision).toContainText('Condition 3');
+    await expect(precision).toContainText('only a date for when employment ended');
+    await expect(precision).not.toContainText('termination_effective_time');
     await expect(capture).toHaveCount(1);
-    await expect(capture).toContainText('disabled_time');
+    await expect(capture).toContainText('“disabled time”');
+    await expect(capture).not.toContainText('disabled_time');
     await shot(page, 'timing-window-readiness', page.locator('[data-readiness]'));
 
     // The capture gap is closed where it belongs — in Evidence Requirements, whose own
@@ -439,7 +447,8 @@ test.describe('the hero workflow', () => {
     // make a usability journey depend on a model fixture; what this file owns is that
     // the ordinary saves above needed no dialog and this one still does.
     await expect(submit).toHaveAttribute('aria-disabled', 'true');
-    await expect(page.getByText('Wait for the executable plan to finish deriving.')).toBeVisible();
+    // UX-15/16 (2026-09-22): the Builder says the plan state in its own words.
+    await expect(page.getByText(draftGapWords('Wait for the test plan to finish preparing.')!)).toBeVisible();
     await shot(page, 'submit-unavailable-with-its-reason', submit.locator('xpath=..'));
 
     // And the reason is NOT a missing section: every completeness blocker the Builder

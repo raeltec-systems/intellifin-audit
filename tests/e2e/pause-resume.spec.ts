@@ -14,6 +14,7 @@ import {
 import { ESCALATION_PANEL_COPY, PAUSE_COPY } from '../../apps/web/src/design/copy';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
+import { acquireControl, expectRunEvents, resumeWithControl } from './run-control';
 
 /**
  * Pausing and resuming a Run, in a real browser (Story 5.4, FR-25, AD-16, UX-DR25).
@@ -63,21 +64,26 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   if (!sql) return;
   try {
-    for (const runId of runs) {
-      await sql`DELETE FROM pgboss.job WHERE data->>'runId'=${runId}`;
-      await sql`DELETE FROM notification WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_wait WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_result WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_session_step WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_agent_execution WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_execution WHERE run_id=${runId}`;
-      await sql`DELETE FROM population_execution WHERE run_id=${runId}`;
-      await sql`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
-      await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
-      await sql`DELETE FROM run_initiation_request WHERE run_id=${runId} OR refused_run_id=${runId}`;
-    }
-    await sql`DELETE FROM audit_run WHERE procedure_id=${procedureId}`;
+    for (const runId of runs) await sql.begin(async tx => {
+      // Retained command/renewal facts and their Run leave together. Lock the Run
+      // first so late controller reads cannot invert cleanup lock ordering.
+      await tx`SELECT run_id FROM audit_run WHERE run_id=${runId} FOR UPDATE`;
+      await tx`DELETE FROM pgboss.job WHERE data->>'runId'=${runId}`;
+      await tx`DELETE FROM notification WHERE run_id=${runId}`;
+      await tx`DELETE FROM run_wait WHERE run_id=${runId}`;
+      // The logical-step test seeds Step Executions (UX-47).
+      await tx`DELETE FROM run_step_execution WHERE run_id=${runId}`;
+      await tx`DELETE FROM run_result WHERE run_id=${runId}`;
+      await tx`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
+      await tx`DELETE FROM run_session_step WHERE run_id=${runId}`;
+      await tx`DELETE FROM run_agent_execution WHERE run_id=${runId}`;
+      await tx`DELETE FROM run_execution WHERE run_id=${runId}`;
+      await tx`DELETE FROM population_execution WHERE run_id=${runId}`;
+      await tx`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
+      await tx`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
+      await tx`DELETE FROM run_initiation_request WHERE run_id=${runId} OR refused_run_id=${runId}`;
+      await tx`DELETE FROM audit_run WHERE run_id=${runId}`;
+    });
     await sql`DELETE FROM procedure_version WHERE procedure_id=${procedureId}`;
     await sql`DELETE FROM procedure WHERE procedure_id=${procedureId}`;
   } finally {
@@ -137,12 +143,17 @@ test.describe('pausing and resuming a Run', () => {
     await expect(dialog.getByText('ends Inconclusive if it is still paused after 30 minutes', { exact: false })).toBeVisible();
     await dialog.getByRole('button', { name: 'Pause Run', exact: true }).click();
 
-    // The REQUEST succeeded. It never claims the Run is paused: the worker does that.
-    await expect(page.getByText(PAUSE_COPY.requested, { exact: true })).toBeVisible();
+    // The REQUEST succeeded. It never claims the Run is paused: the worker does that. The
+    // server's own banner says so once the page re-reads, and the control's transitional
+    // "Pause requested." is gone by then (UI cleanup 2026-09-22, UX-49): this spec used to
+    // require that sentence, which is how it came to stand beside a CONFIRMED "Paused by"
+    // banner on the walkthrough's screen. The state that announced it has settled.
+    // The PERSON, never the user id: the spec used to pin the id as the expected text.
+    await expect(page.getByText(`Pause requested by ${authorName}`, { exact: false })).toBeVisible();
+    await expect(page.getByText(PAUSE_COPY.requested, { exact: true })).toHaveCount(0);
     const [requested] = await sql`SELECT state, pause_requested_by FROM audit_run WHERE run_id=${runId}`;
     expect(requested).toMatchObject({ state: 'RUNNING', pause_requested_by: author });
     await page.reload();
-    // The PERSON, never the user id: the spec used to pin the id as the expected text.
     await expect(page.getByText(`Pause requested by ${authorName}`, { exact: false })).toBeVisible();
 
     // The worker's next Tool Action boundary.
@@ -171,10 +182,20 @@ test.describe('pausing and resuming a Run', () => {
     const live = await new AxeBuilder({ page }).withTags(TAGS).analyze();
     expect(live.violations).toEqual([]);
 
-    // Resume is DIRECT: EXPERIENCE.md's confirmation table lists pause and not resume.
+    // v1.1 requires current controller ownership and explicit confirmation on every surface.
     await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
-    await page.getByRole('button', { name: 'Resume', exact: true }).click();
-    await expect(page.getByText(PAUSE_COPY.resumed, { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Acquire control', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+    await acquireControl(page.getByRole('region', { name: 'Run controller', exact: true }));
+    // Acquisition can trigger a live refresh between the controller message and
+    // activation; `resumeWithControl` clicks only enabled controls, and again only while
+    // the click has not yet taken effect.
+    await resumeWithControl(page);
+    // The page re-reads a Running Run: Pause is offered again, the Paused banner is gone,
+    // and so is the control's transitional "Run resumed." — the state it announced has
+    // settled and the page says so itself (UX-49).
+    await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+    await expect(page.getByText('Paused by', { exact: false })).toHaveCount(0);
+    await expect(page.getByText(PAUSE_COPY.resumed, { exact: true })).toHaveCount(0);
 
     const [resumed] = await sql`SELECT state FROM audit_run WHERE run_id=${runId}`;
     expect(resumed).toMatchObject({ state: 'RUNNING' });
@@ -182,15 +203,90 @@ test.describe('pausing and resuming a Run', () => {
     // `resume`, never `answer`: generation 45 refuses the other pairing outright.
     expect(closed).toMatchObject({ closure_kind: 'resume', answer_option_id: 'resume', actor: author });
     const events = await sql`SELECT event_type FROM audit_events WHERE aggregate_id=${runId} ORDER BY sequence`;
-    expect(events.map((row) => row.event_type)).toEqual([
+    // This page still holds control, so lease renewals are set apart (`expectRunEvents`).
+    expectRunEvents(events.map((row) => String(row.event_type)), [
       'lifecycle.run-pause-requested',
       'lifecycle.run-paused',
+      'lifecycle.run-control-lease-acquired',
       'lifecycle.run-resumed',
     ]);
     // The pause is over, so the Run has no open wait and Pause is offered again.
     expect(new Date(wait!.deadline as string).getTime() - new Date(wait!.opened_at as string).getTime()).toBe(30 * 60 * 1000);
     await page.goto(`/runs/${runId}`);
     await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  });
+
+  // UI cleanup 2026-09-22, UX-47. After a pause and a resume the chrome read "Step 7 of 6":
+  // its numerator was the number of Step Execution ROWS, and a pause supersedes the attempt
+  // in flight while the resume starts another. This walks pause -> resume -> complete through
+  // the real controls and reads the counter at every stage; the numerator counts LOGICAL
+  // plan steps and can never pass the plan's own step count.
+  test('counts logical steps, so pause, resume and completion never take the counter past its denominator', async ({ page }) => {
+    test.setTimeout(120_000);
+    const runId = await seedRun('RUNNING');
+    const [version] = await sql`SELECT compiled_plan FROM procedure_version WHERE version_id=${versionId}`;
+    const plan = version!.compiled_plan as {
+      sessionSteps: { id: string }[];
+      targetSystems: { planSteps: { id: string }[] }[];
+    };
+    const stepIds = [...plan.sessionSteps.map((step) => step.id), ...plan.targetSystems.flatMap((target) => target.planSteps.map((step) => step.id))];
+    expect(stepIds.length).toBeGreaterThan(1);
+    const counter = page.locator('.ls-session__counter');
+    const expectWithin = async (started: number): Promise<void> => {
+      await expect(counter).toHaveText(`Step ${started} of ${stepIds.length}`);
+    };
+    const at = (offset: number): string => new Date(Date.now() + offset * 1000).toISOString();
+
+    // The attempt the pause will interrupt.
+    const interrupted = ids.next();
+    await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at)
+      VALUES(${interrupted},${runId},${stepIds[0]!},NULL,'inspect-record','RUNNING',1,${at(0)})`;
+    await page.goto(`/runs/${runId}/live`);
+    await expectWithin(1);
+
+    // Pause through the control, and honour it at the worker's boundary, which supersedes
+    // the attempt in flight exactly as `lifecycleBoundary` does.
+    await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
+    await page.getByRole('button', { name: 'Pause', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Pause Run', exact: true }).click();
+    await expect(page.getByText(`Pause requested by ${authorName}`, { exact: false })).toBeVisible();
+    await honourPause(runId);
+    await sql`UPDATE run_step_execution SET state='SUPERSEDED', superseded_by='resume', completed_at=${at(1)} WHERE step_execution_id=${interrupted}`;
+    await page.reload();
+    await expect(page.getByText('Session PAUSED.', { exact: false })).toBeVisible();
+    await expectWithin(1);
+
+    // Resume through the control; the Run restarts the step as a NEW attempt and goes on to
+    // run every other step of the plan. v1.1 requires current controller ownership and an
+    // explicit confirmation, exactly as the journey above walks it.
+    await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
+    await expect(page.getByRole('button', { name: 'Acquire control', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+    await acquireControl(page.getByRole('region', { name: 'Run controller', exact: true }));
+    await resumeWithControl(page);
+    await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+    await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at,completed_at)
+      VALUES(${ids.next()},${runId},${stepIds[0]!},NULL,'inspect-record','SUCCEEDED',2,${at(2)},${at(3)})`;
+    for (const [index, stepId] of stepIds.slice(1).entries()) {
+      await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at,completed_at)
+        VALUES(${ids.next()},${runId},${stepId},NULL,'inspect-record','SUCCEEDED',1,${at(4 + index)},${at(5 + index)})`;
+    }
+    // One more ROW than the plan has steps: the arithmetic the old counter did.
+    expect((await sql`SELECT count(*)::int AS n FROM run_step_execution WHERE run_id=${runId}`)[0]!.n).toBe(stepIds.length + 1);
+    await page.reload();
+    await expectWithin(stepIds.length);
+
+    // Complete: the package, the Result, then the state (generations 21 and 25).
+    const sealedAt = at(60);
+    await sql`INSERT INTO run_evidence_package(run_id,state,run_state,sealed_at,required_total,registered,missing_required,abandoned)
+      VALUES(${runId},'SEALED','COMPLETED',${sealedAt},0,0,'[]'::jsonb,'[]'::jsonb)`;
+    await sql`INSERT INTO run_result(run_id,version,outcome,outcome_row,sealed,run_state,gate_passed,sealed_at,scope,publication)
+      VALUES(${runId},1,'PASS','pass',true,'COMPLETED',true,${sealedAt},'Scope sentence',
+      ${'{"statement":"x","population":{"rowsParsed":0,"included":0,"excluded":0,"indeterminate":0},"period":{"from":"2026-01-01","to":"2026-01-31"},"exclusions":[],"coverage":[],"conditions":[],"controlFields":[],"exceptions":{"total":0,"records":[]},"unevaluated":{"total":0,"records":[]},"gate":{"passed":true,"checks":20,"failed":[]},"evidence":{"state":"SEALED","requiredTotal":0,"registered":0,"missingRequired":0,"abandoned":0}}'}::jsonb)`;
+    await sql`UPDATE audit_run SET state='COMPLETED' WHERE run_id=${runId}`;
+    await page.reload();
+    await expectWithin(stepIds.length);
+    // The retry is said beside the counter where a step is running; it is never IN it.
+    await expect(counter).not.toContainText(String(stepIds.length + 1));
   });
 
   test('disables Pause on a Run waiting on an answer, and says why in words', async ({ page }) => {

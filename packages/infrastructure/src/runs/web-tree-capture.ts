@@ -1,3 +1,4 @@
+import { trackBrowserIo } from './browser-io-tracker.js';
 import type { Page } from 'playwright-core';
 import { BrowserActionError, type CredentialGuard } from '@intellifin/application';
 import {
@@ -49,7 +50,7 @@ export async function withActionDeadline<T>(work: () => Promise<T>, deadline: nu
     timer = setTimeout(() => reject(new ActionDeadlineExceeded()), remaining);
   });
   try {
-    return await Promise.race([work(), expiry]);
+    return await Promise.race([trackBrowserIo(work()), expiry]);
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }

@@ -80,6 +80,19 @@ describe('the execution failure panel', () => {
     expect(html).not.toContain(OLD_SENTENCE);
   });
 
+  // UI cleanup 2026-09-22, UX-02/UX-31. A step that failed on its first try said "1
+  // attempts" — the noun literally appended to the count rather than agreeing with it,
+  // the exact defect the walkthrough's "1 Observations"/"1 attempts" examples name.
+  it('says "1 attempt", not "1 attempts", when a step failed on its first try', () => {
+    const html = render({
+      steps: [{ name: 'Target System sign-in', attempts: 1, diagnostic: 'workspace-egress-denied' }],
+      stop: facts({ stop: { stage: 'access', diagnostic: 'workspace-egress-denied' } }),
+      sealedAt: null,
+    });
+    expect(html).toContain('Target System sign-in · 1 attempt ·');
+    expect(html).not.toContain('1 attempts');
+  });
+
   it('keeps the old sentence only when it has no stop facts at all', () => {
     const html = render({ steps: [], stop: null, sealedAt: null });
     expect(html).toContain(OLD_SENTENCE);

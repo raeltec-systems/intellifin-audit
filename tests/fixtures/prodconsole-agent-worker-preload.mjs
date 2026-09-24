@@ -10,6 +10,57 @@ if (process.env.ANTHROPIC_API_KEY !== 'synthetic-prodconsole-provider-intercepti
 
 const realFetch = globalThis.fetch;
 let responseNumber = 0;
+let heldReadAttributeResponse = false;
+const READ_ATTRIBUTE_BARRIER_TIMEOUT_MS = 60_000;
+
+if (typeof process.send !== 'function') {
+  throw new Error('ProdConsole active-workspace proof requires the worker IPC channel.');
+}
+
+function waitForReadAttributeRelease(signal) {
+  if (heldReadAttributeResponse) return Promise.resolve();
+  heldReadAttributeResponse = true;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer;
+    const release = (message) => {
+      if (message?.type !== 'release-prodconsole-read-attribute-barrier') return;
+      finish();
+    };
+    const disconnected = () => finish(new Error('prodconsole-read-attribute-barrier-disconnected'));
+    const aborted = () => finish(new Error('prodconsole-read-attribute-barrier-aborted'));
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      process.off('message', release);
+      process.off('disconnect', disconnected);
+      signal?.removeEventListener('abort', aborted);
+      if (error) reject(error);
+      else resolve();
+    };
+
+    // Install every release path before announcing readiness. A parent can answer the
+    // readiness message immediately, and a lost parent must never leave this request
+    // waiting past the bounded model turn.
+    process.on('message', release);
+    process.once('disconnect', disconnected);
+    signal?.addEventListener('abort', aborted, { once: true });
+    timer = setTimeout(() => finish(new Error('prodconsole-read-attribute-barrier-timeout')), READ_ATTRIBUTE_BARRIER_TIMEOUT_MS);
+    timer.unref?.();
+    if (signal?.aborted) {
+      finish(new Error('prodconsole-read-attribute-barrier-aborted'));
+      return;
+    }
+    try {
+      process.send({ type: 'prodconsole-read-attribute-barrier-ready' }, (error) => {
+        if (error) finish(error);
+      });
+    } catch (error) {
+      finish(error);
+    }
+  });
+}
 
 function response(body, proposal) {
   responseNumber += 1;
@@ -51,6 +102,13 @@ globalThis.fetch = async (input, init) => {
   const selected = navigation ? [navigation] : envelope.tools.filter((tool) =>
     tool.action === 'read-attribute' || tool.action === 'read-metadata');
   if (selected.length === 0) throw new Error('The actual worker exposed no approved P-4 read.');
+  // The second navigation has already committed its real structural snapshot and
+  // screenshot before this model turn is requested. Holding this first read response
+  // gives the browser proof a bounded ACTIVE Run with a registered frame while the
+  // compiled worker remains alive and still serves protected frame grants.
+  if (navigation === undefined && selected.some((tool) => tool.action === 'read-attribute')) {
+    await waitForReadAttributeRelease(init?.signal);
+  }
   process.stdout.write(`Synthetic ProdConsole journey provider:${JSON.stringify({
     phase: 'actions', actions: selected.map((tool) => tool.action),
     snapshotTimeToolPresent: envelope.tools.some((tool) => tool.description === 'Read the approved ProdConsole snapshot time.'),

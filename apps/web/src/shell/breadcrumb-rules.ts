@@ -6,7 +6,7 @@
 export const SECTION_LABELS: Readonly<Record<string, string>> = {
   procedures: 'Procedures',
   runs: 'Runs',
-  review: 'Review',
+  review: 'Reviews',
   administration: 'Administration',
   badges: 'Status vocabulary',
 };
@@ -22,7 +22,12 @@ export const SECTION_LABELS: Readonly<Record<string, string>> = {
  * cannot be forced to share a label.
  */
 export const SUBSECTION_LABELS: Readonly<Record<string, string>> = {
-  '/administration/registrations': 'Target systems',
+  // The three Administration areas, named as the tabs name them (UI cleanup 2026-09-21,
+  // UX-41): a person sets up users, the sources records come from, and the systems the
+  // agent looks in. "Target System registrations" and "Population Source bindings" are
+  // what the domain freezes, not what the tabs say.
+  '/administration/users': 'Users',
+  '/administration/registrations': 'Systems',
   '/administration/sources': 'Population sources',
 };
 
@@ -61,6 +66,11 @@ export function rendersOwnTrail(pathname: string): boolean {
   // best-practice rule rather than a WCAG-tagged one and never reaches
   // `results.violations`.
   if (segments[0] === 'runs') return true;
+  // An Administration detail surface names the system or the source it opens (UI cleanup
+  // 2026-09-21, UX-41): the shell could only say its UUID, which is the third crumb the
+  // walkthrough found "ending in UUID". A named sub-route (`/administration/sources`) has
+  // two segments and keeps the shell's trail.
+  if (segments[0] === 'administration') return segments.length >= 3;
   if (segments[0] !== 'procedures') return false;
   return !Object.hasOwn(PROCEDURE_NAMED_ROUTES, segments[1] as string);
 }

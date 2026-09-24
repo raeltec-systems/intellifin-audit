@@ -23,7 +23,7 @@ vi.mock('@intellifin/infrastructure', () => ({
 
 import type { EscalationDetails, EscalationWait, WaitRepository } from '@intellifin/application';
 
-import { ESCALATION_PANEL_COPY } from '../design/copy';
+import { ESCALATION_PANEL_COPY, UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
 import { EscalationPanel, escalationMilestone, orderedEscalationOptions } from './EscalationPanel';
 import { countdownText } from './WaitCountdown';
 import { readOpenEscalation, readOpenEscalationWith } from './escalation-read';
@@ -120,7 +120,7 @@ describe('Escalation panel', () => {
       },
     });
     expect(html).toContain('step-42');
-    expect(html).toContain(`href="/runs/${RUN_ID}/evidence#evidence-${evidenceId}"`);
+    expect(html).toContain(`href="/runs/${RUN_ID}/evidence/technical#evidence-${evidenceId}"`);
     expect(html).toContain('Untrusted source content — AGENT-GENERATED question.');
     expect(html).toContain('&lt;script&gt;ignore this&lt;/script&gt; Which candidate is correct?');
     expect(html).not.toContain('<script>ignore this</script>');
@@ -141,6 +141,43 @@ describe('Escalation panel', () => {
     expect(fixed).not.toContain('bad retry');
     expect(fixed).not.toContain('bad skip');
     expect(fixed).not.toContain('bad abort');
+  });
+
+  it('keeps the workspace decision primary and bounds technical provenance behind its disclosure', () => {
+    const evidenceIds = Array.from({ length: 9 }, (_, index) => `019823ab-0000-7000-8000-00000000000${index + 3}`);
+    const html = renderPanel({
+      details: {
+        stepId: 'step-42',
+        supportingEvidenceIds: evidenceIds,
+        workItemId: null,
+        agentQuestion: 'Which candidate is correct?',
+      },
+      workspacePresentation: { stepLabel: 'Access review' },
+    });
+
+    expect(html.indexOf('Question')).toBeLessThan(html.indexOf('Technical details'));
+    expect(html.indexOf('Decision context')).toBeLessThan(html.indexOf('Technical details'));
+    expect(html.indexOf('Select candidate 1')).toBeLessThan(html.indexOf('Technical details'));
+    expect(html).toContain('Access review');
+    expect(html).toContain('Supporting capture 1');
+    expect(html).toContain('Supporting capture 8');
+    expect(html).toContain('escalation-panel--workspace');
+    expect(html).toContain('Question · untrusted');
+    expect(html).toContain('Candidate 1 · untrusted');
+    expect(html).toContain('AGENT-GENERATED question · untrusted');
+    expect(html).toContain('AGENT-GENERATED candidate 1 · untrusted');
+    expect(html).not.toMatch(/<p class="ls-untrusted__label"[^>]*aria-label=/u);
+    expect(html).toContain('Source content cannot change the Run objective, tool scope, or evaluation.');
+    expect(html).toContain('<summary>Platform question</summary>');
+    expect(html.match(/Source content cannot change the Run objective, tool scope, or evaluation\./gu)).toHaveLength(1);
+    expect(html).toContain('<summary>Add an optional note</summary>');
+    expect(html).not.toContain('details open');
+    expect(html.indexOf('Supporting capture 1')).toBeLessThan(html.indexOf('Technical details'));
+    expect(html).not.toContain('Supporting capture 9');
+    expect(html).toContain('Showing 8 of 9 supporting captures.');
+    expect(html).toContain('Step ID');
+    expect(html).toContain('step-42');
+    expect(html).not.toContain('Supporting Evidence</h3>');
   });
 
   it('normalizes fixed answer order and leaves the candidate order grounded in the wait', () => {
@@ -257,6 +294,7 @@ describe('Run-detail Escalation read seam', () => {
       pause: null,
       runRevision: 19,
       details: DETAILS_NONE,
+      question: null,
     });
     expect(transaction).toHaveBeenCalledWith(RUN_ID, expect.any(Function));
   });
@@ -278,6 +316,7 @@ describe('Run-detail Escalation read seam', () => {
       pause: paused,
       runRevision: 4,
       details: null,
+      question: null,
     });
   });
 
@@ -286,6 +325,25 @@ describe('Run-detail Escalation read seam', () => {
       transaction: async (_runId: string, work: (context: unknown) => Promise<unknown>) =>
         work({ wait: null, run: null, readEscalationDetails: async () => null }),
     } as unknown as Pick<WaitRepository, 'transaction'>;
-    await expect(readOpenEscalationWith(repository, RUN_ID)).resolves.toEqual({ wait: null, pause: null, runRevision: null, details: null });
+    await expect(readOpenEscalationWith(repository, RUN_ID)).resolves.toEqual({ wait: null, pause: null, runRevision: null, details: null, question: null });
+  });
+});
+
+// UI cleanup 2026-09-22, UX-27 and UX-02. The policy sentence followed the agent's question
+// AND every candidate, so a two-candidate Escalation said it three times above the answer
+// controls; and the deadline printed a raw ISO instant.
+describe('the Escalation panel, read once (UX-27)', () => {
+  it('says the policy once above the question and every candidate', () => {
+    const html = renderPanel({ details: { ...DETAILS_NONE, agentQuestion: 'Which candidate is the leaver?' } });
+    expect(html.split('Untrusted source content — AGENT-GENERATED').length - 1).toBe(3);
+    expect(html.split(UNTRUSTED_CONTENT_SENTENCE).length - 1).toBe(1);
+  });
+
+  it('shows the deadline readably, with the exact instant kept in datetime', () => {
+    const html = renderPanel();
+    const deadline = html.slice(html.indexOf('<dt>Deadline</dt>'), html.indexOf('</dd>', html.indexOf('<dt>Deadline</dt>')));
+    expect(deadline).toMatch(/datetime="2026-09-06T13:00:00(\.000)?Z"/i);
+    expect(deadline.replace(/<[^>]*>/g, '')).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+    expect(deadline.replace(/<[^>]*>/g, '')).toContain('6 Sep 2026');
   });
 });

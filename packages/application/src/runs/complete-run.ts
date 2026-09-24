@@ -16,6 +16,7 @@ import {
 import { WAIT_WITHDRAWN_ACTOR } from './escalation-kind.js';
 import type { RunResultContext, StoredRunResult } from './execution-ports.js';
 import { sealPackage } from './seal-package.js';
+import { DEFERRED_PAUSE_SUPERSEDED_EVENT } from './deferred-pause-run.js';
 
 /**
  * `CompleteRun`: the one place a Run's System Outcome is computed and its Result sealed
@@ -466,9 +467,41 @@ async function publishResult(
         payload: {
           requestedBy: pause.requestedBy,
           requestedAt: pause.requestedAt,
+          ...(pause.commandId !== undefined && pause.commandId !== null
+            ? { commandId: pause.commandId }
+            : {}),
           state: decision.runState,
           outcome: decision.outcome,
           occurredAt: input.at,
+        },
+      });
+      await context.notifyTimeline(superseded.sequence);
+    }
+  }
+
+  // A terminal outcome wins over a deferred latch when no different Work Item boundary
+  // remains. Keep the marker row for history, and record the precise target so a receipt
+  // cannot imply that the worker ever paused the Run.
+  if (previous === null && context.readDeferredPause !== undefined && context.settleDeferredPause !== undefined) {
+    const deferred = await context.readDeferredPause();
+    if (deferred !== null) {
+      const reason = input.state === 'CANCELED' ? 'cancellation' : 'run-finalized';
+      await context.settleDeferredPause('SUPERSEDED', input.at, reason);
+      const superseded = await context.auditEvents.append({
+        actor: { type: 'system', id: 'deferred-pause-coordinator' },
+        eventType: DEFERRED_PAUSE_SUPERSEDED_EVENT,
+        source: 'worker',
+        outcome: 'failure',
+        aggregateId: input.run.runId,
+        correlationId: input.run.correlationId,
+        sessionId: deferred.sessionId,
+        payload: {
+          commandId: deferred.commandId,
+          requestedBy: deferred.requestedBy,
+          workItemId: deferred.workItemId,
+          subjectKey: deferred.subjectKey,
+          registrationId: deferred.registrationId,
+          reason,
         },
       });
       await context.notifyTimeline(superseded.sequence);

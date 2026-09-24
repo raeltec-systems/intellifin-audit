@@ -12,7 +12,7 @@ import {
   type PostgresAuditDependencies,
 } from '../db/audit-events.js';
 import type { Clock, UuidV7Generator } from '@intellifin/application';
-import { DrizzleRoleWriter, DrizzleSessionWriter } from './role-repository.js';
+import { DrizzleRoleWriter, DrizzleSessionWriter, DrizzlePermissionGrantWriter } from './role-repository.js';
 import { BetterAuthUserCreator } from './user-creator.js';
 import type { AuthConfig } from './auth.js';
 
@@ -66,6 +66,7 @@ export class PostgresIdentityUnitOfWork implements AuditUnitOfWork<IdentityUnitO
       return work({
         auditEvents: createAuditEventWriter(transaction, this.clock, this.ids),
         roles: new DrizzleRoleWriter(transaction),
+        permissions: new DrizzlePermissionGrantWriter(transaction),
         users,
         sessions: new DrizzleSessionWriter(transaction),
       });

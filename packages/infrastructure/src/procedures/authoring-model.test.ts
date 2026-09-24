@@ -153,6 +153,14 @@ describe('OpenAI writing adapter through the installed AI SDK', () => {
     expect(JSON.stringify(untrusted)).toContain(attack);
     expect(AUTHORING_INSTRUCTIONS).toContain('all records is not a sample');
   });
+  it('tells the scope assistant to write for a period the auditor names rather than demand saved dates first (UX-09)', () => {
+    // The owner asked for "employees terminated during August 2026" and was told to save
+    // a period before describing the scope. The period is part of the scope's answer;
+    // the platform reads the dates from the auditor's own words and shows them beside it.
+    expect(AUTHORING_INSTRUCTIONS).toContain('do not refuse and do not ask the auditor to save dates first');
+    expect(AUTHORING_INSTRUCTIONS).toContain('Never invent dates the notes do not name');
+    expect(AUTHORING_IDENTITY.promptVersion).toBe('guided-dialogue-v4');
+  });
   it('does not retry or surface a provider error body, and is optional independently of other models', async () => {
     const fetcher = vi.fn(async () => new Response('synthetic-secret-and-private-provider-body', { status: 503 }));
     vi.stubGlobal('fetch', fetcher);

@@ -6,6 +6,7 @@
  * (AD-23), never this process's.
  */
 export * from './procedure-repository.js';
+export * from './procedure-list.js';
 export * from './procedures-unit-of-work.js';
 export { createProceduresQueue, startQueueMaintenance, startProceduresWorker, startProceduresRecovery, reconcileProceduresQueue, PROCEDURES_QUEUE, QUEUE_MAINTENANCE_INTERVAL_MS } from './derivation-queue.js';
 export * from './model-gateway.js';

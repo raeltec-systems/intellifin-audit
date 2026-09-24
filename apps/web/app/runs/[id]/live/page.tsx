@@ -6,28 +6,35 @@ import {
   DrizzleActorNameReader,
   DrizzleFrozenExecutionReader,
   DrizzleRunDetailRepository,
+  readRecordNames,
   readTimelineHead,
 } from '@intellifin/infrastructure';
 
 import { getRuntime } from '../../../../src/bootstrap';
 import { LIVE_VIEW_QUEUED_SENTENCE } from '../../../../src/design/copy';
+import { PageHeader } from '../../../../src/design/PageHeader';
+import { Reference } from '../../../../src/design/Reference';
+import { Timestamp } from '../../../../src/design/Timestamp';
 import { DetailTrail } from '../../../../src/procedures/DetailTrail';
 import { LiveGate } from '../../../../src/runs/LiveGate';
 import { RunCancelControl } from '../../../../src/runs/RunCancelControl';
 import { RunFlagControl } from '../../../../src/runs/RunFlagControl';
 import { RunPauseControls } from '../../../../src/runs/RunPauseControls';
+import { RunControllerLease } from '../../../../src/runs/RunControllerLease';
+import { SharedRunControl } from '../../../../src/runs/SharedRunControl';
 import { readOpenEscalation } from '../../../../src/runs/escalation-read';
-import { OpenEscalationSection, PauseBanners } from '../../../../src/runs/detail';
+import { CancellationBanners, OpenEscalationSection, PauseBanners } from '../../../../src/runs/detail';
 import { LiveViewer } from '../../../../src/runs/LiveViewer';
 import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
 import { planActionWord, runLifecycleWord, utcStamp } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
+import { recordNaming, recordWords } from '../../../../src/runs/record-words';
 import {
   LIVE_VIEW_STAGE,
-  currentStepExecution,
   frameNarration,
   liveViewChrome,
   plannedStepCount,
+  plannedStepIds,
   stepNarration,
 } from '../../../../src/runs/live-view';
 
@@ -65,9 +72,12 @@ export default async function RunLivePage({
 
   const runtime = await getRuntime();
   const detail = new DrizzleRunDetailRepository(runtime.db);
-  const [timeline, frame, agentWork, evidence, plan, liveCursor, flagRows] = await Promise.all([
+  const [timeline, frame, current, agentWork, evidence, plan, liveCursor, flagRows] = await Promise.all([
     detail.readTimeline(run.runId),
     detail.readLatestFrame(run.runId),
+    // The step the Run is on now, read on its own: the Timeline's page is the OLDEST fifty
+    // Step Executions, so its newest row names a step a long Run finished long ago.
+    detail.readLatestStepExecution(run.runId),
     detail.readAgentWorkPosition(run.runId),
     detail.readEvidenceItems(run.runId),
     new DrizzleFrozenExecutionReader(runtime.db).readFrozenExecution(run.versionId, run.procedureId),
@@ -85,11 +95,13 @@ export default async function RunLivePage({
       : plan?.inputs.targets.find((target) => target.registrationId === registrationId)?.displayName ?? null;
 
   // The Step the frame belongs to, so the frame's alt text and the rail's narration are
-  // the SAME sentence (UX-DR37). A frame whose Step Execution has fallen off the bounded
-  // read narrates from the action instead, which is why `frameNarration` takes both.
+  // the SAME sentence (UX-DR37). It is read by id when it is not on the Timeline's bounded
+  // page; a frame whose Step Execution cannot be read at all narrates from the action
+  // instead, which is why `frameNarration` takes both.
   const frameStep = frame === null
     ? null
-    : timeline.stepExecutions.rows.find((row) => row.stepExecutionId === frame.stepExecutionId) ?? null;
+    : timeline.stepExecutions.rows.find((row) => row.stepExecutionId === frame.stepExecutionId)
+      ?? await detail.readStepExecution(run.runId, frame.stepExecutionId);
   /** The system a Step Execution is working, through the Work Item that names its registration. */
   const systemOf = (workItemId: string | null): string | null =>
     workItemId === null
@@ -100,14 +112,25 @@ export default async function RunLivePage({
    * tell two Work Items of the same Run apart. `displayName` cannot: it is the Target
    * System's name and is identical on every Work Item.
    */
-  const subjectOf = (workItemId: string | null): string | null =>
+  const subjectKeyOf = (workItemId: string | null): string | null =>
     workItemId === null
       ? null
       : timeline.workItems.find((item) => item.workItemId === workItemId)?.subjectKey ?? null;
-  const current = currentStepExecution(timeline.stepExecutions.rows);
   const workItem = agentWork?.workItemId === undefined || agentWork.workItemId === null
     ? null
     : timeline.workItems.find((item) => item.workItemId === agentWork.workItemId) ?? null;
+  // UX-25: a record is named the way the record review names it — the key, then the
+  // person's name — and masked wherever the version's frozen binding says so (FR-41).
+  const naming = recordNaming(plan);
+  const subjectKeys = [
+    subjectKeyOf(frameStep?.workItemId ?? frame?.workItemId ?? null),
+    subjectKeyOf(current?.workItemId ?? null),
+    workItem?.subjectKey ?? null,
+  ].filter((key): key is string => key !== null);
+  const recordNames = plan === null ? new Map<string, string>() : await readRecordNames(runtime.db, run.runId, plan, subjectKeys);
+  const subjectLabel = (key: string | null): string | null =>
+    key === null ? null : recordWords({ key, name: recordNames.get(key) ?? null }, naming);
+  const subjectOf = (workItemId: string | null): string | null => subjectLabel(subjectKeyOf(workItemId));
 
   const chrome = liveViewChrome(run.state);
   const lifecycle = runLifecycleWord(run.state);
@@ -125,6 +148,7 @@ export default async function RunLivePage({
   const pauseNames = await new DrizzleActorNameReader(runtime.db).namesFor([
     ...(waits?.pause?.openedBy == null ? [] : [waits.pause.openedBy]),
     ...(run.pauseRequest === null ? [] : [run.pauseRequest.requestedBy]),
+    ...(run.cancellation === null ? [] : [run.cancellation.requestedBy]),
   ]);
 
   // Why there is no frame, in words. An empty stage that says nothing reads as "fine",
@@ -139,27 +163,75 @@ export default async function RunLivePage({
           ? LIVE_VIEW_STAGE.awaitingFirstFrame
           : LIVE_VIEW_STAGE.unavailable;
 
+  // The Step counter's numerator: LOGICAL plan steps, never `run_step_execution`'s row
+  // count. A pause supersedes the attempt in flight and the resume starts a new one, so
+  // the total counted attempts and the chrome read "Step 7 of 6" (UX-47). Counted over
+  // EVERY row in the database rather than over the bounded page above, so a long Run is
+  // not under-reported either; `logicalStepProgress` in `live-view.ts` is the same rule
+  // over rows in hand, and the integration test holds the two to one answer.
+  const progress = await detail.readLogicalStepProgress(run.runId, plannedStepIds(plan));
+
+  // ONE header row: the title, the lifecycle badge beside it, the four session controls on
+  // its right and one meta line. The walkthrough met the title, the status, the banner, a
+  // full-width control stack, a workspace id, a warning and a row of hashes each on their
+  // own row before the screen (UX-48).
+  const header = (
+    <PageHeader
+      title={<>Live View · {run.procedureName}</>}
+      badge={lifecycle === null ? <span>{run.state}</span> : <StatusBadge family="run-lifecycle" state={lifecycle} size="md" />}
+      actions={
+        <>
+          {/* The controller panel is NOT in this row: it sits at the top of the rail and
+              shares its one read with this control through `SharedRunControl`. */}
+          <RunPauseControls
+            runId={run.runId}
+            procedureName={run.procedureName}
+            paused={run.state === 'PAUSED'}
+            pausePending={run.pauseRequest !== null}
+            awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
+            pausable={runPauseTransition(run.state) !== null}
+            runRevision={waits?.runRevision ?? null}
+            controlRefreshKey={readAt.toISOString()}
+            showController={false}
+          />
+          <RunCancelControl
+            runId={run.runId}
+            procedureName={run.procedureName}
+            active={isActiveRunState(run.state)}
+            cancelPending={run.cancellation !== null}
+          />
+          <RunFlagControl
+            runId={run.runId}
+            flaggable={isFlaggableRunState(run.state)}
+            flags={flagRows.map((row) => ({
+              flagId: row.flagId,
+              flaggedBy: actorNames.get(row.flaggedBy) ?? row.flaggedBy,
+              flaggedAt: row.flaggedAt,
+              note: row.note,
+            }))}
+          />
+        </>
+      }
+      meta={
+        <>
+          <Link href={runTabHref(run.runId, '')}>Open Run Detail</Link> ·{' '}
+          <Reference kind="Run" value={run.runId} /> · started <Timestamp value={run.initiatedAt} precision="minute" />
+        </>
+      }
+    />
+  );
+
   return (
     <div className="ls-stack">
       <DetailTrail
         trail={[
           { href: '/runs', label: 'Runs' },
-          { href: runTabHref(run.runId, ''), label: run.runId, mono: true },
+          // The Procedure, as Run Detail's own trail names it; the Run's identifier is under
+          // Technical details and its short reference is on the meta line (UX-02).
+          { href: runTabHref(run.runId, ''), label: run.procedureName },
           { href: here, label: 'Live' },
         ]}
       />
-      <header className="ls-page-header">
-        <h1>Live View · {run.procedureName}</h1>
-        <p>
-          <Link href={runTabHref(run.runId, '')}>Open Run Detail</Link> for the Result, the
-          Evidence Quality Gate and the Execution Timeline.
-        </p>
-        {lifecycle === null ? (
-          <p>Run lifecycle: {run.state}</p>
-        ) : (
-          <StatusBadge family="run-lifecycle" state={lifecycle} size="md" />
-        )}
-      </header>
 
       {/* ONE subscription for the surface, and the gate over every control under it
           (Story 5.7). The channel subscribes only while the Run is active (UX-DR35); a
@@ -169,6 +241,7 @@ export default async function RunLivePage({
           EXPERIENCE.md → session viewer: "Live controls: Pause / Resume, Cancel, Flag to
           Audit Manager". Each is the SAME component Run Detail mounts, and each asks the
           gate whether it may act — which is open everywhere else. */}
+      <SharedRunControl>
       <LiveGate
         runId={run.runId}
         state={run.state}
@@ -176,6 +249,7 @@ export default async function RunLivePage({
         cursor={liveCursor}
         readAt={readAt.toISOString()}
         href={here}
+        header={header}
       >
         {/* AT THE TOP, and the workspace screen stays below it rather than behind it
             (EXPERIENCE.md → Live View / Awaiting Auditor: "Escalation panel focused;
@@ -186,24 +260,17 @@ export default async function RunLivePage({
             is a context change nobody asked for. */}
         <OpenEscalationSection run={run} escalation={waits} readAt={readAt} />
         <PauseBanners run={run} pause={waits?.pause ?? null} readAt={readAt} names={pauseNames} />
-        <RunPauseControls
-          runId={run.runId}
-          procedureName={run.procedureName}
-          paused={run.state === 'PAUSED'}
-          pausePending={run.pauseRequest !== null}
-          awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
-          pausable={runPauseTransition(run.state) !== null}
-          runRevision={waits?.runRevision ?? null}
-        />
-        <RunCancelControl
-          runId={run.runId}
-          procedureName={run.procedureName}
-          active={isActiveRunState(run.state)}
-          cancelPending={run.cancellation !== null}
-        />
+        {/* The server's own statement of a requested cancellation, as on Run Detail: the
+            control's transitional "Cancellation requested." is dropped once the page has
+            re-read the Run (UX-49), so this is what says it from then on. */}
+        <CancellationBanners run={run} names={pauseNames} />
 
         <LiveViewer
           runId={run.runId}
+          runState={run.state}
+          controller={run.state === 'PAUSED' || run.state === 'AWAITING_AUDITOR' || runPauseTransition(run.state) !== null
+            ? <RunControllerLease runId={run.runId} refreshKey={readAt.toISOString()} />
+            : null}
           chrome={chrome}
           stateSentence={
             chrome === null
@@ -219,8 +286,9 @@ export default async function RunLivePage({
                   status: timeline.workspace.status,
                 }
           }
-          stepsStarted={timeline.stepExecutions.total}
+          stepsStarted={progress.started}
           plannedSteps={plannedStepCount(plan)}
+          retries={progress.retries}
           frame={
             frame === null
               ? null
@@ -254,7 +322,7 @@ export default async function RunLivePage({
                   // The record, which the rail renders in front of the system name. It was
                   // hard-coded `null` here, so Watch said "LoanCore · RUNNING · 1
                   // Observations" whichever leaver the Agent was inspecting.
-                  subjectKey: workItem.subjectKey,
+                  subjectKey: subjectLabel(workItem.subjectKey),
                   observations: workItem.observations,
                 }
           }
@@ -279,20 +347,8 @@ export default async function RunLivePage({
               digest: null,
             }))}
         />
-        {/* Flag sits AFTER the viewer: it is the one control here that is not about stopping
-            or holding the Run, and it carries the record of the flags already raised. */}
-        <RunFlagControl
-          runId={run.runId}
-          flaggable={isFlaggableRunState(run.state)}
-          flags={flagRows.map((row) => ({
-            flagId: row.flagId,
-            flaggedBy: actorNames.get(row.flaggedBy) ?? row.flaggedBy,
-            flaggedAt: row.flaggedAt,
-            note: row.note,
-          }))}
-        />
       </LiveGate>
-      <p className="ls-caption">Read at {utcStamp(readAt)}.</p>
+      </SharedRunControl>
     </div>
   );
 }

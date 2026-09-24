@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
 
-import { Absent } from '../../../../src/design/Absent';
+import Link from 'next/link';
+
 import { EmptyState } from '../../../../src/design/EmptyState';
 import { RUN_TAB_EMPTY } from '../../../../src/design/copy';
-import { RunDenied, RunDetailFrame, openRun } from '../../../../src/runs/detail';
+import { RunDenied, RunDetailFrame, openRun, runTabHref } from '../../../../src/runs/detail';
 
 export const metadata: Metadata = { title: 'Run · Review · IntelliFin Audit' };
 export const dynamic = 'force-dynamic';
@@ -35,19 +36,20 @@ export default async function RunReviewPage({
     <RunDetailFrame run={run} tab="review" readAt={readAt}>
       <section className="ls-card ls-stack" aria-labelledby="review-heading">
         <h2 id="review-heading">Auditor Review</h2>
-        <dl className="ls-definition">
-          <div>
-            <dt>Review state</dt>
-            <dd>
-              <Absent what="No Auditor Review has started." />
-            </dd>
-          </div>
-        </dl>
+        {/* A "Review state" row reading "No Auditor Review has started." said the same
+            thing as the empty state directly under it, and read as a FIELD that would be
+            filled in — for a capability this release does not have (UI cleanup
+            2026-09-22). The empty state is the whole statement now, and it points at the
+            one review that DOES exist here: the confirmations on the Result tab. */}
         <EmptyState
           icon="user-check"
           headline={RUN_TAB_EMPTY.review.headline}
           sentence={RUN_TAB_EMPTY.review.sentence}
         />
+        <p>
+          The agent&rsquo;s assessments that still need a person are on the{' '}
+          <Link href={runTabHref(run.runId, '')}>Result tab</Link>.
+        </p>
       </section>
     </RunDetailFrame>
   );

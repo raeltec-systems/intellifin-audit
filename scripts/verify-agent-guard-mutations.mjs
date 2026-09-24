@@ -17,8 +17,11 @@ const output = process.argv[2];
 if (!output) throw new Error('Supply a secret-free JSON evidence output path.');
 const browserMode = process.argv.includes('--browser');
 const cases = [
+  // Repointed by the UI cleanup (UX-27): the panel says the untrusted-content policy once,
+  // so the question's own `UntrustedText` carries `policy={false}`. The mutation and its
+  // killing test are unchanged; only the anchor moved.
   { id: 'escalation-agent-generated-label', file: 'apps/web/src/runs/EscalationPanel.tsx',
-    before: '<UntrustedText field="AGENT-GENERATED question">', after: '<UntrustedText field="QUESTION">',
+    before: '<UntrustedText field="AGENT-GENERATED question" policy={false}>', after: '<UntrustedText field="QUESTION" policy={false}>',
     test: 'apps/web/src/runs/agent-escalation-golden.test.ts', name: 'retains the generated label' },
   { id: 'golden-retrieved-objective-separation', file: 'packages/infrastructure/src/runs/agent-model-gateway.ts',
     before: 'objective: request.objective,', after: "objective: request.objective + request.retrieved.map(entry => entry.text).join(''),",
@@ -53,8 +56,8 @@ if (browserMode) cases.push(
     after: "const context = this.live.values().next().value?.context ?? await browser.newContext({ serviceWorkers: 'block', acceptDownloads: false });",
     test: 'tests/integration/agent-isolation.test.ts', name: 'keeps concurrent authenticated Runs', browser: true },
   { id: 'browser-cross-run-reference', file: 'packages/infrastructure/src/runs/browser-execution.ts',
-    before: "if (!live || live.ref.runId !== ref.runId || live.ref.mode !== ref.mode) return null;",
-    after: "if (!live || live.ref.mode !== ref.mode) return null;",
+    before: "if (!live || live.ref.runId !== ref.runId || live.ref.mode !== ref.mode || live.previewFenced) return null;",
+    after: "if (!live || live.ref.mode !== ref.mode || live.previewFenced) return null;",
     test: 'tests/integration/agent-isolation.test.ts', name: 'keeps concurrent authenticated Runs', browser: true },
   { id: 'browser-workspace-egress', file: 'packages/infrastructure/src/runs/browser-execution.ts',
     before: 'return origins.some((origin) => withinOrigin(origin, candidate));', after: 'return true;',

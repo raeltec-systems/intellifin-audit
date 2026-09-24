@@ -106,6 +106,9 @@ export default defineConfig({
             stderr: 'pipe',
             env: {
               SERVICE_NAME: 'web',
+              // Disposable synthetic database only; real-data mode stays unavailable.
+              RUN_CONVERSATION_MODE: 'synthetic',
+              RUN_CONVERSATION_CONTENT_KEY: 'ab'.repeat(32),
               AUTHORING_OPENAI_API_KEY: 'isolated-synthetic-authoring-fixture',
               BETTER_AUTH_URL: baseURL,
               /**

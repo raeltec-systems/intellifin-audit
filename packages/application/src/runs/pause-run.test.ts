@@ -37,6 +37,8 @@ import type { GateCheckRow, PackageSeal, RunGatePopulationFacts, StoredRunResult
  */
 
 const RUN_ID = '01a06fd8-0000-7000-8000-0000000000b1';
+const COMMAND_ID = '01a06fd8-0000-7000-8000-0000000000c4';
+const OTHER_COMMAND_ID = '01a06fd8-0000-7000-8000-0000000000c5';
 const NOW = new Date('2026-09-10T09:00:00.000Z');
 const SESSION = { userId: 'auditor', sessionId: 'session' } as const;
 
@@ -82,6 +84,7 @@ class FakeWaitContext implements WaitContext {
   authorizationRoles = { findRole: async (): Promise<typeof this.role> => this.role };
   readWait = async (waitId: string): Promise<RunWait | null> => (this.wait?.waitId === waitId ? this.wait : null);
   readEscalationDetails = async (): Promise<null> => null;
+  readResumeControl = async (): Promise<{ lease: import('./run-control-lease.js').RunControlLeaseState | null; now: Date }> => ({ lease: null, now: NOW });
   auditEvents = {
     append: async (draft: { eventType: string; payload: Record<string, unknown>; actor: { id: string } }) => {
       this.sequence += 1;
@@ -171,13 +174,15 @@ function ids(): { next(): string } {
   return { next: () => `01a06fd8-0000-7000-8000-${String(count++).padStart(12, '0')}` };
 }
 
-function dependencies(repository: WaitRepository, clock: { now(): Date } = { now: () => NOW }) {
+function dependencies(repository: WaitRepository, clock: { now(): Date } = { now: () => NOW }, commandId?: string | null) {
   return {
     repository,
+    requireControllerLease: false,
     roles: { findRole: async () => 'auditor' as const },
     unitOfWork: { execute: async () => undefined } as never,
     ids: ids(),
     clock,
+    ...(commandId === undefined ? {} : { commandId }),
   };
 }
 
@@ -240,6 +245,15 @@ describe('PauseRun', () => {
     expect(repository.context.wait).toBeNull();
   });
 
+  it('records a server command owner in the marker and request event', async () => {
+    const repository = new FakeWaitRepository();
+    const outcome = await pauseRun(dependencies(repository, { now: () => NOW }, COMMAND_ID.toUpperCase()), { session: SESSION, request: { runId: RUN_ID } });
+
+    expect(outcome).toEqual({ ok: true, state: 'RUNNING', pending: true });
+    expect(repository.context.pauseRequest).toMatchObject({ commandId: COMMAND_ID });
+    expect(repository.context.events[0]?.payload).toMatchObject({ commandId: COMMAND_ID });
+  });
+
   it('is idempotent: a second request never overwrites the first requester or time', async () => {
     const repository = new FakeWaitRepository();
     await pauseRun(dependencies(repository), { session: SESSION, request: { runId: RUN_ID } });
@@ -252,6 +266,71 @@ describe('PauseRun', () => {
     expect(repository.context.pauseRequest?.requestedBy).toBe('auditor');
     expect(repository.context.pauseRequest?.requestedAt).toBe(NOW.toISOString());
     expect(repository.context.events).toHaveLength(1);
+  });
+
+  it('replays a pending request for the same server command id without a second event', async () => {
+    const request: RunPauseRequest = {
+      requestedBy: 'auditor',
+      sessionId: 'session',
+      requestedAt: '2026-09-10T08:59:00.000Z',
+      commandId: COMMAND_ID,
+    };
+    const repository = new FakeWaitRepository(new FakeWaitContext({ ...RUN, pauseRequest: request }));
+    const outcome = await pauseRun(dependencies(repository, { now: () => NOW }, COMMAND_ID), { session: SESSION, request: { runId: RUN_ID } });
+
+    expect(outcome).toEqual({ ok: true, state: 'RUNNING', pending: true });
+    expect(repository.context.pauseRequest).toEqual(request);
+    expect(repository.context.events).toHaveLength(0);
+  });
+
+  it('does not attribute another actor’s marker to a reused server command id', async () => {
+    const request: RunPauseRequest = { requestedBy: 'another-auditor', sessionId: 'other-session', requestedAt: NOW.toISOString(), commandId: COMMAND_ID };
+    const repository = new FakeWaitRepository(new FakeWaitContext({ ...RUN, pauseRequest: request }));
+    expect(await pauseRun(dependencies(repository, { now: () => NOW }, COMMAND_ID), { session: SESSION, request: { runId: RUN_ID } }))
+      .toEqual({ ok: false, reason: RUN_PAUSE_REFUSALS.ALREADY_REQUESTED });
+    expect(repository.context.events).toHaveLength(0);
+    expect(repository.context.pauseRequest).toEqual(request);
+  });
+
+  it('refuses a different or null-owned marker for a server command retry', async () => {
+    for (const priorCommandId of [OTHER_COMMAND_ID, null] as const) {
+      const request: RunPauseRequest = {
+        requestedBy: 'auditor',
+        sessionId: 'session',
+        requestedAt: '2026-09-10T08:59:00.000Z',
+        commandId: priorCommandId,
+      };
+      const repository = new FakeWaitRepository(new FakeWaitContext({ ...RUN, pauseRequest: request }));
+      const outcome = await pauseRun(dependencies(repository, { now: () => NOW }, COMMAND_ID), { session: SESSION, request: { runId: RUN_ID } });
+
+      expect(outcome).toEqual({ ok: false, reason: RUN_PAUSE_REFUSALS.ALREADY_REQUESTED });
+      expect(repository.context.pauseRequest).toEqual(request);
+      expect(repository.context.events).toHaveLength(0);
+    }
+  });
+
+  it('keeps legacy idempotency when the caller has no server command id', async () => {
+    const request: RunPauseRequest = {
+      requestedBy: 'auditor',
+      sessionId: 'session',
+      requestedAt: '2026-09-10T08:59:00.000Z',
+      commandId: COMMAND_ID,
+    };
+    const repository = new FakeWaitRepository(new FakeWaitContext({ ...RUN, pauseRequest: request }));
+    await expect(pauseRun(dependencies(repository), { session: SESSION, request: { runId: RUN_ID } }))
+      .resolves.toEqual({ ok: true, state: 'RUNNING', pending: true });
+    expect(repository.context.pauseRequest).toEqual(request);
+  });
+
+  it('refuses a malformed internal command id and never reads a Run', async () => {
+    for (const commandId of ['not-a-uuid', null] as const) {
+      const repository = new FakeWaitRepository();
+      const outcome = await pauseRun(dependencies(repository, { now: () => NOW }, commandId), { session: SESSION, request: { runId: RUN_ID } });
+
+      expect(outcome).toEqual({ ok: false, reason: RUN_PAUSE_REFUSALS.INVALID_COMMAND_ID });
+      expect(repository.context.events).toHaveLength(0);
+      expect(repository.context.pauseRequest).toBeNull();
+    }
   });
 
   it("refuses an Awaiting Auditor Run with the contract's own sentence", async () => {
@@ -274,7 +353,7 @@ describe('PauseRun', () => {
 
   it('refuses a malformed request before it reads a Run', async () => {
     const repository = new FakeWaitRepository();
-    for (const request of [null, [], { runId: 'not-a-uuid' }, { runId: RUN_ID, extra: 1 }, {}]) {
+    for (const request of [null, [], { runId: 'not-a-uuid' }, { runId: RUN_ID, extra: 1 }, { runId: RUN_ID, commandId: COMMAND_ID }, {}]) {
       const outcome = await pauseRun(dependencies(repository), { session: SESSION, request });
       expect(outcome.ok).toBe(false);
     }
@@ -286,7 +365,7 @@ describe('performPause', () => {
   it('opens the wait, clears the marker and records who paused it', async () => {
     const context = new FakeWaitContext({ ...RUN, state: 'PAUSED' });
     const opened: RunWait[] = [];
-    const request: RunPauseRequest = { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-10T08:59:00.000Z' };
+    const request: RunPauseRequest = { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-10T08:59:00.000Z', commandId: COMMAND_ID };
     context.pauseRequest = request;
     const withPause = Object.assign(context, {
       openPauseWait: async (wait: RunWait) => { opened.push(wait); context.wait = wait; },
@@ -316,6 +395,7 @@ describe('performPause', () => {
       state: 'PAUSED',
       waitId: wait.waitId,
       deadline: wait.deadline,
+      commandId: COMMAND_ID,
       stepExecutionId: 'step-execution',
       workItemId: 'work-item',
     });
@@ -450,5 +530,78 @@ describe('ResumeRun', () => {
       expect(outcome.ok).toBe(false);
     }
     expect(repository.context.wait?.closedAt).toBeNull();
+  });
+
+  it('requires acquisition when server policy enrolls Resume even before a lease exists', async () => {
+    const repository = await paused();
+    const result = await resumeRun({ ...dependencies(repository), requireControllerLease: true }, {
+      session: SESSION, request: { runId: RUN_ID, expectedRunRevision: repository.context.run!.revision },
+    });
+    expect(result).toMatchObject({ ok: false, code: 'control-required' });
+    expect(repository.context.wait?.closedAt).toBeNull();
+  });
+
+  it.each(['missing-epoch', 'old-epoch', 'other-holder', 'expired', 'released'] as const)(
+    'keeps an enrolled Run fenced with conversation disabled: %s', async failure => {
+      const repository = await paused();
+      repository.context.readResumeControl = async () => ({
+        now: NOW,
+        lease: {
+          runId: RUN_ID, epoch: 7,
+          holderId: failure === 'released' ? null : failure === 'other-holder' ? 'other-auditor' : SESSION.userId,
+          expiresAt: failure === 'released' ? null : new Date(NOW.getTime() + (failure === 'expired' ? 0 : 120_000)).toISOString(),
+          updatedAt: NOW.toISOString(),
+        },
+      });
+      const result = await resumeRun({ ...dependencies(repository), requireControllerLease: false }, {
+        session: SESSION,
+        request: { runId: RUN_ID, expectedRunRevision: repository.context.run!.revision,
+          ...(failure === 'missing-epoch' ? {} : { expectedControlEpoch: failure === 'old-epoch' ? 5 : 7 }) },
+      });
+      expect(result).toMatchObject({ ok: false, code: failure === 'missing-epoch' ? 'control-required' : 'stale-control' });
+      expect(repository.context.run?.state).toBe('PAUSED');
+      expect(repository.context.wait?.closedAt).toBeNull();
+      expect(repository.context.events.filter(event => event.eventType === 'lifecycle.run-resumed')).toHaveLength(0);
+    },
+  );
+
+  it.each(['unchanged', 'other-wait', 'other-deadline'] as const)('binds conversational Resume to the reviewed pause: %s', async mode => {
+    const repository = await paused();
+    const wait = repository.context.wait!;
+    repository.context.readResumeControl = async () => ({ now: NOW, lease: {
+      runId: RUN_ID, epoch: 7, holderId: SESSION.userId,
+      expiresAt: new Date(NOW.getTime() + 120_000).toISOString(), updatedAt: NOW.toISOString(),
+    } });
+    const revision = repository.context.run!.revision;
+    const result = await resumeRun({ ...dependencies(repository), requireControllerLease: false,
+      confirmedInteraction: { commandId: COMMAND_ID, planDigest: 'a'.repeat(64),
+        waitId: mode === 'other-wait' ? '01a06fd8-0000-7000-8000-0000000000ee' : wait.waitId,
+        pausedAt: wait.openedAt, deadline: mode === 'other-deadline' ? NOW.toISOString() : wait.deadline },
+    }, { session: SESSION, request: { runId: RUN_ID, expectedRunRevision: revision, expectedControlEpoch: 7 } });
+    if (mode === 'unchanged') {
+      expect(result).toMatchObject({ ok: true, state: 'RUNNING' });
+      expect(repository.context.events.at(-1)).toMatchObject({ eventType: 'lifecycle.run-resumed', payload: {
+        commandId: COMMAND_ID, planDigest: 'a'.repeat(64), waitId: wait.waitId,
+        expectedRunRevision: revision, controlEpoch: 7, pausedAt: wait.openedAt, deadline: wait.deadline,
+      } });
+    } else {
+      expect(result).toMatchObject({ ok: false, code: 'stale-revision' });
+      expect(repository.context.run?.state).toBe('PAUSED');
+      expect(repository.context.wait?.closedAt).toBeNull();
+      expect(repository.context.events).toHaveLength(0);
+    }
+  });
+
+  it('records the current control epoch on the existing authoritative Resume event', async () => {
+    const repository = await paused();
+    repository.context.readResumeControl = async () => ({ now: NOW, lease: {
+      runId: RUN_ID, epoch: 7, holderId: SESSION.userId,
+      expiresAt: new Date(NOW.getTime() + 120_000).toISOString(), updatedAt: NOW.toISOString(),
+    } });
+    const result = await resumeRun({ ...dependencies(repository), requireControllerLease: true }, {
+      session: SESSION, request: { runId: RUN_ID, expectedRunRevision: repository.context.run!.revision, expectedControlEpoch: 7 },
+    });
+    expect(result).toMatchObject({ ok: true, state: 'RUNNING' });
+    expect(repository.context.events.at(-1)).toMatchObject({ eventType: 'lifecycle.run-resumed', payload: { controlEpoch: 7 } });
   });
 });

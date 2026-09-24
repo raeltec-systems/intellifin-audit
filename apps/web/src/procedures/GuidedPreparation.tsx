@@ -1,13 +1,18 @@
 'use client';
 
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { ProcedureVersionView } from '@intellifin/application';
 import { PREPARATION_SECTIONS, draftContext, preparationStatus, preparationReviewBlocker, sectionReview, type PreparationSectionId } from '@intellifin/domain';
 
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
+import { TechnicalDetails } from '../design/TechnicalDetails';
+import { Timestamp } from '../design/Timestamp';
+import { countNoun } from '../design/words';
 import { ActorName } from '../runs/ActorName';
 import { NO_AUTOMATIC_RUNS_SENTENCE, SCHEDULE_TIME_STARTS_NOTHING_SENTENCE } from '../design/run-start-words';
+import { CONDITION_NOT_IN_WORDS, conditionLabel, conditionSentence } from './condition-words';
+import { PREPARATION_PANEL_PREFIX, preparationPanelId } from './preparation-anchors';
 import { UNKNOWN_SAVE_OUTCOME, UnknownSaveOutcome } from './UnknownSaveOutcome';
 import { useSectionSubmissionStatus, useSubmissionGuard } from './use-section';
 import { usePreparationGuide, type PreparationActionResult } from './PreparationActions';
@@ -95,9 +100,11 @@ const SECTION_WORDS: Readonly<Record<PreparationStep, {
   // takes a frequency and a time, and the handling — when the agent stops, retries or
   // asks — is frozen by the compiler and only shown. The title says what the section
   // does, and the step itself reads the handling facts out of the plan.
+  // UX-14: "Planned frequency" says it is a plan, because nothing starts a Run by itself
+  // in this release; the step's own caption names the one action that does.
   frequency: {
-    title: 'How often this is meant to run',
-    question: 'How often should this test happen, and which dates would each one cover?',
+    title: 'Planned frequency',
+    question: 'How often is this test meant to happen, and which dates would each one cover? Nothing runs by itself yet.',
     help: [
       'Set how often the assignment is meant to repeat and check the period that each run would cover.',
       'Check that the evidence can be obtained at that frequency.',
@@ -123,10 +130,6 @@ const STATUS_WORDS = {
   reviewed: 'Reviewed by auditor',
 } as const;
 
-const REVIEW_DATE = new Intl.DateTimeFormat('en-GB', {
-  day: 'numeric', month: 'short', year: 'numeric',
-  hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'UTC',
-});
 
 /**
  * One saved Procedure Version, with a path through its existing editors. Hidden panels
@@ -134,7 +137,10 @@ const REVIEW_DATE = new Intl.DateTimeFormat('en-GB', {
  * its submission guard, making an unfinished section look safe to review or submit.
  */
 export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, editors, review, help, assistant, onStepChange, actorNames }: GuidedPreparationProps): React.JSX.Element {
-  const id = useId();
+  // Fixed prefix (UX-15): exactly one GuidedPreparation is mounted per page, so a
+  // stable id lets ReadinessPanel link to a step without threading this component's
+  // internal state out through a render-prop. See preparation-anchors.ts.
+  const id = PREPARATION_PANEL_PREFIX;
   const names = new Map(Object.entries(actorNames ?? {}));
   const [selected, setSelected] = useState<PreparationStep>('context');
   const [hydrated, setHydrated] = useState(false);
@@ -163,11 +169,19 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
   useEffect(() => {
     // Native outline links work before hydration. Keep the section a reader chose
     // while JavaScript was loading, then switch to the focused editing layout.
-    const hash = decodeURIComponent(window.location.hash.slice(1));
-    const linked = [...PREPARATION_SECTIONS, 'review' as const].find(section => `${id}-panel-${section}` === hash);
-    if (linked) setSelected(linked);
+    function selectFromHash(): void {
+      const hash = decodeURIComponent(window.location.hash.slice(1));
+      const linked = [...PREPARATION_SECTIONS, 'review' as const].find(section => preparationPanelId(section) === hash);
+      if (linked) setSelected(linked);
+    }
+    selectFromHash();
     setHydrated(true);
-  }, [id]);
+    // UX-15: a reader who is already on this page and follows a readiness link (a
+    // same-page `href` change) fires `hashchange` without a navigation -- the
+    // mount-only read above cannot see that. `ReadinessPanel` is the one caller.
+    window.addEventListener('hashchange', selectFromHash);
+    return () => window.removeEventListener('hashchange', selectFromHash);
+  }, []);
 
   const reviewed = PREPARATION_SECTIONS.filter(section => preparationStatus(draft, section) === 'reviewed').length;
   const complete = reviewed === PREPARATION_SECTIONS.length;
@@ -230,9 +244,11 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
   });
 
   return <div className="ls-guided ls-stack" data-guided-preparation data-guided-ready={hydrated}>
-    <header className="ls-guided__intro ls-stack">
+    {/* UX-08: one compact row — the title and the progress — so the outline and the
+        current step start inside the first viewport. The outline itself says the
+        sections can be taken in any order. */}
+    <header className="ls-guided__intro">
       <h2 className="ls-card__title">Prepare an audit procedure</h2>
-      <p>I’ll guide you through the choices and help prepare the test. Start by confirming the selected control. You can jump to any section.</p>
       <p className="ls-caption" data-preparation-progress>{reviewed} of {PREPARATION_SECTIONS.length} sections reviewed by auditor. Section review does not authorise execution.</p>
     </header>
     <UnknownSaveOutcome visible={unknownOutcome} />
@@ -306,7 +322,23 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
             {section === 'assessment' ? <div className="ls-guide-facts ls-stack" data-criteria-confirmation>
               <p>I’ll use these saved criteria to distinguish a finding from a compliant result. Missing or ambiguous evidence stays unresolved.</p>
               {draft.complianceConditions.length === 0 ? <Banner tone="warning" title="No assessment criteria have been supplied." />
-                : <ol>{draft.complianceConditions.map(condition => <li key={condition.conditionId}>{condition.text}</li>)}</ol>}
+                : <ol className="ls-stack">{draft.complianceConditions.map((condition) => {
+                    // UX-13: the rule's own vocabulary — `found = false`, a field name,
+                    // a condition id like `C1` — is what an auditor met here before this
+                    // was said in audit language. `conditionSentence` is the one place a
+                    // Compliance Rule condition becomes a sentence; a condition it cannot
+                    // read (free prose the Template pinned) keeps its authored text, said
+                    // as what it is rather than a sentence this surface guessed.
+                    const sentence = conditionSentence(condition.text, draft.templateId, condition.conditionId);
+                    return <li key={condition.conditionId} data-condition-sentence={condition.conditionId}>
+                      <p><strong>{conditionLabel(condition.conditionId)}.</strong> {sentence ?? condition.text}</p>
+                      {sentence === null ? <p className="ls-caption">{CONDITION_NOT_IN_WORDS}</p> : null}
+                      <TechnicalDetails items={[
+                        { label: 'Compiled rule text', value: condition.text, mono: true },
+                        { label: 'Applies to', value: condition.applicability, mono: true },
+                      ]} />
+                    </li>;
+                  })}</ol>}
               <p className="ls-caption">Confirm these criteria if they match the intended test, or change them explicitly below.</p>
             </div> : null}
             {selected === section ? assistant?.(section) : null}
@@ -320,7 +352,7 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
 
             <footer className="ls-guided__acceptance ls-stack">
               {acknowledgement === null ? <p className="ls-caption">{section === 'context' ? 'Confirming records your review of the saved risk, control and objective. It does not submit the procedure.' : 'When the saved content is correct, confirm your review and continue.'}</p> : <div className="ls-guided__review-record ls-stack">
-                <p>Reviewed by auditor on <time dateTime={acknowledgement.at}>{REVIEW_DATE.format(new Date(acknowledgement.at))} UTC</time>.</p>
+                <p>Reviewed by auditor on <Timestamp value={acknowledgement.at} />.</p>
                 <p className="ls-caption">This review covers the saved section. Changes to it need another review.</p>
                 <details className="ls-disclosure"><summary>Review record</summary><dl className="ls-guided__review-facts ls-disclosure__body">
                   <div><dt>Auditor</dt><dd><ActorName id={acknowledgement.actorId} names={names} /></dd></div>
@@ -344,7 +376,7 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
             <h2 className="ls-card__title" id={`${id}-heading-review`} tabIndex={-1} ref={element => { headings.current.review = element; }}>{SECTION_WORDS.review.title}</h2>
             <p>{SECTION_WORDS.review.question}</p>
           </header>
-          {complete ? <Banner tone="info" title="Preparation complete"><p>Review the whole procedure and submit it for independent manager approval. Execution is unavailable until approval and activation.</p></Banner> : <p>{PREPARATION_SECTIONS.length - reviewed} {PREPARATION_SECTIONS.length - reviewed === 1 ? 'section has' : 'sections have'} not been marked reviewed. Check the whole assignment before submission.</p>}
+          {complete ? <Banner tone="info" title="Preparation complete"><p>Review the whole procedure and submit it for independent manager approval. Execution is unavailable until approval and activation.</p></Banner> : <p>{countNoun(PREPARATION_SECTIONS.length - reviewed, 'section')} not yet marked reviewed. Check the whole assignment before submission.</p>}
           <ul className="ls-guided__review-list" aria-label="Section review overview">
             {PREPARATION_SECTIONS.map(section => <li key={section}><a className="ls-guided__review-link" href={`#${id}-panel-${section}`} onClick={event => { event.preventDefault(); setSelected(section); }}>{SECTION_WORDS[section].title}</a><span className={`ls-guided__status ls-guided__status--${preparationStatus(draft, section)}`}>{STATUS_WORDS[preparationStatus(draft, section)]}</span></li>)}
           </ul>

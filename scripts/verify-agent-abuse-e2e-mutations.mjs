@@ -3,10 +3,12 @@
  * E2E account environment and local Chromium. No live model/Solari credentials.
  */
 import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
+import { closeSync, openSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
+import { outputTail, readTail } from './playwright-output-tail.mjs';
 const root = process.cwd();
 const git = (...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' });
 if (!git('rev-parse', '--git-dir').stdout.includes('/worktrees/') || git('symbolic-ref', '-q', 'HEAD').status === 0) throw new Error('Use a disposable detached linked worktree.');
@@ -64,22 +66,41 @@ function build(packageName = '@intellifin/application') {
 function specs(suites) { return suites.flatMap(suite => [...suite.specs, ...specs(suite.suites ?? [])]); }
 async function run(entry, phase) {
   const reportPath = join(scratch, `${entry.id}-${phase}.json`);
-  const child = spawnSync('pnpm', ['exec', 'playwright', 'test', entry.test, '--project=chromium', '--reporter=json',
-    ...(entry.repeatEach === undefined ? [] : [`--repeat-each=${entry.repeatEach}`])], {
-    cwd: root, env: { ...process.env, CI: 'true', PLAYWRIGHT_JSON_OUTPUT_NAME: reportPath, pnpm_config_verify_deps_before_run: 'false' },
-    // Six serial negative cases can each wait for a bounded 120-second denial
-    // assertion. Allow their existing per-case budgets plus setup; the CI job
-    // retains its independent 60-minute ceiling. No product/test assertion changes.
-    encoding: 'utf8', timeout: (entry.count ?? entry.minimum) * 240_000 + 120_000, maxBuffer: 16 * 1024 * 1024,
+  // `line` is here for its `[WebServer]` lines. The JSON reporter keeps nothing that belongs
+  // to no test, and a web server that never became ready says why only there. The output goes
+  // to files: past `maxBuffer`, spawnSync kills a run and keeps a pipe's FIRST bytes.
+  const stdoutPath = join(scratch, `${entry.id}-${phase}.stdout.log`);
+  const stderrPath = join(scratch, `${entry.id}-${phase}.stderr.log`);
+  const stdoutFile = openSync(stdoutPath, 'w'), stderrFile = openSync(stderrPath, 'w');
+  let child;
+  try {
+    child = spawnSync('pnpm', ['exec', 'playwright', 'test', entry.test, '--project=chromium', '--reporter=json,line',
+      ...(entry.repeatEach === undefined ? [] : [`--repeat-each=${entry.repeatEach}`])], {
+      cwd: root, env: { ...process.env, CI: 'true', PLAYWRIGHT_JSON_OUTPUT_NAME: reportPath, pnpm_config_verify_deps_before_run: 'false' },
+      stdio: ['ignore', stdoutFile, stderrFile],
+      // Six serial negative cases can each wait for a bounded 120-second denial
+      // assertion. Allow their existing per-case budgets plus setup; the CI job
+      // retains its independent 60-minute ceiling. No product/test assertion changes.
+      timeout: (entry.count ?? entry.minimum) * 240_000 + 120_000,
+    });
+  } finally { closeSync(stdoutFile); closeSync(stderrFile); }
+  // Kept only for a run that failed outside its tests: an assertion failure already carries
+  // its own message, and a green run needs none. See playwright-output-tail.mjs.
+  const output = async () => ({
+    stdout: outputTail(await readTail(stdoutPath), { root, env: process.env }),
+    stderr: outputTail(await readTail(stderrPath), { root, env: process.env }),
   });
-  if (child.error || child.signal) throw new Error(`Process did not finish: ${entry.id}/${phase}`);
-  const report = JSON.parse(await readFile(reportPath, 'utf8'));
+  if (child.error || child.signal) throw new Error(`Process did not finish: ${entry.id}/${phase}\n${JSON.stringify(await output(), null, 2)}`);
+  let report;
+  try { report = JSON.parse(await readFile(reportPath, 'utf8')); }
+  catch { throw new Error(`Playwright wrote no report: ${entry.id}/${phase}\n${JSON.stringify(await output(), null, 2)}`); }
   const reportErrors = report.errors.map(error => String(error.message ?? '').replaceAll(root, '<worktree>').slice(0, 2400));
   const assertions = specs(report.suites).filter(spec => spec.file.endsWith(entry.test.split('/').at(-1))).flatMap(spec => spec.tests.filter(test => test.projectName === 'chromium').map(test => ({
     name: spec.title, status: test.results.at(-1)?.status,
     errors: (test.results.at(-1)?.errors ?? []).map(error => String(error.message ?? '').replaceAll(root, '<worktree>').slice(0, 2400)),
   })));
-  return { exit: child.status, reportErrors, passed: assertions.filter(row => row.status === 'passed').length, failed: assertions.filter(row => row.status === 'failed').length, assertions };
+  return { exit: child.status, reportErrors, passed: assertions.filter(row => row.status === 'passed').length, failed: assertions.filter(row => row.status === 'failed').length, assertions,
+    ...(reportErrors.length > 0 ? { output: await output() } : {}) };
 }
 try {
   for (const entry of cases) {

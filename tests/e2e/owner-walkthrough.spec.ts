@@ -15,6 +15,7 @@ import {
   READ_ONLY_CREDENTIAL,
 } from './credentials';
 import { NORTHSTAR_BASE_URL } from './northstar';
+import { DATED_SCOPE_ACCEPT_LABEL } from '../../apps/web/src/procedures/assistant-words';
 import { attachAuthoringScreenshot, openStep, openPlanDetail } from './builder';
 
 /**
@@ -259,7 +260,7 @@ const STALE = 'That procedure changed since this page was loaded. Reload the pag
 async function waitForPlanAttempt(page: Page): Promise<void> {
   await openPlanDetail(page);
   await expect(page.getByTestId('executable-plan-preview').locator(':scope > [role="status"]'))
-    .toContainText(/Re-derived|Cannot derive:/, { timeout: 120_000 });
+    .toContainText(/Test plan prepared|could not be prepared/, { timeout: 120_000 });
 }
 
 /** Await this action, not a success/stale banner retained from the preceding save. */
@@ -299,6 +300,18 @@ async function confirmed(page: Page, name: string): Promise<void> {
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 
+/**
+ * The version review's decision history. Since the UI cleanup (UX-34) it is a closed
+ * disclosure below the decision summary, so a reader opens it to read it — and so does
+ * this journey, rather than reading text a person could not see.
+ */
+async function openDecisionHistory(target: Page): Promise<Locator> {
+  const history = target.locator('details[data-decision-history]');
+  if (!(await history.evaluate((node) => (node as HTMLDetailsElement).open))) await history.locator(':scope > summary').click();
+  await expect(history).toHaveAttribute('open', '');
+  return history;
+}
+
 /** Follow the real dialogue, including the visible stale-version remedy. */
 async function askForProposal(page: Page, section: 'objective' | 'scope', notes: string): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -311,7 +324,9 @@ async function askForProposal(page: Page, section: 'objective' | 'scope', notes:
     const writing = page.locator(`[data-writing-section="${section}"]`);
     await writing.getByLabel('Your answer', { exact: true }).fill(notes);
     await writing.getByRole('button', { name: 'Send message', exact: true }).click();
-    const prepared = writing.getByRole('heading', { name: 'Proposed wording — not saved' });
+    // A scope that names its dates is proposed WITH them (UI cleanup UX-09), under its own
+    // heading; wording alone keeps the ordinary one.
+    const prepared = writing.getByRole('heading', { name: section === 'scope' ? 'Proposed dates and scope — not saved' : 'Proposed wording — not saved' });
     const stale = writing.getByText(STALE, { exact: false });
     await expect(prepared.or(stale).first()).toBeVisible();
     if (await prepared.isVisible()) return;
@@ -343,7 +358,7 @@ async function markReviewed(page: Page, section: string, title: string): Promise
 async function reviewPreparedSections(page: Page): Promise<void> {
   for (const [section, title] of [
     ['context', 'Risk, control and objective'], ['scope', 'Scope and period'], ['evidence', 'Evidence to review'],
-    ['instructions', 'Audit steps'], ['assessment', 'Assessment criteria'], ['frequency', 'How often this is meant to run'],
+    ['instructions', 'Audit steps'], ['assessment', 'Assessment criteria'], ['frequency', 'Planned frequency'],
   ]) await markReviewed(page, section!, title!);
   await expect(page.locator('[data-preparation-progress]')).toContainText('6 of 6 sections reviewed by auditor.');
 }
@@ -389,11 +404,12 @@ test('an auditor prepares and accepts a draft, revises it after manager review, 
   /* ------------------------------------------------------------ 1. create --- */
   await page.goto('/procedures/new');
   await page.getByLabel('Template').selectOption('P-2');
-  await expect(page.getByLabel('Control name', { exact: true })).toHaveValue('Segregation-of-Duties Conflicts');
+  await expect(page.getByLabel('Procedure name', { exact: true })).toHaveValue('Segregation-of-Duties Conflicts');
   await expect(page.getByRole('region', { name: 'Selected Template context', exact: true })).toContainText('Roles assigned in AccessGate must not grant prohibited permission pairs');
   await attachAuthoringScreenshot(page, testInfo, 'owner-seeded-template-selection');
-  await page.getByLabel('Control name').fill(CONTROL);
-  await confirmed(page, 'Create Procedure');
+  await page.getByLabel('Procedure name').fill(CONTROL);
+  // UX-07: creating a Draft is one action, with no confirmation dialog.
+  await page.getByRole('button', { name: 'Create Procedure', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: CONTROL })).toBeVisible();
   await expect(page.locator('[data-guided-preparation]')).toHaveAttribute('data-guided-ready', 'true');
   procedureId = new URL(page.url()).pathname.split('/')[2] ?? '';
@@ -428,19 +444,27 @@ test('an auditor prepares and accepts a draft, revises it after manager review, 
   await executionIsRefused(page, 'an accepted and reviewed section in a Draft');
 
   /* ------------------------------------------------- 2. Period and scope ---- */
+  // `[REWRITTEN 2026-09-23, UI cleanup UX-09]` The owner's scope names its month, and the
+  // assistant used to ask for the scope and then refuse it for want of a saved period. It
+  // now proposes the dates and the scope together, read from the auditor's own words, and
+  // ONE acceptance saves both through the existing writers — so the manual period step
+  // this journey needed before is gone, and the saved row is checked instead.
   await askForProposal(page, 'scope', SCOPE);
   const scopeWriting = page.locator('[data-writing-section="scope"]');
-  await scopeWriting.getByRole('button', { name: 'Use this draft', exact: true }).click();
-  await expect(page.getByLabel('Period start', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('Scope statement', { exact: true })).toHaveValue(SCOPE);
-  await expect(page.getByLabel('Scope statement', { exact: true })).toBeHidden();
-  await step(page, 'Period and scope', async () => {
-    await page.getByLabel('Period start', { exact: true }).fill('2026-08-01');
-    await page.getByLabel('Period end', { exact: true }).fill('2026-08-31');
-    await page.getByLabel('Scope statement').fill(SCOPE);
-  }, async () => {
-    await page.getByRole('button', { name: 'Save Period and scope', exact: true }).click();
-  }, 'Saved. The Draft change is recorded in the audit chain.');
+  await expect(scopeWriting).toContainText('I’ll use 1–31 Aug 2026 as the testing period');
+  await scopeWriting.getByRole('button', { name: DATED_SCOPE_ACCEPT_LABEL, exact: true }).click();
+  // The assistant closes and the step moves on to its confirmation, which states what was
+  // saved — the dates in words and the scope as written (`builder-steps.spec.ts` pins the
+  // same step on a fresh Draft).
+  const scopeConfirm = page.locator('[data-preparation-panel="scope"] [data-guide-question="confirm"]');
+  await expect(scopeConfirm).toContainText('1–31 Aug 2026, both dates included (UTC).');
+  await expect(scopeConfirm).toContainText(SCOPE);
+  await expect.poll(async () => {
+    const database = sql;
+    if (database === undefined) throw new Error('The walkthrough has no database client: read the FIRST failure in this run.');
+    const [draft] = await database`SELECT period, scope FROM procedure_version WHERE procedure_id = ${procedureId} AND state = 'DRAFT'`;
+    return draft;
+  }).toMatchObject({ period: { from: '2026-08-01', to: '2026-08-31' }, scope: SCOPE });
 
   /* ------------------------------------------------- 3. records to test ----- */
   await step(page, 'Population Source binding', async () => {
@@ -517,9 +541,9 @@ test('an auditor prepares and accepts a draft, revises it after manager review, 
     await attachAuthoringScreenshot(manager, testInfo, 'owner-manager-requesting-changes');
     await manager.getByRole('dialog').getByRole('button', { name: 'Reject', exact: true }).click();
     await expect(manager.getByText('Rejected', { exact: true }).first()).toBeVisible();
-    await expect(manager.getByRole('region', { name: 'Decision history' })).toContainText(MANAGER_CHANGES);
+    await expect(await openDecisionHistory(manager)).toContainText(MANAGER_CHANGES);
     await page.reload();
-    await expect(page.getByRole('region', { name: 'Decision history' })).toContainText(MANAGER_CHANGES);
+    await expect(await openDecisionHistory(page)).toContainText(MANAGER_CHANGES);
     await executionIsRefused(page, 'the manager request for changes');
     await confirmed(page, 'Edit');
     await expect(page).toHaveURL(/\/builder\?version=/);
@@ -542,7 +566,7 @@ test('an auditor prepares and accepts a draft, revises it after manager review, 
 
     /* ----------------------------------------------- 8a. independent approval */
     await manager.goto(reviewUrl);
-    await expect(manager.getByRole('region', { name: 'Decision history' })).toContainText(MANAGER_CHANGES);
+    await expect(await openDecisionHistory(manager)).toContainText(MANAGER_CHANGES);
     await expect(manager.getByText(REVISED_OBJECTIVE, { exact: true }).first()).toBeVisible();
     await attachAuthoringScreenshot(manager, testInfo, 'owner-manager-revised-procedure-review');
     await confirmed(manager, 'Approve');

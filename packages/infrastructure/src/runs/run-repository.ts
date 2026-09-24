@@ -9,8 +9,8 @@ import { isUuidText } from '../db/identifier.js';
  * answer to "is this Run still running". */
 const ACTIVE = [...ACTIVE_RUN_STATES];
 function record(row: typeof auditRun.$inferSelect): RunRecord {
-  const { periodFrom, periodTo, initiatedAt, cancelRequestedAt, cancelRequestedBy, cancelRequestedSession, cancelReason,
-    pauseRequestedAt, pauseRequestedBy, pauseRequestedSession, ...rest } = row;
+  const { periodFrom, periodTo, initiatedAt, cancelRequestedAt, cancelRequestedBy, cancelRequestedSession, cancelReason, cancelRequestedCommandId,
+    pauseRequestedAt, pauseRequestedBy, pauseRequestedSession, pauseRequestedCommandId, ...rest } = row;
   return {
     ...rest,
     period: { from: periodFrom, to: periodTo },
@@ -19,13 +19,13 @@ function record(row: typeof auditRun.$inferSelect): RunRecord {
     // carries the time carries the other three.
     cancellation: cancelRequestedAt === null || cancelRequestedBy === null || cancelRequestedSession === null || cancelReason === null
       ? null
-      : { requestedBy: cancelRequestedBy, sessionId: cancelRequestedSession, requestedAt: cancelRequestedAt.toISOString(), reason: cancelReason },
+      : { requestedBy: cancelRequestedBy, sessionId: cancelRequestedSession, requestedAt: cancelRequestedAt.toISOString(), reason: cancelReason, ...(cancelRequestedCommandId === null ? {} : { commandId: cancelRequestedCommandId }) },
     // The same rule, and generation 45's `audit_run_pause_request` CHECK says the three
     // move together. Present means "requested and not yet honoured": the boundary that
     // performs a pause clears it, so a Run that ends carrying one was never paused.
     pauseRequest: pauseRequestedAt === null || pauseRequestedBy === null || pauseRequestedSession === null
       ? null
-      : { requestedBy: pauseRequestedBy, sessionId: pauseRequestedSession, requestedAt: pauseRequestedAt.toISOString() },
+      : { requestedBy: pauseRequestedBy, sessionId: pauseRequestedSession, requestedAt: pauseRequestedAt.toISOString(), ...(pauseRequestedCommandId === null ? {} : { commandId: pauseRequestedCommandId }) },
   };
 }
 export class DrizzleRunRepository implements RunReader, RunWriter {
@@ -109,11 +109,13 @@ export class DrizzleRunRepository implements RunReader, RunWriter {
       cancelRequestedBy: cancellation?.requestedBy ?? null,
       cancelRequestedSession: cancellation?.sessionId ?? null,
       cancelReason: cancellation?.reason ?? null,
+      cancelRequestedCommandId: cancellation?.commandId ?? null,
       // A Run is never created already paused; `requestPause` is the only writer, which is
       // what makes one outstanding request per Run the rule.
       pauseRequestedAt: pauseRequest === null ? null : new Date(pauseRequest.requestedAt),
       pauseRequestedBy: pauseRequest?.requestedBy ?? null,
       pauseRequestedSession: pauseRequest?.sessionId ?? null,
+      pauseRequestedCommandId: pauseRequest?.commandId ?? null,
     }).onConflictDoNothing({ target: [auditRun.procedureId, auditRun.periodFrom, auditRun.periodTo], where: sql`kind = 'STANDARD' AND state IN ('QUEUED','RUNNING','PAUSED','AWAITING_AUDITOR')` }).returning({ id: auditRun.runId });
     return inserted.length === 1;
   }
@@ -131,6 +133,7 @@ export class DrizzleRunRepository implements RunReader, RunWriter {
       cancelRequestedBy: request.requestedBy,
       cancelRequestedSession: request.sessionId,
       cancelReason: request.reason,
+      cancelRequestedCommandId: request.commandId ?? null,
     }).where(and(eq(auditRun.runId, runId), sql`${auditRun.cancelRequestedAt} IS NULL`));
   }
   /** The FIRST pause request wins, exactly as the FIRST cancellation request does. */
@@ -139,12 +142,13 @@ export class DrizzleRunRepository implements RunReader, RunWriter {
       pauseRequestedAt: new Date(request.requestedAt),
       pauseRequestedBy: request.requestedBy,
       pauseRequestedSession: request.sessionId,
+      pauseRequestedCommandId: request.commandId ?? null,
     }).where(and(eq(auditRun.runId, runId), sql`${auditRun.pauseRequestedAt} IS NULL`));
   }
   /** Remove the marker, in the transaction that HONOURS the pause. Never on resume. */
   async clearPauseRequest(runId: string): Promise<void> {
     await this.db.update(auditRun).set({
-      pauseRequestedAt: null, pauseRequestedBy: null, pauseRequestedSession: null,
+      pauseRequestedAt: null, pauseRequestedBy: null, pauseRequestedSession: null, pauseRequestedCommandId: null,
     }).where(eq(auditRun.runId, runId));
   }
 }

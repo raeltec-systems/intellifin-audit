@@ -3,7 +3,7 @@ import { PgBoss } from 'pg-boss';
 import type { AuditUnitOfWork, RunCancellationContext, RunCancellationRepository, RunFlagContext, RunFlagRepository, RunsUnitOfWorkContext } from '@intellifin/application';
 import { EVIDENCE_READ_GRANT_QUEUE } from '@intellifin/application';
 import { CryptoUuidV7Generator, SystemClock, createAuditEventWriter, type PostgresAuditDependencies } from '../db/audit-events.js';
-import type { Database } from '../db/client.js';
+import type { Database, Transaction } from '../db/client.js';
 import { isUuidText } from '../db/identifier.js';
 import { auditRun, runFlag } from '../db/schema.js';
 import { DrizzleNotificationRecipientReader, DrizzleRoleRepository } from '../identity/role-repository.js';
@@ -48,7 +48,7 @@ export class PostgresRunsUnitOfWork implements AuditUnitOfWork<RunsUnitOfWorkCon
  * cancelled at a worker boundary conclude through one implementation.
  */
 export class PostgresRunCancellationRepository implements RunCancellationRepository {
-  constructor(private readonly db: Database, private readonly dependencies: PostgresAuditDependencies = {}) {}
+  constructor(private readonly db: Database | Transaction, private readonly dependencies: PostgresAuditDependencies = {}) {}
   transaction<T>(runId: string, work: (context: RunCancellationContext) => Promise<T>): Promise<T> {
     return this.db.transaction(async transaction => {
       if (!isUuidText(runId)) throw new Error('Invalid Run identity');

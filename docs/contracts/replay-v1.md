@@ -8,7 +8,7 @@ jump lands, and what a keystroke does. The asset set itself is
 
 The presentation logic is `apps/web/src/runs/replay.ts`, the component is
 `apps/web/src/runs/ReplayViewer.tsx`, the page is `apps/web/app/runs/[id]/replay/page.tsx`,
-and the reads are `readFrames`, `readWaits` and `readObservationDeltas` on
+and the reads are `readInspectionReplay`, `readFrames`, `readWaits` and `readObservationDeltas` on
 `DrizzleRunDetailRepository`.
 
 ## Replay reaches NOTHING outside this platform
@@ -33,12 +33,48 @@ fails there rather than in a deployment whose provider happened to answer.
 port on this path; a Replay that could re-run a Tool Action would be a Replay that could
 change what it is showing.
 
-## It starts PAUSED at the first frame
+## It starts PAUSED at the requested inspection or first frame
 
 UX-DR26. A Replay that started playing would move a session under somebody who opened it to
 look at one thing. Server-side rendering is that state, so `ReplayViewer.test.ts` asserts
 the contract rather than a convenience: the control offers **Play**, the counter says
-`Frame 1 of N`, and the only frame in the markup is the first.
+`Frame 1 of N`, and the only frame in the markup is the first when no selection was requested.
+
+Auditor Workspace record links use `?workItem=<id>`. After authorizing the Run, the route
+resolves that identifier against a same-Run Work Item and reads its retained screenshots
+independently of the default prefix. The first capture opens paused, with exact action,
+Step, record and frozen target name. Reload preserves that request. Invalid, duplicate or
+cross-Run selections render no image. A valid inspection with no registered captures says
+so without substituting another record's frame.
+
+**A re-read is not a reload.** The shell's bell re-reads every page whenever any Run ends
+or a question opens anywhere (`BellLive`). The viewer is therefore keyed by the Run and the
+request (`replayViewerKey` in `replay.ts`), never by the time the page was read: a re-read
+keeps the reader's frame and playback, and a new request (another inspection, another page
+of one, the whole session) starts again, paused, at its own first frame. A terminal Run's
+frames do not change, so a re-read has nothing to reset.
+
+`readInspectionReplay` returns at most `REPLAY_INSPECTION_PAGE_SIZE` (100) frames. Explicit
+previous/next links retain `workItem` and add `cursor=<offset>`: a canonical nonnegative
+decimal multiple of 100, bounded to 2,147,483,600. A cursor without an inspection, duplicate
+cursor, malformed cursor or page beyond the inspection's retained captures is unavailable.
+Only offset zero is valid for an empty inspection. Navigation starts paused and requires a
+new authorized route read. Playback, arrows, Home/End and scrubber stay within the loaded
+page; they never fetch another page automatically.
+
+The heading identifies the selected inspection and its loaded inspection-frame bounds.
+Every frame counter and scrubber label identifies its **global** session ordinal, which
+can have gaps between captures of that inspection. SQL orders all retained registered,
+bound screenshots by action start, action UUID and Evidence UUID before selecting an
+inspection; the default chronological prefix and Live View use that same final tie-break.
+Every capture/action/Step/owner join is restricted to the Run. Effective ownership is the
+Step's Work Item when present, otherwise the action's Work Item, matching narration and
+jump targeting. A selected page never calls itself the first N frames of the whole Run.
+
+The default view continues to show the earliest 500 frames with the exact retained total.
+Work Item and Exception targets without a frame in that prefix offer **Open inspection
+Replay** when their Work Item identity is known; the prefix does not infer whether a later
+capture exists. Multi-system records retain separate links per inspection target.
 
 Playing advances one frame every `FRAME_INTERVAL_MS` and STOPS at the last: a loop would
 make a finished session look like one still going.
@@ -85,6 +121,15 @@ a reader sees beside a frame is true of the moment that frame was taken. A paylo
 this build does not recognize is read as ABSENT rather than coerced: a chain row is
 immutable, and a fabricated count would be a fact nobody recorded.
 
+Selected-inspection pages compute this total in SQL over the complete registration-event
+history, including events at the action start and excluding later events. JSON strings
+are not numeric deltas. Only the requested frame page and its context are serialized;
+large frame and event histories are counted/ranked in the database. A single grouped
+registration-event scan and materialized cumulative total serve all selected page timestamps;
+there is no separate base-history sum for each frame. The default session
+view retains its existing bounded timeline/delta reads; it does not gain an unbounded
+history payload through inspection selection.
+
 ## One session viewer, in two modes
 
 UX-DR24's "one session viewer for Live View and Replay" is met by SHARING the parts that
@@ -104,6 +149,15 @@ construction.
 is a scrubber over a fraction of the session and would silently misrepresent where a Step
 sits in it. It is still bounded, with the exact total beside it, and the surface says
 `Showing the first {shown} of {total} frames.` when it binds.
+
+A protected-image refusal stops Replay and removes only the failed pixels. The current
+capture's source location, timestamp, digest, action and global position remain visible.
+A polite live status explains the failure; **Retry this frame** remounts that same Evidence
+ID's protected image without advancing playback or substituting a previous capture.
+
+The dedicated selected Replay browser counter measures **browser** requests to other
+origins. Its worker starts without provider/model credentials, but that counter does not
+instrument server or worker network calls and must not be reported as such telemetry.
 
 ## The keyboard
 

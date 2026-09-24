@@ -29,6 +29,7 @@ import {
   type RunResultPublication,
   type SystemOutcome,
   type RunPauseRequest,
+  type RunDeferredPauseRequest,
 } from '@intellifin/domain';
 import type { Database, Transaction } from '../db/client.js';
 import {
@@ -44,7 +45,51 @@ import {
   runEvaluationReview,
   runResult,
   runWait,
+  runDeferredPause,
 } from '../db/schema.js';
+
+function deferredDate(value: unknown): string | null {
+  return value instanceof Date && Number.isFinite(value.getTime()) ? value.toISOString() : null;
+}
+
+/** The one pending latch a worker may consume; applied/superseded rows remain historical. */
+export async function readDeferredPauseMarker(tx: Database | Transaction, runId: string): Promise<RunDeferredPauseRequest | null> {
+  const [row] = await tx.select().from(runDeferredPause)
+    .where(and(eq(runDeferredPause.runId, runId), eq(runDeferredPause.state, 'PENDING'))).limit(1);
+  if (!row) return null;
+  const requestedAt = deferredDate(row.requestedAt);
+  if (requestedAt === null) throw new Error('Deferred pause marker has no valid request time');
+  return {
+    runId: row.runId,
+    commandId: row.commandId,
+    state: row.state as 'PENDING',
+    workItemId: row.workItemId,
+    subjectKey: row.subjectKey,
+    registrationId: row.registrationId,
+    runRevision: row.runRevision,
+    planDigest: row.planDigest,
+    requestedBy: row.requestedBy,
+    sessionId: row.sessionId,
+    requestedAt,
+    expectedControlEpoch: row.expectedControlEpoch,
+  };
+}
+
+export async function settleDeferredPauseMarker(
+  tx: Database | Transaction,
+  runId: string,
+  state: 'APPLIED' | 'SUPERSEDED',
+  at: string,
+  reason?: string,
+): Promise<void> {
+  if (state === 'SUPERSEDED' && !['immediate-pause', 'cancellation', 'run-finalized'].includes(reason ?? '')) throw new Error('Invalid deferred pause supersession reason');
+  const result = state === 'APPLIED'
+    ? await tx.update(runDeferredPause).set({ state: 'APPLIED', appliedAt: new Date(at) })
+      .where(and(eq(runDeferredPause.runId, runId), eq(runDeferredPause.state, 'PENDING'))).returning({ commandId: runDeferredPause.commandId })
+    : await tx.update(runDeferredPause).set({ state: 'SUPERSEDED', supersededAt: new Date(at), supersededReason: reason })
+      .where(and(eq(runDeferredPause.runId, runId), eq(runDeferredPause.state, 'PENDING'))).returning({ commandId: runDeferredPause.commandId });
+  if (result.length > 1) throw new Error('Multiple deferred pause latches settled');
+}
 
 /**
  * How many Observations the per-record coverage matrix may read.
@@ -122,6 +167,7 @@ export function runResultContext(
             requestedBy: auditRun.cancelRequestedBy,
             sessionId: auditRun.cancelRequestedSession,
             reason: auditRun.cancelReason,
+            commandId: auditRun.cancelRequestedCommandId,
           })
           .from(auditRun)
           .where(eq(auditRun.runId, runId))
@@ -134,6 +180,7 @@ export function runResultContext(
         sessionId: row.sessionId,
         requestedAt: row.requestedAt.toISOString(),
         reason: row.reason,
+        ...(row.commandId === null ? {} : { commandId: row.commandId }),
       };
     },
 
@@ -152,6 +199,7 @@ export function runResultContext(
             requestedAt: auditRun.pauseRequestedAt,
             requestedBy: auditRun.pauseRequestedBy,
             sessionId: auditRun.pauseRequestedSession,
+            commandId: auditRun.pauseRequestedCommandId,
           })
           .from(auditRun)
           .where(eq(auditRun.runId, runId))
@@ -161,7 +209,16 @@ export function runResultContext(
         requestedBy: row.requestedBy,
         sessionId: row.sessionId,
         requestedAt: row.requestedAt.toISOString(),
+        ...(row.commandId === null ? {} : { commandId: row.commandId }),
       };
+    },
+
+    /** Pending deferred steering is read on this same locked connection. */
+    async readDeferredPause(): Promise<RunDeferredPauseRequest | null> {
+      return readDeferredPauseMarker(tx, runId);
+    },
+    async settleDeferredPause(state: 'APPLIED' | 'SUPERSEDED', at: string, reason?: string): Promise<void> {
+      await settleDeferredPauseMarker(tx, runId, state, at, reason);
     },
 
     /**

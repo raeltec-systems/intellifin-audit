@@ -12,12 +12,14 @@ import {
   raiseEscalation,
   resumeRun,
   wakeEscalation,
+  type AuditUnitOfWork,
   type Clock,
 } from '@intellifin/application';
 import {
   createDb,
   createSqlClient,
   CryptoUuidV7Generator,
+  createAuditEventWriter,
   DrizzleNotificationRepository,
   DrizzleRoleRepository,
   PostgresProceduresUnitOfWork,
@@ -26,6 +28,7 @@ import {
   SystemClock,
   type Database,
   type Sql,
+  type Transaction,
 } from '@intellifin/infrastructure';
 import { activeRunVersion } from '../fixtures/active-run-version.js';
 import { PostgresWaitRepository, WAIT_QUEUE } from '../../packages/infrastructure/src/runs/wait-repository.js';
@@ -136,11 +139,27 @@ describe.skipIf(!url)('pausing and resuming a Run', () => {
 
   function deps(now = baseNow) {
     return {
+      requireControllerLease: false,
       roles: new DrizzleRoleRepository(db),
       unitOfWork: new PostgresRunsUnitOfWork(db),
       repository: new PostgresWaitRepository(db),
       ids,
       clock: new FixedClock(now),
+    };
+  }
+
+  /** Bind every pause dependency to one already-open authoritative transaction. */
+  function transactionDeps(transaction: Transaction, at = baseNow) {
+    const clock = new FixedClock(at);
+    const unitOfWork: AuditUnitOfWork = {
+      execute: work => work({ auditEvents: createAuditEventWriter(transaction, clock, ids) }),
+    };
+    return {
+      roles: new DrizzleRoleRepository(transaction),
+      unitOfWork,
+      repository: new PostgresWaitRepository(transaction),
+      ids,
+      clock,
     };
   }
 
@@ -423,6 +442,69 @@ describe.skipIf(!url)('pausing and resuming a Run', () => {
         .resolves.toEqual({ ok: false, reason: RUN_PAUSE_REFUSALS.AWAITING });
       const [row] = await sql`SELECT pause_requested_at FROM audit_run WHERE run_id=${runId}`;
       expect(row?.pause_requested_at).toBeNull();
+    });
+  });
+
+  describe('outer transaction composition', () => {
+    it('rolls back the pause marker, audit event, and conversation narration together', async () => {
+      const runId = await startRun();
+      const [beforeEvents] = await sql<{ count: number }[]>`
+        SELECT count(*)::int AS count
+        FROM audit_events
+        WHERE aggregate_id=${runId} AND event_type='lifecycle.run-pause-requested'`;
+      const [beforeNarration] = await sql<{ count: number }[]>`
+        SELECT count(*)::int AS count FROM run_conversation_message WHERE run_id=${runId}`;
+
+      await expect(db.transaction(async transaction => {
+        const outcome = await pauseRun(transactionDeps(transaction), { session, request: { runId } });
+        expect(outcome).toMatchObject({ ok: true, state: 'RUNNING', pending: true });
+        throw new Error('outer pause transaction rollback probe');
+      })).rejects.toThrow('outer pause transaction rollback probe');
+
+      const [run] = await sql`SELECT pause_requested_at, pause_requested_by, pause_requested_session FROM audit_run WHERE run_id=${runId}`;
+      expect(run).toMatchObject({ pause_requested_at: null, pause_requested_by: null, pause_requested_session: null });
+      const [afterEvents] = await sql<{ count: number }[]>`
+        SELECT count(*)::int AS count
+        FROM audit_events
+        WHERE aggregate_id=${runId} AND event_type='lifecycle.run-pause-requested'`;
+      const [afterNarration] = await sql<{ count: number }[]>`
+        SELECT count(*)::int AS count FROM run_conversation_message WHERE run_id=${runId}`;
+      expect(afterEvents?.count).toBe(beforeEvents?.count);
+      expect(afterNarration?.count).toBe(beforeNarration?.count);
+    });
+
+    it('commits a transaction-bound pause and preserves the original requester', async () => {
+      const runId = await startRun();
+      const outcome = await db.transaction(transaction =>
+        pauseRun(transactionDeps(transaction), { session, request: { runId } }),
+      );
+      expect(outcome).toEqual({ ok: true, state: 'RUNNING', pending: true });
+
+      const [run] = await sql`SELECT pause_requested_at, pause_requested_by, pause_requested_session FROM audit_run WHERE run_id=${runId}`;
+      expect(run).toMatchObject({
+        pause_requested_by: author,
+        pause_requested_session: session.sessionId,
+      });
+      expect(new Date(run!.pause_requested_at as string).toISOString()).toBe(baseNow.toISOString());
+
+      const [event] = await sql<{ event_id: string; sequence: number; payload: Record<string, unknown> }[]>`
+        SELECT event_id::text,sequence::int,payload
+        FROM audit_events
+        WHERE aggregate_id=${runId} AND event_type='lifecycle.run-pause-requested'`;
+      expect(event).toMatchObject({
+        payload: { state: 'RUNNING', requestedAt: baseNow.toISOString(), performedBy: 'worker' },
+      });
+      expect(event).toBeDefined();
+      if (!event) return;
+      const [narration] = await sql<{ message_id: string; source_event_sequence: number; kind: string }[]>`
+        SELECT message_id::text,source_event_sequence,kind
+        FROM run_conversation_message
+        WHERE run_id=${runId} AND message_id=${event.event_id}::uuid`;
+      expect(narration).toMatchObject({
+        message_id: event.event_id,
+        source_event_sequence: event.sequence,
+        kind: 'platform-event',
+      });
     });
   });
 

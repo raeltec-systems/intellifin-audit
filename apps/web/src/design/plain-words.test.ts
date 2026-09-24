@@ -67,7 +67,9 @@ describe('every domain vocabulary the Builder shows has words for it', () => {
    */
   it('asks the Schedule section for the intent, never claiming the Procedure runs itself', () => {
     const { title, question } = SECTION_WORDS.Schedule;
-    expect(title).toBe('How often this is meant to run');
+    // UX-14 (2026-09-22): the title itself says it is a plan.
+    expect(title).toBe('Planned frequency');
+    expect(question).toContain('meant to happen');
     for (const words of [title, question]) {
       expect(words).not.toContain('run on its own');
       expect(words).not.toContain('runs on its own');
@@ -214,6 +216,17 @@ const BANNED_ON_AUTHORING_SURFACES = [
   'Expected field labels',
   'Declare model-read',
   'deterministic grounding',
+  // UX-13 (UI cleanup 2026-09-21): the compiler's own rule grammar, met as the
+  // criteria step's primary text — `found = false or account_status in [Disabled]
+  // else [Active]`, `Gate failure`, an "unnamed value" left unexplained. `Condition
+  // N`, beside the sentence `conditionSentence` produces, is what replaces C1/C2 in
+  // that ONE new context; the ids stay everywhere they are a stable identifier
+  // (`data-condition-id`, `Rule text C1`), which this list does not reach because it
+  // scans for these phrases specifically, not for C1/C2 themselves.
+  'found = false',
+  'account_status',
+  'Gate failure',
+  'unnamed value',
 ];
 
 const AUTHORING_DIRS = ['../procedures', '../admin'];

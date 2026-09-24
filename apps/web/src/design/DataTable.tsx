@@ -41,6 +41,20 @@ interface DataTableProps<Row> {
      * a narrow first column used to break into a strip of four-character lines.
      */
     readonly mono?: boolean;
+    /**
+     * A second line under the first cell's link, for the facts that identify the row
+     * without being its name (UI cleanup 2026-09-22, UX-17).
+     *
+     * OPTIONAL and additive: a table that does not supply one renders exactly what it
+     * rendered before. EXPERIENCE.md's revised Runs columns put the short reference and
+     * the effective period "beneath" the Procedure name in the Run cell, which is one
+     * cell with two lines rather than three columns — and three columns are what made
+     * that table scroll the whole page sideways at a laptop's width.
+     *
+     * It is NOT a link and must not contain one: the first cell holds the row's ONE link,
+     * which is what keeps a row reachable by keyboard without a row-level click handler.
+     */
+    readonly detail?: (row: Row) => ReactNode;
   };
   readonly columns: readonly DataTableColumn<Row>[];
   readonly rows: readonly Row[];
@@ -113,6 +127,7 @@ export function DataTable<Row>({
                     {first.mono ? <Identifier value={first.label(row)} /> : first.label(row)}
                   </span>
                 )}
+                {first.detail === undefined ? null : first.detail(row)}
               </th>
               {columns.map((column) => (
                 <td

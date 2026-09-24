@@ -76,7 +76,7 @@ describe('the cancellation banners', () => {
     const html = renderToStaticMarkup(
       React.createElement(CancellationBanners, { run: canceled('019823ab-0000-7000-8000-000000000007'), names: NAMES }),
     );
-    expect(html).toContain('Canceled by Daniel Okonjo at 2026-09-10T09:00:00.000Z');
+    expect(html).toContain('Canceled by Daniel Okonjo at 10 Sep 2026, 09:00:00 UTC');
     expect(html).not.toContain('019823ab-0000-7000-8000-000000000007');
   });
 
@@ -84,7 +84,7 @@ describe('the cancellation banners', () => {
     const html = renderToStaticMarkup(
       React.createElement(CancellationBanners, { run: canceled('019823ab-0000-7000-8000-000000000007', 'RUNNING'), names: NAMES }),
     );
-    expect(html).toContain('Cancellation requested by Daniel Okonjo at 2026-09-10T09:00:00.000Z');
+    expect(html).toContain('Cancellation requested by Daniel Okonjo at 10 Sep 2026, 09:00:00 UTC');
   });
 
   it('cannot have the sentence rewritten by a name that spells a replacement pattern', () => {
@@ -94,7 +94,7 @@ describe('the cancellation banners', () => {
     const html = renderToStaticMarkup(
       React.createElement(CancellationBanners, { run: canceled('019823ab-0000-7000-8000-000000000007'), names: hostile }),
     );
-    expect(html).toContain('Canceled by Fee $&amp; review at 2026-09-10T09:00:00.000Z');
+    expect(html).toContain('Canceled by Fee $&amp; review at 10 Sep 2026, 09:00:00 UTC');
     expect(html).not.toContain('{actor}');
   });
 

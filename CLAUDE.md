@@ -1,3 +1,347 @@
+## 2026-09-23 — The UI cleanup on the live branch, and what that branch was already failing
+
+The owner approved putting the cleanup on `feat/auditor-workspace-v1-1`, the branch production
+runs: PR #52 merged in (`655a0c4`, `81d9653`), then UX-22..26 on the surfaces only this branch
+has (`ed12dfd` record review, `857b08b` workspace, Live View and chat).
+
+- **Read the deployed commit's own CI before blaming a merge.** `ec673a0` was deployed with
+  6 browser failures and 2 preview-job failures. Five were spec drift: `1dd337d` stopped
+  saying "Action-linked captures" and five specs kept asserting it. A failure present at the
+  base is not the merge's, and it is still ours to fix before the next push.
+- **"Action-linked captures" (AW-060) is now "Latest saved screen".** UX-24 is the later owner
+  decision. The truth AW-060 asks for is kept: the live preview ("a few seconds behind, not
+  saved as evidence") and the saved screen ("saved as evidence from {system}") are named as
+  two different things, in `workspace-words.ts`, which the specs import.
+- **One record label rule: `record-words.ts`.** The key is the Template's first frozen lookup
+  column, the name its second (P-1 `full_name`). Masking comes from the version's FROZEN
+  `sensitive_fields`, never from today's binding. `readRecordNames` answers only for a key
+  that is unique in the Run's population: a duplicated key names no single person. A masked
+  key stays the row's identity but leaves the search haystack, so a search cannot probe it.
+- **Order a snapshot when it is written, not when it is read.** The record queue lists
+  Exceptions, then pending reviews, each in source order, decided before the presentation
+  snapshot is stored, so a cursor can never repeat or skip a record.
+- **A "current step" taken from a bounded page is a guess.** Live View and the workspace used
+  the newest row of the Timeline's page, which holds the OLDEST fifty Step Executions.
+  `readLatestStepExecution` reads it exactly. Fourth appearance of "a limit belongs to the
+  cardinality of the read".
+- **A page test whose `vi.mock` factory lists exports breaks when the page imports one
+  more**: "No `readRecordNames` export is defined on the mock". Add it to the factory with a
+  neutral default, then add a case that proves the new behaviour.
+- **A wait armed before an action must be observed before the next `await`.** Sign-in
+  armed `page.waitForResponse` before the click and awaited it only after; a click that
+  failed left it unobserved, and its later rejection was unhandled, which under Node's
+  default policy stops the worker. The search path already observed both of its armed
+  waits; the sign-in path did not. It was the CI preview failure "a real decoded image
+  cannot enter the stage after private changes", on the deployed commit as well.
+- **A helper agent with a file allowlist reports what is outside it.** The workspace helper
+  had no git writes, no shared-database suites, and a list of files. It named four defects it
+  was not allowed to fix (a stale spec, raw chat times, the bounded current step, an
+  unmasked key). All four were real and fixed here.
+- **A React key built from the read time remounts the component on every re-read, and
+  the shell re-reads every page whenever ANY Run ends** (`BellLive`). The Replay viewer's
+  key carried `readAt`, so a reader stepping through frames was thrown back to the first
+  one whenever some other Run ended. `replayViewerKey` keys by the Run and the REQUEST.
+  Found because `selected-replay.spec.ts` failed "Frame 606" after End, ArrowLeft; a
+  throwaway spec that logged each RSC request and the viewer node's identity showed the
+  re-read and the new node in one trace. Proven by mutation in a unit test (the page's
+  element key) and in the browser (a real cancel of another Run, then the same node).
+- **The re-read in that spec came from the spec's own fixture.** Its extra QUEUED Run had
+  no held checkpoint, so the spec's own worker picked it up and ended it mid-walk. Seed a
+  fixture Run WITH its checkpoint, in one transaction, and end it on purpose when the
+  test is about a Run ending. `cancelRun` on a RUNNING Run only records a request; on a
+  QUEUED or PAUSED one the command ends it at once.
+- **A spec only this branch has was never updated by the packages.** `.ls-session__caption`
+  was removed by the cleanup (UX-28) and `selected-replay.spec.ts` still asserted it; no
+  run had reached that line, because the test failed earlier. After fixing an early
+  failure, run the test to its end before calling it fixed. All 68 `ls-` classes the specs
+  use were then checked against the app.
+- **A page that holds Run control writes events on a clock.** It renews every 30 seconds,
+  and each renewal is an event on the Run's chain that cannot be deleted while the Run
+  exists. So an exact event list sets renewals apart (`expectRunEvents` in
+  `tests/e2e/run-control.ts`), and a teardown deletes the Run's events and the Run in ONE
+  transaction, Run locked first. The rule was written on 2026-09-21 and two siblings did
+  not follow it: `live-escalation.spec.ts`, whose refused cleanup CI met (the
+  `procedures.spec.ts` empty-list failure was its shadow), and
+  `prodconsole-agent-journey.spec.ts`, which holds control while its worker finishes.
+- **Click Acquire and Resume through `acquireControl` and `resumeWithControl`.** Every
+  control read (first load, a live event, a renewal, the read after Release) makes the
+  controls `aria-disabled` for a moment, and a click then is refused by design. CI met it
+  three times in one run: a Resume opener, a Resume confirm, and an Acquire right after
+  Release that reached no server action at all. The helpers click only enabled controls,
+  and again only while the click has not taken effect; a repeated acquire is refused by
+  the server (`stale-epoch` or `held`), so a retry cannot move the lease twice.
+- **A spec the main suite skips is still a spec, and the class sweep missed one.**
+  `workspace-preview-worker.spec.ts` runs only in the preview job, so the sweep that moved
+  every Acquire click onto `acquireControl` did not see its own acquire loop or its single
+  Resume click. CI on `96c7f51` failed there (the Resume dialog never opened in 240 s);
+  `bf06297` passed it by chance. When a class is fixed, grep `tests/` for the control's
+  name, not the list of files the main job runs.
+- **A test that holds the worker lets it go only after the command it waits on is saved.**
+  The same spec clicked "Stop Run" and released its held model turn in the same breath.
+  The worker answered the turn, acted, and began ANOTHER held turn before the cancellation
+  committed, so no boundary saw the Stop and the Run stayed `RUNNING`: two cold local runs
+  failed there. The Pause had the same race and won it only because its commit landed while
+  the worker was mid-action. `awaitRunRequest` now waits for the Run's saved marker first,
+  as `prodconsole-agent-journey.spec.ts` already did before releasing its barrier. A
+  throwaway copy that held every command POST for two seconds passed with the wait and
+  failed at the Stop without it, with the same "Received: RUNNING".
+- `[EXTENDED by the note below]` **A route handler still running when its test ends fails
+  the NEXT test**, as `route.fetch: Test ended`. `run-controller-lease.spec.ts:397` failed
+  for a read test 369 held and never released; a test that holds a request releases it and
+  awaits `page.unrouteAll` in its `finally`, as the sibling at line 366 already did.
+- **`page.unrouteAll({ behavior: 'wait' })` is not a wait for held requests.** Playwright
+  1.62 empties the route list FIRST and waits after, and the first handler that finishes
+  then finds the list empty and removes the page's interceptor itself (`Page._onRoute`).
+  The browser side passes every other request still inside a handler to the network, and
+  that handler's own `fulfill` then fails "Route is already handled!". CI's re-run on
+  `d0b4c15` failed `run-controller-lease.spec.ts:368` that way: it holds EVERY control read,
+  and two were still inside `route.fetch()` when its `finally` released them.
+  `tests/e2e/held-routes.ts` closes the gate first (a later request falls back at once),
+  releases, waits for every started handler, and only then unroutes; the six held-request
+  tests in that spec use it. A throwaway script with two held requests, one still fetching
+  at release, failed 5 of 5 with the old cleanup and 0 of 5 with `settle`. A handler that
+  answers with no network wait before it (the readiness specs' script holds) cannot lose
+  this race; one that awaits `route.fetch()` or a hold released at cleanup can.
+- **A dev server can stop answering ONE route for a whole CI run.** The first attempt on
+  `d0b4c15` failed 7 frame tests: `next dev` never answered `/api/runs/<id>/frames/<id>`
+  from its first request, while the evidence inspector's reads through the same
+  worker-signed grant passed at the same time. The re-run served that route 39 times. The
+  quick test: diff the set of route patterns the server logged in a green and a red CI log
+  (UUIDs normalized); here exactly one pattern was missing.
+- **A poll that reads a count and then a text can wait for ever.** `run-controller-lease
+  .spec.ts:606` polled "the dialog is gone, or it offers the retry" as `count() === 0 ||
+  textContent()`. The receipt reconciliation closed the dialog between the two reads, and
+  `textContent()` auto-waits (this config sets no `actionTimeout`) for a dialog that never
+  came back, so the poll's deadline won and it reported the PREVIOUS answer: "Received:
+  false" after "Timeout 10000ms exceeded while waiting on the predicate", CI on `fdf499e`.
+  The product was right: one resume event, receipt applied, dialog closed. Read every fact
+  of a poll in ONE page read (`evaluateAll` never waits). A throwaway spec that closed the
+  dialog between the reads failed 5 of 5 with the same message, and 0 of 5 with one read.
+- **The abuse harness threw away the web server's own words.** CI on `d1a3f30` (attempt 1)
+  failed "Agent abuse mutations" in case 5 with only "Timed out waiting 180000ms from
+  config.webServer.": no test ran, and nothing said why. `verify-agent-abuse-e2e-mutations.mjs`
+  read only Playwright's JSON report, which keeps nothing that belongs to no test, so every
+  `[WebServer]` line was lost. A server can be up and never ready: on a transient error
+  `runStartupChecks` logs "Startup checks deferred" and stays up, `/api/health` answers 503,
+  and Playwright waits its full 180 s. The harness now adds the `line` reporter and, ONLY for
+  a run that failed outside its tests, keeps a tail of the child's stdout and stderr
+  (`scripts/playwright-output-tail.mjs`): escapes stripped, the worktree path named, the value
+  of every variable whose NAME marks it secret replaced by that name, same-shape lines (the
+  503 polls) folded to first, count and last, and only then cut to 80 lines of 400 characters.
+  Two forced local runs named their causes: "Refusing to start" with `configKeys:
+  BETTER_AUTH_SECRET`, and "Startup checks deferred" with `ECONNREFUSED`. The `d1a3f30` re-run
+  passed, so that failure's own cause is still unknown; the next one will say it.
+- **When you want the END of a child's output, send it to a file, not to a pipe
+  `spawnSync` buffers.** Past `maxBuffer` (16 MiB here) `spawnSync` kills the run and keeps
+  the FIRST bytes, so its tail is not where the run stopped. The harness's child writes to
+  files in its scratch directory, and `readTail` reads back at most the last 8 MiB, whole
+  lines only: a window that starts inside a line can start inside a secret, and half a secret
+  is a value the redaction cannot recognize. Each run of a full local harness printed 10–45
+  KB, far below the limit. **`/proc/<pid>/io` `wchar` is not a process's stdout**: it counts
+  every write, it read 3–22 MB for these same runs, and it first sent this change after a
+  limit it was nowhere near. Measure the file the output lands in.
+- **`live-escalation.spec.ts` still waited to SEE "Pause requested." and "Run resumed."**
+  after UX-49 made both transitional; `pause-resume.spec.ts` had already moved to the
+  settled banner. When a sentence becomes transitional, grep every spec for it — this
+  one was found only on the second pass.
+- **A push to this branch deploys nothing.** Railway's `web` and `worker` build from it,
+  but none of the thirteen commits pushed after `ec673a0` reached production until
+  `bf06297` was deployed by name (the Railway agent's deploy with `commitSha`, both
+  services). Then read each deployment's status and commit, `/api/health` (`schema`), the
+  web's "Startup checks passed" and the worker's startup lines. The web switches first;
+  the worker, which installs its browser, finishes minutes later, so for that time the
+  two run different commits.
+
+## 2026-09-23 — The UI cleanup landed as five packages, and what integrating them found
+
+The owner's 21 September walkthrough (49 findings, 17 P1) is implemented on
+`codex/epic-2-procedure-builder`: package 1's shared layer, then packages 2–6 in their own
+worktrees, merged with no text conflict. Findings, one report per package and the release
+checks: `_bmad-output/implementation-artifacts/ui-cleanup-2026-09-22/`. UX-22..26 name
+surfaces only PR #51's branch has; `p5-report.md` states the rule each one needs there.
+
+- **Chromium gives a date or time input a keyboard stop for its own calendar or clock
+  button, and at that stop the input matches only `:focus-within`.** The product's one
+  ring is `:focus-visible`, so it was never drawn there — on the Run period, the Draft
+  period and the Schedule's start time. `globals.css` draws it on `:focus-within` for those
+  inputs. Found by the release checks' keyboard walk; axe cannot see a missing ring.
+- **A keyboard walk under `next dev` reaches `nextjs-portal`**, the dev overlay appended
+  after the page. It is not the product, so the walk ends there.
+- **Packages that each pass their own specs can still break each other: a spec one
+  package owns can drive another package's surface.** `version-review.spec.ts` creates its
+  Procedure through the form package 3 renamed ("Procedure name", one-click creation,
+  `?created=1`, the Builder's words for a missing source). No text conflict, red on the
+  first run. At a merge, grep every spec for the words each package renamed.
+- **A package can move a line a mutation harness pins, and no local gate runs the harnesses.**
+  Package 5 gave the Escalation question `policy={false}` (UX-27); the agent-guard harness
+  anchors on that exact line, so the integrated branch's first CI run stopped with
+  "Mutation anchor drift" after every test had passed. Before pushing a merge of UI work,
+  run the three harnesses CI runs (`verify-agent-guard-mutations.mjs --browser`,
+  `verify-prodconsole-…`, `verify-escalation-review-…`) in a detached worktree of HEAD.
+- **A report is only as true as the tests it names.** Checking each "proven by" against the
+  test file found two findings nothing pinned (a stop-reason sentence, the Review tab).
+- **Fifty green layout checks did not find three false sentences; reading the screenshots
+  did.** An Active version said "Not yet submitted for approval." (it had no submission
+  RECORD, which is a different fact), saved dates were raw ISO, and a frequency read as a
+  schedule. A layout or axe check cannot judge whether a sentence is true: read every
+  screenshot as the reader would. And when a record can be missing for more than one
+  reason, say what the absence means, never the likeliest cause (`missingSubmissionWords`).
+- **Usage limits stop subagents mid-edit; commit early.** Package agents died four times;
+  the worktrees kept everything, but a resumed agent had to rebuild intent from a diff.
+  Commit each coherent piece at once, and brief a resumed agent with the file list and the
+  previous agent's last words.
+- **This machine restarts, and a restart stops the scratch PostgreSQL.** The data survives:
+  `rm -f /tmp/pgdata18/postmaster.pid`, then `pg_ctl -D /tmp/pgdata18 -o '-p 5434' start`.
+- **Test databases hold the Auditor and the Administrator only, as CI's do.** A seeded
+  Audit Manager fails `run-waits` and `flag-run` (they count every manager), and three new
+  specs that REQUIRED one would have thrown in CI, which seeds none. A spec that needs a
+  manager calls `mintAuditManager` (`tests/e2e/accounts.ts`) and removes it in its teardown.
+- **A 4.4 GB `.next` cache that lived through several restarts made Turbopack panic**
+  (`aggregation_update.rs`, "Aborting.") at test 23 of 238; the other 195 failures were
+  `ERR_CONNECTION_REFUSED`. Delete `apps/web/.next` and run with `INTELLIFIN_LOW_DISK=1`
+  (no on-disk cache); the next full run finished.
+- **A streamed table is in the DOM before it has a box.** React holds a streamed Suspense
+  segment in a `hidden` block until it reveals it, so `toHaveText` passes there while
+  `boundingBox()` answers `null` and a page-width check measures the skeleton. CI's first
+  run on `2a31831` failed `runs.spec.ts` on exactly this. Measure only after `toBeVisible()`.
+- **A transitional confirmation goes when the state it announced settles (UX-49), so a
+  spec must not race it.** `flag-run.spec.ts` asserted the settled banner and the absent
+  transitional sentence; `runs.spec.ts` still raced "Run canceled." twice and lost on a
+  fast machine. When a package makes a sentence transitional, grep every spec for it.
+- **Playwright empties `test-results/` at the start of every run.** Read a failure's
+  `error-context.md` and attachments before starting the next run, or they are gone. When a
+  context has no page snapshot, a throwaway copy of the spec that prints `innerText()` at
+  the failing line is the quickest look at what the page really said — delete it after.
+- **React's server rendering writes `dateTime`, not `datetime`.** An SSR test that pins a
+  `<time>` by its attribute must spell it the way `renderToStaticMarkup` emits it.
+- **`[FIXED]` "Escalation answered." vanished before anyone could read it.** The banner
+  lived inside the panel that the refresh after the answer removes, so it lasted about
+  300 ms and `live-escalation.spec.ts` could miss it under full-suite load. It now lives in
+  `EscalationOutcomeHost`, which `OpenEscalationSection` renders in EVERY state, so React
+  keeps its state through `router.refresh()`; it steps aside when a different question
+  opens. **A confirmation must live in a component that outlives the thing it confirms**,
+  and the spec that proves it asserts the confirmation AFTER the panel is gone — the
+  old assertion ran before the refresh and could never see the defect.
+
+What the packages learned (each report has the full list):
+
+- **A link's `href` asserted as a string proves nothing about the route.** Both "Open the
+  Result" links went to a route that does not exist and three tests agreed. Pin a link
+  helper to the route folders on disk, and have one browser test follow the link.
+- **A teardown deletes `notification` rows before the versions they name**, or it throws,
+  leaves the Procedure, and fails `procedures.spec.ts`'s empty-list test.
+- **A first version's stored diff flags EVERY section `changed`.** Ask for the baseline
+  before rendering the flag; a section changed only in its frozen contract is counted,
+  never dropped.
+- **`findProcedureTemplate` throws on an unknown id, and the id comes from a stored frozen
+  review.** A surface that names a Template falls back to the stored id.
+- **A dated scope is read from the auditor's words, never from the model's.** A period the
+  model wrote is a period nobody named.
+- **`aria-disabled` on a `<select>` never depends on the value chosen in that select.** A
+  choice-dependent reason belongs on the button that commits.
+- **A mutation that moves a shared summary's counts revalidates the summary's path too.**
+- **A count over a bounded detail page under-reports a long Run.** The logical step
+  counter is an exact SQL aggregate, held to the unit rule by an integration test.
+- **`<details>` can never sit inside `<p>`**: the parser closes the `<p>` early, a
+  hydration mismatch `renderToStaticMarkup` cannot show.
+
+## 2026-09-22 — Production follows a draft branch, and `main` cannot start against it
+
+The owner's 21 September UI/UX walkthrough (49 findings, 17 P1) was made against the DEPLOYED
+product, and the deployed product is not `main`: Railway's `web` and `worker` services are
+connected to `feat/auditor-workspace-v1-1` (PR #51, a 44-commit draft) at `ec673a0`, deployed
+outside the Release workflow, and the production database is at schema generation **61**.
+`main` supports 50..50, so a `main` image REFUSES to start there — its 21 September redeploy
+failed twice on exactly that guard. Read `describe-service` (source branch and commit) and
+`/api/health` (`schema`) before assuming a screenshot, a finding or a failed deploy is about
+`main`.
+
+- **A finding can name a surface `main` does not have.** The walkthrough's record queue and
+  inspector (UX-22..26) are PR #51's `RecordReview`/`RunWorkspaceShell`; the rule each one
+  needs is written down in the cleanup reports so it can be applied on top of that branch
+  rather than rebuilt on `main` and thrown away at the merge.
+- **The UI cleanup is based on `main`, in one shared layer plus five packages.** `design/time`,
+  `Timestamp`, `references`, `Reference`, `TechnicalDetails`, `status-words`, `PageHeader`,
+  `words` and `procedures/condition-words` are the one place a readable instant, a short
+  reference, a technical disclosure, a status meaning or a condition sentence comes from;
+  a raw UUID, a raw ISO instant or a `1 Observations` on an ordinary surface is a defect
+  against EXPERIENCE.md's revised Formats row. The contract was revised in place and the
+  walkthrough's decisions appended as their own section, BEFORE the packages were built, so
+  five parallel agents never touched the contract or `CLAUDE.md`.
+- **Five worktrees, five databases, five port pairs.** Each package agent got its own
+  worktree (`.claude/worktrees/ui-pN`), its own install and build, its own migrated database
+  (`ui_pN_test`, a name the throwaway guard accepts) and `PLAYWRIGHT_PORT`/`NORTHSTAR_PORT`,
+  because two browser suites on one database is the trap recorded on 2026-09-10, and one
+  `next dev` port is one suite. `globals.css` carries one labelled region per package so
+  five branches append CSS without merging into one another's hunks.
+- **A gate run beside two worktree builds fails on load, not on the code.** The package 1
+  unit gate reported 2 failures in 1 file while two `pnpm build`s ran; alone it passed
+  4610/4610. Read a red gate's failing file before believing it, and never run the gate while
+  a build is going on the same four cores.
+
+## 2026-09-20 — Selected Replay needs exact bounded context
+
+A selected inspection uses its own bounded frame page with global ordinals and full-history
+observation totals. Resolve ownership through the Step first, then the action, and bind every
+join to the Run. Use Evidence ID as the final tie key: UUIDv7 generation within one millisecond
+does not establish insertion order. Protected-image refusal keeps metadata and retries only
+that Evidence ID. Browser-only network telemetry cannot establish server/worker zero calls.
+Adversarial cross-Run fixtures must delete all owned capture/action children before either
+Run's Steps, in one transaction; preserve the production guards during cleanup.
+
+## 2026-09-20 — Bound record-query admission before acquiring its snapshot
+
+Cursorless review reads use a transaction-scoped try-lock before context/projection. Busy
+attempts release the transaction and connection before backoff; pool queuing is bounded
+by a monotonic admission deadline. Fence late callbacks before SQL and after try-lock,
+observe abandoned-promise failures, and stop the timer once admission succeeds so the
+accepted transaction is awaited through commit. Cursor paging bypasses creation admission.
+Do not use blocking advisory acquisition after a Serializable snapshot has been fixed: it
+repeatedly materializes stale snapshots and causes serialization retry storms. Retain the
+separate serialization retry budget, fresh authorization and two-snapshot bound.
+
+## 2026-09-19 — Preserve fixture role timestamps as PostgreSQL text
+
+Driver/test environments do not consistently return role timestamps as JavaScript Date
+objects. Read `assigned_at::text` and restore it with an explicit `::timestamptz` cast.
+This preserves the value without relying on either raw Date binding or `.toISOString()`.
+An integration cleanup failure revoked the shared actor and invalidated later tests;
+all four sibling workspace/review/controller fixtures now use the same text contract.
+
+## 2026-09-19 — Exact receipt identity includes JSON value types
+
+PostgreSQL JSON text extraction (`->>`) coerces a numeric value and a numeric-looking
+string to the same text. Deferred receipt guards and read projections use JSONB equality
+for anchor values and `to_jsonb` for typed command fields, so employee key `"123"` cannot
+be replaced by JSON number `123` in a supposedly exact worker fact. The regression uses
+a valid frozen P1 inspection and requires forged receipt insertion to fail.
+
+## 2026-09-19 — An inspection pause is an immutable proposal and a sticky worker latch
+
+The browser captures the current Run-owned Work Item when composition starts, independently
+of a historical selected record. The persisted proposal binds that item, frozen plan digest,
+Run revision and controller epoch. Confirmation accepts only Run ID + command ID, rechecks
+role/current work/lease with PostgreSQL time, and requires readable governed intake AND
+proposal content. A removed child proposal cannot be confirmed from an already-open modal.
+After acceptance the safety latch survives role/lease changes; only the existing worker
+boundary applies it after the named logical item settles. Check this before EVERY next
+item, including one settled in the same invocation, not only already-terminal initial rows.
+Immediate pause/cancellation supersedes it, and final-unit completion never creates an empty
+pause. Receipts must match exact source events, including explicit null page subject keys.
+The retained marker Work Item FK is deferred: fixture aggregate cleanup must delete children
+and their Run in one transaction. Do not disable retention guards for test cleanup.
+
+## 2026-09-19 — Disabled browser controls and failure cleanup
+
+Playwright click waits for aria-disabled controls to become enabled. Negative tests must
+use keyboard activation of the focusable control and assert persisted state remains
+unchanged; waiting for a forbidden action to become enabled proves nothing. Restore
+shared test roles before browser-context cleanup, because a timed-out context may already
+be closed. The record-review revocation phase permits only Chromium's exact HTTP 403
+resource message for that same Run, while page errors and all earlier console errors fail.
+Workspace decision height must share space with the actual composer and a 120px history
+floor: a fixed rem subtraction clipped the first answer at 1280×800.
+
 ## 2026-09-17 — The Work Item label, on all four surfaces this time
 
 The Timeline was repaired so a Work Item row names the RECORD rather than the Target System,
@@ -2492,7 +2836,7 @@ There is no lint step yet.
 - **The Northstar read-only rule is middleware above ROUTING, and the test walks the route table.** A write to a path no route serves must be refused, not 404'd: a 404 says "there is nothing here", a 405 says "this system does not accept that, and here is the rule", and only the second is something a Run can record.
 - **Declared counts and cover-sheet digests are generated from the datasets, never typed beside them**, and the digest is over the bytes actually served. Python generates, TypeScript recomputes with `node:crypto`; two implementations must agree or a test fails.
 - **The Leavers export is CSV, not the addendum's `.xlsx`.** A valid xlsx needs a zip writer, nothing parses it yet, and the spec asks only for files with signed cover sheets. **LoanCore served the audit account as already signed in**, because a sign-in form is a POST that its own read-only rule refused — `[SUPERSEDED]` twice: by Story 4.2's credential, and then by the form the corrected read-only predicate allows. **LedgerDesk and the Railway deployment of the Northstar service are deferred**, both named.
-- **Two agents planting boundary violations collide.** `tests/unit/boundaries.test.ts` uses one fixture directory name, so a second concurrent run of it fails for a reason that is not a defect. Read the FIRST failure, and do not run it while a reviewer is planting.
+- **Two agents planting boundary violations collide.** `tests/unit/boundaries.test.ts` uses one fixture directory name, so a second concurrent run of it fails for a reason that is not a defect. Read the FIRST failure, and do not run it while a reviewer is planting. Standalone `pnpm boundaries`, builds and typechecks must also wait for this module to finish: a full unit run temporarily contains deliberate illegal imports.
 
 ### Procedures and Templates (added with Story 2.1)
 
@@ -3769,3 +4113,424 @@ real frame-grant worker and all authorization/evidence assertions. Cleanup remov
 the phase and population rows before deleting evidence and the Run.
 If a surface test temporarily reopens the Run, reopen its held agent claim in the
 same transaction; a TERMINAL agent phase makes a RUNNING Run eligible for recovery.
+
+## 2026-09-19 — Auditor Workspace P0 is a design/capability gate
+
+Owner authorized AW v1.1 and the challenge log on `feat/auditor-workspace-v1-1`,
+from main `44fb5966`; no merge/deploy permission. Preserve the full target experience,
+including protected near-live preview and secure authentication for the first supported
+flow. `docs/prototypes/auditor-workspace/index.html` is a synthetic, disconnected design
+preview. Its local storage holds presentation preferences/drafts only; simulated receipts
+are never application persistence proof. The P0 browser job supplements normal CI.
+Do not count a compiled plan as the explicit strategy capability graph, provider SDK
+methods as a measured preview/privacy guarantee, or the specification's models as
+application tests. Current application mechanisms remain execution/evidence authority.
+
+AW-P1 evidence-load distinction: an omitted `GroundingInspector.snapshotOf` means the
+page has not loaded the detail; a supplied resolver returning null means unavailable.
+Do not turn lazy loading into evidence loss, and do not hide a real mismatch/unavailable
+result. The optional resolver remains separate from stored execution corroboration.
+
+### Auditor Workspace P1 review projection — 2026-09-19
+
+Record review membership starts with `(run_id, population_row.ordinal)` crossed with the frozen execution classification's adapter/web targets. Versioned reference files do not add required inspection units. Map observations only through their actual Work Item, frozen step, target and exact subject key; duplicate/missing keys and unmappable historical rows cannot gain coverage. Global pending assessments include unattributed stored evaluations, and an unknown exception-bearing source count is not zero. Review overlays use the existing effective-value expressions; a rejected null confirmation must never fall back to pending.
+
+The queue persists an immutable, actor-bound ten-minute presentation snapshot with at most two retained snapshots per actor/Run and a 10,000-unit admission bound. HMAC cursors bind snapshot, actor, Run, query and unique position. Every page/detail rechecks current role. Concurrent creation uses bounded serializable retries; no transaction crosses a browser request. The worker expires these presentation copies independently of browser activity. A current inspector reads its result/evaluation facts inside one short consistent transaction; opening it never reviews or seals evidence. These caches are not audit records or an alternative execution/review authority.
+
+### Auditor Workspace record inspector and historical checks
+
+A missing historical check set means unknown inspection, not an invented evidence failure. Found records require matching corroboration; absence credit requires recorded search checks/provenance. Reference-only plans still retain source rows. Selected review authorization, command status and reviewer names must share the selected-record transaction; use transaction-compatible readers, not unsafe casts. Keep old artifact anchors on the technical Evidence route while normal review preserves the source ordinal and signed page cursor.
+
+Raw Drizzle `sql` timestamp parameters must use ISO text with an explicit timestamptz cast; schema column encoders do not run for an interpolated Date in raw SQL. Keep Next.js route configuration statically exported at the route itself. Filter forms follow the POST-first guard and use authorized same-origin navigation endpoints, with bounded bodies, rather than relying on hydration.
+
+### Auditor Workspace P2 content and composition — 2026-09-19
+
+Conversation is off by default and has an explicit synthetic-only development mode with a dedicated content-encryption key. Keep immutable message identity/audit metadata separate from governed ciphertext; authenticated encryption binds content to the exact Run/message. Never reuse credential keys, place raw conversation text in audit payloads, or treat a secret detector as private-pixel containment. Exceptional content removal preserves metadata and cannot replace/resurrect content; real-data retention/export/key lifecycle still needs the owner's D2 policy.
+
+Retry the same unconfirmed conversation request with the same idempotency key; generate a new key only after a durable receipt or changed semantics. A successful response requires the persisted message ID and sequence. Read-only conversation and explicit non-executing control replies are P2 groundwork, not P3 command execution. The live workspace must label action-linked captures honestly, reuse existing protected reads/wait controls, and keep decisions beside the conversation. Live count reads reuse P1 projection logic without evicting immutable review snapshots.
+
+
+Browser fixtures must decode frozen JSON field names exactly: compliance condition identity is `conditionId`, even when the SQL alias is `condition_id`. Record-first Evidence navigation tests must assert the new queue/unavailable state before following Technical details for historical artifact assertions. A passing seeded model or SQL projection does not replace the actual browser fixture setup and navigation.
+
+Operational conversation entries reference the exact immutable audit event and derive
+fixed copy on authorized read; they do not copy payload prose or create another event
+authority. Serialize their sequence under the existing audit aggregate head lock, shared
+with human message writes. Acquire the Run key-share lock before the audit-head lock:
+the metadata foreign key would otherwise acquire it in reverse order and could deadlock
+with an ordinary Run command. A conversation history bound must not stop audit recording
+or execution. Historical events are not silently backfilled or attributed to a source row
+by nearest time. New database fixtures must preserve the unique active-standard-period
+invariant even when their only intent is testing cross-Run access.
+
+Raw parameters passed to PostgreSQL polymorphic JSON constructors need explicit types
+(`runRevision::integer`); a successful page read cannot prove its write path. Client-only
+conversation controls stay disabled until hydrated, so an apparently actionable SSR
+button cannot discard a click. Browser role-revocation fixtures must serialize restored
+timestamps as ISO text; failed cleanup can revoke the shared test identity and invalidate
+later journeys. Preserve those cascading failures in the checkpoint rather than counting
+the unrun tests as successful. Screenshot capture must not mutate input caret styles while
+React is still hydrating server-rendered native forms.
+
+### Auditor Workspace compact review surfaces (2026-09-19)
+
+Keep record-review lifecycle actions in an explicitly opened details panel so the queue begins in the first viewport. Workspace decisions use frozen-plan action words and numbered supporting-capture links; raw Step/Evidence identities remain in Technical details. These presentation choices never alter wait IDs, answer options, revision checks or Evidence read grants.
+
+### Auditor Workspace transaction-bound wait composition (2026-09-19)
+
+Conversation-to-command adapters must bind PostgresWaitRepository, role reads and audit denial writes to the enclosing Transaction. Drizzle nested transactions use a savepoint on that same connection. Calling a pool-backed wait command while holding the Run lock risks self-deadlock and cannot make the intake/domain link atomic. The integration proof must throw after the real pauseRun call and verify that marker, audit event and narration all rolled back, then verify an outer commit preserves the original requester.
+
+### Bounded PostgreSQL sequence assertions (2026-09-19)
+
+postgres.js returns audit_events.sequence (bigint) as text and conversation source-event sequence (integer) as a number. Cast the bounded audit sequence explicitly in tests that compare the two; do not misreport a representation mismatch as a failed domain or atomicity effect.
+
+- **AW-P2 browser follow-up:** CI `35450768006` retained the real active-worker capture and finished 227/230 application browser checks. Await selected-record navigation before reading its URL; calculate the oldest message from the persisted initial count because committed narration adds entries. The active/decision/inspector screenshots exposed viewport and decision-density defects, so they do not close G1.
+
+### Auditor Workspace pause receipt identity (2026-09-19)
+
+A conversational pause must carry a server-generated commandId on the existing RunPauseRequest. Client pause envelopes still accept only runId. Another command's pending marker is a refusal for the conversational adapter; the legacy button remains idempotent. Received/interpreted receipts precede the existing handler; queued/applied/superseded receipts derive from that handler/worker's exact audit event in the same transaction. A receipt must never infer application from the Run state or a nearby timestamp. Bind all nested wait, role and denial dependencies to the outer connection. Reserve the extra operational conversation sequence and do not charge exact safety shortcuts to the question limiter. PostgreSQL receipt-transition guards must coalesce nullable first-transition predicates to false; SQL NULL must never permit skipping received.
+
+Exact unqualified Run pause normalizes viewing-only source/wait context to null before persistence. It skips evidence fact reads and the ordinary message quota, with a separate rate bucket; non-safety messages retain full context validation. Absolute history bounds remain enforced.
+
+Interaction command inserts must join the exact conversation-received audit fact (actor, message, intent and semantic fingerprint), not only a generic auditor message. Receipt reads fail closed if their authoritative source event is absent or no longer matches; storage damage must not display a credible applied status. Reply context revisions are read after the domain command.
+
+### P-4 lifecycle boundary after model response (2026-09-19)
+
+The specialized ProdConsole page path must call the existing lifecycle boundary after its model turn, before uncertainty handling or observation/declaration registration. Otherwise a safety request arriving during that read is superseded by completion without pausing. Preserve the completed model-turn evidence on the superseded attempt; after Resume, prove the fresh successful attempt separately instead of asserting only one model read occurred. Browser fixture display names need not embed their generated isolation IDs.
+
+### P3 real-database fixture corrections (2026-09-19)
+
+CI `35453444876` showed that a wait-reply envelope intentionally classifies pause-now as clarification. A Run-wide safety test must use no explicit wait reply; do not weaken that interpretation to make a fixture pass. Record selection remains irrelevant to exact unqualified pause. Terminal cancellation fixtures must remove the sealed Result/Evidence package before deleting their Run, following existing pause-test teardown. Add new migrated tables to the exact schema inventory (generation 53).
+
+### Workspace viewport and native capture follow-up (2026-09-19)
+
+A fixed viewport percentage cannot size a workspace below variable route banners: measure its remaining space and verify actual element bounds before browser auto-scroll. Native capture mode wraps the existing protected image and must prove natural dimensions and keyboard panning; a fitting image alone is not legibility proof. On sunken record cards, muted #64748B has only 4.34:1 contrast; secondary #475569 gives 6.92:1. Compact record review must preserve a working decision link even when conversation is disabled.
+
+Record inspection must render the selected Observation’s original attributes, not just generic account/status summaries or normalized values. Reuse inert untrusted-content rendering; frozen source values and actual captured target values are different evidence.
+
+
+## 2026-09-19 — Validate the changed-operation fixture before testing idempotency
+
+An unqualified `pause now` deliberately ignores stale selected-record context. Ordinary
+messages do not inherit that exception. Reusing the pause fixture’s out-of-range ordinal
+for `resume` tests malformed-envelope refusal before it can test idempotency conflict.
+Keep both guards: assert the malformed ordinary request, then use a valid null selection
+with the same request key to prove a changed operation conflicts. Normal CI on `f89b1a0`
+passed 603 of 604 PostgreSQL cases and exposed this distinction; the follow-up must still
+reach and pass the actual worker application, rollback and revocation assertions.
+
+
+### Actual workspace proof must distinguish metadata from evidence bytes (2026-09-19)
+
+Normal CI `35454413253` passed the compiled-worker pause/native-capture/record-inspector
+journey and 228/230 browser cases. An unavailable protected snapshot still displays its
+registered grounding label through UntrustedText; assert that no actual snapshot cell
+is displayed, not that all inert metadata disappears. Measure meaningful visible chat
+history as well as Send and the first contextual choice: a control can fit while leaving
+almost no conversation. Compact full provenance accessibly; aria-label on a paragraph
+is prohibited. Keep fresh/live-state information visible in compact workspace chrome.
+
+
+### Controller fencing belongs inside the existing Resume transaction (2026-09-19)
+
+Run controller operations lock the canonical Run before reading PostgreSQL
+clock_timestamp; transaction-start time can renew a lease that expired while waiting.
+Retain the row after release/expiry and advance its epoch, including same-actor
+reacquisition. Resume reads that fence under the existing wait transaction, with current
+role, revision and confirmation epoch. Require every Resume adapter to name its server
+policy explicitly. Once enrolled, mode-off cannot restore epoch-free Resume: disable
+new enrollment while retaining protected recovery controls for existing Runs.
+
+Lease row, audit event and existing timeline notification share the transaction. An
+expiry is attributed to the system observer with observedBy metadata; the auditor did
+not cause the clock deadline. The insert trigger requires epoch one, so use a locked
+UPDATE then INSERT, not an UPSERT whose BEFORE INSERT trigger sees a renewal epoch.
+Never extend controller ownership into Pause/Stop safety or existing exact-wait rights.
+Capture the Resume revision/epoch when its confirmation opens; live rereads cannot
+silently rebind a previously shown decision. No new manager takeover permission is
+implied. Lease-renewal payload idempotency and full conversational command receipts
+remain separate uncompleted P3 work.
+
+
+### Shared styling is enforced by the whole unit suite (2026-09-19)
+
+CI `35457445681` passed TypeScript/boundaries and 4,690 unit tests, but the stylesheet
+contract caught a nonexistent ls-text-caption class in the new controller view. Use the
+existing ls-caption token. A focused component pass does not replace the global static
+class inventory; its failing guard remains unchanged.
+
+
+### A record Replay link must resolve the record it names (2026-09-19)
+
+RecordReview emitted ?workItem links but Replay ignored searchParams, silently showing
+the first capture. Resolve only from the authorized Run’s existing jump targets, with
+the same Step Execution work-item fallback as its jump list. Invalid/multiple/cross-Run
+or bounded-out selections must show no selected frame, not a guessed first record or
+a false “this Run captured nothing” claim. Preserve explicit scrubber choices and start
+paused on reload. Multi-target inspectors expose target-specific links. Evidence reads
+add their legitimate evidence-access audit events; readonly Replay proof compares Run
+state and all other audit facts rather than forbidding the access trail itself.
+
+
+### Restore shared browser identities with encoded timestamps (2026-09-19)
+
+postgres.js result Dates cannot be passed straight back as timestamp parameters. Encode
+assigned_at as ISO text with an explicit timestamptz cast, including finally cleanup.
+A failed role restoration can invalidate every later authenticated browser case; keep
+those cases unverified until a clean rerun. Resume audit expectations must include the
+actual controller acquisition; do not relax the authorization or event-chain assertions.
+
+
+### Prove composed review with worker-produced records (2026-09-19)
+
+The standalone evaluation fixture seeds machine proposals for command testing and is
+not proof of record projection joins. The actual P-1 worker journey already produces
+the frozen work item, population, capture and C2 proposal. Route its confirm/reject
+journeys through the record queue and inspector, retain the selected URL across reload,
+and compare original Observation/evaluation/Evidence rows before and after review.
+A successful submit is insufficient: require the worker command and sealed Result.
+
+### Await fixture notification outcomes before Replay baselines (2026-09-19)
+
+A real raised Escalation queues independent notification deliveries; their worker audit
+facts may land after fixture setup returns. Wait for both persisted channel outcomes
+before taking a no-execution-effects Replay baseline. Keep the complete non-access
+audit comparison, including event types for diagnosis. Role-revocation browser checks
+must account for the shell bell's exact `/api/runs/events` 403 as well as the Run stream;
+do not allow arbitrary console errors. Playwright screenshot paths need a `.png` suffix.
+
+### Conversational Resume binds the reviewed pause (2026-09-19)
+
+Persist a Resume proposal with its exact pause wait, opened/deadline instants, controller
+epoch, Run revision and frozen plan digest. Confirmation accepts only Run/command IDs
+and reuses `resumeRun` inside the conversation transaction. Recheck current role, live
+controller, exact pause and frozen plan; a released/reacquired lease cannot rebind it.
+The existing web Resume event projects directly to an applied interaction receipt in
+that same transaction. Retry validates that source fact and does not close another
+wait. Both intake and displayed proposal must remain readable at first confirmation.
+Disclose the existing safe attempt restart. The worker-produced browser journey and
+lost-response/retry journey are required application proof, not replaced by model tests.
+
+### Size record filters for their pane, not the viewport (2026-09-19)
+
+The actual worker-to-inspector capture exposed search/filter controls reduced to a few
+pixels inside the desktop queue. The viewport was wide, but the adjacent inspector
+made the queue narrow. Use an auto-fitting grid with readable field minima so controls
+wrap with their own pane. Browser proof must measure the fields with the inspector open.
+
+- Auditor Workspace revocation browser checks must keep pre-revocation console errors
+  strict. After revocation, the shell and Run event streams can correctly return 403;
+  only allow the exact Chrome error at the exact same-origin event paths in that phase.
+  CI 35466506732: 624 PostgreSQL tests and 233/234 full browser tests passed; the last
+  failure was this workspace console assertion after all access-refusal checks passed.
+
+### Confirmed Stop carries cancellation identity through the worker (2026-09-20)
+
+Exact conversational Stop records a proposal bound to the Run revision and frozen plan;
+only explicit confirmation calls `cancelRun`. Historical evidence selection cannot retarget
+it, and it never requires the controller lease. Compose cancellation, roles and audit writes
+on the enclosing transaction. Preserve the server-created command ID on the existing durable
+cancellation marker, including the independent result/wait readers, so worker restart and
+lost-response recovery project the original event rather than infer success from Run state.
+Another cancellation owner is a refusal for conversation; legacy controls remain idempotent.
+A revision test must change actual Run content: the database deliberately ignores direct
+revision-only updates. Terminal fixtures must use actual completion/cancellation so open waits
+close and the required sealed Result exists.
+
+Confirmed safety receipts also need storage-level ownership: bind cancellation markers to
+same-Run Stop commands and original actors, then preserve the entire accepted marker. The
+cancel event precedes `completeRun`, so sealed-result consistency belongs in a deferred
+constraint; replay must independently verify the actual canceled/sealed outcome. Lock governed
+intake/proposal content in stable ID order for first confirmation. A displayed execution wait
+must not reinterpret exact Run-wide Stop as an answer to that wait.
+
+For a terminal conversational Stop, LiveGate replaces the subscribed view with its terminal
+view. The applied ledger receipt is valid lost-response reconciliation; a retry modal need
+not survive that remount. Test exact authenticated replay separately, and exercise modal
+retry with a still-running queued Stop. Never reopen the terminal gate to satisfy a test.
+
+On constrained local browser-test hosts, `INTELLIFIN_LOW_DISK=1` trades disk for memory:
+Turbopack cannot evict its cached graph without its filesystem cache. When disk is available,
+use `INTELLIFIN_LOW_MEMORY=1` instead for full cache eviction; do not combine the two modes.
+Keep worker deadlines and product assertions unchanged and warm cold routes before timed
+worker journeys. The Node runtime import in `instrumentation.ts` must sit inside the positive
+`NEXT_RUNTIME === 'nodejs'` branch so both bundlers can exclude it from the edge bundle.
+
+### Renewal receipts and browser authority are separate facts (2026-09-20)
+
+Controller renewal uses a required UUID request key scoped to actor and Run, with exact
+operation/expected-epoch comparison after fresh authorization and before current-epoch
+admission. The immutable renewal event is its receipt. A nullable lease renewal marker and
+deferred matching-event guard bind the effect to that event; use explicit durable identity,
+not PostgreSQL `xmin`/transaction-status heuristics. Retain keyed events through the Run
+lifetime. Aggregate fixture cleanup must delete the event and Run in one transaction.
+
+Keep the 30-second renewal interval independent of read projections and callbacks. Serialize
+mutations, retain the original unknown renewal payload/key, and read current ownership after
+receipt recovery. A historical successful receipt does not confer current control. Fence reads
+by generation and Run lifetime; invalidate on hiding, disconnect, failure or elapsed expiry.
+Compute conservative display expiry from request-start monotonic time plus the server's
+remaining duration, counting the round trip against it. Publish unavailable ownership to all
+Resume/discretionary surfaces, including already-open dialogs; safety Stop/Pause and exact
+runtime answers remain independently authorized.
+
+Retain unresolved renewal requests in bounded session storage before dispatch so a Run-state
+remount or reload recovers the exact key. A document-wide mutation guard prevents remounts
+from overlapping outstanding mutations. Distinguish temporary `checking` from unavailable
+ownership: disable an open confirmation during reconciliation, then keep it only if the
+same epoch remains current. Compare proposal epochs even when the same actor reacquires.
+For unknown conversational confirmations, an authoritative queued/applied history receipt
+can resolve the dialog; test exact authenticated replay without forcing that dialog to stay
+open. A retained recovery dialog clears old connection refusal text when the gate reopens.
+
+Next 16.3.4 serializes browser Server Actions in one router queue, including actions used
+only for reads. A controller read held in that queue also blocks renewal and independent
+safety actions; invalidating its presentation does not release the queue. Controller reads
+therefore use a freshly authorized, no-store GET with cancellable same-origin fetch.
+Mutation actions retain their existing authority. Test slow reads through the real GET
+transport and prove safety persistence before releasing the held response. Settle initial
+hydration/stream refreshes before delaying an ownership projection for expiry assertions.
+
+Route tests that dynamically import the full infrastructure graph must warm that import
+in a bounded setup hook, as the session-route tests do. A cold import inside a five-second
+request test can time out and let its continuation read the next case's mocks. Keep request
+assertions unchanged; account for module transformation in setup rather than request time.
+
+### D3 manager transfer authority approved (2026-09-20)
+
+The user approved a separately granted `run.control-transfer` permission for Audit Managers,
+with a required reason and audited controller epoch change. Administrator status alone is
+insufficient. Preserve accepted Pause/Stop requests and all independent answer, approval and
+review permissions. Implementation must prove exact retries and stale-direction fencing;
+approval does not enable an unimplemented permission or authorize deployment. See
+`_bmad-output/implementation-artifacts/decision-aw-manager-transfer-d3.md`.
+
+### Conversational answers retain the question, not the latest wait (2026-09-20)
+
+Capture the server-read question anchor and independent selected record at the first
+nonempty draft. Current-wait/record refresh must preserve an uncertain intake's exact
+payload and key. Resolve only a unique whole option ID or label, optionally prefixed
+`answer:`; no inferred synonyms, conditions or negation stripping. Preserve other
+conversation intents and the existing exact safety phrase rules.
+
+The canonical question digest includes the ordered complete option objects, exact
+question text, raised-event identity, work item, step, supporting evidence and matching
+rationale source. A latest model turn without that evidence/step binding is not the
+question source. Lock the Run and addressed wait; missing/inconsistent provenance makes
+conversational answering unavailable without disabling the existing decision card.
+
+Answer confirmation remains lease-independent in the opener, modal, submit guard and
+invalidation effect. It reuses `answerEscalation` with trusted dependency metadata, never
+chat text as a worker note. Decorate the nested WaitContext's actual audit writer so the
+authoritative event and closed wait share the outer transaction's server timestamp.
+`run_wait.answer_command_id` binds the closure to its exact immutable command, event and
+applied receipt through deferred storage guards. Abort retains the answer handler's
+existing cancellation path; an answer is not a Stop command. Reauthorize historical
+receipt recovery and do not equate it with the current Run state. Aggregate fixture
+cleanup must remove retained answer/raise facts and their Run in one transaction.
+
+
+A definite pre-write conversation refusal must permit draft correction; an unknown delivery
+must retain the exact frozen payload and request key. Represent that distinction explicitly
+instead of inferring it from a broad error code. Render answer-modal source from the current
+read projection, not a cached command: removal of either governed body also removes its
+confirmation/source projection, including when the intake lies on another history page.
+
+For maximum-length workspace context, bound source text separately from its action and make
+scroll regions keyboard-accessible. Test the expanded disclosure as well as the initial and
+populated composer. Keep explicit native POST forms: React function actions on the form
+conflict with an explicit method. Put the action on the submitter through Button.formAction
+instead, letting React supply its submitter metadata. Do not weaken the form-method guard.
+The no-JavaScript browser proof must assert POST, no URL query and the note in the body.
+
+### Manager transfer requires an explicit grant and a retained review (2026-09-20)
+
+`run.control-transfer` has two gates: current Audit Manager role and a separately granted
+permission. Revoked grants retain monotonically increasing revisions; demotion/removal
+revokes atomically and promotion never restores authority. Administration locks ordered
+administrator role rows, then distinct actor/subject identities sorted by ID, before fresh
+authorization and audit writes. Reject role identity rewrites in storage. Transfer locks
+the Run then manager identity, so grant/role revocation serializes even when a row is absent.
+
+A governed reason proposal freezes the observed controller and epoch. Confirmation accepts
+only Run/command IDs. A changed lease cannot rebind the review, and an applied receipt is
+historical evidence rather than current ownership. Bind the exceptional live-holder change
+to an immutable proposal, durable lease marker, exact domain event and receipt. Keep the
+last transfer marker through ordinary renew/release/acquire, and validate the transfer at
+fact creation so legitimate later transitions in the same transaction remain possible.
+Accepted Pause/Stop and deferred inspection Pause remain safety requests through transfer.
+
+Browser recovery retains a separate monotonic `confirmRequested` flag. A server command ID
+alone means only that a proposal exists: reload must recover its reason and require review.
+Only a previously attempted confirmation may recover its applied receipt automatically;
+then refresh the existing controller GET instead of restoring ownership from that receipt.
+
+
+## 2026-09-20 — Assert the storage refusal beneath Drizzle's query wrapper
+
+For a deliberate trigger refusal through a Drizzle adapter, assert the PostgreSQL `cause`
+with its exact SQLSTATE and message. The outer message describes the failed parameterized
+query; matching that message loses the intended invariant and can report a correct guard
+as a failed test. Raw postgres client errors keep their SQLSTATE at the top level.
+
+## 2026-09-20 — Retain shared platform events during fixture cleanup
+
+Removing synthetic identities does not permit deleting their events from the shared
+`platform` hash chain. Keep those events and its head intact; removing a subset corrupts
+later chain verification, even when the events' storage guards allow account removal.
+Run-owned aggregate cleanup remains scoped to the complete Run and its own head. Every
+new migration table must also appear in the exact schema inventory integration test.
+
+Browser fixture cleanup must lock its Run before deleting children, matching production
+read/command ordering while late refreshes finish. To exercise explicit lost-response
+retry, delay the competing authoritative refresh until the exact retry settles; otherwise
+normal receipt reconciliation can correctly close the dialog before the test clicks it.
+Release injected refresh gates in `finally`, preserving the original request and domain
+effect assertions rather than increasing timeouts or suppressing the error.
+
+For the full root-test TypeScript graph, run the compiler alone with a 2 GB Node heap
+on the 8 GB Codespace; 768 MB exhausts V8 before diagnostics complete. After a Codespace
+restart, recreate any ignored cache symlink target under `/tmp` before starting Next.
+Temporary directories and running container state do not survive with repository files.
+
+### Synthetic preview ownership and browser deadlines (PR 51 P2)
+
+A settled `withActionDeadline` race is not proof that Playwright I/O stopped. The
+preview-enabled LiveWorkspace tracks the actual promises through async context; if
+any remain pending on return, it permanently fences and disposes that workspace
+before admitting another action or private input. The same coordinator owns
+registered captures and preview sampling. Stored sign-in invalidates the local
+buffer/epoch before persisting the private fence, then drains actual work before
+credential dispatch. A failed authentication or safe-page check does not hand back.
+
+P2 initially supports only explicit `WORKSPACE_PREVIEW_MODE=synthetic-local` in a
+non-production environment, with web and one worker on the same loopback host.
+Both use the same `WORKSPACE_PREVIEW_SECRET` (minimum 32 characters) and
+`WORKSPACE_PREVIEW_PORT` (default 4311). There is no remote worker routing, TLS
+listener, provider enablement, or real-data authorization. Metadata generation
+0061 must follow manager generation0060; do not apply the draft outside the normal
+migration/journal/snapshot sequence. A missing/expired in-memory runtime cannot
+reclaim the same workspace revision; a new provisioned revision is required.
+
+
+### Preview ownership follows the workspace identity, not provisioning CAS (2026-09-21)
+
+`run_workspace.revision` advances twice on every legitimate reattachment. It is a
+checkpoint CAS, not a browser incarnation. Bind preview to the stored local workspace
+ID and runtime; retain its first claim revision as the public generation. Keep an
+unchanged owner alive during `PROVISIONING`, but withhold viewer delivery until OPEN.
+A changed workspace ID must have a higher claim generation. The same ID cannot
+reclaim an expired runtime, even after its provisioning revision advances. A fenced
+Page must also refuse browser attachment so existing recovery can replace it.
+
+Keep a fresh displayed preview while decoding and reauthorizing its replacement;
+clearing at every poll produces blank intervals. Private/refused/expired/hidden states
+withdraw both displayed and pending object URLs. Browser assertions must not print
+session cookie values: compare session distinction as a boolean. A new Playwright
+context can inherit configured storageState; explicitly empty it for independent login.
+
+An aria-disabled Resume opener remains focusable and ignores clicks. Acquisition can
+trigger another ownership read after its success text appears, so browser proofs must
+resolve the enabled opener and assert its dialog before testing later heartbeat events.
+Never infer that an asynchronously rendered Acquire control is absent from an immediate
+`count()` after reload. Keep retained renewal events and their Run deletion in one
+Run-first cleanup transaction, including closed/open wait rows.
