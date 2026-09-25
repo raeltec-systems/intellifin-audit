@@ -2,7 +2,7 @@
 title: 'Classify every table and write the policy inventory'
 type: 'feature'
 created: '2026-09-25'
-status: 'in-review'
+status: 'done'
 baseline_commit: '429e08cf703fee6c5320f17b5983948709fd5bdf'
 review_loop_iteration: 1
 context:
@@ -160,13 +160,13 @@ The rows were generated from the access audit and are then committed as the docu
 - `NODE_OPTIONS=--max-old-space-size=2048 pnpm typecheck` -- expected: exit 0
 - `python3 scripts/verify-tenancy-contract-mutations.py` -- the mutation proof, on demand and not a CI gate (Node 24 and pnpm on the path, `DATABASE_URL` naming a migrated test database, from any directory) -- expected: every mutation fails its named case on an assertion with every case of its file collected, every tolerance case fails nothing, both controls are refused as proof, and the document ends byte-identical.
 
-**Results** (2026-09-25, review loop 1 patches: the working tree on `1ab8a48` plus this patch set, uncommitted; Node 24.20.0; PostgreSQL 18.6 scratch database at generation 61):
+**Results** (2026-09-25, review loop 1 patches, committed as `5a4a16e` with the orchestrator's `plan-derivation` correction; Node 24.20.0; PostgreSQL 18.6 scratch database at generation 61):
 
 - Unit -- 55 of 55 pass.
 - Integration -- 7 of 7 and 18 of 18 pass; the exact `public` list in `schema-compat.test.ts` is unchanged.
 - Typecheck -- exit 0.
 - Acceptance 1 against committed objects, beyond the test's own rolled-back probe: a table with an identity column, a view, a materialized view and an unowned sequence committed to `public` made "classifies every relation the database holds" fail with `offending: public.ac1_scratch_matview, public.ac1_scratch_seq, public.ac1_scratch_table, public.ac1_scratch_view` (the identity column's sequence is not named), and "gives no owned sequence a row of its own, and classifies every owning table" name `public.ac1_scratch_table_id_seq → public.ac1_scratch_table`. After they were dropped all seven cases pass, and no `ac1_scratch%` relation is left.
-- Mutation proof -- `python3 scripts/verify-tenancy-contract-mutations.py --allow-uncommitted --markdown`. The flag is there because this patch set is uncommitted by instruction; without it the script refuses the document (exit 2), which was checked. 77 of 77 mutations killed by their named case, each on an assertion with all 55 unit or all 7 integration cases collected; 3 of 3 tolerance cases accepted; 2 of 2 controls refused as proof (a parse error that fails the whole unit file, and one that makes every integration case throw). The document ended byte-identical (SHA-256 `617e523cdf76c6856d22ad1e181d33e5705b312abf3629ab7d104f81cf943fc6`), and both files passed 55/55 and 7/7 after the run. Three cases are not document rules and have no mutation here: "reads a Drizzle schema that declares tables" (it keeps the two Drizzle cases from passing over an empty import), the integration file's throwaway-database guard, and its rolled-back probe, which is itself a proof (it creates each kind of relation and asserts which are named). The first implementation's run (49 unit and 4 integration cases, 55 of 55 killed by the scratchpad `mutate.py`) is superseded by this one.
+- Mutation proof -- `python3 scripts/verify-tenancy-contract-mutations.py --markdown`, run from `/tmp` on the committed document with no override flag (the implementation agent's earlier run of the uncommitted patch set needed `--allow-uncommitted`, and the script refused the document without it, exit 2, which was checked; it gave the same counts). 77 of 77 mutations killed by their named case, each on an assertion with all 55 unit or all 7 integration cases collected; 3 of 3 tolerance cases accepted; 2 of 2 controls refused as proof (a parse error that fails the whole unit file, and one that makes every integration case throw). The document ended byte-identical to the commit (SHA-256 `c0d63446275054066ef8a65ef1bcf42da91124a27436db61578d09864688d907`, also the hash of `git show HEAD:docs/contracts/tenancy-v1.md`), and both files passed 55/55 and 7/7 after the run. Three cases are not document rules and have no mutation here: "reads a Drizzle schema that declares tables" (it keeps the two Drizzle cases from passing over an empty import), the integration file's throwaway-database guard, and its rolled-back probe, which is itself a proof (it creates each kind of relation and asserts which are named). The first implementation's run (49 unit and 4 integration cases, 55 of 55 killed by the scratchpad `mutate.py`) is superseded by this one.
 
 | Id | Rule | File | Named case | Verdict |
 |---|---|---|---|---|
@@ -267,3 +267,89 @@ The rows were generated from the access audit and are then committed as the docu
   - *Claims not applied as written.* `control_transfer_receipt_valid` (`0060_same_yellow_claw.sql`) reads no table: its two arguments are rows its caller, the trigger `guard_control_transfer_fact`, already read, and that trigger is one of the 38. So O6 names only `conversation_answer_receipt_valid` among the functions application statements call. Extended beyond the claims after checking the code: `wait-timeout` also needs `run_step_execution` (the population-facts override joins it); O8 also lists the Draft save's derivation job, the delegation's wait wake job and `plan-derivation`'s job reads, and does not say `plan-derivation` re-inserts jobs (its reconciliation only reads them) `[CORRECTED below]`. §9 step h (reversible only before `FORCE`) is assigned to Story 11.4, which forces the policies.
   - *Corrected after the orchestrator's check.* `plan-derivation` does insert jobs. `recoverLegacy` (`packages/application/src/procedures/derive-plan.ts`) runs in both `derivePlan` and `reconcilePlanDerivation`; for a Draft whose saved plan digest no longer matches its authored inputs (an older build's save) it calls `queuePlanDerivation`, which enqueues a job and advances `section_preparation` through `refreshPreparation`. And `reconcileProceduresQueue`'s rolling-deployment sweep walks every Draft and locks each one, so a predicate narrowed to pending Drafts would hide the rows that path exists for, and it would stop silently (`findVersionForUpdate` answers `null`). The contract now says so: §4.2 `plan-derivation` reaches every Draft and names the queued-again post-state; §5 grants it `section_preparation`; O8 says it inserts a job on that path; §8 finding 1 names the column.
   - *Frozen text.* Boundaries says a locking read is granted "only with the UPDATE privilege and the UPDATE policy's `USING`". That is the UPDATE half: PostgreSQL also requires the SELECT privilege and applies the SELECT policies' `USING`, and the contract states both. The frozen block is unchanged; the owner may amend it.
+
+## Suggested Review Order
+
+**What the contract fixes, and the five classes**
+
+- Start here: what the contract fixes and what it leaves to later stories.
+  [`tenancy-v1.md:18`](../../docs/contracts/tenancy-v1.md#L18)
+
+- Five classes; a null scope means the level above; partitions, sequences and views follow rules.
+  [`tenancy-v1.md:28`](../../docs/contracts/tenancy-v1.md#L28)
+
+- Every relation at generation 61 classified once, with its reason.
+  [`tenancy-v1.md:47`](../../docs/contracts/tenancy-v1.md#L47)
+
+**Principals and what they reach**
+
+- Closed list of maintenance principals; each predicate has a USING and a WITH CHECK half.
+  [`tenancy-v1.md:138`](../../docs/contracts/tenancy-v1.md#L138)
+
+- `plan-derivation` reaches every Draft, because its recovery sweep locks each one.
+  [`tenancy-v1.md:147`](../../docs/contracts/tenancy-v1.md#L147)
+
+- The audit append's four statement groups, and which principal needs which grant.
+  [`tenancy-v1.md:159`](../../docs/contracts/tenancy-v1.md#L159)
+
+- One completion path, three kinds of caller; each holds every row it runs.
+  [`tenancy-v1.md:193`](../../docs/contracts/tenancy-v1.md#L193)
+
+**The policy inventory**
+
+- A hidden row silently drops the append's side rows; positive tests must assert them.
+  [`tenancy-v1.md:242`](../../docs/contracts/tenancy-v1.md#L242)
+
+- One row per protected table: boundaries, then member, delegation and maintenance grants.
+  [`tenancy-v1.md:245`](../../docs/contracts/tenancy-v1.md#L245)
+
+- `owner(SELECT)`: people address notifications to others, and read only their own.
+  [`tenancy-v1.md:251`](../../docs/contracts/tenancy-v1.md#L251)
+
+**Decisions for the owner**
+
+- D1–D7 are proposals; the story each names confirms or supersedes it in place.
+  [`tenancy-v1.md:318`](../../docs/contracts/tenancy-v1.md#L318)
+
+- O3: a Run has no engagement, so that boundary enforces nothing on Runs.
+  [`tenancy-v1.md:336`](../../docs/contracts/tenancy-v1.md#L336)
+
+- O5 and O6 go beyond AD-24's two roles, so the owner decides.
+  [`tenancy-v1.md:338`](../../docs/contracts/tenancy-v1.md#L338)
+
+- O7: forced policies bind the migrator too; release-time writes need a decision.
+  [`tenancy-v1.md:340`](../../docs/contracts/tenancy-v1.md#L340)
+
+- AD-24's migration order a–h, with one story per step.
+  [`tenancy-v1.md:358`](../../docs/contracts/tenancy-v1.md#L358)
+
+**How the contract is held**
+
+- The one parser: it throws only on structure, so rule failures stay named cases.
+  [`tenancy-contract.ts:332`](../../tests/fixtures/tenancy-contract.ts#L332)
+
+- Every failure names all its offenders, whichever reporter prints it.
+  [`tenancy-contract.ts:141`](../../tests/fixtures/tenancy-contract.ts#L141)
+
+- The database against §3 in both directions; partitions and owned sequences resolved.
+  [`table-classification.test.ts:43`](../../tests/integration/table-classification.test.ts#L43)
+
+- Rolled-back probe: each relation kind is named, partitions and identity sequences are not.
+  [`table-classification.test.ts:164`](../../tests/integration/table-classification.test.ts#L164)
+
+- `LOCK`, `UPDATE` and `DELETE` come with `SELECT`, or the statement can never run.
+  [`tenancy-inventory.test.ts:249`](../../tests/unit/tenancy-inventory.test.ts#L249)
+
+- Every appender of a UUID aggregate holds `SELECT` and `LOCK` on `audit_run`.
+  [`tenancy-inventory.test.ts:366`](../../tests/unit/tenancy-inventory.test.ts#L366)
+
+- Each rule broken once; its named case must fail on an assertion, never a parse error.
+  [`verify-tenancy-contract-mutations.py:417`](../../scripts/verify-tenancy-contract-mutations.py#L417)
+
+**Peripherals**
+
+- The lessons recorded for later agents.
+  [`CLAUDE.md:1`](../../CLAUDE.md#L1)
+
+- The contract register names this story as the one that establishes `tenancy-v1`.
+  [`CONTRACT-REGISTER.md:24`](../planning-artifacts/architecture/architecture-IntelliFin%20Audit-2026-09-01/CONTRACT-REGISTER.md#L24)
