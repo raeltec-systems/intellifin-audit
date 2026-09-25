@@ -1,6 +1,6 @@
 ---
 title: "Sprint Change Proposal — Zobba course correction of 2026-09-24"
-status: draft for final approval
+status: approved (owner, 2026-09-25) — course correction complete; controlled story preparation authorised
 created: 2026-09-25
 baseline: "main c18ad36 (includes PR #51 Auditor Workspace v1.1 and PR #52 UI cleanup)"
 branch: claude/ecstatic-turing-mxntoc
@@ -109,5 +109,7 @@ Story preparation may then begin with 10.1 (legacy review closure), 10.2 (tracki
 Owner decisions of 2026-09-24: 1 (example pack), 2 (synthetic leaver-access scenario on personal Google accounts; not hard-coded), 3 (tenancy enforced from day one; isolation proven before personal accounts). Proposal decisions, all approved with their stated qualifications: D-3a-1..4, D-3b-1..4, D-3c-1..4, D-3d-1..4, D-4-1..4, D-4b-1..7, D-5-1..7, D-6-1..5, D-7-1..8. Corrections: Mandate → Permissions (2026-09-25); roles consolidated to Auditor · Audit manager · Admin (2026-09-25); Zobba and the Pair identity (2026-09-25). Full record: the PRD workspace memlog, entries 48–62.
 
 ## 10. Approval
+
+**Approved by the owner on 2026-09-25:** "The approved direction is now settled: Zobba, the conversation-led audit harness, with the Pair identity, Permissions, and the three roles—Auditor, Audit manager and Admin. Move from course correction into controlled story preparation." The course-correction workflow is complete; the tracking changes of §5 and story preparation are authorised. Application implementation, repository or hosting renaming, test retirement and deployment still require explicit implementation authorisation.
 
 Approval of this Sprint Change Proposal completes the course-correction workflow and authorises the tracking changes of §5 and story preparation. It does **not** authorise application implementation, repository or hosting renaming, test retirement or deployment; each requires explicit implementation authorisation.
