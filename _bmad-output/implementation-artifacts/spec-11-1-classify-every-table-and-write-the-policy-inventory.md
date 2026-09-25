@@ -104,6 +104,8 @@ Verified against `main` at `429e08c` and the migrated generation-61 database. Li
 
 The inventory states scope, not capability: role checks stay in the domain gating table. It is a static audit of the application's own statements; trigger bodies are handled by decision D8 below, never by widening a grant.
 
+*Review loop 1 patches* (Spec Change Log) supersede parts of these notes: D8 below is now open decision O6, D1–D7 are proposals the owner has not yet reviewed, O2–O5 are amended and O7–O9 added, §4.2 predicates have `USING` and `WITH CHECK` halves, §4.4 has a table, and §9 is new. Where these notes and the contract differ, the contract is current.
+
 **Cells.** Member and Execution delegation cells list the commands that kind's permissive grant allows. A maintenance cell is `` `principal`: COMMANDS ``, one entry per principal, `;`-separated, each entry granting at least one command, each principal at most once per row. `UPDATE(columns)` is a narrow update Story 11.6 turns into a column privilege; an unqualified `UPDATE` is row-level.
 
 **`LOCK`** is `FOR UPDATE`, `FOR NO KEY UPDATE`, `FOR SHARE` or `FOR KEY SHARE`. PostgreSQL requires the SELECT privilege and the UPDATE privilege on a column for it, and applies the SELECT and UPDATE policies' `USING`. So a cell with `LOCK` always has `SELECT` (a test holds it), and a `LOCK` without `UPDATE` is built as an UPDATE policy whose `WITH CHECK` is false: the lock succeeds and no update passes.
@@ -155,74 +157,101 @@ The rows were generated from the access audit and are then committed as the docu
 **Commands:**
 - `pnpm exec vitest run tests/unit/tenancy-inventory.test.ts` -- expected: all pass
 - `pnpm exec vitest run -c tests/integration/vitest.config.ts tests/integration/table-classification.test.ts tests/integration/schema-compat.test.ts` -- expected: all pass on a migrated PostgreSQL 18
-- `pnpm typecheck` -- expected: exit 0
-- Mutation proof -- expected: every mutation fails its named case; record the table here (mutation, rule, killing case, result).
+- `NODE_OPTIONS=--max-old-space-size=2048 pnpm typecheck` -- expected: exit 0
+- `python3 scripts/verify-tenancy-contract-mutations.py` -- the mutation proof, on demand and not a CI gate (Node 24 and pnpm on the path, `DATABASE_URL` naming a migrated test database, from any directory) -- expected: every mutation fails its named case on an assertion with every case of its file collected, every tolerance case fails nothing, both controls are refused as proof, and the document ends byte-identical.
 
-**Results** (2026-09-25; working tree on `fd241a1`; PostgreSQL 18.6 scratch database at generation 61):
+**Results** (2026-09-25, review loop 1 patches: the working tree on `1ab8a48` plus this patch set, uncommitted; Node 24.20.0; PostgreSQL 18.6 scratch database at generation 61):
 
-- `pnpm exec vitest run tests/unit/tenancy-inventory.test.ts` -- 49 of 49 pass.
-- `pnpm exec vitest run -c tests/integration/vitest.config.ts tests/integration/table-classification.test.ts tests/integration/schema-compat.test.ts` -- 4 of 4 and 18 of 18 pass; the exact `public` list in `schema-compat.test.ts` is unchanged.
-- `pnpm typecheck` -- exit 0.
-- Acceptance 1 against committed objects, beyond the test's own rolled-back probe: a table, a view and a materialized view committed to `public` made the unmodified case "classifies every relation the database holds" fail with `offending: public.ac1_scratch_matview, public.ac1_scratch_table, public.ac1_scratch_view`; after they were dropped all four cases pass, and no `ac1_scratch%` relation is left.
-- Mutation proof -- 55 mutations, 55 killed by their named case. Each run used Vitest's JSON reporter and counted as a kill only when the named case was among the failures AND all cases of the file were collected (49 unit, 4 integration), so a parse error could only ever read as "not proven"; none did. The document was backed up, broken once per case, restored from the backup after each case and in a `finally`, and ended byte-identical (sha256 `228f81b6ccd02bdfd9e0887bd21a6007737389a995396961dffcf26b76485d2e`) with both tests green. Harness: `scratchpad/11-1/iter1/mutate.py` in this session's scratchpad (`/tmp/claude-0/-home-user-intellifin-audit/b2e71a94-040e-53b1-9c96-545faa66d3e1/`), which also holds the iteration-1 builder (`assemble.py`, `render.py`, `classification.py`, `inventory.py`, `contract-*.md`) that produced the committed document. "also: n other" counts the other cases the same mutation failed.
+- Unit -- 55 of 55 pass.
+- Integration -- 7 of 7 and 18 of 18 pass; the exact `public` list in `schema-compat.test.ts` is unchanged.
+- Typecheck -- exit 0.
+- Acceptance 1 against committed objects, beyond the test's own rolled-back probe: a table with an identity column, a view, a materialized view and an unowned sequence committed to `public` made "classifies every relation the database holds" fail with `offending: public.ac1_scratch_matview, public.ac1_scratch_seq, public.ac1_scratch_table, public.ac1_scratch_view` (the identity column's sequence is not named), and "gives no owned sequence a row of its own, and classifies every owning table" name `public.ac1_scratch_table_id_seq → public.ac1_scratch_table`. After they were dropped all seven cases pass, and no `ac1_scratch%` relation is left.
+- Mutation proof -- `python3 scripts/verify-tenancy-contract-mutations.py --allow-uncommitted --markdown`. The flag is there because this patch set is uncommitted by instruction; without it the script refuses the document (exit 2), which was checked. 77 of 77 mutations killed by their named case, each on an assertion with all 55 unit or all 7 integration cases collected; 3 of 3 tolerance cases accepted; 2 of 2 controls refused as proof (a parse error that fails the whole unit file, and one that makes every integration case throw). The document ended byte-identical (SHA-256 `617e523cdf76c6856d22ad1e181d33e5705b312abf3629ab7d104f81cf943fc6`), and both files passed 55/55 and 7/7 after the run. Three cases are not document rules and have no mutation here: "reads a Drizzle schema that declares tables" (it keeps the two Drizzle cases from passing over an empty import), the integration file's throwaway-database guard, and its rolled-back probe, which is itself a proof (it creates each kind of relation and asserts which are named). The first implementation's run (49 unit and 4 integration cases, 55 of 55 killed by the scratchpad `mutate.py`) is superseded by this one.
 
-| # | Mutation | Rule | Killing case | Result |
+| Id | Rule | File | Named case | Verdict |
 |---|---|---|---|---|
-| M1 | a second §3 row for `public.run_flag` | one class per relation | unit: names each relation once | killed (also: 1 other) |
-| M2 | §3 row `public.run_flag` written `run_flag` | schema-qualified relations | unit: writes every relation schema-qualified | killed (also: 2 other) |
-| M3 | `public.run_flag` classed `engagement-owned` | exact class names | unit: uses only the five class names | killed (also: 1 other) |
-| M4 | §3 row for `public.run_flag` deleted | every Drizzle table classified | unit: classifies every table the Drizzle schema declares | killed (also: 1 other) |
-| M5 | §5 row for `public.run_flag` deleted | protected table missing from the inventory | unit: has exactly one row per protected table | killed |
-| M6 | §5 row added for `pgboss.job` | unprotected table given a policy (`pgboss.job`) | unit: gives no tenant policy to an authentication or infrastructure table | killed (also: 1 other) |
-| M7 | `run_flag` boundaries `tenant, client` | class boundary missing (no `engagement`) | unit: carries at least its class boundaries on every protected table | killed |
-| M8 | `run_flag` boundaries plus `region` | boundary vocabulary | unit: uses only tenant, client, engagement and owner as boundaries | killed |
-| M9a | `notification` boundary `owner(READ)` | `owner(COMMANDS)` names known commands | unit: narrows only the owner boundary, and only to known commands | killed (also: 1 other) |
-| M9b | `run_flag` boundary `engagement(SELECT)` | only the owner boundary is narrowed | unit: narrows only the owner boundary, and only to known commands | killed |
-| M10 | `notification` boundaries `owner, owner(SELECT)` | a boundary at most once per row | unit: names each boundary at most once per row | killed (also: 1 other) |
-| M11 | `run_initiation_request` boundary `owner(SELECT)` | a user-owned table has a bare `owner` | unit: gives every user-owned table a bare owner boundary | killed (also: 1 other) |
-| M12 | `run_flag` member `SELECT, TRUNCATE` | only the five commands (`TRUNCATE`) | unit: grants only SELECT, INSERT, UPDATE, DELETE and LOCK | killed |
-| M13 | `run_flag` member `SELECT(flag_id), INSERT` | only `UPDATE` takes columns | unit: narrows only UPDATE to columns | killed |
-| M14 | `notification` `UPDATE(invented_column, …)` | a narrow `UPDATE` names real columns | unit: names only real columns in a narrow UPDATE | killed |
-| M15a | `run_flag` member `SELECT, INSERT, SELECT` | a command at most once per principal | unit: grants each command at most once per principal kind | killed |
-| M15b | `run_wait` `wait-timeout`: `UPDATE` beside `UPDATE(closed_at, …)` | no `UPDATE` beside an `UPDATE(...)` for one principal | unit: grants each command at most once per principal kind | killed |
-| M16 | `run_wait` `notification-delivery`: `LOCK` alone | `LOCK` comes with `SELECT` | unit: grants SELECT wherever it grants LOCK | killed |
-| M17 | `run_flag` member `INSERT` alone | someone reads every protected table | unit: lets some principal read every protected table | killed |
-| M18 | §4.2 row `review-snapshot-expiry` duplicated | the closed list names each principal once | unit: names each maintenance principal once | killed |
-| M19 | `run_flag` gets `` `invented-principal`: SELECT `` | unknown maintenance principal | unit: names only maintenance principals from the closed list | killed |
-| M20 | `review-snapshot-expiry`'s only entry removed | every listed principal is used | unit: uses every maintenance principal of the closed list | killed |
-| M21 | `review-snapshot-expiry` Rows it may reach `—` | each principal says which rows it may reach (D7) | unit: D7: says which rows each maintenance principal may reach | killed |
-| M22 | `review-snapshot-expiry` entry without backticks | an entry is `` `principal`: COMMANDS `` | unit: writes every maintenance entry as `principal`: COMMANDS | killed (also: 2 other) |
-| M23 | `` `review-snapshot-expiry`: — `` | an entry grants at least one command | unit: grants at least one command in every maintenance entry | killed (also: 1 other) |
-| M24 | `run_wait` names `wait-timeout` twice | a principal at most once per row | unit: names each maintenance principal at most once per row | killed |
-| M25 | §4.3 row added for `invented-appender` | appenders are known principals | unit: names only known principals in the audit append | killed (also: 3 other) |
-| M26 | §4.3 row `wait-timeout` duplicated | each appender once | unit: names each appending principal once | killed (also: 1 other) |
-| M27 | `wait-timeout` aggregates `Run, Engagement` | known aggregates | unit: names only the known aggregates | killed |
-| M28 | `wait-timeout` command receipts `sometimes` | receipts and narration are yes or no | unit: answers yes or no for command receipts and narrated events | killed |
-| M29a | §4.3 row `evidence-read-issuer` deleted | an `audit_events` inserter missing from §4.3 | unit: lists exactly the principals that insert into audit_events | killed |
-| M29b | `evidence-read-issuer`'s `INSERT` on `audit_events` removed | a §4.3 principal without `INSERT` on `audit_events` | unit: lists exactly the principals that insert into audit_events | killed |
-| M30 | `plan-derivation` head update `UPDATE(last_sequence)` | the head is locked and advanced | unit: gives every appending principal the head it locks and advances | killed |
-| M31 | `plan-derivation`'s `audit_run` entry removed | a UUID aggregate locks `audit_run` | unit: gives every appender of a UUID aggregate SELECT and LOCK on audit_run | killed |
-| M32 | delegation `SELECT` alone on `run_interaction_command` | command receipts need the projection grants | unit: gives every principal whose events carry a command receipt the projection grants | killed |
-| M33 | `wait-timeout`'s `run_conversation_message` entry removed | narrated events need the narration grants | unit: gives every principal whose events are narrated the narration grants | killed |
-| M34 | `evidence-integrity` given `SELECT, INSERT` on `run_interaction_transition` | a principal marked no holds no projection grant | unit: gives a maintenance principal marked no none of the projection or narration grants | killed |
-| M35 | O5 deleted | every decision recorded | unit: records decisions D1 to D8 and open decisions O1 to O5, each once | killed |
-| M36 | O5 names no story | every decision names its story | unit: names the story that settles every decision | killed |
-| M37 | a §3 reason cites D9 | citations resolve to §7 | unit: cites only decisions §7 records | killed |
-| M38 | `procedure` classed `tenant-owned` | D1 | unit: D1: classifies Procedures, registrations and bindings as client material | killed |
-| M39 | `procedure_change` classed `tenant-owned` | D2 | unit: D2: classifies procedure_change as client material | killed |
-| M40 | `procedure_configuration` classed `tenant-owned` | D3 | unit: D3: keeps procedure_configuration platform infrastructure | killed (also: 1 other) |
-| M41 | `run_initiation_request` boundaries `tenant, owner` | D4 | unit: D4: keeps a client boundary beside the owner on run_initiation_request | killed |
-| M42 | `user_permission_grant` classed `user-owned` | D5 | unit: D5: classifies user_role and user_permission_grant as tenant-owned | killed (also: 2 other) |
-| M43 | `notification` bare `owner` | D6 | unit: D6: restricts only reads of a notification to its owner, and every command elsewhere | killed |
-| M44 | `wait-timeout` given `SELECT` on `audit_events` | D8 | unit: D8: widens no maintenance grant for a trigger function's read of audit_events | killed |
-| M45 | §1: "The inventory states capability." | scope, not capability | unit: states that the inventory is scope, not capability | killed |
-| M46 | §2: "A null scope column means unrestricted." | null means the level above | unit: states that a null scope column means the level above, never unrestricted | killed |
-| M47 | §5: "derived from the tests" | derived from the production code, and says so | unit: states that the inventory is derived from the production code's access paths | killed |
-| M48 | §5 drops "applies to members and execution delegations only" | owner applies to members and delegations only | unit: states that the owner boundary applies to members and execution delegations only | killed |
-| M49 | §5 drops the `LOCK`-without-`UPDATE` clause | a `LOCK` without `UPDATE` is an UPDATE policy whose `WITH CHECK` is false | unit: states that a LOCK without UPDATE is an UPDATE policy whose WITH CHECK is false | killed |
-| M50 | §3 row `pgboss.warning` deleted | a relation the database holds has no row | integration: classifies every relation the database holds | killed (also: 1 other) |
-| M51 | §3 row added for `public.dropped_long_ago` | a stale row | integration: classifies nothing the database does not hold | killed |
-| M52 | §3 row added for `pgboss.job_common` | a partition given a row | integration: gives no partition a row of its own, and classifies every partition root | killed (also: 1 other) |
+| C1 | one class per relation | unit | names each relation once | KILLED |
+| C2 | schema-qualified relations (section 3) | unit | writes every relation schema-qualified | KILLED |
+| C3 | schema-qualified relations (section 4.4) | unit | writes every relation schema-qualified | KILLED |
+| C4 | exact class names | unit | uses only the five class names | KILLED |
+| C5 | every Drizzle table classified | unit | classifies every table the Drizzle schema declares | KILLED |
+| I1 | a protected table missing from the inventory | unit | has exactly one row per protected table | KILLED |
+| I2 | a protected table given two inventory rows | unit | has exactly one row per protected table | KILLED |
+| I3 | an infrastructure table given a policy (`pgboss.job`) | unit | gives no tenant policy to an authentication or infrastructure table | KILLED |
+| I4 | a class boundary missing (no `engagement`) | unit | carries at least its class boundaries on every protected table | KILLED |
+| I5 | the boundary vocabulary | unit | uses only tenant, client, engagement and owner as boundaries | KILLED |
+| I6 | `owner(...)` names policy commands (`READ`) | unit | narrows only the owner boundary, and only to policy commands | KILLED |
+| I7 | `owner(...)` never names `LOCK` | unit | narrows only the owner boundary, and only to policy commands | KILLED |
+| I8 | `owner(...)` names a command once | unit | narrows only the owner boundary, and only to policy commands | KILLED |
+| I9 | only the owner boundary is narrowed | unit | narrows only the owner boundary, and only to policy commands | KILLED |
+| I10 | `owner(SELECT)` names every UPDATE a person kind holds | unit | names every UPDATE and DELETE a person holds in an owner boundary that names SELECT | KILLED |
+| I11 | a boundary at most once per row | unit | names each boundary at most once per row | KILLED |
+| I12 | a user-owned table has a bare `owner` | unit | gives every user-owned table a bare owner boundary | KILLED |
+| I13 | only the five commands (`TRUNCATE`) | unit | grants only SELECT, INSERT, UPDATE, DELETE and LOCK | KILLED |
+| I14 | only `UPDATE` takes columns | unit | narrows only UPDATE to columns | KILLED |
+| I15 | a narrow `UPDATE` names real columns | unit | names only real columns in a narrow UPDATE | KILLED |
+| I16 | a command at most once per principal | unit | grants each command at most once per principal kind | KILLED |
+| I17 | no `UPDATE` beside an `UPDATE(...)` for one principal | unit | grants each command at most once per principal kind | KILLED |
+| I18 | `LOCK` comes with `SELECT` | unit | grants SELECT wherever it grants UPDATE, DELETE or LOCK | KILLED |
+| I19 | `UPDATE` comes with `SELECT` | unit | grants SELECT wherever it grants UPDATE, DELETE or LOCK | KILLED |
+| I20 | `DELETE` comes with `SELECT` | unit | grants SELECT wherever it grants UPDATE, DELETE or LOCK | KILLED |
+| I21 | someone reads every protected table | unit | lets some principal read every protected table | KILLED |
+| P1 | the closed list names each principal once | unit | names each maintenance principal once | KILLED |
+| P2 | no maintenance principal is named after a principal kind | unit | names no maintenance principal after a principal kind | KILLED |
+| P3 | an unknown maintenance principal | unit | names only maintenance principals from the closed list | KILLED |
+| P4 | every listed principal is used | unit | uses every maintenance principal of the closed list | KILLED |
+| P5 | each principal says which rows it may reach (D7) | unit | D7: says which rows each maintenance principal may reach | KILLED |
+| P6 | an entry is `principal`: COMMANDS | unit | writes every maintenance entry as `principal`: COMMANDS | KILLED |
+| P7 | an entry grants at least one command | unit | grants at least one command in every maintenance entry | KILLED |
+| P8 | a principal at most once per row | unit | names each maintenance principal at most once per row | KILLED |
+| A1 | appenders are known principals | unit | names only known principals in the audit append | KILLED |
+| A2 | each appender once | unit | names each appending principal once | KILLED |
+| A3 | known aggregates | unit | names only the known aggregates | KILLED |
+| A4 | receipts and narration are yes or no | unit | answers yes or no for command receipts and narrated events | KILLED |
+| A5 | member and execution delegation answer yes to both | unit | answers yes to both for member and execution delegation | KILLED |
+| A6 | an `audit_events` inserter missing from section 4.3 | unit | lists exactly the principals that insert into audit_events | KILLED |
+| A7 | a section 4.3 principal without `INSERT` on `audit_events` | unit | lists exactly the principals that insert into audit_events | KILLED |
+| A8 | the head is locked and advanced | unit | gives every appending principal the head it locks and advances | KILLED |
+| A9 | a UUID aggregate locks `audit_run` | unit | gives every appender of a UUID aggregate SELECT and LOCK on audit_run | KILLED |
+| A10 | command receipts need the projection grants | unit | gives every principal whose events carry a command receipt the projection grants | KILLED |
+| A11 | narrated events need the narration grants | unit | gives every principal whose events are narrated the narration grants | KILLED |
+| A12 | a principal marked no holds no projection grant | unit | gives a maintenance principal marked no none of the projection or narration grants | KILLED |
+| A13 | a principal outside section 4.3 holds no narration grant | unit | gives a closed-list principal outside the audit append no projection or narration grant | KILLED |
+| R1 | every completion caller reads the frozen plan | unit | gives member, execution delegation and wait-timeout every command the completion path runs | KILLED |
+| R2 | a completion row nobody holds | unit | gives member, execution delegation and wait-timeout every command the completion path runs | KILLED |
+| R3 | a narrow `UPDATE` covers every column the path writes | unit | gives member, execution delegation and wait-timeout every command the completion path runs | KILLED |
+| E1 | no decision beyond D7 | unit | records exactly D1 to D7 and open decisions O1 to O9 | KILLED |
+| E2 | no open decision missing | unit | records exactly D1 to D7 and open decisions O1 to O9 | KILLED |
+| E3 | every decision names its story | unit | names the story that settles every decision | KILLED |
+| E4 | a line after a blank line is not part of the bullet above it | unit | names the story that settles every decision | KILLED |
+| E5 | citations outside section 7 resolve | unit | cites only decisions §7 records | KILLED |
+| E6 | citations inside section 7 resolve | unit | cites only decisions §7 records | KILLED |
+| E7 | decision D1: client material | unit | D1: classifies Procedures, registrations and bindings as client material | KILLED |
+| E8 | decision D2: `procedure_change` is client material | unit | D2: classifies procedure_change as client material | KILLED |
+| E9 | decision D3: `procedure_configuration` is infrastructure | unit | D3: keeps procedure_configuration platform infrastructure | KILLED |
+| E10 | decision D4: a client boundary beside the owner | unit | D4: keeps a client boundary beside the owner on run_initiation_request | KILLED |
+| E11 | decision D5: roles and grants are tenant-owned | unit | D5: classifies user_role and user_permission_grant as tenant-owned | KILLED |
+| E12 | decision D6: `notification` is `owner(SELECT)` | unit | D6: restricts only reads of a notification to its owner, and every command elsewhere | KILLED |
+| S1 | scope, not capability | unit | states that the inventory is scope, not capability | KILLED |
+| S2 | a null scope column means the level above | unit | states that a null scope column means the level above, never unrestricted | KILLED |
+| S3 | derived from the production code | unit | states that the inventory is derived from the production code's access paths | KILLED |
+| S4 | the owner boundary applies to members and delegations only | unit | states that the owner boundary applies to members and execution delegations only | KILLED |
+| S5 | a `LOCK` without `UPDATE` is an UPDATE policy whose `WITH CHECK` is false | unit | states that a LOCK without UPDATE is an UPDATE policy whose WITH CHECK is false | KILLED |
+| F1 | a partial path names a real file | unit | cites only repository paths that exist | KILLED |
+| F2 | a full path names a real file | unit | cites only repository paths that exist | KILLED |
+| B1 | a relation the database holds has no row | integration | classifies every relation the database holds | KILLED |
+| B2 | a row names a relation the database does not hold | integration | classifies nothing the database does not hold | KILLED |
+| B3 | a partition given a row | integration | gives no partition a row of its own, and classifies every partition root | KILLED |
+| B4 | a partition root left unclassified | integration | gives no partition a row of its own, and classifies every partition root | KILLED |
+| B5 | an owned sequence given a row | integration | gives no owned sequence a row of its own, and classifies every owning table | KILLED |
+| B6 | the table owning a sequence left unclassified | integration | gives no owned sequence a row of its own, and classifies every owning table | KILLED |
+| B7 | a protected table owns a sequence | integration | lets no protected table own a sequence | KILLED |
+| B8 | an unprotected table references a protected one | integration | protects every table that references a protected table | KILLED |
+| T1 | a heading and a table row inside a code fence are text | both | (nothing may fail) | ACCEPTED |
+| T2 | an escaped pipe belongs to its cell | both | (nothing may fail) | ACCEPTED |
+| T3 | a wrapped decision keeps its continuation line | both | (nothing may fail) | ACCEPTED |
+| X1 | control: a parse error in the unit file is not a kill | unit | names each relation once | NOT PROVEN (unit file did not run every case) |
+| X2 | control: a parse error in the integration file is not a kill | integration | classifies every relation the database holds | NOT PROVEN (failed without an assertion) |
 
 ## Spec Change Log
 
@@ -231,3 +260,10 @@ The rows were generated from the access audit and are then committed as the docu
   - *Amended*: Code Map (append lock scope, projection and narration triggers, who appends what, the missed paths, trigger facts, planning facts), Tasks (structural-only parser, the fourth table, the probe objects, the mutation record), Acceptance (named case never a parse error; §4.3 criterion), Design Notes (the `LOCK` definition, per-command `owner`, maintenance predicates, §4.3 table and rules, the eight inventory corrections, decisions D1-D8 and O1-O5, findings 7-9), Verification (mutation record).
   - *Known-bad state avoided*: an inventory that Story 11.4 would build into policies that refuse the product's own append, cancel and preview paths, or that silently weaken guard triggers; tests that pass while a rule is broken or die before naming the rule.
   - *KEEP*: the iteration-0 derivation is saved at `/tmp/claude-0/-home-user-intellifin-audit/b2e71a94-040e-53b1-9c96-545faa66d3e1/scratchpad/11-1/keep-iter0/` (the four files and `CLAUDE.md.diff`); its builder (`assemble.py`, `render.py`, `classification.py`, `inventory.py`, `contract-head.md`, `contract-middle.md`, `contract-tail.md`, and the mutation harness `mutate.py`) runs in place from `…/scratchpad/11-1/` and regenerates that contract byte for byte (`python3 assemble.py <out>`). Keep: all 76 classification rows and their reasons except `procedure_change` (D2) and `run_initiation_request` (D4); every §5 row except the eight corrections; the §4.2 principals, authorities and "Runs today as"; the story table, §1, §2 (null rule corrected), §4.1, §4.4, §4.5; §8 findings 1, 2, 4, 5 and 6; the parser's single module and `.js` import; `describe.skipIf(!databaseUrl)`, `createSqlClient(databaseUrl, { max: 2 })`, the `RollBack` probe transaction and the `pg_partition_root` query; the existing unit case names; the CLAUDE.md section's four lessons, corrected.
+- **2026-09-25, review loop 1 patches** (the three iteration-1 reviewers' `patch` findings; applied on top of `1ab8a487`, not committed by the implementation agent).
+  - *Contract, inventory and predicates.* `wait-timeout` completes its Run inside the Run execution context its wait transaction opens (`withRunExecutionContext`), so it gains `SELECT` on `population_execution`, `run_execution`, `run_session_step`, `run_step_execution` and `run_work_item`, on `procedure_version` (the frozen plan it hands to `completeRun`) and on `audit_events` (the population-facts override reads a page declaration). `evidence-read-issuer` loses `SELECT` on `procedure_version`: no issuer statement reads it. `plan-derivation`'s reach covers versions that left Draft while an attempt ran (finished as stale or interrupted); `run-recovery`'s covers `QUEUED` Runs and Runs whose next stage has no checkpoint row. §4.2 gives every predicate a `USING` and a `WITH CHECK` half, names the post-state of the five principals whose write leaves their own selection, adds each appending principal's chain, and says the broker reads the viewer's session by privilege (O8). §4.4 gains a table of the statements the completion path itself runs, which member, execution delegation and `wait-timeout` must all hold. §5's reading rules now say that a cell is a privilege and a permissive policy; that a lock without an update is a key-column UPDATE privilege under a `WITH CHECK` false policy; that `UPDATE` and `DELETE` come with `SELECT`; that `owner(...)` lists policy commands only and one naming `SELECT` names every person-kind `UPDATE` and `DELETE`; which column is each owner row's owner; that `run_review_snapshot_row` reaches owner and scope through its snapshot; and that a hidden row makes the append skip its Run lock, narration and receipt silently. §2 gains the rules for partitions reached by name, owned and unowned sequences, views, materialized views and foreign tables.
+  - *Contract, §6–§9 and status.* §6 says Stories 11.6 and 11.7 prove the delegation and maintenance cells and that positive tests assert the side rows; a pg-boss upgrade or an extension that installs relations edits §3; it describes the probe, the new inventory rules and the harness. §7 is restructured: D1–D7 are proposals by this story, not yet reviewed by the owner, each confirmed and marked in place by the story it names (the Status line says the same); D2 records the client set at change time; D4 stamps only a reachable Procedure's client; D6 chooses recipients inside the boundaries and names the owner columns; D7 has both predicate halves; D8 moved to open decision O6. O2–O5 amended (a client with no engagement; O3's consequence for the engagement boundary on the Run path; O4's key conflict; O5 beyond AD-24), O6–O9 are new (functions that read other tables, roles that bypass the policies, privileges on unprotected tables per role, sweeps across tenants). §8 finding 5 points to O7. §9 fixes the migration order a–h with each step's story and points to the residual-threat statement Story 11.4 writes.
+  - *Elsewhere.* `CONTRACT-REGISTER.md`: the tenancy-v1 row's establishing story. Parser: code fences, escaped pipes, wrapped decision bullets, the §4.4 table, and the shared `none`. Unit test: 49 → 55 cases (every whole-set rule names each offender; the Drizzle schema declares tables; `SELECT` with every `UPDATE`, `DELETE` and `LOCK`; the `owner(...)` rules; no principal named after a kind; member and delegation answer yes; closed-list principals outside §4.3 hold no side grant; exactly D1–D7 and O1–O9; citations inside §7; §4.4; cited paths exist; the D8 case removed). Integration test: 4 → 7 cases (the throwaway-database guard; owned and unowned sequences; no protected table owns a sequence; every table referencing a protected table is protected; the probe adds an identity column, an unowned sequence and a foreign table). `CLAUDE.md`: the Story 11.1 section. The mutation harness is now `scripts/verify-tenancy-contract-mutations.py`; the scratchpad `mutate.py` is superseded.
+  - *Claims not applied as written.* `control_transfer_receipt_valid` (`0060_same_yellow_claw.sql`) reads no table: its two arguments are rows its caller, the trigger `guard_control_transfer_fact`, already read, and that trigger is one of the 38. So O6 names only `conversation_answer_receipt_valid` among the functions application statements call. Extended beyond the claims after checking the code: `wait-timeout` also needs `run_step_execution` (the population-facts override joins it); O8 also lists the Draft save's derivation job, the delegation's wait wake job and `plan-derivation`'s job reads, and does not say `plan-derivation` re-inserts jobs (its reconciliation only reads them) `[CORRECTED below]`. §9 step h (reversible only before `FORCE`) is assigned to Story 11.4, which forces the policies.
+  - *Corrected after the orchestrator's check.* `plan-derivation` does insert jobs. `recoverLegacy` (`packages/application/src/procedures/derive-plan.ts`) runs in both `derivePlan` and `reconcilePlanDerivation`; for a Draft whose saved plan digest no longer matches its authored inputs (an older build's save) it calls `queuePlanDerivation`, which enqueues a job and advances `section_preparation` through `refreshPreparation`. And `reconcileProceduresQueue`'s rolling-deployment sweep walks every Draft and locks each one, so a predicate narrowed to pending Drafts would hide the rows that path exists for, and it would stop silently (`findVersionForUpdate` answers `null`). The contract now says so: §4.2 `plan-derivation` reaches every Draft and names the queued-again post-state; §5 grants it `section_preparation`; O8 says it inserts a job on that path; §8 finding 1 names the column.
+  - *Frozen text.* Boundaries says a locking read is granted "only with the UPDATE privilege and the UPDATE policy's `USING`". That is the UPDATE half: PostgreSQL also requires the SELECT privilege and applies the SELECT policies' `USING`, and the contract states both. The frozen block is unchanged; the owner may amend it.

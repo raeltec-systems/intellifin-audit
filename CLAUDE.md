@@ -3,41 +3,60 @@
 `docs/contracts/tenancy-v1.md` classifies every relation of the migrated database into one of
 five classes and lists, for each protected table, the boundaries and the commands each principal
 kind may run. Two tests hold it: `tests/integration/table-classification.test.ts` (the database
-against §3, both directions, partitions resolved to their root) and
+against §3, both directions, partitions and owned sequences resolved to their table) and
 `tests/unit/tenancy-inventory.test.ts` (the document against itself and the Drizzle schema, one
-named case per rule).
+named case per rule). `scripts/verify-tenancy-contract-mutations.py` proves each case by
+breaking its rule in the document; run it on demand, it is not a CI gate.
 
 - **A migration that adds, renames or drops a relation edits §3 of the contract in the same
   commit, and §5 when the relation is protected.** `schema-compat.test.ts`'s exact `public` list
-  still needs its line too. A view, materialized view or foreign table counts; a partition does
-  not (pg-boss adds a `queue_stats` partition per day, so its names are never stable).
+  still needs its line too. A view, materialized view, foreign table or unowned sequence counts;
+  a partition does not (pg-boss adds a `queue_stats` partition per day, so its names are never
+  stable), and neither does a sequence a table owns. **A pg-boss upgrade that changes its schema,
+  and an extension that installs relations in a user schema, edit §3 in the same commit too.**
 - **`LOCK` is its own grant, and it needs `SELECT` too.** PostgreSQL runs `FOR UPDATE`, `FOR NO
   KEY UPDATE`, `FOR SHARE` and `FOR KEY SHARE` only with the SELECT privilege and the UPDATE
   privilege on a column, and applies the SELECT and UPDATE policies' `USING`, although nothing
-  changes. A `LOCK` granted without `SELECT` is a lock that can never run, and the inventory test
-  refuses one. The lock sites were mapped by grep, not guessed.
+  changes. So a lock without an update is built as an UPDATE policy whose `WITH CHECK` is false,
+  over the UPDATE privilege on one key column. `UPDATE` and `DELETE` read the rows they change
+  (their `WHERE`, their `RETURNING`), so they come with `SELECT` as well; the inventory test
+  refuses any of the three without it. The lock sites were mapped by grep, not guessed.
 - **The audit append locks `audit_run` for every UUID aggregate, not only for a Run.**
   `appendAuditEvent` takes `audit_run` `FOR KEY SHARE` whenever the aggregate id is shaped like a
   UUID, so recording a Procedure's, a registration's or a binding's event needs `SELECT` and
   `LOCK` on `audit_run` although no row matches. The first derivation missed it for
   `plan-derivation`.
+- **A missing privilege refuses a statement; a policy that hides a row does not.** The append
+  treats a Run it cannot see as not a Run, so it takes no Run lock and writes no narration, and
+  the command projection returns without a receipt when it cannot see the command or its prior
+  transition. Nothing fails: the side rows just are not there. So a positive policy test asserts
+  the rows the operation should have written beside its main effect (the receipt transition, the
+  narration message, the chain head's advance, the state rows), never only that it succeeded.
+- **A principal's reach is its sweep's read, not its usual write.** `plan-derivation`'s Draft
+  sweep walks every Draft and locks each one, to find a Draft an older build saved without
+  queueing its plan (`recoverLegacy`, which queues it again and advances `section_preparation`).
+  A predicate written as "Drafts with a pending plan" would hide exactly those rows, and the
+  recovery would stop without an error. The implementation pass missed this; reading the sweep's
+  own SQL found it.
 - **A trigger function runs with the rights of the statement that fired it.** None of the 57 on
   `public` tables is `SECURITY DEFINER`, and 38 read a table other than their own, so under
-  row-level security a guard's `EXISTS` sees only the caller's rows, and a guard written as
-  "refuse if such a row exists" passes silently when it cannot see the row. That is decision D8
-  (hardened `SECURITY DEFINER` functions, Stories 11.3 and 11.4), never a grant widened in §5 so
-  that a writer can see what its trigger reads.
+  row-level security a guard's `EXISTS` sees only the caller's rows: "refuse if such a row exists"
+  passes silently when it cannot see the row, and "refuse unless it exists" refuses legitimate
+  writes. That is open decision O6 (hardened `SECURITY DEFINER` functions under a `BYPASSRLS`
+  owner, beyond AD-24, so the owner decides), never a grant widened in §5 so that a writer can
+  see what its trigger reads.
 - **A mutation proof must fail its named case, never a parse error.** In the first derivation
   three vocabulary mutations died as collection errors, because the parser threw on the value
   they broke, and a parse error names no rule. The parser now throws only on structure (a missing
   section, a wrong cell count, table rows after a gap) and returns every value as written; the
-  harness reads Vitest's JSON report and requires the named case among the failures with every
-  case still collected. Match the named check, never the exit code alone.
+  harness reads Vitest's JSON report and requires the named case among the failures, with every
+  case still collected and an assertion as the reason. Two control cases break the parse on
+  purpose and must be refused as proof. Match the named check, never the exit code alone.
 - **A `toEqual([])` failure names only the first offender.** Vitest shortens the array in its
   assertion message (`[ 'public.ac1_scratch_matview', …(2) ]`), and only its default reporter
   prints the diff with the rest; the JSON reporter keeps the message alone. Three relations
-  committed to `public` showed it. Both tests put every offender in the message (`none(...)`),
-  so a failure names all of them whichever reporter prints it.
+  committed to `public` showed it. Every rule in both tests fails through `none(...)` (in the
+  shared fixture), which puts every offender in the message whichever reporter prints it.
 - **Read a Drizzle table's columns from `Symbol.for('drizzle:Columns')`, never from its
   enumerable values.** drizzle-orm 0.45.2 puts an own enumerable `enableRLS` function on every
   table object, so collecting `.name` from `Object.values(table)` lists `enableRLS` as a column.
@@ -46,9 +65,13 @@ named case per rule).
   suites under the policies; a grant found missing there goes into §5 with the path that needs it.
 - **This container can lose its scratch PostgreSQL mid-session** with no shutdown line in the
   log. Every database test then fails at once with `ECONNREFUSED` while the unit test on the same
-  document passes. Restart it the way it runs now (the data survives):
+  document passes. Check first, then restart it the way it runs now (the data survives):
+  `su postgres -c "/usr/lib/postgresql/18/bin/pg_ctl -D /tmp/pgdata18 status"`, and only when
+  that reports no server running,
   `rm -f /tmp/pgdata18/postmaster.pid; su postgres -c "/usr/lib/postgresql/18/bin/pg_ctl -D /tmp/pgdata18 -o '-p 5434 -k /tmp' -l /tmp/pg18.log start"`.
-  `-k /tmp` keeps the socket where the running server has it, and `-l` keeps a log.
+  Removing the pid file of a server that is still running lets a second postmaster start on the
+  same data directory. `-k /tmp` keeps the socket where the running server has it, and `-l`
+  keeps a log.
 
 ## 2026-09-25 — A single read of a moving preview sample is a race the broker refuses on purpose
 

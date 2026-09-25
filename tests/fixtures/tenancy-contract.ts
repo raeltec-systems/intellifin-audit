@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+import { expect } from 'vitest';
+
 /**
  * The one reader of `docs/contracts/tenancy-v1.md` (Story 11.1).
  *
@@ -47,6 +49,9 @@ export const BOUNDARIES = ['tenant', 'client', 'engagement', 'owner'] as const;
  */
 export const COMMANDS = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'LOCK'] as const;
 
+/** The commands a policy is written for; `LOCK` is not one, so `owner(...)` never names it. */
+export const POLICY_COMMANDS = ['SELECT', 'INSERT', 'UPDATE', 'DELETE'] as const;
+
 /** The two principal kinds that are not named maintenance principals (§4.1). */
 export const PRINCIPAL_KINDS = ['member', 'execution delegation'] as const;
 
@@ -83,6 +88,12 @@ export interface Grant {
   readonly columns: readonly string[] | null;
 }
 
+/** One row of §4.4: a table and the commands the completion path itself runs on it. */
+export interface CompletionRow {
+  readonly relation: string;
+  readonly commands: readonly Grant[];
+}
+
 /** One `` `principal`: COMMANDS `` entry; `principal` is null when the entry has another shape. */
 export interface MaintenanceEntry {
   readonly text: string;
@@ -105,6 +116,7 @@ export interface InventoryRow {
   readonly maintenance: readonly MaintenanceEntry[];
 }
 
+/** One §7 bullet: its id and its whole text, wrapped continuation lines included. */
 export interface Decision {
   readonly id: string;
   readonly text: string;
@@ -115,55 +127,93 @@ export interface TenancyContract {
   readonly classification: readonly ClassificationRow[];
   readonly principals: readonly PrincipalRow[];
   readonly appenders: readonly AppenderRow[];
+  readonly completion: readonly CompletionRow[];
   readonly inventory: readonly InventoryRow[];
   readonly decisions: readonly Decision[];
 }
 
+/**
+ * Fails naming every offender in full. Vitest shortens an array in its assertion message
+ * (`[ 'public.a', …(2) ]`) and only its default reporter prints the diff that lists the rest,
+ * so the names go into the message itself: a failure names everything that broke the rule,
+ * whichever reporter shows it.
+ */
+export const none = (offenders: readonly string[]): void => {
+  expect(offenders, `offending: ${offenders.join(', ')}`).toEqual([]);
+};
+
 const HEADING = /^(#{1,6}) /;
+const FENCE = /^ {0,3}(```|~~~)/;
 
 /** One pair of enclosing backticks removed, if the value has them. */
 const unquote = (value: string): string =>
   value.length >= 2 && value.startsWith('`') && value.endsWith('`') ? value.slice(1, -1) : value;
 
+/** Each line with whether it sits inside a fenced code block (the fence lines included). */
+function linesWithFences(markdown: string): { readonly line: string; readonly fenced: boolean }[] {
+  let open = false;
+  return markdown.split('\n').map((line) => {
+    if (FENCE.test(line)) {
+      open = !open;
+      return { line, fenced: true };
+    }
+    return { line, fenced: open };
+  });
+}
+
 /**
  * The lines of the section whose heading starts with `heading` (`## 5.`, `### 4.2`), up to
- * the next heading of the same or a higher level. Exactly one heading must match.
+ * the next heading of the same or a higher level. Exactly one heading must match. A line
+ * inside a fenced code block is never a heading, whatever it looks like.
  */
-function sectionLines(markdown: string, heading: string): { readonly first: number; readonly lines: string[] } {
-  const all = markdown.split('\n');
-  const starts = all.flatMap((line, index) =>
-    line === heading || line.startsWith(`${heading} `) ? [index] : []);
+function sectionLines(
+  markdown: string,
+  heading: string,
+): { readonly first: number; readonly lines: { readonly line: string; readonly fenced: boolean }[] } {
+  const all = linesWithFences(markdown);
+  const starts = all.flatMap(({ line, fenced }, index) =>
+    !fenced && (line === heading || line.startsWith(`${heading} `)) ? [index] : []);
   if (starts.length !== 1) {
     throw new Error(`tenancy-v1: expected one section headed "${heading}", found ${starts.length}`);
   }
   const start = starts[0]!;
-  const level = HEADING.exec(all[start]!)?.[1]?.length ?? 0;
-  const lines: string[] = [];
-  for (const line of all.slice(start + 1)) {
-    const next = HEADING.exec(line);
+  const level = HEADING.exec(all[start]!.line)?.[1]?.length ?? 0;
+  const lines: { readonly line: string; readonly fenced: boolean }[] = [];
+  for (const entry of all.slice(start + 1)) {
+    const next = entry.fenced ? null : HEADING.exec(entry.line);
     if (next !== null && next[1]!.length <= level) break;
-    lines.push(line);
+    lines.push(entry);
   }
   return { first: start + 2, lines };
 }
 
 /** The text of one section, for the rules the contract states in prose. */
 export function sectionText(markdown: string, heading: string): string {
-  return sectionLines(markdown, heading).lines.join('\n');
+  return sectionLines(markdown, heading).lines.map(({ line }) => line).join('\n');
+}
+
+/**
+ * The cells of one table row. A pipe written `\|` is part of a cell and comes back as `|`;
+ * every other pipe separates cells, so a row must start and end with one.
+ */
+function cellsOf(line: string): string[] | null {
+  const trimmed = line.trimEnd();
+  if (!/(^|[^\\])\|$/.test(trimmed)) return null;
+  return trimmed.split(/(?<!\\)\|/).slice(1, -1).map((cell) => cell.trim().replaceAll('\\|', '|'));
 }
 
 /**
  * The body rows of the one table in a section. The header must be exactly `header`, every
  * row must have its cell count, and the table must be contiguous: a row after a blank line
- * or a line of text is refused, never skipped.
+ * or a line of text is refused, never skipped. Lines inside a fenced code block are text.
  */
 function tableIn(markdown: string, heading: string, header: readonly string[]): string[][] {
   const { first, lines } = sectionLines(markdown, heading);
   const rows: string[][] = [];
   let state: 'before' | 'separator' | 'body' | 'after' = 'before';
-  lines.forEach((line, index) => {
+  lines.forEach(({ line, fenced }, index) => {
     const at = `"${heading}" line ${first + index}`;
-    if (!line.startsWith('|')) {
+    if (fenced || !line.startsWith('|')) {
       if (state === 'separator') throw new Error(`tenancy-v1: ${at}: a table header with no separator row`);
       if (state === 'body') state = 'after';
       return;
@@ -171,8 +221,8 @@ function tableIn(markdown: string, heading: string, header: readonly string[]): 
     if (state === 'after') {
       throw new Error(`tenancy-v1: ${at}: a table row after a blank line or text; the table must be contiguous`);
     }
-    if (!line.trimEnd().endsWith('|')) throw new Error(`tenancy-v1: ${at}: a table row must end with "|"`);
-    const cells = line.trimEnd().split('|').slice(1, -1).map((cell) => cell.trim());
+    const cells = cellsOf(line);
+    if (cells === null) throw new Error(`tenancy-v1: ${at}: a table row must end with an unescaped "|"`);
     if (cells.length !== header.length) {
       throw new Error(`tenancy-v1: ${at}: ${cells.length} cells, expected ${header.length}`);
     }
@@ -250,6 +300,35 @@ export function parseBoundaries(cell: string): BoundaryToken[] {
 
 const DECISION = /^- \*\*([DO]\d+)\.\s/;
 
+/**
+ * The §7 bullets that carry an id. A bullet's text runs on through its wrapped continuation
+ * lines, up to the next bullet, a blank line or a heading, so a story named on the second
+ * line of a bullet still belongs to it.
+ */
+function decisionsIn(markdown: string): Decision[] {
+  const decisions: Decision[] = [];
+  let current: { id: string; lines: string[] } | null = null;
+  const close = () => {
+    if (current !== null) decisions.push({ id: current.id, text: current.lines.join(' ') });
+    current = null;
+  };
+  for (const { line, fenced } of sectionLines(markdown, '## 7.').lines) {
+    const match = fenced ? null : DECISION.exec(line);
+    if (match !== null) {
+      close();
+      current = { id: match[1]!, lines: [line] };
+      continue;
+    }
+    if (fenced || line.trim() === '' || /^\s*[-*] /.test(line) || HEADING.test(line)) {
+      close();
+      continue;
+    }
+    current?.lines.push(line.trim());
+  }
+  close();
+  return decisions;
+}
+
 export function parseTenancyContract(markdown: string): TenancyContract {
   const classification = tableIn(markdown, '## 3.', ['Relation', 'Class', 'Why']).map(
     ([relation, tableClass, why]) => ({ relation: unquote(relation!), tableClass: tableClass!, why: why! }),
@@ -273,6 +352,11 @@ export function parseTenancyContract(markdown: string): TenancyContract {
     }),
   );
 
+  const completion = tableIn(markdown, '### 4.4', ['Table', 'Commands']).map(([relation, commands]) => ({
+    relation: unquote(relation!),
+    commands: parseGrants(commands!),
+  }));
+
   const inventory = tableIn(markdown, '## 5.', ['Table', 'Boundaries', 'Member', 'Execution delegation', 'Maintenance principals']).map(
     ([relation, boundaries, member, delegation, maintenance]) => ({
       relation: unquote(relation!),
@@ -283,12 +367,7 @@ export function parseTenancyContract(markdown: string): TenancyContract {
     }),
   );
 
-  const decisions = sectionLines(markdown, '## 7.').lines.flatMap((line) => {
-    const match = DECISION.exec(line);
-    return match === null ? [] : [{ id: match[1]!, text: line }];
-  });
-
-  return { markdown, classification, principals, appenders, inventory, decisions };
+  return { markdown, classification, principals, appenders, completion, inventory, decisions: decisionsIn(markdown) };
 }
 
 export function readTenancyContract(path: string = CONTRACT_PATH): TenancyContract {
