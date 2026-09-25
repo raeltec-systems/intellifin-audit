@@ -1,0 +1,714 @@
+generated: '2026-09-25'
+source: sprint-change-proposal-2026-09-24.md §5; proposal-7-codebase-disposition.md §5
+rules:
+  statuses: sprint-status.yaml uses only its lifecycle vocabulary; disposition lives here
+  parts: a key with a single-letter suffix is a bounded part; its parent is never a key; completing a part never completes the parent
+  superseded: a superseded, deferred or absorbed old key is absent from development_status and must not be regenerated as backlog
+  deferred: a deferred story is never selected for implementation
+epics:
+  epic-6:
+    disposition: split
+    note: stays backlog; never done
+  epic-7:
+    disposition: deferred
+    note: indefinitely; stays backlog
+  epic-8:
+    disposition: absorbed
+    replaced_by: epic-19
+  epic-9:
+    disposition: generalised, standing
+  epic-4:
+    disposition: compiler_1_path
+    closure: by story 10.1 register verdicts only
+    retrospective_required: once verdicts land
+  epic-5:
+    disposition: compiler_1_path
+    closure: by story 10.1 register verdicts only
+    retrospective_required: once verdicts land
+ne_to_epic:
+  NE-0: epic-10
+  NE-1: epic-11
+  NE-2: epic-12
+  NE-3: epic-13
+  NE-4: epic-14
+  NE-5: epic-15
+  NE-6: epic-16
+  NE-7: epic-17
+  NE-8: 'epic-18 (story numbers shifted by one: 8.0→18.1, 8.1→18.2, 8.2→18.3, 8.3→18.4, 8.4→18.5, 8.5→18.6, 8.6→18.7, 8.7→18.8, 8.8→18.9, 8.9→18.10, 8.10→18.11, 8.11→18.12, 8.12→18.13, 8.13→18.14)'
+  NE-9: epic-19
+old_stories:
+  6-1-investigate-an-exception-s-provenance-and-grounding:
+    last_status: backlog
+    disposition: moved
+    replaced_by:
+    - 19-8-exception-provenance-and-disposition-for-compiler-2-runs-epi
+  6-2-list-assign-and-disposition-exceptions:
+    last_status: backlog
+    disposition: moved
+    replaced_by:
+    - 19-8-exception-provenance-and-disposition-for-compiler-2-runs-epi
+  6-3-submit-a-sealed-result-for-review:
+    last_status: backlog
+    disposition: moved
+    replaced_by:
+    - 15-4-review-request-scoped-approval-authority-independence-over-h
+  6-4-approve-reject-or-record-disagreement-on-a-submitted-result:
+    last_status: backlog
+    disposition: moved
+    replaced_by:
+    - 15-5-approval-binding-content-claims-citations-assessments-templa
+  6-5-finalize-a-result-with-a-signed-manifest:
+    last_status: backlog
+    disposition: moved
+    replaced_by:
+    - 15-9-review-request-and-return-review-requested-and-returned-reco
+  6-6-overview-needs-attention-list-and-recent-runs:
+    last_status: backlog
+    disposition: retired
+    replaced_by:
+    - 18-3-shell-the-pack-s-first-level-navigation-reviews-shown-by-res
+    - 18-4a-home-and-the-workspace-composer-with-engagement-and-permissi
+  6-7-export-a-signed-workpaper-bundle:
+    last_status: backlog
+    disposition: moved
+    replaced_by:
+    - 14-11a-engagement-export-review-notes-under-archive-scope-a-tenant
+  6-8-reproduce-an-evaluation-from-the-bundle-offline:
+    last_status: backlog
+    disposition: moved
+    replaced_by:
+    - 14-11b-offline-reproduction-from-the-bundle
+  7-1-synthetic-ledgerdesk-application-with-a-localhost-json-snaps:
+    last_status: backlog
+    disposition: deferred
+    replaced_by:
+  7-2-project-owned-desktop-template-and-workspace-lifecycle-in-th:
+    last_status: backlog
+    disposition: deferred
+    replaced_by:
+  7-3-in-vm-snapshot-agent-reads-the-ledgerdesk-control-tree:
+    last_status: backlog
+    disposition: deferred
+    replaced_by:
+  7-4-desktopexecution-adapter-meets-the-shared-conformance-suite:
+    last_status: backlog
+    disposition: deferred
+    replaced_by:
+  7-5-desktop_tree-extractor-and-corroboration:
+    last_status: backlog
+    disposition: deferred
+    replaced_by:
+  7-6-live-view-and-replay-for-a-desktop-session:
+    last_status: backlog
+    disposition: deferred
+    replaced_by:
+  7-7-the-hero-procedure-completes-across-loancore-and-ledgerdesk:
+    last_status: backlog
+    disposition: deferred
+    replaced_by:
+  8-1-run-schedules-on-frequency-utc-start-and-derived-periods:
+    last_status: backlog
+    disposition: absorbed
+    replaced_by:
+    - 19-4-scheduled-runs-under-an-activation-delegation-duplicate-supp
+  8-2-a-missed-or-failed-scheduled-start-is-recorded-and-never-ski:
+    last_status: backlog
+    disposition: absorbed
+    replaced_by:
+    - 19-10-missed-starts-handover-under-succession-drift-detection-noti
+  8-3-a-scheduled-run-completes-with-no-human-session-active:
+    last_status: backlog
+    disposition: absorbed
+    replaced_by:
+    - 19-4-scheduled-runs-under-an-activation-delegation-duplicate-supp
+  8-4-the-successor-version-takes-over-at-the-period-boundary:
+    last_status: backlog
+    disposition: absorbed
+    replaced_by:
+    - 19-10-missed-starts-handover-under-succession-drift-detection-noti
+  8-5-a-changed-version-must-pass-a-regression-run-before-it-activ:
+    last_status: backlog
+    disposition: absorbed
+    replaced_by:
+    - 
+  8-6-see-the-regression-run-and-its-golden-comparison-wherever-it:
+    last_status: backlog
+    disposition: absorbed
+    replaced_by:
+    - 
+renamed_keys:
+  4-12-evaluate-the-24-hour-disablement-window-through-the-complet:
+    new_key: 4-12-evaluate-the-24-hour-disablement-window-through-the-complete
+    status_carried: review
+    reason: heading re-titled (Epic 9 generalised) or heading added (4.12)
+  9-1-filter-and-inspect-every-run:
+    new_key: 9-1-filter-and-inspect-every-run-and-agent-task
+    status_carried: backlog
+    reason: heading re-titled (Epic 9 generalised) or heading added (4.12)
+  9-2-operational-diagnostics-without-secrets:
+    new_key: 9-2-operational-diagnostics-without-secrets-across-connectors-an
+    status_carried: backlog
+    reason: heading re-titled (Epic 9 generalised) or heading added (4.12)
+  9-3-per-procedure-thesis-measures-and-the-adapter-portability-pr:
+    new_key: 9-3-engagement-and-task-metrics-ad-13-extended-and-the-reusable
+    status_carried: backlog
+    reason: heading re-titled (Epic 9 generalised) or heading added (4.12)
+  9-4-prove-cross-user-cross-run-and-workspace-isolation:
+    new_key: 9-4-prove-cross-tenant-cross-engagement-cross-task-and-workspace
+    status_carried: backlog
+    reason: heading re-titled (Epic 9 generalised) or heading added (4.12)
+  9-5-prove-agent-abuse-resistance-including-through-an-escalation:
+    new_key: 9-5-prove-agent-abuse-resistance-through-documents-email-calenda
+    status_carried: backlog
+    reason: heading re-titled (Epic 9 generalised) or heading added (4.12)
+  9-6-prove-integrity-determinism-and-golden-dataset-consistency:
+    new_key: 9-6-prove-integrity-determinism-golden-dataset-and-regression-ca
+    status_carried: backlog
+    reason: heading re-titled (Epic 9 generalised) or heading added (4.12)
+  9-7-prove-the-performance-reliability-and-schedule-envelope:
+    new_key: 9-7-prove-the-conversational-and-run-acceptance-envelopes
+    status_carried: backlog
+    reason: heading re-titled (Epic 9 generalised) or heading added (4.12)
+  9-8-recovery-drill-and-documented-teardown:
+    new_key: 9-8-recovery-drill-and-documented-teardown-including-connections
+    status_carried: backlog
+    reason: heading re-titled (Epic 9 generalised) or heading added (4.12)
+  9-9-accessibility-ci-across-every-surface:
+    new_key: 9-9-accessibility-ci-at-wcag-2-2-aa-across-every-surface
+    status_carried: backlog
+    reason: heading re-titled (Epic 9 generalised) or heading added (4.12)
+compiler_1_path_stories:
+- 4-1-provision-an-isolated-agent-workspace-per-run
+- 4-2-sign-in-to-loancore-and-enforce-read-only-allowlisted-action
+- 4-3-supply-credentials-just-in-time-and-suppress-capture-during
+- 4-4-locate-a-record-capture-evidence-and-register-a-grounded-obs
+- 4-5-prove-absence-for-an-employee-with-no-account
+- 4-6-bound-agent-execution-and-render-retrieved-content-inert
+- 4-7-raise-typed-escalations-as-durable-waits
+- 4-8-answer-an-escalation-from-run-detail-and-notify-audit-manage
+- 4-9-confirm-or-reject-agent-judged-evaluations-to-seal-the-resul
+- 4-10-prove-the-agent-path-on-prodconsole-with-one-observation-per
+- 4-11-prove-abuse-resistance-and-workspace-isolation-with-negative
+- 4-12-evaluate-the-24-hour-disablement-window-through-the-complete
+- 5-1-stream-the-execution-timeline-live-over-sse
+- 5-2-capture-the-platform-owned-replay-asset-set-during-execution
+- 5-3-watch-a-running-run-in-live-view
+- 5-4-pause-and-resume-a-running-run
+- 5-5-cancel-a-run-and-flag-it-to-audit-managers-from-live-view
+- 5-6-answer-an-escalation-without-leaving-live-view
+- 5-7-live-view-when-the-stream-drops-or-the-run-ends-while-open
+- 5-8-replay-any-terminal-run-from-the-platform-owned-asset-set
+parts:
+  12-5a-waits-clarify-and-closed-option-expiry-ends-the-task-cancele:
+    parent: 12-5 (not a key)
+    ne: NE-2 2.5a
+    slice: Slice 1
+    title: 'Waits: `clarify` and closed-option; expiry ends the task `CANCELED` with work kept'
+  12-5b-waits-confirm-action-and-reconcile-response-windows-separate:
+    parent: 12-5 (not a key)
+    ne: NE-2 2.5b
+    slice: Slice 3
+    title: 'Waits: `confirm-action` and `reconcile`; response windows separate from action validity'
+  12-7a-resumption-from-durable-state-after-a-kill-mid-call-after-a:
+    parent: 12-7 (not a key)
+    ne: NE-2 2.7a
+    slice: Slice 1
+    title: Resumption from durable state after a kill mid-call, after a result and during a wait; authority re-derived on resume
+  12-7b-provider-or-deployment-change-at-a-boundary-with-no-duplicat:
+    parent: 12-7 (not a key)
+    ne: NE-2 2.7b
+    slice: Slice 2
+    title: Provider or deployment change at a boundary with no duplicate effect
+  12-8a-self-review-scoped-to-material-content-instruction-categorie:
+    parent: 12-8 (not a key)
+    ne: NE-2 2.8a
+    slice: Slice 1
+    title: Self-review scoped to material content; instruction categories in context
+  12-8b-behavioural-injection-evaluation-set-reported-per-model-and:
+    parent: 12-8 (not a key)
+    ne: NE-2 2.8b
+    slice: Slice 1
+    title: Behavioural injection evaluation set, reported per model and prompt version
+  12-9a-live-channel-per-task:
+    parent: 12-9 (not a key)
+    ne: NE-2 2.9a
+    slice: Slice 1
+    title: Live channel per task
+  12-9b-live-channel-per-engagement:
+    parent: 12-9 (not a key)
+    ne: NE-2 2.9b
+    slice: Deferred
+    title: Live channel per engagement
+  12-10a-per-invocation-model-record-with-the-administrator-default:
+    parent: 12-10 (not a key)
+    ne: NE-2 2.10a
+    slice: Slice 1
+    title: Per-invocation model record with the administrator default
+  12-10b-auditor-model-and-effort-selection-per-adapter-effort-mappin:
+    parent: 12-10 (not a key)
+    ne: NE-2 2.10b
+    slice: Slice 2
+    title: Auditor model and effort selection; per-adapter effort mapping; safe mid-task change
+  13-8a-google-drive-connector-read-list-and-snapshot-on-designated:
+    parent: 13-8 (not a key)
+    ne: NE-3 3.8a
+    slice: Slice 1
+    title: 'Google Drive connector: read, list and snapshot on designated folders'
+  13-8b-google-drive-connector-write-output-to-a-designated-drafts-f:
+    parent: 13-8 (not a key)
+    ne: NE-3 3.8b
+    slice: Slice 3
+    title: 'Google Drive connector: write-output to a designated Drafts folder'
+  13-9a-gmail-connector-read-a-designated-label-attachments-as-recei:
+    parent: 13-9 (not a key)
+    ne: NE-3 3.9a
+    slice: Slice 3
+    title: 'Gmail connector: read a designated label; attachments as received snapshots; draft and send refused without confirmation'
+  13-9b-gmail-connector-draft-and-send-behind-external-effect-confir:
+    parent: 13-9 (not a key)
+    ne: NE-3 3.9b
+    slice: Deferred
+    title: 'Gmail connector: draft and send behind external-effect confirmation'
+  13-14a-model-policy-document-with-the-default-deployment-and-the-co:
+    parent: 13-14 (not a key)
+    ne: NE-3 3.14a
+    slice: Slice 1
+    title: Model policy document with the default deployment and the computed picker set
+  13-14b-alternative-models-offered-unavailable-choices-disabled-with:
+    parent: 13-14 (not a key)
+    ne: NE-3 3.14b
+    slice: Slice 2
+    title: Alternative models offered; unavailable choices disabled with the reason; a revocation blocks the next call
+  14-9a-task-manifests-always-recorded-empty-or-incomplete-manifests:
+    parent: 14-9 (not a key)
+    ne: NE-4 4.9a
+    slice: Slice 1
+    title: Task manifests always recorded, empty or incomplete manifests named; grants by owner
+  14-9b-supplements-and-late-receipts:
+    parent: 14-9 (not a key)
+    ne: NE-4 4.9b
+    slice: Slice 3
+    title: Supplements and late receipts
+  14-11a-engagement-export-review-notes-under-archive-scope-a-tenant:
+    parent: 14-11 (not a key)
+    ne: NE-4 4.11a
+    slice: Slice 3
+    title: Engagement export, review notes under archive scope; a tenant export verifies alone
+  14-11b-offline-reproduction-from-the-bundle:
+    parent: 14-11 (not a key)
+    ne: NE-4 4.11b
+    slice: Deferred
+    title: Offline reproduction from the bundle
+  15-6a-docx-rendering-with-validation-layers-feature-matrix-and-blo:
+    parent: 15-6 (not a key)
+    ne: NE-5 5.6a
+    slice: Slice 3
+    title: '`.docx` rendering with validation layers, feature matrix and blocking defects'
+  15-6b-xlsx-production-and-pdf-export:
+    parent: 15-6 (not a key)
+    ne: NE-5 5.6b
+    slice: Deferred
+    title: '`.xlsx` production and PDF export'
+  15-8a-example-pack-artifact-types-plan-working-paper-and-finding:
+    parent: 15-8 (not a key)
+    ne: NE-5 5.8a
+    slice: Slice 2
+    title: 'Example pack artifact types: plan, working paper and finding'
+  15-8b-example-pack-artifact-type-request-list:
+    parent: 15-8 (not a key)
+    ne: NE-5 5.8b
+    slice: Slice 3
+    title: 'Example pack artifact type: request list'
+  15-8c-example-pack-artifact-type-procedure:
+    parent: 15-8 (not a key)
+    ne: NE-5 5.8c
+    slice: Slice 4
+    title: 'Example pack artifact type: procedure'
+  15-8d-example-pack-artifact-type-report:
+    parent: 15-8 (not a key)
+    ne: NE-5 5.8d
+    slice: Deferred
+    title: 'Example pack artifact type: report'
+  16-1a-retrieval-index-over-messages-and-artifacts-under-rls-filter:
+    parent: 16-1 (not a key)
+    ne: NE-6 6.1a
+    slice: Slice 1
+    title: Retrieval index over messages and artifacts under RLS; filter before rank; coverage in results
+  16-1b-period-spanning-policy-versions-and-direct-full-reads:
+    parent: 16-1 (not a key)
+    ne: NE-6 6.1b
+    slice: Slice 2
+    title: Period-spanning policy versions and direct full reads
+  16-2a-memory-items-for-user-preference-engagement-facts-and-client:
+    parent: 16-2 (not a key)
+    ne: NE-6 6.2a
+    slice: Slice 2
+    title: Memory items for user preference, engagement facts and client knowledge
+  16-2b-memory-items-for-firm-methodology-and-confirmed-reusable-les:
+    parent: 16-2 (not a key)
+    ne: NE-6 6.2b
+    slice: Deferred
+    title: Memory items for firm methodology and confirmed reusable lessons
+  16-7a-bootstrap-without-a-pack-the-no-methodology-sentence:
+    parent: 16-7 (not a key)
+    ne: NE-6 6.7a
+    slice: Slice 1
+    title: Bootstrap without a pack; the no-methodology sentence
+  16-7b-starter-pack-selection:
+    parent: 16-7 (not a key)
+    ne: NE-6 6.7b
+    slice: Slice 2
+    title: Starter pack selection
+  16-7c-pack-proposal-from-documents:
+    parent: 16-7 (not a key)
+    ne: NE-6 6.7c
+    slice: Deferred
+    title: Pack proposal from documents
+  16-8a-bounded-working-context-the-full-supported-context-preserved:
+    parent: 16-8 (not a key)
+    ne: NE-6 6.8a
+    slice: Slice 1
+    title: 'Bounded working context: the full supported context preserved, an honest stop at its limit, re-evaluation on permission change'
+  16-8b-compaction-records:
+    parent: 16-8 (not a key)
+    ne: NE-6 6.8b
+    slice: Deferred
+    title: Compaction records
+  17-4a-extraction-programs-csv-xlsx-read-with-cached-and-recalculat:
+    parent: 17-4 (not a key)
+    ne: NE-7 7.4a
+    slice: Slice 2
+    title: 'Extraction programs: CSV, `.xlsx` read with cached and recalculated values, PDF text and page images'
+  17-4b-extraction-programs-docx-read-and-ocr:
+    parent: 17-4 (not a key)
+    ne: NE-7 7.4b
+    slice: Deferred
+    title: 'Extraction programs: `.docx` read and OCR'
+  17-4c-extraction-programs-email-mime-parts:
+    parent: 17-4 (not a key)
+    ne: NE-7 7.4c
+    slice: Slice 3
+    title: 'Extraction programs: email MIME parts'
+  17-5a-substrates-and-locator-grammars-sheet-and-pdf:
+    parent: 17-5 (not a key)
+    ne: NE-7 7.5a
+    slice: Slice 2
+    title: 'Substrates and locator grammars: `sheet` and `pdf`'
+  17-5b-substrate-and-locator-grammar-mail:
+    parent: 17-5 (not a key)
+    ne: NE-7 7.5b
+    slice: Slice 3
+    title: 'Substrate and locator grammar: `mail`'
+  17-5c-substrates-and-locator-grammars-doc-and-image:
+    parent: 17-5 (not a key)
+    ne: NE-7 7.5c
+    slice: Deferred
+    title: 'Substrates and locator grammars: `doc` and `image`'
+  17-6a-rendering-engine-image-for-docx:
+    parent: 17-6 (not a key)
+    ne: NE-7 7.6a
+    slice: Slice 3
+    title: Rendering engine image for `.docx`
+  17-6b-rendering-for-xlsx-and-pdf-export:
+    parent: 17-6 (not a key)
+    ne: NE-7 7.6b
+    slice: Deferred
+    title: Rendering for `.xlsx` and PDF export
+  18-4a-home-and-the-workspace-composer-with-engagement-and-permissi:
+    parent: 18-4 (not a key)
+    ne: NE-8 8.3a
+    slice: Slice 1
+    title: 'Home and the workspace: composer with engagement and Permissions chips and the default model chip, starters, thread, activity list, panel modes, client binding, Stop and Stop requested'
+  18-4b-model-chip-selection-and-effort:
+    parent: 18-4 (not a key)
+    ne: NE-8 8.3b
+    slice: Slice 2
+    title: Model chip selection and effort
+  18-5a-reading-view-for-a-text-source-a-citation-opens-the-evidence:
+    parent: 18-5 (not a key)
+    ne: NE-8 8.4a
+    slice: Slice 1
+    title: Reading view for a text source; a citation opens the evidence at its locator with return
+  18-5b-review-mode-e-and-l-references-changes-view-quality-summary:
+    parent: 18-5 (not a key)
+    ne: NE-8 8.4b
+    slice: Slice 2
+    title: Review mode, E- and L-references, changes view, quality summary with Unknown and Out of period
+  18-6a-the-clarify-decision-surface-and-the-refusal-notice:
+    parent: 18-6 (not a key)
+    ne: NE-8 8.5a
+    slice: Slice 1
+    title: The `clarify` decision surface and the refusal notice
+  18-6b-acceptance-surface-for-a-zobba-proposed-change:
+    parent: 18-6 (not a key)
+    ne: NE-8 8.5b
+    slice: Slice 2
+    title: Acceptance surface for a Zobba-proposed change
+  18-6c-confirm-action-with-bound-details-reconcile-with-permitted-a:
+    parent: 18-6 (not a key)
+    ne: NE-8 8.5c
+    slice: Slice 3
+    title: '`confirm-action` with bound details, `reconcile` with permitted actions and the two unknown-outcome sentences, Approve version, issue refusal, Stop requested'
+  18-7a-connect-from-the-conversation-designated-resources-minimal-c:
+    parent: 18-7 (not a key)
+    ne: NE-8 8.6a
+    slice: Slice 1
+    title: Connect from the conversation, designated resources, minimal Connections list
+  18-7b-settings-methodology-and-skills-for-admin:
+    parent: 18-7 (not a key)
+    ne: NE-8 8.6b
+    slice: Slice 2
+    title: Settings › Methodology and skills for Admin
+  18-7c-connections-page-in-full:
+    parent: 18-7 (not a key)
+    ne: NE-8 8.6c
+    slice: Slice 3
+    title: Connections page in full
+  18-10a-execution-wait-input-and-coverage-and-connection-chips-the-f:
+    parent: 18-10 (not a key)
+    ne: NE-8 8.9a
+    slice: Slice 1
+    title: Execution, wait, input-and-coverage and connection chips; the fixed-copy tests
+  18-10b-assessment-and-review-chips-scenes-3-4:
+    parent: 18-10 (not a key)
+    ne: NE-8 8.9b
+    slice: Slice 2
+    title: Assessment and review chips; scenes 3–4
+  18-10c-action-outcome-vocabulary-per-operation-scene-5:
+    parent: 18-10 (not a key)
+    ne: NE-8 8.9c
+    slice: Slice 3
+    title: Action-outcome vocabulary per operation; scene 5
+  18-10d-scene-6-and-the-six-scene-visual-acceptance-record:
+    parent: 18-10 (not a key)
+    ne: NE-8 8.9d
+    slice: Slice 4
+    title: Scene 6 and the six-scene visual acceptance record
+  19-9a-initial-regression-case-set-recorded-and-bound-at-first-acti:
+    parent: 19-9 (not a key)
+    ne: NE-9 9.9a
+    slice: Slice 4
+    title: Initial regression case set recorded and bound at first activation; a regression-requiring configuration stays `APPROVED` pending regression
+  19-9b-regression-execution-administration-and-the-successor-s-expe:
+    parent: 19-9 (not a key)
+    ne: NE-9 9.9b
+    slice: Deferred
+    title: Regression execution, administration and the successor's expected-difference review
+  19-11a-approved-model-configuration-recorded-temporary-failure-reti:
+    parent: 19-11 (not a key)
+    ne: NE-9 9.11a
+    slice: Slice 4
+    title: Approved model configuration recorded; temporary failure, retirement and policy revocation detected and blocked with the cause; replacement path blocked
+  19-11b-replacement-as-a-proposed-configuration-change-with-approval:
+    parent: 19-11 (not a key)
+    ne: NE-9 9.11b
+    slice: Deferred
+    title: Replacement as a proposed configuration change with approval and regression; cost reporting
+stories:
+  11-1-classify-every-table-and-write-the-policy-inventory:
+    ne: NE-1 1.1
+    slice: Slice 0
+  11-2-add-scope-columns-composite-scope-keys-and-the-owner-s-tenan:
+    ne: NE-1 1.2
+    slice:
+  11-3-create-the-migrator-and-runtime-roles-rotate-connection-stri:
+    ne: NE-1 1.3
+    slice:
+  11-4-force-rls-with-permissive-grants-and-restrictive-boundaries:
+    ne: NE-1 1.4
+    slice:
+  11-5-ownership-immutability-trigger-and-the-hardened-draft-bindin:
+    ne: NE-1 1.5
+    slice:
+  11-6-execution-delegations-and-service-principals-with-column-pri:
+    ne: NE-1 1.6
+    slice:
+  11-7-route-every-unit-of-work-and-raw-transaction-through-the-wra:
+    ne: NE-1 1.7
+    slice:
+  11-8-ownership-bindings-for-historical-chains-envelope-v2-for-new:
+    ne: NE-1 1.8
+    slice:
+  11-9-tenant-roles-as-capability-groups-auditor-audit-manager-admi:
+    ne: NE-1 1.9
+    slice: Slice 0
+  11-10-invitations-create-bound-to-recipient-tenant-role-assignment:
+    ne: NE-1 1.10
+    slice:
+  11-11-removal-from-an-engagement-from-a-tenant-and-the-separate-ac:
+    ne: NE-1 1.11
+    slice: Slice 0
+  12-1-draft-engagement-client-binding-command-conversation-with-en:
+    ne: NE-2 2.1
+    slice: Slice 1
+  12-2-agent-task-aggregate-state-machine-budget-lease-step-ledger:
+    ne: NE-2 2.2
+    slice: Slice 1
+  12-3-the-invocation-model-over-the-ai-sdk-as-transport-only-turn:
+    ne: NE-2 2.3
+    slice: Slice 1
+  12-4-parameter-binding-and-the-gate-call-site-with-ne-3-s-gate-a:
+    ne: NE-2 2.4
+    slice: Slice 1
+  12-6-dispatch-claims-operation-and-attempt-identities-reconciliat:
+    ne: NE-2 2.6
+    slice: Slice 3
+  13-1-agent-permissions-policy-and-engagement-permissions-as-versi:
+    ne: NE-3 3.1
+    slice: Slice 1
+  13-2-authorizetoolcall-with-four-outcomes-canonical-resource-iden:
+    ne: NE-3 3.2
+    slice:
+  13-3-permissions-summary-to-the-model-internal-tools-with-connect:
+    ne: NE-3 3.3
+    slice:
+  13-4-connector-descriptor-port-two-axis-result-conformance-suite:
+    ne: NE-3 3.4
+    slice:
+  13-5-connections-secrets-under-connection_secret_key-disconnect-o:
+    ne: NE-3 3.5
+    slice:
+  13-6-oauth-attempt-pkce-sealed-handoff-callback-validation-mix-up:
+    ne: NE-3 3.6
+    slice:
+  13-7-the-broker-exchange-attempts-no-code-reuse-after-possible-di:
+    ne: NE-3 3.7
+    slice: Slice 1
+  13-10-calendar-connector-read-create-event-behind-external-effect:
+    ne: NE-3 3.10
+    slice: Slice 3
+  13-11-browser-as-a-connector-under-the-agent-permissions:
+    ne: NE-3 3.11
+    slice: Deferred
+  13-12-disclosure-policy-per-tenant-and-engagement-applied-before-e:
+    ne: NE-3 3.12
+    slice: Slice 1
+  13-13-bound-resolvedcredential-for-connections-the-credential-guar:
+    ne: NE-3 3.13
+    slice: Slice 1
+  14-1-owner-namespaced-reservations-and-the-new-kinds-through-free:
+    ne: NE-4 4.1
+    slice: Slice 1
+  14-2-source-snapshots-with-identity-limitations-and-acquisition-r:
+    ne: NE-4 4.2
+    slice: Slice 1
+  14-3-extraction-records-with-coverage-and-consistency-the-two-axi:
+    ne: NE-4 4.3
+    slice: Slice 1
+  14-4-source-evolution-relationships-impact-records-versus-notific:
+    ne: NE-4 4.4
+    slice: Slice 2
+  14-5-working-material-revisions-and-copy-steps:
+    ne: NE-4 4.5
+    slice: Slice 2
+  14-6-derivations-with-retained-method-objects-the-four-check-kind:
+    ne: NE-4 4.6
+    slice: Slice 2
+  14-7-reproducibility-comparators-and-re-execution-as-a-recorded-v:
+    ne: NE-4 4.7
+    slice: Slice 2
+  14-8-independent-input-quality-dimensions-and-dependency-specific:
+    ne: NE-4 4.8
+    slice: Slice 1
+  14-10-retention-decisions-holds-dependencies-availability-status:
+    ne: NE-4 4.10
+    slice: Deferred
+  15-1-artifact-and-immutable-version-lifecycle-records-frozen-fiel:
+    ne: NE-5 5.1
+    slice: Slice 2
+  15-2-claims-classes-citations-support-status-transitions:
+    ne: NE-5 5.2
+    slice: Slice 2
+  15-3-dependencies-impact-records-needs-reconsideration-through-mi:
+    ne: NE-5 5.3
+    slice: Slice 2
+  15-4-review-request-scoped-approval-authority-independence-over-h:
+    ne: NE-5 5.4
+    slice: Slice 3
+  15-5-approval-binding-content-claims-citations-assessments-templa:
+    ne: NE-5 5.5
+    slice: Slice 3
+  15-7-draft-sharing-versus-issuance-output-location-writes-with-re:
+    ne: NE-5 5.7
+    slice: Slice 3
+  15-9-review-request-and-return-review-requested-and-returned-reco:
+    ne: NE-5 5.9
+    slice: Slice 3
+  16-3-configured-precedence-and-proposed-conflicts:
+    ne: NE-6 6.3
+    slice: Slice 2
+  16-4-pack-schema-validation-activation-by-an-admin-as-an-audited:
+    ne: NE-6 6.4
+    slice: Slice 2
+  16-5-gate-rule-classification-platform-mandatory-methodology-conf:
+    ne: NE-6 6.5
+    slice: Slice 2
+  16-6-skills-descriptor-admission-discovery-loading-recording:
+    ne: NE-6 6.6
+    slice: Slice 2
+  16-9-pack-and-skill-accountability-records-creator-maintainer-app:
+    ne: NE-6 6.9
+    slice: Slice 2
+  17-1-select-and-document-the-backend-and-profile-an-implementatio:
+    ne: NE-7 7.1
+    slice: Slice 2
+  17-2-codeexecution-port-supervisor-mounts-output-collection-limit:
+    ne: NE-7 7.2
+    slice: Slice 2
+  17-3-local-mode-development-only-synthetic-fixtures-never-a-fallb:
+    ne: NE-7 7.3
+    slice: Slice 2
+  18-1-identity-and-tokens-pair-symbol-wordmark-lockups-app-icon-an:
+    ne: NE-8 8.0
+    slice: Slice 0
+  18-2-review-the-pack-s-23-reference-screens-against-the-six-scene:
+    ne: NE-8 8.1
+    slice: Slice 0
+  18-3-shell-the-pack-s-first-level-navigation-reviews-shown-by-res:
+    ne: NE-8 8.2
+    slice: Slice 1
+  18-8-view-workspace-the-browser-view-panel-and-the-full-screen-su:
+    ne: NE-8 8.7
+    slice: Deferred
+  18-9-memory-inline-remembered-for-your-preferences-with-a-link-pr:
+    ne: NE-8 8.8
+    slice: Slice 2
+  18-11-reviews-the-queue-grouped-waiting-for-your-review-returned-w:
+    ne: NE-8 8.10
+    slice: Slice 3
+  18-12-settings-administration-users-and-roles-with-invite-people-c:
+    ne: NE-8 8.11
+    slice: Slice 3
+  18-13-scheduled-checks-list-and-the-scheduled-result-the-separate:
+    ne: NE-8 8.12
+    slice: Slice 4
+  18-14-search-scope-aware-attributed-results-across-authorised-clie:
+    ne: NE-8 8.13
+    slice: Slice 2
+  19-1-promotable-method-schema-and-promotion-by-selection:
+    ne: NE-9 9.1
+    slice: Slice 4
+  19-2-compiler-2-vocabulary-with-assist-deterministic-over-a-valid:
+    ne: NE-9 9.2
+    slice:
+  19-3-compiler-2-procedure-versions-through-the-existing-lifecycle:
+    ne: NE-9 9.3
+    slice:
+  19-4-scheduled-runs-under-an-activation-delegation-duplicate-supp:
+    ne: NE-9 9.4
+    slice:
+  19-5-execution-with-assist-steps-quality-checks-constraining-depe:
+    ne: NE-9 9.5
+    slice: Slice 4
+  19-6-fr-51-change-classes-ordinary-inputs-access-failure-with-rec:
+    ne: NE-9 9.6
+    slice: Slice 4
+  19-7-signals-and-separate-investigative-tasks-with-the-impact-pat:
+    ne: NE-9 9.7
+    slice: Deferred
+  19-8-exception-provenance-and-disposition-for-compiler-2-runs-epi:
+    ne: NE-9 9.8
+    slice: Slice 4
+  19-10-missed-starts-handover-under-succession-drift-detection-noti:
+    ne: NE-9 9.10
+    slice: Deferred
