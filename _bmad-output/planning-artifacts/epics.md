@@ -2413,7 +2413,7 @@ every protected row is scoped and enforced from the first migration; background 
 
 As a platform operator,
 I want classify every table and write the policy inventory,
-So that every protected row is scoped and enforced from the first migration .
+So that the epic's goal holds: every protected row is scoped and enforced from the first migration; background work runs under a bounded delegation; historical chains are bound to their tenant. Runs before any personal account is connected (owner decision 3).
 
 **Acceptance Criteria:**
 
@@ -2421,14 +2421,14 @@ So that every protected row is scoped and enforced from the first migration .
 **Then** it establishes: classification table, policy inventory
 **And** it is demonstrated by: the unclassified-table test; the inventory test
 
-**And** delivery slice: Slice 0; NE reference NE-1 1.1; design gate (D-5-6): `tenancy-v1`; **0 — Isolation proven** (prerequisite) | Nothing new for an auditor; the scoped schema, roles, delegations, invitations and removal exist behind the existing surfaces. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 0; NE reference NE-1 1.1
 
 
 ### Story 11.2: Add scope columns, composite scope keys and the owner's tenant backfill
 
 As a platform operator,
 I want add scope columns, composite scope keys and the owner's tenant backfill,
-So that every protected row is scoped and enforced from the first migration .
+So that the epic's goal holds: every protected row is scoped and enforced from the first migration; background work runs under a bounded delegation; historical chains are bound to their tenant. Runs before any personal account is connected (owner decision 3).
 
 **Acceptance Criteria:**
 
@@ -2443,7 +2443,7 @@ So that every protected row is scoped and enforced from the first migration .
 
 As a platform operator,
 I want create the migrator and runtime roles; rotate connection strings,
-So that every protected row is scoped and enforced from the first migration .
+So that the epic's goal holds: every protected row is scoped and enforced from the first migration; background work runs under a bounded delegation; historical chains are bound to their tenant. Runs before any personal account is connected (owner decision 3).
 
 **Acceptance Criteria:**
 
@@ -2458,7 +2458,7 @@ So that every protected row is scoped and enforced from the first migration .
 
 As a platform operator,
 I want force RLS with permissive grants and restrictive boundaries; the principal wrapper,
-So that every protected row is scoped and enforced from the first migration .
+So that the epic's goal holds: every protected row is scoped and enforced from the first migration; background work runs under a bounded delegation; historical chains are bound to their tenant. Runs before any personal account is connected (owner decision 3).
 
 **Acceptance Criteria:**
 
@@ -2473,7 +2473,7 @@ So that every protected row is scoped and enforced from the first migration .
 
 As a platform operator,
 I want ownership immutability trigger and the hardened draft-binding function,
-So that every protected row is scoped and enforced from the first migration .
+So that the epic's goal holds: every protected row is scoped and enforced from the first migration; background work runs under a bounded delegation; historical chains are bound to their tenant. Runs before any personal account is connected (owner decision 3).
 
 **Acceptance Criteria:**
 
@@ -2488,7 +2488,7 @@ So that every protected row is scoped and enforced from the first migration .
 
 As a platform operator,
 I want execution delegations and service principals with column privileges,
-So that every protected row is scoped and enforced from the first migration .
+So that the epic's goal holds: every protected row is scoped and enforced from the first migration; background work runs under a bounded delegation; historical chains are bound to their tenant. Runs before any personal account is connected (owner decision 3).
 
 **Acceptance Criteria:**
 
@@ -2496,14 +2496,14 @@ So that every protected row is scoped and enforced from the first migration .
 **Then** it establishes: delegation, principals
 **And** it is demonstrated by: revoked delegation and removed membership stop queued and resumed jobs; reconciliation principal updates only its columns
 
-**And** delivery slice: per §4a of Proposal 5; NE reference NE-1 1.6; design gate (D-5-6): FR-95 Invitations and removal — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: per §4a of Proposal 5; NE reference NE-1 1.6
 
 
 ### Story 11.7: Route every unit of work and raw transaction through the wrapper; drain and re-validate queued jobs
 
 As a platform operator,
 I want route every unit of work and raw transaction through the wrapper; drain and re-validate queued jobs,
-So that every protected row is scoped and enforced from the first migration .
+So that the epic's goal holds: every protected row is scoped and enforced from the first migration; background work runs under a bounded delegation; historical chains are bound to their tenant. Runs before any personal account is connected (owner decision 3).
 
 **Acceptance Criteria:**
 
@@ -2511,14 +2511,14 @@ So that every protected row is scoped and enforced from the first migration .
 **Then** it establishes: migration steps e–g
 **And** it is demonstrated by: a scoped transaction without a principal refused; `SUPPORTED_SCHEMA_MIN/MAX` moved
 
-**And** delivery slice: per §4a of Proposal 5; NE reference NE-1 1.7; design gate (D-5-6): `tenancy-v1` — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: per §4a of Proposal 5; NE reference NE-1 1.7
 
 
 ### Story 11.8: Ownership bindings for historical chains; envelope v2 for new segments
 
 As a platform operator,
 I want ownership bindings for historical chains; envelope v2 for new segments,
-So that every protected row is scoped and enforced from the first migration .
+So that the epic's goal holds: every protected row is scoped and enforced from the first migration; background work runs under a bounded delegation; historical chains are bound to their tenant. Runs before any personal account is connected (owner decision 3).
 
 **Acceptance Criteria:**
 
@@ -2526,14 +2526,14 @@ So that every protected row is scoped and enforced from the first migration .
 **Then** it establishes: envelope v2, binding
 **And** it is demonstrated by: tampered-ownership test; tenant export verifies alone; v1 bytes verified under v1 rules
 
-**And** delivery slice: per §4a of Proposal 5; NE reference NE-1 1.8; design gate (D-5-6): `audit-event-envelope-v2`; **0 — Isolation proven** (prerequisite) | Nothing new for an auditor; the scoped schema, roles, delegations, invitations and removal exist behind the existing surfaces. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: per §4a of Proposal 5; NE reference NE-1 1.8
 
 
 ### Story 11.9: Tenant roles as capability groups — Auditor · Audit manager · Admin; engagement assignments (lead auditor, auditor, reviewer) as scoped responsibilities; Reviews visibility by responsibility and capability; `poc-administrator` displayed "Admin"
 
 As a platform operator,
 I want tenant roles as capability groups — Auditor · Audit manager · Admin; engagement assignments (lead auditor, auditor, reviewer) as scoped responsibilities; Reviews visibility by responsibility and capability; `poc-administrator` displayed "Admin",
-So that every protected row is scoped and enforced from the first migration .
+So that the epic's goal holds: every protected row is scoped and enforced from the first migration; background work runs under a bounded delegation; historical chains are bound to their tenant. Runs before any personal account is connected (owner decision 3).
 
 **Acceptance Criteria:**
 
@@ -2541,14 +2541,14 @@ So that every protected row is scoped and enforced from the first migration .
 **Then** it establishes: `tenancy-v1` §roles, `permissions-v1` §visibility (FR-94)
 **And** it is demonstrated by: an Admin who approved a pack cannot approve a working paper, a finding, a report or a check definition and cannot issue; a global Audit manager without engagement membership reaches nothing; a role change leaves contributor restrictions in force; Reviews absent for a person with no review responsibility
 
-**And** delivery slice: Slice 0; NE reference NE-1 1.9; design gate (D-5-6): `tenancy-v1`; `permissions-v1`; FR-94 Roles, scope and separation of duties; **0 — Isolation proven** (prerequisite) | Nothing new for an auditor; the scoped schema, roles, delegations, invitations and removal exist behind the existing surfaces.; **3 — Correspondence, one confirmed external effect, independent review** (UJ-5; UJ-4 review and approval; FR-94–96) | A designated Gmail thread and its attachments are read to update the request record; one calendar invitation to the designated test recipient is proposed with its material details, decided on one surface (Allow and send · Edit first · Don't send), created and read back with its receipt; the unknown-outcome pattern is met when the provider does not confirm, with only the permitted recovery actions; a labelled draft `.docx` is saved to the designated Drafts folder; issuance without approval is refused; the second person is invited by copied link, accepts as the verified recipient, reviews from Reviews, returns with anchored notes, and reviews and approves the revised version; a contributor meets the independence refusal; access removal is exercised on a third, disposable identity (background dispatch refused; other tenant memberships kept); review notes are absent from the client rendering and present in the authorised archive export. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 0; NE reference NE-1 1.9
 
 
 ### Story 11.10: Invitations: create bound to recipient, tenant, role assignments and proposed engagement access; single-use, expiring, revocable; Copy invitation link; acceptance by a verified identity; the secret protected from model context and ordinary logs
 
 As a platform operator,
 I want invitations: create bound to recipient, tenant, role assignments and proposed engagement access; single-use, expiring, revocable; Copy invitation link; acceptance by a verified identity; the secret protected from model context and ordinary logs,
-So that every protected row is scoped and enforced from the first migration .
+So that the epic's goal holds: every protected row is scoped and enforced from the first migration; background work runs under a bounded delegation; historical chains are bound to their tenant. Runs before any personal account is connected (owner decision 3).
 
 **Acceptance Criteria:**
 
@@ -2556,14 +2556,14 @@ So that every protected row is scoped and enforced from the first migration .
 **Then** it establishes: `tenancy-v1` §invitations (FR-95)
 **And** it is demonstrated by: wrong recipient, expired, replayed and revoked invitations refused; an inviter who lost authority before acceptance; a forwarded link confers nothing; the secret absent from telemetry, audit payloads and any model request (containment scan); no open sign-up path (the existing `disableSignUp` proof re-asserted)
 
-**And** delivery slice: per §4a of Proposal 5; NE reference NE-1 1.10; design gate (D-5-6): FR-95 Invitations and removal; **0 — Isolation proven** (prerequisite) | Nothing new for an auditor; the scoped schema, roles, delegations, invitations and removal exist behind the existing surfaces.; Invitation creation and acceptance — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: per §4a of Proposal 5; NE reference NE-1 1.10; design gate (D-5-6): Invitation creation and acceptance — designed under the Zobba pack's rules and reviewed before this part is built
 
 
 ### Story 11.11: Removal: from an engagement, from a tenant, and the separate account action; last active administrator cannot be removed or demoted (transactional, the existing last-holder lock reused); pending invitations and affected delegations handled explicitly; revocation enforced on protected requests and on dispatch, resume, retry and background work (with 1.6)
 
 As a platform operator,
 I want removal: from an engagement, from a tenant, and the separate account action; last active administrator cannot be removed or demoted (transactional, the existing last-holder lock reused); pending invitations and affected delegations handled explicitly; revocation enforced on protected requests and on dispatch, resume, retry and background work (with 1.6),
-So that every protected row is scoped and enforced from the first migration .
+So that the epic's goal holds: every protected row is scoped and enforced from the first migration; background work runs under a bounded delegation; historical chains are bound to their tenant. Runs before any personal account is connected (owner decision 3).
 
 **Acceptance Criteria:**
 
@@ -2571,7 +2571,7 @@ So that every protected row is scoped and enforced from the first migration .
 **Then** it establishes: `tenancy-v1` §removal (FR-95)
 **And** it is demonstrated by: concurrent last-administrator removal refused; cross-tenant membership preserved on tenant removal; background dispatch after removal refused with a reason; a dispatched external action keeps its reconciliation path; reinstatement restores no old grant; authorship and approvals preserved
 
-**And** delivery slice: Slice 0; NE reference NE-1 1.11; design gate (D-5-6): `tenancy-v1`; FR-95 Invitations and removal; **0 — Isolation proven** (prerequisite) | Nothing new for an auditor; the scoped schema, roles, delegations, invitations and removal exist behind the existing surfaces.; **3 — Correspondence, one confirmed external effect, independent review** (UJ-5; UJ-4 review and approval; FR-94–96) | A designated Gmail thread and its attachments are read to update the request record; one calendar invitation to the designated test recipient is proposed with its material details, decided on one surface (Allow and send · Edit first · Don't send), created and read back with its receipt; the unknown-outcome pattern is met when the provider does not confirm, with only the permitted recovery actions; a labelled draft `.docx` is saved to the designated Drafts folder; issuance without approval is refused; the second person is invited by copied link, accepts as the verified recipient, reviews from Reviews, returns with anchored notes, and reviews and approves the revised version; a contributor meets the independence refusal; access removal is exercised on a third, disposable identity (background dispatch refused; other tenant memberships kept); review notes are absent from the client rendering and present in the authorised archive export. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 0; NE reference NE-1 1.11
 
 
 ## Epic 12: Engagement, Agent Task and the agent loop
@@ -2587,9 +2587,9 @@ a draft engagement with a conversation; an Agent Task that executes tool calls d
 
 ### Story 12.1: Draft engagement, client binding command, conversation with encrypted content
 
-As a Auditor,
+As an Auditor,
 I want draft engagement, client binding command, conversation with encrypted content,
-So that a draft engagement with a conversation .
+So that the epic's goal holds: a draft engagement with a conversation; an Agent Task that executes tool calls durably under a delegation; waits, receipts, resumption; the live channel per task.
 
 **Acceptance Criteria:**
 
@@ -2597,14 +2597,14 @@ So that a draft engagement with a conversation .
 **Then** it establishes: engagement, conversation
 **And** it is demonstrated by: client-scoped read refused before binding and permitted after
 
-**And** delivery slice: Slice 1; NE reference NE-2 2.1; design gate (D-5-6): `engagement-task-v1`; **1 — First usable conversational slice: ask about the authorised files** (UJ-1 partial) | Connect a personal Drive and choose designated folders (from the conversation, returning to the work); start a draft engagement from Home and state an objective; get an attributed reply naming what was found, assumed and still needed, citing source snapshots with their quality dimensions; open a citation at its locator and return; answer a clarification in free text or by a suggested reply; see a refused out-of-scope read recorded as a security event; an instruction inside a document changes nothing; leave and return, or restart the worker mid-call, and find the task where it was; a completed task carries its manifest. **Formats:** plain text (Google Docs exported as `text/plain`) and CSV (Google Sheets exported as CSV), through the parsers already in the domain; PDF, Office and image content is reported "not supported yet" with the file kept as a received snapshot — no undeclared processing path.; Draft engagement without a client; the client-binding moment — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-2 2.1; design gate (D-5-6): Draft engagement without a client; the client-binding moment — designed under the Zobba pack's rules and reviewed before this part is built
 
 
 ### Story 12.2: Agent Task aggregate: state machine, budget, lease, step ledger, revision guard
 
-As a Auditor,
+As an Auditor,
 I want agent Task aggregate: state machine, budget, lease, step ledger, revision guard,
-So that a draft engagement with a conversation .
+So that the epic's goal holds: a draft engagement with a conversation; an Agent Task that executes tool calls durably under a delegation; waits, receipts, resumption; the live channel per task.
 
 **Acceptance Criteria:**
 
@@ -2612,14 +2612,14 @@ So that a draft engagement with a conversation .
 **Then** it establishes: task machine, ledger
 **And** it is demonstrated by: two claimants; stale resume refused; budget refused before the call
 
-**And** delivery slice: Slice 1; NE reference NE-2 2.2; design gate (D-5-6): `engagement-task-v1`; **1 — First usable conversational slice: ask about the authorised files** (UJ-1 partial) | Connect a personal Drive and choose designated folders (from the conversation, returning to the work); start a draft engagement from Home and state an objective; get an attributed reply naming what was found, assumed and still needed, citing source snapshots with their quality dimensions; open a citation at its locator and return; answer a clarification in free text or by a suggested reply; see a refused out-of-scope read recorded as a security event; an instruction inside a document changes nothing; leave and return, or restart the worker mid-call, and find the task where it was; a completed task carries its manifest. **Formats:** plain text (Google Docs exported as `text/plain`) and CSV (Google Sheets exported as CSV), through the parsers already in the domain; PDF, Office and image content is reported "not supported yet" with the file kept as a received snapshot — no undeclared processing path. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-2 2.2
 
 
 ### Story 12.3: The invocation model over the AI SDK as transport only; turn and call identities
 
-As a Auditor,
+As an Auditor,
 I want the invocation model over the AI SDK as transport only; turn and call identities,
-So that a draft engagement with a conversation .
+So that the epic's goal holds: a draft engagement with a conversation; an Agent Task that executes tool calls durably under a delegation; waits, receipts, resumption; the live channel per task.
 
 **Acceptance Criteria:**
 
@@ -2627,14 +2627,14 @@ So that a draft engagement with a conversation .
 **Then** it establishes: `agent-loop-v1` §invocation, response contract
 **And** it is demonstrated by: SDK executes nothing; two calls serial; interrupted stream not dispatched; restart replays results
 
-**And** delivery slice: Slice 1; NE reference NE-2 2.3; design gate (D-5-6): `agent-loop-v1`; **1 — First usable conversational slice: ask about the authorised files** (UJ-1 partial) | Connect a personal Drive and choose designated folders (from the conversation, returning to the work); start a draft engagement from Home and state an objective; get an attributed reply naming what was found, assumed and still needed, citing source snapshots with their quality dimensions; open a citation at its locator and return; answer a clarification in free text or by a suggested reply; see a refused out-of-scope read recorded as a security event; an instruction inside a document changes nothing; leave and return, or restart the worker mid-call, and find the task where it was; a completed task carries its manifest. **Formats:** plain text (Google Docs exported as `text/plain`) and CSV (Google Sheets exported as CSV), through the parsers already in the domain; PDF, Office and image content is reported "not supported yet" with the file kept as a received snapshot — no undeclared processing path. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-2 2.3
 
 
 ### Story 12.4: Parameter binding and the gate call site (with NE-3's gate; a stub `allowed`-only gate until then)
 
-As a Auditor,
+As an Auditor,
 I want parameter binding and the gate call site (with NE-3's gate; a stub `allowed`-only gate until then),
-So that a draft engagement with a conversation .
+So that the epic's goal holds: a draft engagement with a conversation; an Agent Task that executes tool calls durably under a delegation; waits, receipts, resumption; the live channel per task.
 
 **Acceptance Criteria:**
 
@@ -2642,48 +2642,48 @@ So that a draft engagement with a conversation .
 **Then** it establishes: parameter binding
 **And** it is demonstrated by: conflicting target refused; platform field injected; schema mistake bounded feedback
 
-**And** delivery slice: Slice 1; NE reference NE-2 2.4; design gate (D-5-6): `agent-loop-v1`; **1 — First usable conversational slice: ask about the authorised files** (UJ-1 partial) | Connect a personal Drive and choose designated folders (from the conversation, returning to the work); start a draft engagement from Home and state an objective; get an attributed reply naming what was found, assumed and still needed, citing source snapshots with their quality dimensions; open a citation at its locator and return; answer a clarification in free text or by a suggested reply; see a refused out-of-scope read recorded as a security event; an instruction inside a document changes nothing; leave and return, or restart the worker mid-call, and find the task where it was; a completed task carries its manifest. **Formats:** plain text (Google Docs exported as `text/plain`) and CSV (Google Sheets exported as CSV), through the parsers already in the domain; PDF, Office and image content is reported "not supported yet" with the file kept as a received snapshot — no undeclared processing path. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-2 2.4
 
 
 ### Story 12.5a: Waits: `clarify` and closed-option; expiry ends the task `CANCELED` with work kept
 
-As a Auditor,
+As an Auditor,
 I want waits: `clarify` and closed-option; expiry ends the task `CANCELED` with work kept,
-So that a draft engagement with a conversation .
+So that the epic's goal holds: a draft engagement with a conversation; an Agent Task that executes tool calls durably under a delegation; waits, receipts, resumption; the live channel per task.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-2 2.5 "Waits: `clarify`, `confirm-action`, `reconcile`, closed-option; response windows; per-task isolation" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: waits
 **And** it is demonstrated by: free-text answer resolves a clarification; source instruction closes no wait; task B usable while A waits; expiry ends the task `CANCELED` with work kept
 
-**And** delivery slice: Slice 1; NE reference NE-2 2.5a; design gate (D-5-6): `engagement-task-v1` — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-2 2.5a
 
 
 ### Story 12.5b: Waits: `confirm-action` and `reconcile`; response windows separate from action validity
 
-As a Auditor,
+As an Auditor,
 I want waits: `confirm-action` and `reconcile`; response windows separate from action validity,
-So that a draft engagement with a conversation .
+So that the epic's goal holds: a draft engagement with a conversation; an Agent Task that executes tool calls durably under a delegation; waits, receipts, resumption; the live channel per task.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-2 2.5 "Waits: `clarify`, `confirm-action`, `reconcile`, closed-option; response windows; per-task isolation" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: waits
 **And** it is demonstrated by: free-text answer resolves a clarification; source instruction closes no wait; task B usable while A waits; expiry ends the task `CANCELED` with work kept
 
-**And** delivery slice: Slice 3; NE reference NE-2 2.5b; design gate (D-5-6): `engagement-task-v1` — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 3; NE reference NE-2 2.5b
 
 
 ### Story 12.6: Dispatch claims, operation and attempt identities, reconciliation outcomes
 
-As a Auditor,
+As an Auditor,
 I want dispatch claims, operation and attempt identities, reconciliation outcomes,
-So that a draft engagement with a conversation .
+So that the epic's goal holds: a draft engagement with a conversation; an Agent Task that executes tool calls durably under a delegation; waits, receipts, resumption; the live channel per task.
 
 **Acceptance Criteria:**
 
@@ -2691,143 +2691,143 @@ So that a draft engagement with a conversation .
 **Then** it establishes: dispatch semantics
 **And** it is demonstrated by: lease expiry before and after dispatch; late receipt on the original attempt; no second effect in any reconciliation case
 
-**And** delivery slice: Slice 3; NE reference NE-2 2.6; design gate (D-5-6): `engagement-task-v1`; **3 — Correspondence, one confirmed external effect, independent review** (UJ-5; UJ-4 review and approval; FR-94–96) | A designated Gmail thread and its attachments are read to update the request record; one calendar invitation to the designated test recipient is proposed with its material details, decided on one surface (Allow and send · Edit first · Don't send), created and read back with its receipt; the unknown-outcome pattern is met when the provider does not confirm, with only the permitted recovery actions; a labelled draft `.docx` is saved to the designated Drafts folder; issuance without approval is refused; the second person is invited by copied link, accepts as the verified recipient, reviews from Reviews, returns with anchored notes, and reviews and approves the revised version; a contributor meets the independence refusal; access removal is exercised on a third, disposable identity (background dispatch refused; other tenant memberships kept); review notes are absent from the client rendering and present in the authorised archive export.; `reconcile` decision surface (keep observing · mark done with reference · retry with duplication warning · abandon) — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 3; NE reference NE-2 2.6; design gate (D-5-6): `reconcile` decision surface (keep observing · mark done with reference · retry with duplication warning · abandon) — designed under the Zobba pack's rules and reviewed before this part is built
 
 
 ### Story 12.7a: Resumption from durable state after a kill mid-call, after a result and during a wait; authority re-derived on resume
 
-As a Auditor,
+As an Auditor,
 I want resumption from durable state after a kill mid-call, after a result and during a wait; authority re-derived on resume,
-So that a draft engagement with a conversation .
+So that the epic's goal holds: a draft engagement with a conversation; an Agent Task that executes tool calls durably under a delegation; waits, receipts, resumption; the live channel per task.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-2 2.7 "Resumption from durable state; provider continuity items under conversation controls; provider swap" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: resumption, continuity
 **And** it is demonstrated by: kill mid-call, after result, during wait; authority re-derived; swap with no duplicate effect
 
-**And** delivery slice: Slice 1; NE reference NE-2 2.7a; design gate (D-5-6): `agent-loop-v1`; `working-context-v1` — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-2 2.7a
 
 
 ### Story 12.7b: Provider or deployment change at a boundary with no duplicate effect
 
-As a Auditor,
+As an Auditor,
 I want provider or deployment change at a boundary with no duplicate effect,
-So that a draft engagement with a conversation .
+So that the epic's goal holds: a draft engagement with a conversation; an Agent Task that executes tool calls durably under a delegation; waits, receipts, resumption; the live channel per task.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-2 2.7 "Resumption from durable state; provider continuity items under conversation controls; provider swap" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: resumption, continuity
 **And** it is demonstrated by: kill mid-call, after result, during wait; authority re-derived; swap with no duplicate effect
 
-**And** delivery slice: Slice 2; NE reference NE-2 2.7b; design gate (D-5-6): `agent-loop-v1`; `working-context-v1` — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-2 2.7b
 
 
 ### Story 12.8a: Self-review scoped to material content; instruction categories in context
 
-As a Auditor,
+As an Auditor,
 I want self-review scoped to material content; instruction categories in context,
-So that a draft engagement with a conversation .
+So that the epic's goal holds: a draft engagement with a conversation; an Agent Task that executes tool calls durably under a delegation; waits, receipts, resumption; the live channel per task.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-2 2.8 "Self-review scoped to material content; instruction categories in context" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: self-review, provenance
 **And** it is demonstrated by: unsupported claim not presented as a finding; deterministic check governs; behavioural injection evaluations reported per prompt version
 
-**And** delivery slice: Slice 1; NE reference NE-2 2.8a; design gate (D-5-6): `agent-loop-v1` — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-2 2.8a
 
 
 ### Story 12.8b: Behavioural injection evaluation set, reported per model and prompt version
 
-As a Auditor,
+As an Auditor,
 I want behavioural injection evaluation set, reported per model and prompt version,
-So that a draft engagement with a conversation .
+So that the epic's goal holds: a draft engagement with a conversation; an Agent Task that executes tool calls durably under a delegation; waits, receipts, resumption; the live channel per task.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-2 2.8 "Self-review scoped to material content; instruction categories in context" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: self-review, provenance
 **And** it is demonstrated by: unsupported claim not presented as a finding; deterministic check governs; behavioural injection evaluations reported per prompt version
 
-**And** delivery slice: Slice 1; NE reference NE-2 2.8b; design gate (D-5-6): `agent-loop-v1` — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-2 2.8b
 
 
 ### Story 12.9a: Live channel per task
 
-As a Auditor,
+As an Auditor,
 I want live channel per task,
-So that a draft engagement with a conversation .
+So that the epic's goal holds: a draft engagement with a conversation; an Agent Task that executes tool calls durably under a delegation; waits, receipts, resumption; the live channel per task.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-2 2.9 "Live channel per task and engagement" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `live-channel-v2`
 **And** it is demonstrated by: gap and duplicate property on task streams
 
-**And** delivery slice: Slice 1; NE reference NE-2 2.9a; design gate (D-5-6): `live-channel-v2` — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-2 2.9a
 
 
 ### Story 12.9b: Live channel per engagement
 
-As a Auditor,
+As an Auditor,
 I want live channel per engagement,
-So that a draft engagement with a conversation .
+So that the epic's goal holds: a draft engagement with a conversation; an Agent Task that executes tool calls durably under a delegation; waits, receipts, resumption; the live channel per task.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-2 2.9 "Live channel per task and engagement" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `live-channel-v2`
 **And** it is demonstrated by: gap and duplicate property on task streams
 
-**And** delivery slice: Deferred; NE reference NE-2 2.9b; design gate (D-5-6): `live-channel-v2` — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Deferred; NE reference NE-2 2.9b
 
 
 ### Story 12.10a: Per-invocation model record with the administrator default
 
-As a Auditor,
+As an Auditor,
 I want per-invocation model record with the administrator default,
-So that a draft engagement with a conversation .
+So that the epic's goal holds: a draft engagement with a conversation; an Agent Task that executes tool calls durably under a delegation; waits, receipts, resumption; the live channel per task.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-2 2.10 "Model and effort per invocation: the task's selected or default configuration; requested versus actual provider, deployment, model id, prompt version and effort recorded per model call and linked to the step; per-adapter effort mapping with a closed vocabulary; a change applies at the next safe boundary and regenerates nothing" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `agent-loop-v1` §invocation record (FR-91)
 **And** it is demonstrated by: a step with two model calls retains both configurations; a non-model step acquires no model setting; an unsupported effort is unavailable or explicitly remapped and recorded, never silently ignored; a mid-task change applies from the next boundary with no regenerated or repeated work; higher effort grants no budget
 
-**And** delivery slice: Slice 1; NE reference NE-2 2.10a; design gate (D-5-6): `agent-loop-v1` — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-2 2.10a
 
 
 ### Story 12.10b: Auditor model and effort selection; per-adapter effort mapping; safe mid-task change
 
-As a Auditor,
+As an Auditor,
 I want auditor model and effort selection; per-adapter effort mapping; safe mid-task change,
-So that a draft engagement with a conversation .
+So that the epic's goal holds: a draft engagement with a conversation; an Agent Task that executes tool calls durably under a delegation; waits, receipts, resumption; the live channel per task.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-2 2.10 "Model and effort per invocation: the task's selected or default configuration; requested versus actual provider, deployment, model id, prompt version and effort recorded per model call and linked to the step; per-adapter effort mapping with a closed vocabulary; a change applies at the next safe boundary and regenerates nothing" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `agent-loop-v1` §invocation record (FR-91)
 **And** it is demonstrated by: a step with two model calls retains both configurations; a non-model step acquires no model setting; an unsupported effort is unavailable or explicitly remapped and recorded, never silently ignored; a mid-task change applies from the next boundary with no regenerated or repeated work; higher effort grants no budget
 
-**And** delivery slice: Slice 2; NE reference NE-2 2.10b; design gate (D-5-6): `agent-loop-v1` — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-2 2.10b
 
 
 ## Epic 13: Agent Permissions, connector framework, connections and the first connectors
@@ -2843,9 +2843,9 @@ authority as versioned Agent Permissions evaluated per operation; connectors wit
 
 ### Story 13.1: Agent Permissions policy and Engagement Permissions as versioned documents; the intersection
 
-As a Auditor,
+As an Auditor,
 I want agent Permissions policy and Engagement Permissions as versioned documents; the intersection,
-So that authority as versioned Agent Permissions evaluated per operation .
+So that the epic's goal holds: authority as versioned Agent Permissions evaluated per operation; connectors with effect classes and two-axis results; per-user connections through the worker-side broker; Drive, Gmail and Calendar on personal accounts with designated resources; the disclosure policy before every model request.
 
 **Acceptance Criteria:**
 
@@ -2853,14 +2853,14 @@ So that authority as versioned Agent Permissions evaluated per operation .
 **Then** it establishes: authority computation
 **And** it is demonstrated by: frozen {A,B} ∩ current {B,C} = {B}; unrelated narrowing refuses nothing
 
-**And** delivery slice: Slice 1; NE reference NE-3 3.1; design gate (D-5-6): `permissions-v1`; **1 — First usable conversational slice: ask about the authorised files** (UJ-1 partial) | Connect a personal Drive and choose designated folders (from the conversation, returning to the work); start a draft engagement from Home and state an objective; get an attributed reply naming what was found, assumed and still needed, citing source snapshots with their quality dimensions; open a citation at its locator and return; answer a clarification in free text or by a suggested reply; see a refused out-of-scope read recorded as a security event; an instruction inside a document changes nothing; leave and return, or restart the worker mid-call, and find the task where it was; a completed task carries its manifest. **Formats:** plain text (Google Docs exported as `text/plain`) and CSV (Google Sheets exported as CSV), through the parsers already in the domain; PDF, Office and image content is reported "not supported yet" with the file kept as a received snapshot — no undeclared processing path. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-3 3.1
 
 
 ### Story 13.2: `authorizeToolCall` with four outcomes; canonical resource identity; source-wins; absolute source protection
 
-As a Auditor,
+As an Auditor,
 I want `authorizeToolCall` with four outcomes; canonical resource identity; source-wins; absolute source protection,
-So that authority as versioned Agent Permissions evaluated per operation .
+So that the epic's goal holds: authority as versioned Agent Permissions evaluated per operation; connectors with effect classes and two-axis results; per-user connections through the worker-side broker; Drive, Gmail and Calendar on personal accounts with designated resources; the disclosure policy before every model request.
 
 **Acceptance Criteria:**
 
@@ -2868,14 +2868,14 @@ So that authority as versioned Agent Permissions evaluated per operation .
 **Then** it establishes: gate
 **And** it is demonstrated by: killing test per rule; alias, shortcut, moved file, redirect, unresolvable target; mutation harness
 
-**And** delivery slice: per §4a of Proposal 5; NE reference NE-3 3.2; design gate (D-5-6): **1 — First usable conversational slice: ask about the authorised files** (UJ-1 partial) | Connect a personal Drive and choose designated folders (from the conversation, returning to the work); start a draft engagement from Home and state an objective; get an attributed reply naming what was found, assumed and still needed, citing source snapshots with their quality dimensions; open a citation at its locator and return; answer a clarification in free text or by a suggested reply; see a refused out-of-scope read recorded as a security event; an instruction inside a document changes nothing; leave and return, or restart the worker mid-call, and find the task where it was; a completed task carries its manifest. **Formats:** plain text (Google Docs exported as `text/plain`) and CSV (Google Sheets exported as CSV), through the parsers already in the domain; PDF, Office and image content is reported "not supported yet" with the file kept as a received snapshot — no undeclared processing path. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: per §4a of Proposal 5; NE reference NE-3 3.2
 
 
 ### Story 13.3: Permissions Summary to the model; internal tools with `connection: none`
 
-As a Auditor,
+As an Auditor,
 I want permissions Summary to the model; internal tools with `connection: none`,
-So that authority as versioned Agent Permissions evaluated per operation .
+So that the epic's goal holds: authority as versioned Agent Permissions evaluated per operation; connectors with effect classes and two-axis results; per-user connections through the worker-side broker; Drive, Gmail and Calendar on personal accounts with designated resources; the disclosure policy before every model request.
 
 **Acceptance Criteria:**
 
@@ -2883,14 +2883,14 @@ So that authority as versioned Agent Permissions evaluated per operation .
 **Then** it establishes: summary
 **And** it is demonstrated by: the model sees no Permissions document; internal tool passes the gate without a connection rule
 
-**And** delivery slice: per §4a of Proposal 5; NE reference NE-3 3.3; design gate (D-5-6): `permissions-v1`; **1 — First usable conversational slice: ask about the authorised files** (UJ-1 partial) | Connect a personal Drive and choose designated folders (from the conversation, returning to the work); start a draft engagement from Home and state an objective; get an attributed reply naming what was found, assumed and still needed, citing source snapshots with their quality dimensions; open a citation at its locator and return; answer a clarification in free text or by a suggested reply; see a refused out-of-scope read recorded as a security event; an instruction inside a document changes nothing; leave and return, or restart the worker mid-call, and find the task where it was; a completed task carries its manifest. **Formats:** plain text (Google Docs exported as `text/plain`) and CSV (Google Sheets exported as CSV), through the parsers already in the domain; PDF, Office and image content is reported "not supported yet" with the file kept as a received snapshot — no undeclared processing path. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: per §4a of Proposal 5; NE reference NE-3 3.3
 
 
 ### Story 13.4: Connector descriptor, port, two-axis result, conformance suite, hostile fake
 
-As a Auditor,
+As an Auditor,
 I want connector descriptor, port, two-axis result, conformance suite, hostile fake,
-So that authority as versioned Agent Permissions evaluated per operation .
+So that the epic's goal holds: authority as versioned Agent Permissions evaluated per operation; connectors with effect classes and two-axis results; per-user connections through the worker-side broker; Drive, Gmail and Calendar on personal accounts with designated resources; the disclosure policy before every model request.
 
 **Acceptance Criteria:**
 
@@ -2898,14 +2898,14 @@ So that authority as versioned Agent Permissions evaluated per operation .
 **Then** it establishes: `connector-v1`
 **And** it is demonstrated by: timeout after dispatch is `unknown-after-dispatch`; unverifiable success fails validation; empty versus unreachable
 
-**And** delivery slice: per §4a of Proposal 5; NE reference NE-3 3.4; design gate (D-5-6): `connector-v1`; **1 — First usable conversational slice: ask about the authorised files** (UJ-1 partial) | Connect a personal Drive and choose designated folders (from the conversation, returning to the work); start a draft engagement from Home and state an objective; get an attributed reply naming what was found, assumed and still needed, citing source snapshots with their quality dimensions; open a citation at its locator and return; answer a clarification in free text or by a suggested reply; see a refused out-of-scope read recorded as a security event; an instruction inside a document changes nothing; leave and return, or restart the worker mid-call, and find the task where it was; a completed task carries its manifest. **Formats:** plain text (Google Docs exported as `text/plain`) and CSV (Google Sheets exported as CSV), through the parsers already in the domain; PDF, Office and image content is reported "not supported yet" with the file kept as a received snapshot — no undeclared processing path. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: per §4a of Proposal 5; NE reference NE-3 3.4
 
 
 ### Story 13.5: Connections, secrets under `CONNECTION_SECRET_KEY`, disconnect ordering
 
-As a Auditor,
+As an Auditor,
 I want connections, secrets under `CONNECTION_SECRET_KEY`, disconnect ordering,
-So that authority as versioned Agent Permissions evaluated per operation .
+So that the epic's goal holds: authority as versioned Agent Permissions evaluated per operation; connectors with effect classes and two-axis results; per-user connections through the worker-side broker; Drive, Gmail and Calendar on personal accounts with designated resources; the disclosure policy before every model request.
 
 **Acceptance Criteria:**
 
@@ -2913,14 +2913,14 @@ So that authority as versioned Agent Permissions evaluated per operation .
 **Then** it establishes: `connection-v1` §connections
 **And** it is demonstrated by: dispatch after local disable refused; refresh after disable cannot reactivate
 
-**And** delivery slice: per §4a of Proposal 5; NE reference NE-3 3.5; design gate (D-5-6): `connection-v1`; **1 — First usable conversational slice: ask about the authorised files** (UJ-1 partial) | Connect a personal Drive and choose designated folders (from the conversation, returning to the work); start a draft engagement from Home and state an objective; get an attributed reply naming what was found, assumed and still needed, citing source snapshots with their quality dimensions; open a citation at its locator and return; answer a clarification in free text or by a suggested reply; see a refused out-of-scope read recorded as a security event; an instruction inside a document changes nothing; leave and return, or restart the worker mid-call, and find the task where it was; a completed task carries its manifest. **Formats:** plain text (Google Docs exported as `text/plain`) and CSV (Google Sheets exported as CSV), through the parsers already in the domain; PDF, Office and image content is reported "not supported yet" with the file kept as a received snapshot — no undeclared processing path. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: per §4a of Proposal 5; NE reference NE-3 3.5
 
 
 ### Story 13.6: OAuth: attempt, PKCE, sealed handoff, callback validation, mix-up defence per provider
 
-As a Auditor,
+As an Auditor,
 I want oAuth: attempt, PKCE, sealed handoff, callback validation, mix-up defence per provider,
-So that authority as versioned Agent Permissions evaluated per operation .
+So that the epic's goal holds: authority as versioned Agent Permissions evaluated per operation; connectors with effect classes and two-axis results; per-user connections through the worker-side broker; Drive, Gmail and Calendar on personal accounts with designated resources; the disclosure policy before every model request.
 
 **Acceptance Criteria:**
 
@@ -2928,14 +2928,14 @@ So that authority as versioned Agent Permissions evaluated per operation .
 **Then** it establishes: §attempt, §callback
 **And** it is demonstrated by: swapped state, wrong user, wrong tenant, replay, expired attempt; both mix-up defences
 
-**And** delivery slice: per §4a of Proposal 5; NE reference NE-3 3.6; design gate (D-5-6): **1 — First usable conversational slice: ask about the authorised files** (UJ-1 partial) | Connect a personal Drive and choose designated folders (from the conversation, returning to the work); start a draft engagement from Home and state an objective; get an attributed reply naming what was found, assumed and still needed, citing source snapshots with their quality dimensions; open a citation at its locator and return; answer a clarification in free text or by a suggested reply; see a refused out-of-scope read recorded as a security event; an instruction inside a document changes nothing; leave and return, or restart the worker mid-call, and find the task where it was; a completed task carries its manifest. **Formats:** plain text (Google Docs exported as `text/plain`) and CSV (Google Sheets exported as CSV), through the parsers already in the domain; PDF, Office and image content is reported "not supported yet" with the file kept as a received snapshot — no undeclared processing path. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: per §4a of Proposal 5; NE reference NE-3 3.6
 
 
 ### Story 13.7: The broker: exchange attempts, no code reuse after possible dispatch, refresh recovery, rule `no-connection-broker-in-web`
 
-As a Auditor,
+As an Auditor,
 I want the broker: exchange attempts, no code reuse after possible dispatch, refresh recovery, rule `no-connection-broker-in-web`,
-So that authority as versioned Agent Permissions evaluated per operation .
+So that the epic's goal holds: authority as versioned Agent Permissions evaluated per operation; connectors with effect classes and two-axis results; per-user connections through the worker-side broker; Drive, Gmail and Calendar on personal accounts with designated resources; the disclosure policy before every model request.
 
 **Acceptance Criteria:**
 
@@ -2943,54 +2943,54 @@ So that authority as versioned Agent Permissions evaluated per operation .
 **Then** it establishes: §broker
 **And** it is demonstrated by: failed-before-dispatch retried; lost response after redemption never resends; duplicate exchange jobs; refresh loss follows recorded behaviour; boundary plants
 
-**And** delivery slice: Slice 1; NE reference NE-3 3.7; design gate (D-5-6): `connection-v1`; **1 — First usable conversational slice: ask about the authorised files** (UJ-1 partial) | Connect a personal Drive and choose designated folders (from the conversation, returning to the work); start a draft engagement from Home and state an objective; get an attributed reply naming what was found, assumed and still needed, citing source snapshots with their quality dimensions; open a citation at its locator and return; answer a clarification in free text or by a suggested reply; see a refused out-of-scope read recorded as a security event; an instruction inside a document changes nothing; leave and return, or restart the worker mid-call, and find the task where it was; a completed task carries its manifest. **Formats:** plain text (Google Docs exported as `text/plain`) and CSV (Google Sheets exported as CSV), through the parsers already in the domain; PDF, Office and image content is reported "not supported yet" with the file kept as a received snapshot — no undeclared processing path. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-3 3.7
 
 
 ### Story 13.8a: Google Drive connector: read, list and snapshot on designated folders
 
-As a Auditor,
+As an Auditor,
 I want google Drive connector: read, list and snapshot on designated folders,
-So that authority as versioned Agent Permissions evaluated per operation .
+So that the epic's goal holds: authority as versioned Agent Permissions evaluated per operation; connectors with effect classes and two-axis results; per-user connections through the worker-side broker; Drive, Gmail and Calendar on personal accounts with designated resources; the disclosure policy before every model request.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-3 3.8 "Google Drive connector (read, snapshot, list, write-output to designated folders)" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: first connector
 **And** it is demonstrated by: conformance suite; personal-account acceptance on designated folders
 
-**And** delivery slice: Slice 1; NE reference NE-3 3.8a; design gate (D-5-6): `connector-v1` — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-3 3.8a
 
 
 ### Story 13.8b: Google Drive connector: write-output to a designated Drafts folder
 
-As a Auditor,
+As an Auditor,
 I want google Drive connector: write-output to a designated Drafts folder,
-So that authority as versioned Agent Permissions evaluated per operation .
+So that the epic's goal holds: authority as versioned Agent Permissions evaluated per operation; connectors with effect classes and two-axis results; per-user connections through the worker-side broker; Drive, Gmail and Calendar on personal accounts with designated resources; the disclosure policy before every model request.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-3 3.8 "Google Drive connector (read, snapshot, list, write-output to designated folders)" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: first connector
 **And** it is demonstrated by: conformance suite; personal-account acceptance on designated folders
 
-**And** delivery slice: Slice 3; NE reference NE-3 3.8b; design gate (D-5-6): `connector-v1` — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 3; NE reference NE-3 3.8b
 
 
 ### Story 13.9a: Gmail connector: read a designated label; attachments as received snapshots; draft and send refused without confirmation
 
-As a Auditor,
+As an Auditor,
 I want gmail connector: read a designated label; attachments as received snapshots; draft and send refused without confirmation,
-So that authority as versioned Agent Permissions evaluated per operation .
+So that the epic's goal holds: authority as versioned Agent Permissions evaluated per operation; connectors with effect classes and two-axis results; per-user connections through the worker-side broker; Drive, Gmail and Calendar on personal accounts with designated resources; the disclosure policy before every model request.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-3 3.9 "Gmail connector (read a designated label, attachments as `received` snapshots, draft; send behind `external-effect`)" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: second connector
 **And** it is demonstrated by: conformance; a send needs confirmation with bound details
 
@@ -2999,15 +2999,15 @@ So that authority as versioned Agent Permissions evaluated per operation .
 
 ### Story 13.9b: Gmail connector: draft and send behind external-effect confirmation
 
-As a Auditor,
+As an Auditor,
 I want gmail connector: draft and send behind external-effect confirmation,
-So that authority as versioned Agent Permissions evaluated per operation .
+So that the epic's goal holds: authority as versioned Agent Permissions evaluated per operation; connectors with effect classes and two-axis results; per-user connections through the worker-side broker; Drive, Gmail and Calendar on personal accounts with designated resources; the disclosure policy before every model request.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-3 3.9 "Gmail connector (read a designated label, attachments as `received` snapshots, draft; send behind `external-effect`)" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: second connector
 **And** it is demonstrated by: conformance; a send needs confirmation with bound details
 
@@ -3016,9 +3016,9 @@ So that authority as versioned Agent Permissions evaluated per operation .
 
 ### Story 13.10: Calendar connector (read, create-event behind `external-effect`, read-back)
 
-As a Auditor,
+As an Auditor,
 I want calendar connector (read, create-event behind `external-effect`, read-back),
-So that authority as versioned Agent Permissions evaluated per operation .
+So that the epic's goal holds: authority as versioned Agent Permissions evaluated per operation; connectors with effect classes and two-axis results; per-user connections through the worker-side broker; Drive, Gmail and Calendar on personal accounts with designated resources; the disclosure policy before every model request.
 
 **Acceptance Criteria:**
 
@@ -3026,14 +3026,14 @@ So that authority as versioned Agent Permissions evaluated per operation .
 **Then** it establishes: third connector
 **And** it is demonstrated by: conformance; created event read back and receipted
 
-**And** delivery slice: Slice 3; NE reference NE-3 3.10; design gate (D-5-6): **3 — Correspondence, one confirmed external effect, independent review** (UJ-5; UJ-4 review and approval; FR-94–96) | A designated Gmail thread and its attachments are read to update the request record; one calendar invitation to the designated test recipient is proposed with its material details, decided on one surface (Allow and send · Edit first · Don't send), created and read back with its receipt; the unknown-outcome pattern is met when the provider does not confirm, with only the permitted recovery actions; a labelled draft `.docx` is saved to the designated Drafts folder; issuance without approval is refused; the second person is invited by copied link, accepts as the verified recipient, reviews from Reviews, returns with anchored notes, and reviews and approves the revised version; a contributor meets the independence refusal; access removal is exercised on a third, disposable identity (background dispatch refused; other tenant memberships kept); review notes are absent from the client rendering and present in the authorised archive export. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 3; NE reference NE-3 3.10
 
 
 ### Story 13.11: Browser as a connector under the Agent Permissions
 
-As a Auditor,
+As an Auditor,
 I want browser as a connector under the Agent Permissions,
-So that authority as versioned Agent Permissions evaluated per operation .
+So that the epic's goal holds: authority as versioned Agent Permissions evaluated per operation; connectors with effect classes and two-axis results; per-user connections through the worker-side broker; Drive, Gmail and Calendar on personal accounts with designated resources; the disclosure policy before every model request.
 
 **Acceptance Criteria:**
 
@@ -3041,14 +3041,14 @@ So that authority as versioned Agent Permissions evaluated per operation .
 **Then** it establishes: `agent-workspace-v1` re-homed
 **And** it is demonstrated by: existing browser suites pass under the gate
 
-**And** delivery slice: Deferred; NE reference NE-3 3.11; design gate (D-5-6): `connector-v1` — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Deferred; NE reference NE-3 3.11
 
 
 ### Story 13.12: Disclosure policy per tenant and engagement, applied before every outbound request including fallback
 
-As a Auditor,
+As an Auditor,
 I want disclosure policy per tenant and engagement, applied before every outbound request including fallback,
-So that authority as versioned Agent Permissions evaluated per operation .
+So that the epic's goal holds: authority as versioned Agent Permissions evaluated per operation; connectors with effect classes and two-axis results; per-user connections through the worker-side broker; Drive, Gmail and Calendar on personal accounts with designated resources; the disclosure policy before every model request.
 
 **Acceptance Criteria:**
 
@@ -3056,14 +3056,14 @@ So that authority as versioned Agent Permissions evaluated per operation .
 **Then** it establishes: `disclosure-policy-v1`
 **And** it is demonstrated by: restricted item blocks primary and fallback; derived summary inherits; unknown classification blocks
 
-**And** delivery slice: Slice 1; NE reference NE-3 3.12; design gate (D-5-6): `disclosure-policy-v1`; **1 — First usable conversational slice: ask about the authorised files** (UJ-1 partial) | Connect a personal Drive and choose designated folders (from the conversation, returning to the work); start a draft engagement from Home and state an objective; get an attributed reply naming what was found, assumed and still needed, citing source snapshots with their quality dimensions; open a citation at its locator and return; answer a clarification in free text or by a suggested reply; see a refused out-of-scope read recorded as a security event; an instruction inside a document changes nothing; leave and return, or restart the worker mid-call, and find the task where it was; a completed task carries its manifest. **Formats:** plain text (Google Docs exported as `text/plain`) and CSV (Google Sheets exported as CSV), through the parsers already in the domain; PDF, Office and image content is reported "not supported yet" with the file kept as a received snapshot — no undeclared processing path. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-3 3.12
 
 
 ### Story 13.13: Bound `ResolvedCredential` for connections; the credential guard over connector traffic
 
-As a Auditor,
+As an Auditor,
 I want bound `ResolvedCredential` for connections; the credential guard over connector traffic,
-So that authority as versioned Agent Permissions evaluated per operation .
+So that the epic's goal holds: authority as versioned Agent Permissions evaluated per operation; connectors with effect classes and two-axis results; per-user connections through the worker-side broker; Drive, Gmail and Calendar on personal accounts with designated resources; the disclosure policy before every model request.
 
 **Acceptance Criteria:**
 
@@ -3071,41 +3071,41 @@ So that authority as versioned Agent Permissions evaluated per operation .
 **Then** it establishes: containment
 **And** it is demonstrated by: a credential outside its bound destination refused; scans on every freeze and model request
 
-**And** delivery slice: Slice 1; NE reference NE-3 3.13; design gate (D-5-6): `connection-v1`; **1 — First usable conversational slice: ask about the authorised files** (UJ-1 partial) | Connect a personal Drive and choose designated folders (from the conversation, returning to the work); start a draft engagement from Home and state an objective; get an attributed reply naming what was found, assumed and still needed, citing source snapshots with their quality dimensions; open a citation at its locator and return; answer a clarification in free text or by a suggested reply; see a refused out-of-scope read recorded as a security event; an instruction inside a document changes nothing; leave and return, or restart the worker mid-call, and find the task where it was; a completed task carries its manifest. **Formats:** plain text (Google Docs exported as `text/plain`) and CSV (Google Sheets exported as CSV), through the parsers already in the domain; PDF, Office and image content is reported "not supported yet" with the file kept as a received snapshot — no undeclared processing path. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-3 3.13
 
 
 ### Story 13.14a: Model policy document with the default deployment and the computed picker set
 
-As a Auditor,
+As an Auditor,
 I want model policy document with the default deployment and the computed picker set,
-So that authority as versioned Agent Permissions evaluated per operation .
+So that the epic's goal holds: authority as versioned Agent Permissions evaluated per operation; connectors with effect classes and two-axis results; per-user connections through the worker-side broker; Drive, Gmail and Calendar on personal accounts with designated resources; the disclosure policy before every model request.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-3 3.14 "Administrator model policy: enabled provider deployments and capabilities, default model and effort, whether auditors may change the model or choose the highest effort; versioned and audited; the picker set = policy ∩ engagement disclosure policy ∩ required capabilities ∩ execution limits, with unavailable choices disabled and stating the reason; one enforcement path" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `model-policy-v1`, `disclosure-policy-v1` §model availability (FR-92)
 **And** it is demonstrated by: a picker toggle cannot override the engagement's data policy; a policy revocation before the next call blocks that call with the cause recorded; a tenant default change leaves active tasks' selections and scheduled checks' approved configuration unchanged; configuration cannot declare a region or data-handling guarantee the service has not established; the reference screen's providers are not seeded as approved selections
 
-**And** delivery slice: Slice 1; NE reference NE-3 3.14a; design gate (D-5-6): `disclosure-policy-v1`; `model-policy-v1` (new, 4b); FR-92 Administrator model policy — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-3 3.14a
 
 
 ### Story 13.14b: Alternative models offered; unavailable choices disabled with the reason; a revocation blocks the next call
 
-As a Auditor,
+As an Auditor,
 I want alternative models offered; unavailable choices disabled with the reason; a revocation blocks the next call,
-So that authority as versioned Agent Permissions evaluated per operation .
+So that the epic's goal holds: authority as versioned Agent Permissions evaluated per operation; connectors with effect classes and two-axis results; per-user connections through the worker-side broker; Drive, Gmail and Calendar on personal accounts with designated resources; the disclosure policy before every model request.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-3 3.14 "Administrator model policy: enabled provider deployments and capabilities, default model and effort, whether auditors may change the model or choose the highest effort; versioned and audited; the picker set = policy ∩ engagement disclosure policy ∩ required capabilities ∩ execution limits, with unavailable choices disabled and stating the reason; one enforcement path" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `model-policy-v1`, `disclosure-policy-v1` §model availability (FR-92)
 **And** it is demonstrated by: a picker toggle cannot override the engagement's data policy; a policy revocation before the next call blocks that call with the cause recorded; a tenant default change leaves active tasks' selections and scheduled checks' approved configuration unchanged; configuration cannot declare a region or data-handling guarantee the service has not established; the reference screen's providers are not seeded as approved selections
 
-**And** delivery slice: Slice 2; NE reference NE-3 3.14b; design gate (D-5-6): `disclosure-policy-v1`; `model-policy-v1` (new, 4b); FR-92 Administrator model policy — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-3 3.14b
 
 
 ## Epic 14: Sources, evidence, working material and derived outputs
@@ -3121,9 +3121,9 @@ every source read is a snapshot with identity and quality; analysis runs on work
 
 ### Story 14.1: Owner-namespaced reservations and the new kinds through `freezeArtifact`
 
-As a Auditor,
+As an Auditor,
 I want owner-namespaced reservations and the new kinds through `freezeArtifact`,
-So that every source read is a snapshot with identity and quality .
+So that the epic's goal holds: every source read is a snapshot with identity and quality; analysis runs on working copies; derived outputs are registered with derivations and validations; three sealing units; governed retention; engagement export.
 
 **Acceptance Criteria:**
 
@@ -3131,14 +3131,14 @@ So that every source read is a snapshot with identity and quality .
 **Then** it establishes: `evidence-package-v2`
 **And** it is demonstrated by: every owner through reserve, upload, verify, register; redelivery reconciles
 
-**And** delivery slice: Slice 1; NE reference NE-4 4.1; design gate (D-5-6): `evidence-package-v2`; **1 — First usable conversational slice: ask about the authorised files** (UJ-1 partial) | Connect a personal Drive and choose designated folders (from the conversation, returning to the work); start a draft engagement from Home and state an objective; get an attributed reply naming what was found, assumed and still needed, citing source snapshots with their quality dimensions; open a citation at its locator and return; answer a clarification in free text or by a suggested reply; see a refused out-of-scope read recorded as a security event; an instruction inside a document changes nothing; leave and return, or restart the worker mid-call, and find the task where it was; a completed task carries its manifest. **Formats:** plain text (Google Docs exported as `text/plain`) and CSV (Google Sheets exported as CSV), through the parsers already in the domain; PDF, Office and image content is reported "not supported yet" with the file kept as a received snapshot — no undeclared processing path. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-4 4.1
 
 
 ### Story 14.2: Source snapshots with identity, limitations and acquisition records; content versus acquisition identity
 
-As a Auditor,
+As an Auditor,
 I want source snapshots with identity, limitations and acquisition records; content versus acquisition identity,
-So that every source read is a snapshot with identity and quality .
+So that the epic's goal holds: every source read is a snapshot with identity and quality; analysis runs on working copies; derived outputs are registered with derivations and validations; three sealing units; governed retention; engagement export.
 
 **Acceptance Criteria:**
 
@@ -3146,14 +3146,14 @@ So that every source read is a snapshot with identity and quality .
 **Then** it establishes: `acquisition-v1`
 **And** it is demonstrated by: unchanged reacquisition on a later date; retry versus new observation; identical bytes from two sources
 
-**And** delivery slice: Slice 1; NE reference NE-4 4.2; design gate (D-5-6): `acquisition-v1`; **1 — First usable conversational slice: ask about the authorised files** (UJ-1 partial) | Connect a personal Drive and choose designated folders (from the conversation, returning to the work); start a draft engagement from Home and state an objective; get an attributed reply naming what was found, assumed and still needed, citing source snapshots with their quality dimensions; open a citation at its locator and return; answer a clarification in free text or by a suggested reply; see a refused out-of-scope read recorded as a security event; an instruction inside a document changes nothing; leave and return, or restart the worker mid-call, and find the task where it was; a completed task carries its manifest. **Formats:** plain text (Google Docs exported as `text/plain`) and CSV (Google Sheets exported as CSV), through the parsers already in the domain; PDF, Office and image content is reported "not supported yet" with the file kept as a received snapshot — no undeclared processing path. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-4 4.2
 
 
 ### Story 14.3: Extraction records with coverage and consistency; the two-axis result on acquisition
 
-As a Auditor,
+As an Auditor,
 I want extraction records with coverage and consistency; the two-axis result on acquisition,
-So that every source read is a snapshot with identity and quality .
+So that the epic's goal holds: every source read is a snapshot with identity and quality; analysis runs on working copies; derived outputs are registered with derivations and validations; three sealing units; governed retention; engagement export.
 
 **Acceptance Criteria:**
 
@@ -3161,14 +3161,14 @@ So that every source read is a snapshot with identity and quality .
 **Then** it establishes: extraction
 **And** it is demonstrated by: partial at page 3; `coverage: complete, consistency: unknown`; empty under contract
 
-**And** delivery slice: Slice 1; NE reference NE-4 4.3; design gate (D-5-6): **1 — First usable conversational slice: ask about the authorised files** (UJ-1 partial) | Connect a personal Drive and choose designated folders (from the conversation, returning to the work); start a draft engagement from Home and state an objective; get an attributed reply naming what was found, assumed and still needed, citing source snapshots with their quality dimensions; open a citation at its locator and return; answer a clarification in free text or by a suggested reply; see a refused out-of-scope read recorded as a security event; an instruction inside a document changes nothing; leave and return, or restart the worker mid-call, and find the task where it was; a completed task carries its manifest. **Formats:** plain text (Google Docs exported as `text/plain`) and CSV (Google Sheets exported as CSV), through the parsers already in the domain; PDF, Office and image content is reported "not supported yet" with the file kept as a received snapshot — no undeclared processing path. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-4 4.3
 
 
 ### Story 14.4: Source evolution relationships, impact records versus notifications
 
-As a Auditor,
+As an Auditor,
 I want source evolution relationships, impact records versus notifications,
-So that every source read is a snapshot with identity and quality .
+So that the epic's goal holds: every source read is a snapshot with identity and quality; analysis runs on working copies; derived outputs are registered with derivations and validations; three sealing units; governed retention; engagement export.
 
 **Acceptance Criteria:**
 
@@ -3176,14 +3176,14 @@ So that every source read is a snapshot with identity and quality .
 **Then** it establishes: supersession
 **And** it is demonstrated by: next-period extract flags nothing; a correction flags the dependent finding
 
-**And** delivery slice: Slice 2; NE reference NE-4 4.4; design gate (D-5-6): `acquisition-v1`; **2 — Analysis and a reviewable working paper** (UJ-2, UJ-3, UJ-4) | The leaver list, directory extract and application user list are snapshotted and analysed on working copies in the sandbox; a working paper shows candidate findings, the post-exit login signal and the partial-population limitation; the auditor opens review mode and citations; **an explicitly requested draft correction saves a new version, exposes the changes and offers Undo, with no additional acceptance ceremony; an independently proposed material change follows its applicable decision rules**; dependents are flagged for reconsideration; a corrected directory extract re-acquired from Drive produces an impact record on the dependent finding (the source-evolution path); the memory proposal appears and is confirmed, declined or rescoped; the auditor chooses a permitted alternative model or effort and the change applies from the next boundary; Search finds the paper and nothing from another client. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-4 4.4
 
 
 ### Story 14.5: Working material revisions and copy steps
 
-As a Auditor,
+As an Auditor,
 I want working material revisions and copy steps,
-So that every source read is a snapshot with identity and quality .
+So that the epic's goal holds: every source read is a snapshot with identity and quality; analysis runs on working copies; derived outputs are registered with derivations and validations; three sealing units; governed retention; engagement export.
 
 **Acceptance Criteria:**
 
@@ -3191,14 +3191,14 @@ So that every source read is a snapshot with identity and quality .
 **Then** it establishes: working material
 **And** it is demonstrated by: a revision cannot be cited; promotion registers a derived output
 
-**And** delivery slice: Slice 2; NE reference NE-4 4.5; design gate (D-5-6): **2 — Analysis and a reviewable working paper** (UJ-2, UJ-3, UJ-4) | The leaver list, directory extract and application user list are snapshotted and analysed on working copies in the sandbox; a working paper shows candidate findings, the post-exit login signal and the partial-population limitation; the auditor opens review mode and citations; **an explicitly requested draft correction saves a new version, exposes the changes and offers Undo, with no additional acceptance ceremony; an independently proposed material change follows its applicable decision rules**; dependents are flagged for reconsideration; a corrected directory extract re-acquired from Drive produces an impact record on the dependent finding (the source-evolution path); the memory proposal appears and is confirmed, declined or rescoped; the auditor chooses a permitted alternative model or effort and the change applies from the next boundary; Search finds the paper and nothing from another client. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-4 4.5
 
 
 ### Story 14.6: Derivations with retained method objects; the four check kinds; validation records; recoverable registration
 
-As a Auditor,
+As an Auditor,
 I want derivations with retained method objects; the four check kinds; validation records; recoverable registration,
-So that every source read is a snapshot with identity and quality .
+So that the epic's goal holds: every source read is a snapshot with identity and quality; analysis runs on working copies; derived outputs are registered with derivations and validations; three sealing units; governed retention; engagement export.
 
 **Acceptance Criteria:**
 
@@ -3206,14 +3206,14 @@ So that every source read is a snapshot with identity and quality .
 **Then** it establishes: `derivation-v1`
 **And** it is demonstrated by: repeatable-but-wrong method stays unsupported; checksum-only refused; crash between upload and metadata reconciled
 
-**And** delivery slice: Slice 2; NE reference NE-4 4.6; design gate (D-5-6): **2 — Analysis and a reviewable working paper** (UJ-2, UJ-3, UJ-4) | The leaver list, directory extract and application user list are snapshotted and analysed on working copies in the sandbox; a working paper shows candidate findings, the post-exit login signal and the partial-population limitation; the auditor opens review mode and citations; **an explicitly requested draft correction saves a new version, exposes the changes and offers Undo, with no additional acceptance ceremony; an independently proposed material change follows its applicable decision rules**; dependents are flagged for reconsideration; a corrected directory extract re-acquired from Drive produces an impact record on the dependent finding (the source-evolution path); the memory proposal appears and is confirmed, declined or rescoped; the auditor chooses a permitted alternative model or effort and the change applies from the next boundary; Search finds the paper and nothing from another client. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-4 4.6
 
 
 ### Story 14.7: Reproducibility comparators and re-execution as a recorded validation (with NE-7)
 
-As a Auditor,
+As an Auditor,
 I want reproducibility comparators and re-execution as a recorded validation (with NE-7),
-So that every source read is a snapshot with identity and quality .
+So that the epic's goal holds: every source read is a snapshot with identity and quality; analysis runs on working copies; derived outputs are registered with derivations and validations; three sealing units; governed retention; engagement export.
 
 **Acceptance Criteria:**
 
@@ -3221,14 +3221,14 @@ So that every source read is a snapshot with identity and quality .
 **Then** it establishes: reproducibility
 **And** it is demonstrated by: byte and semantic comparators; model-assisted step never claims identity
 
-**And** delivery slice: Slice 2; NE reference NE-4 4.7; design gate (D-5-6): **2 — Analysis and a reviewable working paper** (UJ-2, UJ-3, UJ-4) | The leaver list, directory extract and application user list are snapshotted and analysed on working copies in the sandbox; a working paper shows candidate findings, the post-exit login signal and the partial-population limitation; the auditor opens review mode and citations; **an explicitly requested draft correction saves a new version, exposes the changes and offers Undo, with no additional acceptance ceremony; an independently proposed material change follows its applicable decision rules**; dependents are flagged for reconsideration; a corrected directory extract re-acquired from Drive produces an impact record on the dependent finding (the source-evolution path); the memory proposal appears and is confirmed, declined or rescoped; the auditor chooses a permitted alternative model or effort and the change applies from the next boundary; Search finds the paper and nothing from another client. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-4 4.7
 
 
 ### Story 14.8: Independent input-quality dimensions and dependency-specific propagation
 
-As a Auditor,
+As an Auditor,
 I want independent input-quality dimensions and dependency-specific propagation,
-So that every source read is a snapshot with identity and quality .
+So that the epic's goal holds: every source read is a snapshot with identity and quality; analysis runs on working copies; derived outputs are registered with derivations and validations; three sealing units; governed retention; engagement export.
 
 **Acceptance Criteria:**
 
@@ -3236,48 +3236,48 @@ So that every source read is a snapshot with identity and quality .
 **Then** it establishes: `input-quality-v1`
 **And** it is demonstrated by: current-but-partial; complete-but-out-of-period; post-period report with in-period content; unknown freshness
 
-**And** delivery slice: Slice 1; NE reference NE-4 4.8; design gate (D-5-6): **1 — First usable conversational slice: ask about the authorised files** (UJ-1 partial) | Connect a personal Drive and choose designated folders (from the conversation, returning to the work); start a draft engagement from Home and state an objective; get an attributed reply naming what was found, assumed and still needed, citing source snapshots with their quality dimensions; open a citation at its locator and return; answer a clarification in free text or by a suggested reply; see a refused out-of-scope read recorded as a security event; an instruction inside a document changes nothing; leave and return, or restart the worker mid-call, and find the task where it was; a completed task carries its manifest. **Formats:** plain text (Google Docs exported as `text/plain`) and CSV (Google Sheets exported as CSV), through the parsers already in the domain; PDF, Office and image content is reported "not supported yet" with the file kept as a received snapshot — no undeclared processing path. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-4 4.8
 
 
 ### Story 14.9a: Task manifests always recorded, empty or incomplete manifests named; grants by owner
 
-As a Auditor,
+As an Auditor,
 I want task manifests always recorded, empty or incomplete manifests named; grants by owner,
-So that every source read is a snapshot with identity and quality .
+So that the epic's goal holds: every source read is a snapshot with identity and quality; analysis runs on working copies; derived outputs are registered with derivations and validations; three sealing units; governed retention; engagement export.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-4 4.9 "Task manifests (always recorded), supplements, grants by owner" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: sealing
 **And** it is demonstrated by: incomplete manifest named; late receipt as supplement; grant for A cannot read B
 
-**And** delivery slice: Slice 1; NE reference NE-4 4.9a; design gate (D-5-6): `evidence-package-v2` — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-4 4.9a
 
 
 ### Story 14.9b: Supplements and late receipts
 
-As a Auditor,
+As an Auditor,
 I want supplements and late receipts,
-So that every source read is a snapshot with identity and quality .
+So that the epic's goal holds: every source read is a snapshot with identity and quality; analysis runs on working copies; derived outputs are registered with derivations and validations; three sealing units; governed retention; engagement export.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-4 4.9 "Task manifests (always recorded), supplements, grants by owner" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: sealing
 **And** it is demonstrated by: incomplete manifest named; late receipt as supplement; grant for A cannot read B
 
-**And** delivery slice: Slice 3; NE reference NE-4 4.9b; design gate (D-5-6): `evidence-package-v2` — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 3; NE reference NE-4 4.9b
 
 
 ### Story 14.10: Retention decisions, holds, dependencies, availability status
 
-As a Auditor,
+As an Auditor,
 I want retention decisions, holds, dependencies, availability status,
-So that every source read is a snapshot with identity and quality .
+So that the epic's goal holds: every source read is a snapshot with identity and quality; analysis runs on working copies; derived outputs are registered with derivations and validations; three sealing units; governed retention; engagement export.
 
 **Acceptance Criteria:**
 
@@ -3290,15 +3290,15 @@ So that every source read is a snapshot with identity and quality .
 
 ### Story 14.11a: Engagement export, review notes under archive scope; a tenant export verifies alone
 
-As a Auditor,
+As an Auditor,
 I want engagement export, review notes under archive scope; a tenant export verifies alone,
-So that every source read is a snapshot with identity and quality .
+So that the epic's goal holds: every source read is a snapshot with identity and quality; analysis runs on working copies; derived outputs are registered with derivations and validations; three sealing units; governed retention; engagement export.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-4 4.11 "Engagement export and offline reproduction (Epic 6.7, 6.8 rebuilt)" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `export-v2`
 **And** it is demonstrated by: a tenant export verifies alone; a derivation reproduces offline from the bundle
 
@@ -3307,15 +3307,15 @@ So that every source read is a snapshot with identity and quality .
 
 ### Story 14.11b: Offline reproduction from the bundle
 
-As a Auditor,
+As an Auditor,
 I want offline reproduction from the bundle,
-So that every source read is a snapshot with identity and quality .
+So that the epic's goal holds: every source read is a snapshot with identity and quality; analysis runs on working copies; derived outputs are registered with derivations and validations; three sealing units; governed retention; engagement export.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-4 4.11 "Engagement export and offline reproduction (Epic 6.7, 6.8 rebuilt)" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `export-v2`
 **And** it is demonstrated by: a tenant export verifies alone; a derivation reproduces offline from the bundle
 
@@ -3335,9 +3335,9 @@ versioned artifacts with claims and citations; platform-owned support status; re
 
 ### Story 15.1: Artifact and immutable version; lifecycle records; frozen-field triggers
 
-As a Auditor,
+As an Auditor,
 I want artifact and immutable version; lifecycle records; frozen-field triggers,
-So that versioned artifacts with claims and citations .
+So that the epic's goal holds: versioned artifacts with claims and citations; platform-owned support status; revision-bound decisions; approval binding the deliverable; renderings validated beyond a round trip; issuance as its own event. Absorbs Epic 6's 6.3–6.5.
 
 **Acceptance Criteria:**
 
@@ -3345,14 +3345,14 @@ So that versioned artifacts with claims and citations .
 **Then** it establishes: aggregates
 **And** it is demonstrated by: content update refused through repository and raw SQL; decisions projected
 
-**And** delivery slice: Slice 2; NE reference NE-5 5.1; design gate (D-5-6): **2 — Analysis and a reviewable working paper** (UJ-2, UJ-3, UJ-4) | The leaver list, directory extract and application user list are snapshotted and analysed on working copies in the sandbox; a working paper shows candidate findings, the post-exit login signal and the partial-population limitation; the auditor opens review mode and citations; **an explicitly requested draft correction saves a new version, exposes the changes and offers Undo, with no additional acceptance ceremony; an independently proposed material change follows its applicable decision rules**; dependents are flagged for reconsideration; a corrected directory extract re-acquired from Drive produces an impact record on the dependent finding (the source-evolution path); the memory proposal appears and is confirmed, declined or rescoped; the auditor chooses a permitted alternative model or effort and the change applies from the next boundary; Search finds the paper and nothing from another client. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-5 5.1
 
 
 ### Story 15.2: Claims, classes, citations, support-status transitions
 
-As a Auditor,
+As an Auditor,
 I want claims, classes, citations, support-status transitions,
-So that versioned artifacts with claims and citations .
+So that the epic's goal holds: versioned artifacts with claims and citations; platform-owned support status; revision-bound decisions; approval binding the deliverable; renderings validated beyond a round trip; issuance as its own event. Absorbs Epic 6's 6.3–6.5.
 
 **Acceptance Criteria:**
 
@@ -3360,14 +3360,14 @@ So that versioned artifacts with claims and citations .
 **Then** it establishes: claims
 **And** it is demonstrated by: factual without citation fails; generated narrative refused; pending-review for proposed interpretations; model `supported` moves nothing
 
-**And** delivery slice: Slice 2; NE reference NE-5 5.2; design gate (D-5-6): **2 — Analysis and a reviewable working paper** (UJ-2, UJ-3, UJ-4) | The leaver list, directory extract and application user list are snapshotted and analysed on working copies in the sandbox; a working paper shows candidate findings, the post-exit login signal and the partial-population limitation; the auditor opens review mode and citations; **an explicitly requested draft correction saves a new version, exposes the changes and offers Undo, with no additional acceptance ceremony; an independently proposed material change follows its applicable decision rules**; dependents are flagged for reconsideration; a corrected directory extract re-acquired from Drive produces an impact record on the dependent finding (the source-evolution path); the memory proposal appears and is confirmed, declined or rescoped; the auditor chooses a permitted alternative model or effort and the change applies from the next boundary; Search finds the paper and nothing from another client. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-5 5.2
 
 
 ### Story 15.3: Dependencies, impact records, `needs-reconsideration` through `mint-platform-draft`
 
-As a Auditor,
+As an Auditor,
 I want dependencies, impact records, `needs-reconsideration` through `mint-platform-draft`,
-So that versioned artifacts with claims and citations .
+So that the epic's goal holds: versioned artifacts with claims and citations; platform-owned support status; revision-bound decisions; approval binding the deliverable; renderings validated beyond a round trip; issuance as its own event. Absorbs Epic 6's 6.3–6.5.
 
 **Acceptance Criteria:**
 
@@ -3375,14 +3375,14 @@ So that versioned artifacts with claims and citations .
 **Then** it establishes: reconsideration
 **And** it is demonstrated by: correction flags dependents; observation notifies only
 
-**And** delivery slice: Slice 2; NE reference NE-5 5.3; design gate (D-5-6): **2 — Analysis and a reviewable working paper** (UJ-2, UJ-3, UJ-4) | The leaver list, directory extract and application user list are snapshotted and analysed on working copies in the sandbox; a working paper shows candidate findings, the post-exit login signal and the partial-population limitation; the auditor opens review mode and citations; **an explicitly requested draft correction saves a new version, exposes the changes and offers Undo, with no additional acceptance ceremony; an independently proposed material change follows its applicable decision rules**; dependents are flagged for reconsideration; a corrected directory extract re-acquired from Drive produces an impact record on the dependent finding (the source-evolution path); the memory proposal appears and is confirmed, declined or rescoped; the auditor chooses a permitted alternative model or effort and the change applies from the next boundary; Search finds the paper and nothing from another client.; Needs-another-look flag and impact records on artifacts — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-5 5.3; design gate (D-5-6): Needs-another-look flag and impact records on artifacts — designed under the Zobba pack's rules and reviewed before this part is built
 
 
 ### Story 15.4: Review request, scoped approval authority, independence over humans, revision-bound decisions
 
-As a Auditor,
+As an Auditor,
 I want review request, scoped approval authority, independence over humans, revision-bound decisions,
-So that versioned artifacts with claims and citations .
+So that the epic's goal holds: versioned artifacts with claims and citations; platform-owned support status; revision-bound decisions; approval binding the deliverable; renderings validated beyond a round trip; issuance as its own event. Absorbs Epic 6's 6.3–6.5.
 
 **Acceptance Criteria:**
 
@@ -3390,14 +3390,14 @@ So that versioned artifacts with claims and citations .
 **Then** it establishes: approval
 **And** it is demonstrated by: Audit Manager without membership refused; contributor self-approval refused; stale revision refused; concurrent edit lands on the old version
 
-**And** delivery slice: Slice 3; NE reference NE-5 5.4; design gate (D-5-6): FR-94 Roles, scope and separation of duties; **3 — Correspondence, one confirmed external effect, independent review** (UJ-5; UJ-4 review and approval; FR-94–96) | A designated Gmail thread and its attachments are read to update the request record; one calendar invitation to the designated test recipient is proposed with its material details, decided on one surface (Allow and send · Edit first · Don't send), created and read back with its receipt; the unknown-outcome pattern is met when the provider does not confirm, with only the permitted recovery actions; a labelled draft `.docx` is saved to the designated Drafts folder; issuance without approval is refused; the second person is invited by copied link, accepts as the verified recipient, reviews from Reviews, returns with anchored notes, and reviews and approves the revised version; a contributor meets the independence refusal; access removal is exercised on a third, disposable identity (background dispatch refused; other tenant memberships kept); review notes are absent from the client rendering and present in the authorised archive export. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 3; NE reference NE-5 5.4
 
 
 ### Story 15.5: Approval binding (content, claims, citations, assessments, template version, rendering)
 
-As a Auditor,
+As an Auditor,
 I want approval binding (content, claims, citations, assessments, template version, rendering),
-So that versioned artifacts with claims and citations .
+So that the epic's goal holds: versioned artifacts with claims and citations; platform-owned support status; revision-bound decisions; approval binding the deliverable; renderings validated beyond a round trip; issuance as its own event. Absorbs Epic 6's 6.3–6.5.
 
 **Acceptance Criteria:**
 
@@ -3405,20 +3405,20 @@ So that versioned artifacts with claims and citations .
 **Then** it establishes: binding
 **And** it is demonstrated by: later rendering not approved; one review satisfies both where the pack allows
 
-**And** delivery slice: Slice 3; NE reference NE-5 5.5; design gate (D-5-6): **3 — Correspondence, one confirmed external effect, independent review** (UJ-5; UJ-4 review and approval; FR-94–96) | A designated Gmail thread and its attachments are read to update the request record; one calendar invitation to the designated test recipient is proposed with its material details, decided on one surface (Allow and send · Edit first · Don't send), created and read back with its receipt; the unknown-outcome pattern is met when the provider does not confirm, with only the permitted recovery actions; a labelled draft `.docx` is saved to the designated Drafts folder; issuance without approval is refused; the second person is invited by copied link, accepts as the verified recipient, reviews from Reviews, returns with anchored notes, and reviews and approves the revised version; a contributor meets the independence refusal; access removal is exercised on a third, disposable identity (background dispatch refused; other tenant memberships kept); review notes are absent from the client rendering and present in the authorised archive export. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 3; NE reference NE-5 5.5
 
 
 ### Story 15.6a: `.docx` rendering with validation layers, feature matrix and blocking defects
 
-As a Auditor,
+As an Auditor,
 I want `.docx` rendering with validation layers, feature matrix and blocking defects,
-So that versioned artifacts with claims and citations .
+So that the epic's goal holds: versioned artifacts with claims and citations; platform-owned support status; revision-bound decisions; approval binding the deliverable; renderings validated beyond a round trip; issuance as its own event. Absorbs Epic 6's 6.3–6.5.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-5 5.6 "Renderings: `.docx` and `.xlsx` in the sandbox (NE-7), validation layers, feature matrix, blocking defects, PDF export" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `rendering-v1`
 **And** it is demonstrated by: embedded screenshot present; stale formula cache blocking; omitted limitation blocking; harmless limitation recorded
 
@@ -3427,15 +3427,15 @@ So that versioned artifacts with claims and citations .
 
 ### Story 15.6b: `.xlsx` production and PDF export
 
-As a Auditor,
+As an Auditor,
 I want `.xlsx` production and PDF export,
-So that versioned artifacts with claims and citations .
+So that the epic's goal holds: versioned artifacts with claims and citations; platform-owned support status; revision-bound decisions; approval binding the deliverable; renderings validated beyond a round trip; issuance as its own event. Absorbs Epic 6's 6.3–6.5.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-5 5.6 "Renderings: `.docx` and `.xlsx` in the sandbox (NE-7), validation layers, feature matrix, blocking defects, PDF export" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `rendering-v1`
 **And** it is demonstrated by: embedded screenshot present; stale formula cache blocking; omitted limitation blocking; harmless limitation recorded
 
@@ -3444,9 +3444,9 @@ So that versioned artifacts with claims and citations .
 
 ### Story 15.7: Draft sharing versus issuance; output-location writes with receipts
 
-As a Auditor,
+As an Auditor,
 I want draft sharing versus issuance; output-location writes with receipts,
-So that versioned artifacts with claims and citations .
+So that the epic's goal holds: versioned artifacts with claims and citations; platform-owned support status; revision-bound decisions; approval binding the deliverable; renderings validated beyond a round trip; issuance as its own event. Absorbs Epic 6's 6.3–6.5.
 
 **Acceptance Criteria:**
 
@@ -3454,20 +3454,20 @@ So that versioned artifacts with claims and citations .
 **Then** it establishes: issuance
 **And** it is demonstrated by: draft share labelled and receipted; issuance without approval refused; source location refused
 
-**And** delivery slice: Slice 3; NE reference NE-5 5.7; design gate (D-5-6): **3 — Correspondence, one confirmed external effect, independent review** (UJ-5; UJ-4 review and approval; FR-94–96) | A designated Gmail thread and its attachments are read to update the request record; one calendar invitation to the designated test recipient is proposed with its material details, decided on one surface (Allow and send · Edit first · Don't send), created and read back with its receipt; the unknown-outcome pattern is met when the provider does not confirm, with only the permitted recovery actions; a labelled draft `.docx` is saved to the designated Drafts folder; issuance without approval is refused; the second person is invited by copied link, accepts as the verified recipient, reviews from Reviews, returns with anchored notes, and reviews and approves the revised version; a contributor meets the independence refusal; access removal is exercised on a third, disposable identity (background dispatch refused; other tenant memberships kept); review notes are absent from the client rendering and present in the authorised archive export.; Sharing a working draft versus issuance; PDF export — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 3; NE reference NE-5 5.7; design gate (D-5-6): Sharing a working draft versus issuance; PDF export — designed under the Zobba pack's rules and reviewed before this part is built
 
 
 ### Story 15.8a: Example pack artifact types: plan, working paper and finding
 
-As a Auditor,
+As an Auditor,
 I want example pack artifact types: plan, working paper and finding,
-So that versioned artifacts with claims and citations .
+So that the epic's goal holds: versioned artifacts with claims and citations; platform-owned support status; revision-bound decisions; approval binding the deliverable; renderings validated beyond a round trip; issuance as its own event. Absorbs Epic 6's 6.3–6.5.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-5 5.8 "Example pack artifact types: plan, procedure, request list, working paper, finding, report" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: types
 **And** it is demonstrated by: a firm pack with different types runs end to end
 
@@ -3476,15 +3476,15 @@ So that versioned artifacts with claims and citations .
 
 ### Story 15.8b: Example pack artifact type: request list
 
-As a Auditor,
+As an Auditor,
 I want example pack artifact type: request list,
-So that versioned artifacts with claims and citations .
+So that the epic's goal holds: versioned artifacts with claims and citations; platform-owned support status; revision-bound decisions; approval binding the deliverable; renderings validated beyond a round trip; issuance as its own event. Absorbs Epic 6's 6.3–6.5.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-5 5.8 "Example pack artifact types: plan, procedure, request list, working paper, finding, report" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: types
 **And** it is demonstrated by: a firm pack with different types runs end to end
 
@@ -3493,15 +3493,15 @@ So that versioned artifacts with claims and citations .
 
 ### Story 15.8c: Example pack artifact type: procedure
 
-As a Auditor,
+As an Auditor,
 I want example pack artifact type: procedure,
-So that versioned artifacts with claims and citations .
+So that the epic's goal holds: versioned artifacts with claims and citations; platform-owned support status; revision-bound decisions; approval binding the deliverable; renderings validated beyond a round trip; issuance as its own event. Absorbs Epic 6's 6.3–6.5.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-5 5.8 "Example pack artifact types: plan, procedure, request list, working paper, finding, report" — this is bounded part c; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: types
 **And** it is demonstrated by: a firm pack with different types runs end to end
 
@@ -3510,15 +3510,15 @@ So that versioned artifacts with claims and citations .
 
 ### Story 15.8d: Example pack artifact type: report
 
-As a Auditor,
+As an Auditor,
 I want example pack artifact type: report,
-So that versioned artifacts with claims and citations .
+So that the epic's goal holds: versioned artifacts with claims and citations; platform-owned support status; revision-bound decisions; approval binding the deliverable; renderings validated beyond a round trip; issuance as its own event. Absorbs Epic 6's 6.3–6.5.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-5 5.8 "Example pack artifact types: plan, procedure, request list, working paper, finding, report" — this is bounded part d; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: types
 **And** it is demonstrated by: a firm pack with different types runs end to end
 
@@ -3527,9 +3527,9 @@ So that versioned artifacts with claims and citations .
 
 ### Story 15.9: Review request and return: `review-requested` and `returned` records; notes anchored to a location in the exact version with author, response and disposition; Mark as reviewed neither approves nor issues; notes excluded from client-facing renderings by default and included in authorised workpaper, archive and verification exports; one eligible independent person may satisfy review and approval where the pack permits
 
-As a Auditor,
+As an Auditor,
 I want review request and return: `review-requested` and `returned` records; notes anchored to a location in the exact version with author, response and disposition; Mark as reviewed neither approves nor issues; notes excluded from client-facing renderings by default and included in authorised workpaper, archive and verification exports; one eligible independent person may satisfy review and approval where the pack permits,
-So that versioned artifacts with claims and citations .
+So that the epic's goal holds: versioned artifacts with claims and citations; platform-owned support status; revision-bound decisions; approval binding the deliverable; renderings validated beyond a round trip; issuance as its own event. Absorbs Epic 6's 6.3–6.5.
 
 **Acceptance Criteria:**
 
@@ -3537,7 +3537,7 @@ So that versioned artifacts with claims and citations .
 **Then** it establishes: `artifact-version-v1` §review notes (FR-96)
 **And** it is demonstrated by: a returned version is unchanged and its notes are retained on the next submission; notes absent from a client rendering and present in an authorised archive export; unresolved substantive notes stay visible under the pack's decision rules; a preparer's self-check recorded as a check, never as review
 
-**And** delivery slice: Slice 3; NE reference NE-5 5.9; design gate (D-5-6): FR-96 Review notes and return; **3 — Correspondence, one confirmed external effect, independent review** (UJ-5; UJ-4 review and approval; FR-94–96) | A designated Gmail thread and its attachments are read to update the request record; one calendar invitation to the designated test recipient is proposed with its material details, decided on one surface (Allow and send · Edit first · Don't send), created and read back with its receipt; the unknown-outcome pattern is met when the provider does not confirm, with only the permitted recovery actions; a labelled draft `.docx` is saved to the designated Drafts folder; issuance without approval is refused; the second person is invited by copied link, accepts as the verified recipient, reviews from Reviews, returns with anchored notes, and reviews and approves the revised version; a contributor meets the independence refusal; access removal is exercised on a third, disposable identity (background dispatch refused; other tenant memberships kept); review notes are absent from the client rendering and present in the authorised archive export. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 3; NE reference NE-5 5.9
 
 
 ## Epic 16: Memory, retrieval, skills and methodology packs
@@ -3553,15 +3553,15 @@ scoped retrieval; six memory scopes with ownership and verification status; skil
 
 ### Story 16.1a: Retrieval index over messages and artifacts under RLS; filter before rank; coverage in results
 
-As a Auditor,
+As an Auditor,
 I want retrieval index over messages and artifacts under RLS; filter before rank; coverage in results,
-So that scoped retrieval .
+So that the epic's goal holds: scoped retrieval; six memory scopes with ownership and verification status; skills and packs as versioned tenant data under the mandatory minimum; a usable start without a pack.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-6 6.1 "Retrieval index rows under RLS; filter before rank; coverage in results; direct full reads" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: retrieval
 **And** it is demonstrated by: client-B item absent; stale index then direct read; period spanning two policy versions
 
@@ -3570,15 +3570,15 @@ So that scoped retrieval .
 
 ### Story 16.1b: Period-spanning policy versions and direct full reads
 
-As a Auditor,
+As an Auditor,
 I want period-spanning policy versions and direct full reads,
-So that scoped retrieval .
+So that the epic's goal holds: scoped retrieval; six memory scopes with ownership and verification status; skills and packs as versioned tenant data under the mandatory minimum; a usable start without a pack.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-6 6.1 "Retrieval index rows under RLS; filter before rank; coverage in results; direct full reads" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: retrieval
 **And** it is demonstrated by: client-B item absent; stale index then direct read; period spanning two policy versions
 
@@ -3587,15 +3587,15 @@ So that scoped retrieval .
 
 ### Story 16.2a: Memory items for user preference, engagement facts and client knowledge
 
-As a Auditor,
+As an Auditor,
 I want memory items for user preference, engagement facts and client knowledge,
-So that scoped retrieval .
+So that the epic's goal holds: scoped retrieval; six memory scopes with ownership and verification status; skills and packs as versioned tenant data under the mandatory minimum; a usable start without a pack.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-6 6.2 "Memory items: scopes, ownership, delegation, lifecycle and verification status" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `memory-v1`
 **And** it is demonstrated by: explicit instruction `active` and `user-reported`; inferred item `proposed` and invisible as instruction; non-owner refused
 
@@ -3604,15 +3604,15 @@ So that scoped retrieval .
 
 ### Story 16.2b: Memory items for firm methodology and confirmed reusable lessons
 
-As a Auditor,
+As an Auditor,
 I want memory items for firm methodology and confirmed reusable lessons,
-So that scoped retrieval .
+So that the epic's goal holds: scoped retrieval; six memory scopes with ownership and verification status; skills and packs as versioned tenant data under the mandatory minimum; a usable start without a pack.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-6 6.2 "Memory items: scopes, ownership, delegation, lifecycle and verification status" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `memory-v1`
 **And** it is demonstrated by: explicit instruction `active` and `user-reported`; inferred item `proposed` and invisible as instruction; non-owner refused
 
@@ -3621,9 +3621,9 @@ So that scoped retrieval .
 
 ### Story 16.3: Configured precedence and proposed conflicts
 
-As a Auditor,
+As an Auditor,
 I want configured precedence and proposed conflicts,
-So that scoped retrieval .
+So that the epic's goal holds: scoped retrieval; six memory scopes with ownership and verification status; skills and packs as versioned tenant data under the mandatory minimum; a usable start without a pack.
 
 **Acceptance Criteria:**
 
@@ -3631,14 +3631,14 @@ So that scoped retrieval .
 **Then** it establishes: precedence
 **And** it is demonstrated by: two packs resolve differently; prose conflict recorded not decided
 
-**And** delivery slice: Slice 2; NE reference NE-6 6.3; design gate (D-5-6): **2 — Analysis and a reviewable working paper** (UJ-2, UJ-3, UJ-4) | The leaver list, directory extract and application user list are snapshotted and analysed on working copies in the sandbox; a working paper shows candidate findings, the post-exit login signal and the partial-population limitation; the auditor opens review mode and citations; **an explicitly requested draft correction saves a new version, exposes the changes and offers Undo, with no additional acceptance ceremony; an independently proposed material change follows its applicable decision rules**; dependents are flagged for reconsideration; a corrected directory extract re-acquired from Drive produces an impact record on the dependent finding (the source-evolution path); the memory proposal appears and is confirmed, declined or rescoped; the auditor chooses a permitted alternative model or effort and the change applies from the next boundary; Search finds the paper and nothing from another client. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-6 6.3
 
 
 ### Story 16.4: Pack schema, validation, activation by an Admin as an audited configuration change; the example pack from `templates.ts` (P-1..P-4 and fixtures, optional) and the minimal neutral example template (Q12)
 
-As a Auditor,
+As an Auditor,
 I want pack schema, validation, activation by an Admin as an audited configuration change; the example pack from `templates.ts` (P-1..P-4 and fixtures, optional) and the minimal neutral example template (Q12),
-So that scoped retrieval .
+So that the epic's goal holds: scoped retrieval; six memory scopes with ownership and verification status; skills and packs as versioned tenant data under the mandatory minimum; a usable start without a pack.
 
 **Acceptance Criteria:**
 
@@ -3646,14 +3646,14 @@ So that scoped retrieval .
 **Then** it establishes: `methodology-pack-v1`
 **And** it is demonstrated by: example pack validates; undefined state refused; activation audited; engagement keeps its version; an Admin's activation confers no audit-approval right
 
-**And** delivery slice: Slice 2; NE reference NE-6 6.4; design gate (D-5-6): FR-94 Roles, scope and separation of duties; **2 — Analysis and a reviewable working paper** (UJ-2, UJ-3, UJ-4) | The leaver list, directory extract and application user list are snapshotted and analysed on working copies in the sandbox; a working paper shows candidate findings, the post-exit login signal and the partial-population limitation; the auditor opens review mode and citations; **an explicitly requested draft correction saves a new version, exposes the changes and offers Undo, with no additional acceptance ceremony; an independently proposed material change follows its applicable decision rules**; dependents are flagged for reconsideration; a corrected directory extract re-acquired from Drive produces an impact record on the dependent finding (the source-evolution path); the memory proposal appears and is confirmed, declined or rescoped; the auditor chooses a permitted alternative model or effort and the change applies from the next boundary; Search finds the paper and nothing from another client. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-6 6.4
 
 
 ### Story 16.5: Gate rule classification (platform-mandatory, methodology-configurable, legacy-template-specific)
 
-As a Auditor,
+As an Auditor,
 I want gate rule classification (platform-mandatory, methodology-configurable, legacy-template-specific),
-So that scoped retrieval .
+So that the epic's goal holds: scoped retrieval; six memory scopes with ownership and verification status; skills and packs as versioned tenant data under the mandatory minimum; a usable start without a pack.
 
 **Acceptance Criteria:**
 
@@ -3661,14 +3661,14 @@ So that scoped retrieval .
 **Then** it establishes: `run-level-gate-v2`
 **And** it is demonstrated by: a pack omitting a mandatory rule refused; every rule classified
 
-**And** delivery slice: Slice 2; NE reference NE-6 6.5; design gate (D-5-6): **2 — Analysis and a reviewable working paper** (UJ-2, UJ-3, UJ-4) | The leaver list, directory extract and application user list are snapshotted and analysed on working copies in the sandbox; a working paper shows candidate findings, the post-exit login signal and the partial-population limitation; the auditor opens review mode and citations; **an explicitly requested draft correction saves a new version, exposes the changes and offers Undo, with no additional acceptance ceremony; an independently proposed material change follows its applicable decision rules**; dependents are flagged for reconsideration; a corrected directory extract re-acquired from Drive produces an impact record on the dependent finding (the source-evolution path); the memory proposal appears and is confirmed, declined or rescoped; the auditor chooses a permitted alternative model or effort and the change applies from the next boundary; Search finds the paper and nothing from another client. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-6 6.5
 
 
 ### Story 16.6: Skills: descriptor, admission, discovery, loading, recording
 
-As a Auditor,
+As an Auditor,
 I want skills: descriptor, admission, discovery, loading, recording,
-So that scoped retrieval .
+So that the epic's goal holds: scoped retrieval; six memory scopes with ownership and verification status; skills and packs as versioned tenant data under the mandatory minimum; a usable start without a pack.
 
 **Acceptance Criteria:**
 
@@ -3676,20 +3676,20 @@ So that scoped retrieval .
 **Then** it establishes: `skill-v1`
 **And** it is demonstrated by: unmet capability reported and denied; unapproved skill not loaded; task records versions
 
-**And** delivery slice: Slice 2; NE reference NE-6 6.6; design gate (D-5-6): **2 — Analysis and a reviewable working paper** (UJ-2, UJ-3, UJ-4) | The leaver list, directory extract and application user list are snapshotted and analysed on working copies in the sandbox; a working paper shows candidate findings, the post-exit login signal and the partial-population limitation; the auditor opens review mode and citations; **an explicitly requested draft correction saves a new version, exposes the changes and offers Undo, with no additional acceptance ceremony; an independently proposed material change follows its applicable decision rules**; dependents are flagged for reconsideration; a corrected directory extract re-acquired from Drive produces an impact record on the dependent finding (the source-evolution path); the memory proposal appears and is confirmed, declined or rescoped; the auditor chooses a permitted alternative model or effort and the change applies from the next boundary; Search finds the paper and nothing from another client. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-6 6.6
 
 
 ### Story 16.7a: Bootstrap without a pack; the no-methodology sentence
 
-As a Auditor,
+As an Auditor,
 I want bootstrap without a pack; the no-methodology sentence,
-So that scoped retrieval .
+So that the epic's goal holds: scoped retrieval; six memory scopes with ownership and verification status; skills and packs as versioned tenant data under the mandatory minimum; a usable start without a pack.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-6 6.7 "Bootstrap without a pack; starter selection; pack proposal from documents" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: bootstrap
 **And** it is demonstrated by: useful work before selection; promotion blocked naming the configuration; proposal `proposed` until an Admin approves it as configuration
 
@@ -3698,15 +3698,15 @@ So that scoped retrieval .
 
 ### Story 16.7b: Starter pack selection
 
-As a Auditor,
+As an Auditor,
 I want starter pack selection,
-So that scoped retrieval .
+So that the epic's goal holds: scoped retrieval; six memory scopes with ownership and verification status; skills and packs as versioned tenant data under the mandatory minimum; a usable start without a pack.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-6 6.7 "Bootstrap without a pack; starter selection; pack proposal from documents" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: bootstrap
 **And** it is demonstrated by: useful work before selection; promotion blocked naming the configuration; proposal `proposed` until an Admin approves it as configuration
 
@@ -3715,15 +3715,15 @@ So that scoped retrieval .
 
 ### Story 16.7c: Pack proposal from documents
 
-As a Auditor,
+As an Auditor,
 I want pack proposal from documents,
-So that scoped retrieval .
+So that the epic's goal holds: scoped retrieval; six memory scopes with ownership and verification status; skills and packs as versioned tenant data under the mandatory minimum; a usable start without a pack.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-6 6.7 "Bootstrap without a pack; starter selection; pack proposal from documents" — this is bounded part c; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: bootstrap
 **And** it is demonstrated by: useful work before selection; promotion blocked naming the configuration; proposal `proposed` until an Admin approves it as configuration
 
@@ -3732,43 +3732,43 @@ So that scoped retrieval .
 
 ### Story 16.8a: Bounded working context: the full supported context preserved, an honest stop at its limit, re-evaluation on permission change
 
-As a Auditor,
+As an Auditor,
 I want bounded working context: the full supported context preserved, an honest stop at its limit, re-evaluation on permission change,
-So that scoped retrieval .
+So that the epic's goal holds: scoped retrieval; six memory scopes with ownership and verification status; skills and packs as versioned tenant data under the mandatory minimum; a usable start without a pack.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-6 6.8 "Compaction records and context re-evaluation on permission change" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `working-context-v1` §compaction
 **And** it is demonstrated by: correction survives compaction; revoked content absent on resume
 
-**And** delivery slice: Slice 1; NE reference NE-6 6.8a; design gate (D-5-6): `working-context-v1` — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-6 6.8a
 
 
 ### Story 16.8b: Compaction records
 
-As a Auditor,
+As an Auditor,
 I want compaction records,
-So that scoped retrieval .
+So that the epic's goal holds: scoped retrieval; six memory scopes with ownership and verification status; skills and packs as versioned tenant data under the mandatory minimum; a usable start without a pack.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-6 6.8 "Compaction records and context re-evaluation on permission change" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `working-context-v1` §compaction
 **And** it is demonstrated by: correction survives compaction; revoked content absent on resume
 
-**And** delivery slice: Deferred; NE reference NE-6 6.8b; design gate (D-5-6): `working-context-v1` — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Deferred; NE reference NE-6 6.8b
 
 
 ### Story 16.9: Pack and skill accountability records (creator, maintainer, approver); a methodology change cannot bypass a platform-mandatory Gate rule, waive an independent approval or reach client evidence; an approved check keeps its pack version after a new version is activated; methodology-scope knowledge promotion by Admin only within that scope
 
-As a Auditor,
+As an Auditor,
 I want pack and skill accountability records (creator, maintainer, approver); a methodology change cannot bypass a platform-mandatory Gate rule, waive an independent approval or reach client evidence; an approved check keeps its pack version after a new version is activated; methodology-scope knowledge promotion by Admin only within that scope,
-So that scoped retrieval .
+So that the epic's goal holds: scoped retrieval; six memory scopes with ownership and verification status; skills and packs as versioned tenant data under the mandatory minimum; a usable start without a pack.
 
 **Acceptance Criteria:**
 
@@ -3776,7 +3776,7 @@ So that scoped retrieval .
 **Then** it establishes: `methodology-pack-v1` §accountability, `skill-v1`, `memory-v1` §promotion (FR-86, FR-94)
 **And** it is demonstrated by: a pack omitting a platform-mandatory rule refused; an Admin cannot confirm another person's preference, engagement or client memory item; the check's pack version unchanged after activation of a newer pack
 
-**And** delivery slice: Slice 2; NE reference NE-6 6.9; design gate (D-5-6): FR-94 Roles, scope and separation of duties; **2 — Analysis and a reviewable working paper** (UJ-2, UJ-3, UJ-4) | The leaver list, directory extract and application user list are snapshotted and analysed on working copies in the sandbox; a working paper shows candidate findings, the post-exit login signal and the partial-population limitation; the auditor opens review mode and citations; **an explicitly requested draft correction saves a new version, exposes the changes and offers Undo, with no additional acceptance ceremony; an independently proposed material change follows its applicable decision rules**; dependents are flagged for reconsideration; a corrected directory extract re-acquired from Drive produces an impact record on the dependent finding (the source-evolution path); the memory proposal appears and is confirmed, declined or rescoped; the auditor chooses a permitted alternative model or effort and the change applies from the next boundary; Search finds the paper and nothing from another client. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-6 6.9
 
 
 ## Epic 17: Controlled execution environment and document processing
@@ -3794,7 +3794,7 @@ a documented, tested sandbox with a recorded profile, network-disabled; document
 
 As a platform operator,
 I want select and document the backend and profile (an implementation selection recorded with rationale); `no-code-execution-in-web`,
-So that a documented, tested sandbox with a recorded profile, network-disabled .
+So that the epic's goal holds: a documented, tested sandbox with a recorded profile, network-disabled; document extraction with region binding and spreadsheet calculation rules; the rendering engine.
 
 **Acceptance Criteria:**
 
@@ -3802,14 +3802,14 @@ So that a documented, tested sandbox with a recorded profile, network-disabled .
 **Then** it establishes: D-3b-2
 **And** it is demonstrated by: the deployed-profile assertion; boundary plants
 
-**And** delivery slice: Slice 2; NE reference NE-7 7.1; design gate (D-5-6): **2 — Analysis and a reviewable working paper** (UJ-2, UJ-3, UJ-4) | The leaver list, directory extract and application user list are snapshotted and analysed on working copies in the sandbox; a working paper shows candidate findings, the post-exit login signal and the partial-population limitation; the auditor opens review mode and citations; **an explicitly requested draft correction saves a new version, exposes the changes and offers Undo, with no additional acceptance ceremony; an independently proposed material change follows its applicable decision rules**; dependents are flagged for reconsideration; a corrected directory extract re-acquired from Drive produces an impact record on the dependent finding (the source-evolution path); the memory proposal appears and is confirmed, declined or rescoped; the auditor chooses a permitted alternative model or effort and the change applies from the next boundary; Search finds the paper and nothing from another client. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-7 7.1
 
 
 ### Story 17.2: `CodeExecution` port, supervisor, mounts, output collection, limits, execution record as `execution-log`
 
 As a platform operator,
 I want `CodeExecution` port, supervisor, mounts, output collection, limits, execution record as `execution-log`,
-So that a documented, tested sandbox with a recorded profile, network-disabled .
+So that the epic's goal holds: a documented, tested sandbox with a recorded profile, network-disabled; document extraction with region binding and spreadsheet calculation rules; the rendering engine.
 
 **Acceptance Criteria:**
 
@@ -3817,14 +3817,14 @@ So that a documented, tested sandbox with a recorded profile, network-disabled .
 **Then** it establishes: port
 **And** it is demonstrated by: isolation negatives; forged stdout ignored; unsafe output rejected; limits end with diagnostics
 
-**And** delivery slice: Slice 2; NE reference NE-7 7.2; design gate (D-5-6): **2 — Analysis and a reviewable working paper** (UJ-2, UJ-3, UJ-4) | The leaver list, directory extract and application user list are snapshotted and analysed on working copies in the sandbox; a working paper shows candidate findings, the post-exit login signal and the partial-population limitation; the auditor opens review mode and citations; **an explicitly requested draft correction saves a new version, exposes the changes and offers Undo, with no additional acceptance ceremony; an independently proposed material change follows its applicable decision rules**; dependents are flagged for reconsideration; a corrected directory extract re-acquired from Drive produces an impact record on the dependent finding (the source-evolution path); the memory proposal appears and is confirmed, declined or rescoped; the auditor chooses a permitted alternative model or effort and the change applies from the next boundary; Search finds the paper and nothing from another client. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-7 7.2
 
 
 ### Story 17.3: `local` mode: development-only, synthetic fixtures, never a fallback
 
 As a platform operator,
 I want `local` mode: development-only, synthetic fixtures, never a fallback,
-So that a documented, tested sandbox with a recorded profile, network-disabled .
+So that the epic's goal holds: a documented, tested sandbox with a recorded profile, network-disabled; document extraction with region binding and spreadsheet calculation rules; the rendering engine.
 
 **Acceptance Criteria:**
 
@@ -3832,20 +3832,20 @@ So that a documented, tested sandbox with a recorded profile, network-disabled .
 **Then** it establishes: mode
 **And** it is demonstrated by: isolation unavailable fails; `local` refused in production
 
-**And** delivery slice: Slice 2; NE reference NE-7 7.3; design gate (D-5-6): **2 — Analysis and a reviewable working paper** (UJ-2, UJ-3, UJ-4) | The leaver list, directory extract and application user list are snapshotted and analysed on working copies in the sandbox; a working paper shows candidate findings, the post-exit login signal and the partial-population limitation; the auditor opens review mode and citations; **an explicitly requested draft correction saves a new version, exposes the changes and offers Undo, with no additional acceptance ceremony; an independently proposed material change follows its applicable decision rules**; dependents are flagged for reconsideration; a corrected directory extract re-acquired from Drive produces an impact record on the dependent finding (the source-evolution path); the memory proposal appears and is confirmed, declined or rescoped; the auditor chooses a permitted alternative model or effort and the change applies from the next boundary; Search finds the paper and nothing from another client. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-7 7.3
 
 
 ### Story 17.4a: Extraction programs: CSV, `.xlsx` read with cached and recalculated values, PDF text and page images
 
 As a platform operator,
 I want extraction programs: CSV, `.xlsx` read with cached and recalculated values, PDF text and page images,
-So that a documented, tested sandbox with a recorded profile, network-disabled .
+So that the epic's goal holds: a documented, tested sandbox with a recorded profile, network-disabled; document extraction with region binding and spreadsheet calculation rules; the rendering engine.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-7 7.4 "Extraction programs: PDF with page images, `.docx`, `.xlsx` with formula, cached and recalculated values, CSV, email MIME, OCR" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `document-extraction-v1`
 **And** it is demonstrated by: per-format cases; stale cache detected; macro not executed; corrupt file `unsupported`
 
@@ -3856,13 +3856,13 @@ So that a documented, tested sandbox with a recorded profile, network-disabled .
 
 As a platform operator,
 I want extraction programs: `.docx` read and OCR,
-So that a documented, tested sandbox with a recorded profile, network-disabled .
+So that the epic's goal holds: a documented, tested sandbox with a recorded profile, network-disabled; document extraction with region binding and spreadsheet calculation rules; the rendering engine.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-7 7.4 "Extraction programs: PDF with page images, `.docx`, `.xlsx` with formula, cached and recalculated values, CSV, email MIME, OCR" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `document-extraction-v1`
 **And** it is demonstrated by: per-format cases; stale cache detected; macro not executed; corrupt file `unsupported`
 
@@ -3873,13 +3873,13 @@ So that a documented, tested sandbox with a recorded profile, network-disabled .
 
 As a platform operator,
 I want extraction programs: email MIME parts,
-So that a documented, tested sandbox with a recorded profile, network-disabled .
+So that the epic's goal holds: a documented, tested sandbox with a recorded profile, network-disabled; document extraction with region binding and spreadsheet calculation rules; the rendering engine.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-7 7.4 "Extraction programs: PDF with page images, `.docx`, `.xlsx` with formula, cached and recalculated values, CSV, email MIME, OCR" — this is bounded part c; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `document-extraction-v1`
 **And** it is demonstrated by: per-format cases; stale cache detected; macro not executed; corrupt file `unsupported`
 
@@ -3890,13 +3890,13 @@ So that a documented, tested sandbox with a recorded profile, network-disabled .
 
 As a platform operator,
 I want substrates and locator grammars: `sheet` and `pdf`,
-So that a documented, tested sandbox with a recorded profile, network-disabled .
+So that the epic's goal holds: a documented, tested sandbox with a recorded profile, network-disabled; document extraction with region binding and spreadsheet calculation rules; the rendering engine.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-7 7.5 "New substrates and locator grammars; corroboration against the preserved representation" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: substrates
 **And** it is demonstrated by: wrong claim `contradicted`; unresolved OCR `not-machine-checkable`
 
@@ -3907,13 +3907,13 @@ So that a documented, tested sandbox with a recorded profile, network-disabled .
 
 As a platform operator,
 I want substrate and locator grammar: `mail`,
-So that a documented, tested sandbox with a recorded profile, network-disabled .
+So that the epic's goal holds: a documented, tested sandbox with a recorded profile, network-disabled; document extraction with region binding and spreadsheet calculation rules; the rendering engine.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-7 7.5 "New substrates and locator grammars; corroboration against the preserved representation" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: substrates
 **And** it is demonstrated by: wrong claim `contradicted`; unresolved OCR `not-machine-checkable`
 
@@ -3924,13 +3924,13 @@ So that a documented, tested sandbox with a recorded profile, network-disabled .
 
 As a platform operator,
 I want substrates and locator grammars: `doc` and `image`,
-So that a documented, tested sandbox with a recorded profile, network-disabled .
+So that the epic's goal holds: a documented, tested sandbox with a recorded profile, network-disabled; document extraction with region binding and spreadsheet calculation rules; the rendering engine.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-7 7.5 "New substrates and locator grammars; corroboration against the preserved representation" — this is bounded part c; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: substrates
 **And** it is demonstrated by: wrong claim `contradicted`; unresolved OCR `not-machine-checkable`
 
@@ -3941,13 +3941,13 @@ So that a documented, tested sandbox with a recorded profile, network-disabled .
 
 As a platform operator,
 I want rendering engine image for `.docx`,
-So that a documented, tested sandbox with a recorded profile, network-disabled .
+So that the epic's goal holds: a documented, tested sandbox with a recorded profile, network-disabled; document extraction with region binding and spreadsheet calculation rules; the rendering engine.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-7 7.6 "Rendering engine images for `.docx` and `.xlsx` and PDF export" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `RenderingEngine`
 **And** it is demonstrated by: round trip plus the NE-5 fidelity set
 
@@ -3958,13 +3958,13 @@ So that a documented, tested sandbox with a recorded profile, network-disabled .
 
 As a platform operator,
 I want rendering for `.xlsx` and PDF export,
-So that a documented, tested sandbox with a recorded profile, network-disabled .
+So that the epic's goal holds: a documented, tested sandbox with a recorded profile, network-disabled; document extraction with region binding and spreadsheet calculation rules; the rendering engine.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-7 7.6 "Rendering engine images for `.docx` and `.xlsx` and PDF export" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `RenderingEngine`
 **And** it is demonstrated by: round trip plus the NE-5 fidelity set
 
@@ -3984,9 +3984,9 @@ EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity 
 
 ### Story 18.1: Identity and tokens: Pair symbol, wordmark, lockups, app icon and favicon from the pack's assets; `zobba-tokens.json` as the token source; Hanken Grotesk and IBM Plex Mono; light-only UI; Lucide at 2px (provisional); Iris never carries an audit result
 
-As a Auditor,
+As an Auditor,
 I want identity and tokens: Pair symbol, wordmark, lockups, app icon and favicon from the pack's assets; `zobba-tokens.json` as the token source; Hanken Grotesk and IBM Plex Mono; light-only UI; Lucide at 2px (provisional); Iris never carries an audit result,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
@@ -3994,14 +3994,14 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 **Then** it establishes: DESIGN.md rev 2 §2–§3
 **And** it is demonstrated by: `tokens.test.ts` re-pointed to the pack JSON and green; `stylesheet.test.ts` over the new classes; contrast figures asserted; no status colour reuses Iris
 
-**And** delivery slice: Slice 0; NE reference NE-8 8.0; design gate (D-5-6): **0 — Isolation proven** (prerequisite) | Nothing new for an auditor; the scoped schema, roles, delegations, invitations and removal exist behind the existing surfaces. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 0; NE reference NE-8 8.0
 
 
 ### Story 18.2: Review the pack's 23 reference screens against the six-scene acceptance set (a new conversation; active analysis; artifact and citation inspection in reading and review modes; a material decision; an uncertain external effect; an unattended scheduled result); open the design-acceptance register listing every undesigned surface with its story and slice; design each under the pack's rules before its story
 
-As a Auditor,
+As an Auditor,
 I want review the pack's 23 reference screens against the six-scene acceptance set (a new conversation; active analysis; artifact and citation inspection in reading and review modes; a material decision; an uncertain external effect; an unattended scheduled result); open the design-acceptance register listing every undesigned surface with its story and slice; design each under the pack's rules before its story,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
@@ -4009,14 +4009,14 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 **Then** it establishes: U11 gate, 4b §10
 **And** it is demonstrated by: the review record naming screens 03, 04, 06, 11, 14, 15, 17, 18 as reviewed; the register with one row per gap and its owning story; no story in §5 started before its row is closed
 
-**And** delivery slice: Slice 0; NE reference NE-8 8.1; design gate (D-5-6): **0 — Isolation proven** (prerequisite) | Nothing new for an auditor; the scoped schema, roles, delegations, invitations and removal exist behind the existing surfaces. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 0; NE reference NE-8 8.1
 
 
 ### Story 18.3: Shell: the pack's first-level navigation; Reviews shown by responsibility and capability; the notification panel with the complete attention view (every open question, confirmation, reconciliation case, memory proposal and result needing attention); Engagements with Scheduled checks and Legacy procedures views; Recent tasks; workspace, client and engagement named in the header; tenant switching; breadcrumbs and the one-landmark rule
 
-As a Auditor,
+As an Auditor,
 I want shell: the pack's first-level navigation; Reviews shown by responsibility and capability; the notification panel with the complete attention view (every open question, confirmation, reconciliation case, memory proposal and result needing attention); Engagements with Scheduled checks and Legacy procedures views; Recent tasks; workspace, client and engagement named in the header; tenant switching; breadcrumbs and the one-landmark rule,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
@@ -4024,20 +4024,20 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 **Then** it establishes: U2 as amended by D-4b-2
 **And** it is demonstrated by: shell and breadcrumb tests; an outstanding decision discoverable from the panel without searching old conversations; the panel's "couldn't load" Banner never the empty state; a legacy Procedure opened by its auditor; a person in two firms switches tenants and carries nothing across
 
-**And** delivery slice: Slice 1; NE reference NE-8 8.2; design gate (D-5-6): FR-94 Roles, scope and separation of duties; **1 — First usable conversational slice: ask about the authorised files** (UJ-1 partial) | Connect a personal Drive and choose designated folders (from the conversation, returning to the work); start a draft engagement from Home and state an objective; get an attributed reply naming what was found, assumed and still needed, citing source snapshots with their quality dimensions; open a citation at its locator and return; answer a clarification in free text or by a suggested reply; see a refused out-of-scope read recorded as a security event; an instruction inside a document changes nothing; leave and return, or restart the worker mid-call, and find the task where it was; a completed task carries its manifest. **Formats:** plain text (Google Docs exported as `text/plain`) and CSV (Google Sheets exported as CSV), through the parsers already in the domain; PDF, Office and image content is reported "not supported yet" with the file kept as a received snapshot — no undeclared processing path.; Tenant switching for a person in two firms; Legacy procedures view (compiler-1 Runs, Run Detail, Live View, Replay reachable); The notification panel's complete attention view — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-8 8.2; design gate (D-5-6): Tenant switching for a person in two firms; Legacy procedures view (compiler-1 Runs, Run Detail, Live View, Replay reachable); The notification panel's complete attention view — designed under the Zobba pack's rules and reviewed before this part is built
 
 
 ### Story 18.4a: Home and the workspace: composer with engagement and Permissions chips and the default model chip, starters, thread, activity list, panel modes, client binding, Stop and Stop requested
 
-As a Auditor,
+As an Auditor,
 I want home and the workspace: composer with engagement and Permissions chips and the default model chip, starters, thread, activity list, panel modes, client binding, Stop and Stop requested,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-8 8.3 "Home and the workspace: the composer ("What are we auditing today?") with engagement, Permissions and model chips and the four starters; the Continue list; the thread with attributed entries and grouped activity; the activity list anatomy; the inspection panel with its five layout modes, Pin · Expand · Close, the From-task line and Q7 protection; guidance queued and applied; select a statement and ask; the draft engagement and client-binding moment" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: U3, U4, R1–R2, P1–P6
 **And** it is demonstrated by: a first request needs no name or client; context survives opening evidence, changing panels, returning, new activity; a suggested reply submits the text as the answer; pinned or focused content is not replaced while inspected; keyboard citation inspection with return
 
@@ -4046,15 +4046,15 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 
 ### Story 18.4b: Model chip selection and effort
 
-As a Auditor,
+As an Auditor,
 I want model chip selection and effort,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-8 8.3 "Home and the workspace: the composer ("What are we auditing today?") with engagement, Permissions and model chips and the four starters; the Continue list; the thread with attributed entries and grouped activity; the activity list anatomy; the inspection panel with its five layout modes, Pin · Expand · Close, the From-task line and Q7 protection; guidance queued and applied; select a statement and ask; the draft engagement and client-binding moment" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: U3, U4, R1–R2, P1–P6
 **And** it is demonstrated by: a first request needs no name or client; context survives opening evidence, changing panels, returning, new activity; a suggested reply submits the text as the answer; pinned or focused content is not replaced while inspected; keyboard citation inspection with return
 
@@ -4063,15 +4063,15 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 
 ### Story 18.5a: Reading view for a text source; a citation opens the evidence at its locator with return
 
-As a Auditor,
+As an Auditor,
 I want reading view for a text source; a citation opens the evidence at its locator with return,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-8 8.4 "Artifact reading view and review mode; citations as E-references opening the evidence at its locator with the claim kept in view; L-references for limitations; the changes view with typographic diff and Undo as a new version; result and quality summaries with the six dimensions separately inspectable (Unknown and Out of period kept)" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: U4, R3–R5, 4b §5 rows 15, 6
 **And** it is demonstrated by: a working paper read with no technical detail open; matters needing review listed; a direct edit saves a new draft without ceremony; nothing rewritten
 
@@ -4080,15 +4080,15 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 
 ### Story 18.5b: Review mode, E- and L-references, changes view, quality summary with Unknown and Out of period
 
-As a Auditor,
+As an Auditor,
 I want review mode, E- and L-references, changes view, quality summary with Unknown and Out of period,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-8 8.4 "Artifact reading view and review mode; citations as E-references opening the evidence at its locator with the claim kept in view; L-references for limitations; the changes view with typographic diff and Undo as a new version; result and quality summaries with the six dimensions separately inspectable (Unknown and Out of period kept)" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: U4, R3–R5, 4b §5 rows 15, 6
 **And** it is demonstrated by: a working paper read with no technical detail open; matters needing review listed; a direct edit saves a new draft without ceremony; nothing rewritten
 
@@ -4097,15 +4097,15 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 
 ### Story 18.6a: The `clarify` decision surface and the refusal notice
 
-As a Auditor,
+As an Auditor,
 I want the `clarify` decision surface and the refusal notice,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-8 8.5 "Decision surfaces: one coherent surface per decision with action-specific labels ("Allow and send · Edit first · Don't send", "Create invitation", "Save to Drafts", "Approve version", "Issue report"); clarify with suggested replies plus free text; `reconcile` with only the permitted recovery actions and the two unknown-outcome patterns (4b §5 row 14); Stop requested versus Stopped by you; invalidation on change" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: D-4-2, R7, P7–P9, 4b §5 rows 1, 14
 **And** it is demonstrated by: no duplicate confirmation; stale details need a new decision; a retry that may duplicate is never presented as safe; a later blocked attempt shown beside the earlier unresolved one; a completed effect never described as undone
 
@@ -4114,15 +4114,15 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 
 ### Story 18.6b: Acceptance surface for a Zobba-proposed change
 
-As a Auditor,
+As an Auditor,
 I want acceptance surface for a Zobba-proposed change,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-8 8.5 "Decision surfaces: one coherent surface per decision with action-specific labels ("Allow and send · Edit first · Don't send", "Create invitation", "Save to Drafts", "Approve version", "Issue report"); clarify with suggested replies plus free text; `reconcile` with only the permitted recovery actions and the two unknown-outcome patterns (4b §5 row 14); Stop requested versus Stopped by you; invalidation on change" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: D-4-2, R7, P7–P9, 4b §5 rows 1, 14
 **And** it is demonstrated by: no duplicate confirmation; stale details need a new decision; a retry that may duplicate is never presented as safe; a later blocked attempt shown beside the earlier unresolved one; a completed effect never described as undone
 
@@ -4131,15 +4131,15 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 
 ### Story 18.6c: `confirm-action` with bound details, `reconcile` with permitted actions and the two unknown-outcome sentences, Approve version, issue refusal, Stop requested
 
-As a Auditor,
+As an Auditor,
 I want `confirm-action` with bound details, `reconcile` with permitted actions and the two unknown-outcome sentences, Approve version, issue refusal, Stop requested,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-8 8.5 "Decision surfaces: one coherent surface per decision with action-specific labels ("Allow and send · Edit first · Don't send", "Create invitation", "Save to Drafts", "Approve version", "Issue report"); clarify with suggested replies plus free text; `reconcile` with only the permitted recovery actions and the two unknown-outcome patterns (4b §5 row 14); Stop requested versus Stopped by you; invalidation on change" — this is bounded part c; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: D-4-2, R7, P7–P9, 4b §5 rows 1, 14
 **And** it is demonstrated by: no duplicate confirmation; stale details need a new decision; a retry that may duplicate is never presented as safe; a later blocked attempt shown beside the earlier unresolved one; a completed effect never described as undone
 
@@ -4148,15 +4148,15 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 
 ### Story 18.7a: Connect from the conversation, designated resources, minimal Connections list
 
-As a Auditor,
+As an Auditor,
 I want connect from the conversation, designated resources, minimal Connections list,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-8 8.6 "Connections (user-owned; provider, account identity, granted capabilities and permitted locations as three things; readable resource names; Connect from the conversation and return) and Settings › Methodology and skills (Admin)" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: U4, pack §11, D-4b-3, D-4b-5
 **And** it is demonstrated by: selection by readable identity; consent alone makes nothing usable; no tokens or scopes shown; no empty "Organisation connections" section; an Auditor sees Methodology read-only
 
@@ -4165,15 +4165,15 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 
 ### Story 18.7b: Settings › Methodology and skills for Admin
 
-As a Auditor,
+As an Auditor,
 I want settings › Methodology and skills for Admin,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-8 8.6 "Connections (user-owned; provider, account identity, granted capabilities and permitted locations as three things; readable resource names; Connect from the conversation and return) and Settings › Methodology and skills (Admin)" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: U4, pack §11, D-4b-3, D-4b-5
 **And** it is demonstrated by: selection by readable identity; consent alone makes nothing usable; no tokens or scopes shown; no empty "Organisation connections" section; an Auditor sees Methodology read-only
 
@@ -4182,15 +4182,15 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 
 ### Story 18.7c: Connections page in full
 
-As a Auditor,
+As an Auditor,
 I want connections page in full,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-8 8.6 "Connections (user-owned; provider, account identity, granted capabilities and permitted locations as three things; readable resource names; Connect from the conversation and return) and Settings › Methodology and skills (Admin)" — this is bounded part c; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: U4, pack §11, D-4b-3, D-4b-5
 **And** it is demonstrated by: selection by readable identity; consent alone makes nothing usable; no tokens or scopes shown; no empty "Organisation connections" section; an Auditor sees Methodology read-only
 
@@ -4199,9 +4199,9 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 
 ### Story 18.8: View workspace: the browser view panel and the full-screen surface below 1024px; pause, stop, Take over (the controller lease) across widths; "read-only on client systems"
 
-As a Auditor,
+As an Auditor,
 I want view workspace: the browser view panel and the full-screen surface below 1024px; pause, stop, Take over (the controller lease) across widths; "read-only on client systems",
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
@@ -4214,9 +4214,9 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 
 ### Story 18.9: Memory: inline "Remembered for your preferences" with a link; proposal cards with scope, source and reason and Confirm / Reject / Edit scope; verification status on inspection
 
-As a Auditor,
+As an Auditor,
 I want memory: inline "Remembered for your preferences" with a link; proposal cards with scope, source and reason and Confirm / Reject / Edit scope; verification status on inspection,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
@@ -4224,20 +4224,20 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 **Then** it establishes: U4, 3c C10
 **And** it is demonstrated by: explicit instruction shows Remembered with a link and no second prompt; an inferred item is a proposal and never an instruction; a non-owner cannot confirm
 
-**And** delivery slice: Slice 2; NE reference NE-8 8.8; design gate (D-5-6): **2 — Analysis and a reviewable working paper** (UJ-2, UJ-3, UJ-4) | The leaver list, directory extract and application user list are snapshotted and analysed on working copies in the sandbox; a working paper shows candidate findings, the post-exit login signal and the partial-population limitation; the auditor opens review mode and citations; **an explicitly requested draft correction saves a new version, exposes the changes and offers Undo, with no additional acceptance ceremony; an independently proposed material change follows its applicable decision rules**; dependents are flagged for reconsideration; a corrected directory extract re-acquired from Drive produces an impact record on the dependent finding (the source-evolution path); the memory proposal appears and is confirmed, declined or rescoped; the auditor chooses a permitted alternative model or effort and the change applies from the next boundary; Search finds the paper and nothing from another client.; Memory: "Remembered for your preferences", proposal cards, scope and verification status, retirement — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-8 8.8; design gate (D-5-6): Memory: "Remembered for your preferences", proposal cards, scope and verification status, retirement — designed under the Zobba pack's rules and reviewed before this part is built
 
 
 ### Story 18.10a: Execution, wait, input-and-coverage and connection chips; the fixed-copy tests
 
-As a Auditor,
+As an Auditor,
 I want execution, wait, input-and-coverage and connection chips; the fixed-copy tests,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-8 8.9 "The status system: the six dimensions and the inspection-only vocabularies with glyph and word; the fixed-copy set (EXPERIENCE-RULES §12 as amended); the six-scene visual acceptance; WCAG 2.2 AA automated and manual checks (dragging alternatives, redundant entry, accessible authentication, target size, focus visibility) with no allowlist" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: U5 → 4b §3, U11, D-4b-6
 **And** it is demonstrated by: `status.test.ts` over DESIGN.md rev 2's table; `copy.test.ts` over the fixed set only; the visual acceptance record per scene; axe plus the manual checklist per new flow
 
@@ -4246,15 +4246,15 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 
 ### Story 18.10b: Assessment and review chips; scenes 3–4
 
-As a Auditor,
+As an Auditor,
 I want assessment and review chips; scenes 3–4,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-8 8.9 "The status system: the six dimensions and the inspection-only vocabularies with glyph and word; the fixed-copy set (EXPERIENCE-RULES §12 as amended); the six-scene visual acceptance; WCAG 2.2 AA automated and manual checks (dragging alternatives, redundant entry, accessible authentication, target size, focus visibility) with no allowlist" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: U5 → 4b §3, U11, D-4b-6
 **And** it is demonstrated by: `status.test.ts` over DESIGN.md rev 2's table; `copy.test.ts` over the fixed set only; the visual acceptance record per scene; axe plus the manual checklist per new flow
 
@@ -4263,15 +4263,15 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 
 ### Story 18.10c: Action-outcome vocabulary per operation; scene 5
 
-As a Auditor,
+As an Auditor,
 I want action-outcome vocabulary per operation; scene 5,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-8 8.9 "The status system: the six dimensions and the inspection-only vocabularies with glyph and word; the fixed-copy set (EXPERIENCE-RULES §12 as amended); the six-scene visual acceptance; WCAG 2.2 AA automated and manual checks (dragging alternatives, redundant entry, accessible authentication, target size, focus visibility) with no allowlist" — this is bounded part c; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: U5 → 4b §3, U11, D-4b-6
 **And** it is demonstrated by: `status.test.ts` over DESIGN.md rev 2's table; `copy.test.ts` over the fixed set only; the visual acceptance record per scene; axe plus the manual checklist per new flow
 
@@ -4280,15 +4280,15 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 
 ### Story 18.10d: Scene 6 and the six-scene visual acceptance record
 
-As a Auditor,
+As an Auditor,
 I want scene 6 and the six-scene visual acceptance record,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-8 8.9 "The status system: the six dimensions and the inspection-only vocabularies with glyph and word; the fixed-copy set (EXPERIENCE-RULES §12 as amended); the six-scene visual acceptance; WCAG 2.2 AA automated and manual checks (dragging alternatives, redundant entry, accessible authentication, target size, focus visibility) with no allowlist" — this is bounded part d; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: U5 → 4b §3, U11, D-4b-6
 **And** it is demonstrated by: `status.test.ts` over DESIGN.md rev 2's table; `copy.test.ts` over the fixed set only; the visual acceptance record per scene; axe plus the manual checklist per new flow
 
@@ -4297,9 +4297,9 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 
 ### Story 18.11: Reviews: the queue grouped Waiting for your review · Returned with your notes · Reviewed recently; reviewing a paper with anchored notes; Return with n notes; Mark as reviewed; "Approval and issue are separate steps"; Zobba's checks for the reviewer shown as checks, never as approval
 
-As a Auditor,
+As an Auditor,
 I want reviews: the queue grouped Waiting for your review · Returned with your notes · Reviewed recently; reviewing a paper with anchored notes; Return with n notes; Mark as reviewed; "Approval and issue are separate steps"; Zobba's checks for the reviewer shown as checks, never as approval,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
@@ -4307,14 +4307,14 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 **Then** it establishes: RS 20–21, FR-96, 4b §5 row 6
 **And** it is demonstrated by: a returned version unchanged with notes retained; the reviewer's Approve control bound to the revision; a contributor meets the refusal; checks never labelled approval
 
-**And** delivery slice: Slice 3; NE reference NE-8 8.10; design gate (D-5-6): FR-94 Roles, scope and separation of duties; FR-96 Review notes and return; **3 — Correspondence, one confirmed external effect, independent review** (UJ-5; UJ-4 review and approval; FR-94–96) | A designated Gmail thread and its attachments are read to update the request record; one calendar invitation to the designated test recipient is proposed with its material details, decided on one surface (Allow and send · Edit first · Don't send), created and read back with its receipt; the unknown-outcome pattern is met when the provider does not confirm, with only the permitted recovery actions; a labelled draft `.docx` is saved to the designated Drafts folder; issuance without approval is refused; the second person is invited by copied link, accepts as the verified recipient, reviews from Reviews, returns with anchored notes, and reviews and approves the revised version; a contributor meets the independence refusal; access removal is exercised on a third, disposable identity (background dispatch refused; other tenant memberships kept); review notes are absent from the client rendering and present in the authorised archive export. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 3; NE reference NE-8 8.10
 
 
 ### Story 18.12: Settings › Administration: Users and roles with Invite people (Create invitation / Copy invitation link; Auditor, Audit manager, Admin only), per-engagement assignment, Remove access (engagement, tenant, account as separate actions), Invited state; Models and providers (FR-92); Connections policy; Administrator limits (the Permissions Policy); Data and retention (named); Audit log
 
-As a Auditor,
+As an Auditor,
 I want settings › Administration: Users and roles with Invite people (Create invitation / Copy invitation link; Auditor, Audit manager, Admin only), per-engagement assignment, Remove access (engagement, tenant, account as separate actions), Invited state; Models and providers (FR-92); Connections policy; Administrator limits (the Permissions Policy); Data and retention (named); Audit log,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
@@ -4322,14 +4322,14 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 **Then** it establishes: RS 22–23, FR-92, FR-94, FR-95
 **And** it is demonstrated by: invitation choices offer three roles; the invitation link never appears in a model request or log; last-administrator removal refused with the sentence; the model policy screen seeds no approved provider from the reference screen
 
-**And** delivery slice: Slice 3; NE reference NE-8 8.11; design gate (D-5-6): `model-policy-v1` (new, 4b); FR-92 Administrator model policy; FR-94 Roles, scope and separation of duties; FR-95 Invitations and removal; **3 — Correspondence, one confirmed external effect, independent review** (UJ-5; UJ-4 review and approval; FR-94–96) | A designated Gmail thread and its attachments are read to update the request record; one calendar invitation to the designated test recipient is proposed with its material details, decided on one surface (Allow and send · Edit first · Don't send), created and read back with its receipt; the unknown-outcome pattern is met when the provider does not confirm, with only the permitted recovery actions; a labelled draft `.docx` is saved to the designated Drafts folder; issuance without approval is refused; the second person is invited by copied link, accepts as the verified recipient, reviews from Reviews, returns with anchored notes, and reviews and approves the revised version; a contributor meets the independence refusal; access removal is exercised on a third, disposable identity (background dispatch refused; other tenant memberships kept); review notes are absent from the client rendering and present in the authorised archive export.; Invitation creation and acceptance — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 3; NE reference NE-8 8.11; design gate (D-5-6): Invitation creation and acceptance — designed under the Zobba pack's rules and reviewed before this part is built
 
 
 ### Story 18.13: Scheduled checks list and the scheduled result: the separate dimensions per row; Awaiting approval and Pending regression states with no next run while either holds; the result page (actor line, assessment chip, readable conclusion, Exceptions · Coverage · Evidence · How it ran, Mark as reviewed, Discuss this result, suggested follow-up through the confirmation flow)
 
-As a Auditor,
+As an Auditor,
 I want scheduled checks list and the scheduled result: the separate dimensions per row; Awaiting approval and Pending regression states with no next run while either holds; the result page (actor line, assessment chip, readable conclusion, Exceptions · Coverage · Evidence · How it ran, Mark as reviewed, Discuss this result, suggested follow-up through the confirmation flow),
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
@@ -4337,14 +4337,14 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 **Then** it establishes: RS 12–13, 4b §5 rows 2–3, U6
 **And** it is demonstrated by: an active schedule found when nothing needs attention; an incomplete input reads Inconclusive with supported exceptions listed and the four statuses separate; "Didn't run" has no assessment
 
-**And** delivery slice: Slice 4; NE reference NE-8 8.12; design gate (D-5-6): **4 — Promotion and the unattended rerun: the complete acceptance journey** (UJ-6; then Proposal 6 end to end) | "Run this monthly" or the task menu; the method by selection; readable method view; Submit for approval; the second person approves from Reviews; the check under Scheduled checks with its next run and responsible person (Awaiting approval until then); one scheduled rerun under its delegation with nobody watching, reporting truthfully — including a deliberately incomplete input reported Inconclusive with supported exceptions visible and execution Completed; a prohibited source change refused; a connection failure reported as an access failure with a recovery request; a model withdrawal detected and the check blocked with its cause. Then Flows A–I walked in order as Proposal 6 specifies.; Promotion approval: method review, compiler mapping, unresolved issues, second-person approval; Awaiting approval and Pending regression on Scheduled checks — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 4; NE reference NE-8 8.12; design gate (D-5-6): Promotion approval: method review, compiler mapping, unresolved issues, second-person approval; Awaiting approval and Pending regression on Scheduled checks — designed under the Zobba pack's rules and reviewed before this part is built
 
 
 ### Story 18.14: Search: scope-aware, attributed results across authorised clients without merging contexts, stale-index notice
 
-As a Auditor,
+As an Auditor,
 I want search: scope-aware, attributed results across authorised clients without merging contexts, stale-index notice,
-So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens .
+So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair identity and tokens; the pack's navigation (New task · Search · Scheduled checks · Engagements · Recent tasks · Connections · Settings, Reviews by responsibility, the notification panel as the complete attention view); the conversation-primary workspace with the contextual panel; readable six-dimension states; one decision surface per decision; Reviews with anchored notes; Settings › Administration. Screens reviewed before they are built (D-5-6).
 
 **Acceptance Criteria:**
 
@@ -4352,7 +4352,7 @@ So that EXPERIENCE.md revision 2 built on the Zobba design pack v1.0: the Pair i
 **Then** it establishes: R10, 3c C10
 **And** it is demonstrated by: a client-B item absent; the stale notice when the index lags
 
-**And** delivery slice: Slice 2; NE reference NE-8 8.13; design gate (D-5-6): **2 — Analysis and a reviewable working paper** (UJ-2, UJ-3, UJ-4) | The leaver list, directory extract and application user list are snapshotted and analysed on working copies in the sandbox; a working paper shows candidate findings, the post-exit login signal and the partial-population limitation; the auditor opens review mode and citations; **an explicitly requested draft correction saves a new version, exposes the changes and offers Undo, with no additional acceptance ceremony; an independently proposed material change follows its applicable decision rules**; dependents are flagged for reconsideration; a corrected directory extract re-acquired from Drive produces an impact record on the dependent finding (the source-evolution path); the memory proposal appears and is confirmed, declined or rescoped; the auditor chooses a permitted alternative model or effort and the change applies from the next boundary; Search finds the paper and nothing from another client. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-8 8.13
 
 
 ## Epic 19: Promotion and recurring checks (absorbs Epic 8; re-homes Epic 6.1, 6.2)
@@ -4368,9 +4368,9 @@ a method artifact by selection; compiler-2 with `assist`; a Procedure Version th
 
 ### Story 19.1: `promotable-method` schema and promotion by selection
 
-As a Auditor,
+As an Auditor,
 I want `promotable-method` schema and promotion by selection,
-So that a method artifact by selection .
+So that the epic's goal holds: a method artifact by selection; compiler-2 with `assist`; a Procedure Version that goes through the existing lifecycle; scheduled Runs under a delegation with no invented tests; reviewed regression case sets; FR-51 change classes; the thin proof first.
 
 **Acceptance Criteria:**
 
@@ -4378,14 +4378,14 @@ So that a method artifact by selection .
 **Then** it establishes: selection rule
 **And** it is demonstrated by: calendar invitation, failed attempts and exploratory branch excluded; period rule included; historical acquisition id refused
 
-**And** delivery slice: Slice 4; NE reference NE-9 9.1; design gate (D-5-6): `promotion-v1`; **4 — Promotion and the unattended rerun: the complete acceptance journey** (UJ-6; then Proposal 6 end to end) | "Run this monthly" or the task menu; the method by selection; readable method view; Submit for approval; the second person approves from Reviews; the check under Scheduled checks with its next run and responsible person (Awaiting approval until then); one scheduled rerun under its delegation with nobody watching, reporting truthfully — including a deliberately incomplete input reported Inconclusive with supported exceptions visible and execution Completed; a prohibited source change refused; a connection failure reported as an access failure with a recovery request; a model withdrawal detected and the check blocked with its cause. Then Flows A–I walked in order as Proposal 6 specifies. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 4; NE reference NE-9 9.1
 
 
 ### Story 19.2: Compiler-2: vocabulary with `assist`, deterministic over a validated specification, unresolved issues, reviewable mapping
 
-As a Auditor,
+As an Auditor,
 I want compiler-2: vocabulary with `assist`, deterministic over a validated specification, unresolved issues, reviewable mapping,
-So that a method artifact by selection .
+So that the epic's goal holds: a method artifact by selection; compiler-2 with `assist`; a Procedure Version that goes through the existing lifecycle; scheduled Runs under a delegation with no invented tests; reviewed regression case sets; FR-51 change classes; the thin proof first.
 
 **Acceptance Criteria:**
 
@@ -4393,14 +4393,14 @@ So that a method artifact by selection .
 **Then** it establishes: `executable-plan-v2`
 **And** it is demonstrated by: identical bytes twice; ambiguity blocks submission; model discrepancy blocks activation
 
-**And** delivery slice: per §4a of Proposal 5; NE reference NE-9 9.2; design gate (D-5-6): **4 — Promotion and the unattended rerun: the complete acceptance journey** (UJ-6; then Proposal 6 end to end) | "Run this monthly" or the task menu; the method by selection; readable method view; Submit for approval; the second person approves from Reviews; the check under Scheduled checks with its next run and responsible person (Awaiting approval until then); one scheduled rerun under its delegation with nobody watching, reporting truthfully — including a deliberately incomplete input reported Inconclusive with supported exceptions visible and execution Completed; a prohibited source change refused; a connection failure reported as an access failure with a recovery request; a model withdrawal detected and the check blocked with its cause. Then Flows A–I walked in order as Proposal 6 specifies.; Promotion approval: method review, compiler mapping, unresolved issues, second-person approval; Awaiting approval and Pending regression on Scheduled checks — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: per §4a of Proposal 5; NE reference NE-9 9.2; design gate (D-5-6): Promotion approval: method review, compiler mapping, unresolved issues, second-person approval; Awaiting approval and Pending regression on Scheduled checks — designed under the Zobba pack's rules and reviewed before this part is built
 
 
 ### Story 19.3: `compiler = 2` Procedure Versions through the existing lifecycle, exercised with compiler-2
 
-As a Auditor,
+As an Auditor,
 I want `compiler = 2` Procedure Versions through the existing lifecycle, exercised with compiler-2,
-So that a method artifact by selection .
+So that the epic's goal holds: a method artifact by selection; compiler-2 with `assist`; a Procedure Version that goes through the existing lifecycle; scheduled Runs under a delegation with no invented tests; reviewed regression case sets; FR-51 change classes; the thin proof first.
 
 **Acceptance Criteria:**
 
@@ -4408,14 +4408,14 @@ So that a method artifact by selection .
 **Then** it establishes: binding
 **And** it is demonstrated by: author cannot approve; frozen fields; changed rule requires regression and cannot activate while deferred
 
-**And** delivery slice: per §4a of Proposal 5; NE reference NE-9 9.3; design gate (D-5-6): `promotion-v1`; **4 — Promotion and the unattended rerun: the complete acceptance journey** (UJ-6; then Proposal 6 end to end) | "Run this monthly" or the task menu; the method by selection; readable method view; Submit for approval; the second person approves from Reviews; the check under Scheduled checks with its next run and responsible person (Awaiting approval until then); one scheduled rerun under its delegation with nobody watching, reporting truthfully — including a deliberately incomplete input reported Inconclusive with supported exceptions visible and execution Completed; a prohibited source change refused; a connection failure reported as an access failure with a recovery request; a model withdrawal detected and the check blocked with its cause. Then Flows A–I walked in order as Proposal 6 specifies.; Promotion approval: method review, compiler mapping, unresolved issues, second-person approval; Awaiting approval and Pending regression on Scheduled checks — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: per §4a of Proposal 5; NE reference NE-9 9.3; design gate (D-5-6): Promotion approval: method review, compiler mapping, unresolved issues, second-person approval; Awaiting approval and Pending regression on Scheduled checks — designed under the Zobba pack's rules and reviewed before this part is built
 
 
 ### Story 19.4: Scheduled Runs under an activation delegation; duplicate suppression; interruption recovery; pinned-definition verification
 
-As a Auditor,
+As an Auditor,
 I want scheduled Runs under an activation delegation; duplicate suppression; interruption recovery; pinned-definition verification,
-So that a method artifact by selection .
+So that the epic's goal holds: a method artifact by selection; compiler-2 with `assist`; a Procedure Version that goes through the existing lifecycle; scheduled Runs under a delegation with no invented tests; reviewed regression case sets; FR-51 change classes; the thin proof first.
 
 **Acceptance Criteria:**
 
@@ -4423,14 +4423,14 @@ So that a method artifact by selection .
 **Then** it establishes: thin proof
 **And** it is demonstrated by: duplicate delivery once; restart resumes; revocation between steps stops dispatch
 
-**And** delivery slice: per §4a of Proposal 5; NE reference NE-9 9.4; design gate (D-5-6): **4 — Promotion and the unattended rerun: the complete acceptance journey** (UJ-6; then Proposal 6 end to end) | "Run this monthly" or the task menu; the method by selection; readable method view; Submit for approval; the second person approves from Reviews; the check under Scheduled checks with its next run and responsible person (Awaiting approval until then); one scheduled rerun under its delegation with nobody watching, reporting truthfully — including a deliberately incomplete input reported Inconclusive with supported exceptions visible and execution Completed; a prohibited source change refused; a connection failure reported as an access failure with a recovery request; a model withdrawal detected and the check blocked with its cause. Then Flows A–I walked in order as Proposal 6 specifies. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: per §4a of Proposal 5; NE reference NE-9 9.4
 
 
 ### Story 19.5: Execution with `assist` steps; quality checks constraining dependents; the Gate over the pack's check set; four statuses on the Result
 
-As a Auditor,
+As an Auditor,
 I want execution with `assist` steps; quality checks constraining dependents; the Gate over the pack's check set; four statuses on the Result,
-So that a method artifact by selection .
+So that the epic's goal holds: a method artifact by selection; compiler-2 with `assist`; a Procedure Version that goes through the existing lifecycle; scheduled Runs under a delegation with no invented tests; reviewed regression case sets; FR-51 change classes; the thin proof first.
 
 **Acceptance Criteria:**
 
@@ -4438,14 +4438,14 @@ So that a method artifact by selection .
 **Then** it establishes: execution
 **And** it is demonstrated by: no model turn outside `assist`; incomplete input yields Inconclusive with visible exceptions and `execution: completed`
 
-**And** delivery slice: Slice 4; NE reference NE-9 9.5; design gate (D-5-6): **4 — Promotion and the unattended rerun: the complete acceptance journey** (UJ-6; then Proposal 6 end to end) | "Run this monthly" or the task menu; the method by selection; readable method view; Submit for approval; the second person approves from Reviews; the check under Scheduled checks with its next run and responsible person (Awaiting approval until then); one scheduled rerun under its delegation with nobody watching, reporting truthfully — including a deliberately incomplete input reported Inconclusive with supported exceptions visible and execution Completed; a prohibited source change refused; a connection failure reported as an access failure with a recovery request; a model withdrawal detected and the check blocked with its cause. Then Flows A–I walked in order as Proposal 6 specifies. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 4; NE reference NE-9 9.5
 
 
 ### Story 19.6: FR-51 change classes: ordinary inputs, access failure with recovery request, material change minting a draft, identity-preserving rename
 
-As a Auditor,
+As an Auditor,
 I want fR-51 change classes: ordinary inputs, access failure with recovery request, material change minting a draft, identity-preserving rename,
-So that a method artifact by selection .
+So that the epic's goal holds: a method artifact by selection; compiler-2 with `assist`; a Procedure Version that goes through the existing lifecycle; scheduled Runs under a delegation with no invented tests; reviewed regression case sets; FR-51 change classes; the thin proof first.
 
 **Acceptance Criteria:**
 
@@ -4453,14 +4453,14 @@ So that a method artifact by selection .
 **Then** it establishes: change classes
 **And** it is demonstrated by: rename runs; boundary move mints a draft; reconnect by display name refused
 
-**And** delivery slice: Slice 4; NE reference NE-9 9.6; design gate (D-5-6): `promotion-v1`; **4 — Promotion and the unattended rerun: the complete acceptance journey** (UJ-6; then Proposal 6 end to end) | "Run this monthly" or the task menu; the method by selection; readable method view; Submit for approval; the second person approves from Reviews; the check under Scheduled checks with its next run and responsible person (Awaiting approval until then); one scheduled rerun under its delegation with nobody watching, reporting truthfully — including a deliberately incomplete input reported Inconclusive with supported exceptions visible and execution Completed; a prohibited source change refused; a connection failure reported as an access failure with a recovery request; a model withdrawal detected and the check blocked with its cause. Then Flows A–I walked in order as Proposal 6 specifies. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 4; NE reference NE-9 9.6
 
 
 ### Story 19.7: Signals and separate investigative tasks with the impact path
 
-As a Auditor,
+As an Auditor,
 I want signals and separate investigative tasks with the impact path,
-So that a method artifact by selection .
+So that the epic's goal holds: a method artifact by selection; compiler-2 with `assist`; a Procedure Version that goes through the existing lifecycle; scheduled Runs under a delegation with no invented tests; reviewed regression case sets; FR-51 change classes; the thin proof first.
 
 **Acceptance Criteria:**
 
@@ -4468,14 +4468,14 @@ So that a method artifact by selection .
 **Then** it establishes: investigation
 **And** it is demonstrated by: result digest unchanged; impact record and rerun proposal
 
-**And** delivery slice: Deferred; NE reference NE-9 9.7; design gate (D-5-6): `promotion-v1` — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Deferred; NE reference NE-9 9.7
 
 
 ### Story 19.8: Exception provenance and disposition for compiler-2 Runs (Epic 6.1, 6.2 re-homed)
 
-As a Auditor,
+As an Auditor,
 I want exception provenance and disposition for compiler-2 Runs (Epic 6.1, 6.2 re-homed),
-So that a method artifact by selection .
+So that the epic's goal holds: a method artifact by selection; compiler-2 with `assist`; a Procedure Version that goes through the existing lifecycle; scheduled Runs under a delegation with no invented tests; reviewed regression case sets; FR-51 change classes; the thin proof first.
 
 **Acceptance Criteria:**
 
@@ -4483,48 +4483,48 @@ So that a method artifact by selection .
 **Then** it establishes: Run path
 **And** it is demonstrated by: existing tests with a compiler-2 version
 
-**And** delivery slice: Slice 4; NE reference NE-9 9.8; design gate (D-5-6): **4 — Promotion and the unattended rerun: the complete acceptance journey** (UJ-6; then Proposal 6 end to end) | "Run this monthly" or the task menu; the method by selection; readable method view; Submit for approval; the second person approves from Reviews; the check under Scheduled checks with its next run and responsible person (Awaiting approval until then); one scheduled rerun under its delegation with nobody watching, reporting truthfully — including a deliberately incomplete input reported Inconclusive with supported exceptions visible and execution Completed; a prohibited source change refused; a connection failure reported as an access failure with a recovery request; a model withdrawal detected and the check blocked with its cause. Then Flows A–I walked in order as Proposal 6 specifies. — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 4; NE reference NE-9 9.8
 
 
 ### Story 19.9a: Initial regression case set recorded and bound at first activation; a regression-requiring configuration stays `APPROVED` pending regression
 
-As a Auditor,
+As an Auditor,
 I want initial regression case set recorded and bound at first activation; a regression-requiring configuration stays `APPROVED` pending regression,
-So that a method artifact by selection .
+So that the epic's goal holds: a method artifact by selection; compiler-2 with `assist`; a Procedure Version that goes through the existing lifecycle; scheduled Runs under a delegation with no invented tests; reviewed regression case sets; FR-51 change classes; the thin proof first.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-9 9.9 "Regression case sets: versioned, reviewed, bound to the candidate; expected-difference review (Epic 8.5, 8.6 re-based)" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `regression-case-set-v1`
 **And** it is demonstrated by: reproduced-but-wrong result fails; unsuitable last Run refused; intentional correction passes only its approved expectations; live source refused
 
-**And** delivery slice: Slice 4; NE reference NE-9 9.9a; design gate (D-5-6): `regression-case-set-v1`; Regression case sets and a version pending regression — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 4; NE reference NE-9 9.9a; design gate (D-5-6): Regression case sets and a version pending regression — designed under the Zobba pack's rules and reviewed before this part is built
 
 
 ### Story 19.9b: Regression execution, administration and the successor's expected-difference review
 
-As a Auditor,
+As an Auditor,
 I want regression execution, administration and the successor's expected-difference review,
-So that a method artifact by selection .
+So that the epic's goal holds: a method artifact by selection; compiler-2 with `assist`; a Procedure Version that goes through the existing lifecycle; scheduled Runs under a delegation with no invented tests; reviewed regression case sets; FR-51 change classes; the thin proof first.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-9 9.9 "Regression case sets: versioned, reviewed, bound to the candidate; expected-difference review (Epic 8.5, 8.6 re-based)" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `regression-case-set-v1`
 **And** it is demonstrated by: reproduced-but-wrong result fails; unsuitable last Run refused; intentional correction passes only its approved expectations; live source refused
 
-**And** delivery slice: Deferred; NE reference NE-9 9.9b; design gate (D-5-6): `regression-case-set-v1`; Regression case sets and a version pending regression — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Deferred; NE reference NE-9 9.9b; design gate (D-5-6): Regression case sets and a version pending regression — designed under the Zobba pack's rules and reviewed before this part is built
 
 
 ### Story 19.10: Missed starts, handover under succession, drift detection, notification policy (Epic 8.2–8.4 re-based)
 
-As a Auditor,
+As an Auditor,
 I want missed starts, handover under succession, drift detection, notification policy (Epic 8.2–8.4 re-based),
-So that a method artifact by selection .
+So that the epic's goal holds: a method artifact by selection; compiler-2 with `assist`; a Procedure Version that goes through the existing lifecycle; scheduled Runs under a delegation with no invented tests; reviewed regression case sets; FR-51 change classes; the thin proof first.
 
 **Acceptance Criteria:**
 
@@ -4537,34 +4537,34 @@ So that a method artifact by selection .
 
 ### Story 19.11a: Approved model configuration recorded; temporary failure, retirement and policy revocation detected and blocked with the cause; replacement path blocked
 
-As a Auditor,
+As an Auditor,
 I want approved model configuration recorded; temporary failure, retirement and policy revocation detected and blocked with the cause; replacement path blocked,
-So that a method artifact by selection .
+So that the epic's goal holds: a method artifact by selection; compiler-2 with `assist`; a Procedure Version that goes through the existing lifecycle; scheduled Runs under a delegation with no invented tests; reviewed regression case sets; FR-51 change classes; the thin proof first.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-9 9.11 "A check keeps the model and effort it was approved with; temporary provider failure, model retirement and policy revocation recorded as distinct causes that block or interrupt under the recovery contract; a replacement is a platform-authored proposed configuration change through the versioned path with independent approval and regression as required; completed results unchanged; cost and usage visible to administrators by engagement" — this is bounded part a; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `promotion-v1` §configuration change, `agent-limits-recovery-v1` §causes, `model-policy-v1` (FR-93)
 **And** it is demonstrated by: a retired model pauses the check with its cause and mints a proposal, never an in-place amendment; a replacement cannot activate without the required approval and regression; a tenant default change leaves the check's configuration unchanged; earlier results byte-identical
 
-**And** delivery slice: Slice 4; NE reference NE-9 9.11a; design gate (D-5-6): `model-policy-v1` (new, 4b); `promotion-v1`; The model replacement proposal for a check — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 4; NE reference NE-9 9.11a; design gate (D-5-6): The model replacement proposal for a check — designed under the Zobba pack's rules and reviewed before this part is built
 
 
 ### Story 19.11b: Replacement as a proposed configuration change with approval and regression; cost reporting
 
-As a Auditor,
+As an Auditor,
 I want replacement as a proposed configuration change with approval and regression; cost reporting,
-So that a method artifact by selection .
+So that the epic's goal holds: a method artifact by selection; compiler-2 with `assist`; a Procedure Version that goes through the existing lifecycle; scheduled Runs under a delegation with no invented tests; reviewed regression case sets; FR-51 change classes; the thin proof first.
 
 **Acceptance Criteria:**
 
 **Given** the parent story NE-9 9.11 "A check keeps the model and effort it was approved with; temporary provider failure, model retirement and policy revocation recorded as distinct causes that block or interrupt under the recovery contract; a replacement is a platform-authored proposed configuration change through the versioned path with independent approval and regression as required; completed results unchanged; cost and usage visible to administrators by engagement" — this is bounded part b; completing it never completes the parent, whose remaining parts and their outstanding acceptance criteria are recorded in `course-correction-dispositions.yaml`
 
-**When** the story is delivered
+**When** the story is delivered (the parent story's establishes and demonstrated-by lists follow; this part delivers the portion its title names)
 **Then** it establishes: `promotion-v1` §configuration change, `agent-limits-recovery-v1` §causes, `model-policy-v1` (FR-93)
 **And** it is demonstrated by: a retired model pauses the check with its cause and mints a proposal, never an in-place amendment; a replacement cannot activate without the required approval and regression; a tenant default change leaves the check's configuration unchanged; earlier results byte-identical
 
-**And** delivery slice: Deferred; NE reference NE-9 9.11b; design gate (D-5-6): `model-policy-v1` (new, 4b); `promotion-v1`; The model replacement proposal for a check — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Deferred; NE reference NE-9 9.11b; design gate (D-5-6): The model replacement proposal for a check — designed under the Zobba pack's rules and reviewed before this part is built
 
