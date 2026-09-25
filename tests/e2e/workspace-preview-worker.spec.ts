@@ -99,6 +99,15 @@ async function sample(page: Page, runId: string) {
   const body = await response.json() as { metadata: WorkspacePreviewMetadata; image: string | null };
   return { metadata: body.metadata, digest: body.image ? createHash('sha256').update(Buffer.from(body.image, 'base64')).digest('hex') : null };
 }
+// A single read of the preview route can land while the worker publishes a new sample; the
+// broker then refuses the read (404 or 409 → 503) rather than answer with two epochs mixed.
+// That refusal is the product's fail-closed rule, so a test that expects a sample re-reads
+// until one is served. A test that expects NO sample keeps its single, unretried read.
+async function settledSample(page: Page, runId: string) {
+  let result: Awaited<ReturnType<typeof sample>> = null;
+  await expect.poll(async () => { result = await sample(page, runId); return result !== null; }, { timeout: 10_000 }).toBe(true);
+  return result!;
+}
 async function waitForFrame(page: Page, runId: string, timeout = 10_000) {
   try { await expect(image(page)).toBeVisible({ timeout }); }
   catch (cause) {
@@ -115,10 +124,12 @@ async function privateProof(page: Page, runId: string) {
   await expect(image(page)).toHaveCount(0);
   const before = await metadata(runId);
   expect(before?.mode).toBe('private');
+  // One read can meet a new sample mid-read, and the broker refuses that read by design
+  // (404/409, then 503 from the route). Poll for the sample; the assertions are unchanged.
   for (let i = 0; i < 3; i++) {
-    const result = await sample(page, runId);
-    expect(result?.metadata.mode).toBe('private');
-    expect(result?.digest).toBeNull();
+    const result = await settledSample(page, runId);
+    expect(result.metadata.mode).toBe('private');
+    expect(result.digest).toBeNull();
   }
   expect(markers.filter(row => row.kind === 'capture' && row.runId === runId)).toHaveLength(0);
   release(gate);
@@ -242,7 +253,7 @@ test.describe('composed compiled-worker near-live preview', () => {
         expect(resumed?.workspace_revision).toBe(owner?.workspace_revision);
         expect(resumed?.runtime_id).toBe(owner?.runtime_id);
       }
-      expect((await sample(page, runId))?.metadata.workspaceRevision).toBe(resumed?.workspace_revision);
+      expect((await settledSample(page, runId)).metadata.workspaceRevision).toBe(resumed?.workspace_revision);
       await requestStop(page, runId, model);
       await info.attach('compiled-worker-preview.json', { body: Buffer.from(JSON.stringify({ runId, pid: worker.pid,
         firstRuntime: owner?.runtime_id, firstRevision: owner?.workspace_revision, resumedRuntime: resumed?.runtime_id,
@@ -261,8 +272,8 @@ test.describe('composed compiled-worker near-live preview', () => {
       expect(startedRuns.has(runId)).toBe(false); startedRuns.add(runId);
     await privateProof(page, runId);
     const before = await metadata(runId);
-    const oldSample = await sample(page, runId);
-    expect(oldSample?.digest).toBeTruthy();
+    const oldSample = await settledSample(page, runId);
+    expect(oldSample.digest).toBeTruthy();
     const pid = worker.pid;
     await shutdown('SIGKILL');
     await expect(image(page)).toHaveCount(0);

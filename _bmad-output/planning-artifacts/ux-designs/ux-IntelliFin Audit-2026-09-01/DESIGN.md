@@ -282,6 +282,8 @@ components:
 
 # Brand & Style
 
+> Superseded on 2026-09-25 by revision 2 at `../ux-Zobba-2026-09-25/DESIGN.md` for the Zobba chrome. This document remains the visual contract for the compiler-1 Run-path surfaces until each surface's disposition story lands; `apps/web/src/design/tokens.test.ts` and `apps/web/src/design/status.test.ts` still read this file and move with their implementation stories. No token value or table row below was altered.
+
 IntelliFin Audit is a surface of the IntelliFin Business Suite, not a separate product. It inherits the locked **Route C — "Ledger Signal"** direction of the IntelliFin Design System: navy foundation, teal as the single interaction signal, gold for the brand mark only. This document specifies the audit-native delta and nothing else; every token above that is not audit-specific is the parent system's value, restated so that `{…}` references in this document resolve without the parent bundle.
 
 The audit domain adds one requirement the parent system does not have: eight independent state families must never be confused with one another — Procedure Version, Run lifecycle, Evidence Quality Gate, Result outcome, Auditor Review, Exception, evaluation origin, and Work Item state. In this document, "Step" unqualified means a Timeline step at any level (Session Step, Plan Step, or Step Execution). That constraint, not decoration, drives the color, badge, and layout rules below.
