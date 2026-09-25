@@ -1,3 +1,55 @@
+## 2026-09-25 — Every relation has a class, and a locking read is a grant (Story 11.1)
+
+`docs/contracts/tenancy-v1.md` classifies every relation of the migrated database into one of
+five classes and lists, for each protected table, the boundaries and the commands each principal
+kind may run. Two tests hold it: `tests/integration/table-classification.test.ts` (the database
+against §3, both directions, partitions resolved to their root) and
+`tests/unit/tenancy-inventory.test.ts` (the document against itself and the Drizzle schema, one
+named case per rule).
+
+- **A migration that adds, renames or drops a relation edits §3 of the contract in the same
+  commit, and §5 when the relation is protected.** `schema-compat.test.ts`'s exact `public` list
+  still needs its line too. A view, materialized view or foreign table counts; a partition does
+  not (pg-boss adds a `queue_stats` partition per day, so its names are never stable).
+- **`LOCK` is its own grant, and it needs `SELECT` too.** PostgreSQL runs `FOR UPDATE`, `FOR NO
+  KEY UPDATE`, `FOR SHARE` and `FOR KEY SHARE` only with the SELECT privilege and the UPDATE
+  privilege on a column, and applies the SELECT and UPDATE policies' `USING`, although nothing
+  changes. A `LOCK` granted without `SELECT` is a lock that can never run, and the inventory test
+  refuses one. The lock sites were mapped by grep, not guessed.
+- **The audit append locks `audit_run` for every UUID aggregate, not only for a Run.**
+  `appendAuditEvent` takes `audit_run` `FOR KEY SHARE` whenever the aggregate id is shaped like a
+  UUID, so recording a Procedure's, a registration's or a binding's event needs `SELECT` and
+  `LOCK` on `audit_run` although no row matches. The first derivation missed it for
+  `plan-derivation`.
+- **A trigger function runs with the rights of the statement that fired it.** None of the 57 on
+  `public` tables is `SECURITY DEFINER`, and 38 read a table other than their own, so under
+  row-level security a guard's `EXISTS` sees only the caller's rows, and a guard written as
+  "refuse if such a row exists" passes silently when it cannot see the row. That is decision D8
+  (hardened `SECURITY DEFINER` functions, Stories 11.3 and 11.4), never a grant widened in §5 so
+  that a writer can see what its trigger reads.
+- **A mutation proof must fail its named case, never a parse error.** In the first derivation
+  three vocabulary mutations died as collection errors, because the parser threw on the value
+  they broke, and a parse error names no rule. The parser now throws only on structure (a missing
+  section, a wrong cell count, table rows after a gap) and returns every value as written; the
+  harness reads Vitest's JSON report and requires the named case among the failures with every
+  case still collected. Match the named check, never the exit code alone.
+- **A `toEqual([])` failure names only the first offender.** Vitest shortens the array in its
+  assertion message (`[ 'public.ac1_scratch_matview', …(2) ]`), and only its default reporter
+  prints the diff with the rest; the JSON reporter keeps the message alone. Three relations
+  committed to `public` showed it. Both tests put every offender in the message (`none(...)`),
+  so a failure names all of them whichever reporter prints it.
+- **Read a Drizzle table's columns from `Symbol.for('drizzle:Columns')`, never from its
+  enumerable values.** drizzle-orm 0.45.2 puts an own enumerable `enableRLS` function on every
+  table object, so collecting `.name` from `Object.values(table)` lists `enableRLS` as a column.
+  The tests read these symbols without importing `drizzle-orm`, which is not a root dependency.
+- **The inventory is a static audit of `main` at `429e08c`.** Story 11.4 proves it by running the
+  suites under the policies; a grant found missing there goes into §5 with the path that needs it.
+- **This container can lose its scratch PostgreSQL mid-session** with no shutdown line in the
+  log. Every database test then fails at once with `ECONNREFUSED` while the unit test on the same
+  document passes. Restart it the way it runs now (the data survives):
+  `rm -f /tmp/pgdata18/postmaster.pid; su postgres -c "/usr/lib/postgresql/18/bin/pg_ctl -D /tmp/pgdata18 -o '-p 5434 -k /tmp' -l /tmp/pg18.log start"`.
+  `-k /tmp` keeps the socket where the running server has it, and `-l` keeps a log.
+
 ## 2026-09-25 — A single read of a moving preview sample is a race the broker refuses on purpose
 
 - **The preview route answers 503 for a read that meets a new sample, and that is the product
@@ -203,6 +255,7 @@ surfaces only PR #51's branch has; `p5-report.md` states the rule each one needs
   previous agent's last words.
 - **This machine restarts, and a restart stops the scratch PostgreSQL.** The data survives:
   `rm -f /tmp/pgdata18/postmaster.pid`, then `pg_ctl -D /tmp/pgdata18 -o '-p 5434' start`.
+  `[EXTENDED 2026-09-25]` The restart command that names the socket directory and a log file is in the Story 11.1 note at the top.
 - **Test databases hold the Auditor and the Administrator only, as CI's do.** A seeded
   Audit Manager fails `run-waits` and `flag-run` (they count every manager), and three new
   specs that REQUIRED one would have thrown in CI, which seeds none. A spec that needs a
@@ -2882,7 +2935,7 @@ The implementing agent could run neither `pnpm test:integration` nor `pnpm test:
 - **A test that has never been run is not a test.** Every integration failure was a defect in the new test file rather than in production code — a `{templateId, sections}` wrapper the writer never stored, a heading asserted on the surface that does not render it — and each would have failed on its first execution. The mutation-testing rows that named `tests/integration/procedures.test.ts` as their killing suite were recorded as passing without that suite ever running.
 - **A brittle row count makes the next test the breaking change.** `expect(rows[0]?.c).toBe(created.length)` counts every Procedure the file created, so adding any test that creates one breaks a test that has nothing to do with it. New assertions were folded into a case that already creates a Procedure instead.
 - **`git checkout -- <file>` reverts the fix, not just the mutation, when the fix is uncommitted.** Copy the file aside and restore from the copy when mutation-testing work that is not yet committed.
-- **PostgreSQL 18 in this container dies under load and takes the whole suite with it.** Every integration file failing at once with `ECONNREFUSED` is the cluster, not the code: restart with `su postgres -c "pg_ctl -D <data> -o '-p <port>' start"` and re-run. Initialise it with password auth, never `--auth=trust`: `migrate.test.ts` proves the migrator reports a driver error by connecting with a wrong password, and trust auth accepts it, so the test fails for a reason that is not the code's.
+- **PostgreSQL 18 in this container dies under load and takes the whole suite with it.** Every integration file failing at once with `ECONNREFUSED` is the cluster, not the code: restart with `su postgres -c "pg_ctl -D <data> -o '-p <port>' start"` and re-run (`[EXTENDED 2026-09-25]` The restart command that names the socket directory and a log file is in the Story 11.1 note at the top). Initialise it with password auth, never `--auth=trust`: `migrate.test.ts` proves the migrator reports a driver error by connecting with a wrong password, and trust auth accepts it, so the test fails for a reason that is not the code's.
 
 ### Target System selection and Audit Instructions (Story 2.3)
 
@@ -3393,6 +3446,7 @@ to be held to the rule the work is.
   four failures in the two files above, all of them the missing database. One cause, two
   suites, six red results, none of them the product. It recovers cleanly with
   `rm -f /tmp/pgdata18/postmaster.pid && pg_ctl -D /tmp/pgdata18 -o '-p 5434' start`.
+  `[EXTENDED 2026-09-25]` The restart command that names the socket directory and a log file is in the Story 11.1 note at the top.
 - **A background wrapper reports the SHELL's exit code, not the command's.** A run spelled
   `pnpm exec playwright test > log; echo "E2E=$?"` was reported as **exit code 0** by the
   task harness while the log said `Timed out waiting 180000ms` — the `echo` succeeded, so

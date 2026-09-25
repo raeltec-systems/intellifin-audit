@@ -2,7 +2,7 @@
 title: 'Classify every table and write the policy inventory'
 type: 'feature'
 created: '2026-09-25'
-status: 'in-progress'
+status: 'in-review'
 baseline_commit: '429e08cf703fee6c5320f17b5983948709fd5bdf'
 review_loop_iteration: 1
 context:
@@ -87,13 +87,13 @@ Verified against `main` at `429e08c` and the migrated generation-61 database. Li
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `docs/contracts/tenancy-v1.md` -- the contract: the story table; §1; §2 the five classes and their rules; §3 one classification row per relation (76); §4.1 principal kinds; §4.2 the closed maintenance-principal list with a "Rows it may reach" column; §4.3 the audit append with a table of appending principals; §4.4 the Run completion path; §4.5 outside the runtime; §5 the policy inventory; §6 how it is held; §7 decisions (decided here, and open); §8 findings -- the contract Story 11.1 establishes. Content per Design Notes.
-- [ ] `tests/fixtures/tenancy-contract.ts` -- parse §3, §4.2, §4.3 and §5; throw only on a structural problem (a missing section, a wrong cell count, a table interrupted by a blank line or a non-table line with rows after it); return every value as written, so each vocabulary rule is a named test case and never a parse error -- one parser for both tests.
-- [ ] `tests/unit/tenancy-inventory.test.ts` -- the inventory test: one named case per rule in Boundaries and per rule in Design Notes, plus every Drizzle table classified -- fast, no database.
-- [ ] `tests/integration/table-classification.test.ts` -- the unclassified-table test: every non-system relation, partitions resolved with `pg_partition_root`, compared both ways; a rolled-back probe creating a table, a view, a materialized view and a partitioned table with one partition -- the proof against the real schema.
-- [ ] `CLAUDE.md` -- a new top section recording the rule (a new relation needs its classification row, and its inventory row when protected, in the same commit) and the lessons in Design Notes; one restart command for the scratch PostgreSQL, consistent with the older entries.
-- [ ] Mutation proof -- break each rule once in a copy of the document, run the tests, require the named case to fail, restore; record every mutation and its killing case in this spec's Verification.
-- [ ] `_bmad-output/implementation-artifacts/sprint-status.yaml` -- `11-1` through the generator only.
+- [x] `docs/contracts/tenancy-v1.md` -- the contract: the story table; §1; §2 the five classes and their rules; §3 one classification row per relation (76); §4.1 principal kinds; §4.2 the closed maintenance-principal list with a "Rows it may reach" column; §4.3 the audit append with a table of appending principals; §4.4 the Run completion path; §4.5 outside the runtime; §5 the policy inventory; §6 how it is held; §7 decisions (decided here, and open); §8 findings -- the contract Story 11.1 establishes. Content per Design Notes.
+- [x] `tests/fixtures/tenancy-contract.ts` -- parse §3, §4.2, §4.3 and §5; throw only on a structural problem (a missing section, a wrong cell count, a table interrupted by a blank line or a non-table line with rows after it); return every value as written, so each vocabulary rule is a named test case and never a parse error -- one parser for both tests.
+- [x] `tests/unit/tenancy-inventory.test.ts` -- the inventory test: one named case per rule in Boundaries and per rule in Design Notes, plus every Drizzle table classified -- fast, no database.
+- [x] `tests/integration/table-classification.test.ts` -- the unclassified-table test: every non-system relation, partitions resolved with `pg_partition_root`, compared both ways; a rolled-back probe creating a table, a view, a materialized view and a partitioned table with one partition -- the proof against the real schema.
+- [x] `CLAUDE.md` -- a new top section recording the rule (a new relation needs its classification row, and its inventory row when protected, in the same commit) and the lessons in Design Notes; one restart command for the scratch PostgreSQL, consistent with the older entries.
+- [x] Mutation proof -- break each rule once in a copy of the document, run the tests, require the named case to fail, restore; record every mutation and its killing case in this spec's Verification.
+- [x] `_bmad-output/implementation-artifacts/sprint-status.yaml` -- `11-1` through the generator only.
 
 **Acceptance Criteria:**
 - Given the migrated database, when the unclassified-table test runs, then it passes, and it fails with the relation's name after a scratch table, view or materialized view is created in `public`.
@@ -157,6 +157,72 @@ The rows were generated from the access audit and are then committed as the docu
 - `pnpm exec vitest run -c tests/integration/vitest.config.ts tests/integration/table-classification.test.ts tests/integration/schema-compat.test.ts` -- expected: all pass on a migrated PostgreSQL 18
 - `pnpm typecheck` -- expected: exit 0
 - Mutation proof -- expected: every mutation fails its named case; record the table here (mutation, rule, killing case, result).
+
+**Results** (2026-09-25; working tree on `fd241a1`; PostgreSQL 18.6 scratch database at generation 61):
+
+- `pnpm exec vitest run tests/unit/tenancy-inventory.test.ts` -- 49 of 49 pass.
+- `pnpm exec vitest run -c tests/integration/vitest.config.ts tests/integration/table-classification.test.ts tests/integration/schema-compat.test.ts` -- 4 of 4 and 18 of 18 pass; the exact `public` list in `schema-compat.test.ts` is unchanged.
+- `pnpm typecheck` -- exit 0.
+- Acceptance 1 against committed objects, beyond the test's own rolled-back probe: a table, a view and a materialized view committed to `public` made the unmodified case "classifies every relation the database holds" fail with `offending: public.ac1_scratch_matview, public.ac1_scratch_table, public.ac1_scratch_view`; after they were dropped all four cases pass, and no `ac1_scratch%` relation is left.
+- Mutation proof -- 55 mutations, 55 killed by their named case. Each run used Vitest's JSON reporter and counted as a kill only when the named case was among the failures AND all cases of the file were collected (49 unit, 4 integration), so a parse error could only ever read as "not proven"; none did. The document was backed up, broken once per case, restored from the backup after each case and in a `finally`, and ended byte-identical (sha256 `228f81b6ccd02bdfd9e0887bd21a6007737389a995396961dffcf26b76485d2e`) with both tests green. Harness: `scratchpad/11-1/iter1/mutate.py` in this session's scratchpad (`/tmp/claude-0/-home-user-intellifin-audit/b2e71a94-040e-53b1-9c96-545faa66d3e1/`), which also holds the iteration-1 builder (`assemble.py`, `render.py`, `classification.py`, `inventory.py`, `contract-*.md`) that produced the committed document. "also: n other" counts the other cases the same mutation failed.
+
+| # | Mutation | Rule | Killing case | Result |
+|---|---|---|---|---|
+| M1 | a second §3 row for `public.run_flag` | one class per relation | unit: names each relation once | killed (also: 1 other) |
+| M2 | §3 row `public.run_flag` written `run_flag` | schema-qualified relations | unit: writes every relation schema-qualified | killed (also: 2 other) |
+| M3 | `public.run_flag` classed `engagement-owned` | exact class names | unit: uses only the five class names | killed (also: 1 other) |
+| M4 | §3 row for `public.run_flag` deleted | every Drizzle table classified | unit: classifies every table the Drizzle schema declares | killed (also: 1 other) |
+| M5 | §5 row for `public.run_flag` deleted | protected table missing from the inventory | unit: has exactly one row per protected table | killed |
+| M6 | §5 row added for `pgboss.job` | unprotected table given a policy (`pgboss.job`) | unit: gives no tenant policy to an authentication or infrastructure table | killed (also: 1 other) |
+| M7 | `run_flag` boundaries `tenant, client` | class boundary missing (no `engagement`) | unit: carries at least its class boundaries on every protected table | killed |
+| M8 | `run_flag` boundaries plus `region` | boundary vocabulary | unit: uses only tenant, client, engagement and owner as boundaries | killed |
+| M9a | `notification` boundary `owner(READ)` | `owner(COMMANDS)` names known commands | unit: narrows only the owner boundary, and only to known commands | killed (also: 1 other) |
+| M9b | `run_flag` boundary `engagement(SELECT)` | only the owner boundary is narrowed | unit: narrows only the owner boundary, and only to known commands | killed |
+| M10 | `notification` boundaries `owner, owner(SELECT)` | a boundary at most once per row | unit: names each boundary at most once per row | killed (also: 1 other) |
+| M11 | `run_initiation_request` boundary `owner(SELECT)` | a user-owned table has a bare `owner` | unit: gives every user-owned table a bare owner boundary | killed (also: 1 other) |
+| M12 | `run_flag` member `SELECT, TRUNCATE` | only the five commands (`TRUNCATE`) | unit: grants only SELECT, INSERT, UPDATE, DELETE and LOCK | killed |
+| M13 | `run_flag` member `SELECT(flag_id), INSERT` | only `UPDATE` takes columns | unit: narrows only UPDATE to columns | killed |
+| M14 | `notification` `UPDATE(invented_column, …)` | a narrow `UPDATE` names real columns | unit: names only real columns in a narrow UPDATE | killed |
+| M15a | `run_flag` member `SELECT, INSERT, SELECT` | a command at most once per principal | unit: grants each command at most once per principal kind | killed |
+| M15b | `run_wait` `wait-timeout`: `UPDATE` beside `UPDATE(closed_at, …)` | no `UPDATE` beside an `UPDATE(...)` for one principal | unit: grants each command at most once per principal kind | killed |
+| M16 | `run_wait` `notification-delivery`: `LOCK` alone | `LOCK` comes with `SELECT` | unit: grants SELECT wherever it grants LOCK | killed |
+| M17 | `run_flag` member `INSERT` alone | someone reads every protected table | unit: lets some principal read every protected table | killed |
+| M18 | §4.2 row `review-snapshot-expiry` duplicated | the closed list names each principal once | unit: names each maintenance principal once | killed |
+| M19 | `run_flag` gets `` `invented-principal`: SELECT `` | unknown maintenance principal | unit: names only maintenance principals from the closed list | killed |
+| M20 | `review-snapshot-expiry`'s only entry removed | every listed principal is used | unit: uses every maintenance principal of the closed list | killed |
+| M21 | `review-snapshot-expiry` Rows it may reach `—` | each principal says which rows it may reach (D7) | unit: D7: says which rows each maintenance principal may reach | killed |
+| M22 | `review-snapshot-expiry` entry without backticks | an entry is `` `principal`: COMMANDS `` | unit: writes every maintenance entry as `principal`: COMMANDS | killed (also: 2 other) |
+| M23 | `` `review-snapshot-expiry`: — `` | an entry grants at least one command | unit: grants at least one command in every maintenance entry | killed (also: 1 other) |
+| M24 | `run_wait` names `wait-timeout` twice | a principal at most once per row | unit: names each maintenance principal at most once per row | killed |
+| M25 | §4.3 row added for `invented-appender` | appenders are known principals | unit: names only known principals in the audit append | killed (also: 3 other) |
+| M26 | §4.3 row `wait-timeout` duplicated | each appender once | unit: names each appending principal once | killed (also: 1 other) |
+| M27 | `wait-timeout` aggregates `Run, Engagement` | known aggregates | unit: names only the known aggregates | killed |
+| M28 | `wait-timeout` command receipts `sometimes` | receipts and narration are yes or no | unit: answers yes or no for command receipts and narrated events | killed |
+| M29a | §4.3 row `evidence-read-issuer` deleted | an `audit_events` inserter missing from §4.3 | unit: lists exactly the principals that insert into audit_events | killed |
+| M29b | `evidence-read-issuer`'s `INSERT` on `audit_events` removed | a §4.3 principal without `INSERT` on `audit_events` | unit: lists exactly the principals that insert into audit_events | killed |
+| M30 | `plan-derivation` head update `UPDATE(last_sequence)` | the head is locked and advanced | unit: gives every appending principal the head it locks and advances | killed |
+| M31 | `plan-derivation`'s `audit_run` entry removed | a UUID aggregate locks `audit_run` | unit: gives every appender of a UUID aggregate SELECT and LOCK on audit_run | killed |
+| M32 | delegation `SELECT` alone on `run_interaction_command` | command receipts need the projection grants | unit: gives every principal whose events carry a command receipt the projection grants | killed |
+| M33 | `wait-timeout`'s `run_conversation_message` entry removed | narrated events need the narration grants | unit: gives every principal whose events are narrated the narration grants | killed |
+| M34 | `evidence-integrity` given `SELECT, INSERT` on `run_interaction_transition` | a principal marked no holds no projection grant | unit: gives a maintenance principal marked no none of the projection or narration grants | killed |
+| M35 | O5 deleted | every decision recorded | unit: records decisions D1 to D8 and open decisions O1 to O5, each once | killed |
+| M36 | O5 names no story | every decision names its story | unit: names the story that settles every decision | killed |
+| M37 | a §3 reason cites D9 | citations resolve to §7 | unit: cites only decisions §7 records | killed |
+| M38 | `procedure` classed `tenant-owned` | D1 | unit: D1: classifies Procedures, registrations and bindings as client material | killed |
+| M39 | `procedure_change` classed `tenant-owned` | D2 | unit: D2: classifies procedure_change as client material | killed |
+| M40 | `procedure_configuration` classed `tenant-owned` | D3 | unit: D3: keeps procedure_configuration platform infrastructure | killed (also: 1 other) |
+| M41 | `run_initiation_request` boundaries `tenant, owner` | D4 | unit: D4: keeps a client boundary beside the owner on run_initiation_request | killed |
+| M42 | `user_permission_grant` classed `user-owned` | D5 | unit: D5: classifies user_role and user_permission_grant as tenant-owned | killed (also: 2 other) |
+| M43 | `notification` bare `owner` | D6 | unit: D6: restricts only reads of a notification to its owner, and every command elsewhere | killed |
+| M44 | `wait-timeout` given `SELECT` on `audit_events` | D8 | unit: D8: widens no maintenance grant for a trigger function's read of audit_events | killed |
+| M45 | §1: "The inventory states capability." | scope, not capability | unit: states that the inventory is scope, not capability | killed |
+| M46 | §2: "A null scope column means unrestricted." | null means the level above | unit: states that a null scope column means the level above, never unrestricted | killed |
+| M47 | §5: "derived from the tests" | derived from the production code, and says so | unit: states that the inventory is derived from the production code's access paths | killed |
+| M48 | §5 drops "applies to members and execution delegations only" | owner applies to members and delegations only | unit: states that the owner boundary applies to members and execution delegations only | killed |
+| M49 | §5 drops the `LOCK`-without-`UPDATE` clause | a `LOCK` without `UPDATE` is an UPDATE policy whose `WITH CHECK` is false | unit: states that a LOCK without UPDATE is an UPDATE policy whose WITH CHECK is false | killed |
+| M50 | §3 row `pgboss.warning` deleted | a relation the database holds has no row | integration: classifies every relation the database holds | killed (also: 1 other) |
+| M51 | §3 row added for `public.dropped_long_ago` | a stale row | integration: classifies nothing the database does not hold | killed |
+| M52 | §3 row added for `pgboss.job_common` | a partition given a row | integration: gives no partition a row of its own, and classifies every partition root | killed (also: 1 other) |
 
 ## Spec Change Log
 
