@@ -613,7 +613,7 @@ Revision-4 rows keep their modules; "rev 5" names the ADs added or amended for t
 | FR-91..FR-93 model and effort choice, administrator model policy, unavailable models | `connections` (model policy beside the disclosure policy), `tasks` (per-invocation record) | AD-27, AD-31 (FR-93 for scheduled checks also AD-34) |
 | FR-94, FR-95 roles, invitations, removal | `tenancy`, `identity` | AD-24 (Admin methodology authority: AD-33) |
 | FR-96 review notes and return | `artifacts` | AD-29 |
-| NFR-1..NFR-15 cross-cutting envelope | all layers and deployment | AD-1..AD-34; WCAG 2.2 AA (D-4b-6) |
+| NFR-1..NFR-17 cross-cutting envelope (NFR-16 isolation proof, NFR-17 disclosure policy added in PRD revision 4) | all layers and deployment | AD-1..AD-34; WCAG 2.2 AA (D-4b-6) |
 
 ## Deferred
 
