@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-01-2026 23:59
-last_updated: 09-25-2026 13:45
+last_updated: 09-25-2026 14:05
 project: Zobba
 project_key: NOKEY
 tracking_system: file-system
@@ -119,8 +119,7 @@ development_status:
   epic-9-retrospective: optional
 
   epic-10: in-progress
-  10-1-legacy-review-closure-assessment-for-the-epic-4-and-5-storie: 
-    ready-for-dev
+  10-1-legacy-review-closure-assessment-for-the-epic-4-and-5-storie: in-progress
   10-2-apply-the-course-correction-tracking-changes: done
   10-3-compatibility-tested-rename-of-the-application-identifiers-t: backlog
   10-4-retire-the-builder-write-path-after-the-slice-4-acceptance: backlog
@@ -242,10 +241,9 @@ development_status:
   17-6b-rendering-for-xlsx-and-pdf-export: backlog
   epic-17-retrospective: optional
 
-  epic-18: backlog
+  epic-18: in-progress
   18-1-identity-and-tokens-pair-symbol-wordmark-lockups-app-icon-an: backlog
-  18-2-review-the-pack-s-23-reference-screens-against-the-six-scene: 
-    ready-for-dev
+  18-2-review-the-pack-s-23-reference-screens-against-the-six-scene: in-progress
   18-3-shell-the-pack-s-first-level-navigation-reviews-shown-by-res: backlog
   18-4a-home-and-the-workspace-composer-with-engagement-and-permissi: backlog
   18-4b-model-chip-selection-and-effort: backlog
