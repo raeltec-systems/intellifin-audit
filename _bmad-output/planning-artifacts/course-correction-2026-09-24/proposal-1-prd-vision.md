@@ -8,9 +8,9 @@ Artifact: `prd.md` §1, §1.1 principle 4, §1.2, §2.3, §7, §8.1, §8.3. New 
 
 ## §1 Vision — NEW
 
-> IntelliFin Audit is an audit-agent harness. An auditor states what they want to accomplish in an engagement; the agent reads the authorised sources, proposes an approach, performs the work with real tools and connections, produces inspectable artifacts, and works through corrections with the auditor. Agent actions, material decisions, artifact revisions and outcomes are recorded with appropriate provenance and remain subject to human review. Suitable work can be promoted to an approved recurring check that the agent then performs on schedule.
+> Zobba is an audit-agent harness. An auditor states what they want to accomplish in an engagement; the agent reads the authorised sources, proposes an approach, performs the work with real tools and connections, produces inspectable artifacts, and works through corrections with the auditor. Agent actions, material decisions, artifact revisions and outcomes are recorded with appropriate provenance and remain subject to human review. Suitable work can be promoted to an approved recurring check that the agent then performs on schedule.
 >
-> The reusable harness provides real tools and authenticated connections, reusable skills, configurable methodology packages, governed memory and context, a controlled execution environment, and evidence-linked artifacts. Reasoning models operate within this harness and are replaceable. IntelliFin owns permissions, durable work state, provenance, review and execution records.
+> The reusable harness provides real tools and authenticated connections, reusable skills, configurable methodology packages, governed memory and context, a controlled execution environment, and evidence-linked artifacts. Reasoning models operate within this harness and are replaceable. Zobba owns permissions, durable work state, provenance, review and execution records.
 >
 > Firm methodology, organisation knowledge and engagement context configure how the agent works. No particular employer, industry, demonstration scenario or methodology pack defines the universal product behaviour.
 >

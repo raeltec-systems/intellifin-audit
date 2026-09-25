@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: #E9E7E1; font-family: 'Hanken Grotesk', 'Segoe UI', sans-serif; color: #1C1B19; }
+    a { color: #4C3FB8; text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { color: #3B2F99; }
+  </style>
+</helmet>
+<section style="padding: 64px 72px 24px; display: flex; flex-direction: column; gap: 12px; width: 2800px; box-sizing: border-box;">
+  <div style="display: flex; align-items: center; gap: 18px;"><dc-import name="Zobba Wordmark" size="44" endorse="true" hint-size="330px,32px"></dc-import></div>
+  <h1 style="margin: 12px 0 0; font-size: 36px; line-height: 44px; font-weight: 600; letter-spacing: -.02em;">Reference screens</h1>
+  <p style="margin: 0; font-size: 16px; line-height: 26px; color: #3D3A35; max-width: 1100px;">Applications of the Zobba design system to one consistent scenario: Daniel Okonjo of Lumina Assurance testing leaver access at Northstar Bank plc, 1–5 October 2026. Desktop frames are 1280 × 800; narrow frames are 390 × 844. File names match reference-screens/ in the handoff package.</p>
+</section>
+<section style="padding: 24px 72px 96px; display: grid; grid-template-columns: repeat(2, 1280px); gap: 56px 64px; width: 2800px; box-sizing: border-box;">
+  <sc-for list="{{ desktop }}" as="f" hint-placeholder-count="16">
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; align-items: baseline; gap: 12px;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #3D3A35;">{{ f.n }}</span><span style="font-size: 20px; line-height: 26px; font-weight: 600;">{{ f.title }}</span><span style="font-size: 14px; line-height: 20px; color: #3D3A35;">{{ f.note }}</span></div>
+      <div id="{{ f.id }}" data-screen-label="{{ f.label }}" style="width: 1280px; height: 800px; overflow: hidden; border-radius: 10px; box-shadow: 0 0 0 1px #CCC8BD;"><dc-import name="Zobba Reference Screen" screen="{{ f.screen }}" hint-size="1280px,800px"></dc-import></div>
+    </div>
+  </sc-for>
+</section>
+<section style="padding: 0 72px 56px; display: flex; flex-direction: column; gap: 24px; width: 2800px; box-sizing: border-box;">
+  <div style="display: flex; flex-direction: column; gap: 6px;"><h2 style="margin: 0; font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: -.015em;">Roles and model choice</h2><p style="margin: 0; font-size: 16px; line-height: 26px; color: #3D3A35; max-width: 1100px;">Ama Mensah (audit manager and reviewer) and Nomsa Dlamini (administrator) use the same harness. Managers get a Reviews queue; administration lives under Settings. Auditors choose the model and reasoning effort in the composer, within what the administrator allows.</p></div>
+  <div style="display: grid; grid-template-columns: repeat(2, 1280px); gap: 56px 64px;">
+    <sc-for list="{{ roles }}" as="f" hint-placeholder-count="5">
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div style="display: flex; align-items: baseline; gap: 12px;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #3D3A35;">{{ f.n }}</span><span style="font-size: 20px; line-height: 26px; font-weight: 600;">{{ f.title }}</span><span style="font-size: 14px; line-height: 20px; color: #3D3A35;">{{ f.note }}</span></div>
+        <div id="{{ f.id }}" data-screen-label="{{ f.label }}" style="width: 1280px; height: 800px; overflow: hidden; border-radius: 10px; box-shadow: 0 0 0 1px #CCC8BD;"><dc-import name="Zobba Reference Screen" screen="{{ f.screen }}" hint-size="1280px,800px"></dc-import></div>
+      </div>
+    </sc-for>
+  </div>
+</section>
+<section style="padding: 0 72px 120px; display: flex; gap: 64px; align-items: flex-start; width: 2800px; box-sizing: border-box;">
+  <sc-for list="{{ narrow }}" as="f" hint-placeholder-count="2">
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; align-items: baseline; gap: 12px;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #3D3A35;">{{ f.n }}</span><span style="font-size: 20px; line-height: 26px; font-weight: 600;">{{ f.title }}</span></div>
+      <div id="{{ f.id }}" data-screen-label="{{ f.label }}" style="width: 390px; height: 844px; overflow: hidden; border-radius: 10px; box-shadow: 0 0 0 1px #CCC8BD;"><dc-import name="Zobba Reference Screen" screen="{{ f.screen }}" hint-size="390px,844px"></dc-import></div>
+    </div>
+  </sc-for>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const d = [
+      ['home', 'Home', 'Composer empty; continue list with separate result and review chips'],
+      ['task', 'Active task', 'Reading; guidance queued for the next step; Stop separate from guidance'],
+      ['taskData', 'Active task with working data', 'Guidance applied; limitation recorded; row being matched'],
+      ['browser', 'Browser workspace', 'Read-only admin console; Zobba is viewing; take over available'],
+      ['artifact', 'Artifact inspection', 'Firm template; selected claim; citation preview'],
+      ['evidence', 'Evidence inspection', 'Evidence drawer over the artifact; Back to claim'],
+      ['changes', 'Changes', 'Auditor correction saved as draft 2; typographic diff'],
+      ['clarify', 'Clarification', 'Zobba needs your input; one question, reply options'],
+      ['permission', 'Permission request', 'One decision surface; drafts beside it'],
+      ['engagement', 'Engagement', 'Tasks, artifacts, schedules; permissions summary'],
+      ['search', 'Search', 'Attributed by client; stale index flagged'],
+      ['schedules', 'Scheduled checks', 'Execution, wait, assessment and review kept separate'],
+      ['result', 'Scheduled result', 'Actor mark separate from the Inconclusive assessment'],
+      ['connections', 'Connections', 'Account identity; limited scope; needs reconnecting; disabled'],
+      ['settings', 'Settings · Methodology and skills', 'Forms for methodology owners'],
+      ['permissions', 'Permissions detail', 'Detail rows and Activity record']
+    ];
+    const desktop = d.map((r, i) => { const n = String(i + 1).padStart(2, '0'); return { n, id: 'rs-' + n, label: n + ' ' + r[1], screen: r[0], title: r[1], note: r[2] }; });
+    const narrow = [['mobileTask', 'Narrow · active task'], ['mobileResult', 'Narrow · scheduled result']].map((r, i) => { const n = String(i + 17); return { n, id: 'rs-' + n, label: n + ' ' + r[1], screen: r[0], title: r[1] }; });
+    const roles = [
+      ['homeModel', 'Composer · model and reasoning effort', 'Auditor · model menu open; unavailable model explained'],
+      ['managerReviews', 'Audit manager · Reviews', 'Queue of submitted work and unattended results'],
+      ['managerReview', 'Audit manager · Review a working paper', 'Ask Zobba, add review notes, return or mark as reviewed'],
+      ['adminModels', 'Administrator · Models and providers', 'Available models, processing region, defaults'],
+      ['adminUsers', 'Administrator · Users and roles', 'Roles and what each can do']
+    ].map((r, i) => { const n = String(i + 19); return { n, id: 'rs-' + n, label: n + ' ' + r[1], screen: r[0], title: r[1], note: r[2] }; });
+    return { desktop, narrow, roles };
+  }
+}
+</script>
+</body>
+</html>
