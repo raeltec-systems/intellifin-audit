@@ -2320,9 +2320,9 @@ So that Builder, Live View, Replay, and every other core workflow stay usable to
 
 ## Epic 10: Disposition and rename
 
-The course-correction transition work of Proposal 7: the legacy review-closure assessment, the tracking update, the compatibility-tested rename, the conditional retirement of the Builder write path, and the legacy harness coverage mapping. None of these stories changes product behaviour; 10.3 and 10.4 change application code only under explicit implementation authorisation.
+The course-correction transition work of Proposal 7: the legacy review-closure assessment, the tracking update, the compatibility-tested rename, the conditional retirement of the Builder write path, and the legacy harness coverage mapping; and the bounded legacy visibility follow-up 10.6, added by the owner on 2026-09-25 from the closure register. Stories 10.1–10.5 change no product behaviour; 10.3, 10.4 and 10.6 change application code only under explicit implementation authorisation.
 
-**Slices:** 10.1, 10.2 before any story of Epic 11; 10.3 in Slice 0; 10.5 with Slice 4; 10.4 only after the Slice 4 acceptance (Proposal 7 §3a).
+**Slices:** 10.1, 10.2 before any story of Epic 11; 10.3 in Slice 0; 10.5 with Slice 4; 10.4 only after the Slice 4 acceptance (Proposal 7 §3a); 10.6 on the retained compiler-1 surfaces, outside the slices, once its implementation is authorised.
 
 ### Story 10.1: Legacy review closure assessment for the Epic 4 and 5 stories in review
 
@@ -2397,6 +2397,23 @@ So that the new journey verifier becomes primary without dropping legacy coverag
 **Then** every "equivalent" row names the implemented check and its recorded evidence before the old assertion is removed
 **And** the harness reaches its retained checks through the documented retained-version fixture after the Builder retires
 **And** retirement of the two scripts and `deployed-loancore-acceptance.yml` is a later transition taken only when the compiler-1 rows are themselves retired
+
+### Story 10.6: Legacy visibility follow-up: human-matched provenance, missing-frame indication and exact pause and resume linkage on the retained compiler-1 surfaces
+
+As an Auditor,
+I want the retained compiler-1 surfaces to show the facts the platform already records about a human-selected match, a missing Replay frame and the Step of each pause and resume,
+So that the acceptance criteria the legacy review closure register found unmet on `main` are met on evidence, not closed by reclassification.
+
+**Acceptance Criteria:**
+
+**Given** the legacy review closure register's residual scope for Stories 4.7, 5.2 and 5.4 and the owner's dispositions of 2026-09-25
+**When** the story is delivered under explicit implementation authorisation
+**Then** a record chosen by a person through a secondary key shows the human-matched word on the Result, the record review queue and inspector and the Exceptions list, traced to its matching decision (4.7)
+**And** Replay distinguishes a missing or unavailable frame from a frame suppressed during credential entry, and states that playback is incomplete, with the count, rather than implying complete playback (5.2)
+**And** each pause and each resume identifies its exact plan step and Step Execution attempt from durable records, including repeated pauses and after the Run advances; where the stored records cannot establish it, the linkage is added for new events only, and no historical audit event is rewritten (5.4)
+**And** the export legs of 4.7 and 5.2 stay 14.11a's explicit criteria, and the legacy stories close only when all their legs are met or the owner amends their scope
+
+**And** delivery slice: none — retained compiler-1 surfaces; NE reference none (owner decision 2026-09-25); design gate (D-5-6): none — the retained surfaces keep the 2026-09-01 UX spine (EXPERIENCE.md revision 2 §12), and a new sentence is confirmed with the owner before it is built
 
 ## Epic 11: Tenancy, scope and delegation
 
@@ -3302,6 +3319,11 @@ So that the epic's goal holds: every source read is a snapshot with identity and
 **Then** it establishes: `export-v2`
 **And** it is demonstrated by: a tenant export verifies alone; a derivation reproduces offline from the bundle
 
+**Given** an export that includes a retained compiler-1 Run (legacy export legs, owner decisions 2026-09-25; `legacy-review-closure-register.md`)
+**When** the export is produced
+**Then** a record chosen by a person through a secondary key is flagged human-matched, with a reference to the matching decision (legacy Story 4.7); a Replay frame that is missing or unavailable is indicated and kept distinct from a frame suppressed during credential entry (legacy Story 5.2); and no credential-shaped value appears in the export (the registered export leg of done Story 4.3)
+**And** these legs stay explicit residual work of their legacy stories until this part delivers them
+
 **And** delivery slice: Slice 3; NE reference NE-4 4.11a
 
 
@@ -3389,6 +3411,11 @@ So that the epic's goal holds: versioned artifacts with claims and citations; pl
 **When** the story is delivered
 **Then** it establishes: approval
 **And** it is demonstrated by: Audit Manager without membership refused; contributor self-approval refused; stale revision refused; concurrent edit lands on the old version
+
+**Given** a retained compiler-1 Run (legacy transfer, owner decision 2026-09-25: the Submit control of Story 4.9 and the superseded Story 6.3; `legacy-review-closure-register.md`)
+**When** an Auditor opens the Run's review surface
+**Then** a sealed `COMPLETED` Result can be submitted for review, recording the reviewer, the time, the Result version and the Procedure Version, and the Result enters the review queue; an unsealed Result shows Submit disabled with "Submission is unavailable while the Result is unsealed."; an `INCONCLUSIVE`, `RUN_FAILED` or `CANCELED` Run shows Submit disabled with its exact reason
+**And** generic artifact review does not stand in for this path: until this story covers it, compiler-1 Result submission stays unimplemented and is never reported as passed
 
 **And** delivery slice: Slice 3; NE reference NE-5 5.4
 

@@ -5,7 +5,7 @@ created: '2026-09-25'
 story: '10-1-legacy-review-closure-assessment-for-the-epic-4-and-5-storie'
 baseline: 'main c18ad3683d4e71d2654272e8cb95ef4559013374'
 assessor: 'this session''s agent (Claude, executing Story 10.1 as a documentation-only assessment); Epic 5 sections, §3.1, §5 and §6 rebuilt by a second session (Claude) on 2026-09-25 after the unpushed commit d79bdcf was lost (§1)'
-status: 'assessment complete — verdicts proposed; nothing is recorded until the owner accepts'
+status: 'assessment complete — verdicts proposed; the owner''s dispositions of 2026-09-25 for 4.7, 4.8 (a), 4.9, 5.2 (a)–(b) and 5.4 (a) are recorded (§3.2); owner acceptance of the register is pending'
 ---
 
 # Legacy review closure register — Epic 4 and Epic 5
@@ -254,6 +254,26 @@ the point.
 **Recommendation.** Item 1: resolution A. No web surface shows these events, and an open stream
 still sends them with no gap. Items 2 and 3: resolution A. Each is a small repair on a surface that
 is already built, and the legacy follow-up already changes surfaces of the same kind.
+
+### 3.2 Owner dispositions recorded on 2026-09-25
+
+The owner decided five legacy exceptions before accepting the register. Each decision is recorded
+in its story's section (§4) and changes no proposed verdict: every story below stays `review`
+until its residual work is delivered or its scope is amended. A scope amendment may permit
+closure, but the register never says that a removed requirement passed. Owner acceptance of the
+register is still pending.
+
+| Story | Owner disposition | Applied as |
+|---|---|---|
+| 4.7 | Prepare a bounded Epic 10 follow-up; the human-matched flag must be visible, with traceability, on the Result, review and list surfaces and on export | Residual (a): Story 10-6. Residual (b): an explicit 14-11a acceptance criterion |
+| 4.8 (a) | In-app-only delivery is accepted; no mail transport is built | Scope amendment: email is unimplemented and was never delivered. (b)–(d) are still open (§6, point 3) |
+| 4.9 | Transfer the Submit control obligation to 15.4, with a scope amendment | An explicit 15.4 acceptance criterion for submitting a retained compiler-1 Result. 4.9 closes as Done against its remaining scope on acceptance |
+| 5.2 (a), (b) | Include in the visibility follow-up: Replay distinguishes a missing or unavailable frame from a suppressed one and states the limitation; keep the export indication | Residual (a): Story 10-6. Residual (b): an explicit 14-11a acceptance criterion. (c) and (d) are still open (§6, point 6) |
+| 5.4 (a) | Accept the stored records only if they identify the exact Step and attempt; otherwise add linkage for new events in the follow-up, and never rewrite historical events | The stored records do not qualify: Story 10-6 adds the linkage for new events. (b) is still open (§6, point 7) |
+
+Story 10-6 is prepared and not authorised for implementation. The owner authorised documentation,
+decision recording, tracking corrections, design completion and story preparation on 2026-09-25,
+and not application implementation.
 
 ## 4. The register, story by story
 
@@ -525,6 +545,14 @@ dependency on 14-11a.
 - Residual scope (b): the export leg. Proposed transfer to 14-11a, the successor of 6-7 in
   `course-correction-dispositions.yaml`, so that the engagement export carries the flag.
 
+**Owner disposition (2026-09-25).** Prepare a bounded Epic 10 follow-up. Human-selected matching
+must stay visible on the relevant Result, review and list surfaces, and on the export surface,
+with traceability to the matching decision. The missing distinction is not accepted as completed
+behaviour. Applied: residual scope (a) is Story 10-6
+(`10-6-legacy-visibility-follow-up-human-matched-provenance-missing.md`); residual scope (b) is
+an explicit acceptance criterion of 14-11a in `epics.md`. Both stay explicit residual work of
+this story: 4.7 stays `review` until they are delivered, or until the owner amends the scope.
+
 ### Story 4.8 — Answer an Escalation from Run Detail and notify Audit Managers
 
 **Status on `main`:** review.
@@ -601,6 +629,14 @@ Code read at `c18ad36`:
 Proposed owner: the product owner for (a) and (d); stories 14-11a and 19-4 for (b) and (c). If
 the owner accepts (a) as recorded, and (b), (c) and (d) as stated, the story closes as Done.
 
+**Owner disposition (2026-09-25), residual (a).** In-app-only delivery is accepted for the
+retained compiler-1 scope. No mail transport is built to close this legacy story. **Scope
+amendment:** email delivery is unimplemented and unconfigured. Every email outcome on the Audit
+Trail reads `unconfigured` or `superseded`, and no email was ever delivered. This register does
+not say the email leg passed: closure is against the remaining accepted scope. Residuals (b), (c)
+and (d) have no owner decision yet; they are open point 3 in §6. 4.8 stays `review` until they
+are decided and the register is accepted.
+
 ### Story 4.9 — Confirm or reject Agent-Judged evaluations to seal the Result
 
 **Status on `main`:** review.
@@ -641,6 +677,16 @@ the owner accepts (a) as recorded, and (b), (c) and (d) as stated, the story clo
 "Submit is disabled" control leg to 15-4, the successor of 6-3. There is a precedent: Story 3.11
 was accepted as done with the same recorded decision not to render a Submit control before Result
 submission exists. If the owner applies that precedent, 4.9 closes as Done, with no other gap.
+
+**Owner disposition (2026-09-25).** Transfer the Submit control obligation to 15.4 and record the
+scope amendment. The evaluation confirmation, rejection and sealing obligations stay in 4.9, and
+the evidence above covers them. Applied: 15.4 in `epics.md` now carries an explicit acceptance
+criterion for submitting a retained compiler-1 Result (Submit available for a sealed `COMPLETED`
+Result; disabled with "Submission is unavailable while the Result is unsealed." and the other
+exact reasons), so generic artifact review is not assumed to cover it. **Scope amendment:** the
+disabled Submit control is not on `main` and did not pass; it is 15.4's. With this amendment, 4.9
+closes as **Done — `[COMPILER-1 PATH]`** against its remaining scope when the owner accepts the
+register.
 
 ### Story 4.10 — Prove the agent path on ProdConsole with one Observation per parameter
 
@@ -961,6 +1007,15 @@ owner decides which reading applies, and §5 moves this story only after that de
 If the owner accepts (c) and (d) as recorded and (b) as a transfer, (a) is the only code change
 left.
 
+**Owner disposition (2026-09-25), residuals (a) and (b).** Include (a) in the bounded legacy
+visibility follow-up. Replay must distinguish a frame that is missing or unavailable from a frame
+suppressed on purpose during credential entry, and state the limitation instead of implying
+complete playback. Keep the export indication. The missing indication is not accepted as
+completed behaviour. Applied: (a) is Story 10-6 on Replay; the Result tab, which the AC does not
+name, is not added. (b) is an explicit acceptance criterion of 14-11a in `epics.md`. Both stay
+explicit residual work of this story. Residuals (c) and (d) have no owner decision yet; they are
+open point 6 in §6. 5.2 stays `review`.
+
 ### Story 5.3 — Watch a Running Run in Live View
 
 **Status on `main`:** review.
@@ -1277,6 +1332,13 @@ meet the owner's rule.
 
 If the owner confirms (b), and (a) is delivered or accepted as a transfer to the named follow-up,
 the story closes as Done.
+
+**Owner disposition (2026-09-25), residual (a).** Accept the stored records only if they identify
+the exact Step and attempt of each pause and each resume. They do not (above), so the follow-up
+adds the linkage for new events only and never rewrites a historical event. Applied: Story 10-6
+carries it, and a historical record without the linkage says that its Step was not recorded.
+Residual (b), the resume semantics, has no owner decision yet; it is open point 7 in §6. 5.4 stays
+`review` until 10-6 delivers the linkage and (b) is confirmed.
 
 ### Story 5.5 — Cancel a Run and flag it to Audit Managers from Live View
 
@@ -1637,16 +1699,16 @@ before and after.
 | `4-4-locate-a-record-capture-evidence-and-register-a-grounded-obs` | review | Done — `[COMPILER-1 PATH]` | `done` |
 | `4-5-prove-absence-for-an-employee-with-no-account` | review | Done — `[COMPILER-1 PATH]` | `done` |
 | `4-6-bound-agent-execution-and-render-retrieved-content-inert` | review | Done — `[COMPILER-1 PATH]` | `done` |
-| `4-7-raise-typed-escalations-as-durable-waits` | review | Residual work — PROPOSED | stays `review` until the owner decides the residual scope (point 1) |
-| `4-8-answer-an-escalation-from-run-detail-and-notify-audit-manage` | review | Residual work — PROPOSED | `done` if the owner accepts (a)–(d) as stated (points 2 and 3); otherwise stays `review` |
-| `4-9-confirm-or-reject-agent-judged-evaluations-to-seal-the-resul` | review | Residual work — PROPOSED (transfer only) | `done` if the owner accepts the transfer to 15-4 (point 4); otherwise stays `review` |
+| `4-7-raise-typed-escalations-as-durable-waits` | review | Residual work — PROPOSED | stays `review` until Story 10-6 and 14-11a deliver residuals (a) and (b), or the owner amends the scope (point 1; §3.2) |
+| `4-8-answer-an-escalation-from-run-detail-and-notify-audit-manage` | review | Residual work — PROPOSED | `done` if the owner confirms (b)–(d) (point 3); (a) is decided by a scope amendment (point 2; §3.2). Otherwise stays `review` |
+| `4-9-confirm-or-reject-agent-judged-evaluations-to-seal-the-resul` | review | Residual work — PROPOSED (transfer only) | `done`: the transfer to 15-4 and the scope amendment are decided (point 4; §3.2) |
 | `4-10-prove-the-agent-path-on-prodconsole-with-one-observation-per` | review | Done — `[COMPILER-1 PATH]` | `done` |
 | `4-11-prove-abuse-resistance-and-workspace-isolation-with-negative` | review | Done — `[COMPILER-1 PATH]` | `done` |
 | `4-12-evaluate-the-24-hour-disablement-window-through-the-complete` | review | Done — `[COMPILER-1 PATH]` | `done` |
 | `5-1-stream-the-execution-timeline-live-over-sse` | review | Done — `[COMPILER-1 PATH]`, held (§3.1) | `done` if the owner takes resolution A of §3.1, item 1 (point 8); otherwise stays `review` |
-| `5-2-capture-the-platform-owned-replay-asset-set-during-execution` | review | Residual work — PROPOSED | stays `review` until the owner decides the residual scope (points 5 and 6) |
+| `5-2-capture-the-platform-owned-replay-asset-set-during-execution` | review | Residual work — PROPOSED | stays `review` until Story 10-6 and 14-11a deliver (a) and (b), and the owner decides (c) and (d) (points 5 and 6; §3.2) |
 | `5-3-watch-a-running-run-in-live-view` | review | Done — `[COMPILER-1 PATH]`, held (§3.1) | `done` only if the owner takes resolution B of §3.1, item 2, a scope amendment (point 9); otherwise stays `review` |
-| `5-4-pause-and-resume-a-running-run` | review | Residual work — PROPOSED | stays `review` until the owner decides (point 7) |
+| `5-4-pause-and-resume-a-running-run` | review | Residual work — PROPOSED | stays `review` until Story 10-6 delivers the linkage and the owner confirms (b) (point 7; §3.2) |
 | `5-5-cancel-a-run-and-flag-it-to-audit-managers-from-live-view` | review | Done — `[COMPILER-1 PATH]` | `done` |
 | `5-6-answer-an-escalation-without-leaving-live-view` | review | Done — `[COMPILER-1 PATH]`, held (§3.1) | stays `review` under either resolution of §3.1, item 3 (point 10), until the missing check or the repair is delivered |
 | `5-7-live-view-when-the-stream-drops-or-the-run-ends-while-open` | review | Done — `[COMPILER-1 PATH]` | `done` |
@@ -1664,16 +1726,18 @@ before and after.
 - **Memlog.** One decision entry in the PRD workspace memlog summarises the accepted verdicts,
   through `memlog.py`.
 
-As proposed, acceptance moves nine stories to `done` at once: 4.4, 4.5, 4.6, 4.10, 4.11, 4.12,
-5.5, 5.7 and 5.8. 5.1 and 5.3 follow, or not, with the owner's decisions in §3.1. 4.8 and 4.9
-follow if their residuals are accepted as stated. 4.7, 5.2, 5.4 and 5.6 stay in `review`.
+As proposed, acceptance moves ten stories to `done` at once: 4.4, 4.5, 4.6, 4.9, 4.10, 4.11,
+4.12, 5.5, 5.7 and 5.8 (4.9 by the owner's transfer and scope amendment). 5.1 and 5.3 follow, or
+not, with the owner's decisions in §3.1. 4.8 follows if the owner confirms its residuals (b)–(d).
+4.7, 5.2, 5.4 and 5.6 stay in `review` until their residual work is delivered.
 
 ## 6. Open points
 
 Sixteen points stay open when the assessment ends. This list is the rebuild's (§1). It replaces
 the list in the lost commit `d79bdcf`, which only the first session read.
 
-- Points 1–7 are owner decisions that settle a residual verdict.
+- Points 1–7 settle a residual verdict. On 2026-09-25 the owner decided points 1, 2, 4 and 5,
+  and gave the rule that decides point 7 (a) (§3.2). §6.1 shows what is still open.
 - Points 8–10 contradict a proposed Done verdict. §3.1 holds those verdicts.
 - Points 11 and 12 are owner decisions and confirmations that do not change a proposed verdict.
 - Points 13–15 are evidence limitations that the verdicts already account for. Each names where
@@ -1682,27 +1746,26 @@ the list in the lost commit `d79bdcf`, which only the first session read.
 
 1. **4.7 — the human-matched flag.** A record that a person chose through a secondary key is
    flagged on its Observation only. The Result, the record review queue and inspector, and the
-   Exceptions list do not show it, and no export exists. Needs: an owner decision on residual
-   scope (a), a bounded follow-up, and on (b), the export leg, as a transfer to 14-11a. (§4, Story
+   Exceptions list do not show it, and no export exists. Decided on 2026-09-25 (§3.2): residual
+   scope (a) is Story 10-6, and (b), the export leg, is an explicit criterion of 14-11a. (§4, Story
    4.7.)
 2. **4.8 (a) — email.** No mail transport exists. Every email outcome is recorded `unconfigured`
-   or `superseded`, and no email was ever delivered. Needs: an owner decision — accept in-app
-   delivery as the compiler-1 closure, with email named as not built (as Epics 11 and 18 do), or
-   fund a mail transport. The same decision covers the email outcome of a flag (Story 5.5,
-   limitation (4)).
+   or `superseded`, and no email was ever delivered. Decided on 2026-09-25 (§3.2): in-app delivery
+   is the compiler-1 closure, by a scope amendment, and no mail transport is built. The same scope
+   applies to the email outcome of a flag (Story 5.5, limitation (4)).
 3. **4.8 (b)–(d).** (b) The Workpaper Bundle leg goes to 14-11a. (c) The scheduled-Run author goes
    to 19-4. (d) The Auditor Workspace v1.1 compact Evidence tab replaces the panel "at the top of
    every tab" with a disclosure. Needs: owner confirmation of the two transfers and of the later
    design.
 4. **4.9 — the Submit control.** `main` shows the sentence "Submission is unavailable while the
    Result is unsealed." as a statement, with no control. Result submission is old story 6-3, now
-   15-4. Needs: an owner decision on the transfer to 15-4 (the Story 3.11 precedent).
+   15-4. Decided on 2026-09-25 (§3.2): the obligation moves to 15-4, which now has an explicit
+   criterion for it, and a scope amendment records that the control did not pass here.
 5. **5.2 (a) and (b) — missing frames are not flagged.** The platform records
    `failure.frame-missing` and `publication.evidence.framesMissing`, but nothing in `apps/web`
    reads either: Replay and the Result tab do not show a missing frame, so playback with a gap
-   looks complete. The export leg has nothing to test on `main`. Needs: an owner decision on (a), a
-   bounded follow-up on Replay and the Result tab, and on (b), the export leg, as a transfer to
-   14-11a.
+   looks complete. The export leg has nothing to test on `main`. Decided on 2026-09-25 (§3.2): (a)
+   is Story 10-6, on Replay, and (b) is an explicit criterion of 14-11a.
 6. **5.2 (c) and (d) — retention, the live recording and the frame role.** (c) Provider retention
    is not set to minimum, because the SDK has no control for it, and no real recording was ever
    copied, because recording stays off by the 2026-09-15 decision (`CLAUDE.md:1187`). (d) A frame
@@ -1781,3 +1844,28 @@ the list in the lost commit `d79bdcf`, which only the first session read.
     of these is in an AC that the verdicts count as covered. No status changes.
 16. **Story 10.1's other three tasks.** `course-correction-dispositions.yaml`, the seventeen
     sprint-status keys and the memlog entry wait for the owner's acceptance of this register (§5).
+
+### 6.1 Classification of the sixteen points
+
+Classified on 2026-09-25, after the owner's dispositions (§3.2). "Owner" names who decides, and,
+after the semicolon, which story delivers. The last column answers the owner's question: does the
+point contradict a proposed Done verdict, and if so, how is it accounted for?
+
+| Point | Affected obligation | Impact | Owner | Disposition | Contradicts a Done verdict? |
+|---|---|---|---|---|---|
+| 1 | 4.7: the human-matched flag on the Result, the record review queue and inspector, the Exceptions list, and export | A reader cannot tell a match that a person chose from a platform match on those surfaces | Product owner (decided); 10-6 and 14-11a | Decided: (a) → 10-6, (b) → an explicit 14-11a criterion. Residual work stays open | No |
+| 2 | 4.8, AC1 and AC2: email delivery and the email deep link | No email notification exists; notification is in-app only | Product owner (decided) | Decided: scope amendment. Email is unimplemented and was never delivered; no mail transport is built | No |
+| 3 | 4.8: the scheduled-Run author (AC1), the panel on every tab (AC3), the Workpaper Bundle (AC4) | Scheduled Runs and the Bundle do not exist on `main`; the compact Evidence tab shows a disclosure instead of the panel | Product owner; 19-4 and 14-11a | Open: confirm the two transfers and the later design | No |
+| 4 | 4.9 (and old 6.3): the Submit control | No Submit control on `main`; the sentence is shown instead | Product owner (decided); 15-4 | Decided: transfer to 15-4 with an explicit criterion, and a scope amendment. 4.9 closes as Done against its remaining scope on acceptance | No |
+| 5 | 5.2, AC3: missing frames flagged on Replay and on export | Replay playback with a gap looks complete | Product owner (decided); 10-6 and 14-11a | Decided: (a) → 10-6, (b) → an explicit 14-11a criterion. Residual work stays open | No |
+| 6 | 5.2, AC4 (provider retention at minimum; the live recording copy) and AC1 (`role = replay`) | Retention is not at minimum, but recording is off, so no provider recording exists; the replay-role guards serve no producer | Product owner | Open: accept as the compiler-1 closure, or keep open | No |
+| 7 | 5.4, AC1 and AC7 (the Step on the pause and resume records) and AC6 (the resume semantics) | Without inference, a reader cannot tie every pause and resume to its exact Step and attempt | Product owner (rule given); 10-6 | (a) Decided by the owner's rule: the records do not qualify, so 10-6 adds the linkage for new events. (b) Open: confirm the restart semantics | No |
+| 8 | 5.1, AC1: `NOTIFY` in the appending transaction | None on a surface: no web surface reads these event types, and an open stream sends them within 10 seconds | Product owner | Open: resolution A (the narrower reading, and the contract sentence corrected) is recommended | Yes. Held in §3.1, item 1; `done` only after the decision |
+| 9 | 5.3, AC2: digests on Live View's adapter log rows | Live View states a false fact on every adapter row | Product owner; 10-6 if resolution A | Open: resolution A (repair in 10-6) is recommended; B is a scope amendment | Yes. Held in §3.1, item 2 |
+| 10 | 5.6, AC2: the skip link moves focus to the panel | A keyboard or screen-reader user is not taken to the open Escalation | Product owner; 10-6 if resolution A | Open: resolution A (repair in 10-6) is recommended; B is a check first | Yes. Held in §3.1, item 3; 5.6 stays `review` under either resolution |
+| 11 | 4.8 AC4 and 5.6 AC3 ("becomes a Timeline entry"); 5.4 AC3 ("superseded on the Timeline") and AC6 (the resume marker); 5.1 AC2 (the Overview "subscribes") | If a reading is rejected, that leg is not met | Product owner | Open: confirm each reading | Only if a reading is rejected. Rejecting (iv) would contradict 5.1 (already held); rejecting (i) would affect 5.6 (already held) and 4.8 (residual); (ii) and (iii) affect 5.4 (residual) |
+| 12 | 5.5, AC4 (placement) and the route boundary's wording after a lost acknowledgement | The boundary says "Nothing was changed." over a flag that committed | Product owner | Open: confirm the placement; decide the wording | Only if the placement is rejected: then 5.5, AC4 is not met, and 5.5's Done would be held like §3.1's |
+| 13 | Every Done verdict that cites [DEP] as supplementary evidence | The deployed product at `c18ad36` is not re-verified | Product owner (optional action) | Accounted for: each Done verdict rests on [CI-c18]. Optional: a deployed journey on the current head, and the report brought to `main` | No |
+| 14 | None of the ACs that the verdicts count as covered (Epic 4) | Limits of the evidence, not unmet legs | Epic 4 retrospective; 9-6 for the golden seeds; the addendum owner for the P-4 snapshot-time wording | Accounted for; no status change | No |
+| 15 | None of the ACs that the verdicts count as covered (Epic 5) | Limits of the evidence, not unmet legs | Epic 5 retrospective | Accounted for; no status change | No |
+| 16 | Story 10.1, tasks 2 to 4 | The status changes in §5 are not applied | Product owner (acceptance); then Story 10.1 | Waiting for the owner's acceptance of this register | No |

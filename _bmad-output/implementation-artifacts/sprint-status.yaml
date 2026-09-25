@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-01-2026 23:59
-last_updated: 09-25-2026 17:52
+last_updated: 09-25-2026 18:20
 project: Zobba
 project_key: NOKEY
 tracking_system: file-system
@@ -119,11 +119,13 @@ development_status:
   epic-9-retrospective: optional
 
   epic-10: in-progress
-  10-1-legacy-review-closure-assessment-for-the-epic-4-and-5-storie: in-progress
+  10-1-legacy-review-closure-assessment-for-the-epic-4-and-5-storie: review
   10-2-apply-the-course-correction-tracking-changes: done
   10-3-compatibility-tested-rename-of-the-application-identifiers-t: backlog
   10-4-retire-the-builder-write-path-after-the-slice-4-acceptance: backlog
   10-5-legacy-acceptance-harness-coverage-mapping: backlog
+  10-6-legacy-visibility-follow-up-human-matched-provenance-missing: 
+    ready-for-dev
   epic-10-retrospective: optional
 
   epic-11: backlog

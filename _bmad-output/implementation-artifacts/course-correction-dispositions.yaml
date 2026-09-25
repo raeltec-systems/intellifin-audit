@@ -712,3 +712,41 @@ stories:
   19-10-missed-starts-handover-under-succession-drift-detection-noti:
     ne: NE-9 9.10
     slice: Deferred
+legacy_review_closure:
+  story: 10-1-legacy-review-closure-assessment-for-the-epic-4-and-5-storie
+  register: _bmad-output/implementation-artifacts/legacy-review-closure-register.md
+  rebuilt_in: 7241d3c
+  owner_acceptance: pending
+  rule: the register verdicts are proposals; compiler_1_path closure notes and status changes are written only after the owner accepts the register (register §5)
+  held_done_verdicts:
+    5-1-stream-the-execution-timeline-live-over-sse: register §3.1 item 1 — the reading of "Timeline event" (NOTIFY not issued for three families of Run-chain events)
+    5-3-watch-a-running-run-in-live-view: register §3.1 item 2 — Live View's adapter log rows carry no digest
+    5-6-answer-an-escalation-without-leaving-live-view: register §3.1 item 3 — no evidence that the skip link moves focus
+  owner_dispositions:
+    decided: '2026-09-25'
+    4-7-raise-typed-escalations-as-durable-waits:
+      residual_a: 10-6-legacy-visibility-follow-up-human-matched-provenance-missing
+      residual_b: 14-11a-engagement-export-review-notes-under-archive-scope-a-tenant (explicit acceptance criterion)
+      status_until_delivered: review
+    4-8-answer-an-escalation-from-run-detail-and-notify-audit-manage:
+      residual_a: scope amendment — in-app delivery only; email is unimplemented and was never delivered; no mail transport is built
+      residual_b_c_d: open (register §6 point 3)
+    4-9-confirm-or-reject-agent-judged-evaluations-to-seal-the-resul:
+      transferred_to: 15-4-review-request-scoped-approval-authority-independence-over-h (explicit acceptance criterion for retained compiler-1 Results)
+      scope_amendment: the Submit control is not on main and did not pass in 4.9
+      on_acceptance: done against the remaining scope
+    5-2-capture-the-platform-owned-replay-asset-set-during-execution:
+      residual_a: 10-6-legacy-visibility-follow-up-human-matched-provenance-missing
+      residual_b: 14-11a-engagement-export-review-notes-under-archive-scope-a-tenant (explicit acceptance criterion)
+      residual_c_d: open (register §6 point 6)
+      status_until_delivered: review
+    5-4-pause-and-resume-a-running-run:
+      rule: accept the stored records only if they identify the exact Step and attempt; otherwise add linkage for new events in the follow-up; never rewrite historical events
+      outcome: the stored records do not qualify; 10-6 adds the linkage for new events
+      residual_b: open (register §6 point 7)
+      status_until_delivered: review
+  follow_up:
+    10-6-legacy-visibility-follow-up-human-matched-provenance-missing:
+      prepared: '2026-09-25'
+      implementation_authorised: false
+      proposed_scope_pending_owner: register §3.1 items 2 and 3 (5.3 digests, 5.6 skip-link focus)

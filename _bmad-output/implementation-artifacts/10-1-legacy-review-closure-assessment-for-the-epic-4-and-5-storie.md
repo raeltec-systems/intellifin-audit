@@ -2,7 +2,7 @@
 title: 'Legacy review closure assessment for the Epic 4 and 5 stories in review'
 type: 'chore'
 created: '2026-09-25'
-status: 'ready-for-dev'
+status: 'review'
 review_loop_iteration: 0
 context:
   - '_bmad-output/planning-artifacts/course-correction-2026-09-24/proposal-5-epics.md'
@@ -57,3 +57,18 @@ context:
 - Every one of the twenty Epic 4 and 5 stories has a register row; the seventeen in review have exactly one verdict each.
 - No status changed except from a recorded verdict; `validate` passes after the change.
 - No application code or test changed (`git diff --stat -- apps packages tests scripts` empty).
+
+## Status (2026-09-25)
+
+- **Task 1 is complete.** The register is at
+  `_bmad-output/implementation-artifacts/legacy-review-closure-register.md`. Its Epic 5 sections,
+  §3.1, §5 and §6 were rebuilt in `7241d3c` after the first session's unpushed commit `d79bdcf`
+  was lost (register §1).
+- **The owner's dispositions of 2026-09-25 are recorded** (register §3.2): 4.7, 4.8 (a), 4.9,
+  5.2 (a)–(b) and 5.4 (a). They change no proposed verdict. The follow-up Story 10-6 is prepared
+  and not authorised for implementation.
+- **Tasks 2 to 4 wait for the owner's acceptance of the register** (register §5 and §6, point 16).
+  No Epic 4 or Epic 5 status has changed. Three proposed Done verdicts (5.1, 5.3, 5.6) are held
+  for the owner's decisions in register §3.1.
+- No application code or test changed: `git diff --stat c18ad36 HEAD -- apps packages tests
+  scripts` is empty.
