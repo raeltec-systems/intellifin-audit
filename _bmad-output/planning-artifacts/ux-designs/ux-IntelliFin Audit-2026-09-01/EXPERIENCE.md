@@ -13,6 +13,8 @@ sources:
 
 # IntelliFin Audit — Experience Spine
 
+> Superseded on 2026-09-25 by revision 2 at `../ux-Zobba-2026-09-25/EXPERIENCE.md` for the conversation-led product (Zobba). This document remains the contract for the compiler-1 Run-path surfaces (Builder, Procedure Detail, Version review, Run Detail, Live View, Replay) until each surface's disposition story lands; on-disk tests (`apps/web/src/design/copy.test.ts`, `tests/unit/denial-strings.test.ts`) still read this file and move with their implementation stories. No sentence below was removed or altered.
+
 `DESIGN.md` is the visual identity reference; this spine is the experience. Both inherit the IntelliFin Design System. Requirement identifiers (FR-n, NFR-n, UJ-n, addendum §x) are the PRD's, revision 2. → Composition reference: `claude/mockups/IntelliFin Audit.dc.html`; `reconcile-claude-design.md` lists where the prototype predates revision 2. On conflict with the prototype, this spine wins. On conflict between this spine and `DESIGN.md`, behavior and copy follow this spine; visual values (tokens, sizes, treatments) follow `DESIGN.md`.
 
 ## Foundation
