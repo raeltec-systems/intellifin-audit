@@ -1,3 +1,14 @@
+## 2026-09-25 — A single read of a moving preview sample is a race the broker refuses on purpose
+
+- **The preview route answers 503 for a read that meets a new sample, and that is the product
+  working.** `startWorkspacePreviewBroker` refuses a read whose identity or sample sequence changed
+  while it was served (404/409), `WorkspacePreviewProxy.read` turns that into `null`, and the
+  route answers 503. `workspace-preview-worker.spec.ts:265` read the sample ONCE and asserted its
+  digest; CI on `33310a4` (documentation-only PR #53, application code identical to `c18ad36`)
+  met exactly one such 503 while the page's own polls around it answered 200. A test that expects
+  a sample re-reads until one is served (`settledSample`); a test that expects NO sample keeps its
+  single, unretried read, because polling there would hide the refusal it exists to prove.
+
 ## 2026-09-23 — The UI cleanup on the live branch, and what that branch was already failing
 
 The owner approved putting the cleanup on `feat/auditor-workspace-v1-1`, the branch production
