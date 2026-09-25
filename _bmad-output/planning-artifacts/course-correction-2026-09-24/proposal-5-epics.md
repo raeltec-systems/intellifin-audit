@@ -1,5 +1,8 @@
 # Proposal 5 of 7 — Epics: disposition of Epics 1–9 and the new epic plan
 
+Terminology note (owner correction, 2026-09-25): the concept formerly named **Mandate** is named **Permissions** throughout the course-correction artifacts — Agent Permissions (the bounded authority granted to the agent for work in an engagement), Engagement Permissions, Permissions Policy (the administrator ceiling), Permissions Version, Effective Permissions (what each proposed operation is authorised against) and Permissions Summary (what the model is shown). This is a terminology change only; every intersection, versioning, confirmation, source-protection, administrator-limit, revocation and enforcement rule is unchanged, and provider or OAuth connection scopes remain distinct from agent permissions. Contract and module names follow: `permissions-v1`, `packages/domain/src/permissions/`, `permissions_policy`, `engagement_permissions`, `authorizeToolCall(effectivePermissions, call)`.
+
+
 Status: draft for owner review on 2026-09-24; awaiting a / e / s. Builds on the approved Proposals 1–4 and maps every approved contract (3d §6) to the epic and stories that establish it and the tests that demonstrate it, as 3d's approval requires. No implementation is authorised; sprint-status changes are made by Proposal 7's disposition, not here.
 
 Baseline (`sprint-status.yaml` on `main` `c18ad36`): Epic 1 done (8 stories), Epic 2 done (8), Epic 3 done (11), Epic 4 three done and nine in review, Epic 5 eight in review, Epics 6–9 backlog (8, 7, 6, 9 stories). Everything in Epics 1–5 is on `main` and deployed; it is the compiler-1 path.
@@ -72,17 +75,17 @@ Each epic: goal; contracts established (3d §6); requirements; stories (title �
 
 **Minimal cut:** all but 2.9's engagement stream. **Blocked after:** nothing task-side. **Epic 9 proof:** the mutation harness on the loop's one call site; the injection evaluation set.
 
-### NE-3 — Mandate, connector framework, connections and the first connectors
+### NE-3 — Agent Permissions, connector framework, connections and the first connectors
 
-**Goal:** authority as a versioned Mandate evaluated per operation; connectors with effect classes and two-axis results; per-user connections through the worker-side broker; Drive, Gmail and Calendar on personal accounts with designated resources; the disclosure policy before every model request.
+**Goal:** authority as versioned Agent Permissions evaluated per operation; connectors with effect classes and two-axis results; per-user connections through the worker-side broker; Drive, Gmail and Calendar on personal accounts with designated resources; the disclosure policy before every model request.
 
-**Contracts:** `mandate-v1`, `connector-v1`, `connection-v1`, `disclosure-policy-v1`. **Requirements:** FR-3, FR-60–68, FR-89. **ADs:** 4, 9, 26, 27.
+**Contracts:** `permissions-v1`, `connector-v1`, `connection-v1`, `disclosure-policy-v1`. **Requirements:** FR-3, FR-60–68, FR-89. **ADs:** 4, 9, 26, 27.
 
 | Story | Establishes | Demonstrated by |
 |---|---|---|
-| 3.1 Mandate policy and engagement mandate as versioned documents; the intersection | authority computation | frozen {A,B} ∩ current {B,C} = {B}; unrelated narrowing refuses nothing |
+| 3.1 Agent Permissions policy and Engagement Permissions as versioned documents; the intersection | authority computation | frozen {A,B} ∩ current {B,C} = {B}; unrelated narrowing refuses nothing |
 | 3.2 `authorizeToolCall` with four outcomes; canonical resource identity; source-wins; absolute source protection | gate | killing test per rule; alias, shortcut, moved file, redirect, unresolvable target; mutation harness |
-| 3.3 Capability summary to the model; internal tools with `connection: none` | summary | the model sees no Mandate document; internal tool passes the gate without a connection rule |
+| 3.3 Permissions Summary to the model; internal tools with `connection: none` | summary | the model sees no Permissions document; internal tool passes the gate without a connection rule |
 | 3.4 Connector descriptor, port, two-axis result, conformance suite, hostile fake | `connector-v1` | timeout after dispatch is `unknown-after-dispatch`; unverifiable success fails validation; empty versus unreachable |
 | 3.5 Connections, secrets under `CONNECTION_SECRET_KEY`, disconnect ordering | `connection-v1` §connections | dispatch after local disable refused; refresh after disable cannot reactivate |
 | 3.6 OAuth: attempt, PKCE, sealed handoff, callback validation, mix-up defence per provider | §attempt, §callback | swapped state, wrong user, wrong tenant, replay, expired attempt; both mix-up defences |
@@ -90,7 +93,7 @@ Each epic: goal; contracts established (3d §6); requirements; stories (title �
 | 3.8 Google Drive connector (read, snapshot, list, write-output to designated folders) | first connector | conformance suite; personal-account acceptance on designated folders |
 | 3.9 Gmail connector (read a designated label, attachments as `received` snapshots, draft; send behind `external-effect`) | second connector | conformance; a send needs confirmation with bound details |
 | 3.10 Calendar connector (read, create-event behind `external-effect`, read-back) | third connector | conformance; created event read back and receipted |
-| 3.11 Browser as a connector under the Mandate | `agent-workspace-v1` re-homed | existing browser suites pass under the gate |
+| 3.11 Browser as a connector under the Agent Permissions | `agent-workspace-v1` re-homed | existing browser suites pass under the gate |
 | 3.12 Disclosure policy per tenant and engagement, applied before every outbound request including fallback | `disclosure-policy-v1` | restricted item blocks primary and fallback; derived summary inherits; unknown classification blocks |
 | 3.13 Bound `ResolvedCredential` for connections; the credential guard over connector traffic | containment | a credential outside its bound destination refused; scans on every freeze and model request |
 
@@ -228,7 +231,7 @@ Runs throughout, generalised: isolation suite (NE-1), loop mutation harness and 
 | `agent-loop-v1` | NE-2 2.3, 2.4, 2.7, 2.8 | `export-v2` | NE-4 4.11 |
 | `working-context-v1` | NE-2 2.7; NE-6 6.8 | `artifact-version-v1` | NE-5 5.1–5.5, 5.7 |
 | `live-channel-v2` | NE-2 2.9 | `rendering-v1` | NE-5 5.6; NE-7 7.6 |
-| `mandate-v1` | NE-3 3.1–3.3 | `memory-v1` | NE-6 6.2, 6.3 |
+| `permissions-v1` | NE-3 3.1–3.3 | `memory-v1` | NE-6 6.2, 6.3 |
 | `connector-v1` | NE-3 3.4, 3.8–3.11 | `skill-v1` | NE-6 6.6 |
 | `connection-v1` | NE-3 3.5–3.7, 3.13 | `methodology-pack-v1` | NE-6 6.4, 6.7 |
 | `disclosure-policy-v1` | NE-3 3.12 | `run-level-gate-v2` | NE-6 6.5; NE-9 9.5 |
@@ -240,7 +243,7 @@ Runs throughout, generalised: isolation suite (NE-1), loop mutation harness and 
 ## 4. Order, dependencies and the first acceptance slice (D-5-4)
 
 ```
-NE-1 tenancy ──► NE-2 task + loop ──► NE-3 mandate + connectors ──► NE-4 evidence ──► NE-7 sandbox ──► NE-5 artifacts ──► NE-6 memory + packs ──► NE-8 experience ──► NE-9 thin proof
+NE-1 tenancy ──► NE-2 task + loop ──► NE-3 permissions + connectors ──► NE-4 evidence ──► NE-7 sandbox ──► NE-5 artifacts ──► NE-6 memory + packs ──► NE-8 experience ──► NE-9 thin proof
                  ▲ NE-8 mockups reviewed before NE-2's first surface                                                          Epic 9 proofs throughout
 ```
 

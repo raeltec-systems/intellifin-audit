@@ -1,5 +1,8 @@
 # Proposal 4 of 7 (revised) — UX and interaction design: EXPERIENCE.md revision 2 and the DESIGN.md delta
 
+Terminology note (owner correction, 2026-09-25): the concept formerly named **Mandate** is named **Permissions** throughout the course-correction artifacts — Agent Permissions (the bounded authority granted to the agent for work in an engagement), Engagement Permissions, Permissions Policy (the administrator ceiling), Permissions Version, Effective Permissions (what each proposed operation is authorised against) and Permissions Summary (what the model is shown). This is a terminology change only; every intersection, versioning, confirmation, source-protection, administrator-limit, revocation and enforcement rule is unchanged, and provider or OAuth connection scopes remain distinct from agent permissions. Contract and module names follow: `permissions-v1`, `packages/domain/src/permissions/`, `permissions_policy`, `engagement_permissions`, `authorizeToolCall(effectivePermissions, call)`.
+
+
 Status: APPROVED by the owner on 2026-09-24 in full as the approved basis for EXPERIENCE.md revision 2 and the corresponding DESIGN.md changes, with D-4-1..4 approved. No further edits requested. Approval of the interaction contract is not approval of an unseen rendered interface: representative desktop and narrow-screen mockups or a prototype are reviewed before the shell is built; the six-scene acceptance set demonstrates ordinary reading and detailed inspection, and that context survives opening evidence, changing panels, returning to a conversation and receiving new activity; questions and safety controls stay usable without covering the composer or disrupting unrelated work; behavioural, accessibility and visual checks are implementation obligations; exact-copy tests stay limited to intentionally fixed language and nothing substitutes for demonstrating that an auditor can complete the work. No implementation is authorised.
 History: revised on 2026-09-24 after the owner's eight edit groups (D-4-1..4 taken as below); awaiting owner approval. Builds on the approved PRD text (Proposals 1–2) and the approved architecture (3a–3d) and expresses them as an experience. **The governing distinction: conversation initiates and directs real work; the harness enforces how that work happens. The auditor experiences a capable assistant, not a permissions console.** Provenance collection, permission evaluation and execution bookkeeping stay in the harness; the auditor meets the information and decisions needed to direct and review the work.
 
@@ -92,7 +95,7 @@ Added, each with a **default reading view** and an **inspection view**:
 | Decision surface | One coherent surface per decision with the exact material details and an action-specific control: "Create invitation" (resolved date, time, time zone, calendar, recipients), "Save to Drafts" (exact version, destination, draft status), "Approve version", "Issue report". For a reconciliation: only the recovery actions the current state permits; a retry that may duplicate says so and is never presented as safe; a human resolution is recorded as a human resolution. | The bound details' provenance, the gate outcome, the receipt. |
 | Memory | An explicit instruction shows "Remembered for your preferences" inline with a link to inspect or correct; an inferred item shows a proposal with scope, source and reason and Confirm / Reject / Edit scope. | The item's verification status, effective dates, supersession. |
 | Connection and resources | Provider, account identity, readable names for designated folders, labels and calendars with meaningful location context; state in words; Connect reachable from the conversation and returning to the work. Accounts, granted capabilities and permitted locations are shown as three things; consent alone makes nothing usable. | Scopes granted, canonical identifiers, disconnect consequences. |
-| Mandate summary | What the agent may read, draft, save and do in this engagement, and which actions will ask, in plain sentences. | Effective authority per operation, budgets, ceiling. |
+| Permissions Summary | What the agent may read, draft, save and do in this engagement, and which actions will ask, in plain sentences. | Effective Permissions per operation, budgets, ceiling. |
 | Method and promotion | The selected steps, inputs, checks and criteria as a readable method; "Submit for approval". | The compiler's mapping, unresolved issues, acquisition rules, schedule, responsible person. |
 | Scheduled result | The one-sentence summary and the summary word (Pass / Exception / Inconclusive / Failed to run) with supported exceptions listed. | The four statuses separately; "Why inconclusive" opens the Gate checklist. |
 
@@ -153,15 +156,15 @@ The table keeps its three roles and its denial sentences and gains rows. **Every
 
 | Action | Auditor | Audit Manager | PoC Administrator |
 |---|---|---|---|
-| Start a conversation, direct tasks, answer questions, confirm bound actions within own Mandate | ✓ | ✓ | — "PoC Administrator cannot direct audit work." |
+| Start a conversation, direct tasks, answer questions, confirm bound actions within own Agent Permissions | ✓ | ✓ | — "PoC Administrator cannot direct audit work." |
 | Create, revise and review working artifacts (drafts; no independence rule) | ✓ | ✓ | — |
 | Approve an artifact version under its methodology | per pack; never own or contributed | ✓ unless author or contributor | — |
 | Review a method artifact | per pack | ✓ | — |
 | Approve a Procedure Version (compiler-1 or compiler-2) | — "Only an Audit Manager can approve a Procedure Version." | ✓ unless author or contributor: "You cannot approve a version you authored or contributed to." | — |
 | Issue a deliverable | per pack | ✓ where a member with issue authority | — |
-| Share a working draft to an authorised destination | ✓ within Mandate | ✓ | — |
+| Share a working draft to an authorised destination | ✓ within Agent Permissions | ✓ | — |
 | Connect own accounts, choose designated resources, disconnect | ✓ | ✓ | ✓ (own) |
-| Set an engagement's Mandate within the ceiling | ✓ (member) | ✓ | — |
+| Set an engagement's Permissions within the ceiling | ✓ (member) | ✓ | — |
 | Set the administrator ceiling and disclosure policy | — | — | ✓ |
 | Confirm a memory proposal | scope owner or delegate | scope owner or delegate | — (operating Settings confirms nobody's proposal) |
 | Propose, approve and activate methodology packs and skills | propose | pack owner approves | activation is an audited administrative act; it never approves content |

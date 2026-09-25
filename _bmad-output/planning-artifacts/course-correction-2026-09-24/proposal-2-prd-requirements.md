@@ -1,9 +1,12 @@
 # Proposal 2 of 7 (revised) — PRD: new requirement sections and FR-3 revision
 
+Terminology note (owner correction, 2026-09-25): the concept formerly named **Mandate** is named **Permissions** throughout the course-correction artifacts — Agent Permissions (the bounded authority granted to the agent for work in an engagement), Engagement Permissions, Permissions Policy (the administrator ceiling), Permissions Version, Effective Permissions (what each proposed operation is authorised against) and Permissions Summary (what the model is shown). This is a terminology change only; every intersection, versioning, confirmation, source-protection, administrator-limit, revocation and enforcement rule is unchanged, and provider or OAuth connection scopes remain distinct from agent permissions. Contract and module names follow: `permissions-v1`, `packages/domain/src/permissions/`, `permissions_policy`, `engagement_permissions`, `authorizeToolCall(effectivePermissions, call)`.
+
+
 Status: APPROVED by the owner on 2026-09-24 as the requirements baseline for PRD revision 4, consistent with Proposal 1. Settles what the product must support; not the technical choices or deployment topology. No implementation authorised.
 Artifact: `prd.md` §4 (new §4.14–§4.21), §4.1 FR-3, §4.4 (promotion), §4.5 FR-20/FR-22 scope note. Numbering continues from FR-50; FR-83–FR-90 were appended in the revision. Existing FRs named as HOLDS in `analysis-prd-epics.md` are unchanged.
 
-Carried forward from Proposal 1: investigation within the Mandate without unnecessary prompts; working material distinct from evidence; coverage limitations constrain conclusions immediately; execution, coverage, assessment and review statuses separate.
+Carried forward from Proposal 1: investigation within the Agent Permissions without unnecessary prompts; working material distinct from evidence; coverage limitations constrain conclusions immediately; execution, coverage, assessment and review statuses separate.
 
 Requirements state behaviour; Proposal 3 defines the interfaces, storage and deployment mechanisms that satisfy them.
 
@@ -12,7 +15,7 @@ Requirements state behaviour; Proposal 3 defines the interfaces, storage and dep
 OLD: only allowlisted read operations; a write-capable credential cannot be registered.
 
 NEW:
-> **FR-3.** The application owns authorisation policy and checks each proposed tool operation against the task's Mandate before dispatch. Connector adapters and execution environments independently enforce their applicable capability, resource and isolation restrictions. Neither an adapter nor the model may invent, widen or bypass authority.
+> **FR-3.** The application owns authorisation policy and checks each proposed tool operation against the task's Effective Permissions before dispatch. Connector adapters and execution environments independently enforce their applicable capability, resource and isolation restrictions. Neither an adapter nor the model may invent, widen or bypass authority.
 >
 > Operations are authorised against their actual account, resource, destination and effect. Original received evidence and audited operational source records cannot be modified through any path: the agent cannot reclassify a protected source as an output location to obtain write access, and source protection applies through connectors, scripts, browser actions and every other execution path.
 >
@@ -36,13 +39,13 @@ FR-20 (per-Target-System sign-in loop) and FR-22 (record × system Work Item gri
 
 ## §4.14 Engagements and tenancy — NEW
 
-> **FR-52.** An Engagement is the primary business object: client, period, objective, team membership, authorised sources and connections, and the Mandate in force. An engagement starts as a draft with any of these unset; the agent may work on what is set, and an unset detail blocks only the action that needs it.
+> **FR-52.** An Engagement is the primary business object: client, period, objective, team membership, authorised sources and connections, and the Agent Permissions in force. An engagement starts as a draft with any of these unset; the agent may work on what is set, and an unset detail blocks only the action that needs it.
 >
 > **FR-53.** Every protected record has an explicit owning tenant and applicable access scope. Client, engagement and user associations are required where appropriate to the record's meaning. Tenant-wide or user-scoped records (methodology packs, user preferences, client knowledge, connections that serve several authorised engagements) are deliberately scoped — not made accessible through absent client or engagement identifiers. Identifiers supplied by a browser or model are selectors, never proof of access. Reads, retrieval, writes, exports, background jobs and credential use enforce the applicable ownership, membership and grants. The owner's personal workspace is a single-owner tenant with the same enforcement.
 >
 > **FR-54.** Isolation is proven, not assumed: negative cross-scope tests (a member of one client's engagement cannot read, retrieve, be shown, or act on another client's material, memory, indexes, cached context, artifacts, background work or credentials) run in CI before any personal account is connected, and the same tests run against every later release. The boundaries apply to retrieval indexes, cached context, artifacts and background execution, not only to database queries.
 >
-> **FR-83.** A recorded Mandate version establishes the task's approved authority, but does not preserve permissions that have subsequently been revoked. Current grants, administrator restrictions and applicable approvals are checked before dispatch and again when resuming or retrying affected operations.
+> **FR-83.** A recorded Permissions Version establishes the task's approved authority, but does not preserve permissions that have subsequently been revoked. Current grants, administrator restrictions and applicable approvals are checked before dispatch and again when resuming or retrying affected operations.
 >
 > **FR-84.** Background tasks and scheduled checks execute under an identifiable execution principal and an approved delegation. The system records the responsible human and authorising decisions, enforces current permission restrictions, and does not borrow another user's credentials or depend on an indefinitely active interactive session.
 
@@ -50,7 +53,7 @@ FR-20 (per-Target-System sign-in loop) and FR-22 (record × system Work Item gri
 
 > **FR-55.** A conversation is a durable, engagement-scoped record. Auditor messages are model input on a request channel; they never carry authority. Authority changes only through typed, attributable, revision-guarded commands, and explicit confirmations are recorded as such (the existing receipt discipline: received → interpreted → queued → applied / refused / superseded, never inferred from state).
 >
-> **FR-56.** An Agent Task is the unit of directed work: it has an owner, an engagement, a Mandate version, a state machine, a lease, a budget (steps, time, tokens) reserved before paid work, a step ledger (each tool call with its arguments digest, effect class, outcome and receipt), and chained audit events in the same transaction as each platform effect. Tasks survive worker restarts, can be paused, cancelled and resumed at tool boundaries, and can run in the background with the auditor away.
+> **FR-56.** An Agent Task is the unit of directed work: it has an owner, an engagement, a Permissions Version, a state machine, a lease, a budget (steps, time, tokens) reserved before paid work, a step ledger (each tool call with its arguments digest, effect class, outcome and receipt), and chained audit events in the same transaction as each platform effect. Tasks survive worker restarts, can be paused, cancelled and resumed at tool boundaries, and can run in the background with the auditor away.
 >
 > **FR-57.** The agent asks a targeted question when information or a decision is genuinely missing. A question is a durable wait with a deadline. Free-text answers and conversational requests may inform plans, resolve questions and propose authorised application operations. They do not themselves execute commands or grant authority. Existing closed-option decision mechanisms (FR-27) remain available where an exact, bound decision is required; they are not the only way an auditor can communicate with the agent.
 >
@@ -62,11 +65,11 @@ FR-20 (per-Target-System sign-in loop) and FR-22 (record × system Work Item gri
 >
 > **FR-88.** Database records and external effects are not treated as one indivisible transaction. Recovery must account for interruption before dispatch, after dispatch but before a receipt is recorded, and after a confirmed result. Pause and cancellation prevent further dispatch at the supported boundaries and request interruption of in-flight work where supported. The interface distinguishes a stop request from confirmed cessation. An action already performed is not described as undone merely because the task was cancelled.
 
-## §4.16 Mandate and permission model — NEW
+## §4.16 Agent Permissions — NEW
 
-> **FR-60.** A Mandate is the versioned authority a task runs under: the intersection of the administrator's ceiling, the auditor's own connected access and grants, and the engagement's scope. It names permitted connector and application operations by effect class — `read`, `draft`, `write-output`, `external-effect` (send, create or update outside the platform) — the source locations (read and snapshot only) and output locations (writable), execution budgets, and which effect classes need explicit confirmation. Source mutation is not an effect class and cannot be granted; the boundary is the actual resource, not the tool's name (FR-3).
+> **FR-60.** Agent Permissions are the versioned authority a task runs under: the intersection of the administrator's ceiling, the auditor's own connected access and grants, and the engagement's scope. It names permitted connector and application operations by effect class — `read`, `draft`, `write-output`, `external-effect` (send, create or update outside the platform) — the source locations (read and snapshot only) and output locations (writable), execution budgets, and which effect classes need explicit confirmation. Source mutation is not an effect class and cannot be granted; the boundary is the actual resource, not the tool's name (FR-3).
 >
-> **FR-61.** Routine operations inside the Mandate — reads, snapshots, calculations, drafting, investigation of adjacent patterns within the authorised sources — run without a prompt. Operations outside the Mandate are refused (FR-3). Operations the Mandate marks confirm-required are presented with their material details and performed only after an explicit, recorded confirmation bound to those details.
+> **FR-61.** Routine operations inside the Agent Permissions — reads, snapshots, calculations, drafting, investigation of adjacent patterns within the authorised sources — run without a prompt. Operations outside the Agent Permissions are refused (FR-3). Operations the Permissions mark confirm-required are presented with their material details and performed only after an explicit, recorded confirmation bound to those details.
 >
 > **FR-62.** The application owns authorisation policy and checks each proposed tool operation before dispatch. Connector adapters and execution environments independently enforce their applicable capability, resource and isolation restrictions, and each layer is tested. Neither an adapter, a skill, a memory item, retrieved content nor the model may invent, widen or bypass authority.
 >
@@ -80,7 +83,7 @@ FR-20 (per-Target-System sign-in loop) and FR-22 (record × system Work Item gri
 >
 > The tool framework covers both external connector operations and internal capabilities such as searching engagement context, running analysis, creating artifact revisions, proposing memory, requesting decisions and promoting a check. All use the applicable authorisation, provenance and receipt mechanisms under a common governed invocation model; this does not require every capability to share one undifferentiated interface.
 >
-> **FR-65.** A connection is per user and per tenant: created by the user's own consent flow, stored encrypted, refreshed and revoked only by the authorised credential-broker components (FR-63), audited on grant, use and revocation, and usable only inside engagements where that user is a member and the Mandate names it. A connection may serve several authorised engagements of the same user.
+> **FR-65.** A connection is per user and per tenant: created by the user's own consent flow, stored encrypted, refreshed and revoked only by the authorised credential-broker components (FR-63), audited on grant, use and revocation, and usable only inside engagements where that user is a member and the Engagement Permissions name it. A connection may serve several authorised engagements of the same user.
 >
 > **FR-66.** The system records the intended external operation and its bound material details before dispatch, then records attempts and confirmed results or an explicit unknown outcome. Retries use the connector's declared idempotency and reconciliation capabilities where available. Where an external effect cannot be reliably reconciled, the task pauses for resolution rather than blindly repeating the operation. Receipts distinguish requested, accepted, confirmed and unknown outcomes as applicable; the agent's claim must not exceed what the receipt establishes (confirmation that an invitation was created does not establish that attendees accepted it).
 >
@@ -116,7 +119,7 @@ FR-20 (per-Target-System sign-in loop) and FR-22 (record × system Work Item gri
 
 > **FR-77.** A methodology pack is versioned tenant data supplied by a firm or team: phases and gates, artifact templates, rating scales, sampling conventions, criteria authority order, reporting structures and approval requirements. The platform ships example packs (including the P-1..P-4 procedures and their fixtures as one optional example pack) and treats none as universal. Changing an active pack version is an approved, audited change.
 >
-> **FR-78.** Skills are reusable descriptions of how to approach an activity (context discovery, planning, document review, population analysis, control testing, reconciliation, investigation, evidence assessment, working-paper preparation, reporting). Skills describe approach; connections provide access; tools perform actions; memory and retrieved context inform. A skill cannot grant authority or bypass the Mandate.
+> **FR-78.** Skills are reusable descriptions of how to approach an activity (context discovery, planning, document review, population analysis, control testing, reconciliation, investigation, evidence assessment, working-paper preparation, reporting). Skills describe approach; connections provide access; tools perform actions; memory and retrieved context inform. A skill cannot grant authority or bypass the Agent Permissions.
 >
 > **FR-85.** The runtime can discover and load relevant approved skills for a task, either from the auditor's explicit selection or from the task's objective and context. Skills are identifiable and versioned, with their purpose, applicable context, required capabilities and expected outputs. The task record identifies the skill and methodology versions used. Loading a skill cannot grant permissions, bypass required decisions or silently alter an approved recurring-check definition.
 >

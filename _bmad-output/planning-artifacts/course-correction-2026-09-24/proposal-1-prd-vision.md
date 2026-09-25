@@ -1,5 +1,8 @@
 # Proposal 1 of 7 (revised) — PRD: vision, primary object, journeys, non-goals, scope
 
+Terminology note (owner correction, 2026-09-25): the concept formerly named **Mandate** is named **Permissions** throughout the course-correction artifacts — Agent Permissions (the bounded authority granted to the agent for work in an engagement), Engagement Permissions, Permissions Policy (the administrator ceiling), Permissions Version, Effective Permissions (what each proposed operation is authorised against) and Permissions Summary (what the model is shown). This is a terminology change only; every intersection, versioning, confirmation, source-protection, administrator-limit, revocation and enforcement rule is unchanged, and provider or OAuth connection scopes remain distinct from agent permissions. Contract and module names follow: `permissions-v1`, `packages/domain/src/permissions/`, `permissions_policy`, `engagement_permissions`, `authorizeToolCall(effectivePermissions, call)`.
+
+
 Status: APPROVED by the owner on 2026-09-24 as the basis for PRD revision 4. The approval settles product direction and wording; it does not authorise implementation or pre-approve the contracts in Proposals 2–7.
 Artifact: `prd.md` §1, §1.1 principle 4, §1.2, §2.3, §7, §8.1, §8.3. New revision (rev 4).
 
@@ -26,7 +29,7 @@ Artifact: `prd.md` §1, §1.1 principle 4, §1.2, §2.3, §7, §8.1, §8.3. New 
 ```
 ENGAGEMENT
   ├─ CONVERSATIONS and AGENT TASKS
-  │    Directed work, under a Mandate.
+  │    Directed work, under Agent Permissions.
   ├─ SOURCES AND EVIDENCE
   │    Preserved source snapshots and registered supporting evidence,
   │    including traceable derived analytical outputs where applicable.
@@ -53,7 +56,7 @@ Replaces the absolute "every action and conclusion stays … replayable" and "Ar
 
 ## §1.1 Principle 4 — NEW
 
-> **Least privilege is enforced by the platform.** The agent does not modify original received evidence or audited operational source records. Analysis uses preserved source snapshots and separate working copies. Creating or updating working artifacts and performing collaboration actions is permitted only for explicitly authorised resources and operations under a versioned Mandate.
+> **Least privilege is enforced by the platform.** The agent does not modify original received evidence or audited operational source records. Analysis uses preserved source snapshots and separate working copies. Creating or updating working artifacts and performing collaboration actions is permitted only for explicitly authorised resources and operations under versioned Agent Permissions.
 >
 > The auditor may configure authority within their own permissions and the administrator's limits. Tenant, client and engagement isolation is enforced from the first implementation. Prompts, memory, skills and external content never grant authority.
 
@@ -69,7 +72,7 @@ Six industry-neutral journeys replace UJ-1..6:
 
 - **UJ-1 Establish context and plan.** The auditor opens or continues a draft engagement and states an objective. The agent reads the authorised material, says what it found, what it assumed and what it still needs, and proposes a plan artifact the auditor edits; the edit is versioned.
 - **UJ-2 Perform analysis and testing.** The agent obtains source snapshots, works on separate copies in a controlled environment, and produces derived outputs linked to their inputs, with population completeness and period relevance stated.
-- **UJ-3 Investigate signals.** The agent may identify and investigate relevant patterns beyond the auditor's literal request when the investigation remains within the agreed objective, authorised sources, permitted operations and execution limits of the current Mandate. It records material investigative steps and distinguishes hypotheses, signals and confirmed findings. New access, material scope expansion, or changes to approved criteria or recurring-check definitions require the applicable approval. Within an approved recurring run, adjacent investigation must not silently change the formal check or its result.
+- **UJ-3 Investigate signals.** The agent may identify and investigate relevant patterns beyond the auditor's literal request when the investigation remains within the agreed objective, authorised sources, permitted operations and execution limits of the current Agent Permissions. It records material investigative steps and distinguishes hypotheses, signals and confirmed findings. New access, material scope expansion, or changes to approved criteria or recurring-check definitions require the applicable approval. Within an approved recurring run, adjacent investigation must not silently change the formal check or its result.
 - **UJ-4 Correct and review artifacts.** The auditor corrects an overstated result; the agent revises the artifact, preserves its history, flags related conclusions and approvals for reconsideration, and proposes — never silently applies — retaining the correction in memory at the appropriate scope.
 - **UJ-5 Coordinate evidence requests, correspondence and walkthroughs.** The agent reads relevant correspondence and attachments to update or propose updates to the request record, and prepares meetings and messages; an external action is presented with its material details and confirmed before it is performed, and the confirmed result is linked to the engagement.
 - **UJ-6 Promote to a recurring check and run it.** Suitable work is promoted to a versioned procedure with its execution requirements; approval is by someone other than the author where independence requires it; a scheduled run reports Pass / Exception / Inconclusive / Failed-to-run truthfully. Execution status, input and coverage status, audit assessment, and review or issue status remain separate. "Pass / Exception / Inconclusive / Failed-to-run" is user-facing summary vocabulary, not a single interchangeable state model. Successful execution can produce an inconclusive assessment; a completed draft is not an approved or issued result.
