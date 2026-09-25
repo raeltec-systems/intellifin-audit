@@ -2,15 +2,21 @@
 title: 'Design-acceptance register and review of the 23 reference screens'
 story: '18.2 (NE-8 8.1)'
 created: '2026-09-25'
-revision: 1
-status: 'open — 16 rows open, none closed; owner sign-off of Part D pending'
+updated: '2026-09-25'
+revision: 2
+status: 'open — 22 rows open (B1–B16 from Proposal 5 §5; B17–B22 added by the owner), none closed; Part D signed off by the owner on 2026-09-25 as a documentary screen review'
 ---
 
 # Design-acceptance register
 
 **Purpose.** D-5-6 (Proposal 5, approved 2026-09-25): a surface the Zobba design pack does not cover is designed under the pack's rules and reviewed before the affected user-facing implementation is built. Where a story combines backend prerequisites with an undesigned surface, it is split: the prerequisite part proceeds and the surface part waits for its design review — never a guessed UI, never unrelated infrastructure blocked by an unfinished screen. **This register is a story-entry criterion:** a story part named in Part B does not start its surface work until its row is closed. D-5-4 and D-5-6 also require the pack's 23 reference screens to be reviewed against the six-scene acceptance set before the shell story 18.3 begins; Parts A, C and D are that review, and Proposal 5 §4a lists this record as Slice 0's design item ("The 23-screen review record").
 
-**Date:** 2026-09-25 · **Revision:** 1 · **Owner sign-off:** pending (Part D).
+**Date:** 2026-09-25 · **Revision:** 2 · **Owner sign-off:** given on 2026-09-25 for the documentary screen review and its recorded findings, with the decisions in Part D. The sign-off closes no register row and authorises no implementation.
+
+| Revision | Date | Change |
+|---|---|---|
+| 1 | 2026-09-25 | The review of the 23 screens (Parts A, C), the sixteen rows of P5 §5 (Part B) and six questions for the owner (Part D). |
+| 2 | 2026-09-25 | The owner's decisions on Part D items 1–6 applied: rows B17–B22 added (B22 as bounded sub-rows by slice); the `epics.md` gate lines corrected to the surface-part rule; Stop while a task waits; the narrow and intermediate widths rule (B.3); the Engagements empty sentence; the reconciled Settings sections; the design priorities for 18.3 (Part E). |
 
 **Abbreviations.** EXP = EXPERIENCE.md revision 2 · DES = DESIGN.md revision 2 · 4b = Proposal 4b · P5 = Proposal 5 · RS = reference screen · R1–R12 = the pack's EXPERIENCE-RULES · "row n" = 4b §5 row n · Flow A–L = EXP §8 · P1–P19 = the pack's PATTERNS. Story parts use the Epic numbering of `epics.md` (Proposal 7: NE-8 8.x → 18.(x+1), so 8.1 → 18.2; every other NE-n story s.x → Epic 10+n story x).
 
@@ -34,6 +40,8 @@ Paths are relative to `_bmad-output/planning-artifacts/`.
 - **Every reference screen is illustrative, except the fixed labels and safety-critical message patterns adopted as exact copy:** EXPERIENCE-RULES §12 as amended by 4b §5 rows 13–14 (EXP §11 and EXP's precedence paragraph). Row 14 replaces the pack's uncertain-outcome pattern ("I sent the [item], but [system] didn't confirm [delivery]…") with the two receipt-chosen sentences of EXP §6; row 13 replaces the pack's unattended rule with EXP §3's. EXP §11 also treats the §5 status meanings, the connection sentence, the denial sentences, the standard action labels and the Banner sentences as exact copy. Names, the scenario, model names, Zobba's dialogue and example data are illustrative. Each Part A entry lists the exact copy that appears on that screen; everything else on that screen is illustrative.
 - **Precedence** (EXP, opening paragraph): the pack is the authoritative visual and interaction specification; where 4b §5, §6, §6a or §7 amended a screen, a default or a sentence, the amendment governs; behaviour and copy follow EXP; visual values follow DES.
 - **Accessibility target:** WCAG 2.2 AA for every new flow, with automated and manual checks and no allowlist of accepted violations (D-4b-6).
+- **Narrow and intermediate widths (Part D item 4, decided 2026-09-25).** RS 17 and RS 18 are representative references for the initial shell direction. They are not complete responsive acceptance. Every other state below 600 px and at 600–1023 px is designed and reviewed before the surface that shows it is built (B.3).
+- **Surface-part rule (Part D item 2, decided 2026-09-25).** A missing design blocks only the story part that builds the surface needing it, from the slice that first needs it. It never blocks a backend prerequisite or an earlier bounded part. The gate lines in `epics.md` follow Part B.
 - **Count:** 23 screens are filed. The pack's HANDOFF §1 and README still say 18 (already recorded in DES §8 item 5).
 
 ## Verdicts used in Part A
@@ -93,7 +101,7 @@ Finding identifiers (F01-1 …) are stable references for the owning story parts
   - F01-1 · No notification bell is drawn here or on any of the 23 screens, so the attention view's entry point (EXP §2; D-4b-2) is unillustrated → B14.
   - F01-2 · The engagement chip is preselected. A first request with no engagement (EXP §2 "A first request needs no name"; EXP §6 "Client not selected") is unillustrated → B2.
   - F01-3 · The Permissions chip reads "Reads selected sources" without the word Permissions (COMPONENT-INVENTORY: "Permissions: reads selected sources"). Its visible text or accessible name must identify it as the Permissions summary (EXP §3 Permissions; EXP §10).
-  - F01-4 · No first-run empty state (Engagements, Recent tasks; EXP §6) is drawn → Part D item 5.
+  - F01-4 · No first-run empty state (Engagements, Recent tasks; EXP §6) is drawn → Part D item 5 (decided: EXP §6's sentence "No engagements yet. Start a conversation to begin." governs; DES aligned).
 
 #### RS 02 — Active task: reading, guidance queued, Stop · `02-active-task-desktop-1280x800.png`
 
@@ -105,7 +113,7 @@ Finding identifiers (F01-1 …) are stable references for the owning story parts
 - **Findings:**
   - F02-1 · The task composer drops the engagement and Permissions chips. EXP §4 (Composer) and EXP §3 (the Permissions summary appears "in the composer chip") keep them; the build follows EXP. Also the task composers of RS 03, 04, 05, 08, 09 and 21.
   - F02-2 · The header presence chip and the current activity step both carry the working mark in one conversation region. Only one may animate (EXP §10 "One animated Pair mark per region"; DES §6 Zobba mark).
-  - F02-3 · The activity summary above the composer (EXP §2 Engagement workspace; EXP §4 "The summary above the composer shows the current step and open items") is not drawn on any screen → Part D item 1.
+  - F02-3 · The activity summary above the composer (EXP §2 Engagement workspace; EXP §4 "The summary above the composer shows the current step and open items") is not drawn on any screen → B17 (added by Part D item 1).
   - F02-4 · The header names task, client and engagement but not the tenant workspace (EXP §1 Multi-tenant; 18.3), and no screen draws a breadcrumb trail (EXP §2 Breadcrumbs "Engagement / Workspace"). If the header's engagement line is the trail, 18.3 renders it as the page's one trail.
 
 #### RS 03 — Active task: guidance applied, limitation, working data · `03-active-task-working-data-desktop-1280x800.png`
@@ -154,7 +162,7 @@ Finding identifiers (F01-1 …) are stable references for the owning story parts
   - F05-1 · The task header chip "Draft 1 ready" is not a word of any EXP §5 dimension, and it stands where the presence chip goes. The build shows the execution state and the artifact's review-and-issue state as separate chips (EXP §5 "They never merge into one chip").
   - F05-2 · "Draft · not reviewed" pairs two review-and-issue words. Not reviewed presents a submitted version with no review record (DES §5 Review and issue), so an unsubmitted draft shows Draft alone. Also RS 07 and RS 10.
   - F05-3 · The material limitation L1 is absent from the panel header and the artifact header (EXP §4 Artifact: "material limitations visible in the header and where they apply").
-  - F05-4 · Review mode ("2 matters need review") is not drawn on this or any screen → Part C scene 3; Part D item 1.
+  - F05-4 · Review mode ("2 matters need review") is not drawn on this or any screen → B19 (added by Part D item 1); Part C scene 3.
   - F05-5 · "Ask about this working paper" is a contextual placeholder beyond EXP §4's three composer states; it is illustrative.
 
 #### RS 06 — Evidence drawer, Back to claim · `06-evidence-inspection-desktop-1280x800.png`
@@ -184,7 +192,7 @@ Finding identifiers (F01-1 …) are stable references for the owning story parts
   - F07-1 · The Changes summary gives counts only ("Changes: 1 edit, 1 addition"). EXP §3 Changes and R5.5 also require it to name the changed conclusion and the changed limitation.
   - F07-2 · "Draft · not reviewed", as F05-2.
   - F07-3 · Composer incomplete, as F06-1.
-  - F07-4 · A change that Zobba proposes itself (R5.2: offered for acceptance; story part 18.6b) is not drawn here or anywhere → Part D item 1.
+  - F07-4 · A change that Zobba proposes itself (R5.2: offered for acceptance; story part 18.6b) is not drawn here or anywhere → B20 (added by Part D item 1).
 
 #### RS 08 — Zobba needs your input · `08-clarification-desktop-1280x800.png`
 
@@ -195,7 +203,7 @@ Finding identifiers (F01-1 …) are stable references for the owning story parts
 - **Establishes:** the waiting mark and "Zobba needs your input" on the task header and the task row; a bold question with suggested replies and "Or reply in your own words"; the placeholder "Answer, or give other guidance" (EXP §4 Composer); the working data behind the question open beside it, honestly labelled "Not classified yet · waiting for your answer".
 - **Findings:**
   - F08-1 · "I've paused this step" does not name the step (EXP §3 Clarification: "the paused step is named"; R1.5). This is a required fact for the illustrative-dialogue tests (EXP §11).
-  - F08-2 · No Stop is drawn while the task waits → Part D item 3.
+  - F08-2 · No Stop is drawn while the task waits → Part D item 3 (decided: Stop stays available on a nonterminal waiting task; 18.4a and 18.6a apply the correction, and B17 shows the waiting state).
   - F08-3 · A second outstanding question, and its listing in the attention view, are not drawn (EXP §3 Conversation thread: "several outstanding ones listed, none pinned over the composer"; B14).
 
 #### RS 09 — One confirmation surface, drafts · `09-permission-request-desktop-1280x800.png`
@@ -208,7 +216,7 @@ Finding identifiers (F01-1 …) are stable references for the owning story parts
 - **Findings:**
   - F09-1 · The drafts panel shows "Expand · Close" without Pin. EXP §3 Workspace and R2.3 keep Pin · Expand · Close always present.
   - F09-2 · Not drawn: the invalidated state ("Details changed since you last saw this"), the sending state and the per-operation outcomes (DES §6 Confirmation card states) → Part C scenes 4 and 5.
-  - F09-3 · No Stop is drawn while the task waits → Part D item 3.
+  - F09-3 · No Stop is drawn while the task waits → Part D item 3 (decided: as F08-2; 18.6c applies the correction to the confirmation surface).
 
 #### RS 10 — Engagement page · `10-engagement-desktop-1280x800.png`
 
@@ -281,7 +289,7 @@ Finding identifiers (F01-1 …) are stable references for the owning story parts
   - F14-1 · Rows fold account, capability and location into one line, and several omit one of the three (the shared-folder row names no account; the Outlook row names no designated resources). EXP §4 Connection card shows "accounts, granted capabilities and permitted locations … as three things".
   - F14-2 · "asks before sending anything" on the Outlook row is a Permissions statement (Asks first), not a connection capability; the page's own subtitle leaves use to engagement permissions (EXP §3 Permissions; EXP §4).
   - F14-3 · Not drawn: Connecting ("Connecting…", no spinner), Error (message plus Technical details) and the empty state "No accounts connected. Connect one to let the agent read the resources you choose." (EXP §6).
-  - F14-4 · Connecting a source — provider consent, choosing designated resources by readable identity, returning to the work (Flow B; 18.7a, Slice 1) — has no screen and no register row → Part D item 1.
+  - F14-4 · Connecting a source — provider consent, choosing designated resources by readable identity, returning to the work (Flow B; 18.7a, Slice 1) — has no screen → B18 (added by Part D item 1).
 
 #### RS 15 — Settings › Methodology and skills · `15-settings-methodology-skills-desktop-1280x800.png`
 
@@ -293,7 +301,7 @@ Finding identifiers (F01-1 …) are stable references for the owning story parts
 - **Findings:**
   - F15-1 · "Save changes" edits an active skill (v3) in place. EXP §7 and FR-94 require a new version, approved and activated as an audited configuration change, with approved checks keeping their pack version (16.9) → B16.
   - F15-2 · The README's timeline places RS 15 in Daniel Okonjo's (Auditor) day, yet the screen offers Administration and editable skill fields. EXP §2 shows Administration to Admin only, and EXP §7 with 18.7's check ("an Auditor sees Methodology read-only") gives an Auditor a read-only view that can only propose from documents.
-  - F15-3 · The Settings column (Profile · Methodology and skills · Permission defaults · Notifications · Administration) differs from EXP §2 (Connections, Methodology and skills, profile and organisation) → Part D item 6.
+  - F15-3 · The Settings column (Profile · Methodology and skills · Permission defaults · Notifications · Administration) differs from EXP §2 (Connections, Methodology and skills, profile and organisation) → Part D item 6 (decided: the reconciled Settings sections; no standalone Notifications section in this release).
   - F15-4 · The "No methodology configured" state with Select a starter pack / Prepare one from your documents (EXP §6) is not drawn → B16.
 
 #### RS 16 — Permissions and Activity record · `16-permissions-detail-desktop-1280x800.png`
@@ -323,7 +331,7 @@ Finding identifiers (F01-1 …) are stable references for the owning story parts
   - F17-2 · The header names the task only; EXP §1 requires the conversation's engagement and client in the header.
   - F17-3 · The composer has no model chip and no +, and shortens the working placeholder to "Add guidance" (EXP §4: "Add guidance or ask a question"; HANDOFF §3).
   - F17-4 · The header chip and the current step both carry the working mark (EXP §10).
-  - F17-5 · Not drawn at this width: a clarification or permission card pinned above the composer, the full-screen workspace with its back control, and any 600–1023 frame (the overlay sheet over 80 % of the width) → Part D item 4.
+  - F17-5 · Not drawn at this width: a clarification or permission card pinned above the composer, the full-screen workspace with its back control, and any 600–1023 frame (the overlay sheet over 80 % of the width) → Part D item 4 (decided) and B.3.
 
 #### RS 18 — Narrow unattended result, 390 × 844 · `18-narrow-scheduled-result-390x844.png`
 
@@ -374,7 +382,8 @@ Finding identifiers (F01-1 …) are stable references for the owning story parts
 - **Findings:**
   - F21-1 · The paper reads "Reviewed by: Ama Mensah, in review" before any review is recorded. The rendering must not imply a review that has not happened (EXP §1, the fourth thing the interface never does; R3.2–R3.3): show the assignment as pending until Mark as reviewed records the review.
   - F21-2 · Not drawn: Approve version bound to the revision, the independence refusal ("You cannot approve a version you authored or contributed to."), and the preparer's "Returned · n notes" view (Flow F, Flow L).
-  - F21-3 · This is the reviewer's surface. The auditor's review mode ("n matters need review", EXP §4) has no screen → Part C scene 3.
+  - F21-3 · This is the reviewer's surface. The auditor's review mode ("n matters need review", EXP §4) has no screen → B19; Part C scene 3.
+  - F21-4 · RS 21 draws one note on one limitation. Anchoring beyond it — a note on a table cell, a citation or a claim; several notes on one anchor; a note whose anchor moved or disappeared in the revised version (Flow L); the preparer's response and disposition (EXP §4 Review note) — is not drawn. P5 §4a lists "review-note anchoring beyond RS 21" among Slice 3's designs → B21 (added by Part D item 1).
 
 #### RS 22 — Administrator · Models and providers · `22-admin-models-providers-desktop-1280x800.png`
 
@@ -404,9 +413,9 @@ Finding identifiers (F01-1 …) are stable references for the owning story parts
 
 ## Part B — Register of undesigned surfaces
 
-The sixteen rows of P5 §5 in P5's order — the thirteen gaps of 4b §4 and §10 (B1–B13) plus the three rows P5 added (B14–B16) — with P5's owners translated to Epic numbering. **Every row is `open`; none is closed.**
+The sixteen rows of P5 §5 in P5's order — the thirteen gaps of 4b §4 and §10 (B1–B13) plus the three rows P5 added (B14–B16) — with P5's owners translated to Epic numbering, and the six rows the owner added on 2026-09-25 (B17–B22, Part D item 1; B22 as bounded sub-rows by the slice that first needs each). **Every row is `open`; none is closed.**
 
-**Closing a row.** A row closes only when (1) a design for the surface has been made under the pack's rules — DES tokens and components, EXP behaviour and copy, the row's "must show" points in B.2, WCAG 2.2 AA — and (2) that design has been reviewed and the review is recorded in the row (design reference, review date, reviewer). A reviewed design is still not proof of behaviour. Until its row closes, a Built-by part does not start its surface work; its prerequisite parts proceed (D-5-6).
+**Closing a row.** A row closes only when (1) a design for the surface has been made under the pack's rules — DES tokens and components, EXP behaviour and copy, the row's "must show" points in B.2, its narrow and intermediate-width states (B.3), WCAG 2.2 AA — and (2) that design has been reviewed and the review is recorded in the row (design reference, review date, reviewer). A component variant, an annotated frame or a small interaction prototype can close a row where it is sufficient for the row's must-show points; not every row needs a new full-page design (owner, 2026-09-25). A reviewed design is still not proof of behaviour. Until its row closes, a Built-by part does not start its surface work; its prerequisite parts proceed (D-5-6).
 
 ### B.1 Register
 
@@ -428,6 +437,14 @@ The sixteen rows of P5 §5 in P5's order — the thirteen gaps of 4b §4 and §1
 | B14 | The notification panel's complete attention view | 18.3 (NE-8 8.2) | Slice 1 | open | — | — |
 | B15 | Input-quality expansion (Unknown, Out of period beside the pack's chips) | surface 18.5b (NE-8 8.4b) | Slice 2 | open | — | — |
 | B16 | Settings › Methodology and skills: pack proposal and approval by Admin | 16.7 (NE-6 6.7; proposal from documents is 16.7c, deferred); surface 18.7b (NE-8 8.6b) | before 16.7's surface (P5 §4a lists "Methodology and skills for Admin" among Slice 2's designs) | open | — | — |
+| B17 | The activity summary above the composer, with Stop and the execution state in the working and waiting states | 18.4a (NE-8 8.3a) | Slice 1 | open | — | — |
+| B18 | Connecting a source from the conversation: provider consent, designated resources by readable identity, return to the work (Flow B) | surface 18.7a (NE-8 8.6a); prerequisites 13.5–13.7 and 13.8a proceed | Slice 1 | open | — | — |
+| B19 | The auditor's review mode: "n matters need review" and each matter opened on its claim | surface 18.5b (NE-8 8.4b); prerequisites 15.1–15.2 proceed | Slice 2 | open | — | — |
+| B20 | Acceptance surface for a change Zobba proposes (R5.2) | surface 18.6b (NE-8 8.5b) | Slice 2 | open | — | — |
+| B21 | Review-note anchoring beyond RS 21 | surface 18.11 (NE-8 8.10); prerequisite 15.9 proceeds | Slice 3 | open | — | — |
+| B22a | Glyphs and treatments still `[TO DESIGN]` that Slice 1 renders: execution (Not started · Stopped by you · Completed), input and coverage (Complete · Unknown), connection (Connecting · Limited), the Data quality and Wait inspection vocabularies, and the Zobba-token treatment for untrusted content (DES §6) | 18.10a (NE-8 8.9a); used by 18.3, 18.4a, 18.5a, 18.6a, 18.7a | Slice 1 | open | — | — |
+| B22b | Glyphs and treatments still `[TO DESIGN]` that Slice 2 renders: review and issue (Draft · Superseded) and the Claim support inspection vocabulary | 18.10b (NE-8 8.9b); used by 18.5b, 18.6b | Slice 2 | open | — | — |
+| B22c | Glyphs and treatments still `[TO DESIGN]` that Slice 3 renders: review and issue (In review · Returned · Reviewed by [name] · Approved · Issued) and the Action outcome inspection vocabulary | 18.10c (NE-8 8.9c); used by 18.6c, 18.11 | Slice 3 | open | — | — |
 
 ### B.2 Governing rule and what each design must show before its part starts
 
@@ -439,22 +456,22 @@ The sixteen rows of P5 §5 in P5's order — the thirteen gaps of 4b §4 and §1
 **B2 — Draft engagement without a client; the client-binding moment.**
 - *Governing rule:* EXP §2 Home ("A first request needs no name."); EXP §6 Workspace, draft, client not selected ("Header 'Client not selected'; the agent's first reply names what it can reach now and what needs a client."); EXP §1 Multi-tenant; Flow A ("selecting a client when Zobba needs client material").
 - *Must show:* (1) a first request from Home with no engagement opening a draft engagement with a provisional, renameable title; (2) the "Client not selected" header and the first reply naming what can be reached now and what needs a client; (3) the binding moment asked in the conversation, never as a form, happening once (11.5), and its effect on the engagement and Permissions chips; (4) switching engagements carrying no attachments, selected resources, pending confirmations or unsent drafts (EXP §1).
-- *Note:* `epics.md` also gates 18.4b and the backend part 12.1 (Part D item 2).
+- *Note:* corrected on 2026-09-25 (Part D item 2): `epics.md` gates 18.4a only; 18.4b and the backend part 12.1 proceed.
 
 **B3 — Needs-another-look flag and impact records.**
 - *Governing rule:* EXP §5 ("Flag, not state: Needs another look"); EXP §6 Artifact, Needs another look ("The impact record's reason and the version it came from; 'Reviewed, unchanged' and 'New version' are the two ways out."); EXP §3 Changes; Flow D.
 - *Must show:* (1) the flag beside, never replacing, the review-and-issue chip, with glyph and word; (2) the impact record — its reason, the changed source or claim, and the version it came from; (3) the two ways out and who may take them; (4) flagged dependents in the conversation after a correction or a re-acquired source (Flow D; 14.4).
-- *Note:* `epics.md` also gates 18.5a (Slice 1).
+- *Note:* corrected on 2026-09-25 (Part D item 2): `epics.md` gates 18.5b only; 18.5a (Slice 1) and the backend part 15.3 proceed.
 
 **B4 — `reconcile` decision surface.**
 - *Governing rule:* EXP §5 Wait ("`reconcile` shows as 'Needs your input · reconciliation'"); EXP §6 rows "unknown after dispatch", "provider accepted, delivery unconfirmed", "effect awaiting reconciliation" and "action blocked"; EXP §3 One decision surface; row 14.
 - *Must show:* (1) only the recovery actions the recorded state permits (keep observing · mark done with reference · retry with duplication warning · abandon), where a retry that may duplicate says so and is never presented as safe; (2) the two receipt-chosen sentences, with no generic Retry while duplication remains possible; (3) a later blocked or failed attempt shown beside the earlier unresolved one, and a human resolution recorded and shown as a human resolution with its reference; (4) its entry in the attention view (B14).
-- *Note:* `epics.md` also gates 18.6a (Slice 1), 18.6b (Slice 2) and the backend part 12.6 (Part D item 2).
+- *Note:* corrected on 2026-09-25 (Part D item 2): `epics.md` gates 18.6c only; 18.6a, 18.6b and the backend part 12.6 proceed.
 
 **B5 — Sharing a working draft versus issuance; PDF export.**
 - *Governing rule:* EXP §1 ("Sharing a draft is not issuance"); EXP §6 Artifact, rendering blocked; EXP §7 rows "Share a working draft to an authorised destination" and "Issue a deliverable"; EXP §5 (Issued names the person and the date); P5 §4c Rendered formats.
 - *Must show:* (1) the share decision on one decision surface — destination, disclosure, the exact version shared, labelled as a working draft, and its receipt; (2) issuance as a separate path with the approvals it needs, and the refusal when they are missing; (3) rendering blocked, listing the blocking defects, with harmless limitations under Technical details; (4) PDF export shown as unavailable until 15.6b and 17.6b land, never partial.
-- *Note:* `epics.md` also gates 18.6a and 18.6b (Part D item 2).
+- *Note:* corrected on 2026-09-25 (Part D item 2): `epics.md` gates the share, issuance-refusal and rendering-blocked surfaces (18.6c, Slice 3) and the PDF export surface (15.6b, deferred); 18.6a, 18.6b and the backends of 15.6a and 15.7 proceed.
 
 **B6 — Promotion approval; Awaiting approval and Pending regression.**
 - *Governing rule:* EXP §3 Scheduled work (promotion from the task menu or by saying "run this monthly"; schedule details proposed and confirmed compactly; Awaiting approval until approved; the Permissions Version frozen at approval); EXP §4 "Method and promotion"; EXP §5 scheduled-check states; Flow G; rows 2, 3 and 17.
@@ -483,12 +500,12 @@ The sixteen rows of P5 §5 in P5's order — the thirteen gaps of 4b §4 and §1
 **B12 — Invitation creation and acceptance.**
 - *Governing rule:* EXP §6 Invitation rows ("Invited, with Copy invitation link; expiry shown in words `[TO DESIGN]`"; each refusal "names its recorded cause" `[TO DESIGN]`); EXP §6 Users and roles, last active Admin; Flow K; EXP §7 (Admin creates, copies and revokes invitations); EXP §10 (accessible authentication, redundant entry); FR-95.
 - *Must show:* (1) Invite people → recipient, role (Auditor · Audit manager · Admin only), proposed engagement access → Create invitation → Copy invitation link, with the expiry in words; (2) acceptance by the verified intended recipient, meeting WCAG 2.2 accessible authentication; (3) each refusal naming its recorded cause (wrong recipient, expired, replayed, revoked, inviter no longer authorised), with the exact sentences written then and added to the exact-copy set if they are safety-critical (EXP §13 item 6); (4) Invited, Accepted, Expired and Revoked in Users and roles, and revocation.
-- *Note:* `epics.md` also gates 11.10, which P5 §4a places in Slice 0 (Part D item 2).
+- *Note:* corrected on 2026-09-25 (Part D item 2): the gate covers the invitation surfaces only — the creation surface in 18.12 and any acceptance surface 11.10 renders — first needed in Slice 3. 11.10's commands, copyable link, verified acceptance path and secret containment proceed in Slice 0 behind the existing surfaces (P5 §4a).
 
 **B13 — Model replacement proposal for a check.**
 - *Governing rule:* EXP §6 Scheduled check, model withdrawn, retired or policy revoked ("The execution state with its recorded cause (the three causes are distinct); a replacement is a proposed configuration change awaiting approval and regression `[TO DESIGN]`"); EXP §3 Model and effort; FR-93; row 5.
 - *Must show:* (1) temporary provider failure, retirement and policy revocation as distinct recorded causes on the list and on the result; (2) the replacement as a platform-authored proposed configuration change routed to approval and regression, never an in-place choice (RS 22's helper is amended); (3) completed results unchanged.
-- *Note:* `epics.md` also gates 19.11a (Slice 4), which shows the blocked state (Part D item 2).
+- *Note:* corrected on 2026-09-25 (Part D item 2): `epics.md` gates 19.11b only (P5 §5: "before 9.11's replacement path"). 19.11a's detection and blocking proceed; its blocked state is shown with its recorded cause under EXP §6's sentence rule on 18.13's surfaces.
 
 **B14 — The notification panel's complete attention view.**
 - *Governing rule:* EXP §2 ("The complete attention view — every authorised open question, confirmation, reconciliation case, memory proposal, review request and result needing attention — is reachable from the notification panel (bell) as one linked view"); EXP §6 Attention view, loaded and empty ("Nothing needs you. Questions, confirmations, reviews and proposals will appear here.") and not loaded (Banner "Couldn't load what needs you. Nothing has changed."); EXP §6 Notification, unattended result; D-4b-2.
@@ -496,13 +513,60 @@ The sixteen rows of P5 §5 in P5's order — the thirteen gaps of 4b §4 and §1
 
 **B15 — Input-quality expansion.**
 - *Governing rule:* EXP §5 Input and coverage (Complete · Partial · Unavailable · Stale · Unknown · Out of period / Not applicable; "The summary chip is derived; it never removes a dimension …; expanding it shows each dimension"); EXP §4 Result and quality summary; row 15; DES §5 (`[TO DESIGN]` treatments and glyphs for Complete, Unknown, Out of period, Not applicable).
-- *Must show:* (1) the treatments and glyphs for Complete, Unknown, Out of period and Not applicable; (2) the summary chip and its expansion into availability, coverage, freshness and period relevance, with unknown shown as unknown; (3) the chip beside, never merged with, the assessment chip (F13-1 is the counter-example); (4) its narrow-screen form.
-- *Note:* mechanism 14.8. `epics.md` also gates 18.5a (Slice 1).
+- *Must show:* (1) the treatments and glyphs for Out of period and Not applicable, reusing the Complete and Unknown glyphs designed under B22a; (2) the summary chip and its expansion into availability, coverage, freshness and period relevance, with unknown shown as unknown; (3) the chip beside, never merged with, the assessment chip (F13-1 is the counter-example); (4) its narrow-screen form.
+- *Note:* mechanism 14.8. Corrected on 2026-09-25 (Part D item 2): `epics.md` gates 18.5b only; the Slice 1 input-and-coverage glyphs are B22a's.
 
 **B16 — Settings › Methodology and skills: pack proposal and approval by Admin.**
 - *Governing rule:* EXP §7 methodology row (Auditor and Audit manager: "propose from documents"; Admin: "versioned and audited; creator, maintainer and approver recorded; cannot bypass a platform safeguard, an independent approval or a client or engagement restriction; approved checks keep their pack version"); EXP §6 Methodology, no pack; EXP §2 Settings (Methodology and skills managed by Admin); D-4b-5; 18.7's check "an Auditor sees Methodology read-only".
 - *Must show:* (1) the Admin view (RS 15 as amended): a change to an active pack, skill or template creates a new version that is approved and activated as an audited configuration change, never saved in place, and approved checks keep their pack version; (2) accountability records (creator, maintainer and approver as named people) in place of "Owner: Methodology team" and "owners only"; (3) the Auditor's read-only view and the "Prepare one from your documents" entry, unavailable until 16.7c; (4) the "No methodology configured" state with Select a starter pack.
-- *Note:* `epics.md` also gates 16.7a and 18.7a (Slice 1), 16.7b and 18.7c (Part D item 2).
+- *Note:* corrected on 2026-09-25 (Part D item 2): `epics.md` gates 18.7b and the "Prepare one from your documents" surface of 16.7c only. 16.7a (its no-methodology sentence is EXP §6 copy), 16.7b's backend (its selection surface is 18.7b's), 18.7a and 18.7c proceed without this row.
+
+**B17 — The activity summary above the composer, with Stop and the execution state.**
+- *Governing rule:* EXP §2 Engagement workspace ("An activity summary above the composer shows the current step in audit words, open questions and unresolved actions, and expands into the full activity view on demand."); EXP §4 Activity list and summary ("The summary above the composer shows the current step and open items."); EXP §3 Guidance versus Stop, as amended by Part D item 3; Flow C; R11.2.
+- *Must show:* (1) the collapsed summary — the current step in audit words, then each open question and unresolved action, each linking to its decision; (2) its expansion into the full activity view (RS 03's activity anatomy) and its collapse, without moving the conversation; (3) Stop beside the composer and the execution chip in the working state (Stop requested with "Stopping after the current step…", then Stopped by you) and in the waiting state, where Stop stays available on a nonterminal waiting task and Stop requested never says "Stopping after the current step…" when no step is executing (Part D item 3); (4) one animated mark per region (F02-2, F03-2); (5) its narrow and 600–1023 forms (B.3).
+- *Note:* prerequisite mechanism 12.2 (task state, step ledger) and 12.9a (task live channel) proceed.
+
+**B18 — Connecting a source from the conversation (Flow B).**
+- *Governing rule:* EXP §8 Flow B ("Connections, or the conversation when a connection is needed → provider consent → back with the account, capabilities and readable designated resources shown as three things → return to the work."); EXP §2 Connections row; EXP §4 Connection card; EXP §6 Connections states; D-4b-3; P5 §4a Slice 1 ("Connect a personal Drive and choose designated folders (from the conversation, returning to the work)"); 18.7a's checks ("selection by readable identity; consent alone makes nothing usable; no tokens or scopes shown").
+- *Must show:* (1) the conversation card that asks for a connection when a task needs one, naming the provider and why it is needed; (2) the hand-off to provider consent and the return, with consent alone making nothing usable; (3) choosing designated resources by readable identity — names and locations, never identifiers, tokens or scopes — with account, granted capabilities and permitted locations as three things; (4) the return to the work where it stopped, with any read still passing the Permissions gate; (5) Connecting… (spinner-free), a provider refusal or cancel, and Error with Technical details; (6) the resulting row in the minimal Connections list (RS 14 as amended); (7) its narrow and 600–1023 forms (B.3).
+- *Note:* the backends 13.5, 13.6, 13.7 and 13.8a proceed; only the conversation and list surfaces of 18.7a wait.
+
+**B19 — The auditor's review mode.**
+- *Governing rule:* EXP §4 Artifact (**Review mode**: "a focused list of matters needing review, each opening its claim with class, support status, citations, validation records and lineage; decisions with their revision binding"); EXP §6 Artifact, matters needing review ("Header '2 matters need review'; the approval control states whether the methodology permits approval with limitations."); Flow D; D-4-3 (claim classes and internal states in inspection and review mode only).
+- *Must show:* (1) the header count and the entry from reading view into review mode and back; (2) the focused list of matters, each opening its claim with class, support status (B22b's Claim support vocabulary), citations, validation records and lineage; (3) decisions bound to the revision, and what happens when the revision changed under the reader; (4) the approval control stating whether the methodology permits approval with limitations; (5) keyboard order and focus return from a matter to the list; (6) its narrow and 600–1023 forms (B.3).
+- *Note:* prerequisites 15.1 and 15.2 proceed.
+
+**B20 — Acceptance surface for a change Zobba proposes.**
+- *Governing rule:* EXP §3 Changes ("**Zobba proposes; it never silently changes a conclusion**: changes Zobba originates are offered for acceptance."); R5.2; Flow D; D-4-2 (one coherent decision surface); P5 §4a Slice 2 ("an independently proposed material change follows its applicable decision rules").
+- *Must show:* (1) the proposed change as a typographic diff with the affected conclusion, limitation and dependents named; (2) accept, decline and edit-first, with what each does and what stays unchanged; (3) the result — a new version with View changes and Undo — and the declined state with nothing changed; (4) invalidation when the draft changed after the proposal was made; (5) the entry in the attention view (B14); (6) its narrow and 600–1023 forms (B.3).
+- *Note:* this is scene 4's main Slice 2 subject, because RS 09's decision is delivered in Slice 3.
+
+**B21 — Review-note anchoring beyond RS 21.**
+- *Governing rule:* EXP §4 Review note ("Anchored to a location in the paper ('On L2'), with author and state (draft or sent), in a column beside the page; focusing a note highlights its anchor"; inspection: "Author, exact version and location, response, disposition"); Flow L; FR-96; 15.9's contract (notes anchored to a location in the exact version).
+- *Must show:* (1) anchors of each kind the paper has — a paragraph, a table cell, a citation, a claim, a limitation — and several notes on one anchor; (2) the anchor in the revised version: kept, moved, or gone, and how the note says so; (3) the preparer's response and the disposition, and Returned · n notes from the preparer's side (F21-2); (4) keyboard and screen-reader reach from a note to its anchor and back; (5) notes absent from the client rendering and present in the authorised export, as a rendering label only; (6) its narrow and 600–1023 forms (B.3).
+- *Note:* prerequisite 15.9 proceeds.
+
+**B22a, B22b, B22c — Glyphs and treatments still `[TO DESIGN]`.**
+- *Governing rule:* DES §5 Rules ("Never colour alone"; "`[TO DESIGN]` marks a state for which the pack gives no glyph; a glyph is designed under the pack's rules before the story that renders it"); DES §5 Treatments (the `[TO DESIGN]` treatment row); DES §6 Untrusted-content rendering ("The Zobba-token visual treatment is `[TO DESIGN]`"); DES §8 Designs still to be made ("every `[TO DESIGN]` treatment and glyph in section 5").
+- *Must show:* for each state the sub-row names, a glyph and a treatment from the section 3 semantic tokens, with the word as the label and the glyph `aria-hidden`; contrast at WCAG 2.2 AA on every surface the chip appears on; no reuse of Iris for an audit result. B22a also shows the untrusted-content treatment: inert plain text, labelled with where it came from, never rendered as markup.
+- *Note:* B1 keeps the memory vocabulary, B6 the Awaiting approval and Pending regression chips, B12 the invitation vocabulary and B15 the Out of period and Not applicable states; no sub-row repeats them. Slice 4 needs no sub-row of its own.
+
+### B.3 Narrow and intermediate widths (Part D item 4)
+
+RS 17 and RS 18 are the representative narrow references for the initial shell direction. Each line below is a responsive state that no screen draws. Its surface part does not build that state until the state is designed and reviewed under the pack's rules (EXP §10; DES §4 Breakpoints: below 600, 600–1023, 1024 and up). A row of B.1 carries its own narrow states in its design.
+
+| Surface part | Slice | States to design and review | Status |
+|---|---|---|---|
+| 18.3 Shell | 1 | Sidebar as a sheet below 600; the 600–1023 layout; the bell and the attention view at both widths; the header naming tenant, client and engagement at both widths | open |
+| 18.4a Home and workspace | 1 | Home below 600 and at 600–1023; the panel as an overlay sheet at 600–1023; the decision card pinned above the composer; the full-screen workspace with its back control | open |
+| 18.5a Reading view and evidence | 1 | Evidence as a sheet at 600–1023 and full-screen below 600, returning to the claim (Part C scene 3, item 8) | open |
+| 18.6a–c Decision surfaces | 1–3 | The clarify card, the refusal notice, the Zobba-proposed change and the confirm-action and reconcile cards pinned above the composer; the per-operation outcomes at narrow width | open |
+| 18.7a, 18.7c Connections | 1, 3 | The connect flow and the Connections list below 600 and at 600–1023 (18.7b's narrow states are part of B16) | open |
+| 18.11 Reviews | 3 | The queue and a paper with notes below 600 and at 600–1023 | open |
+| 18.12 Administration | 3 | Users and roles, invitations and Models and providers below 600 and at 600–1023 | open |
+| 18.13 Scheduled checks | 4 | The list below 600 and at 600–1023 (RS 18 covers the result below 600 only) | open |
+| 18.14 Search | 2 | Scope selector and grouped results below 600 and at 600–1023 | open |
+| 18.8 View workspace (deferred) | deferred | The full-screen browser below 1024 with its safety controls | open (deferred) |
 
 ---
 
@@ -512,14 +576,14 @@ The sixteen rows of P5 §5 in P5's order — the thirteen gaps of 4b §4 and §1
 
 | Scene | Gate (P5 §4b) | Illustrated by | Register rows that must close before its visual acceptance |
 |---|---|---|---|
-| 1 · A new conversation | Slice 1 (18.10a) | RS 01, 19, 02; RS 10 (entry from an engagement) | B2, B14; B9 and B10 through 18.3, the shell the scene is walked in |
-| 2 · Active analysis | Slice 1 (18.10a) | RS 02, 03, 08, 17; RS 04 (browser, 18.8 deferred) | B14; B9 and B10 through 18.3 |
-| 3 · Artifact and citation inspection, reading and review modes | Slice 2 (18.10b) | RS 05, 06, 07; RS 21 (reviewer's side) | B3, B15 |
-| 4 · A material decision | Slice 2 (18.10b); the external-effect decision is 18.6c, Slice 3 | RS 09, 08, 21; RS 07 (the no-ceremony edit) | B1, B3; B5 if the decision exercised is a share or an issuance |
-| 5 · An uncertain external effect | Slice 3 (18.10c) | RS 09, 16 | B4; B5 if the effect is a draft share |
-| 6 · An unattended scheduled result | Slice 4 (18.10d) | RS 12, 13, 18; entries RS 01, 10, 20 | B6, B14; B7 if the example pack's first activation requires regression (19.9a; P5 §4c); B13's blocked-state part if the `epics.md` gate on 19.11a stands (Part D item 2) |
+| 1 · A new conversation | Slice 1 (18.10a) | RS 01, 19, 02; RS 10 (entry from an engagement) | B2, B14, B17, B18, B22a; B9 and B10 through 18.3, the shell the scene is walked in; the Slice 1 lines of B.3 |
+| 2 · Active analysis | Slice 1 (18.10a) | RS 02, 03, 08, 17; RS 04 (browser, 18.8 deferred) | B14, B17, B22a; B9 and B10 through 18.3; the Slice 1 lines of B.3 |
+| 3 · Artifact and citation inspection, reading and review modes | Slice 2 (18.10b) | RS 05, 06, 07; RS 21 (reviewer's side) | B3, B15, B19, B22b; B21 for the reviewer's side when 18.11 is walked (Slice 3) |
+| 4 · A material decision | Slice 2 (18.10b); the external-effect decision is 18.6c, Slice 3 | RS 09, 08, 21; RS 07 (the no-ceremony edit) | B1, B3, B20, B22b; B5 if the decision exercised is a share or an issuance |
+| 5 · An uncertain external effect | Slice 3 (18.10c) | RS 09, 16 | B4, B22c; B5 if the effect is a draft share |
+| 6 · An unattended scheduled result | Slice 4 (18.10d) | RS 12, 13, 18; entries RS 01, 10, 20 | B6, B14; B7 if the example pack's first activation requires regression (19.9a; P5 §4c). B13 gates only the replacement path (19.11b, deferred; Part D item 2) |
 
-Before every scene, the DES §5 `[TO DESIGN]` glyphs and treatments for the states that scene renders are also needed; they are not a register row (Part D item 1).
+The DES §5 `[TO DESIGN]` glyphs and treatments each scene renders are rows B22a–B22c (Part D item 1). Each scene's narrow and intermediate-width states are in B.3 (Part D item 4).
 
 ### C.2 Required behaviours no screen illustrates
 
@@ -530,12 +594,12 @@ Before every scene, the DES §5 `[TO DESIGN]` glyphs and treatments for the stat
 4. The tenant named in the header, tenant switching and the breadcrumb trail (EXP §1, §2) — B9.
 5. First-run empty states (Engagements, Recent tasks) and "No methodology configured" (EXP §6).
 6. The composer disabled with its reason (EXP §4 Composer).
-7. Connecting a source from the conversation and returning to the work (Flow B; 18.7a) — no register row (Part D item 1).
-8. Any narrow or 600–1023 frame (Part D item 4).
+7. Connecting a source from the conversation and returning to the work (Flow B; 18.7a) — B18.
+8. Any narrow or 600–1023 frame — B.3.
 
 **Scene 2 — Active analysis.**
-1. Stop requested ("Stopping after the current step…"), then Stopped by you with what was kept (row 1; EXP §6).
-2. The activity summary above the composer, with open questions and unresolved actions (EXP §2, §4) — no register row.
+1. Stop requested ("Stopping after the current step…"), then Stopped by you with what was kept (row 1; EXP §6); and Stop on a waiting task, with cessation recorded promptly when no operation is in flight (Part D item 3) — B17.
+2. The activity summary above the composer, with open questions and unresolved actions (EXP §2, §4) — B17.
 3. Guidance that conflicts with completed work, named with a question (EXP §3; P4).
 4. On desktop, incoming work arriving as a conversation card while the panel is pinned or being inspected (EXP §3; Q7); RS 17 shows the card only because of its width.
 5. Several outstanding questions listed, none over the composer (EXP §3, §10).
@@ -546,7 +610,7 @@ Before every scene, the DES §5 `[TO DESIGN]` glyphs and treatments for the stat
 10. The 600–1023 overlay sheet, and the full-screen browser below 1024 with its safety controls (18.8, deferred).
 
 **Scene 3 — Artifact and citation inspection in reading and review modes.**
-1. Review mode: "n matters need review", each opening its claim with class, support status, citations, validation records and lineage, with decisions bound to the revision (EXP §4, §6) — no screen and no register row.
+1. Review mode: "n matters need review", each opening its claim with class, support status, citations, validation records and lineage, with decisions bound to the revision (EXP §4, §6) — B19.
 2. Material limitations in the artifact header (EXP §4).
 3. The result and quality summary with each input dimension, Unknown and Out of period kept (EXP §4, §5) — B15.
 4. The Needs another look flag and its impact record (EXP §5, §6) — B3.
@@ -554,10 +618,10 @@ Before every scene, the DES §5 `[TO DESIGN]` glyphs and treatments for the stat
 6. The full-page artifact ("Open full", EXP §2) and the rendering-blocked state (EXP §6).
 7. Claim → evidence → return by keyboard (EXP §10) — provable only in the build.
 8. Evidence as a sheet at 600–1023 and full-screen below 600, returning to the claim (EXP §10).
-9. The preparer's view of Returned · n notes (Flow L).
+9. The preparer's view of Returned · n notes (Flow L) — B21 (18.11, Slice 3).
 
 **Scene 4 — A material decision.**
-1. The acceptance surface for a change Zobba proposes (R5.2; 18.6b, Slice 2) — no screen and no register row, and it is scene 4's main Slice 2 subject because RS 09's decision is delivered in Slice 3 (Part D item 1).
+1. The acceptance surface for a change Zobba proposes (R5.2; 18.6b, Slice 2) — B20; it is scene 4's main Slice 2 subject because RS 09's decision is delivered in Slice 3.
 2. The memory-proposal decision — B1.
 3. Needs another look: "Reviewed, unchanged" or "New version" — B3.
 4. Invalidation ("Details changed since you last saw this"), and "Nothing was sent." after Don't send (EXP §3, §6).
@@ -591,22 +655,87 @@ Before every scene, the DES §5 `[TO DESIGN]` glyphs and treatments for the stat
 | Field | Record |
 |---|---|
 | Date | 2026-09-25 |
-| Reviewer | course-correction session agent (documentary review); owner sign-off pending |
+| Reviewer | course-correction session agent (documentary review) |
 | Scope and method | Each of the 23 PNGs viewed at its filed resolution (1280 × 800; RS 17 and 18 at 390 × 844, @2x), with the README's scenario; each checked against EXP §1–§14, DES §4–§8, 4b §1–§10, P5 §4a–§5 and the story parts in `epics.md` |
 | Result | 23 of 23 screens have a verdict: 13 Accepted with amendments applied, 3 Accepted as illustrative reference, 7 Not a scene screen. Screens 03, 04, 06, 11, 14, 15, 17 and 18 are individually reviewed here. |
-| Register | 16 rows opened; all `open`; none closed |
-| Slice 0 design item | P5 §4a's "23-screen review record" is complete when the owner signs below; until then 18.3 does not start (D-5-4, D-5-6) |
-| Owner sign-off | pending — name: ____ · date: ____ · decisions on items 1–6: ____ |
+| Register | Revision 1 opened 16 rows (B1–B16). Revision 2 added 6 rows (B17–B21, and B22 as the sub-rows B22a–B22c) and the narrow-width table B.3. Every row is `open`; none is closed. |
+| Slice 0 design item | P5 §4a's "23-screen review record" is complete: the owner signed the documentary review on 2026-09-25. The signature closes no register row. B9, B10 and B14 remain design prerequisites for the affected portions of 18.3 (Part E). |
+| Owner sign-off | Given on 2026-09-25 by the owner, in writing in the course-correction session: "Approve the documentary screen review and its recorded findings, incorporating the decisions above." The approval covers the reviewed references and the recorded amendments. It does not close any undesigned-surface row, and it does not authorise implementation. Story 18.3 still needs its applicable design gates and explicit implementation authorisation. |
 
-### Findings that need the owner's decision
+### Owner decisions on items 1–6 (2026-09-25)
 
-1. **Register completeness (Ask First).** No reference screen and no register row covers: (a) the activity summary above the composer (EXP §2, §4; 18.4a, Slice 1); (b) connecting a source from the conversation, with designated-resource selection and return (Flow B; 18.7a, Slice 1); (c) the auditor's review mode, "n matters need review" (EXP §4, §6; 18.5b, Slice 2); (d) the acceptance surface for a change Zobba proposes (R5.2; 18.6b, Slice 2), which is also scene 4's main Slice 2 subject because RS 09's decision is Slice 3; (e) "review-note anchoring beyond RS 21", which P5 §4a lists among Slice 3's designs but P5 §5 does not; (f) DES §5's `[TO DESIGN]` glyphs and treatments, which DES §8 lists as designs still to be made, and DES §6's `[TO DESIGN]` Zobba treatment for untrusted content — the first glyphs are needed by 18.10a in Slice 1. Decide whether to add rows, or to confirm that these parts proceed from EXP and the pack's components alone.
-2. **Which gate list governs.** `epics.md` attaches each P5 §5 gate to every bounded part of the parent story, and to backend parts: the reconcile and sharing rows gate 18.6a (Slice 1) and 18.6b (Slice 2); needs-another-look and input-quality gate 18.5a (Slice 1); the methodology row gates 16.7a and 18.7a (Slice 1); the invitation row gates 11.10, which P5 §4a places in Slice 0; the model-replacement row gates 19.11a (Slice 4) although the replacement path is 19.11b (deferred); the draft-engagement and reconcile rows gate the backend parts 12.1 and 12.6. P5 §5 and D-5-6 attach each surface to the part that builds it, name a later slice, and let prerequisite parts proceed. This register follows P5 §5. Confirm, so that `epics.md`'s gate lines can be corrected and Slice 0–1 parts are not blocked by Slice 2–4 designs.
-3. **Stop while a task waits.** EXP §3 says Stop is "always reachable" and EXP §10 keeps it beside the composer at every width. RS 08 and RS 09 draw no Stop while the task waits, which matches COMPONENT-INVENTORY's composer states (Stop only while Zobba is working). Decide whether a waiting task shows Stop.
-4. **Narrow-screen coverage.** EXP §11 requires representative desktop and narrow-screen mockups to be reviewed before the shell is built. The pack has two narrow frames (scenes 2 and 6, both below 600 px) and none at 600–1023 px or for scenes 1, 3, 4 and 5. Decide whether RS 17 and RS 18 suffice for 18.3, or whether narrow frames are required before each scene's visual acceptance.
-5. **Engagements empty state** (EXP §13 item 7 routes this confirmation to this review). No screen shows it. EXP §6 keeps "No engagements yet. Start a conversation to begin."; DES §4's degraded-states table still carries the pack's sentence ("…Your administrator adds engagements, or you can start a task without one."). EXP governs copy. Confirm EXP §6's sentence, so that DES can be aligned in its next revision.
-6. **Settings sections.** RS 15, 22 and 23 show Profile · Methodology and skills · Permission defaults · Notifications · Administration; EXP §2 lists Connections, Methodology and skills, profile and organisation. Permission defaults comes from the pack (DESIGN-SYSTEM §8); Notifications has no first-release contract (EXP §13 item 2; row 9). Neither difference is listed in 4b §5. Confirm the Settings column for 18.3, 18.7b and 18.12.
+The six questions of revision 1 and the owner's answers. Each answer is applied where the right column says.
+
+| Item | Question (revision 1) | Owner's decision | Applied in |
+|---|---|---|---|
+| 1 | Register completeness: six gaps had no row | **Add rows or bounded sub-rows** for all six — the activity summary, the contextual connection flow, the auditor's review mode, the acceptance of a Zobba-proposed change, review-note anchoring, and the unresolved glyph and treatment specifications — each mapped to its owning story part and the slice that first needs it. A component variant, an annotated frame or a small interaction prototype can close a row where it is sufficient; not every gap needs a new full-page design. | B.1 and B.2: B17, B18, B19, B20, B21, B22a–B22c; "Closing a row" |
+| 2 | Which gate list governs | **Follow Proposal 5's approved surface-part rule.** A missing design blocks the surface that needs it, not an unrelated backend prerequisite or an earlier bounded part. Correct `epics.md`. | Standing rules; the B.2 notes; `epics.md`, 37 gate lines — 31 rewritten, 6 added (table below) |
+| 3 | Stop while a task waits | **Yes.** Stop stays available on a nonterminal waiting task, subject to the person's authority. Stopping a waiting task cancels its continuation without treating the outstanding question or confirmation as answered; its work and decision history are kept; a late answer cannot revive the cancelled task. **Stop requested** shows until cessation is recorded. When no operation is in flight, cessation can be recorded promptly, and the product never says "Stopping after the current step" when no step is executing. An already-dispatched external action stays subject to reconciliation: stopping neither undoes it nor resolves an unknown outcome. Stop applies to the selected task only. | EXP §3 Guidance versus Stop, §4 Composer, §6 Workspace rows, §14; B17 must-show (3); F08-2, F09-3 |
+| 4 | Narrow-screen coverage | RS 17 and RS 18 are **representative references for the initial shell direction, not complete responsive acceptance.** Other narrow and intermediate-width states are designed and reviewed before their affected surfaces are built. | Standing rules; "Closing a row"; B.3; F17-5 |
+| 5 | Engagements empty state | **Confirmed:** "No engagements yet. Start a conversation to begin." DESIGN aligned with EXPERIENCE. | DES §4 empty-states table; EXP §13 item 7 closed; EXP §14; F01-4 |
+| 6 | Settings sections | **The reconciled structure:** Profile · Connections · Methodology and skills · Permission defaults · Organisation details · Administration, each shown and editable according to the approved capabilities. Connections leads to the same connection-management surface the sidebar reaches — never a second configuration store. Admin manages methodology configuration and the administrator-controlled defaults; engagement-specific Permissions stay on the engagement; a default never silently alters an active task or an approved check. Administration keeps Users and roles, Models and providers, Connections policy, Administrator limits, Data and retention, and Audit log. A function not yet implemented stays unavailable. **No standalone Notifications section in this release**; the in-app notification panel and the complete attention view stay required. | EXP §2 Settings row, §14; DES §4 Forms and settings, §6 Settings navigation; F15-3 |
+
+**Item 6, one point left for the owner.** EXP §8 Flow J also lists **Systems and Sources** under Administration — the retained compiler-1 Target System registrations and Population Source bindings. The owner's list does not name them. This revision does not remove them from Flow J. They stay retained compiler-1 administration, reachable as today until their disposition story (EXP §12), and are not a section of the reconciled Settings column. The owner confirms or corrects this reading.
+
+**Item 2, the `epics.md` gate lines as corrected.** "none" means the part builds no surface a row governs; its backend proceeds. Where B.3 has a line for an Epic 18 part, the part's gate also names those narrow and intermediate-width states; for the other parts, the narrow states are part of their rows' designs ("Closing a row").
+
+| Story part | Slice | Gate before | Gate after |
+|---|---|---|---|
+| 11.10 | §4a (Slice 0) | B12 | B12 on its invitation surfaces only (first needed Slice 3); commands, copyable link, verified acceptance path and secret containment proceed |
+| 12.1 | 1 | B2 | none; B2 gates 18.4a |
+| 12.6 | 3 | B4 | none; B4 gates 18.6c |
+| 14.10 | deferred | B8 | B8 on its retention surface only |
+| 15.3 | 2 | B3 | none; B3 gates 18.5b |
+| 15.6a | 3 | B5 | none; B5 gates 18.6c's share, issuance-refusal and rendering-blocked surfaces |
+| 15.6b | deferred | B5 | B5 on the PDF export surface only |
+| 15.7 | 3 | B5 | none; B5 gates 18.6c |
+| 16.7a | 1 | B16 | none |
+| 16.7b | 2 | B16 | none; the selection surface is 18.7b's |
+| 16.7c | deferred | B16 | B16 on the "Prepare one from your documents" surface |
+| 18.3 | 1 | B9, B10, B14 | B9, B10, B14 (unchanged) |
+| 18.4a | 1 | B2 | B2, B17, B22a |
+| 18.4b | 2 | B2 | none |
+| 18.5a | 1 | B3, B15 | B22a |
+| 18.5b | 2 | B3, B15 | B3, B15, B19, B22b |
+| 18.6a | 1 | B4, B5 | B22a |
+| 18.6b | 2 | B4, B5 | B20, B22b |
+| 18.6c | 3 | B4, B5 | B4, B5, B22c |
+| 18.7a | 1 | B16 | B18, B22a |
+| 18.7b | 2 | B16 | B16 (unchanged) |
+| 18.7c | 3 | B16 | B22a (connection states) |
+| 18.8 | deferred | — | its B.3 line |
+| 18.9 | 2 | B1 | B1 (unchanged) |
+| 18.10a | 1 | — | B22a |
+| 18.10b | 2 | — | B22b |
+| 18.10c | 3 | — | B22c |
+| 18.11 | 3 | — | B21, B22c |
+| 18.12 | 3 | B12 | B12 (unchanged) |
+| 18.13 | 4 | B6 | B6 (unchanged) |
+| 18.14 | 2 | — | its B.3 line |
+| 19.2 | §4a (Slice 4) | B6 | B6 on any promotion-approval surface this part renders; the compiler proceeds |
+| 19.3 | §4a (Slice 4) | B6 | B6 on any promotion-approval surface this part renders; the lifecycle binding proceeds |
+| 19.9a | 4 | B7 | B7 on its surfaces (the case set, Pending regression); the regression backend proceeds |
+| 19.9b | deferred | B7 | B7 on its surfaces; the backend proceeds |
+| 19.11a | 4 | B13 | none; its blocked state follows EXP §6 on 18.13's surfaces |
+| 19.11b | deferred | B13 | B13 (unchanged) |
 
 ### Statement
 
-This review changes no approved decision: D-4-1..4 and D-4b-1..7 (and D-5-1..7) stand as approved. It authorises no implementation. The screen findings are corrections that the owning story parts apply under EXP's precedence; a verdict accepts a screen as a design reference, never as proof of behaviour (HANDOFF §7). No register row is closed. The six items above are questions for the owner; none is applied here.
+The review changes no approved decision: D-4-1..4, D-4b-1..7 and D-5-1..7 stand as approved. The six answers above are the owner's decisions of 2026-09-25, recorded here and applied to EXP, DES and `epics.md` as documentation corrections; item 2 applies D-5-6 as approved and changes nothing in it. The review authorises no implementation. A verdict accepts a screen as a design reference, never as proof of behaviour (HANDOFF §7). No register row is closed.
+
+---
+
+## Part E — Design priorities for 18.3 (owner request, 2026-09-25)
+
+Story 18.3 (the shell, Slice 1) does not start its surface work until rows B9, B10 and B14 close and its B.3 line is designed and reviewed, and until its implementation is explicitly authorised. The designs 18.3 needs, in the recommended order:
+
+| Priority | Design | Why in this place | What 18.3 cannot show without it |
+|---|---|---|---|
+| 1 | B14 — the notification panel's complete attention view | D-4b-2 removed the Needs you page, so the bell is the only complete route to an outstanding decision; no reference screen draws the bell (F01-1, F06-4); scene 6's result and every waiting decision arrive through it | The bell and its count label; the linked view with engagement and client attribution; the empty sentence versus the not-loaded Banner; 18.3's check "an outstanding decision discoverable from the panel without searching old conversations" |
+| 2 | B10 — the Legacy procedures view | It is the only route in the Zobba shell to the compiler-1 Procedures, Runs, Run Detail, Live View and Replay that Epics 4 and 5 built and that stay in service (EXP §12); F11-1 needs it to tell a compiler-1 Procedure from a procedure document | 18.3's check "a legacy Procedure opened by its auditor"; access for auditors and reviewers, never administrator-only |
+| 3 | B9 — tenant switching | The header and the user block must name the tenant (EXP §1; F02-4); it is 18.3's own check | The tenant named at both places; the switch; nothing carried across; the other tenant's decisions discoverable without merging tenants |
+| 4 | B.3, the 18.3 line — the shell below 600 and at 600–1023 | RS 17 and RS 18 show a task and a result, not the shell | The sidebar as a sheet; the bell and the header at narrow widths |
+
+**What 18.3 does not wait for.** The fixed navigation labels, Reviews by responsibility and capability, the Engagements and Recent tasks lists with their empty sentences (item 5), the Settings column (item 6), and the breadcrumbs with the one-landmark rule are specified by EXP §2 and the pack. They are corrections the story applies under EXP's precedence, not register rows.
+
+**After 18.3, in slice order.** Slice 1: B2 and B17 (18.4a), B18 (18.7a), B22a (18.10a and the Slice 1 parts that render those states), and the Slice 1 lines of B.3. Slice 2: B1, B3, B15, B16, B19, B20, B22b. Slice 3: B4, B5, B12, B21, B22c. Slice 4: B6, and B7 if the example pack's first activation requires regression (P5 §4c). Deferred: B8, B11, B13, and the deferred lines of B.3.

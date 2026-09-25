@@ -2,7 +2,7 @@
 title: 'Review the pack''s 23 reference screens against the six-scene acceptance set; open the design-acceptance register'
 type: 'chore'
 created: '2026-09-25'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
 context:
   - '_bmad-output/planning-artifacts/ux-designs/ux-Zobba-2026-09-25/EXPERIENCE.md'

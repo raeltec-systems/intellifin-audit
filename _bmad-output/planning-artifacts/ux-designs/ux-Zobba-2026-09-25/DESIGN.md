@@ -5,6 +5,7 @@ revision: 2
 description: Visual contract for Zobba's chrome, generated from the Zobba design pack v1.0; the pack's tokens/zobba-tokens.json is the canonical machine-readable token source and this frontmatter restates it; artifacts keep the firm template's typography.
 created: 2026-09-25
 updated: 2026-09-25
+amended: "2026-09-25 — aligned with EXPERIENCE.md after the owner's 18.2 screen-review decisions (design-acceptance register, Part D items 3, 5 and 6); no visual value changed"
 supersedes: '../ux-IntelliFin Audit-2026-09-01/DESIGN.md (final, 2026-09-01), retained for the compiler-1 Run-path surfaces until their disposition stories'
 sources:
   - ../zobba-design-system-v1.0/BRAND.md
@@ -769,7 +770,7 @@ Tables look like professional audit data (a spreadsheet or report), never termin
 
 ### Forms and settings (DESIGN-SYSTEM §8)
 
-Forms appear in Settings only (Connections, Methodology and skills, Permission defaults, Administration, profile, organisation) and never take over ordinary audit work; anything an auditor decides during a task is asked in the conversation.
+Forms appear in Settings only (Profile, Connections, Methodology and skills, Permission defaults, Organisation details, Administration; the reconciled sections of `./EXPERIENCE.md` §2, with no Notifications section in this release) and never take over ordinary audit work; anything an auditor decides during a task is asked in the conversation.
 
 | Control | Spec |
 |---|---|
@@ -795,7 +796,7 @@ Scope-aware ("All authorised work", one client or one engagement). Results group
 
 | Situation | Message pattern | Must not |
 |---|---|---|
-| No engagements | "No engagements yet. Your administrator adds engagements, or you can start a task without one." | Look like an error |
+| No engagements | "No engagements yet. Start a conversation to begin." (`./EXPERIENCE.md` §6, confirmed by the owner on 2026-09-25; the pack's variant is not adopted) | Look like an error |
 | No recent tasks or schedules | "Tasks you start appear here." / "Turn a finished task into a scheduled check from its menu." | |
 | No search results | "No results for 'x' in [scope]." + a broaden-scope link | Hide a stale index |
 | Connection unavailable | "I can't reach AccessGate right now, so I haven't read the sign-in history." + Retry | Look like "no sign-ins" |
@@ -853,7 +854,7 @@ Canonical states are those of the approved contracts: the Agent Task state machi
 | Not started | Agent Task `QUEUED`; Run `QUEUED` | neutral-text | `[TO DESIGN]` |
 | Running | Agent Task `RUNNING`; Run `RUNNING`. Chip reads "Zobba is …" | presence | mark-working |
 | Paused | Agent Task `PAUSED`; Run `PAUSED` | neutral-text | ‖ |
-| Stop requested | A recorded stop (cancellation) request on an active task or run whose cessation is not yet recorded (3a C2 "stop requested until the worker records cessation"; Proposal 4b §5 row 1). Copy: "Stopping after the current step…" | presence | mark-working |
+| Stop requested | A recorded stop (cancellation) request on an active task or run whose cessation is not yet recorded (3a C2 "stop requested until the worker records cessation"; Proposal 4b §5 row 1). Copy: "Stopping after the current step…" only while a step is executing; on a waiting task with no operation in flight, cessation can be recorded promptly and that sentence is not used (`./EXPERIENCE.md` §3, owner decision 2026-09-25) | presence | mark-working |
 | Stopped by you | Agent Task `CANCELED` by explicit cancel, after cessation is recorded; Run `CANCELED` | neutral-text | `[TO DESIGN]` |
 | Completed | Agent Task `COMPLETED`; Run `COMPLETED`. Never an assessment | neutral-text | `[TO DESIGN]` |
 | Didn't run | A scheduled occurrence for which no execution ran, with its recorded reason and a recovery action. No assessment | exception-text | ✕ |
@@ -1007,7 +1008,7 @@ Behaviour and copy per component are in `./EXPERIENCE.md` revision 2 and the pac
 | Review note | Anchored review note (FR-96) | Anchored to a paper location ("On L2"), author and state; 230px column beside the page; not exported; focusing the note highlights its anchor | `radius.lg`, `color.border.hairline` |
 | Review action bar | Review decisions | **Return with n notes** (primary) · **Mark as reviewed** (secondary), helper "Marking as reviewed records you and the time. Approval and issue are separate steps." | `color.action.primary.*` |
 | Form controls | Settings forms | Section 4 Forms; never inside a task conversation | `color.border.input`, `radius.md`, `focus.ring` |
-| Settings navigation | Settings sections | Secondary 220px column with the main app on the rail | `color.surface.sidebar` |
+| Settings navigation | Settings sections: Profile · Connections · Methodology and skills · Permission defaults · Organisation details · Administration (Admin only) | Secondary 220px column with the main app on the rail | `color.surface.sidebar` |
 | Inline notice | A notice in context | Glyph plus sentence plus action ("▲ Kafue SharePoint results may be incomplete… Reconnect"); no toast stacks | `color.status.warning.*` |
 | Empty state | Nothing here yet | One sentence plus one action; no illustration | `type.body` |
 | Error with Technical details | A failure the auditor can act on | Plain message, what was not affected, the recovery action, then Technical details (collapsed) | `color.status.exception.fg` |
@@ -1081,7 +1082,7 @@ The pack's DESIGN-TOKENS.md and `tokens/zobba-tokens.json` were compared entry b
 
 ### Designs still to be made (Proposal 4b §4, §10)
 
-Designed under the pack's rules before each story is built: memory proposals and "Remembered"; the draft engagement without a client and the client-binding moment; the needs-reconsideration flag and impact records; the `reconcile` decision surface; draft sharing versus issuance and PDF export; promotion review, "Awaiting approval" and "Pending regression"; regression case sets; retention decisions and holds; tenant switching; legacy procedures; invitation creation and acceptance; the model replacement proposal for a check; every `[TO DESIGN]` treatment and glyph in section 5.
+Designed under the pack's rules before each story is built: memory proposals and "Remembered"; the draft engagement without a client and the client-binding moment; the needs-reconsideration flag and impact records; the `reconcile` decision surface; draft sharing versus issuance and PDF export; promotion review, "Awaiting approval" and "Pending regression"; regression case sets; retention decisions and holds; tenant switching; legacy procedures; invitation creation and acceptance; the model replacement proposal for a check; every `[TO DESIGN]` treatment and glyph in section 5. The design-acceptance register (story 18.2, `../../../implementation-artifacts/design-acceptance-register.md`) holds these as rows B1–B22 — including the activity summary, connecting a source from the conversation, the auditor's review mode, the acceptance of a Zobba-proposed change, review-note anchoring and the section 5 glyphs and treatments (B22a–B22c) — and the narrow and intermediate-width states (its table B.3).
 
 ## 9. Implementation obligations
 

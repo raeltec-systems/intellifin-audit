@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-01-2026 23:59
-last_updated: 09-25-2026 16:45
+last_updated: 09-25-2026 17:52
 project: Zobba
 project_key: NOKEY
 tracking_system: file-system
@@ -243,7 +243,7 @@ development_status:
 
   epic-18: in-progress
   18-1-identity-and-tokens-pair-symbol-wordmark-lockups-app-icon-an: backlog
-  18-2-review-the-pack-s-23-reference-screens-against-the-six-scene: review
+  18-2-review-the-pack-s-23-reference-screens-against-the-six-scene: done
   18-3-shell-the-pack-s-first-level-navigation-reviews-shown-by-res: backlog
   18-4a-home-and-the-workspace-composer-with-engagement-and-permissi: backlog
   18-4b-model-chip-selection-and-effort: backlog

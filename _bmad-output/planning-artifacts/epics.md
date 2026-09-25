@@ -2556,7 +2556,7 @@ So that the epic's goal holds: every protected row is scoped and enforced from t
 **Then** it establishes: `tenancy-v1` §invitations (FR-95)
 **And** it is demonstrated by: wrong recipient, expired, replayed and revoked invitations refused; an inviter who lost authority before acceptance; a forwarded link confers nothing; the secret absent from telemetry, audit payloads and any model request (containment scan); no open sign-up path (the existing `disableSignUp` proof re-asserted)
 
-**And** delivery slice: per §4a of Proposal 5; NE reference NE-1 1.10; design gate (D-5-6): Invitation creation and acceptance — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: per §4a of Proposal 5; NE reference NE-1 1.10; design gate (D-5-6): register row B12 (invitation creation and acceptance) gates only the invitation surfaces — the creation surface in 18.12 and any acceptance surface this part renders — first needed in Slice 3; this part's commands, copyable link, verified acceptance path and secret containment proceed behind the existing surfaces (Proposal 5 §4a Slice 0) (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 11.11: Removal: from an engagement, from a tenant, and the separate account action; last active administrator cannot be removed or demoted (transactional, the existing last-holder lock reused); pending invitations and affected delegations handled explicitly; revocation enforced on protected requests and on dispatch, resume, retry and background work (with 1.6)
@@ -2597,7 +2597,7 @@ So that the epic's goal holds: a draft engagement with a conversation; an Agent 
 **Then** it establishes: engagement, conversation
 **And** it is demonstrated by: client-scoped read refused before binding and permitted after
 
-**And** delivery slice: Slice 1; NE reference NE-2 2.1; design gate (D-5-6): Draft engagement without a client; the client-binding moment — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-2 2.1; design gate (D-5-6): none on this part, which builds no surface; the draft-engagement and client-binding surfaces are built by 18.4a and wait for register row B2 (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 12.2: Agent Task aggregate: state machine, budget, lease, step ledger, revision guard
@@ -2691,7 +2691,7 @@ So that the epic's goal holds: a draft engagement with a conversation; an Agent 
 **Then** it establishes: dispatch semantics
 **And** it is demonstrated by: lease expiry before and after dispatch; late receipt on the original attempt; no second effect in any reconciliation case
 
-**And** delivery slice: Slice 3; NE reference NE-2 2.6; design gate (D-5-6): `reconcile` decision surface (keep observing · mark done with reference · retry with duplication warning · abandon) — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 3; NE reference NE-2 2.6; design gate (D-5-6): none on this part, which builds no surface; the `reconcile` decision surface is built by 18.6c and waits for register row B4 (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 12.7a: Resumption from durable state after a kill mid-call, after a result and during a wait; authority re-derived on resume
@@ -3285,7 +3285,7 @@ So that the epic's goal holds: every source read is a snapshot with identity and
 **Then** it establishes: `retention-v1`
 **And** it is demonstrated by: deletion under hold refused; export names the deleted item
 
-**And** delivery slice: Deferred; NE reference NE-4 4.10; design gate (D-5-6): Retention decisions, holds, deletion — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Deferred; NE reference NE-4 4.10; design gate (D-5-6): register row B8 (retention decisions, holds, deletion) gates this part's retention surface before it is built; the hold and dependency rules proceed, and no deletion is exposed meanwhile (Proposal 5 §4c) (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 14.11a: Engagement export, review notes under archive scope; a tenant export verifies alone
@@ -3375,7 +3375,7 @@ So that the epic's goal holds: versioned artifacts with claims and citations; pl
 **Then** it establishes: reconsideration
 **And** it is demonstrated by: correction flags dependents; observation notifies only
 
-**And** delivery slice: Slice 2; NE reference NE-5 5.3; design gate (D-5-6): Needs-another-look flag and impact records on artifacts — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-5 5.3; design gate (D-5-6): none on this part, which builds no surface; the Needs another look flag and the impact-record surfaces are built by 18.5b and wait for register row B3 (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 15.4: Review request, scoped approval authority, independence over humans, revision-bound decisions
@@ -3422,7 +3422,7 @@ So that the epic's goal holds: versioned artifacts with claims and citations; pl
 **Then** it establishes: `rendering-v1`
 **And** it is demonstrated by: embedded screenshot present; stale formula cache blocking; omitted limitation blocking; harmless limitation recorded
 
-**And** delivery slice: Slice 3; NE reference NE-5 5.6a; design gate (D-5-6): Sharing a working draft versus issuance; PDF export — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 3; NE reference NE-5 5.6a; design gate (D-5-6): none on the rendering itself; the share, issuance-refusal and rendering-blocked surfaces are built by 18.6c and wait for register row B5 (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 15.6b: `.xlsx` production and PDF export
@@ -3439,7 +3439,7 @@ So that the epic's goal holds: versioned artifacts with claims and citations; pl
 **Then** it establishes: `rendering-v1`
 **And** it is demonstrated by: embedded screenshot present; stale formula cache blocking; omitted limitation blocking; harmless limitation recorded
 
-**And** delivery slice: Deferred; NE reference NE-5 5.6b; design gate (D-5-6): Sharing a working draft versus issuance; PDF export — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Deferred; NE reference NE-5 5.6b; design gate (D-5-6): register row B5 (sharing a working draft versus issuance; PDF export) gates the PDF export surface before it is built; `.xlsx` production proceeds, and PDF export is shown unavailable until then, never partial (Proposal 5 §4c) (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 15.7: Draft sharing versus issuance; output-location writes with receipts
@@ -3454,7 +3454,7 @@ So that the epic's goal holds: versioned artifacts with claims and citations; pl
 **Then** it establishes: issuance
 **And** it is demonstrated by: draft share labelled and receipted; issuance without approval refused; source location refused
 
-**And** delivery slice: Slice 3; NE reference NE-5 5.7; design gate (D-5-6): Sharing a working draft versus issuance; PDF export — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 3; NE reference NE-5 5.7; design gate (D-5-6): none on this part's backend; the share decision surface and the issuance refusal are built by 18.6c and wait for register row B5 (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 15.8a: Example pack artifact types: plan, working paper and finding
@@ -3693,7 +3693,7 @@ So that the epic's goal holds: scoped retrieval; six memory scopes with ownershi
 **Then** it establishes: bootstrap
 **And** it is demonstrated by: useful work before selection; promotion blocked naming the configuration; proposal `proposed` until an Admin approves it as configuration
 
-**And** delivery slice: Slice 1; NE reference NE-6 6.7a; design gate (D-5-6): Settings › Methodology and skills: pack proposal and approval by Admin — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-6 6.7a; design gate (D-5-6): none; the no-methodology sentence is EXPERIENCE.md §6 copy, and register row B16 gates the Settings › Methodology and skills surface (18.7b) and the "Prepare one from your documents" surface (16.7c) (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 16.7b: Starter pack selection
@@ -3710,7 +3710,7 @@ So that the epic's goal holds: scoped retrieval; six memory scopes with ownershi
 **Then** it establishes: bootstrap
 **And** it is demonstrated by: useful work before selection; promotion blocked naming the configuration; proposal `proposed` until an Admin approves it as configuration
 
-**And** delivery slice: Slice 2; NE reference NE-6 6.7b; design gate (D-5-6): Settings › Methodology and skills: pack proposal and approval by Admin — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-6 6.7b; design gate (D-5-6): none on this part's backend; the starter-pack selection surface is built by 18.7b and waits for register row B16 (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 16.7c: Pack proposal from documents
@@ -3727,7 +3727,7 @@ So that the epic's goal holds: scoped retrieval; six memory scopes with ownershi
 **Then** it establishes: bootstrap
 **And** it is demonstrated by: useful work before selection; promotion blocked naming the configuration; proposal `proposed` until an Admin approves it as configuration
 
-**And** delivery slice: Deferred; NE reference NE-6 6.7c; design gate (D-5-6): Settings › Methodology and skills: pack proposal and approval by Admin — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Deferred; NE reference NE-6 6.7c; design gate (D-5-6): register row B16 (Settings › Methodology and skills: pack proposal and approval by Admin) gates the "Prepare one from your documents" surface before it is built; the proposal backend proceeds (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 16.8a: Bounded working context: the full supported context preserved, an honest stop at its limit, re-evaluation on permission change
@@ -4024,7 +4024,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: U2 as amended by D-4b-2
 **And** it is demonstrated by: shell and breadcrumb tests; an outstanding decision discoverable from the panel without searching old conversations; the panel's "couldn't load" Banner never the empty state; a legacy Procedure opened by its auditor; a person in two firms switches tenants and carries nothing across
 
-**And** delivery slice: Slice 1; NE reference NE-8 8.2; design gate (D-5-6): Tenant switching for a person in two firms; Legacy procedures view (compiler-1 Runs, Run Detail, Live View, Replay reachable); The notification panel's complete attention view — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-8 8.2; design gate (D-5-6): register rows B9 (tenant switching for a person in two firms), B10 (Legacy procedures view: compiler-1 Runs, Run Detail, Live View, Replay reachable) and B14 (the notification panel's complete attention view), with this part's narrow and intermediate-width states (register B.3) — each designed under the Zobba pack's rules and reviewed before this part's surface is built; the recommended design order is in the register's Part E (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 18.4a: Home and the workspace: composer with engagement and Permissions chips and the default model chip, starters, thread, activity list, panel modes, client binding, Stop and Stop requested
@@ -4041,7 +4041,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: U3, U4, R1–R2, P1–P6
 **And** it is demonstrated by: a first request needs no name or client; context survives opening evidence, changing panels, returning, new activity; a suggested reply submits the text as the answer; pinned or focused content is not replaced while inspected; keyboard citation inspection with return
 
-**And** delivery slice: Slice 1; NE reference NE-8 8.3a; design gate (D-5-6): Draft engagement without a client; the client-binding moment — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-8 8.3a; design gate (D-5-6): register rows B2 (draft engagement without a client; the client-binding moment), B17 (the activity summary above the composer, with Stop in the working and waiting states) and B22a (Slice 1 glyphs and treatments, including untrusted content), with this part's narrow and intermediate-width states (register B.3) — each designed under the Zobba pack's rules and reviewed before this part's surface is built (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 18.4b: Model chip selection and effort
@@ -4058,7 +4058,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: U3, U4, R1–R2, P1–P6
 **And** it is demonstrated by: a first request needs no name or client; context survives opening evidence, changing panels, returning, new activity; a suggested reply submits the text as the answer; pinned or focused content is not replaced while inspected; keyboard citation inspection with return
 
-**And** delivery slice: Slice 2; NE reference NE-8 8.3b; design gate (D-5-6): Draft engagement without a client; the client-binding moment — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-8 8.3b; design gate (D-5-6): none; RS 19 is this part's reference, and register row B2 gates 18.4a, not this part (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 18.5a: Reading view for a text source; a citation opens the evidence at its locator with return
@@ -4075,7 +4075,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: U4, R3–R5, 4b §5 rows 15, 6
 **And** it is demonstrated by: a working paper read with no technical detail open; matters needing review listed; a direct edit saves a new draft without ceremony; nothing rewritten
 
-**And** delivery slice: Slice 1; NE reference NE-8 8.4a; design gate (D-5-6): Needs-another-look flag and impact records on artifacts; Input-quality expansion (Unknown, Out of period beside the pack's chips) — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-8 8.4a; design gate (D-5-6): register row B22a (Slice 1 glyphs and treatments, including untrusted content), with this part's narrow and intermediate-width states (register B.3) — each designed under the Zobba pack's rules and reviewed before this part's surface is built; rows B3 and B15 gate 18.5b, not this part (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 18.5b: Review mode, E- and L-references, changes view, quality summary with Unknown and Out of period
@@ -4092,7 +4092,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: U4, R3–R5, 4b §5 rows 15, 6
 **And** it is demonstrated by: a working paper read with no technical detail open; matters needing review listed; a direct edit saves a new draft without ceremony; nothing rewritten
 
-**And** delivery slice: Slice 2; NE reference NE-8 8.4b; design gate (D-5-6): Needs-another-look flag and impact records on artifacts; Input-quality expansion (Unknown, Out of period beside the pack's chips) — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-8 8.4b; design gate (D-5-6): register rows B3 (Needs-another-look flag and impact records), B15 (input-quality expansion: Unknown and Out of period beside the pack's chips), B19 (the auditor's review mode) and B22b (Slice 2 glyphs and treatments) — each designed under the Zobba pack's rules and reviewed before this part's surface is built (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 18.6a: The `clarify` decision surface and the refusal notice
@@ -4109,7 +4109,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: D-4-2, R7, P7–P9, 4b §5 rows 1, 14
 **And** it is demonstrated by: no duplicate confirmation; stale details need a new decision; a retry that may duplicate is never presented as safe; a later blocked attempt shown beside the earlier unresolved one; a completed effect never described as undone
 
-**And** delivery slice: Slice 1; NE reference NE-8 8.5a; design gate (D-5-6): `reconcile` decision surface (keep observing · mark done with reference · retry with duplication warning · abandon); Sharing a working draft versus issuance; PDF export — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-8 8.5a; design gate (D-5-6): register row B22a (Slice 1 glyphs and treatments, including untrusted content), with this part's narrow and intermediate-width states (register B.3) — each designed under the Zobba pack's rules and reviewed before this part's surface is built; rows B4 and B5 gate 18.6c, not this part (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 18.6b: Acceptance surface for a Zobba-proposed change
@@ -4126,7 +4126,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: D-4-2, R7, P7–P9, 4b §5 rows 1, 14
 **And** it is demonstrated by: no duplicate confirmation; stale details need a new decision; a retry that may duplicate is never presented as safe; a later blocked attempt shown beside the earlier unresolved one; a completed effect never described as undone
 
-**And** delivery slice: Slice 2; NE reference NE-8 8.5b; design gate (D-5-6): `reconcile` decision surface (keep observing · mark done with reference · retry with duplication warning · abandon); Sharing a working draft versus issuance; PDF export — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-8 8.5b; design gate (D-5-6): register rows B20 (acceptance surface for a Zobba-proposed change) and B22b (Slice 2 glyphs and treatments), with this part's narrow and intermediate-width states (register B.3) — each designed under the Zobba pack's rules and reviewed before this part's surface is built; rows B4 and B5 gate 18.6c, not this part (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 18.6c: `confirm-action` with bound details, `reconcile` with permitted actions and the two unknown-outcome sentences, Approve version, issue refusal, Stop requested
@@ -4143,7 +4143,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: D-4-2, R7, P7–P9, 4b §5 rows 1, 14
 **And** it is demonstrated by: no duplicate confirmation; stale details need a new decision; a retry that may duplicate is never presented as safe; a later blocked attempt shown beside the earlier unresolved one; a completed effect never described as undone
 
-**And** delivery slice: Slice 3; NE reference NE-8 8.5c; design gate (D-5-6): `reconcile` decision surface (keep observing · mark done with reference · retry with duplication warning · abandon); Sharing a working draft versus issuance; PDF export — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 3; NE reference NE-8 8.5c; design gate (D-5-6): register rows B4 (`reconcile` decision surface), B5 (sharing a working draft versus issuance; PDF export) and B22c (Slice 3 glyphs and treatments), with this part's narrow and intermediate-width states (register B.3) — each designed under the Zobba pack's rules and reviewed before this part's surface is built (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 18.7a: Connect from the conversation, designated resources, minimal Connections list
@@ -4160,7 +4160,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: U4, pack §11, D-4b-3, D-4b-5
 **And** it is demonstrated by: selection by readable identity; consent alone makes nothing usable; no tokens or scopes shown; no empty "Organisation connections" section; an Auditor sees Methodology read-only
 
-**And** delivery slice: Slice 1; NE reference NE-8 8.6a; design gate (D-5-6): Settings › Methodology and skills: pack proposal and approval by Admin — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 1; NE reference NE-8 8.6a; design gate (D-5-6): register rows B18 (connecting a source from the conversation) and B22a (Slice 1 glyphs and treatments, including untrusted content), with this part's narrow and intermediate-width states (register B.3) — each designed under the Zobba pack's rules and reviewed before this part's surface is built; row B16 gates 18.7b, not this part (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 18.7b: Settings › Methodology and skills for Admin
@@ -4177,7 +4177,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: U4, pack §11, D-4b-3, D-4b-5
 **And** it is demonstrated by: selection by readable identity; consent alone makes nothing usable; no tokens or scopes shown; no empty "Organisation connections" section; an Auditor sees Methodology read-only
 
-**And** delivery slice: Slice 2; NE reference NE-8 8.6b; design gate (D-5-6): Settings › Methodology and skills: pack proposal and approval by Admin — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-8 8.6b; design gate (D-5-6): register row B16 (Settings › Methodology and skills: pack proposal and approval by Admin) — designed under the Zobba pack's rules and reviewed before this part's surface is built (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 18.7c: Connections page in full
@@ -4194,7 +4194,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: U4, pack §11, D-4b-3, D-4b-5
 **And** it is demonstrated by: selection by readable identity; consent alone makes nothing usable; no tokens or scopes shown; no empty "Organisation connections" section; an Auditor sees Methodology read-only
 
-**And** delivery slice: Slice 3; NE reference NE-8 8.6c; design gate (D-5-6): Settings › Methodology and skills: pack proposal and approval by Admin — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 3; NE reference NE-8 8.6c; design gate (D-5-6): register row B22a (Slice 1 glyphs and treatments, including untrusted content), with this part's narrow and intermediate-width states (register B.3) — each designed under the Zobba pack's rules and reviewed before this part's surface is built; RS 14 as amended is this part's reference and organisation connections stay deferred (B11); row B16 gates 18.7b, not this part (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 18.8: View workspace: the browser view panel and the full-screen surface below 1024px; pause, stop, Take over (the controller lease) across widths; "read-only on client systems"
@@ -4209,7 +4209,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: U10, R2.4, DESIGN-SYSTEM §13
 **And** it is demonstrated by: narrow-screen pause and stop; Stop requested versus ceased; safety controls never hidden by the browser view
 
-**And** delivery slice: Deferred; NE reference NE-8 8.7
+**And** delivery slice: Deferred; NE reference NE-8 8.7; design gate (D-5-6): this part's narrow and intermediate-width states (register B.3) — designed under the Zobba pack's rules and reviewed before this part's surface is built (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 18.9: Memory: inline "Remembered for your preferences" with a link; proposal cards with scope, source and reason and Confirm / Reject / Edit scope; verification status on inspection
@@ -4224,7 +4224,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: U4, 3c C10
 **And** it is demonstrated by: explicit instruction shows Remembered with a link and no second prompt; an inferred item is a proposal and never an instruction; a non-owner cannot confirm
 
-**And** delivery slice: Slice 2; NE reference NE-8 8.8; design gate (D-5-6): Memory: "Remembered for your preferences", proposal cards, scope and verification status, retirement — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 2; NE reference NE-8 8.8; design gate (D-5-6): register row B1 (memory: "Remembered for your preferences", proposal cards, scope and verification status, retirement) — designed under the Zobba pack's rules and reviewed before this part's surface is built (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 18.10a: Execution, wait, input-and-coverage and connection chips; the fixed-copy tests
@@ -4241,7 +4241,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: U5 → 4b §3, U11, D-4b-6
 **And** it is demonstrated by: `status.test.ts` over DESIGN.md rev 2's table; `copy.test.ts` over the fixed set only; the visual acceptance record per scene; axe plus the manual checklist per new flow
 
-**And** delivery slice: Slice 1; NE reference NE-8 8.9a
+**And** delivery slice: Slice 1; NE reference NE-8 8.9a; design gate (D-5-6): register row B22a (Slice 1 glyphs and treatments, including untrusted content) — designed under the Zobba pack's rules and reviewed before this part's surface is built (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 18.10b: Assessment and review chips; scenes 3–4
@@ -4258,7 +4258,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: U5 → 4b §3, U11, D-4b-6
 **And** it is demonstrated by: `status.test.ts` over DESIGN.md rev 2's table; `copy.test.ts` over the fixed set only; the visual acceptance record per scene; axe plus the manual checklist per new flow
 
-**And** delivery slice: Slice 2; NE reference NE-8 8.9b
+**And** delivery slice: Slice 2; NE reference NE-8 8.9b; design gate (D-5-6): register row B22b (Slice 2 glyphs and treatments) — designed under the Zobba pack's rules and reviewed before this part's surface is built (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 18.10c: Action-outcome vocabulary per operation; scene 5
@@ -4275,7 +4275,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: U5 → 4b §3, U11, D-4b-6
 **And** it is demonstrated by: `status.test.ts` over DESIGN.md rev 2's table; `copy.test.ts` over the fixed set only; the visual acceptance record per scene; axe plus the manual checklist per new flow
 
-**And** delivery slice: Slice 3; NE reference NE-8 8.9c
+**And** delivery slice: Slice 3; NE reference NE-8 8.9c; design gate (D-5-6): register row B22c (Slice 3 glyphs and treatments) — designed under the Zobba pack's rules and reviewed before this part's surface is built (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 18.10d: Scene 6 and the six-scene visual acceptance record
@@ -4307,7 +4307,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: RS 20–21, FR-96, 4b §5 row 6
 **And** it is demonstrated by: a returned version unchanged with notes retained; the reviewer's Approve control bound to the revision; a contributor meets the refusal; checks never labelled approval
 
-**And** delivery slice: Slice 3; NE reference NE-8 8.10
+**And** delivery slice: Slice 3; NE reference NE-8 8.10; design gate (D-5-6): register rows B21 (review-note anchoring beyond RS 21) and B22c (Slice 3 glyphs and treatments), with this part's narrow and intermediate-width states (register B.3) — each designed under the Zobba pack's rules and reviewed before this part's surface is built (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 18.12: Settings › Administration: Users and roles with Invite people (Create invitation / Copy invitation link; Auditor, Audit manager, Admin only), per-engagement assignment, Remove access (engagement, tenant, account as separate actions), Invited state; Models and providers (FR-92); Connections policy; Administrator limits (the Permissions Policy); Data and retention (named); Audit log
@@ -4322,7 +4322,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: RS 22–23, FR-92, FR-94, FR-95
 **And** it is demonstrated by: invitation choices offer three roles; the invitation link never appears in a model request or log; last-administrator removal refused with the sentence; the model policy screen seeds no approved provider from the reference screen
 
-**And** delivery slice: Slice 3; NE reference NE-8 8.11; design gate (D-5-6): Invitation creation and acceptance — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 3; NE reference NE-8 8.11; design gate (D-5-6): register row B12 (invitation creation and acceptance), with this part's narrow and intermediate-width states (register B.3) — each designed under the Zobba pack's rules and reviewed before this part's surface is built (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 18.13: Scheduled checks list and the scheduled result: the separate dimensions per row; Awaiting approval and Pending regression states with no next run while either holds; the result page (actor line, assessment chip, readable conclusion, Exceptions · Coverage · Evidence · How it ran, Mark as reviewed, Discuss this result, suggested follow-up through the confirmation flow)
@@ -4337,7 +4337,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: RS 12–13, 4b §5 rows 2–3, U6
 **And** it is demonstrated by: an active schedule found when nothing needs attention; an incomplete input reads Inconclusive with supported exceptions listed and the four statuses separate; "Didn't run" has no assessment
 
-**And** delivery slice: Slice 4; NE reference NE-8 8.12; design gate (D-5-6): Promotion approval: method review, compiler mapping, unresolved issues, second-person approval; Awaiting approval and Pending regression on Scheduled checks — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 4; NE reference NE-8 8.12; design gate (D-5-6): register row B6 (promotion approval; Awaiting approval and Pending regression), with this part's narrow and intermediate-width states (register B.3) — each designed under the Zobba pack's rules and reviewed before this part's surface is built (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 18.14: Search: scope-aware, attributed results across authorised clients without merging contexts, stale-index notice
@@ -4352,7 +4352,7 @@ So that the epic's goal holds: EXPERIENCE.md revision 2 built on the Zobba desig
 **Then** it establishes: R10, 3c C10
 **And** it is demonstrated by: a client-B item absent; the stale notice when the index lags
 
-**And** delivery slice: Slice 2; NE reference NE-8 8.13
+**And** delivery slice: Slice 2; NE reference NE-8 8.13; design gate (D-5-6): this part's narrow and intermediate-width states (register B.3) — designed under the Zobba pack's rules and reviewed before this part's surface is built (surface-part rule, owner decision 2026-09-25)
 
 
 ## Epic 19: Promotion and recurring checks (absorbs Epic 8; re-homes Epic 6.1, 6.2)
@@ -4393,7 +4393,7 @@ So that the epic's goal holds: a method artifact by selection; compiler-2 with `
 **Then** it establishes: `executable-plan-v2`
 **And** it is demonstrated by: identical bytes twice; ambiguity blocks submission; model discrepancy blocks activation
 
-**And** delivery slice: per §4a of Proposal 5; NE reference NE-9 9.2; design gate (D-5-6): Promotion approval: method review, compiler mapping, unresolved issues, second-person approval; Awaiting approval and Pending regression on Scheduled checks — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: per §4a of Proposal 5; NE reference NE-9 9.2; design gate (D-5-6): register row B6 (promotion approval; Awaiting approval and Pending regression) gates any promotion-approval surface this part renders — the readable method view, the compiler mapping, the unresolved issues and the second-person approval; the compiler itself proceeds (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 19.3: `compiler = 2` Procedure Versions through the existing lifecycle, exercised with compiler-2
@@ -4408,7 +4408,7 @@ So that the epic's goal holds: a method artifact by selection; compiler-2 with `
 **Then** it establishes: binding
 **And** it is demonstrated by: author cannot approve; frozen fields; changed rule requires regression and cannot activate while deferred
 
-**And** delivery slice: per §4a of Proposal 5; NE reference NE-9 9.3; design gate (D-5-6): Promotion approval: method review, compiler mapping, unresolved issues, second-person approval; Awaiting approval and Pending regression on Scheduled checks — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: per §4a of Proposal 5; NE reference NE-9 9.3; design gate (D-5-6): register row B6 (promotion approval; Awaiting approval and Pending regression) gates any promotion-approval surface this part renders; the lifecycle binding proceeds (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 19.4: Scheduled Runs under an activation delegation; duplicate suppression; interruption recovery; pinned-definition verification
@@ -4500,7 +4500,7 @@ So that the epic's goal holds: a method artifact by selection; compiler-2 with `
 **Then** it establishes: `regression-case-set-v1`
 **And** it is demonstrated by: reproduced-but-wrong result fails; unsuitable last Run refused; intentional correction passes only its approved expectations; live source refused
 
-**And** delivery slice: Slice 4; NE reference NE-9 9.9a; design gate (D-5-6): Regression case sets and a version pending regression — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 4; NE reference NE-9 9.9a; design gate (D-5-6): register row B7 (regression case sets and a version pending regression) gates this part's surfaces — the case set and the Pending regression state; the regression backend proceeds (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 19.9b: Regression execution, administration and the successor's expected-difference review
@@ -4517,7 +4517,7 @@ So that the epic's goal holds: a method artifact by selection; compiler-2 with `
 **Then** it establishes: `regression-case-set-v1`
 **And** it is demonstrated by: reproduced-but-wrong result fails; unsuitable last Run refused; intentional correction passes only its approved expectations; live source refused
 
-**And** delivery slice: Deferred; NE reference NE-9 9.9b; design gate (D-5-6): Regression case sets and a version pending regression — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Deferred; NE reference NE-9 9.9b; design gate (D-5-6): register row B7 (regression case sets and a version pending regression) gates this part's surfaces; the regression backend proceeds (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 19.10: Missed starts, handover under succession, drift detection, notification policy (Epic 8.2–8.4 re-based)
@@ -4549,7 +4549,7 @@ So that the epic's goal holds: a method artifact by selection; compiler-2 with `
 **Then** it establishes: `promotion-v1` §configuration change, `agent-limits-recovery-v1` §causes, `model-policy-v1` (FR-93)
 **And** it is demonstrated by: a retired model pauses the check with its cause and mints a proposal, never an in-place amendment; a replacement cannot activate without the required approval and regression; a tenant default change leaves the check's configuration unchanged; earlier results byte-identical
 
-**And** delivery slice: Slice 4; NE reference NE-9 9.11a; design gate (D-5-6): The model replacement proposal for a check — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Slice 4; NE reference NE-9 9.11a; design gate (D-5-6): none; this part's blocked state is shown with its recorded cause under EXPERIENCE.md §6 on 18.13's surfaces, and register row B13 gates the replacement path (19.11b) (surface-part rule, owner decision 2026-09-25)
 
 
 ### Story 19.11b: Replacement as a proposed configuration change with approval and regression; cost reporting
@@ -4566,5 +4566,5 @@ So that the epic's goal holds: a method artifact by selection; compiler-2 with `
 **Then** it establishes: `promotion-v1` §configuration change, `agent-limits-recovery-v1` §causes, `model-policy-v1` (FR-93)
 **And** it is demonstrated by: a retired model pauses the check with its cause and mints a proposal, never an in-place amendment; a replacement cannot activate without the required approval and regression; a tenant default change leaves the check's configuration unchanged; earlier results byte-identical
 
-**And** delivery slice: Deferred; NE reference NE-9 9.11b; design gate (D-5-6): The model replacement proposal for a check — designed under the Zobba pack's rules and reviewed before this part is built
+**And** delivery slice: Deferred; NE reference NE-9 9.11b; design gate (D-5-6): register row B13 (the model replacement proposal for a check) — designed under the Zobba pack's rules and reviewed before this part's replacement surface is built (surface-part rule, owner decision 2026-09-25)
 
