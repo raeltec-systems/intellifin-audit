@@ -716,12 +716,27 @@ legacy_review_closure:
   story: 10-1-legacy-review-closure-assessment-for-the-epic-4-and-5-storie
   register: _bmad-output/implementation-artifacts/legacy-review-closure-register.md
   rebuilt_in: 7241d3c
-  owner_acceptance: pending
-  rule: the register verdicts are proposals; compiler_1_path closure notes and status changes are written only after the owner accepts the register (register §5)
-  held_done_verdicts:
-    5-1-stream-the-execution-timeline-live-over-sse: register §3.1 item 1 — the reading of "Timeline event" (NOTIFY not issued for three families of Run-chain events)
-    5-3-watch-a-running-run-in-live-view: register §3.1 item 2 — Live View's adapter log rows carry no digest
-    5-6-answer-an-escalation-without-leaving-live-view: register §3.1 item 3 — no evidence that the skip link moves focus
+  owner_acceptance: '2026-09-25 — the reconstructed record (7241d3c plus 33310a4) accepted as the basis for the decisions in register §3.3; not a blanket approval of every proposed verdict'
+  rule: the register verdicts were proposals; the accepted closure position is register §3.3; proposed verdicts stay in the register as assessment history
+  closed_2026_09_25:
+    4-4-locate-a-record-capture-evidence-and-register-a-grounded-obs: {compiler_1_path: true, retrospective_required: true, basis: documentary closure against the register's cited evidence}
+    4-5-prove-absence-for-an-employee-with-no-account: {compiler_1_path: true, retrospective_required: true, basis: documentary closure against the register's cited evidence}
+    4-6-bound-agent-execution-and-render-retrieved-content-inert: {compiler_1_path: true, retrospective_required: true, basis: documentary closure against the register's cited evidence}
+    4-9-confirm-or-reject-agent-judged-evaluations-to-seal-the-resul: {compiler_1_path: true, retrospective_required: true, basis: closure against the amended scope; the Submit control is 15-4's explicit criterion}
+    4-10-prove-the-agent-path-on-prodconsole-with-one-observation-per: {compiler_1_path: true, retrospective_required: true, basis: documentary closure against the register's cited evidence}
+    4-11-prove-abuse-resistance-and-workspace-isolation-with-negative: {compiler_1_path: true, retrospective_required: true, basis: documentary closure against the register's cited evidence}
+    4-12-evaluate-the-24-hour-disablement-window-through-the-complete: {compiler_1_path: true, retrospective_required: true, basis: documentary closure against the register's cited evidence}
+  remain_in_review_2026_09_25:
+    4-7-raise-typed-escalations-as-durable-waits: residual (a) 10-6; (b) 14-11a
+    4-8-answer-an-escalation-from-run-detail-and-notify-audit-manage: transfers to 14-11a and 19-4 confirmed; compact Evidence tab accepted; email scope amended; the visible completed-decision entry is 10-10
+    5-1-stream-the-execution-timeline-live-over-sse: register §3.1 item 1 resolved B — NOTIFY omissions, rollback and reconnect proof, and the bell's dropped refresh are 10-7
+    5-2-capture-the-platform-owned-replay-asset-set-during-execution: (a) 10-6; (b) 14-11a; (c) and (d) accepted as recorded deviations
+    5-3-watch-a-running-run-in-live-view: register §3.1 item 2 resolved A — the adapter digest wiring is 10-6
+    5-4-pause-and-resume-a-running-run: linkage for new records is 10-6; restart semantics and the superseded_by = 'resume' marker accepted; superseded-pause entry is 10-10
+    5-5-cancel-a-run-and-flag-it-to-audit-managers-from-live-view: placement accepted; the boundary's "Nothing was changed." after a committed action is 10-8
+    5-6-answer-an-escalation-without-leaving-live-view: register §3.1 item 3 resolved A — the keyboard focus test then the repair is 10-6; the answered-Escalation entry is 10-10
+    5-7-live-view-when-the-stream-drops-or-the-run-ends-while-open: the silence clock reset by a server re-read is 10-8
+    5-8-replay-any-terminal-run-from-the-platform-owned-asset-set: bounded reads presented as complete history are 10-9
   owner_dispositions:
     decided: '2026-09-25'
     4-7-raise-typed-escalations-as-durable-waits:
@@ -730,7 +745,7 @@ legacy_review_closure:
       status_until_delivered: review
     4-8-answer-an-escalation-from-run-detail-and-notify-audit-manage:
       residual_a: scope amendment — in-app delivery only; email is unimplemented and was never delivered; no mail transport is built
-      residual_b_c_d: open (register §6 point 3)
+      residual_b_c_d: decided 2026-09-25 — (b) 14-11a, (c) 19-4, (d) compact disclosure accepted; the visible decision-history entry (AC 4) is 10-10
     4-9-confirm-or-reject-agent-judged-evaluations-to-seal-the-resul:
       transferred_to: 15-4-review-request-scoped-approval-authority-independence-over-h (explicit acceptance criterion for retained compiler-1 Results)
       scope_amendment: the Submit control is not on main and did not pass in 4.9
@@ -738,15 +753,31 @@ legacy_review_closure:
     5-2-capture-the-platform-owned-replay-asset-set-during-execution:
       residual_a: 10-6-legacy-visibility-follow-up-human-matched-provenance-missing
       residual_b: 14-11a-engagement-export-review-notes-under-archive-scope-a-tenant (explicit acceptance criterion)
-      residual_c_d: open (register §6 point 6)
+      residual_c_d: decided 2026-09-25 — accepted as recorded deviations (recording off, retention not demonstrated; frame storage role unchanged)
       status_until_delivered: review
     5-4-pause-and-resume-a-running-run:
       rule: accept the stored records only if they identify the exact Step and attempt; otherwise add linkage for new events in the follow-up; never rewrite historical events
       outcome: the stored records do not qualify; 10-6 adds the linkage for new events
-      residual_b: open (register §6 point 7)
+      residual_b: decided 2026-09-25 — the restart as a new attempt and the superseded_by = 'resume' marker accepted; the 2026-09-01 EXPERIENCE sentence annotated
       status_until_delivered: review
   follow_up:
     10-6-legacy-visibility-follow-up-human-matched-provenance-missing:
       prepared: '2026-09-25'
       implementation_authorised: false
-      proposed_scope_pending_owner: register §3.1 items 2 and 3 (5.3 digests, 5.6 skip-link focus)
+      scope_added_2026_09_25: register §3.1 items 2 and 3 (5.3 adapter digests on the real read path; 5.6 keyboard focus test then repair)
+    10-7-live-channel-correction-notify-every-run-chain-append-and-ne:
+      prepared: '2026-09-25'
+      implementation_authorised: false
+      covers: legacy 5.1 — NOTIFY for every Run-chain append with rollback and reconnect proof; BellLive trailing refresh; Overview shared-refresh proof
+    10-8-lost-connection-and-lost-acknowledgement-a-server-refresh-is:
+      prepared: '2026-09-25'
+      implementation_authorised: false
+      covers: legacy 5.7 — silence clock and gate tied to the stream's own signals; legacy 5.5 — the route boundary states only what it knows
+    10-9-replay-bounded-history-completeness-a-bounded-view-says-what:
+      prepared: '2026-09-25'
+      implementation_authorised: false
+      covers: legacy 5.8 — bounded reads say what they cover; the rest stays reachable; no Replay redesign
+    10-10-retained-decision-history-on-the-execution-timeline-an-answe:
+      prepared: '2026-09-25'
+      implementation_authorised: false
+      covers: legacy 4.8 AC 4, 5.6 AC 3, 5.4 AC 3 — compact inspectable Timeline entries for answered Escalations and superseded pauses

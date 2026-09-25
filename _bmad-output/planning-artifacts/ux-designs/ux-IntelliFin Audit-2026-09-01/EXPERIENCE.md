@@ -296,6 +296,8 @@ Daniel, later that morning.
 
 Alternate: he pauses to take a call → chrome shows PAUSED with a 30-minute countdown; on resume the agent continues from the next Tool Action.
 
+> Aligned 2026-09-25 (owner decision, `legacy-review-closure-register.md` §3.3, Story 5.4): on resume the interrupted Step Execution restarts from its first Tool Action as a new attempt, and the earlier attempt's Tool Actions stay on the Timeline (epics.md Story 5.4, AD-16, `docs/contracts/run-pause-v1.md`). The sentence above is kept as written for the record; the restart is the accepted behaviour for the retained compiler-1 path.
+
 ### Flow 4 — The weekly Run happens without anyone watching (UJ-4)
 
 Monday 06:00 UTC; no one signed in.

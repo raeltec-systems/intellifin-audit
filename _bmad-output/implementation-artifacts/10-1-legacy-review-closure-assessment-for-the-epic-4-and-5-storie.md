@@ -2,7 +2,7 @@
 title: 'Legacy review closure assessment for the Epic 4 and 5 stories in review'
 type: 'chore'
 created: '2026-09-25'
-status: 'review'
+status: 'done'
 review_loop_iteration: 0
 context:
   - '_bmad-output/planning-artifacts/course-correction-2026-09-24/proposal-5-epics.md'
@@ -72,3 +72,16 @@ context:
   for the owner's decisions in register §3.1.
 - No application code or test changed: `git diff --stat c18ad36 HEAD -- apps packages tests
   scripts` is empty.
+
+## Closed (2026-09-25)
+
+- The owner accepted the reconstructed register (`7241d3c` plus `33310a4`) as the basis for the
+  closure decisions, and amended them (register §3.3). The amendment is recorded incrementally on
+  the register, with the proposed verdicts kept as assessment history.
+- **Tasks 2 to 4 are done:** `course-correction-dispositions.yaml` records the accepted closures
+  (`compiler_1_path: true`, `retrospective_required: true`) and the residual assignments;
+  sprint-status applies §3.3 (seven stories to `done`, ten stay `review`) with `validate` passing
+  before and after; the PRD memlog carries the decision.
+- Closure position: 4.4, 4.5, 4.6, 4.9, 4.10, 4.11, 4.12 `done`; 4.7, 4.8 and 5.1–5.8 `review`
+  for the residual work assigned to Stories 10-6 to 10-10, 14-11a, 15-4 and 19-4. Those follow-ups
+  are prepared and not authorised for implementation.

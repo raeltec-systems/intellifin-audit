@@ -2320,9 +2320,9 @@ So that Builder, Live View, Replay, and every other core workflow stay usable to
 
 ## Epic 10: Disposition and rename
 
-The course-correction transition work of Proposal 7: the legacy review-closure assessment, the tracking update, the compatibility-tested rename, the conditional retirement of the Builder write path, and the legacy harness coverage mapping; and the bounded legacy visibility follow-up 10.6, added by the owner on 2026-09-25 from the closure register. Stories 10.1–10.5 change no product behaviour; 10.3, 10.4 and 10.6 change application code only under explicit implementation authorisation.
+The course-correction transition work of Proposal 7: the legacy review-closure assessment, the tracking update, the compatibility-tested rename, the conditional retirement of the Builder write path, and the legacy harness coverage mapping; and the bounded legacy follow-ups 10.6–10.10, added by the owner on 2026-09-25 from the closure register (`legacy-review-closure-register.md` §3.3). Stories 10.1–10.5 change no product behaviour; 10.3, 10.4 and 10.6–10.10 change application code only under explicit implementation authorisation.
 
-**Slices:** 10.1, 10.2 before any story of Epic 11; 10.3 in Slice 0; 10.5 with Slice 4; 10.4 only after the Slice 4 acceptance (Proposal 7 §3a); 10.6 on the retained compiler-1 surfaces, outside the slices, once its implementation is authorised.
+**Slices:** 10.1, 10.2 before any story of Epic 11; 10.3 in Slice 0; 10.5 with Slice 4; 10.4 only after the Slice 4 acceptance (Proposal 7 §3a); 10.6–10.10 on the retained compiler-1 surfaces, outside the slices, once their implementation is authorised; each is bounded to the residual work the register names, never a general cleanup.
 
 ### Story 10.1: Legacy review closure assessment for the Epic 4 and 5 stories in review
 
@@ -2411,9 +2411,84 @@ So that the acceptance criteria the legacy review closure register found unmet o
 **Then** a record chosen by a person through a secondary key shows the human-matched word on the Result, the record review queue and inspector and the Exceptions list, traced to its matching decision (4.7)
 **And** Replay distinguishes a missing or unavailable frame from a frame suppressed during credential entry, and states that playback is incomplete, with the count, rather than implying complete playback (5.2)
 **And** each pause and each resume identifies its exact plan step and Step Execution attempt from durable records, including repeated pauses and after the Run advances; where the stored records cannot establish it, the linkage is added for new events only, and no historical audit event is rewritten (5.4)
+**And** on Live View's adapter-only view, each Adapter Session Step row carries the registered Evidence identity and digest through the real page read path, with three situations tested: an acquired step with Evidence shows its digest, a step with no artifact says so, and an unavailable Evidence read says that, never one sentence for all three (legacy Story 5.3, owner decision 2026-09-25)
+**And** a browser test written first activates "Go to open Escalation" from the keyboard, establishes where focus lands, and verifies that the next keyboard interaction reaches the Escalation panel's controls; then the smallest correction makes it pass (legacy Story 5.6, owner decision 2026-09-25); finding the link or scrolling to the section is not enough
 **And** the export legs of 4.7 and 5.2 stay 14.11a's explicit criteria, and the legacy stories close only when all their legs are met or the owner amends their scope
 
 **And** delivery slice: none — retained compiler-1 surfaces; NE reference none (owner decision 2026-09-25); design gate (D-5-6): none — the retained surfaces keep the 2026-09-01 UX spine (EXPERIENCE.md revision 2 §12), and a new sentence is confirmed with the owner before it is built
+
+### Story 10.7: Live channel correction: notify every Run-chain append, and never lose the last refresh
+
+As an Auditor watching a Run,
+I want every event appended to a Run's audit chain to wake the live channel in its own transaction, and a burst of events to end with the page showing the last committed change,
+So that the channel contract (`docs/contracts/live-timeline-channel-v1.md`) holds as written and no surface silently stops one refresh short.
+
+**Acceptance Criteria:**
+
+**Given** the closure register's amended verdict for legacy Story 5.1 (owner decision 2026-09-25, resolution B: the contract keeps its meaning and is not narrowed)
+**When** an event of a family that today issues no NOTIFY is appended to a Run's chain (`evidence-access.*` from the web and the worker, `notification.in-app-delivery`, `notification.email-delivery`, the evaluation review's `security.denied`)
+**Then** `NOTIFY run_timeline(run_id, seq)` fires in that appending transaction, for every Run-aggregate append, and a rolled-back append wakes nothing
+**And** a stream that reconnects with its last-seen `seq` receives each such event once, in order, and the authoritative data is still read from the stored chain; notifications stay wake-ups, and no internal event has to become a prominent UI row
+
+**Given** the bell's throttled refresh (`BellLive`)
+**When** a short burst of qualifying events commits inside its refresh window
+**Then** a throttled refresh is acceptable, but the final required refresh is never lost: the rendered bell count and the Overview's counts eventually include the last relevant committed change, proven in a browser without a reload
+**And** the Overview keeps refreshing through the bell's shared subscription (owner decision 2026-09-25: no separate subscription), and the test establishes that the shared mechanism refreshes the Overview's state
+
+**And** delivery slice: none — retained compiler-1 surfaces; NE reference none (owner decision 2026-09-25); design gate (D-5-6): none — no new surface; bounded to the two obligations above, never a channel redesign
+
+### Story 10.8: Lost connection and lost acknowledgement: a server refresh is not stream recovery, and a rendering error claims only what it knows
+
+As an Auditor supervising a Run,
+I want Live View to keep saying the stream is lost until the stream itself recovers, and a page that fails to render after my action to tell me only what it knows,
+So that a control is never reopened on a false recovery, and a committed action is never reported as "nothing was changed".
+
+**Acceptance Criteria:**
+
+**Given** the closure register's amended verdict for legacy Story 5.7 (owner decision 2026-09-25)
+**When** the stream is lost and an unrelated server refresh or cursor change re-runs `useLiveTimeline`'s `[url, cursor]` effect
+**Then** the page does not claim that the stream recovered and does not reopen the live controls on that basis; only the recovery condition the contract requires (a frame or heartbeat from the stream itself) returns the status to `live` and reopens the gate
+**And** a browser test drives a lost stream followed by an unrelated re-read (for example another Run ending) and asserts the status word, the sentence and the controls throughout
+
+**Given** the closure register's amended verdict for legacy Story 5.5 (owner decision 2026-09-25) and an action whose command committed but whose acknowledgement was lost
+**When** the route boundary renders
+**Then** the generic rendering error states only what it knows, for example "This page could not be loaded. Check the Run's current state before repeating your last action.", and never claims unconditionally that nothing was changed
+**And** an action-specific message says that nothing changed only when its recorded outcome establishes that, and reloading the page never becomes an implicit resubmission of the action (the committed-flag case of `flag-run.spec.ts` asserts exactly one `run_flag` row and one notification, and the new wording)
+**And** the sentence lives in `copy.ts` or a words module, pinned by a test that reads it back
+
+**And** delivery slice: none — retained compiler-1 surfaces; NE reference none (owner decision 2026-09-25); design gate (D-5-6): none — no new surface; the wording of the boundary sentence is confirmed with the owner before it is built
+
+### Story 10.9: Replay bounded-history completeness: a bounded view says what it covers, and the rest stays reachable
+
+As an Auditor replaying a long Run,
+I want Replay to say what a bounded read covers and to give me a way to the rest,
+So that a bounded Observation count or an incomplete jump list never reads as the complete retained Run.
+
+**Acceptance Criteria:**
+
+**Given** the closure register's amended verdict for legacy Story 5.8 (owner decision 2026-09-25) and a fixture whose waits, Observation-registration events and Exceptions each exceed the default view's bound (`REPLAY_PAGE_SIZE`, 500)
+**When** Replay is opened on its default view
+**Then** each bounded read says what it covers, in words, and no displayed count presents a bounded number as a full-history total (the Observation count beside a frame, the jump list, the Exceptions)
+**And** the Auditor reaches the remaining retained material through pagination, continuation or the existing inspection path (`?workItem=` inspection pages), and a jump target beyond the bound is not silently absent
+**And** Replay is not redesigned: the correction is the completeness presentation and the missing continuation, proven by a browser test over the fixture with WCAG 2.1 AA
+
+**And** delivery slice: none — retained compiler-1 surfaces; NE reference none (owner decision 2026-09-25); design gate (D-5-6): none — existing surface; any new sentence is confirmed with the owner before it is built
+
+### Story 10.10: Retained decision history on the Execution Timeline: an answered Escalation and a superseded pause are inspectable entries
+
+As an Auditor reading a Run's Execution Timeline,
+I want a compact, inspectable entry for each completed decision the Run recorded — an answered or aborted Escalation, and a pause that was superseded — showing the decision, the actor, the time and the related work,
+So that "the panel becomes a Timeline entry" is a visible fact and not only an event in the audit chain.
+
+**Acceptance Criteria:**
+
+**Given** the closure register's readings decision (owner, 2026-09-25: an event that exists in the audit chain is not a user-visible history entry) for legacy Stories 4.8 (AC 4), 5.6 (AC 3) and 5.4 (AC 3)
+**When** an Escalation has been answered or aborted, or a pause was superseded by the Run's terminal transition
+**Then** the Execution Timeline tab shows a compact entry or link for it, with the completed decision, the actor (a name, never a raw id), the time, and the related Work Item and Step where one exists, read from the stored chain and wait rows; no full expanded panel is needed, and an inaccessible chain event is insufficient
+**And** the entry's words come from the existing words modules (`ESCALATION_KIND_WORDS`, `ActorName`), pinned by tests, with WCAG 2.1 AA on the changed tab
+**And** no historical audit event is rewritten; a historical decision whose related work cannot be established from durable records says so
+
+**And** delivery slice: none — retained compiler-1 surfaces; NE reference none (owner decision 2026-09-25); design gate (D-5-6): none — existing Timeline tab, the row treatment of the 2026-09-01 UX spine; a new sentence is confirmed with the owner before it is built
 
 ## Epic 11: Tenancy, scope and delegation
 

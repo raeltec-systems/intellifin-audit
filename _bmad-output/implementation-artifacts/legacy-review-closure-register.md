@@ -5,7 +5,8 @@ created: '2026-09-25'
 story: '10-1-legacy-review-closure-assessment-for-the-epic-4-and-5-storie'
 baseline: 'main c18ad3683d4e71d2654272e8cb95ef4559013374'
 assessor: 'this session''s agent (Claude, executing Story 10.1 as a documentation-only assessment); Epic 5 sections, §3.1, §5 and §6 rebuilt by a second session (Claude) on 2026-09-25 after the unpushed commit d79bdcf was lost (§1)'
-status: 'assessment complete — verdicts proposed; the owner''s dispositions of 2026-09-25 for 4.7, 4.8 (a), 4.9, 5.2 (a)–(b) and 5.4 (a) are recorded (§3.2); owner acceptance of the register is pending'
+status: 'assessment complete and accepted — the owner accepted the reconstructed record on 2026-09-25 as the basis for the closure decisions in §3.3, not as blanket approval of every proposed verdict; proposed verdicts are kept as assessment history; seven stories close, ten stay in review for named residual work'
+owner_acceptance: '2026-09-25 (§3.3); recorded incrementally on 7241d3c and 33310a4'
 ---
 
 # Legacy review closure register — Epic 4 and Epic 5
@@ -38,6 +39,13 @@ not a copy of `d79bdcf`: only the first session read that commit. The rebuild fo
 that contradict Done verdicts that the first session proposed. It does not reverse those
 verdicts; §3.1 accounts for each one and holds it for the owner. This is the version the owner
 reviews.
+
+**Acceptance (2026-09-25).** The owner accepted `7241d3c`, supplemented by `33310a4`, as the
+reconstructed assessment record, and as the basis for the closure decisions in §3.3. That is not
+blanket approval of every proposed Done verdict. Where the rebuild's evidence contradicts a
+proposed verdict, the proposed verdict stays in the text as assessment history and the current
+verdict is revised in place, with the residual work or the missing evidence named beside it. No
+story is left as "Done, held". This amendment is incremental: nothing was rebuilt again.
 
 **Rules (restated from D-5-1, D-7-4 and Story 10.1).**
 
@@ -209,41 +217,45 @@ about the planning documents only, and this register does not use them.
 
 ## 3. Summary
 
-| Story | Status on `main` `c18ad36` | Verdict | In one line |
-|---|---|---|---|
-| 4.1 Isolated Agent Workspace per Run | done | Already done: evidence registered, no status change | Limitations registered (browser-state isolation in local mode; provider-bounded lease) |
-| 4.2 Sign in to LoanCore, read-only allowlisted actions | done | Already done: evidence registered, no status change | AC3 has two named gaps: no adapter Tool Action rows, and no single named conformance suite |
-| 4.3 Credentials just in time, capture suppressed | done | Already done: evidence registered, no status change | The export leg has nothing to test on `main` |
-| 4.4 Locate, capture, register a grounded Observation | review | **Done — `[COMPILER-1 PATH]`** | Every AC covered |
-| 4.5 Prove absence | review | **Done — `[COMPILER-1 PATH]`** | Every AC covered, including golden D12 and D14 |
-| 4.6 Bounded execution, inert content | review | **Done — `[COMPILER-1 PATH]`** | Every AC covered; production runs OpenAI by owner decision |
-| 4.7 Typed Escalations as durable waits | review | **Residual work — PROPOSED** | The human-matched flag is missing from the Result, record review and Exceptions list; the export leg goes to 14-11a |
-| 4.8 Answer an Escalation, notify Audit Managers | review | **Residual work — PROPOSED** | Email is not built (it records `unconfigured`); Bundle leg to 14-11a; scheduled-Run author to 19-4; compact Evidence tab to confirm |
-| 4.9 Confirm or reject Agent-Judged evaluations | review | **Residual work — PROPOSED (transfer only)** | No Submit control exists; the sentence is shown instead. Transfer to 15-4 (Story 3.11 precedent) |
-| 4.10 ProdConsole, one Observation per parameter | review | **Done — `[COMPILER-1 PATH]`** | Every AC covered; CI evidence only (no live or deployed P-4) |
-| 4.11 Abuse resistance and isolation | review | **Done — `[COMPILER-1 PATH]`** | Every AC covered: 29 mutations on `c18ad36` and live isolation on Solari |
-| 4.12 24-hour disablement window | review | **Done — `[COMPILER-1 PATH]`** | The AC is covered on `c18ad36` and on `6237c4c` and `9da4df6` |
-| 5.1 Timeline live over SSE | review | **Done — `[COMPILER-1 PATH]`**, held (§3.1) | Every AC covered on the narrower reading of "Timeline event"; three families of Run-chain events are appended with no NOTIFY |
-| 5.2 Replay asset set | review | **Residual work — PROPOSED** | Missing frames are shown on neither Replay nor the Result tab; retention and live recording legs unmet; frame role deviation; export to 14-11a |
-| 5.3 Watch a Running Run in Live View | review | **Done — `[COMPILER-1 PATH]`**, held (§3.1) | AC 2's digest leg is not met: every adapter log row says "No artifact registered." The other ACs are covered on `c18ad36`, and Watch was deployed at `44fb596` |
-| 5.4 Pause and resume | review | **Residual work — PROPOSED** | The Step is on no resume record, and on the pause record only when a Step Execution is in flight; the resume semantics to confirm |
-| 5.5 Cancel and flag from Live View | review | **Done — `[COMPILER-1 PATH]`** | Every AC covered; the placement and the N1 wording are owner decisions |
-| 5.6 Answer an Escalation in Live View | review | **Done — `[COMPILER-1 PATH]`**, held (§3.1) | No evidence that the skip link moves focus, and a code read suggests it does not. The other ACs are covered, including the Flow 3 journey |
-| 5.7 Stream drops or Run ends while open | review | **Done — `[COMPILER-1 PATH]`** | Every AC covered |
-| 5.8 Replay any terminal Run | review | **Done — `[COMPILER-1 PATH]`** | Every AC covered, with the provider blocked at the network in the browser; deployed at `44fb596`, not on `c18ad36` |
+| Story | Status on `main` `c18ad36` | Proposed verdict (assessment history) | Current disposition (owner, 2026-09-25, §3.3) | In one line |
+|---|---|---|---|---|
+| 4.1 Isolated Agent Workspace per Run | done | Already done: evidence registered, no status change | `done`, unchanged | Limitations registered (browser-state isolation in local mode; provider-bounded lease) |
+| 4.2 Sign in to LoanCore, read-only allowlisted actions | done | Already done: evidence registered, no status change | `done`, unchanged | AC3 has two named gaps: no adapter Tool Action rows, and no single named conformance suite |
+| 4.3 Credentials just in time, capture suppressed | done | Already done: evidence registered, no status change | `done`, unchanged | The export leg has nothing to test on `main` |
+| 4.4 Locate, capture, register a grounded Observation | review | **Done — `[COMPILER-1 PATH]`** | **Accepted: Done — `[COMPILER-1 PATH]`**; `done` | Every AC covered |
+| 4.5 Prove absence | review | **Done — `[COMPILER-1 PATH]`** | **Accepted: Done — `[COMPILER-1 PATH]`**; `done` | Every AC covered, including golden D12 and D14 |
+| 4.6 Bounded execution, inert content | review | **Done — `[COMPILER-1 PATH]`** | **Accepted: Done — `[COMPILER-1 PATH]`**; `done` | Every AC covered; production runs OpenAI by owner decision |
+| 4.7 Typed Escalations as durable waits | review | **Residual work — PROPOSED** | Residual work; stays `review`: (a) Story 10-6, (b) 14-11a | The human-matched flag is missing from the Result, record review and Exceptions list; the export leg goes to 14-11a |
+| 4.8 Answer an Escalation, notify Audit Managers | review | **Residual work — PROPOSED** | Residual work; stays `review`: transfers to 14-11a and 19-4 confirmed, the compact Evidence tab accepted, email scope amended; the visible decision-history entry is Story 10-10 | Email is not built (it records `unconfigured`); Bundle leg to 14-11a; scheduled-Run author to 19-4; compact Evidence tab to confirm |
+| 4.9 Confirm or reject Agent-Judged evaluations | review | **Residual work — PROPOSED (transfer only)** | **Accepted against the amended scope: Done — `[COMPILER-1 PATH]`**; `done`; Submit carried by 15-4 | No Submit control exists; the sentence is shown instead. Transfer to 15-4 (Story 3.11 precedent) |
+| 4.10 ProdConsole, one Observation per parameter | review | **Done — `[COMPILER-1 PATH]`** | **Accepted: Done — `[COMPILER-1 PATH]`**; `done` | Every AC covered; CI evidence only (no live or deployed P-4) |
+| 4.11 Abuse resistance and isolation | review | **Done — `[COMPILER-1 PATH]`** | **Accepted: Done — `[COMPILER-1 PATH]`**; `done` | Every AC covered: 29 mutations on `c18ad36` and live isolation on Solari |
+| 4.12 24-hour disablement window | review | **Done — `[COMPILER-1 PATH]`** | **Accepted: Done — `[COMPILER-1 PATH]`**; `done` | The AC is covered on `c18ad36` and on `6237c4c` and `9da4df6` |
+| 5.1 Timeline live over SSE | review | **Done — `[COMPILER-1 PATH]`**, held (§3.1) | Residual work; stays `review`: resolution B — the NOTIFY omissions, rollback and reconnect proof, and the bell's dropped refresh are Story 10-7 | Every AC covered on the narrower reading of "Timeline event"; three families of Run-chain events are appended with no NOTIFY |
+| 5.2 Replay asset set | review | **Residual work — PROPOSED** | Residual work; stays `review`: (a) Story 10-6, (b) 14-11a; (c) and (d) accepted as recorded deviations | Missing frames are shown on neither Replay nor the Result tab; retention and live recording legs unmet; frame role deviation; export to 14-11a |
+| 5.3 Watch a Running Run in Live View | review | **Done — `[COMPILER-1 PATH]`**, held (§3.1) | Residual work; stays `review`: resolution A — the digest wiring repair on the real read path is Story 10-6 | AC 2's digest leg is not met: every adapter log row says "No artifact registered." The other ACs are covered on `c18ad36`, and Watch was deployed at `44fb596` |
+| 5.4 Pause and resume | review | **Residual work — PROPOSED** | Residual work; stays `review`: the linkage for new records is Story 10-6; the restart semantics and the `superseded_by = 'resume'` marker are accepted | The Step is on no resume record, and on the pause record only when a Step Execution is in flight; the resume semantics to confirm |
+| 5.5 Cancel and flag from Live View | review | **Done — `[COMPILER-1 PATH]`** | Residual work; stays `review`: placement accepted; the boundary's "Nothing was changed." after a committed action is Story 10-8 | Every AC covered; the placement and the N1 wording are owner decisions |
+| 5.6 Answer an Escalation in Live View | review | **Done — `[COMPILER-1 PATH]`**, held (§3.1) | Residual work; stays `review`: resolution A — the keyboard focus test first, then the repair, Story 10-6; the history entry is Story 10-10 | No evidence that the skip link moves focus, and a code read suggests it does not. The other ACs are covered, including the Flow 3 journey |
+| 5.7 Stream drops or Run ends while open | review | **Done — `[COMPILER-1 PATH]`** | Residual work; stays `review`: the silence clock reset by a server re-read is Story 10-8 | Every AC covered |
+| 5.8 Replay any terminal Run | review | **Done — `[COMPILER-1 PATH]`** | Residual work; stays `review`: bounded reads presented as complete history are Story 10-9 | Every AC covered, with the provider blocked at the network in the browser; deployed at `44fb596`, not on `c18ad36` |
 
-Totals for the seventeen stories in review: 12 Done — `[COMPILER-1 PATH]`, three of them held
-(§3.1); 5 Residual work — PROPOSED, one of them transfer only; 0 Remains in review.
+Totals for the seventeen stories in review, as proposed by the assessment: 12 Done —
+`[COMPILER-1 PATH]`, three of them held (§3.1); 5 Residual work — PROPOSED, one of them transfer
+only; 0 Remains in review. **As accepted on 2026-09-25 (§3.3): 7 close as `done` (4.4, 4.5, 4.6,
+4.9, 4.10, 4.11, 4.12) and 10 stay in `review` (4.7, 4.8, 5.1–5.8), each for the residual work
+or the missing verification named in §3.3, not because every part of each story is unfinished.**
 
-### 3.1 Done verdicts that the rebuild contradicts
+### 3.1 Done verdicts that the rebuild contradicts (resolved 2026-09-25, §3.3)
 
 The first session proposed twelve Done verdicts. On 2026-09-25 the owner asked that they are not
 reversed arbitrarily, and that any point that contradicts a Done verdict is resolved or explicitly
 accounted for. The rebuild read the Epic 5 evidence and the code at `c18ad36` again and found
 three such points. None is resolved here: each resolution is either a code change or a reading of
 an AC, and this assessment is authorised to do neither. Each is accounted for below. The verdict
-stays as proposed, but it is **held**: §5 moves the story to `done` only after the owner decides
-the point.
+stayed as proposed and was **held** for the owner. The owner decided all three on 2026-09-25 (the
+decisions paragraph below and §3.3); the current verdict of each story is revised in its section,
+and none is "Done, held" any more.
 
 | Item | Story and AC leg | The contradicting fact (code read at `c18ad36`) | What §1's rules give | Resolution A | Resolution B |
 |---|---|---|---|---|---|
@@ -251,9 +263,21 @@ the point.
 | 2 | 5.3, AC 2: "the Adapter Session Steps render as log rows with counts and digests" | `apps/web/app/runs/[id]/live/page.tsx:347` passes `digest: null` for every adapter row. So every row says "No artifact registered.", also an ACQUIRED Reference Source row, which must name its Evidence (generation 29). Replay's copy of the same wiring was repaired in PR #36; Live View's copy was not. The unit test gives the component a digest, and the browser fixture seeds a step with no Evidence, so neither test can see the defect | Residual work — PROPOSED: the leg is not met, and the row states a false fact | 5.3 becomes Residual work — PROPOSED. The repair (Live View's adapter rows carry the registered digest, as Replay's do, with a browser assertion) is added to the bounded legacy follow-up | Scope amendment: the digest leg is recorded as not passed and is left out of 5.3's closure, and the defect goes to the Epic 5 retrospective. 5.3 closes as Done against the remaining scope |
 | 3 | 5.6, AC 2: "a skip link 'Go to open Escalation' moves focus to the panel" | No test activates the link. Its target, `<section id="open-escalation">` (`EscalationPanel.tsx:443`), has no `tabIndex`. The shell's own skip-link target has `tabIndex={-1}`, and its comment says that without it the skip link "leaves focus on the link" (`AppShell.tsx:98`–`:100`) | Remains in review, with the missing check named: a browser test that presses Enter on the link and asserts that focus is inside `#open-escalation`. Residual work — PROPOSED, if the code read counts as evidence | 5.6 becomes Residual work — PROPOSED. The repair (`tabIndex={-1}` on the target, and the browser test) is added to the bounded legacy follow-up | 5.6 becomes Remains in review. Only the missing browser check is written first; if it fails, the repair follows |
 
-**Recommendation.** Item 1: resolution A. No web surface shows these events, and an open stream
-still sends them with no gap. Items 2 and 3: resolution A. Each is a small repair on a surface that
-is already built, and the legacy follow-up already changes surfaces of the same kind.
+**Recommendation as made by the rebuild (assessment history).** Item 1: resolution A. No web
+surface shows these events, and an open stream still sends them with no gap. Items 2 and 3:
+resolution A. Each is a small repair on a surface that is already built, and the legacy follow-up
+already changes surfaces of the same kind.
+
+**Decisions (owner, 2026-09-25).** Item 1: **resolution B.** The contract keeps its meaning — a
+Timeline event is one of the Run's audit-chain events, and every append issues the NOTIFY in the
+appending transaction — and "no current screen renders these event types" is not a reason to
+narrow it. The omissions are repaired in Story 10-7, with transaction rollback and reconnect
+behaviour covered; notifications stay wake-ups and the stored chain stays the authority; no
+internal event has to become a prominent UI row. Item 2: **resolution A**, in Story 10-6, on the
+real page read path, with three cases (an ACQUIRED step with Evidence, a step with no artifact, an
+unavailable Evidence read). Item 3: **resolution A**, in Story 10-6, with the browser test written
+first: keyboard activation of "Go to open Escalation", the resulting focus location, and the next
+keyboard interaction reaching the panel's controls. 5.1, 5.3 and 5.6 stay `review`.
 
 ### 3.2 Owner dispositions recorded on 2026-09-25
 
@@ -274,6 +298,44 @@ register is still pending.
 Story 10-6 is prepared and not authorised for implementation. The owner authorised documentation,
 decision recording, tracking corrections, design completion and story preparation on 2026-09-25,
 and not application implementation.
+
+### 3.3 Owner acceptance and the amended closure position (2026-09-25)
+
+The owner accepted the reconstructed record (§1) as the basis for these decisions. Each story's
+section carries the decision that affects it; this table is the closure position that §5 applies.
+Story 10.1 finishes once this position is recorded and the tracking validation passes; the
+follow-up stories are prepared, and none is authorised for implementation.
+
+| Stories | Current verdict | Tracking status | Residual work, and who delivers it |
+|---|---|---|---|
+| 4.1, 4.2, 4.3 | Already done | `done`, unchanged | None. The recorded evidence and limitations stay; the limitations go to the Epic 4 retrospective |
+| 4.4, 4.5, 4.6, 4.10, 4.11, 4.12 | Done — `[COMPILER-1 PATH]`, accepted | `done` | None. A documentary closure against the register's cited evidence and qualifications; not a new execution of their tests |
+| 4.9 | Done — `[COMPILER-1 PATH]` against the amended scope, accepted | `done` | The Submit control is carried by 15-4 (explicit criterion). The scope amendment records that it did not pass here |
+| 4.7 | Residual work — PROPOSED | `review` | (a) the human-matched flag on the Result, review and list surfaces: Story 10-6; (b) export: 14-11a |
+| 4.8 | Residual work — PROPOSED | `review` | Transfers confirmed: the Workpaper Bundle to 14-11a, the scheduled-Run recipient to 19-4. The compact Evidence-tab disclosure is accepted. Email stays unimplemented under the scope amendment. Open: the visible completed-decision history entry (AC 4): Story 10-10 |
+| 5.1 | Residual work — PROPOSED | `review` | Story 10-7: NOTIFY for the omitted event families in the appending transaction, proven with rollback and reconnect; the bell's dropped refresh in a burst; the shared-subscription refresh of the Overview proven |
+| 5.2 | Residual work — PROPOSED | `review` | (a) the missing-frame indication on Replay: Story 10-6; (b) export: 14-11a. (c) recording off and retention not demonstrated, and (d) the frame storage role, are accepted as recorded deviations |
+| 5.3 | Residual work — PROPOSED | `review` | Story 10-6: the registered Evidence identity and digest on Live View's adapter rows through the real read path, three cases |
+| 5.4 | Residual work — PROPOSED | `review` | Story 10-6: exact linkage for new pause and resume records, repeated pauses included. The restart semantics and the `superseded_by = 'resume'` marker are accepted; the 2026-09-01 EXPERIENCE sentence is aligned. The visible superseded-pause entry: Story 10-10 |
+| 5.5 | Residual work — PROPOSED | `review` | Placement accepted. Story 10-8: the route boundary must not say "Nothing was changed." over a committed action |
+| 5.6 | Residual work — PROPOSED | `review` | Story 10-6: the keyboard focus test first, then the smallest repair. The visible answered-Escalation entry (AC 3): Story 10-10 |
+| 5.7 | Residual work — PROPOSED | `review` | Story 10-8: a server re-read must not reset the silence clock or reopen the controls while the stream is down |
+| 5.8 | Residual work — PROPOSED | `review` | Story 10-9: bounded reads of waits, Observation deltas and Exceptions say what they cover, never show a bounded count as a total, and give a way to the rest |
+
+**Readings the register relied on (§6, point 11), decided.** (i) and (ii): an event in the audit
+chain is not a user-visible history entry. The storage evidence stands as proven; the missing
+presentation (a compact, inspectable entry or link with the completed decision, actor, time and
+related work; no full panel) is Story 10-10's. (iii): the existing marker is accepted; no
+historical event is rewritten. (iv): the Overview's refresh through the bell's shared subscription
+is accepted; Story 10-7 must prove that the shared mechanism refreshes the Overview's counts.
+
+**The follow-up stories.** 10-6 (amended: digests and keyboard focus added; provenance,
+missing-frame and pause-and-resume linkage kept), 10-7 (live channel: notifications and the
+bell), 10-8 (lost connection and lost acknowledgement: the silence clock and the boundary
+message), 10-9 (Replay bounded-history completeness), 10-10 (retained decision history on the
+Timeline). Each has its acceptance criteria in `epics.md` and a story file. None is authorised
+for implementation. This decision does not authorise repeating completed effects in the new Agent
+Task path.
 
 ## 4. The register, story by story
 
@@ -637,6 +699,19 @@ not say the email leg passed: closure is against the remaining accepted scope. R
 and (d) have no owner decision yet; they are open point 3 in §6. 4.8 stays `review` until they
 are decided and the register is accepted.
 
+**Owner disposition (2026-09-25), residuals (b)–(d) and the Timeline entry.** (b) The Workpaper
+Bundle leg belongs to 14-11a and (c) the scheduled-Run recipient handling belongs to 19-4, under the
+approved scoped-responsibility rules; both transfers are confirmed. (d) The compact Evidence-tab
+disclosure is accepted instead of a duplicate of the full panel, provided the outstanding decision
+stays obvious and its control opens the correct decision without losing context. Email stays
+explicitly unimplemented under the scope amendment above. AC 4's "the panel then becomes a
+Timeline entry" is met by the chain event in STORAGE only: the Execution Timeline tab has no
+Escalation row, and an event that exists in the chain is not a user-visible history entry. The
+storage evidence stands as proven; the missing presentation is residual work of Story 10-10 (a
+compact, inspectable history entry or link with the completed decision, actor, time and related
+work; no full expanded panel). 4.8 therefore stays `review` for that presentation obligation
+after its transfers are recorded.
+
 ### Story 4.9 — Confirm or reject Agent-Judged evaluations to seal the Result
 
 **Status on `main`:** review.
@@ -867,11 +942,28 @@ register.
      ("No update for 24 seconds") in production on 2026-09-16, and reads it as a real gap on the
      owner's own connection.
 
-**Verdict: Done — `[COMPILER-1 PATH]`, held (§3.1, item 1).** AC1 is covered on the reading that
+**Proposed verdict (assessment history): Done — `[COMPILER-1 PATH]`, held (§3.1, item 1).** AC1 is covered on the reading that
 limits a Timeline event to an event that changes what a subscribing surface shows. Limitation (7)
 contradicts the stricter reading, in which every append to a Run's chain is a Timeline event. The
 owner decides which reading applies, and §5 moves this story only after that decision. Limitations
 (3) and (4) are items for the Epic 5 retrospective (§6, point 15).
+
+**Amended verdict (owner decision 2026-09-25): Residual work — PROPOSED; stays `review`.**
+Resolution B of §3.1, item 1. The contract is not narrowed: `live-timeline-channel-v1.md` defines a
+Timeline event as one of the Run's audit-chain events and requires the NOTIFY in the appending
+transaction, and "no current screen renders these event types" is not enough reason to redefine
+it. Residual work, Story 10-7: issue `NOTIFY run_timeline` for the omitted families
+(`evidence-access.*` from web and worker, `notification.in-app-delivery`,
+`notification.email-delivery`, the evaluation review's `security.denied`), and prove it with
+transaction rollback (a rolled-back append wakes nothing) and reconnect behaviour; notifications
+stay wake-ups and the stored chain stays the authority; no internal event has to become a
+prominent UI row. Also in 10-7, from limitation (3): `BellLive` drops a second qualifying event
+inside its one-second window and schedules no later re-read. A throttled refresh is acceptable;
+silently losing the final required refresh is not. The test drives a short burst and establishes
+that the rendered state eventually includes the last relevant committed change. The Overview's
+refresh through the bell's shared subscription is accepted (limitation (3), the Overview needs no
+subscription of its own), and that same test must show that the shared mechanism refreshes the
+Overview's counts.
 
 ### Story 5.2 — Capture the platform-owned Replay asset set during execution
 
@@ -1016,6 +1108,16 @@ name, is not added. (b) is an explicit acceptance criterion of 14-11a in `epics.
 explicit residual work of this story. Residuals (c) and (d) have no owner decision yet; they are
 open point 6 in §6. 5.2 stays `review`.
 
+**Owner disposition (2026-09-25), residuals (c) and (d).** (c) Provider recording stays off for
+the retained compiler-1 path, and is not enabled to satisfy an obsolete recording-copy criterion.
+The register records that a real recording copy and minimum provider retention were not
+demonstrated. The security restriction (`SOLARI_RECORDING: 'false'`) and the distinction between a
+provider recording and platform-owned Replay stay. (d) The existing frame storage role (`role =
+'evidence'`) is accepted as a documented compiler-1 deviation, with no historical record rewritten.
+The required behaviour is preserved and cited under AC 3: missing playback frames never block the
+seal, credential-suppressed frames are distinct from missing frames, and required audit Evidence
+keeps its evidence-quality requirements. (a) and (b) stay residual work as assigned.
+
 ### Story 5.3 — Watch a Running Run in Live View
 
 **Status on `main`:** review.
@@ -1102,12 +1204,19 @@ open point 6 in §6. 5.2 stays `review`.
    the gate". The Escalation panel's answers and note read the same gate (code read,
    `EscalationPanel.tsx:297` and `:324`).
 
-**Verdict: Done — `[COMPILER-1 PATH]`, held (§3.1, item 2).** This is the verdict that the first
+**Proposed verdict (assessment history): Done — `[COMPILER-1 PATH]`, held (§3.1, item 2).** This is the verdict that the first
 session proposed. The rebuild found that AC 2's digest leg is not met on Live View at `c18ad36`
 (limitation (4)). Under §1's rules, that fact gives Residual work — PROPOSED. The verdict is not
 reversed here: §3.1 states the contradiction and the two resolutions, and the owner decides. §5
 moves this story only after that decision. Limitations (1), (2), (5) and (6) are items for the
 Epic 5 retrospective (§6, point 15).
+
+**Amended verdict (owner decision 2026-09-25): Residual work — PROPOSED; stays `review`.**
+Resolution A of §3.1, item 2, in Story 10-6. `apps/web/app/runs/[id]/live/page.tsx:347` is a
+concrete wiring defect, not only missing test evidence. 10-6 supplies the registered Evidence
+identity and digest through the real read path and tests three situations — an ACQUIRED step with
+Evidence, a step with no artifact, and an unavailable Evidence read — and never one "No artifact
+registered." for all three. 5.3 closes when the page wiring and its browser assertion pass.
 
 ### Story 5.4 — Pause and resume a Running Run
 
@@ -1340,6 +1449,18 @@ carries it, and a historical record without the linkage says that its Step was n
 Residual (b), the resume semantics, has no owner decision yet; it is open point 7 in §6. 5.4 stays
 `review` until 10-6 delivers the linkage and (b) is confirmed.
 
+**Owner disposition (2026-09-25), residual (b) and the markers.** Restarting the interrupted Step
+Execution as a new attempt is accepted for the retained compiler-1 path, consistent with epics.md,
+AD-16 and the code; the conflicting sentence in the 2026-09-01 EXPERIENCE.md (Flow 3, alternate)
+is aligned by an annotation in this amendment. The existing representation — the earlier Step
+Execution marked `SUPERSEDED` with `superseded_by = 'resume'` — is accepted; no historical event is
+rewritten to match `superseded_by_resume`. Story 10-6 must still establish the exact linkage for
+new pause and resume records, including repeated pauses, preserving prior attempts and
+distinguishing the execution being superseded from the one started on resumption. AC 3's "recorded
+as superseded on the Timeline" is met in storage only; the visible entry is Story 10-10's (§3.3).
+This decision does not authorise repeating completed effects in the new Agent Task path. 5.4 stays
+`review` until 10-6 delivers the linkage.
+
 ### Story 5.5 — Cancel a Run and flag it to Audit Managers from Live View
 
 **Status on `main`:** review.
@@ -1413,8 +1534,18 @@ Residual (b), the resume semantics, has no owner decision yet; it is open point 
    live gate. `live-view.spec.ts:381` (the flag form is one closed opener in that row) and
    `live-view.spec.ts:434` (the three are withdrawn and restored together).
 
-**Verdict: Done — `[COMPILER-1 PATH]`.** Limitations (1) and (2) are owner decisions that do not
-change the verdict (§6, point 9).
+**Proposed verdict (assessment history): Done — `[COMPILER-1 PATH]`.** Limitations (1) and (2)
+were recorded as owner decisions that do not change the verdict (§6, point 12).
+
+**Amended verdict (owner decision 2026-09-25): Residual work — PROPOSED; stays `review`.**
+Limitation (2), placement: accepted. Pause, Cancel and Flag in Live View's header row are the
+retained design; no relocation. Limitation (1), the N1 wording: not accepted as a limitation. After
+an action committed and its acknowledgement was lost, `apps/web/app/error.tsx:37` claims
+unconditionally that nothing was changed, and the committed-flag case above shows the claim false.
+Residual work, Story 10-8: the generic rendering error states only what it knows (for example
+"This page could not be loaded. Check the Run's current state before repeating your last
+action."); an action-specific message may say that nothing changed only when its recorded outcome
+establishes that; reloading the page must not become an implicit resubmission of the action.
 
 ### Story 5.6 — Answer an Escalation without leaving Live View
 
@@ -1491,13 +1622,23 @@ change the verdict (§6, point 9).
    and Pause offered again; the exact event list. The visible countdown on the Paused banner is
    `PauseBanners.test.ts` "shows a countdown, not only two absolute timestamps".
 
-**Verdict: Done — `[COMPILER-1 PATH]`, held (§3.1, item 3).** This is the verdict that the first
+**Proposed verdict (assessment history): Done — `[COMPILER-1 PATH]`, held (§3.1, item 3).** This is the verdict that the first
 session proposed. The rebuild found no evidence that the skip link moves focus, and a code read
 that suggests it does not (limitation (4)). Under §1's rules, a leg with no evidence gives at least
 Remains in review, and Residual work — PROPOSED if the code read is taken as evidence. The verdict
 is not reversed here: §3.1 states the contradiction and the two resolutions, and the owner decides.
 §5 moves this story only after that decision. Limitation (6) reads the chain event as a Timeline
 entry, as Story 4.8, AC 4 does (§6, point 3).
+
+**Amended verdict (owner decision 2026-09-25): Residual work — PROPOSED; stays `review`.**
+Resolution A of §3.1, item 3, in Story 10-6, test first. The browser test activates "Go to open
+Escalation" from the keyboard, establishes where focus lands, and verifies that the next keyboard
+interaction reaches the panel's intended controls; then the smallest necessary correction
+(`tabIndex={-1}` on the target, or what the test shows). Finding the link, or scrolling to the
+section, is not enough. One bounded test-and-repair task, not another owner decision. Separately,
+AC 3's "the panel becomes a Timeline entry" is met in storage only (the chain event); the visible
+history entry is Story 10-10's (§3.3). 5.6 closes when keyboard activation demonstrably moves
+focus and 10-10 delivers the entry.
 
 ### Story 5.7 — Live View when the stream drops or the Run ends while open
 
@@ -1590,8 +1731,17 @@ entry, as Story 4.8, AC 4 does (§6, point 3).
      test twice. It was renamed to what it can prove, and the resume rule stays in
      `live-status.test.ts` (`CLAUDE.md:1643`, `:1656`).
 
-**Verdict: Done — `[COMPILER-1 PATH]`.** Limitations (1) to (4) are items for the Epic 5
-retrospective (§6, point 15).
+**Proposed verdict (assessment history): Done — `[COMPILER-1 PATH]`.** Limitations (1) to (4)
+were recorded as items for the Epic 5 retrospective (§6, point 15).
+
+**Amended verdict (owner decision 2026-09-25): Residual work — PROPOSED; stays `review`.**
+Limitation (2) conflicts with AC1's accepted lost-connection behaviour, not only with a
+retrospective note: `useLiveTimeline` resets its last-message time whenever its `[url, cursor]`
+effect runs, so a server re-read that moves the cursor can show `live` and reopen the controls
+while the stream is still down. Residual work, Story 10-8: test a lost stream followed by an
+unrelated server refresh or cursor change; the UI must not claim that the stream recovered, or
+reopen controls on that basis, without the recovery condition the contract requires (a frame or
+heartbeat from the stream itself). Limitations (1), (3) and (4) stay retrospective items.
 
 ### Story 5.8 — Replay any terminal Run from the platform-owned asset set
 
@@ -1681,17 +1831,27 @@ retrospective (§6, point 15).
      request and never by the read, so a re-read keeps the reader's frame", and the keyboard walk in
      `selected-replay.spec.ts` survives a real cancel of another Run.
 
-**Verdict: Done — `[COMPILER-1 PATH]`.** Limitations (2), (3) and (5) are items for the Epic 5
-retrospective (§6, points 13 and 15).
+**Proposed verdict (assessment history): Done — `[COMPILER-1 PATH]`.** Limitations (2), (3) and
+(5) were recorded as items for the Epic 5 retrospective (§6, points 13 and 15).
+
+**Amended verdict (owner decision 2026-09-25): Residual work — PROPOSED; stays `review`.**
+Limitation (2) affects AC2's claim that Replay renders the complete retained Run: on the default
+view the reads of waits, Observation deltas and Exceptions stop at 500 with no total and no
+sentence, so an Observation count beside a frame can be too low and jump targets can be missing
+with nothing saying so. Residual work, Story 10-9: a fixture beyond the relevant limits; the reader
+reaches the remaining retained material through pagination, continuation or the existing
+inspection path; any bounded view says what it covers; displayed counts never masquerade as
+full-history totals. No Replay redesign: correct the completeness presentation and the missing
+continuation where needed. Limitations (1), (3) and (5) stay retrospective items.
 
 ## 5. Status changes that follow from the register
 
-Nothing in this section is applied yet. D-7-4 makes this register the only source of Epic 4 and
-Epic 5 status changes, and the owner accepts the verdicts first. On acceptance, Story 10.1's
-three remaining tasks apply them (§6, point 16), with the sprint-planning tooling's `validate`
-before and after.
+D-7-4 makes this register the only source of Epic 4 and Epic 5 status changes. The owner accepted
+the closure position in §3.3 on 2026-09-25, and the last column below is applied by Story 10.1's
+remaining tasks in the same amendment, with the sprint-planning tooling's `validate` before and
+after. The column keeps its earlier wording as history where the decision changed it.
 
-| Key | Status now | Verdict (§3) | Status on the owner's acceptance |
+| Key | Status now | Verdict (§3) | Status on the owner's acceptance (applied 2026-09-25, §3.3) |
 |---|---|---|---|
 | `4-1-provision-an-isolated-agent-workspace-per-run` | done | Already done | `done`, unchanged; evidence registered |
 | `4-2-sign-in-to-loancore-and-enforce-read-only-allowlisted-action` | done | Already done | `done`, unchanged; evidence registered |
@@ -1699,20 +1859,20 @@ before and after.
 | `4-4-locate-a-record-capture-evidence-and-register-a-grounded-obs` | review | Done — `[COMPILER-1 PATH]` | `done` |
 | `4-5-prove-absence-for-an-employee-with-no-account` | review | Done — `[COMPILER-1 PATH]` | `done` |
 | `4-6-bound-agent-execution-and-render-retrieved-content-inert` | review | Done — `[COMPILER-1 PATH]` | `done` |
-| `4-7-raise-typed-escalations-as-durable-waits` | review | Residual work — PROPOSED | stays `review` until Story 10-6 and 14-11a deliver residuals (a) and (b), or the owner amends the scope (point 1; §3.2) |
-| `4-8-answer-an-escalation-from-run-detail-and-notify-audit-manage` | review | Residual work — PROPOSED | `done` if the owner confirms (b)–(d) (point 3); (a) is decided by a scope amendment (point 2; §3.2). Otherwise stays `review` |
-| `4-9-confirm-or-reject-agent-judged-evaluations-to-seal-the-resul` | review | Residual work — PROPOSED (transfer only) | `done`: the transfer to 15-4 and the scope amendment are decided (point 4; §3.2) |
+| `4-7-raise-typed-escalations-as-durable-waits` | review | Residual work — PROPOSED | stays `review`: (a) Story 10-6, (b) 14-11a (§3.3) |
+| `4-8-answer-an-escalation-from-run-detail-and-notify-audit-manage` | review | Residual work — PROPOSED | stays `review`: transfers and the compact tab confirmed; the visible decision-history entry is Story 10-10 (§3.3) |
+| `4-9-confirm-or-reject-agent-judged-evaluations-to-seal-the-resul` | review | Residual work — PROPOSED (transfer only) | `done`: the transfer to 15-4 and the scope amendment are accepted (§3.3) |
 | `4-10-prove-the-agent-path-on-prodconsole-with-one-observation-per` | review | Done — `[COMPILER-1 PATH]` | `done` |
 | `4-11-prove-abuse-resistance-and-workspace-isolation-with-negative` | review | Done — `[COMPILER-1 PATH]` | `done` |
 | `4-12-evaluate-the-24-hour-disablement-window-through-the-complete` | review | Done — `[COMPILER-1 PATH]` | `done` |
-| `5-1-stream-the-execution-timeline-live-over-sse` | review | Done — `[COMPILER-1 PATH]`, held (§3.1) | `done` if the owner takes resolution A of §3.1, item 1 (point 8); otherwise stays `review` |
-| `5-2-capture-the-platform-owned-replay-asset-set-during-execution` | review | Residual work — PROPOSED | stays `review` until Story 10-6 and 14-11a deliver (a) and (b), and the owner decides (c) and (d) (points 5 and 6; §3.2) |
-| `5-3-watch-a-running-run-in-live-view` | review | Done — `[COMPILER-1 PATH]`, held (§3.1) | `done` only if the owner takes resolution B of §3.1, item 2, a scope amendment (point 9); otherwise stays `review` |
-| `5-4-pause-and-resume-a-running-run` | review | Residual work — PROPOSED | stays `review` until Story 10-6 delivers the linkage and the owner confirms (b) (point 7; §3.2) |
-| `5-5-cancel-a-run-and-flag-it-to-audit-managers-from-live-view` | review | Done — `[COMPILER-1 PATH]` | `done` |
-| `5-6-answer-an-escalation-without-leaving-live-view` | review | Done — `[COMPILER-1 PATH]`, held (§3.1) | stays `review` under either resolution of §3.1, item 3 (point 10), until the missing check or the repair is delivered |
-| `5-7-live-view-when-the-stream-drops-or-the-run-ends-while-open` | review | Done — `[COMPILER-1 PATH]` | `done` |
-| `5-8-replay-any-terminal-run-from-the-platform-owned-asset-set` | review | Done — `[COMPILER-1 PATH]` | `done` |
+| `5-1-stream-the-execution-timeline-live-over-sse` | review | Done — `[COMPILER-1 PATH]`, held (§3.1) | stays `review`: resolution B, Story 10-7 (§3.3). Earlier wording: `done` only under resolution A |
+| `5-2-capture-the-platform-owned-replay-asset-set-during-execution` | review | Residual work — PROPOSED | stays `review`: (a) Story 10-6, (b) 14-11a; (c) and (d) accepted (§3.3) |
+| `5-3-watch-a-running-run-in-live-view` | review | Done — `[COMPILER-1 PATH]`, held (§3.1) | stays `review`: resolution A, Story 10-6 (§3.3). Earlier wording: `done` only under resolution B |
+| `5-4-pause-and-resume-a-running-run` | review | Residual work — PROPOSED | stays `review`: Story 10-6 linkage; (b) and the marker accepted (§3.3) |
+| `5-5-cancel-a-run-and-flag-it-to-audit-managers-from-live-view` | review | Done — `[COMPILER-1 PATH]` | stays `review`: Story 10-8 (§3.3). Earlier wording: `done` |
+| `5-6-answer-an-escalation-without-leaving-live-view` | review | Done — `[COMPILER-1 PATH]`, held (§3.1) | stays `review`: resolution A, Story 10-6, then Story 10-10 (§3.3) |
+| `5-7-live-view-when-the-stream-drops-or-the-run-ends-while-open` | review | Done — `[COMPILER-1 PATH]` | stays `review`: Story 10-8 (§3.3). Earlier wording: `done` |
+| `5-8-replay-any-terminal-run-from-the-platform-owned-asset-set` | review | Done — `[COMPILER-1 PATH]` | stays `review`: Story 10-9 (§3.3). Earlier wording: `done` |
 
 - **Epics.** `epic-4` and `epic-5` stay `in-progress` while any of their stories is in `review`.
   They become `done` only when every story is `done`.
@@ -1726,23 +1886,27 @@ before and after.
 - **Memlog.** One decision entry in the PRD workspace memlog summarises the accepted verdicts,
   through `memlog.py`.
 
-As proposed, acceptance moves ten stories to `done` at once: 4.4, 4.5, 4.6, 4.9, 4.10, 4.11,
-4.12, 5.5, 5.7 and 5.8 (4.9 by the owner's transfer and scope amendment). 5.1 and 5.3 follow, or
-not, with the owner's decisions in §3.1. 4.8 follows if the owner confirms its residuals (b)–(d).
-4.7, 5.2, 5.4 and 5.6 stay in `review` until their residual work is delivered.
+As proposed, acceptance would have moved ten stories to `done`. As accepted (§3.3), seven move:
+4.4, 4.5, 4.6, 4.9, 4.10, 4.11 and 4.12. Ten stay in `review` for named residual work: 4.7, 4.8
+and 5.1–5.8. `epic-4` and `epic-5` stay `in-progress`. Story 10.1 closes; the follow-up stories
+10-6 to 10-10 are `ready-for-dev` and not authorised for implementation.
 
 ## 6. Open points
 
 Sixteen points stay open when the assessment ends. This list is the rebuild's (§1). It replaces
 the list in the lost commit `d79bdcf`, which only the first session read.
 
-- Points 1–7 settle a residual verdict. On 2026-09-25 the owner decided points 1, 2, 4 and 5,
-  and gave the rule that decides point 7 (a) (§3.2). §6.1 shows what is still open.
-- Points 8–10 contradict a proposed Done verdict. §3.1 holds those verdicts.
-- Points 11 and 12 are owner decisions and confirmations that do not change a proposed verdict.
-- Points 13–15 are evidence limitations that the verdicts already account for. Each names where
-  it goes.
-- Point 16 is the rest of Story 10.1.
+- Points 1–7 settle a residual verdict. The owner decided all of them on 2026-09-25 (§3.2, §3.3).
+- Points 8–10 contradicted a proposed Done verdict. The owner resolved them on 2026-09-25 (§3.1,
+  decisions); the three stories are Residual work and stay `review`.
+- Points 11 and 12 were readings and confirmations. The owner decided them on 2026-09-25 (§3.3);
+  two of them turned into residual work (Stories 10-10 and 10-8).
+- Points 13–15 are evidence limitations that the verdicts account for. Three items of point 15
+  became residual work on 2026-09-25 and are marked there.
+- Point 16, the rest of Story 10.1, is done with this amendment.
+
+After the owner's decisions, no point needs an owner decision. What stays open is delivery: the
+residual work assigned to Stories 10-6 to 10-10, 14-11a, 15-4 and 19-4.
 
 1. **4.7 — the human-matched flag.** A record that a person chose through a secondary key is
    flagged on its Observation only. The Result, the record review queue and inspector, and the
@@ -1755,8 +1919,10 @@ the list in the lost commit `d79bdcf`, which only the first session read.
    applies to the email outcome of a flag (Story 5.5, limitation (4)).
 3. **4.8 (b)–(d).** (b) The Workpaper Bundle leg goes to 14-11a. (c) The scheduled-Run author goes
    to 19-4. (d) The Auditor Workspace v1.1 compact Evidence tab replaces the panel "at the top of
-   every tab" with a disclosure. Needs: owner confirmation of the two transfers and of the later
-   design.
+   every tab" with a disclosure. Decided on 2026-09-25 (§3.3): both transfers confirmed; the
+   compact disclosure accepted, provided the outstanding decision stays obvious and its control
+   opens the correct decision without losing context. The visible completed-decision entry (AC 4)
+   is Story 10-10's, so 4.8 stays `review`.
 4. **4.9 — the Submit control.** `main` shows the sentence "Submission is unavailable while the
    Result is unsealed." as a statement, with no control. Result submission is old story 6-3, now
    15-4. Decided on 2026-09-25 (§3.2): the obligation moves to 15-4, which now has an explicit
@@ -1770,8 +1936,10 @@ the list in the lost commit `d79bdcf`, which only the first session read.
    is not set to minimum, because the SDK has no control for it, and no real recording was ever
    copied, because recording stays off by the 2026-09-15 decision (`CLAUDE.md:1187`). (d) A frame
    keeps `role = 'evidence'`, and no artifact is written with `role = 'replay'`, so the replay-role
-   guards serve no producer. Needs: an owner decision — accept both as the compiler-1 closure, or
-   keep them open. Minimum retention is an action against the provider account, not code.
+   guards serve no producer. Decided on 2026-09-25 (§3.3): both accepted as recorded deviations.
+   Recording stays off and is not enabled for an obsolete criterion; a real recording copy and
+   minimum retention are recorded as not demonstrated; the required behaviour under AC 3 (the
+   unblocked seal, the suppression distinction) stays tested.
 7. **5.4 (a) and (b) — the Step on the pause and resume records, and the resume semantics.**
    (a) A pause record names the Step Execution only when one is in flight (six Work Item
    boundaries). It names no Step at the sign-in, adapter or between-Work-Item boundaries. No
@@ -1780,14 +1948,19 @@ the list in the lost commit `d79bdcf`, which only the first session read.
    therefore do not qualify, and the linkage is added for new events only, in a bounded follow-up
    (§4, Story 5.4). (b) epics.md and AD-16 restart the interrupted Step Execution as a new
    attempt; the 2026-09-01 EXPERIENCE.md (line 295) says the agent continues from the next Tool
-   Action. The code follows epics.md. Needs: owner confirmation of (b); (a) follows the rule.
-8. **5.1, AC1 — Run-chain events with no NOTIFY (§3.1, item 1).** Contradicts a proposed Done
-   verdict. Needs: the owner's reading of "Timeline event".
-9. **5.3, AC 2 — Live View's adapter rows show no digest (§3.1, item 2).** Contradicts a proposed
-   Done verdict. Needs: the owner's choice between a repair in the follow-up and a scope
-   amendment.
-10. **5.6, AC 2 — the skip link does not move focus (§3.1, item 3).** Contradicts a proposed Done
-    verdict. Needs: the owner's choice between a repair in the follow-up and a check first.
+   Action. The code follows epics.md. Decided on 2026-09-25 (§3.3): (b) the restart is accepted,
+   and the EXPERIENCE sentence is aligned; the `superseded_by = 'resume'` marker is accepted with
+   no historical rewrite; (a) follows the rule and is Story 10-6's.
+8. **5.1, AC1 — Run-chain events with no NOTIFY (§3.1, item 1).** Contradicted a proposed Done
+   verdict. Decided on 2026-09-25: resolution B. The contract keeps its meaning; the omissions,
+   with rollback and reconnect behaviour and the bell's dropped refresh, are Story 10-7. 5.1 is
+   Residual work and stays `review`.
+9. **5.3, AC 2 — Live View's adapter rows show no digest (§3.1, item 2).** Contradicted a proposed
+   Done verdict. Decided on 2026-09-25: resolution A. The page wiring is repaired on the real read
+   path in Story 10-6, with three tested situations. 5.3 is Residual work and stays `review`.
+10. **5.6, AC 2 — the skip link does not move focus (§3.1, item 3).** Contradicted a proposed Done
+    verdict. Decided on 2026-09-25: resolution A, test first, in Story 10-6. 5.6 is Residual work
+    and stays `review`.
 11. **Readings that the register relies on.** The register counts these legs as covered on a
     reading that the owner has not yet confirmed. If a reading is rejected, the leg is not met.
     (i) "The panel becomes a Timeline entry" (4.8, AC 4; 5.6, AC 3) is read as the
@@ -1798,13 +1971,16 @@ the list in the lost commit `d79bdcf`, which only the first session read.
     row for it. (iii) The resume marker (5.4, AC 6): the code marks the earlier Step Execution
     `SUPERSEDED` with `superseded_by = 'resume'`, while epics.md names `superseded_by_resume` on
     the new attempt. (iv) "Overview counts … subscribe" (5.1, AC 2) is read as the Overview being
-    re-read through the bell's subscription. Needs: owner confirmation of each reading.
+    re-read through the bell's subscription. Decided on 2026-09-25 (§3.3): (i) and (ii) are not
+    accepted as visible history; storage stands, presentation is Story 10-10. (iii) accepted. (iv)
+    accepted, with the shared-mechanism refresh proven in Story 10-7.
 12. **5.5 — the Flag placement and the N1 wording.** (i) At `c18ad36`, Pause/Resume, Cancel and
     Flag are the three actions of Live View's header row (UX-48), outside the navy chrome strip.
     The owner confirms that this row is "the session viewer's live controls" (UX-DR24). (ii) After
     a lost acknowledgement, the route boundary says "Couldn't load this page. Nothing was changed."
-    over a flag that committed (`apps/web/app/error.tsx:37`; `CLAUDE.md:1439`). Needs: an owner
-    decision on the placement and on the wording.
+    over a flag that committed (`apps/web/app/error.tsx:37`; `CLAUDE.md:1439`). Decided on
+    2026-09-25 (§3.3): (i) the placement is accepted; (ii) the wording is not — it is residual work
+    of Story 10-8, and 5.5 stays `review`.
 13. **The deployed evidence predates `c18ad36`, and its report is not on `main`.** [DEP] ran at
     `44fb596`, before the Auditor Workspace v1.1 merge changed the Live View header, the Evidence
     tab and Replay's record links. `loancore-final-acceptance-2026-09-18.md` is on the branch
@@ -1841,31 +2017,34 @@ the list in the lost commit `d79bdcf`, which only the first session read.
     waits, Observation deltas and Exceptions stop at 500 with no "bound" sentence; the arrow keys
     ignore modifiers; the network block is in the browser only; and no Timeline row links to
     Replay, although EXPERIENCE.md line 94 says every row has "Open in Replay". Accounted for: none
-    of these is in an AC that the verdicts count as covered. No status changes.
-16. **Story 10.1's other three tasks.** `course-correction-dispositions.yaml`, the seventeen
-    sprint-status keys and the memlog entry wait for the owner's acceptance of this register (§5).
+    of these is in an AC that the verdicts count as covered. No status changes. **Amended
+    2026-09-25:** three of these are residual work now, not retrospective items — the 5.1 bell drop
+    (Story 10-7), the 5.7 silence-clock reset (Story 10-8) and the 5.8 bounded reads (Story 10-9).
+16. **Story 10.1's other three tasks.** Done with this amendment (2026-09-25):
+    `course-correction-dispositions.yaml`, the sprint-status keys and the memlog entry apply §3.3.
 
 ### 6.1 Classification of the sixteen points
 
-Classified on 2026-09-25, after the owner's dispositions (§3.2). "Owner" names who decides, and,
-after the semicolon, which story delivers. The last column answers the owner's question: does the
-point contradict a proposed Done verdict, and if so, how is it accounted for?
+Classified on 2026-09-25, after the owner's dispositions (§3.2), and updated the same day after
+the owner's acceptance (§3.3). "Owner" names who decides, and, after the semicolon, which story
+delivers. The last column answers the owner's question: does the point contradict a proposed Done
+verdict, and if so, how is it accounted for?
 
 | Point | Affected obligation | Impact | Owner | Disposition | Contradicts a Done verdict? |
 |---|---|---|---|---|---|
 | 1 | 4.7: the human-matched flag on the Result, the record review queue and inspector, the Exceptions list, and export | A reader cannot tell a match that a person chose from a platform match on those surfaces | Product owner (decided); 10-6 and 14-11a | Decided: (a) → 10-6, (b) → an explicit 14-11a criterion. Residual work stays open | No |
 | 2 | 4.8, AC1 and AC2: email delivery and the email deep link | No email notification exists; notification is in-app only | Product owner (decided) | Decided: scope amendment. Email is unimplemented and was never delivered; no mail transport is built | No |
-| 3 | 4.8: the scheduled-Run author (AC1), the panel on every tab (AC3), the Workpaper Bundle (AC4) | Scheduled Runs and the Bundle do not exist on `main`; the compact Evidence tab shows a disclosure instead of the panel | Product owner; 19-4 and 14-11a | Open: confirm the two transfers and the later design | No |
+| 3 | 4.8: the scheduled-Run author (AC1), the panel on every tab (AC3), the Workpaper Bundle (AC4) | Scheduled Runs and the Bundle do not exist on `main`; the compact Evidence tab shows a disclosure instead of the panel | Product owner (decided); 19-4 and 14-11a | Decided: both transfers confirmed; the compact disclosure accepted with its condition | No |
 | 4 | 4.9 (and old 6.3): the Submit control | No Submit control on `main`; the sentence is shown instead | Product owner (decided); 15-4 | Decided: transfer to 15-4 with an explicit criterion, and a scope amendment. 4.9 closes as Done against its remaining scope on acceptance | No |
 | 5 | 5.2, AC3: missing frames flagged on Replay and on export | Replay playback with a gap looks complete | Product owner (decided); 10-6 and 14-11a | Decided: (a) → 10-6, (b) → an explicit 14-11a criterion. Residual work stays open | No |
-| 6 | 5.2, AC4 (provider retention at minimum; the live recording copy) and AC1 (`role = replay`) | Retention is not at minimum, but recording is off, so no provider recording exists; the replay-role guards serve no producer | Product owner | Open: accept as the compiler-1 closure, or keep open | No |
-| 7 | 5.4, AC1 and AC7 (the Step on the pause and resume records) and AC6 (the resume semantics) | Without inference, a reader cannot tie every pause and resume to its exact Step and attempt | Product owner (rule given); 10-6 | (a) Decided by the owner's rule: the records do not qualify, so 10-6 adds the linkage for new events. (b) Open: confirm the restart semantics | No |
-| 8 | 5.1, AC1: `NOTIFY` in the appending transaction | None on a surface: no web surface reads these event types, and an open stream sends them within 10 seconds | Product owner | Open: resolution A (the narrower reading, and the contract sentence corrected) is recommended | Yes. Held in §3.1, item 1; `done` only after the decision |
-| 9 | 5.3, AC2: digests on Live View's adapter log rows | Live View states a false fact on every adapter row | Product owner; 10-6 if resolution A | Open: resolution A (repair in 10-6) is recommended; B is a scope amendment | Yes. Held in §3.1, item 2 |
-| 10 | 5.6, AC2: the skip link moves focus to the panel | A keyboard or screen-reader user is not taken to the open Escalation | Product owner; 10-6 if resolution A | Open: resolution A (repair in 10-6) is recommended; B is a check first | Yes. Held in §3.1, item 3; 5.6 stays `review` under either resolution |
-| 11 | 4.8 AC4 and 5.6 AC3 ("becomes a Timeline entry"); 5.4 AC3 ("superseded on the Timeline") and AC6 (the resume marker); 5.1 AC2 (the Overview "subscribes") | If a reading is rejected, that leg is not met | Product owner | Open: confirm each reading | Only if a reading is rejected. Rejecting (iv) would contradict 5.1 (already held); rejecting (i) would affect 5.6 (already held) and 4.8 (residual); (ii) and (iii) affect 5.4 (residual) |
-| 12 | 5.5, AC4 (placement) and the route boundary's wording after a lost acknowledgement | The boundary says "Nothing was changed." over a flag that committed | Product owner | Open: confirm the placement; decide the wording | Only if the placement is rejected: then 5.5, AC4 is not met, and 5.5's Done would be held like §3.1's |
+| 6 | 5.2, AC4 (provider retention at minimum; the live recording copy) and AC1 (`role = replay`) | Retention is not at minimum, but recording is off, so no provider recording exists; the replay-role guards serve no producer | Product owner (decided) | Decided: accepted as recorded deviations; recording stays off; not demonstrated is recorded as not demonstrated | No |
+| 7 | 5.4, AC1 and AC7 (the Step on the pause and resume records) and AC6 (the resume semantics) | Without inference, a reader cannot tie every pause and resume to its exact Step and attempt | Product owner (decided); 10-6 | Decided: (a) 10-6 adds the linkage for new events; (b) the restart and the marker accepted, EXPERIENCE aligned | No |
+| 8 | 5.1, AC1: `NOTIFY` in the appending transaction | None on a surface today; the contract's guarantee does not hold for three event families | Product owner (decided); 10-7 | Decided: resolution B; the contract keeps its meaning and the omissions are repaired with rollback and reconnect proof | Yes. Resolved: 5.1 is Residual work, stays `review` |
+| 9 | 5.3, AC2: digests on Live View's adapter log rows | Live View states a false fact on every adapter row | Product owner (decided); 10-6 | Decided: resolution A; the real page read path, three situations tested | Yes. Resolved: 5.3 is Residual work, stays `review` |
+| 10 | 5.6, AC2: the skip link moves focus to the panel | A keyboard or screen-reader user is not taken to the open Escalation | Product owner (decided); 10-6 | Decided: resolution A, browser test first, then the smallest repair | Yes. Resolved: 5.6 is Residual work, stays `review` |
+| 11 | 4.8 AC4 and 5.6 AC3 ("becomes a Timeline entry"); 5.4 AC3 ("superseded on the Timeline") and AC6 (the resume marker); 5.1 AC2 (the Overview "subscribes") | A chain event is not a visible history entry; the Overview refreshes only through the bell | Product owner (decided); 10-10 and 10-7 | Decided: (i), (ii) storage proven, presentation is 10-10's; (iii) marker accepted; (iv) shared subscription accepted, proven in 10-7 | Yes for (i) and (ii): 4.8 and 5.6 stay `review`; 5.4 already residual |
+| 12 | 5.5, AC4 (placement) and the route boundary's wording after a lost acknowledgement | The boundary says "Nothing was changed." over a flag that committed | Product owner (decided); 10-8 | Decided: placement accepted; the wording is residual work in 10-8 | Yes for (ii): 5.5 is Residual work, stays `review` |
 | 13 | Every Done verdict that cites [DEP] as supplementary evidence | The deployed product at `c18ad36` is not re-verified | Product owner (optional action) | Accounted for: each Done verdict rests on [CI-c18]. Optional: a deployed journey on the current head, and the report brought to `main` | No |
 | 14 | None of the ACs that the verdicts count as covered (Epic 4) | Limits of the evidence, not unmet legs | Epic 4 retrospective; 9-6 for the golden seeds; the addendum owner for the P-4 snapshot-time wording | Accounted for; no status change | No |
 | 15 | None of the ACs that the verdicts count as covered (Epic 5) | Limits of the evidence, not unmet legs | Epic 5 retrospective | Accounted for; no status change | No |
-| 16 | Story 10.1, tasks 2 to 4 | The status changes in §5 are not applied | Product owner (acceptance); then Story 10.1 | Waiting for the owner's acceptance of this register | No |
+| 16 | Story 10.1, tasks 2 to 4 | The status changes in §5 are not applied | Story 10.1 | Done with this amendment: dispositions, sprint-status and memlog apply §3.3 | No |

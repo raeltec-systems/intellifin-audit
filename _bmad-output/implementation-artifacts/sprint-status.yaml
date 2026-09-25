@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-01-2026 23:59
-last_updated: 09-25-2026 18:20
+last_updated: 09-25-2026 18:50
 project: Zobba
 project_key: NOKEY
 tracking_system: file-system
@@ -75,15 +75,15 @@ development_status:
   4-1-provision-an-isolated-agent-workspace-per-run: done
   4-2-sign-in-to-loancore-and-enforce-read-only-allowlisted-action: done
   4-3-supply-credentials-just-in-time-and-suppress-capture-during: done
-  4-4-locate-a-record-capture-evidence-and-register-a-grounded-obs: review
-  4-5-prove-absence-for-an-employee-with-no-account: review
-  4-6-bound-agent-execution-and-render-retrieved-content-inert: review
+  4-4-locate-a-record-capture-evidence-and-register-a-grounded-obs: done
+  4-5-prove-absence-for-an-employee-with-no-account: done
+  4-6-bound-agent-execution-and-render-retrieved-content-inert: done
   4-7-raise-typed-escalations-as-durable-waits: review
   4-8-answer-an-escalation-from-run-detail-and-notify-audit-manage: review
-  4-9-confirm-or-reject-agent-judged-evaluations-to-seal-the-resul: review
-  4-10-prove-the-agent-path-on-prodconsole-with-one-observation-per: review
-  4-11-prove-abuse-resistance-and-workspace-isolation-with-negative: review
-  4-12-evaluate-the-24-hour-disablement-window-through-the-complete: review
+  4-9-confirm-or-reject-agent-judged-evaluations-to-seal-the-resul: done
+  4-10-prove-the-agent-path-on-prodconsole-with-one-observation-per: done
+  4-11-prove-abuse-resistance-and-workspace-isolation-with-negative: done
+  4-12-evaluate-the-24-hour-disablement-window-through-the-complete: done
   epic-4-retrospective: optional
 
   epic-5: in-progress
@@ -119,12 +119,20 @@ development_status:
   epic-9-retrospective: optional
 
   epic-10: in-progress
-  10-1-legacy-review-closure-assessment-for-the-epic-4-and-5-storie: review
+  10-1-legacy-review-closure-assessment-for-the-epic-4-and-5-storie: done
   10-2-apply-the-course-correction-tracking-changes: done
   10-3-compatibility-tested-rename-of-the-application-identifiers-t: backlog
   10-4-retire-the-builder-write-path-after-the-slice-4-acceptance: backlog
   10-5-legacy-acceptance-harness-coverage-mapping: backlog
   10-6-legacy-visibility-follow-up-human-matched-provenance-missing: 
+    ready-for-dev
+  10-7-live-channel-correction-notify-every-run-chain-append-and-ne: 
+    ready-for-dev
+  10-8-lost-connection-and-lost-acknowledgement-a-server-refresh-is: 
+    ready-for-dev
+  10-9-replay-bounded-history-completeness-a-bounded-view-says-what: 
+    ready-for-dev
+  10-10-retained-decision-history-on-the-execution-timeline-an-answe: 
     ready-for-dev
   epic-10-retrospective: optional
 
