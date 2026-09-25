@@ -1,9 +1,9 @@
 ---
 title: "IntelliFin Audit PoC — Product Detail Addendum"
 status: final
-revision: 4
+revision: 5
 created: 2026-08-31
-updated: 2026-09-09
+updated: 2026-09-25
 ---
 
 # IntelliFin Audit PoC — Product Detail Addendum
@@ -11,6 +11,19 @@ updated: 2026-09-09
 This addendum preserves inferred product detail needed to make the PoC requirements testable, plus user-contributed depth that belongs downstream. It is not an architecture specification.
 
 **Status legend:** `[ASSUMPTION]` means the product decision awaits explicit confirmation. "Normative" means the rule is binding for implementation and testing of this PoC draft, but it does not convert the underlying product decision into a confirmed long-term requirement.
+
+## 0. Revision 4 dispositions (2026-09-25)
+
+PRD revision 4 (the course correction of 2026-09-24/25; the product is now named Zobba) re-centres the product on conversation-led engagement work and keeps the Run path for recurring checks executed through the compiler-1 Procedure Builder, Templates and executable plan. Per architecture Proposal 3d §1, the clauses below are `[COMPILER-1 PATH]`: they stay binding, unchanged, for compiler-1 Procedure Versions and their Runs, and they are not the general model for compiler-2 recurring checks or Agent Tasks.
+
+| Clause | Disposition | Counterpart outside the compiler-1 path |
+| --- | --- | --- |
+| §C Procedure Template contracts (P-1 to P-4) and their fixtures | `[COMPILER-1 PATH]`. The four Templates and their fixtures become one optional example methodology pack (PRD FR-77). The contracts stay binding for existing compiler-1 Procedure Versions. | Methodology packs are versioned tenant data; none is universal (PRD FR-77, FR-86). |
+| §H's fixed twenty rows as a complete set | `[COMPILER-1 PATH]`. The twenty rows are the complete Evidence Quality Gate for compiler-1 Runs. | Compiler-2 uses `run-level-gate-v2`, which classifies each rule as platform-mandatory, methodology-configurable or legacy-template-specific. |
+| §E's Run-only state vocabulary, where an Agent Task is concerned | `[COMPILER-1 PATH]`. §E and §E.1 remain the Run and Result state models. | Agent Task states are defined in `engagement-task-v1`: QUEUED, RUNNING, WAITING, PAUSED, COMPLETED, FAILED, CANCELED. |
+| §D golden datasets | `[COMPILER-1 PATH]`. The golden datasets are the compiler-1 regression and acceptance baseline. | Compiler-2 regression uses versioned, reviewed regression case sets (architecture decision D-3d-1). |
+
+No existing table, row, cell, heading or Template block in this addendum was changed by this revision; the dispositions above are additive.
 
 ## 0. Owner-approved adapter retry policy — 2026-09-05
 
