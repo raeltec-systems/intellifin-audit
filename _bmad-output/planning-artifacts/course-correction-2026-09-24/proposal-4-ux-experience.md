@@ -165,9 +165,9 @@ The table keeps its three roles and its denial sentences and gains rows. **Every
 | Share a working draft to an authorised destination | ✓ within Agent Permissions | ✓ | — |
 | Connect own accounts, choose designated resources, disconnect | ✓ | ✓ | ✓ (own) |
 | Set an engagement's Permissions within the ceiling | ✓ (member) | ✓ | — |
-| Set the administrator ceiling and disclosure policy | — | — | ✓ |
-| Confirm a memory proposal | scope owner or delegate | scope owner or delegate | — (operating Settings confirms nobody's proposal) |
-| Propose, approve and activate methodology packs and skills | propose | pack owner approves | activation is an audited administrative act; it never approves content |
+| Set the administrator ceiling, disclosure policy, model policy and connection policy | — | — | ✓ Admin |
+| Confirm a memory proposal | scope owner or delegate | scope owner or delegate | methodology-scope knowledge promotion only; never another person's preference, engagement or client item |
+| Create, maintain, approve, activate and retire methodology packs, skills and templates (configuration approval, never approval of audit work) | propose from documents | propose from documents | ✓ Admin, versioned and audited; creator, maintainer and approver recorded; cannot bypass a platform safeguard or an engagement restriction |
 | Transfer control of a running task or Run | — | ✓ with `run.control-transfer` | — |
 | Manage users, systems, sources | — | — | ✓ |
 

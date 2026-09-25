@@ -123,7 +123,7 @@ FR-20 (per-Target-System sign-in loop) and FR-22 (record × system Work Item gri
 >
 > **FR-85.** The runtime can discover and load relevant approved skills for a task, either from the auditor's explicit selection or from the task's objective and context. Skills are identifiable and versioned, with their purpose, applicable context, required capabilities and expected outputs. The task record identifies the skill and methodology versions used. Loading a skill cannot grant permissions, bypass required decisions or silently alter an approved recurring-check definition.
 >
-> **FR-86.** Methodology documents, templates and conversational instructions can be used to propose a methodology package. The appropriate owner reviews and approves it. Configuring a methodology must not require changes to the core application.
+> **FR-86.** Methodology documents, templates and conversational instructions can be used to propose a methodology package. An Admin reviews and approves it as a configuration change (never as approval of audit work), and the pack records who proposed, maintained and approved it. Configuring a methodology must not require changes to the core application.
 >
 > **FR-79.** Memory is a governed store with six scopes — user preference, firm or department methodology, organisation or client knowledge, engagement facts and decisions, conversation and execution state, confirmed reusable lessons — each with owner, provenance (who, where, which session or evidence), effective dates, version and supersession, and status (proposed / active / superseded / rejected).
 >

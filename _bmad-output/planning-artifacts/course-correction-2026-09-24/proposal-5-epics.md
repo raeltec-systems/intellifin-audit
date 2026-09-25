@@ -154,7 +154,7 @@ Each epic: goal; contracts established (3d §6); requirements; stories (title �
 | 6.4 Pack schema, validation, activation as an audited change; the example pack from `templates.ts` | `methodology-pack-v1` | example pack validates; undefined state refused; activation audited; engagement keeps its version |
 | 6.5 Gate rule classification (platform-mandatory, methodology-configurable, legacy-template-specific) | `run-level-gate-v2` | a pack omitting a mandatory rule refused; every rule classified |
 | 6.6 Skills: descriptor, admission, discovery, loading, recording | `skill-v1` | unmet capability reported and denied; unapproved skill not loaded; task records versions |
-| 6.7 Bootstrap without a pack; starter selection; pack proposal from documents | bootstrap | useful work before selection; promotion blocked naming the configuration; proposal `proposed` until the owner approves |
+| 6.7 Bootstrap without a pack; starter selection; pack proposal from documents | bootstrap | useful work before selection; promotion blocked naming the configuration; proposal `proposed` until an Admin approves it as configuration |
 | 6.8 Compaction records and context re-evaluation on permission change | `working-context-v1` §compaction | correction survives compaction; revoked content absent on resume |
 
 **Minimal cut:** 6.1 (index over artifacts and messages), 6.2 for user-preference, client-knowledge and engagement-facts, 6.4 with the example pack, 6.6 for two skills, 6.7 bootstrap. **Blocked after:** cross-scope promotion beyond the same client; embeddings until a disclosure-approved provider is selected. **Epic 9 proof:** the scope negatives on retrieval through raw SQL.

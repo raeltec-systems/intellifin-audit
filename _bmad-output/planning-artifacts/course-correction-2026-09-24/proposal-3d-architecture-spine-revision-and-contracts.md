@@ -181,7 +181,7 @@ Inventory totals are computed from this table, not kept as a separate count: the
 | Evidence, acquisitions, derivations, quality assessments | `evidence` domain; object store immutable | registration through `freezeArtifact`; grants by owner | worker registers; web reads through grants | — | excerpts under disclosure policy, labelled |
 | Artifacts, versions, claims, decisions | `artifacts` domain | lifecycle records; pack-required reviewers; platform independence minimum | agent drafts, humans decide | — | content and claim statuses |
 | Memory items | `memory` domain | scope owner or delegated maintainer | — | — | active items labelled by category; proposals labelled pending |
-| Skills, packs | `packs` domain (tenant data) | pack and skill owners; platform mandatory minimum | — | — | approved instructions labelled |
+| Skills, packs | `packs` domain (tenant data) | Admin (configuration approval, never audit approval); creator, maintainer and approver recorded; platform mandatory minimum | — | — | approved instructions labelled |
 | Connections and credentials | `connections` domain; `connection_secret` | user consent; Engagement Permissions name the connection | broker and adapters, worker only | worker only (`CONNECTION_SECRET_KEY`, broker key, client secrets) | never |
 | Run-path registrations and `CREDENTIAL_TOKENS` | `registrations` domain | registration commands | worker only | worker only | never |
 | Sandbox executions | `execution` domain | Permissions budget and `CodeExecution` descriptor | worker supervisor; sandbox process | none inside the sandbox | program output as untrusted data |
