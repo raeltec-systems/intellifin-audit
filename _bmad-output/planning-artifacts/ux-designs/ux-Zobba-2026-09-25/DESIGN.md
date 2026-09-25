@@ -807,3 +807,289 @@ Scope-aware ("All authorised work", one client or one engagement). Results group
 | External action uncertain | Superseded by Proposal 4b §5 row 14: two patterns chosen from the actual receipt. **Unknown after dispatch:** "The send request was attempted, but its outcome has not been confirmed. Check the operation's status before retrying." **Provider accepted:** "The provider accepted the message for sending. Delivery has not been confirmed." No generic Retry while duplication remains possible | Say it failed |
 
 Loading uses skeleton rows in tables and activity text in conversation. There are no spinners with the Zobba mark. Which sentence applies is decided by the recorded state (Proposal 4 U6, as restated in `./EXPERIENCE.md`). The message patterns are illustrative copy except where `./EXPERIENCE.md` names them as fixed.
+
+## 5. Status system
+
+This is the state-family table. It replaces Proposal 4 U5's added families (Agent Task, Artifact review, Connection) with the pack's six status dimensions as amended by Proposal 4b §3 and §5 rows 1, 3, 6 and 15, keeps U5's inspection-only vocabularies, and retains the compiler-1 Run-path families unchanged.
+
+### Rules
+
+- **Never colour alone.** Every chip has a glyph and a word; the word is the label and the glyph is `aria-hidden`. Colour and glyphs support the word and never replace it.
+- **Dimensions never merge.** Execution, wait, input and coverage, audit assessment, review and issue, and connection are six separate facts. They are never combined into one chip, and brand presence (Iris, the mark) never implies an audit result.
+- **"Completed" is execution, not assessment.** A completed task or run can be Inconclusive. A Completed chip is neutral and never green.
+- **"Didn't run" is about the schedule, not the control, and has no assessment.** It is shown with its reason and a recovery action, and no assessment chip appears beside it.
+- **"Stopped by you" appears only after cessation is recorded.** Between the press and the recorded cessation the execution state is "Stop requested"; an action already performed is never described as undone (FR-88, Proposal 4 U10, Proposal 4b §5 row 1).
+- **The summary chip never removes a dimension.** An input-and-coverage summary never implies that an unestablished population is complete; expanding it shows each `input-quality-v1` dimension separately (Proposal 4b §5 row 15).
+- **Internal vocabulary stays in inspection.** Canonical state names (`write-output`, `unknown-after-dispatch`, `empty-under-contract`, `refresh-unresolved`, …) appear only in inspection and Technical details; the default reading view shows the readable word (Proposal 4 U4, D-4-3).
+- **Glyphs.** The Glyph column gives the pack's semantic glyph (DESIGN-SYSTEM §3, §6; COMPONENT-INVENTORY, Semantic glyph) or the Zobba mark state (section 2). The pack names no Lucide icon for any status; semantic glyphs are a different kind from interface icons and are not replaced by them. `[TO DESIGN]` marks a state for which the pack gives no glyph; a glyph is designed under the pack's rules before the story that first renders the state.
+
+### Treatments
+
+Every status chip is `type.chip` (12/16, weight 600), `radius.pill`, glyph plus word (COMPONENT-INVENTORY, Status chip).
+
+| Treatment | Tokens | Source |
+|---|---|---|
+| presence | `color.text.on-accent-wash` on `color.accent.wash` | Presence chip "Zobba is …" (Iris strong on Iris wash) |
+| waiting | `color.text.primary` on `color.surface.sidebar` | Presence chip, waiting version (Graphite on Linen) |
+| neutral-text | `color.text.secondary`, no fill | DESIGN-SYSTEM §6 "neutral text" |
+| exception-text | `color.status.exception.fg`, no fill; with a reason | DESIGN-SYSTEM §6, for an execution state only |
+| pass | `color.status.pass.fg` on `color.status.pass.bg` | BRAND §3 |
+| exception | `color.status.exception.fg` on `color.status.exception.bg` | BRAND §3 |
+| warning | `color.status.warning.fg` on `color.status.warning.bg` | BRAND §3 |
+| inconclusive | `color.status.inconclusive.fg` on `color.status.inconclusive.bg`, 1px dashed `color.status.inconclusive.border` | BRAND §3 |
+| outline | `color.status.pending.fg`, 1px solid `color.status.pending.border`, no fill | BRAND §3, "Pending review" |
+| guidance-line | `color.text.placeholder` line under the auditor's message, not a chip | COMPONENT-INVENTORY, Guidance acknowledgement; HANDOFF §5 (R1.4) |
+| no-chip | No chip is rendered | DESIGN-SYSTEM §6, "Not assessed" |
+| `[TO DESIGN]` | The pack gives no treatment | Designed under the pack's rules before its story |
+
+### The six status dimensions
+
+Canonical states are those of the approved contracts: the Agent Task state machine (`QUEUED → RUNNING ⇄ WAITING`, `RUNNING ⇄ PAUSED`, `RUNNING → COMPLETED | FAILED`, any active `→ CANCELED`; 3d, `engagement-task-v1`), the Run lifecycle (`RUN_STATES`) and Result outcome (`SYSTEM_OUTCOMES`, `run-result-v1`) for the Run path, `task_wait` kinds (3a C2), `input-quality-v1`, `artifact-version-v1` lifecycle records, and `connection-v1`. Where Proposal 4b gives a per-state mapping it is cited; other per-state mappings are this document's reading of the named contract, and `[MAPPING IN STORY]` marks a mapping the contract story must confirm.
+
+#### Execution (a task or run)
+
+| Word | Canonical state presented | Treatment | Glyph |
+|---|---|---|---|
+| Not started | Agent Task `QUEUED`; Run `QUEUED` | neutral-text | `[TO DESIGN]` |
+| Running | Agent Task `RUNNING`; Run `RUNNING`. Chip reads "Zobba is …" | presence | mark-working |
+| Paused | Agent Task `PAUSED`; Run `PAUSED` | neutral-text | ‖ |
+| Stop requested | A recorded stop (cancellation) request on an active task or run whose cessation is not yet recorded (3a C2 "stop requested until the worker records cessation"; Proposal 4b §5 row 1). Copy: "Stopping after the current step…" | presence | mark-working |
+| Stopped by you | Agent Task `CANCELED` by explicit cancel, after cessation is recorded; Run `CANCELED` | neutral-text | `[TO DESIGN]` |
+| Completed | Agent Task `COMPLETED`; Run `COMPLETED`. Never an assessment | neutral-text | `[TO DESIGN]` |
+| Didn't run | A scheduled occurrence for which no execution ran, with its recorded reason and a recovery action. No assessment | exception-text | ✕ |
+| Interrupted | Agent Task `FAILED`; Run `RUN_FAILED`; Agent Task `CANCELED` by `wait-expired` or revoked delegation `[MAPPING IN STORY]`. Always with a reason | exception-text | ✕ |
+
+The Run-path `INCONCLUSIVE` state and `AWAITING_AUDITOR` are not execution words: `INCONCLUSIVE` presents as execution ended plus assessment Inconclusive, and `AWAITING_AUDITOR` presents as Wait "Needs your input" `[MAPPING IN STORY]`. Until the legacy procedures view's disposition, Run-path surfaces keep the retained Run lifecycle family below.
+
+#### Wait
+
+| Word | Canonical state presented | Treatment | Glyph |
+|---|---|---|---|
+| Needs your input | Agent Task `WAITING` on a `clarify` wait or a closed-option wait; a `reconcile` wait shows "Needs your input · reconciliation" (Proposal 4b §3) | waiting | mark-waiting |
+| Needs your permission | Agent Task `WAITING` on a `confirm-action` wait | waiting | mark-waiting |
+| Queued (guidance) | A guidance message queued for the next step boundary (3c C9), not yet applied. Copy: "Guidance queued for the next step"; when applied the activity line reads "✓ Applied your guidance · …" | guidance-line | ○ |
+
+#### Input and coverage
+
+| Word | Canonical state presented | Treatment | Glyph |
+|---|---|---|---|
+| Complete | `input-quality-v1`: every dimension (availability, coverage, freshness, period relevance) established | neutral-text | `[TO DESIGN]` |
+| Partial | `input-quality-v1` coverage partial, with a limitation record shown by its L-reference ("◐ L1") | inconclusive | ◐ |
+| Unavailable | `input-quality-v1` availability not met | warning | ▲ |
+| Stale | `input-quality-v1` freshness not met | warning | ▲ |
+| Unknown | `input-quality-v1` `unknown` / not established (Proposal 4b §5 row 15). Never shown as complete | `[TO DESIGN]` | `[TO DESIGN]` |
+| Out of period | `input-quality-v1` period relevance `outside` (Proposal 4b §5 row 15) | `[TO DESIGN]` | `[TO DESIGN]` |
+| Not applicable | `input-quality-v1` period relevance `not applicable` (Proposal 4b §5 row 15) | `[TO DESIGN]` | `[TO DESIGN]` |
+
+#### Audit assessment
+
+| Word | Canonical state presented | Treatment | Glyph |
+|---|---|---|---|
+| No exception | Result outcome `PASS`; artifact assessment with no exception | pass | ✓ |
+| Exception(s) | Result outcome `CONTROL_FAILURE`; artifact assessment with one or more supported exceptions | exception | ! |
+| Inconclusive | Result outcome `INCONCLUSIVE`; artifact assessment that cannot conclude | inconclusive | ◐ |
+| Not assessed | No assessment recorded: Result outcome `CANCELED` or `RUN_FAILED`, a Didn't run occurrence, or work that makes no assessment | no-chip | none |
+
+Result outcome `PENDING_CONFIRMATION` has no counterpart among the pack's four words; it stays in the retained Result outcome family until the legacy disposition, and its presentation in the new chrome is `[MAPPING IN STORY]` (claim support "Awaiting review" is the nearest inspection word).
+
+#### Review and issue
+
+Reviewed by, Approved and Issued always name the person and date. "Needs another look" (`needs-reconsideration`) is a flag beside the chip, not a state (Proposal 4b §4).
+
+| Word | Canonical state presented | Treatment | Glyph |
+|---|---|---|---|
+| Draft | `artifact-version-v1` `draft` | outline | `[TO DESIGN]` |
+| Not reviewed | A submitted artifact version or an unattended result with no review record | outline | ○ |
+| In review | `artifact-version-v1` `review-requested` (Proposal 4b §5 row 6) | outline | `[TO DESIGN]` |
+| Returned | `artifact-version-v1` `returned`, shown "Returned · n notes" (Proposal 4b §5 row 6) | outline | `[TO DESIGN]` |
+| Reviewed by [name] | `artifact-version-v1` `reviewed` record, with person and date | outline | `[TO DESIGN]` |
+| Approved | `artifact-version-v1` `approved` record, with person and date | outline | `[TO DESIGN]` |
+| Issued | `artifact-version-v1` `issued` record, with person and date | outline | `[TO DESIGN]` |
+| Superseded | A later version of the same artifact exists | outline | `[TO DESIGN]` |
+
+#### Connection
+
+| Word | Canonical state presented | Treatment | Glyph |
+|---|---|---|---|
+| Connected | `connection-v1` `active` | neutral-text | ● |
+| Connecting | `connection-v1` `pending` (Proposal 4b §3; 3d names it `pending-attempt`). Copy "Connecting…", spinner-free | neutral-text | `[TO DESIGN]` |
+| Limited | `connection-v1` `active` with fewer permitted resources than requested ("Limited to 2 areas") `[MAPPING IN STORY]` | neutral-text | `[TO DESIGN]` |
+| Needs reconnecting | `connection-v1` `refresh-unresolved` (Proposal 4b §3); provider-side `revoked` `[MAPPING IN STORY]`. Always with reason and consequence | warning | ▲ |
+| Disabled | `connection-v1` `disabled` | neutral-text | – |
+| Error | A connection failure with a message plus Technical details, not a single `connection-v1` state `[MAPPING IN STORY]` | warning | ▲ |
+| Not connected | No connection exists for this user and connector | neutral-text | ○ |
+
+Connections are user-owned in the first release (D-4b-3). The label for organisation connections is reserved in the vocabulary and no empty "Organisation connections" section is shown. Fixed copy: "A connection lets Zobba reach a system. It doesn't grant every resource in it: engagement permissions and the system's own access still apply." Tokens and OAuth scopes are never shown.
+
+### Inspection-only vocabularies
+
+Shown in inspection and review mode only, never as default chips (Proposal 4 U5, D-4-3; Proposal 4b §3). Each carries a glyph and a word when rendered as a chip; treatments are `[TO DESIGN]` unless a row says otherwise, and every treatment uses only the section 3 semantic tokens.
+
+| Vocabulary | Words | Canonical states |
+|---|---|---|
+| Claim support (review mode only) | Supported · Not yet supported · Contradicted · Awaiting review · Cannot be checked automatically | `artifact-version-v1` claim support status |
+| Action outcome (per operation) | Not sent · Sent, not yet confirmed · Confirmed · Blocked · Failed before sending · Not confirmed by the provider | Operation attempt (3d): `not-dispatched` · `accepted` · `confirmed` · gate refusal, nothing dispatched · failed with no dispatch · `possibly-dispatched` / `unresolved` (unknown after dispatch). `resolved-by-human` is shown as a human resolution with its reference, never as a provider confirmation. Outcome sentences follow Proposal 4b §5 row 14 |
+| Data quality (per acquisition) | Complete · Partial · Empty, as the source states · Unknown | `acquisition-v1` and `input-quality-v1`; "Empty, as the source states" presents `empty-under-contract`; `unknown` shown as unknown |
+| Memory item | Proposed · Remembered · Replaced · Declined · Retired; secondary: reported by you · supported by a source · disputed · awaiting verification | `memory-v1`: `proposed` · `active` · `superseded` · `rejected` · `retired`; verification status `user-reported` · `source-supported` · `disputed` · `awaiting-verification` (a separate dimension) |
+| Wait | Waiting for you · Answered · Expired · Withdrawn | A wait open · closed by an answer · closed at its deadline · withdrawn because its task or run ended |
+| Scheduled check | Active · Paused · Next run · Running · Waiting for input · Completed · Inconclusive · Didn't run · Review pending · Awaiting approval · Pending regression | DESIGN-SYSTEM §10 treatments (below) plus Proposal 4b §5 rows 2–3: Awaiting approval is a submitted Procedure Version awaiting its independent approval; Pending regression is an `APPROVED` version whose configuration requires regression (3d §8). No next run while either holds |
+| Invitation | Invited · Accepted · Expired · Revoked | `tenancy-v1` invitation lifecycle (FR-95) |
+
+Scheduled check treatments (DESIGN-SYSTEM §10): Active "Active · Mondays 06:00" · Paused "‖ Paused by you, 2 Oct", no next run · Next run date and time with the time zone · Running: working mark + "Zobba is running this check" · Waiting for input: waiting mark + "Waiting for your input" + the reason · Completed "Completed 06:14", then the assessment chip, then the review chip, as separate chips · Inconclusive ◐ dashed chip (assessment) · Didn't run: ✕ "Didn't run" + the reason + the recovery action, no assessment · Review pending: ○ Not reviewed, then "Reviewed by [name] · date". The Zobba mark (one colour, 14px) identifies the actor ("Zobba ran this unattended"); the semantic chip identifies the outcome; they are never merged. Awaiting approval and Pending regression treatments are `[TO DESIGN]` (Proposal 4b §10 register).
+
+### Retained compiler-1 Run-path families (unchanged; `status.test.ts` reads these from the old DESIGN.md until its disposition story)
+
+Copied verbatim from `../ux-IntelliFin Audit-2026-09-01/DESIGN.md` (# Colors, Status). These words, treatments and icons belong to the Ledger Signal token set of that document and apply only to the compiler-1 Run-path surfaces. They are not restyled here. The authoritative copy that `apps/web/src/design/status.test.ts` parses today remains the old file; this copy is for readers and moves only with the disposition story.
+
+| Family | States | Badge treatment | Icon |
+| --- | --- | --- | --- |
+| Procedure Version | Draft · Submitted · Approved · Rejected · Active · Retired | neutral · warning · info · danger-outline · neutral-solid · neutral | pencil · clock · check · x-circle · lock · slash |
+| Run lifecycle | Queued · Running · Paused · Awaiting Auditor · Completed · Inconclusive · Run Failed · Canceled | neutral · info · neutral · **info-solid** · neutral · warning · danger-outline · neutral-solid | clock · refresh-cw · pause · user · check · alert-triangle · cloud-off · ban |
+| Evidence Quality Gate | Passed · Not passed · Incomplete · Not evaluated | success · warning · danger-outline · neutral | shield-check · shield-alert · shield-alert · shield |
+| Result outcome | Pass · Control Failure · Pending Confirmation · No conclusion issued | success · danger · **info-solid** · neutral | check-circle-2 · alert-circle · user · slash |
+| Auditor Review | Draft · Submitted · Approved · Finalized | neutral · warning · info · neutral-solid | pencil · clock · check · lock |
+| Exception | Open · Under Review · Confirmed · Not an Exception | danger-outline · info · danger · neutral-solid | alert-circle · clock · alert-circle · ban |
+| Evaluation origin | Rule-Classified · Agent-Judged (pending) · Agent-Judged (confirmed) · Human-classified | neutral · **info-solid** · info · info | braces · user · cpu · user-check |
+| Evaluation value | Compliant · Exception · Unevaluated | success · danger · warning | check-circle-2 · alert-circle · help-circle |
+| Work Item | Pending · In progress · Awaiting · Observed · Uninspected · Ambiguous · Failed | neutral · info · info-solid · success · warning · warning · danger-outline | clock · refresh-cw · user · check · slash · git-compare · x-circle |
+
+Treatment names resolve to tokens: a plain family name (`neutral`, `info`, `success`, `warning`, `danger`) uses `{colors.<family>-bg}` fill, `{colors.<family>-border}` border, and `{colors.<family>-text}` text; a `-solid` variant uses `{colors.<family>-solid}` fill with `{colors.text-inverse}`; a `-outline` variant uses `{colors.<family>-border}` border and `{colors.<family>-text}` text with no fill. Evaluation value is the ninth row only in the sense that it labels a value, not a state; it is listed so the evaluation card's three words have one treatment.
+
+(`{colors.…}` here resolves against the old document's frontmatter, not this one.) The old document's load-bearing distinctions stay in force on those surfaces: Control Failure (filled danger, `alert-circle`), Run Failed (outlined danger, `cloud-off`, with the execution-failure panel) and Inconclusive (warning, `alert-triangle`, with the failed Gate checks and the Safe next action panel) are three different treatments; "needs a human" is one `info-solid` treatment with the `user` icon; **Completed is neutral**; Rejected is never a review state.
+
+## 6. Components
+
+### Pack components (COMPONENT-INVENTORY, summarised)
+
+Behaviour and copy per component are in `./EXPERIENCE.md` revision 2 and the pack's COMPONENT-INVENTORY and EXPERIENCE-RULES; this table is the visual summary. RS numbers are the pack's reference screens.
+
+| Component | Purpose | Key rules | Token references |
+|---|---|---|---|
+| Zobba mark | Identifies Zobba and its working state | Variants colour · mono · reverse · reverse-mono · `-small` (13–19px) · `-micro` (≤ 12px); states idle · working · waiting · complete; one animated mark per region, always beside activity text; `aria-hidden`; never a bullet, per-message avatar, loader or result indicator | `color.accent.default`, `color.text.primary`, `motion.*mark*` |
+| Wordmark and lockups | Product identity | Supplied SVGs only, never live text; sidebar uses the horizontal lockup at 20px; `alt="Zobba"` | section 2 assets |
+| Semantic glyph | Supports a status word | ✓ pass · ! exception · ▲ warning · ◐ inconclusive or limitation · ○ pending · ✕ didn't run · ‖ paused; `aria-hidden`; never without its word | `color.status.*` |
+| Sidebar | Primary navigation | Expanded (248) · rail (52) · narrow sheet; item hover `surface.hover`, active Paper + hairline ring; needs-attention badge; working or waiting mark on task rows; `nav` landmark, `aria-current="page"`; no GRC hierarchy, no Library | `layout.sidebar`, `layout.rail`, `color.surface.sidebar`, `color.surface.hover`, `color.surface.selected`, `color.border.hairline` |
+| Page header | Page title and context | 60px; title, context line, at most two actions; no KPI tiles | `layout.header-page`, `type.page-title` |
+| Composer | The single input for intent, guidance, questions and answers | Text area · + menu · context chips (engagement, permissions, sources) · model and effort chip · Stop (while working) · Send; states Empty, Focused, Engagement selected, Source added, Zobba working, Waiting for clarification, Disabled (only with the reason shown); Enter sends, Shift+Enter new line; never replaced by a form for starting work | `radius.composer`, `color.border.input`, `focus.composer`, `shadow.composer`, `layout.composer-home` |
+| Model and effort chip | Choose model and supported reasoning effort within policy (FR-91–FR-93) | "[Model] · [Effort] ▾" after the context chips and before Stop and Send; menu lists name, provider and a short note, no provider logos; unavailable models shown disabled with the reason, never hidden; effort as a segmented control showing only the choices the selected model supports; footer "Set by your administrator · recorded in How it ran"; button labelled "Model and reasoning effort, [model], [effort]", `role="menu"` with radio items, effort a radio group, disabled reasons in `aria-description`; a change applies from the next safe boundary | `color.border.control`, `type.label`, `radius.pill`, `shadow.popover` |
+| Guidance acknowledgement | Distinguishes queued guidance from Stop | "○ Guidance queued for the next step" under the message; later "✓ Applied your guidance · …" | `color.text.placeholder` |
+| Stop | Stop the current step | Outlined, ■ glyph; shows "Stop requested" until cessation is recorded, then confirms what was kept; keyboard Esc twice in the composer; announces "Stopped"; always reachable at every width | `color.action.secondary.border` |
+| Auditor message | The auditor's turn | Linen bubble, radius 16, right-aligned, max 380px (70% narrow); optional "Selected · [location]" tag | `color.surface.user-message`, `radius.xl`, `type.body` (15/23 in bubbles), `selection.tag` |
+| Zobba response | Zobba's first-person reply | Unboxed, at most 720px; streams in sentence-sized chunks; mark on the activity line, not the text; live region at step granularity | `type.body`, `layout.conversation-max-reading` |
+| Question and clarification | One focused question with suggested replies | Bold question line, reply chips and "Or reply in your own words"; chrome chip "Zobba needs your input" with the waiting mark; two tightly related details may be asked together (Proposal 4b §5 row 16); never a form card | `color.border.input`, `radius.pill` |
+| Suggested replies | Submit a reply as the auditor's answer | Reply chips that submit the text as the answer | `radius.pill`, `color.border.input` |
+| Limitation | State a coverage limitation inline | "◐ … · recorded as limitation L1"; on narrow screens a dashed neutral callout that stays visible | `color.status.inconclusive.*` |
+| Candidate finding | A finding with its support | Prose with citations; becomes an exception in data or an artifact only in the artifact; prose is never coloured | `type.body` |
+| Explanation and correction | Plain-prose explanation | A correction ends "Draft n saved · View changes · Undo" | `type.body` |
+| Citation | Link a claim to evidence | 12/16 weight 600 chip ("E6", "E6.2"); preview after 300ms hover; active: `selection.text` + 1.5px Iris ring; a button with the full name ("Evidence E6.2, AccessGate sign-ins, Kelvin Chanda") | `color.accent.strong` on `color.accent.wash`, `radius.xs`, `type.chip` |
+| System event | Record an event in the conversation | Centred 12/16 line ("Draft 2 saved · 2 Oct 14:52"); never Zobba's own reasoning | `type.meta`, `color.text.tertiary` |
+| Activity list | Meaningful activity, not every tool call | 16px glyph column; completed ✓ in `text.tertiary`; one current step with the working mark, a 600-weight line and a detail line with Inspect and Technical details; ◐ for a limitation; "Next: …" in placeholder colour; no percentages; "Step x of y" only for fixed procedures; `aria-current="step"` | `color.text.tertiary`, `color.text.placeholder` |
+| Presence chip | "Zobba is …" / "Zobba needs …" | Working: mark + Iris strong on Iris wash; waiting: waiting mark + Graphite on Linen; never shows a result | `color.text.on-accent-wash`, `color.accent.wash`, `color.surface.sidebar` |
+| Workspace panel | Inspect working data, browser, document, artifact, evidence, changes, draft correspondence, scheduled-result detail | Header with title, "From [task] · state", Pin · Expand · Close; optional toolbar; states open · pinned · focus · full-screen · resizing; replacement rule (section 4); `complementary` region labelled by its title; F6 reaches it; Close returns focus to the conversation | `layout.panel-*`, `color.surface.panel`, `color.border.hairline`, `type.panel-title` |
+| Browser view | Read-only view of a client system | URL bar in Plex Mono, back and forward, "Take over" (the existing control lease; Zobba pauses until handed back), footer noting what is captured; header states "read-only on client systems" | `type.id` |
+| Working-data view | Tables of working data | Filter chips, table, footer count | section 4 Tables |
+| Artifact page | The firm's working paper or report | White page on the surround with the firm template inside; panel header gives type, draft number and review state; Zobba overlays only (selection, citations, diff); Zobba type and colour never applied to the page body | `color.surface.artifact-surround`, `color.surface.artifact-page`, `shadow.page` |
+| Provenance footer | "Prepared with Zobba" | 10px mono micro mark plus "Prepared with Zobba · draft n · ref ZB-xxxx"; on by default, firm-controlled (Q3) | `symbol/zobba-symbol-micro-mono.svg` |
+| Artifact state chip | Review-and-issue state of a version | Outline chips: Draft · Not reviewed · In review · Returned · Reviewed by [name] · Approved · Issued · Superseded (section 5) | outline treatment |
+| Diff | Show a change typographically | Added: 1.5px Graphite underline on `diff.added.bg`; removed: struck through in `diff.removed.fg`; no red or green | `color.diff.*`, `border.diff-underline` |
+| Citation preview | Preview evidence | Evidence id and title, location, source and date, "Open evidence"; elevation 2 | `shadow.popover` |
+| Evidence drawer | Inspect evidence and return to the claim | Header (id · "cited in …", title, Back to claim) · identity grid (Source, Location, Captured, Supports) · excerpt with the region highlighted by an Iris inset bar · Open full source · Technical details · other evidence; no scrim; focus to heading; Esc returns to the claim | `layout.drawer`, `shadow.drawer`, `selection.row` |
+| Confirmation card (decision surface) | One coherent decision surface per decision | Title, material-details grid, actions **Allow and send** (Graphite primary) · **Edit first** (secondary) · **Don't send** (text), permissions footer; states pending · invalidated ("Details changed since you last saw this") · sending · per-operation outcomes; `role="alert"` on arrival; no auto-focus on Allow; no modal and no second confirmation. Other decisions use their action-specific label ("Create invitation", "Save to Drafts", "Approve version", "Issue report"; Proposal 4 U4) | `color.action.primary.*`, `color.action.secondary.border`, `radius.lg` |
+| Permissions summary | What Zobba may do here | Two sentences plus "View permissions" | `type.body` |
+| Permissions detail | The seven sections | Can read · Can write · Asks first · Never · Scheduled checks · Connections · Administrator limits; "Set by … on …"; Change permissions; Activity record; no lock or shield icons, tokens or scopes | `type.ui` |
+| Activity record entry | Record of an action | Action, per-operation outcome (section 5 inspection vocabulary), time, decision basis | `type.table-cell` |
+| Status chip | One status dimension | 12/16 weight 600, pill, glyph plus word; never two dimensions in one chip | section 5 treatments |
+| Needs-attention badge | Count needing attention | Graphite count, or "▲ n" warning for connections; accessible label | `color.text.primary`, `color.status.warning.fg` |
+| Table | Audit data | Section 4 Tables; `table` semantics, `aria-sort`, announced row count | `type.table-head`, `type.table-cell`, `color.border.divider-inner` |
+| Reviews queue | Audit manager's review work | Grouped: Waiting for your review · Returned with your notes · Reviewed recently; columns item, preparer, state chips, submitted date; review status never merged with assessment | section 5 |
+| Review note | Anchored review note (FR-96) | Anchored to a paper location ("On L2"), author and state; 230px column beside the page; not exported; focusing the note highlights its anchor | `radius.lg`, `color.border.hairline` |
+| Review action bar | Review decisions | **Return with n notes** (primary) · **Mark as reviewed** (secondary), helper "Marking as reviewed records you and the time. Approval and issue are separate steps." | `color.action.primary.*` |
+| Form controls | Settings forms | Section 4 Forms; never inside a task conversation | `color.border.input`, `radius.md`, `focus.ring` |
+| Settings navigation | Settings sections | Secondary 220px column with the main app on the rail | `color.surface.sidebar` |
+| Inline notice | A notice in context | Glyph plus sentence plus action ("▲ Kafue SharePoint results may be incomplete… Reconnect"); no toast stacks | `color.status.warning.*` |
+| Empty state | Nothing here yet | One sentence plus one action; no illustration | `type.body` |
+| Error with Technical details | A failure the auditor can act on | Plain message, what was not affected, the recovery action, then Technical details (collapsed) | `color.status.exception.fg` |
+
+### Audit-native components kept from the 2026-09-01 contract (Proposal 4 U4)
+
+| Component | Disposition |
+|---|---|
+| Status badge | Restyled for the Zobba chrome as the **Status chip** with the section 5 six dimensions and treatments. The Run-path Status badge (Ledger Signal families, `info-solid` "needs a human") stays on the old contract for the Run-path surfaces |
+| Conclusion triptych | Remains on the old contract for Run Detail. In the Zobba chrome, execution, assessment and review appear as separate chips per section 5; the triptych's rule (three facts never read as one) is kept |
+| Gate checklist | Remains on the old contract for the Run path, including "Why inconclusive" from a scheduled result (Proposal 4 U4) until that surface's disposition story restyles it |
+| Grounding inspector | Remains on the old contract for Run-path Evidence and Exception Detail. In the chrome, claim-to-evidence inspection is the Citation, Citation preview and Evidence drawer |
+| Provenance chain | Remains on the old contract for Exception Detail |
+| Evaluation card | Remains on the old contract for Run-path Result and Exception Detail |
+| Confirmation dialog weights | The Zobba chrome uses one decision surface per decision (D-4-2): the Confirmation card for external actions, and a level-4 dialog only for destructive confirmation in Settings and sign-in. Confirmation weight follows the action's consequences. Run-path dialogs keep the old contract's three weights |
+| Untrusted-content rendering | Rule unchanged and applied everywhere: retrieved content that resembles an instruction is shown as inert plain text, labelled with where it came from, never rendered as markup. The Zobba-token visual treatment is `[TO DESIGN]`; Run-path surfaces keep the old untrusted block |
+| Empty state | Restyled: the pack's Empty state (one sentence plus one action, no illustration) and the section 4 degraded-state patterns |
+| Identifier | Restyled: `type.id` (IBM Plex Mono 12/18); E-references for evidence and L-references for limitation records (Proposal 4b §1) |
+| Timestamp | Restyled under the chrome's typography; formats per `./EXPERIENCE.md`; a time zone is always shown ("10:00 CAT (UTC+2)"; scheduled checks show UTC plus local time) |
+| Reference | Restyled: the E- and L-reference display forms and citation chips |
+| Technical details | Restyled: a collapsed disclosure, as in Error with Technical details and the evidence drawer |
+| Banner | Restyled for the chrome as the Inline notice (no toast stacks); Run-path surfaces keep the old Banner |
+| DataTable | Restyled for the chrome as the pack Table (section 4); Run-path tables keep the old `data-table` pattern |
+
+## 7. Accessibility
+
+**Target: WCAG 2.2 AA** (D-4b-6, replacing WCAG 2.1 AA), with automated and manual acceptance checks, carried into every new flow (model picker, invitation and sign-in, review notes, panel interactions). No allowlist of accepted violations.
+
+- **2.2 criteria named explicitly:** dragging movements have a single-pointer alternative (panel resize in 20px steps and column resize need keyboard or button alternatives); redundant entry (information already given in a flow is not requested again); accessible authentication (sign-in and invitation acceptance need no cognitive function test); target size at least 24 × 24px on desktop (2.5.8) and 44px on touch; focus visible (2px Iris ring, offset 2px) and not obscured by sticky headers, the pinned decision card or the full-screen conversation bar.
+- **Contrast:** text 4.5:1, or 3:1 for text of 18.66px bold / 24px and above; non-text 3:1 for input boundaries, focus indicators and meaningful graphics. The pack's calculated figures are in section 3; the lowest used text pair is `text.placeholder` on Canvas at 4.94:1, the input boundary is 3.44:1 on Paper and 3.29:1 on Canvas, and the focus ring 7.75:1 / 7.42:1. `text.disabled` (3.66:1) is for non-essential disabled labels only; `border.control` (1.67:1) is decorative and never the only cue.
+- **Never colour alone:** every status has a word and a glyph (section 5).
+- **Keyboard:** logical order sidebar → conversation → composer → workspace → drawer; F6 cycles regions; Esc closes the drawer or popover and returns focus to the originating claim. Claim → evidence → return: a citation is a button with its full name; opening it moves focus to the drawer heading, and Back to claim or Esc returns focus to the citation.
+- **Announcements:** conversation updates `aria-live="polite"` at step granularity, not per token; permission and clarification requests `role="alert"` once. The working mark is `aria-hidden`; the adjacent text carries the meaning.
+- **Tables:** real table semantics, `aria-sort`, header scope; the row being processed is announced as "Matching".
+- **Reduced motion** honoured (section 2 and section 3, Motion).
+
+**Implementation obligations** — the pack's DESIGN-SYSTEM §14 "must be verified in the implemented application" list (open question Q10), each verified before the story that introduces the surface is accepted:
+
+1. Screen-reader output for streaming conversation, drawer focus return and table virtualisation.
+2. Keyboard traps in the full-screen workspace and browser sessions.
+3. Zoom to 200% and 400% reflow, and Windows High Contrast / forced colours (the symbol needs a `forced-color-adjust` fallback to one colour).
+4. Reduced-motion behaviour, and rendered contrast in dark OS notification templates.
+
+A rendered mockup is not proof that an integration, security control or execution behaviour works; permissions enforcement, confirmation invalidation, per-operation outcome reporting and evidence capture are verified in the implemented system (HANDOFF §7, Proposal 4b §9).
+
+## 8. Token source discrepancies and open items
+
+### Token source discrepancies
+
+The pack's DESIGN-TOKENS.md and `tokens/zobba-tokens.json` were compared entry by entry (33 primitives, 58 semantic aliases, 15 type roles, and the space, radius, border, shadow, layout, icon, focus, selection, motion and breakpoint groups, and 33 contrast pairs). **No value disagrees.** The differences found are of representation and of pack completeness:
+
+1. **Malformed markdown rows in DESIGN-TOKENS §4.** The `type.ui` weight `400|500|600` and the `type.label` weight `500|600` are written with unescaped pipes inside a markdown table, so those two rows render with extra columns. The JSON (`"weight": "400|500|600"`, `"500|600"`) is unambiguous and is used; this document escapes the pipes.
+2. **Units.** The JSON writes `space`, `layout` pixel values, `radius` (except `icon`) and `icon.grid`, `icon.dense`, `icon.small`, `icon.corner-radius` as unitless numbers; the markdown writes `px`. The frontmatter restates them with `px`. The value is unchanged.
+3. **Family inside a size.** `type.id` is written `12/18 IBM Plex Mono` in both sources; the frontmatter splits it into `fontSize`, `lineHeight` and `fontFamily`.
+4. **Specified values that are not tokens.** DESIGN-SYSTEM states values with no token: page gutters 32 / 24 / 18px, panel default 600px at ≥ 1600, panel resize step 20px, artifact surround padding 18–28px, input height 36px, checkbox and radio 16px, toggle 36 × 20, table row padding 9–10px, column minimum 64px, auditor message maximum 380px (70% narrow), review-note column 230px, settings column 220px, lockup at 20px in the sidebar, mark at 14px for the unattended actor line, hover-preview delay 300ms, drawer slide 24px, popover offset 4px, touch targets 44px. They are restated in the body and not added to the frontmatter.
+5. **Pack counts out of date.** README, HANDOFF §1 and ASSET-MANIFEST say 18 reference screens (23 are filed); README says PATTERNS P1–P16 (P1–P19 exist); HANDOFF §1 says Q1–Q12 (Q1–Q15 exist).
+6. **Duplicated component group.** COMPONENT-INVENTORY repeats "Review (audit manager)" (Reviews queue, Review note, Review action bar) a second time under Settings. The two copies are identical; one is summarised in section 6.
+7. **Status vocabulary completed by approved amendments, not by the pack.** DESIGN-SYSTEM §6 lacks Stop requested, Returned, Unknown, Out of period and Not applicable, and §10 lacks Awaiting approval and Pending regression; section 5 adds them per Proposal 4b §5 rows 1, 3, 6 and 15.
+8. **Overlapping vocabularies in the sources.** EXPERIENCE-RULES R3.5 lists artifact states Draft → In review → Approved → Issued (+ Superseded) while DESIGN-SYSTEM §6 and Proposal 4b §3 list the review-and-issue dimension; section 5 uses Proposal 4b §3. For action outcomes, Proposal 4b §3 lists "Sent · Sent, not confirmed · Confirmed · Blocked · Failed before sending", Proposal 4 U5 lists "Not sent · Sent, not yet confirmed · Confirmed · Blocked · Failed before sending · Not confirmed by the provider", and COMPONENT-INVENTORY's Activity record entry lists "Sent · Sent · accepted · Failed · Unconfirmed"; section 5 uses the Proposal 4 U5 list, with sentences per Proposal 4b §5 row 14 (which also supersedes the pack's EXPERIENCE-RULES R7.5 and §12 unknown-outcome pattern). Connection `pending` (Proposal 4b §3) is `pending-attempt` in 3d.
+9. **No Lucide names for statuses.** The pack gives semantic glyph characters, not Lucide icon names, for status; see section 5, Glyphs.
+
+### Open items from the pack (Proposal 4b §6a)
+
+- **Q1 — Kobba comparison.** Missing input and validation: compare Kobba's current wordmark, symbol, palette, typography, icon shape and endorsement against BRAND §1. Until then Zobba stays as approved and Iris is not changed.
+- **Q2 — Type-designer drawing** of the stepped-b wordmark and optical versions for 16–24px. Until then the supplied outlined SVGs are used; the replacement keeps size and placement.
+- **Q9 — Notification rendering** of the template icon and result wording on Windows and macOS: a validation obligation for the story that ships OS or push notification delivery.
+- **Q10 — Accessibility items that need a built product**: the section 7 implementation obligations.
+- **Q11 — Trademark and domain clearance** for Zobba and a similarity search for the symbol in software classes: a validation obligation before external use.
+- **Q6 — Packaging** belongs to the selected delivery surface. The icon, favicon and notification-template files authorise no native desktop application and no OS notification feature. Notifications are in-app only (AD-20); OS or push delivery stays deferred with the notification-policy contract (Proposal 4b §5 row 9). The template icon files are filed for then.
+- Decided in Proposal 4b §6a and applied in this document: Q3 provenance footer (section 1), Q4 light-only working UI (section 1), Q5 Lucide at 2px (sections 1 and 3), Q7 panel protection (section 4). Q8, Q12, Q13, Q14 and Q15 are decided in Proposal 4b §6a and §7 and belong to `./EXPERIENCE.md` and the PRD; they set no visual value.
+
+### Designs still to be made (Proposal 4b §4, §10)
+
+Designed under the pack's rules before each story is built: memory proposals and "Remembered"; the draft engagement without a client and the client-binding moment; the needs-reconsideration flag and impact records; the `reconcile` decision surface; draft sharing versus issuance and PDF export; promotion review, "Awaiting approval" and "Pending regression"; regression case sets; retention decisions and holds; tenant switching; legacy procedures; invitation creation and acceptance; the model replacement proposal for a check; every `[TO DESIGN]` treatment and glyph in section 5.
+
+## 9. Implementation obligations
+
+These move with their implementation stories. None is a change made now.
+
+- **`apps/web/src/design/tokens.test.ts`** is re-pointed from the 2026-09-01 contract to `../zobba-design-system-v1.0/tokens/zobba-tokens.json` (the canonical source) or to this document's frontmatter, which restates it, when the story that introduces the Zobba token stylesheet lands (Proposal 5 NE-8 story 8.0, identity assets and tokens). Until then it reads the old DESIGN.md and the old `tokens.css`.
+- **`apps/web/src/design/status.test.ts`** reads section 5's tables (the six dimensions and the treatment table) when the story that implements the Zobba status chips lands. The retained Run-path families stay read from the old DESIGN.md until each surface's disposition story.
+- **`apps/web/src/design/stylesheet.test.ts`** covers every new `ls-`-style class the Zobba chrome adds, with its implementation story.
+- The pack's HANDOFF §6 acceptance checklist is part of every UI story's acceptance (Proposal 4b §9), alongside exact-copy tests limited to the fixed labels and safety-critical patterns (Proposal 4 U11).
+
+No application code changes and no test is retired to make the planning documents pass.
+
+No implementation is authorised.
