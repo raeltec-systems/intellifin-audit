@@ -2,9 +2,11 @@
 title: 'Lost connection and lost acknowledgement: a server refresh is not stream recovery, and a rendering error claims only what it knows'
 type: 'fix'
 created: '2026-09-25'
-status: 'ready-for-dev'
+status: 'review'
 review_loop_iteration: 0
-implementation_authorised: false
+implementation_authorised: true
+implementation_authorisation: 'Owner, 2026-09-26: "go, new branches OK" (implement 10.6 to 10.10 on new branches)'
+baseline_revision: '429e08cf703fee6c5320f17b5983948709fd5bdf'
 context:
   - '_bmad-output/implementation-artifacts/legacy-review-closure-register.md'
   - '_bmad-output/planning-artifacts/epics.md'
@@ -77,3 +79,58 @@ nothing changed only when its recorded outcome establishes it.
 - tests: unit (`live-status`), browser (both journeys), WCAG 2.1 AA on the changed surfaces
 
 **Acceptance Criteria:** as `epics.md`, Story 10.8.
+
+## Record of implementation (2026-09-26)
+
+Branch `claude/10-8-lost-connection`, from `429e08c`; not pushed.
+
+**The silence clock.** `LiveClock` in `live-status.ts` moves only on a frame the stream itself
+sends (a Timeline event or a heartbeat). `followLiveStream` in the new `live-stream.ts` is the
+subscription, moved out of `useLiveTimeline`'s effect so the unit suite can drive it with a
+fake `EventSource`; a new cursor closes one connection and opens the next without touching the
+clock. `open` (the route answering a connection) is not a frame: it makes a page that has never
+heard from its stream `live` at once, and moves nothing else, because the route answers before
+it arms its LISTEN and a stream that then delivers nothing must not read `live` again every two
+seconds. A remount takes the clock the last subscription to the same stream left
+(`createLiveClockHandOff`), so Live View, Run Detail and the workspace, which follow the same
+per-Run stream, keep saying `lost` across a move between them. The 15-second and 60-second
+thresholds, the gate reasons and `RUN_ENDING_EVENTS` are unchanged.
+
+**The route boundary.** `apps/web/app/error.tsx` no longer says that nothing was changed. Its
+words are in `apps/web/src/design/route-boundary-words.ts`; its one control is a plain link to
+the page's own address (a GET, which cannot resubmit and needs no script), in place of
+`reset()`, which re-rendered the page as it was before the action. The flag action's
+unknown-outcome sentence now comes from `FLAG_COPY`. The deployed harness matches the
+boundary's heading, pinned to the module.
+
+**Proposed wording, for the owner to confirm (Ask First).**
+- Run pages (banner title): "This page could not be loaded. Check the Run's current state before
+  repeating your last action." (the candidate in epics.md, verbatim, pinned there by a test)
+- Any other page: "This page could not be loaded. Check the current state before repeating your
+  last action."
+- Body: "Reload this page to read it again. Reloading from here does not repeat your last
+  action. If the page keeps failing, tell a PoC Administrator."
+- Control: "Reload this page". The heading "This page could not be loaded" is unchanged.
+- EXPERIENCE.md has no row for the route boundary; its "Action failed" row ("Couldn't {action}.
+  Nothing was changed.") is for a refused action, stays true for that case, and was not edited.
+
+**Verification.** Commits `d2c7add9`, `402caf9e`, `84a56164`, `1ba0ffdc`, `6d5cb64d`. Full
+unit suite 296 files, 5,447 tests passed; `pnpm --filter @intellifin/web typecheck`, the
+root-tests typecheck and `pnpm boundaries` (806 modules) passed. Browser, on the final code:
+`live-drop.spec.ts`, `live-timeline.spec.ts`, `live-view.spec.ts` and
+`live-escalation.spec.ts` 18 of 18, and `flag-run.spec.ts` 6 of 6 (setup cases apart). Proven by mutation: in the browser, restarting the clock when a connection
+opens fails the new journey at sample 3 of 8 with status `live` and every control reopened;
+dropping the clock hand-off fails it at the Run Detail step with `connecting`; restoring the
+old boundary title fails the committed-flag journey at the new wording. In the unit suites,
+seven boundary mutations (old claim, `reset()` button, every page naming a Run, the Runs list
+as a Run page, the flag throw claiming nothing changed, the owner's sentence reworded, the
+harness looking for the retired sentence) and two `open` mutations each fail a named case.
+Not run: the integration suite (no database-backed module changed) and the full browser
+suite.
+
+**Named, not fixed (outside this story's scope).** The Administration controls' client catch
+branches (`RoleControl`, `UserForm`, `BindingForm`, `RegistrationForm`) and the administration
+actions' `UNAVAILABLE` sentence still say "Nothing was changed." when a Server Action throws or
+its response is lost: the same defect class, on surfaces this story does not own. Without
+JavaScript a flag's result page is the answer to a POST, so the browser's own Reload offers to
+resubmit it (the boundary's link does not).
