@@ -2076,6 +2076,28 @@ input:is([type='date'], [type='time'], [type='datetime-local'], [type='month'], 
   border-color: var(--color-teal);
 }
 
+/* Story 10.6 (legacy 5.2): a position in the session where no frame was saved. A marker,
+   not a button, and its SHAPE differs from a frame's pill — never the colour alone: a
+   missing frame is hollow and dashed, a suppressed capture is hatched. The rail's gap
+   list says the same thing in words. */
+.ls-scrubber-gap {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: var(--spacing-4);
+  height: 8px;
+  border-radius: var(--rounded-sm);
+}
+
+.ls-scrubber-gap--missing {
+  border: 1px dashed var(--color-danger-solid);
+  background: transparent;
+}
+
+.ls-scrubber-gap--suppressed {
+  border: 1px solid var(--color-neutral-solid);
+  background: repeating-linear-gradient(135deg, var(--color-neutral-solid) 0 1px, transparent 1px 3px);
+}
+
 .ls-session__jumps {
   display: flex;
   flex-direction: column;

@@ -13,11 +13,12 @@ import { PageHeader } from '../../../../src/design/PageHeader';
 import { Reference } from '../../../../src/design/Reference';
 import { Timestamp } from '../../../../src/design/Timestamp';
 import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
-import { runLifecycleWord, workItemLabel } from '../../../../src/runs/labels';
+import { captureSentence, runLifecycleWord, workItemLabel } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
 import { frameNarration, plannedStepCount, readAdapterLog, stepNarration } from '../../../../src/runs/live-view';
-import { effectiveFrameWorkItemId, replayInitialSelection, replayJumpTargets, replayObservationsThrough, replayRequest, replayViewerKey, resolveFrameWorkItems } from '../../../../src/runs/replay';
+import { REPLAY_GAP_WORDS, effectiveFrameWorkItemId, replayInitialSelection, replayJumpTargets, replayObservationsThrough, replayRequest, replayViewerKey, resolveFrameWorkItems, type ReplayGapsView } from '../../../../src/runs/replay';
 import { recordNaming, recordWords } from '../../../../src/runs/record-words';
+import { toolActionNarration } from '../../../../src/runs/session-words';
 
 export const metadata: Metadata = { title: 'Run · Replay · IntelliFin Audit' };
 export const dynamic = 'force-dynamic';
@@ -167,13 +168,17 @@ export default async function RunReplayPage({
   // frames this surface renders — up to `REPLAY_FRAME_LIMIT` of them — so a fifty-row
   // default silently dropped later Tool Actions, jump targets and Observation deltas from
   // a Run that had more than fifty. See `REPLAY_PAGE_SIZE`.
-  const [timeline, frames, waits, deltas, exceptions, plan] = await Promise.all([
+  const [timeline, frames, waits, deltas, exceptions, plan, gapRead] = await Promise.all([
     detail.readTimeline(run.runId, REPLAY_PAGE_SIZE),
     detail.readFrames(run.runId),
     detail.readWaits(run.runId, REPLAY_PAGE_SIZE),
     detail.readObservationDeltas(run.runId, REPLAY_PAGE_SIZE),
     detail.readExceptions(run.runId, REPLAY_PAGE_SIZE),
     new DrizzleFrozenExecutionReader(runtime.db).readFrozenExecution(run.versionId, run.procedureId),
+    // The actions that left no frame (Story 10.6, legacy 5.2). Read with the predicate the
+    // terminal transition used for `failure.frame-missing`, so this surface and the Result
+    // cannot disagree about how many frames are missing.
+    detail.readReplayGaps(run.runId),
   ]);
   // The adapter log rows below promise "its integrity digest", and printed `null` for
   // every one: "No artifact registered." over artifacts that ARE registered. They were
@@ -259,6 +264,24 @@ export default async function RunReplayPage({
   });
   const initialSelection = replayInitialSelection(undefined, targets, views.length);
 
+  // Each gap in words: a missing frame is marked missing, a suppressed capture says the
+  // platform's own capture sentence and is never counted as missing. The action is narrated
+  // the way a frame's action is, with the record and the system it was performed on.
+  const gaps: ReplayGapsView = {
+    missing: gapRead.missing,
+    suppressed: gapRead.suppressed,
+    rows: gapRead.rows.map((gap) => ({
+      toolActionId: gap.toolActionId,
+      kind: gap.kind,
+      mark: gap.kind === 'missing' ? REPLAY_GAP_WORDS.missing : captureSentence('SUPPRESSED', gap.captureSuppression),
+      narration: toolActionNarration(gap.action, {
+        subject: subjectLabel(timeline.workItems.find((item) => item.workItemId === gap.workItemId)?.subjectKey ?? null),
+        system: targetName(gap.targetSystem),
+      }),
+      framesBefore: gap.framesBefore,
+    })),
+  };
+
   return (
     <div className="ls-stack">
       {header}
@@ -283,6 +306,7 @@ export default async function RunReplayPage({
           text: instruction.text,
         }))}
         adapterSteps={adapterSteps}
+        gaps={gaps}
       />
       <p className="ls-caption">Read at <Timestamp value={readAt} precision="minute" />.</p>
     </div>

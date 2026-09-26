@@ -6,8 +6,9 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 import { REPLAY_COPY, UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
 import { ReplayViewer, type ReplayFrameView } from './ReplayViewer';
-import type { ReplayJumpTarget } from './replay';
+import { REPLAY_GAP_WORDS, replayGapPosition, replayIncompleteSentence, type ReplayGapsView, type ReplayJumpTarget } from './replay';
 import { ADAPTER_ARTIFACT_WORDS } from './live-view';
+import { captureSentence } from './labels';
 
 /**
  * The Replay surface as the server first paints it (Story 5.8, UX-DR26).
@@ -257,5 +258,71 @@ describe('the adapter log, shared with Live View', () => {
     expect(html).toContain(`#evidence-${evidenceId}`);
     expect(html).toContain(ADAPTER_ARTIFACT_WORDS.none);
     expect(html).toContain(ADAPTER_ARTIFACT_WORDS.unavailable);
+  });
+});
+
+// Story 10.6 (legacy 5.2): a session with a gap looked complete. A missing frame is marked
+// where it sits and counted; a suppressed capture is marked in the platform's own capture
+// sentence and is NEVER counted as missing. Every sentence is read back from its module.
+describe('the gaps in a playback (Story 10.6, legacy 5.2)', () => {
+  const suppressedMark = captureSentence('SUPPRESSED', 'credential-entry');
+  const gaps: ReplayGapsView = {
+    missing: 1,
+    suppressed: 1,
+    rows: [
+      { toolActionId: 'gap-suppressed', kind: 'suppressed', mark: suppressedMark, narration: 'Signing in to LoanCore', framesBefore: 0 },
+      { toolActionId: 'gap-missing', kind: 'missing', mark: REPLAY_GAP_WORDS.missing, narration: 'Opening the record for E-000102 on LoanCore', framesBefore: 2 },
+    ],
+  };
+
+  it('states that playback is incomplete with the count of MISSING frames only', () => {
+    const html = render({ gaps });
+    expect(html).toContain(replayIncompleteSentence(1));
+    // Two gaps are listed, and only one is missing: the suppressed capture is not counted.
+    expect(html).not.toContain(replayIncompleteSentence(2));
+    expect(html).toContain(REPLAY_GAP_WORDS.heading);
+  });
+
+  it('marks each gap where it sits on the scrubber, as a named image and never a button', () => {
+    const html = render({ gaps });
+    const scrubber = html.match(/<div class="ls-session__scrubber"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? '';
+    // The suppressed capture sits before the first frame; the missing frame after frame 2.
+    const missing = `${REPLAY_GAP_WORDS.missing}, ${replayGapPosition(2)}: Opening the record for E-000102 on LoanCore`;
+    const suppressed = `${suppressedMark}, ${replayGapPosition(0)}: Signing in to LoanCore`;
+    expect(scrubber).toContain(`class="ls-scrubber-gap ls-scrubber-gap--missing" role="img" aria-label="${missing}"`);
+    expect(scrubber).toContain(`class="ls-scrubber-gap ls-scrubber-gap--suppressed" role="img" aria-label="${suppressed}"`);
+    // In session order: the suppressed marker, frame 1, frame 2, the missing marker, frame 3.
+    const order = [...scrubber.matchAll(/class="(ls-scrubber-gap ls-scrubber-gap--[a-z]+|ls-scrubber-pill[^"]*)"/g)]
+      .map((match) => (match[1]!.startsWith('ls-scrubber-gap') ? match[1]!.split('--')[1] : 'frame'));
+    expect(order).toEqual(['suppressed', 'frame', 'frame', 'missing', 'frame']);
+    expect(scrubber.match(/<button/g)).toHaveLength(3);
+  });
+
+  it('lists each gap in words, the suppressed one in the platform’s capture sentence', () => {
+    const html = render({ gaps });
+    expect(html).toContain(`${REPLAY_GAP_WORDS.missing} · ${replayGapPosition(2)} · Opening the record for E-000102 on LoanCore`);
+    expect(html).toContain(`${suppressedMark} · ${replayGapPosition(0)} · Signing in to LoanCore`);
+    expect(suppressedMark).toBe('Capture suppressed — a credential was presented on this request');
+  });
+
+  it('says nothing about gaps a Run did not have', () => {
+    for (const html of [render(), render({ gaps: { missing: 0, suppressed: 0, rows: [] } })]) {
+      expect(html).not.toContain(REPLAY_GAP_WORDS.heading);
+      expect(html).not.toContain('ls-scrubber-gap');
+      expect(html).not.toContain('Playback is incomplete');
+    }
+  });
+
+  it('keeps suppressed captures out of the incomplete statement entirely', () => {
+    const html = render({ gaps: { missing: 0, suppressed: 1, rows: [gaps.rows[0]!] } });
+    expect(html).toContain(REPLAY_GAP_WORDS.heading);
+    expect(html).toContain(suppressedMark);
+    expect(html).not.toContain('Playback is incomplete');
+  });
+
+  it('says when the list of positions is bounded, against the exact totals', () => {
+    const html = render({ gaps: { missing: 150, suppressed: 3, rows: gaps.rows } });
+    expect(html).toContain(replayIncompleteSentence(150));
+    expect(html).toContain(REPLAY_GAP_WORDS.bounded.replace('{shown}', '2').replace('{total}', '153'));
   });
 });

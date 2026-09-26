@@ -1,14 +1,28 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 
+import { Banner } from '../design/Banner';
 import { TechnicalDetails } from '../design/TechnicalDetails';
 import { countNoun } from '../design/words';
 import { REPLAY_COPY } from '../design/copy';
 import { AdapterStepLog, FrameSource, SessionChrome, SessionStage, type LiveViewerAdapterStep, type LiveViewerFrame } from './LiveViewer';
 import { UntrustedPolicy, UntrustedText } from './UntrustedText';
-import { clampReplayIndex, replayInspectionHref, type ReplayFrameAbsence, type ReplayInitialSelection, type ReplayJumpTarget, type ReplayWindow } from './replay';
+import {
+  REPLAY_GAP_WORDS,
+  clampReplayIndex,
+  replayGapPosition,
+  replayGapsAt,
+  replayIncompleteSentence,
+  replayInspectionHref,
+  type ReplayFrameAbsence,
+  type ReplayGapView,
+  type ReplayGapsView,
+  type ReplayInitialSelection,
+  type ReplayJumpTarget,
+  type ReplayWindow,
+} from './replay';
 import { recordFramePosition, toolActionNarration } from './session-words';
 import { utcStamp } from './labels';
 
@@ -56,6 +70,12 @@ export interface ReplayViewerProps {
   readonly initialSelection?: ReplayInitialSelection;
   /** One inspection's own captures, paged, when Replay was opened at a record's inspection. */
   readonly window?: ReplayWindow;
+  /**
+   * The Tool Actions that left no frame, and where each sits (Story 10.6, legacy 5.2): a
+   * missing frame and a suppressed capture, told apart. Absent on an inspection page, whose
+   * frames are one record's captures rather than the whole session.
+   */
+  readonly gaps?: ReplayGapsView;
 }
 
 /** How long one frame is held while Replay is playing. */
@@ -79,6 +99,60 @@ const JUMP_WORDS: Readonly<Record<ReplayJumpTarget['kind'], string>> = {
   exception: 'Exception',
   escalation: 'Escalation',
 };
+
+/**
+ * One gap on the scrubber: a marker, not a button, because there is no frame to open. Its
+ * SHAPE differs from a frame's pill — a missing frame is hollow and dashed, a suppressed
+ * capture hatched — so it is never colour alone, and its name says which and where.
+ */
+function GapMarker({ gap }: { readonly gap: ReplayGapView }): React.JSX.Element {
+  return (
+    <span
+      className={`ls-scrubber-gap ls-scrubber-gap--${gap.kind}`}
+      role="img"
+      aria-label={`${gap.mark}, ${replayGapPosition(gap.framesBefore)}: ${gap.narration}`}
+      title={`${gap.mark}, ${replayGapPosition(gap.framesBefore)}`}
+    />
+  );
+}
+
+/**
+ * The gaps in this playback, stated rather than implied (Story 10.6, legacy 5.2).
+ *
+ * A Replay with a gap used to look complete: the scrubber held only the frames a Run
+ * registered, and nothing said an action had left none. The COUNT is exact and only missing
+ * frames are counted — a suppressed capture is the credential guarantee working, said in
+ * the platform's own capture sentence and listed beside the gaps, never as one.
+ */
+function ReplayGaps({ gaps }: { readonly gaps: ReplayGapsView | undefined }): React.JSX.Element | null {
+  if (gaps === undefined || gaps.missing + gaps.suppressed === 0) return null;
+  const listed = gaps.missing + gaps.suppressed;
+  return (
+    <section aria-labelledby="replay-gaps-heading" className="ls-stack">
+      <h3 id="replay-gaps-heading">{REPLAY_GAP_WORDS.heading}</h3>
+      {gaps.missing === 0 ? null : <Banner tone="warning" variant="line" title={replayIncompleteSentence(gaps.missing)} />}
+      <details className="ls-disclosure">
+        <summary>{REPLAY_GAP_WORDS.listSummary}</summary>
+        <div className="ls-disclosure__body ls-stack">
+          <ul className="ls-plain-list">
+            {gaps.rows.map((gap) => (
+              <li key={gap.toolActionId} data-gap={gap.kind}>
+                {gap.mark} · {replayGapPosition(gap.framesBefore)} · {gap.narration}
+              </li>
+            ))}
+          </ul>
+          {gaps.rows.length < listed ? (
+            <p className="ls-caption">
+              {REPLAY_GAP_WORDS.bounded
+                .replace('{shown}', gaps.rows.length.toLocaleString('en-US'))
+                .replace('{total}', listed.toLocaleString('en-US'))}
+            </p>
+          ) : null}
+        </div>
+      </details>
+    </section>
+  );
+}
 
 /**
  * The session viewer in its REPLAY mode (Story 5.8, FR-30, UX-DR24, UX-DR26, addendum §F).
@@ -245,15 +319,20 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
 
             <div className="ls-session__scrubber" role="group" aria-label={REPLAY_COPY.scrubberLabel}>
               {props.frames.map((item, position) => (
-                <button
-                  key={item.evidenceId}
-                  type="button"
-                  className={position === index ? 'ls-scrubber-pill ls-scrubber-pill--current' : 'ls-scrubber-pill'}
-                  aria-current={position === index ? 'true' : undefined}
-                  aria-label={`Frame ${item.globalOrdinal ?? position + 1} of ${counterTotal}: ${item.stepNarration}`}
-                  onClick={() => go(position)}
-                />
+                <Fragment key={item.evidenceId}>
+                  {/* A gap is marked WHERE it sits: after the frames that precede it and before
+                      the next (Story 10.6, legacy 5.2). Not a button — there is no frame to open. */}
+                  {replayGapsAt(props.gaps, position).map((gap) => <GapMarker key={gap.toolActionId} gap={gap} />)}
+                  <button
+                    type="button"
+                    className={position === index ? 'ls-scrubber-pill ls-scrubber-pill--current' : 'ls-scrubber-pill'}
+                    aria-current={position === index ? 'true' : undefined}
+                    aria-label={`Frame ${item.globalOrdinal ?? position + 1} of ${counterTotal}: ${item.stepNarration}`}
+                    onClick={() => go(position)}
+                  />
+                </Fragment>
               ))}
+              {replayGapsAt(props.gaps, props.frames.length).map((gap) => <GapMarker key={gap.toolActionId} gap={gap} />)}
             </div>
             {props.window === undefined && props.framesTotal > props.frames.length ? (
               <p className="ls-caption">
@@ -263,6 +342,8 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
               </p>
             ) : null}
           </section>
+
+          <ReplayGaps gaps={props.gaps} />
 
           {/* The policy sentence ONCE, above the untrusted blocks this rail carries (UX-27). */}
           {untrusted ? <UntrustedPolicy /> : null}
