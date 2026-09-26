@@ -20,14 +20,21 @@ vi.mock('@intellifin/infrastructure', () => ({
   PostgresEvaluationReviewRepository: class {},
   PostgresWaitRepository: class {},
   readTimelineHead: vi.fn(),
+  readPauseEntry: vi.fn(),
+  readPauseHistory: vi.fn(),
+  readRecordNames: vi.fn(),
+  DrizzleActorNameReader: class {},
+  DrizzleFrozenExecutionReader: class {},
 }));
 
 import type { RunWait } from '@intellifin/application';
 import type { RunRecord } from '@intellifin/domain';
+import { readPauseEntry, type Database } from '@intellifin/infrastructure';
 
 import { PAUSE_COPY } from '../design/copy';
 import { shortReference } from '../design/references';
 import { PauseBanners } from './detail';
+import { readPauseHold } from './pause-read';
 import { PAUSE_WORDS, bannerHeldBeforeWords, bannerHeldInFlightWords, type PauseHoldRead } from './pause-words';
 
 /**
@@ -190,6 +197,16 @@ describe('the Paused banner', () => {
       expect(html).toContain(PAUSE_WORDS.holdUnreadable);
       expect(html).toContain('Paused by Daniel Okonjo at');
     }
+  });
+
+  it('keeps the paused banner readable when the actual hold lookup fails', async () => {
+    vi.mocked(readPauseEntry).mockRejectedValueOnce(new Error('lookup unavailable'));
+    const hold = await readPauseHold({} as Database, run('PAUSED'), PAUSE, null);
+    expect(hold).toEqual({ kind: 'unreadable' });
+    expect(readPauseEntry).toHaveBeenCalledWith({}, RUN_ID, PAUSE.waitId);
+    const html = render('PAUSED', PAUSE, null, hold);
+    expect(html).toContain(PAUSE_WORDS.holdUnreadable);
+    expect(html).toContain('Paused by Daniel Okonjo at');
   });
 
   // Screenshot review, 2026-09-26: the banner's last line said "The agent restarts the

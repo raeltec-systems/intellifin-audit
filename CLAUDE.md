@@ -1,3 +1,18 @@
+## 2026-09-26 — Review continuation keeps exact reads exact (Story 10.6)
+
+- Adapter Evidence readers accept at most 64 IDs. Batch distinct IDs at the caller; an
+  exact read must not silently drop the 65th artifact. A later batch failure keeps the
+  existing unreadable result for the whole read.
+- A pause while revisiting an acquired adapter reference holds the next unfinished unit.
+  Preserve cancellation checks at their original boundaries. If no unit remains, leave
+  the pause request for the next stage or terminal transition.
+- A metadata link beyond a bounded overview carries an exact selector. Resolve it only
+  after Run authorization, through the Run-bound reader, and deduplicate its anchor.
+- Keep record keys such as `E-000102` in the existing `ls-nowrap` span; Chromium breaks at
+  their hyphens. `completeRun` seals the result but does not itself move the Run state.
+- Handover sheet 1 is approved. Sheet-2 pause changes A1–A5 and the optional event payload
+  fields remain pending; a successful test is not owner approval.
+
 ## 2026-09-26 — A fact the records do not link is linked on new events, and read by identity (Story 10.6)
 
 Story 10.6 meets five compiler-1 visibility legs the closure register found on the retained

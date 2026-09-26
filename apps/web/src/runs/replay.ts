@@ -304,8 +304,8 @@ export function clampReplayIndex(index: number, frames: number): number {
  * What Replay says about the gaps in a session (Story 10.6, legacy 5.2).
  *
  * Replay played the frames a Run registered and said nothing about the Tool Actions that
- * left none, so a session with a gap looked complete. Every sentence here is PROPOSED
- * wording (the story's Ask First rule): it is not in the UX artifacts yet. A suppressed
+ * left none, so a session with a gap looked complete. The owner approved these sentences
+ * on 2026-09-26 (handover sheet 1). A suppressed
  * capture is NOT here — it says the platform's existing `captureSentence`, because it is
  * the credential guarantee working and has its own words already.
  */

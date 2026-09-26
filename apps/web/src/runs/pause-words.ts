@@ -11,11 +11,11 @@ import { recordNaming, recordWords } from './record-words';
  * Free of React, because the components and the browser specs read the same sentences —
  * the `run-start-words.ts` rule: a sentence retyped in a test is pinned against nothing.
  *
- * `[PROPOSED, needs owner confirmation]` Every sentence here is wording the UX artifacts do
- * not contain (the story's "Ask First" rule for wording). The one fact they state is the
- * spec's own: a pause between units names the step it holds the Run at and says that no
- * Step Execution was in flight, and a historical record without the link says its step
- * was not recorded.
+ * The owner approved sheet 1 on 2026-09-26. Only the sheet-2 changes remain
+ * `[PROPOSED, needs owner confirmation]`: `intro` (A1), `startedWords` (A2),
+ * `bannerHeldInFlightWords` (A3), `resumeRestarts`/`resumeStarts`/`resumeUnknown` (A4),
+ * and the unnamed-plan-step fallback in `stepWords` (A5). See the handover for the
+ * exact sentences and the separate pending decision on optional audit-event fields.
  */
 export const PAUSE_WORDS = {
   heading: 'Pauses and resumes',

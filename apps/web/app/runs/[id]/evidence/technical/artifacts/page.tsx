@@ -71,7 +71,7 @@ export default async function RunEvidenceArtifactsPage({
   searchParams,
 }: {
   readonly params: Promise<{ id: string }>;
-  readonly searchParams: Promise<{ after?: string }>;
+  readonly searchParams: Promise<{ after?: string; evidence?: string | string[]; observation?: string | string[] }>;
 }): Promise<React.JSX.Element> {
   const { id } = await params;
   const access = await openRun(id);
@@ -80,15 +80,33 @@ export default async function RunEvidenceArtifactsPage({
 
   // The excluded/indeterminate row list is paged by ordinal; a value that is not a
   // non-negative integer is treated as the first page rather than as an error.
-  const after = Number((await searchParams).after ?? 0);
+  const query = await searchParams;
+  const after = Number(query.after ?? 0);
   const runtime = await getRuntime();
   const detail = new DrizzleRunDetailRepository(runtime.db);
-  const [items, observations, population, evidencePackage] = await Promise.all([
+  const [overviewItems, overviewObservations, population, evidencePackage, selectedObservations] = await Promise.all([
     detail.readEvidenceItems(run.runId),
     detail.readObservations(run.runId),
     new PostgresPopulationRepository(runtime.db).readPopulation(run.runId, after),
     new PostgresSealedPackageRepository(runtime.db).readSealedPackage(run.runId),
+    typeof query.observation === 'string'
+      ? detail.readObservationsByIds(run.runId, [query.observation])
+      : Promise.resolve([]),
   ]);
+  // A new provenance link can name a row beyond the overview. Resolve only its exact,
+  // Run-bound metadata after authorization; protected routes still own all byte reads.
+  // Repeated query parameters select nothing, and the repository validates UUIDs.
+  const evidenceIds = [...new Set([
+    ...(typeof query.evidence === 'string' ? [query.evidence] : []),
+    ...selectedObservations.flatMap((observation) => observation.evidenceIds),
+  ])].slice(0, 64);
+  const selectedItems = evidenceIds.length === 0 ? [] : await detail.readEvidenceItemsByIds(run.runId, evidenceIds);
+  const items = [...new Map([...overviewItems, ...selectedItems].map((item) => [item.evidenceId, item])).values()];
+  const observations = {
+    total: overviewObservations.total,
+    rows: [...new Map([...overviewObservations.rows, ...selectedObservations]
+      .map((observation) => [observation.observationId, observation])).values()],
+  };
 
   const populationEvidence = population?.evidence ?? null;
   const mediaTypes = new Map(items.map((item) => [item.evidenceId, item.mediaType]));
@@ -273,7 +291,7 @@ export default async function RunEvidenceArtifactsPage({
             {countNoun(observations.total, 'Observation')} in this Run
             {observations.rows.length === observations.total
               ? '.'
-              : `; the first ${observations.rows.length.toLocaleString('en-US')} are listed.`}
+              : `; the first ${overviewObservations.rows.length.toLocaleString('en-US')} are listed.`}
           </p>
           {/* The policy sentence ONCE for every source value below it, not under each of
               them (UX-27): each block keeps its own short label naming where it came from. */}

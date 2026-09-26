@@ -311,6 +311,44 @@ describe('the adapter log artifact (Story 10.6, legacy 5.3)', () => {
     expect(rows[0]!.artifact).toEqual({ kind: 'none' });
   });
 
+  it('reads every distinct artifact beyond the repository’s 64-id bound', async () => {
+    const ids = Array.from({ length: 65 }, (_, index) => `01990000-0000-7000-8000-${index.toString(16).padStart(12, '0')}`);
+    const requested: string[][] = [];
+    const port: AdapterLogEvidenceReader = {
+      readEvidenceItemsByIds: async (runId, selected) => {
+        expect(runId).toBe('run-1');
+        requested.push([...selected]);
+        // The real repository retains only the first 64 distinct identifiers per call.
+        return [...new Set(selected)].slice(0, 64).map((evidenceId) => ({ evidenceId, state: 'REGISTERED', digest: DIGEST }));
+      },
+    };
+    const steps = [
+      step({ stepId: 'duplicate', evidenceId: ids[0]! }),
+      ...ids.map((evidenceId, index) => step({ stepId: `session-${index}`, evidenceId })),
+    ];
+    const rows = await readAdapterLog(port, 'run-1', steps);
+    expect(requested).toEqual([ids.slice(0, 64), ids.slice(64)]);
+    expect(rows.map((row) => row.artifact)).toEqual(steps.map(({ evidenceId }) => ({
+      kind: 'registered', evidenceId, digest: DIGEST,
+    })));
+  });
+
+  it('keeps all named artifacts unavailable when a later batch fails', async () => {
+    const steps = Array.from({ length: 65 }, (_, index) => step({
+      stepId: `session-${index}`, evidenceId: `01990000-0000-7000-8000-${index.toString(16).padStart(12, '0')}`,
+    }));
+    let calls = 0;
+    const port: AdapterLogEvidenceReader = {
+      readEvidenceItemsByIds: async (_runId, ids) => {
+        if (++calls === 2) throw new Error('connection reset');
+        return ids.map((evidenceId) => ({ evidenceId, state: 'REGISTERED', digest: DIGEST }));
+      },
+    };
+    const rows = await readAdapterLog(port, 'run-1', [...steps, step({ evidenceId: null })]);
+    expect(calls).toBe(2);
+    expect(rows.map((row) => row.artifact.kind)).toEqual([...steps.map(() => 'unavailable'), 'none']);
+  });
+
   it('turns a failed read into "could not be read" for every step that names an artifact', async () => {
     const { port } = reader(async () => { throw new Error('connection reset'); });
     const rows = await readAdapterLog(port, 'run-1', [step(), step({ stepId: 'session-3', evidenceId: null })]);

@@ -2,8 +2,10 @@
 title: 'Legacy visibility follow-up: human-matched provenance, missing-frame indication and exact pause and resume linkage on the retained compiler-1 surfaces'
 type: 'fix'
 created: '2026-09-25'
-status: 'in-progress'
+status: 'blocked'
 review_loop_iteration: 0
+followup_review_recommended: true
+deferred: []
 implementation_authorised: true
 implementation_authorisation: 'Owner, 2026-09-26: "go, new branches OK" (implement 10.6 to 10.10 on new branches)'
 baseline_revision: '429e08cf703fee6c5320f17b5983948709fd5bdf'
@@ -145,16 +147,9 @@ first listed here as proposed scope.
   (`AppShell.tsx:98`–`:100`), and a browser test that presses Enter on "Go to open Escalation" and
   asserts that focus is inside `#open-escalation`.
 
-## Record draft (not yet applied, 2026-09-26)
-
-Written by the build agent before the screenshot review; `4f6aacd5` and `d2f461a8` came after it.
-Open at the 2026-09-26 pause: `pnpm typecheck` and `pnpm test` after `d2f461a8` (then reword its
-"WIP:" message), the screenshots again, the CLAUDE.md notes, and this record.
-
-
 ## Record of implementation (2026-09-26)
 
-Branch `claude/10-6-legacy-visibility`, from `429e08cf`, not pushed. No migration, no new
+Branch `claude/10-6-legacy-visibility`, from `429e08cf`; canonical PR #61. No migration, no new
 audit event type, no new schema column and no change to the Result publication shape
 (`git diff --stat 429e08cf -- packages/infrastructure/drizzle` is empty). No historical event
 is rewritten; every link is an exact identity, never a time.
@@ -196,19 +191,18 @@ is rewritten; every link is an exact identity, never a time.
   carries the same number; the two Step Executions are told apart by their references.
 - Contracts and the decision log: `e8728b0c`, and the notes in `91e5f51a` and `2a42b1d4`.
 
-**Verification.** Typecheck, boundaries, the unit suite and the integration suite pass at
-the story's final code (`GATES_LINE`). The full browser suite passed at `d8734c1f` (291
-passed, 12 opt-in skips, none failed); the two journeys rewritten after it
-(`pause-resume.spec.ts`, `human-match.spec.ts`) pass on their own. Every new guard has a
-mutation that a named test kills (the report lists each). One mutant is equivalent: on Live
-View, a failed Evidence read turned into an empty map still says "could not be read",
-because a missing row already reads as unavailable.
+**Checkpoint verification.** GitHub CI run [36242328920](https://github.com/raeltec-systems/intellifin-audit/actions/runs/36242328920)
+passed all seven jobs for the handover head `88c25e0`, including PostgreSQL 18 integration,
+Playwright/WCAG, container smoke and worker/preview mutation checks. This was checked through
+the GitHub API on 2026-09-26. These results establish the checkpoint, not subsequent review fixes.
+The full browser suite previously passed at `d8734c1f` (291 passed, 12 opt-in skips).
+Fresh continuation results and unresolved checks are recorded below; no placeholder is a pass.
 
-**Proposed wording, needs owner confirmation** (the story's Ask First rule; each sentence
-lives in one module and the tests read it back): `ADAPTER_ARTIFACT_WORDS.unavailable`
-(`live-view.ts`); `REPLAY_GAP_WORDS`, `replayIncompleteSentence`, `replayGapPosition`
-(`replay.ts`); `MATCH_DECISION_WORDS` and its sentence functions (`match-words.ts`); every
-sentence in `pause-words.ts`.
+**Wording approvals.** Handover sheet 1 was approved on 2026-09-26. The match, Replay-gap,
+and adapter-unavailable modules now record that approval. Only sheet-2 A1–A5 remain proposed
+in `pause-words.ts`: the conditional intro, starts-versus-restarts sentence, interrupted-attempt
+banner, three Resume explanations and unnamed-plan-step fallback. The optional event-field
+decision below remains pending. No pending decision is silently approved by this continuation.
 
 **Decision to confirm.** The Ask First list names a new audit event TYPE, a column and a
 migration; none was added. New payload KEYS were added to existing event types
@@ -218,3 +212,80 @@ new payload key as an audit-schema change.
 
 **Still open.** Legacy 4.7 and 5.2 close only with Story 14-11a's export criteria, or an
 owner scope amendment.
+
+
+## Review Triage Log
+
+### 2026-09-26 — Continuation review pass
+
+Four independent reviewers inspected the complete diff from the preserved baseline:
+blind, edge-case, verification-gap and intent-alignment. Findings were checked against
+actual producers and callers before triage.
+
+- intent_gap: 1 (medium 1): the frozen spec says Replay without a mode qualifier, while
+  selected-inspection Replay explicitly excludes gaps. The supplied checkpoint and its
+  tests implement whole-session gaps only. Owner scope confirmation remains open.
+- bad_spec: 0
+- patch: 7 (medium 4, low 3)
+- defer: 0
+- reject: 9
+- addressed_findings:
+  - `[medium]` `[patch]` A pause revisiting acquired adapter work named completed work;
+    select the next unfinished unit and prove the actual subsequent attempt links it.
+  - `[medium]` `[patch]` Exact adapter Evidence reads dropped IDs after 64; batch distinct
+    IDs and test both the 65th result and a later-batch failure.
+  - `[medium]` `[patch]` The new Result human-match link could miss its Observation outside
+    the technical overview; add an authorized Run-bound exact selector.
+  - `[medium]` `[patch]` The new adapter-artifact link could miss its Evidence outside that
+    overview; carry and resolve its exact selector, with no duplicate anchors.
+  - `[low]` `[patch]` Public-access resume linkage lacked regression proof; exercise the
+    public stage with a pending resume and assert its saved execution/wait identity.
+  - `[low]` `[patch]` Unreadable pause fallback was tested only with fabricated component
+    props; fail the real lookup and render its result through the paused banner.
+  - `[low]` `[patch]` The implementation record retained a draft and GATES_LINE placeholder;
+    fold the record and distinguish checked checkpoint CI from new candidate verification.
+
+The six malformed-provenance claims were rejected after tracing guarded production
+writers: the candidate-decision producer checks the wait/checkpoint/capture, registration
+is transactional, resumeStartedBy matches the held step/item, and performPause emits the
+in-flight pair together. No reachable writer produced the claimed inconsistent state.
+The approved bounded-history disclosure is retained; no new pagination is silently
+approved. Short references and their existing technical context are unchanged. These
+account for the remaining rejected suggestions.
+
+The user's continuation instruction preserves the built checkpoint: it is not reverted
+or rebuilt because a wider reading of inspection Replay requires clarification. The
+independent correctness and verification patches above are retained for review.
+
+## Auto Run Result
+
+Status: blocked; this is a reviewed WIP checkpoint, not story completion.
+
+Implemented continuation: corrected adapter pause targeting, batched exact Evidence reads,
+made the two new technical links address their exact metadata, added missing public-access
+and pause-read-failure regression coverage, and reconciled the record and approved wording
+markers. No new event type, migration, Result shape, or platform wording was added.
+
+Changed areas: adapter execution and tests; shared adapter log and tests; technical Evidence
+page and exact-selector tests; Result/Live View links and their assertions; public-access
+and paused-banner tests; shared decision notes and this record.
+
+Follow-up review recommended: true. Patched counts: high 0, medium 4, low 3; score 15.
+New runtime fixes require fresh CI on their published candidate. The incoming code head's
+all-green CI is recorded above and is not substituted for that check.
+
+Residual acceptance: handover sheet-2 A1–A5 and optional payload keys need owner confirmation;
+inspection Replay gap scope remains explicit; all changed-state screenshots at 1280×800 and
+1024-wide Timeline/Replay must be inspected before finalization. The local environment cannot
+start PostgreSQL as an unprivileged user and the Chromium download returns HTML, so fresh
+integration/browser verification is delegated to the existing PR CI, not claimed locally.
+
+
+### Continuation local verification
+
+Node 24.20.0 / pnpm 11.25.0, run sequentially after the review patches:
+`pnpm typecheck` passed; `pnpm boundaries` passed (816 modules); `pnpm test` passed
+299 files / 5,504 tests. The 65-ID batching and acquired-reference pause regressions
+were observed failing before their patches. Exact-selector tests exercise the real page
+function after mocked authorization, including denied access and deduplicated anchors.
+Browser/DB results for this new candidate remain pending CI; no screenshot claim is made.

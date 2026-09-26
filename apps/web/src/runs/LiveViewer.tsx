@@ -375,7 +375,7 @@ function AdapterArtifact({ runId, artifact }: {
     case 'registered':
       return (
         <>
-          <a href={`/runs/${runId}/evidence/technical#evidence-${encodeURIComponent(artifact.evidenceId)}`}>
+          <a href={`/runs/${runId}/evidence/technical?evidence=${encodeURIComponent(artifact.evidenceId)}#evidence-${encodeURIComponent(artifact.evidenceId)}`}>
             <Reference kind="Evidence" value={artifact.evidenceId} />
           </a>
           <Digest value={artifact.digest} label="Adapter artifact digest" />

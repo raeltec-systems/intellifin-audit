@@ -711,6 +711,23 @@ describe('the sign-in Session Step', () => {
 });
 
 describe('the public P-4 access proof', () => {
+  it('links a resumed public-access attempt to the held step and saved execution', async () => {
+    const plan = publicPlan();
+    const signIn = plan.sessionSteps.find((step) => step.action === 'sign-in')!;
+    const waitId = '01a06fd8-0000-7000-8000-00000000aa04';
+    const state = store(plan, { pendingResume: { waitId, planStepId: signIn.id, workItemId: null } });
+    const browser = new FakeBrowser({ result: { artifacts: [publicArtifact()] } });
+
+    expect(await executeAgentSteps(DEPS(state, browser), JOB)).toEqual({ retry: false, proceed: true });
+    const started = state.events.filter((event) => event.payload['diagnostic'] === 'public-access-attempt-started');
+    expect(started).toHaveLength(1);
+    expect(started[0]?.payload).toMatchObject({
+      resumedWaitId: waitId,
+      stepExecutionId: state.executions[0]?.stepExecutionId,
+    });
+    expect(state.pendingResumeReads).toBe(1);
+  });
+
   it('navigates without resolving the compatibility credential and validates the public landing link', async () => {
     const state = store(publicPlan());
     const browser = new FakeBrowser({ result: { artifacts: [publicArtifact()] } });

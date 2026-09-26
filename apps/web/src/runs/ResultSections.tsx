@@ -598,7 +598,7 @@ export function HumanMatchesSection({
               </p>
               <HumanMatchNote match={match} names={list.names} />
               <p className="ls-finding__links">
-                <a href={`/runs/${runId}/evidence/technical#observation-${match.observationId}`}>
+                <a href={`/runs/${runId}/evidence/technical?observation=${encodeURIComponent(match.observationId)}#observation-${match.observationId}`}>
                   {EXCEPTION_WORDS.openEvidence}
                   <span className="ls-visually-hidden"> for {labelPartsWords(parts)}</span>
                 </a>
