@@ -1,3 +1,27 @@
+## 2026-09-26 — Every append to a Run's chain wakes the channel (Story 10.7)
+
+- **The wake-up belongs to the append, not to its writers.** `appendAuditEvent` issues
+  `pg_notify('run_timeline', {runId, sequence})` for every append whose aggregate is a Run, in
+  the appending transaction and before anything below it can return early. Three families had
+  none (`evidence-access.*`, `notification.*-delivery`, the evaluation review's
+  `security.denied`), and the conversation narration's own notify sat after an early return
+  (a conversation at 1,000,000 messages). The writers' `notifyTimeline` ports stay: PostgreSQL
+  folds identical payloads of one transaction into one. No migration, trigger or event type.
+- **So the payload is spelled exactly as the writers spell it, `JSON.stringify({ runId,
+  sequence })`, key order included.** Another spelling is a second, unfolded notification, and
+  the list stream (one frame per wake-up, no cursor) forwards the event twice. Proven by
+  mutation: swapping the two keys fails the list-stream case with `[2, 2, 3, 4]`.
+- **Only a Run's chain wakes it.** A Procedure's chain, or a UUID-shaped aggregate that names
+  no Run, must not: the list stream reads the row a notification names and would forward it as
+  a Run's event. Mutation: dropping the `if (run)` guard fails the any-writer case.
+- **Prove a WAKE-UP, not a heartbeat or a replay.** Open the per-Run stream one event behind
+  the head, wait for that replayed frame, keep the heartbeat a minute away and the delivery
+  deadline far below it. Count raw wake-ups on a second LISTEN and flush with a probe NOTIFY
+  (they arrive in commit order). A rolled-back append is a unit of work that throws AFTER its
+  work, under a 50 ms heartbeat, so a row committed with no wake-up would still be found. To
+  commit into the window between LISTEN and replay, hook the `listen` promise
+  (`countedSql(onListening)` in `run-timeline-channel.test.ts`).
+
 ## 2026-09-25 — A single read of a moving preview sample is a race the broker refuses on purpose
 
 - **The preview route answers 503 for a read that meets a new sample, and that is the product
