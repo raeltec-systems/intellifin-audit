@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import { ROUTE_BOUNDARY_COPY } from '../../apps/web/src/design/route-boundary-words';
+
 /**
  * The deployed acceptance decides whether an Evidence link OPENED by looking for the
  * sentences the product renders when one does not. A sentence retyped in a checker is
@@ -20,10 +22,18 @@ describe('the sentences the deployed acceptance looks for', () => {
     expect(HARNESS).toContain("body.includes('Snapshot cell unavailable')");
   });
 
-  it('uses the route boundary\'s own sentence for a page that could not be built', () => {
+  it('uses the route boundary\'s own heading for a page that could not be built', () => {
+    // The boundary renders its words from `route-boundary-words.ts`, and `error.test.ts`
+    // reads them back out of the rendered page. The HEADING is what the harness matches:
+    // it heads every boundary on every path, and both of the banner's sentences start
+    // with it, so one match covers them all.
     const boundary = readFileSync('apps/web/app/error.tsx', 'utf8');
-    expect(boundary).toContain("Couldn't load this page. Nothing was changed.");
-    expect(HARNESS).toContain('Couldn\'t load this page. Nothing was changed.');
+    expect(boundary).toContain('{ROUTE_BOUNDARY_COPY.heading}');
+    expect(HARNESS).toContain(`body.includes('${ROUTE_BOUNDARY_COPY.heading}')`);
+    // Story 10.8 retired the sentence that claimed nothing was changed: the boundary is
+    // reached after a committed action whose acknowledgement was lost, where it was false.
+    expect(boundary).not.toContain('Nothing was changed');
+    expect(HARNESS).not.toContain("Couldn't load this page");
   });
 
   it('reads the predetermined truth off disk rather than importing it', () => {

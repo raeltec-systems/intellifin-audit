@@ -528,11 +528,13 @@ try {
     await auditor.goto(BASE + href, { waitUntil: 'domcontentloaded' });
     const body = await auditor.locator('body').innerText();
     // The inspector states EVERY read failure under one banner title, and the route
-    // boundary has EXPERIENCE.md's own sentence. Both are exact strings taken from the
-    // pages themselves: a loose phrase nobody renders would make this check unable to
-    // fail, which is the defect this whole pass is about.
+    // boundary heads every failure with one heading (its banner sentence depends on the
+    // path, and both start with that heading; Story 10.8). Both are exact strings taken
+    // from the pages themselves, and `acceptance-sentences.test.ts` reads them back: a
+    // loose phrase nobody renders would make this check unable to fail, which is the
+    // defect this whole pass is about.
     const failed = body.includes('Snapshot cell unavailable')
-      || body.includes("Couldn't load this page. Nothing was changed.");
+      || body.includes('This page could not be loaded');
     const opened = !failed && await auditor.getByRole('heading', { level: 1 }).count() > 0;
     report.evidenceLinks.push({ href, opened });
   }

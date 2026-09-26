@@ -10,7 +10,8 @@ import {
 } from '@intellifin/infrastructure';
 
 import { FLAG_COPY } from '../../apps/web/src/design/copy';
-import { FLAG_MENU_LABEL } from '../../apps/web/src/runs/session-words';
+import { ROUTE_BOUNDARY_COPY } from '../../apps/web/src/design/route-boundary-words';
+import { FLAG_MENU_LABEL, flagMenuLabel } from '../../apps/web/src/runs/session-words';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 
@@ -209,11 +210,38 @@ test.describe('flagging a Run from Live View', () => {
     // — there is nothing left to press — and it is why the retry cannot happen here.
     // The withdrawal the component owns is for the case the action itself reports, and
     // that is asserted in `RunFlagControl.test.ts`.
-    await expect(page.getByRole('heading', { name: 'This page could not be loaded' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: ROUTE_BOUNDARY_COPY.heading, level: 1 })).toBeVisible();
     await expect(page.getByRole('button', { name: FLAG_COPY.submit })).toHaveCount(0);
     await page.unroute(liveUrl);
 
-    // The flag committed once and exactly once, notifications included.
+    // The boundary states only what it knows (Story 10.8). The flag DID commit, so the
+    // sentence it used to print here — "Couldn't load this page. Nothing was changed." —
+    // was false; it now names the Run and asks the reader to look before repeating
+    // anything, and says nothing about whether anything changed.
+    await expect(page.getByRole('alert').filter({ hasText: ROUTE_BOUNDARY_COPY.run })).toBeVisible();
+    await expect(page.getByText(ROUTE_BOUNDARY_COPY.body)).toBeVisible();
+    await expect(page.getByText(/nothing was changed/i)).toHaveCount(0);
+    // WCAG 2.1 AA on the boundary as the reader meets it.
+    await expect(page).toHaveTitle(/.+/);
+    const scan = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+    expect(scan.violations).toEqual([]);
+
+    // Reloading reads the page again and never resubmits: every POST from here on is
+    // counted, through the boundary's own control and then the browser's reload.
+    const posts: string[] = [];
+    page.on('request', request => { if (request.method() === 'POST') posts.push(request.url()); });
+    await page.getByRole('link', { name: ROUTE_BOUNDARY_COPY.reload }).click();
+    await expect(page.getByRole('heading', { name: /^Live View · / })).toBeVisible();
+    // The page now shows what was recorded: one flag, with the note that was typed.
+    await expect(panel.locator('> summary')).toHaveText(flagMenuLabel(1));
+    await openFlag(page);
+    await expect(panel.getByText('The response will be lost.')).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('heading', { name: /^Live View · / })).toBeVisible();
+    await expect(panel.locator('> summary')).toHaveText(flagMenuLabel(1));
+    expect(posts).toEqual([]);
+
+    // The flag committed once and exactly once, notifications included — after both reloads.
     const flags = await sql`SELECT note FROM run_flag WHERE run_id=${runId}`;
     expect(flags).toEqual([{ note: 'The response will be lost.' }]);
     const notifications = await sql`SELECT kind FROM notification WHERE run_id=${runId}`;

@@ -41,6 +41,19 @@ carries a flag reader.
   response is handled the way every other control on these surfaces handles one — the
   surface blocks the retry and asks for a reload — rather than by an idempotency token this
   story was not asked to design.
+* **A lost response lands in one of two places, and neither may say that nothing changed**
+  (Story 10.8). When the action itself answers that its outcome is unknown (the command
+  threw, perhaps after committing), the control withdraws its submit and says the flag could
+  not be confirmed (`FLAG_COPY.unknown`). When the RSC response is dropped in transit, the
+  component cannot catch it — the form's action IS the Server Action, which is what lets it
+  work without JavaScript — so it reaches the route boundary. The boundary cannot tell that
+  from a page that failed to build, so it states only what it knows: the page did not load,
+  and the reader should check the Run before repeating the action
+  (`apps/web/src/design/route-boundary-words.ts`). Its one control is a plain link to the
+  page: a GET, so reloading reads the page, shows the flag if it was recorded, and never
+  submits it again. `flag-run.spec.ts` asserts the wording, zero POSTs through the
+  boundary's reload and a browser reload, and still exactly one `run_flag` row and one
+  notification.
 
 ## The note goes in the table, its DIGEST goes in the chain
 
