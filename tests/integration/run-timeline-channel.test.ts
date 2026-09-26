@@ -6,6 +6,7 @@ import {
   CryptoUuidV7Generator,
   DrizzleRoleRepository,
   PostgresProceduresUnitOfWork,
+  PostgresAuditUnitOfWork,
   PostgresRunCancellationRepository,
   PostgresRunsUnitOfWork,
   SystemClock,
@@ -217,6 +218,99 @@ describe.skipIf(!url)('the live Timeline channel', () => {
     } finally {
       await atHead.close();
     }
+  });
+
+  it('wakes every open stream for the formerly omitted families, only on commit, and resumes a burst once', async () => {
+    const runId = await start(await seed());
+    const streams = [open(runId, 0), open(runId, 0), open(null, 0, { heartbeatMs: 50 })];
+    const wakeups: string[] = [];
+    const listener = await sql.listen('run_timeline', payload => {
+      if (JSON.parse(payload).runId === runId) wakeups.push(payload);
+    });
+    const families = [
+      ['evidence-access.read', 'web'],
+      ['evidence-access.denied', 'web'],
+      ['evidence-access.grant-issued', 'worker'],
+      ['evidence-access.denied', 'worker'],
+      ['notification.in-app-delivery', 'worker'],
+      ['notification.email-delivery', 'worker'],
+      ['security.denied', 'web'],
+    ] as const;
+    const unit = new PostgresAuditUnitOfWork(db);
+    const draft = (eventType: typeof families[number][0], source: 'web' | 'worker') => ({
+      actor: { type: 'system' as const, id: 'channel-regression' }, eventType, source,
+      outcome: 'success' as const, aggregateId: runId, sessionId: session.sessionId,
+      correlationId: ids.next(), payload: { test: 'private payload must not travel on the channel' },
+    });
+    try {
+      // Initial replay/heartbeat proves LISTEN is armed. No per-Run heartbeat can
+      // rescue a missing NOTIFY within the five-second live-delivery deadline.
+      await Promise.all(streams.map((stream, index) => stream.until(
+        f => f.some(x => x.event === (index === 2 ? 'heartbeat' : 'timeline')), 5_000,
+      )));
+      let release!: () => void;
+      let appended!: () => void;
+      const held = new Promise<void>(resolve => { release = resolve; });
+      const staged = new Promise<void>(resolve => { appended = resolve; });
+      const commit = unit.execute(async context => {
+        for (const [eventType, source] of families) await context.auditEvents.append(draft(eventType, source));
+        appended();
+        await held;
+      });
+      await staged;
+      try {
+        expect(await readTimelineHead(db, runId)).toBe(1);
+        expect(wakeups).toEqual([]);
+      } finally { release(); }
+      await commit;
+      await Promise.all(streams.map((stream, index) => stream.until(
+        () => stream.timeline().filter(x => JSON.parse(x.data!).runId === runId).length >= families.length + (index === 2 ? 0 : 1), 5_000,
+      )));
+      expect(wakeups.map(payload => JSON.parse(payload))).toEqual(families.map((_, index) => ({ runId, sequence: index + 2 })));
+      for (const [index, stream] of streams.entries()) {
+        const events = stream.timeline().map(x => JSON.parse(x.data!)).filter(x => x.runId === runId && x.seq > 1);
+        // Only per-Run streams promise ordering; the list promises wake-ups.
+        if (index === 2) events.sort((a, b) => a.seq - b.seq);
+        expect(events.map(x => x.seq)).toEqual([2, 3, 4, 5, 6, 7, 8]);
+        expect(events.map(x => [x.eventType, x.source])).toEqual(families);
+        expect(events.every(x => !('payload' in x))).toBe(true);
+        if (index < 2) expect(stream.timeline().map(x => x.id)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8']);
+      }
+      // Reconnect from a last-seen seq in the middle of the burst, with paging.
+      const resumed = open(runId, 4, { pageSize: 1, heartbeatMs: 50 });
+      try {
+        await resumed.until(f => f.some(x => x.event === 'heartbeat'), 5_000);
+        expect(resumed.timeline().map(x => x.id)).toEqual(['5', '6', '7', '8']);
+      } finally { await resumed.close(); }
+    } finally {
+      await Promise.all(streams.map(stream => stream.close()));
+      await listener.unlisten();
+    }
+  });
+
+  it('a rolled-back append wakes nothing and adds no envelope at the next heartbeat', async () => {
+    const runId = await start(await seed());
+    const wakeups: string[] = [];
+    const listener = await sql.listen('run_timeline', payload => {
+      if (JSON.parse(payload).runId === runId) wakeups.push(payload);
+    });
+    const stream = open(runId, 0, { heartbeatMs: 50 });
+    try {
+      await stream.until(f => f.some(x => x.event === 'timeline'), 5_000);
+      await expect(new PostgresAuditUnitOfWork(db).execute(async context => {
+        await context.auditEvents.append({
+          actor: { type: 'system', id: 'channel-regression' }, eventType: 'evidence-access.read',
+          source: 'web', outcome: 'success', aggregateId: runId, sessionId: session.sessionId,
+          correlationId: ids.next(), payload: {},
+        });
+        throw new Error('rollback after append');
+      })).rejects.toThrow('rollback after append');
+      const heartbeats = stream.frames.filter(x => x.event === 'heartbeat').length;
+      await stream.until(f => f.filter(x => x.event === 'heartbeat').length > heartbeats, 5_000);
+      expect(wakeups).toEqual([]);
+      expect(await readTimelineHead(db, runId)).toBe(1);
+      expect(stream.timeline().map(x => x.id)).toEqual(['1']);
+    } finally { await stream.close(); await listener.unlisten(); }
   });
 
   it('ends itself at the lifetime with a planned end frame, and releases its listener', async () => {

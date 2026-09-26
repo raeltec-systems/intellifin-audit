@@ -2,9 +2,11 @@
 title: 'Live channel correction: notify every Run-chain append, and never lose the last refresh'
 type: 'fix'
 created: '2026-09-25'
-status: 'ready-for-dev'
+status: 'in-progress'
+baseline_commit: '429e08cf703fee6c5320f17b5983948709fd5bdf'
 review_loop_iteration: 0
-implementation_authorised: false
+implementation_authorised: true
+authorisation: 'Owner continuation instruction and PR #54, 2026-09-26; supersedes preparation-only flag.'
 context:
   - '_bmad-output/implementation-artifacts/legacy-review-closure-register.md'
   - '_bmad-output/planning-artifacts/epics.md'
@@ -81,3 +83,27 @@ the final refresh. Notifications stay wake-ups; every surface still reads the st
 - tests: integration (rollback, reconnect, each omitted family), unit (`BellLive` burst), browser (bell and Overview after a burst, no reload)
 
 **Acceptance Criteria:** as `epics.md`, Story 10.7.
+
+## Continuation — 2026-09-26
+
+The owner explicitly authorised implementation in the handoff and continuation request; PR #54 also records authorisation on 26 September. The older preparation-only state is historical. Current remote branches and recent PRs were checked before taking over: no pushed Story 10.7 implementation was found. Claude scratch work is not recovered. Branch `codex/story-10-7-live-channel` starts at main `429e08cf703fee6c5320f17b5983948709fd5bdf`, with no dependency on unmerged Story 11.1. Preserve all frozen intent. Do not merge or deploy. Run targeted unit and PostgreSQL channel checks, typecheck/boundaries, and the required browser burst proof; record any actual environment limit honestly. Do not commit or push from the implementation subagent.
+
+## Implementation checkpoint — 2026-09-26
+
+- Moved the Run NOTIFY into the common audit append path, outside conversation
+  narration and before its size-cap return. Existing command-level notifications
+  remain compatible: PostgreSQL coalesces identical channel/payload notifications
+  within one transaction. No contract wording, migration, event type or UI row changed.
+- `BellLive` now uses the existing `useThrottledRefresh` trailing throttle, preserving
+  the Overview's shared subscription.
+- Added a fake-time BellLive burst regression; PostgreSQL regressions for seven
+  omitted type/source pairs, held commit, two open Run streams, list wake-ups, paged
+  reconnect and rollback/heartbeat; and a browser burst regression with real flag
+  commits and exact bell/Overview counts, checked without a reload.
+- Verified locally with Node 24.20.0 / pnpm 11.25.0: targeted unit tests **11 passed**;
+  `pnpm typecheck` passed (including root integration/browser TypeScript);
+  `pnpm boundaries` passed over **802 modules**.
+- **Still in progress:** PostgreSQL and browser regressions are written but have not
+  run locally. The managed environment rejected the user/group operations needed to
+  start the disposable PostgreSQL server. Hosted PostgreSQL/browser execution remains
+  required before these acceptance legs can be claimed.

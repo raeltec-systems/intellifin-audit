@@ -1,8 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useRef } from 'react';
-
+import { useThrottledRefresh } from '../runs/LiveBanner';
 import { isRunEndingEvent } from '../runs/live-status';
 import { useLiveTimeline } from '../runs/useLiveTimeline';
 
@@ -31,13 +29,10 @@ export function changesOpenWaits(eventType: string): boolean {
  * nothing; the bell itself stays the typed, server-counted component it was.
  */
 export function BellLive(): null {
-  const router = useRouter();
-  const lastRefreshAt = useRef(0);
+  const refresh = useThrottledRefresh();
   useLiveTimeline('/api/runs/events', null, (event) => {
     if (!changesOpenWaits(event.eventType)) return;
-    if (Date.now() - lastRefreshAt.current < 1_000) return;
-    lastRefreshAt.current = Date.now();
-    router.refresh();
+    refresh();
   });
   return null;
 }

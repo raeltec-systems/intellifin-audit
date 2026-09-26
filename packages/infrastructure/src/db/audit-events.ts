@@ -125,6 +125,13 @@ async function appendAuditEvent(
   // The existing aggregate head lock orders these references with human messages.
   await projectRunInteractionEvent(transaction, record);
 
+  // Every Run-chain append wakes the channel in this transaction, independently of
+  // conversation visibility or its size cap. PostgreSQL discards this on rollback
+  // and coalesces identical notifications from existing command-level callers.
+  if (run) {
+    await transaction.execute(sql`SELECT pg_notify('run_timeline', ${JSON.stringify({ runId: run.runId, sequence: record.sequence })})`);
+  }
+
   // No copied prose, model call, queue, or second event authority is introduced.
   // Fixed operational copy is derived from this immutable source event at read time.
   if (run && narrateRunConversationEvent(record) !== null) {
@@ -142,7 +149,6 @@ async function appendAuditEvent(
       createdAt: new Date(record.occurredAt),
       sourceEventSequence: record.sequence,
     });
-    await transaction.execute(sql`SELECT pg_notify('run_timeline', ${JSON.stringify({ runId: run.runId, sequence: record.sequence })})`);
   }
 
   return record;

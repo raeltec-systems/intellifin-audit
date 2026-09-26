@@ -1,3 +1,14 @@
+## 2026-09-26 — Run-chain wake-ups and the bell's trailing read (Story 10.7)
+
+- `appendAuditEvent` owns the Run-chain NOTIFY regardless of whether conversation
+  narration exists or has reached its cap. Keep it inside the append transaction;
+  PostgreSQL discards it on rollback and coalesces identical notifications from
+  existing command-level callers in the same transaction.
+- `BellLive` uses `useThrottledRefresh`, the same trailing throttle as `LiveBanner`.
+  Dropping an event inside the one-second window loses the final server read. The
+  Overview relies on the bell's shared subscription, so a browser regression must
+  check both stored counts after a burst, with no document reload.
+
 ## 2026-09-25 — A single read of a moving preview sample is a race the broker refuses on purpose
 
 - **The preview route answers 503 for a read that meets a new sample, and that is the product
