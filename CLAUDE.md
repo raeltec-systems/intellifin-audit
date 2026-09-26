@@ -4630,3 +4630,7 @@ Run-first cleanup transaction, including closed/open wait rows.
 ### Story 10 screenshot evidence from CI
 
 The opt-in `STORY_VISUAL_CAPTURE=1` helper records actual synthetic browser states at 1280×800 and also 1024×800 for Timeline/Replay. The separate visual workflow retains PNGs and page facts in a small artifact, without changing the existing test gates. A successful capture is evidence to inspect, never a visual approval. Preserve the viewport and scroll position around captures so the original interactions still run.
+
+### Replay narration preserves record keys at 1024 pixels
+
+The Story 10 visual captures showed Chromium wrapping `E-000102` after the hyphen in Replay’s bold narration rail. Use the existing `keySegments` and `ls-nowrap` rendering for the frame’s exact subject key; leave the narration text and image alt unchanged. A passing browser assertion does not detect this typography defect: inspect the 1024×800 capture.
