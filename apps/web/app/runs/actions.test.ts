@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ authorize: vi.fn(), runtime: vi.fn(), initiate: vi.fn(), cancel: vi.fn(), rerun: vi.fn(), redirect: vi.fn() }));
+const mocks = vi.hoisted(() => ({ authorize: vi.fn(), runtime: vi.fn(), initiate: vi.fn(), cancel: vi.fn(), rerun: vi.fn(), flag: vi.fn(), redirect: vi.fn() }));
 vi.mock('../../src/server-session', () => ({ requireServerAction: mocks.authorize, currentCorrelationId: async () => 'trusted-correlation' }));
 vi.mock('../../src/bootstrap', () => ({ getRuntime: mocks.runtime }));
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
-vi.mock('@intellifin/application', async original => ({ ...await original<typeof import('@intellifin/application')>(), initiateRun: mocks.initiate, cancelRun: mocks.cancel, rerunRun: mocks.rerun }));
-import { cancelRunAction, initiateRunAction, initiateRunFormAction, rerunAction } from './actions';
+vi.mock('@intellifin/application', async original => ({ ...await original<typeof import('@intellifin/application')>(), initiateRun: mocks.initiate, cancelRun: mocks.cancel, rerunRun: mocks.rerun, flagRun: mocks.flag }));
+import { RUN_FLAG_REFUSALS } from '@intellifin/domain';
+import { FLAG_COPY } from '../../src/design/copy';
+import { NOTHING_CHANGED_CLAIM } from '../../src/design/nothing-changed';
+import { cancelRunAction, flagRunAction, flagRunFormAction, initiateRunAction, initiateRunFormAction, rerunAction } from './actions';
 
 const fields = { requestToken: '018f0000-0000-7000-8000-000000000099', procedureId: '018f0000-0000-7000-8000-000000000001', period: { from: '2026-09-01', to: '2026-09-30' } };
 const session = { userId: 'trusted-user', sessionId: 'trusted-session' };
@@ -15,6 +18,7 @@ beforeEach(() => {
   mocks.initiate.mockResolvedValue({ ok: true, runId: 'saved-run' });
   mocks.cancel.mockResolvedValue({ ok: true, state: 'CANCELED', pending: false });
   mocks.rerun.mockResolvedValue({ ok: true, runId: 'rerun-run' });
+  mocks.flag.mockResolvedValue({ ok: true });
 });
 
 describe('Run action request boundary', () => {
@@ -61,7 +65,7 @@ describe('Run action request boundary', () => {
     mocks.initiate.mockRejectedValue(error);
     const result = await initiateRunAction(fields);
     expect(result).toMatchObject({ ok: false, unknownOutcome: true });
-    expect(JSON.stringify(result)).not.toContain('Nothing was changed');
+    expect(JSON.stringify(result)).not.toMatch(NOTHING_CHANGED_CLAIM);
     expect(captureError).toHaveBeenCalledWith('Initiate Run failed', error, { correlationId: 'trusted-correlation', outcome: 'failure' });
   });
   it('handles a failed runtime without a framework exception', async () => {
@@ -115,7 +119,7 @@ describe('Cancel and Rerun request boundaries', () => {
     mocks.cancel.mockRejectedValue(error);
     const result = await cancelRunAction({ runId });
     expect(result).toMatchObject({ ok: false, unknownOutcome: true });
-    expect(JSON.stringify(result)).not.toContain('Nothing was changed');
+    expect(JSON.stringify(result)).not.toMatch(NOTHING_CHANGED_CLAIM);
     expect(captureError).toHaveBeenCalledWith('Cancel Run failed', error, { correlationId: 'trusted-correlation', outcome: 'failure' });
   });
   it('gates a rerun under run.initiate, because a rerun starts a Run', async () => {
@@ -138,5 +142,30 @@ describe('Cancel and Rerun request boundaries', () => {
     mocks.rerun.mockRejectedValue(error);
     expect(await rerunAction({ predecessorRunId: runId, requestToken: fields.requestToken })).toMatchObject({ ok: false, unknownOutcome: true });
     expect(captureError).toHaveBeenCalledWith('Rerun failed', error, { correlationId: 'trusted-correlation', outcome: 'failure' });
+  });
+});
+
+describe('the flag action says nothing changed only when its outcome establishes it (Story 10.8)', () => {
+  it('passes a refusal through unchanged: the command refused before it wrote anything', async () => {
+    mocks.flag.mockResolvedValue({ ok: false, reason: RUN_FLAG_REFUSALS.NOT_FLAGGABLE });
+    const result = await flagRunAction({ runId, note: null });
+    expect(result).toEqual({ ok: false, reason: RUN_FLAG_REFUSALS.NOT_FLAGGABLE });
+    expect(mocks.flag.mock.calls[0]?.[1]).toEqual({ session, request: { runId, note: null } });
+  });
+  it('says the outcome is unknown, and never that nothing changed, when the flag command threw', async () => {
+    // The flag may have committed: its row, its event and every notification are written in
+    // one transaction, and a throw can come after that commit.
+    const captureError = vi.fn(), error = new Error('response lost after commit');
+    mocks.runtime.mockResolvedValue({ db: {}, telemetry: { captureError } });
+    mocks.flag.mockRejectedValue(error);
+    const result = await flagRunAction({ runId, note: 'A note.' });
+    expect(result).toEqual({ ok: false, reason: FLAG_COPY.unknown, unknownOutcome: true });
+    expect(JSON.stringify(result)).not.toMatch(NOTHING_CHANGED_CLAIM);
+    expect(captureError).toHaveBeenCalledWith('Flag Run failed', error, { correlationId: 'trusted-correlation', outcome: 'failure' });
+  });
+  it('reaches the same action from the native form, with the note that was typed', async () => {
+    const data = new FormData(); data.set('runId', runId); data.set('note', 'Typed in the form.');
+    expect(await flagRunFormAction(null, data)).toEqual({ ok: true });
+    expect(mocks.flag.mock.calls[0]?.[1]).toEqual({ session, request: { runId, note: 'Typed in the form.' } });
   });
 });

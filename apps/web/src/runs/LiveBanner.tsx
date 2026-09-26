@@ -7,19 +7,11 @@ import { useCallback, useEffect, useRef } from 'react';
 import { Banner } from '../design/Banner';
 import { STALE_DATA_ACTION, updatedAtTitle } from '../design/copy';
 import { readableStamp } from '../design/time';
-import { liveSentence, type LiveStatus } from './live-status';
+import { LIVE_WORDS, liveSentence, type LiveStatus } from './live-status';
 import { useLiveTimeline, type LiveTimelineEvent } from './useLiveTimeline';
 
 /** At most one server re-read per second, however many events arrive. */
 export const REFRESH_THROTTLE_MS = 1_000;
-
-const LIVE_WORDS: Record<LiveStatus, string> = {
-  connecting: 'Connecting',
-  live: 'Live',
-  stale: 'No update',
-  lost: 'Connection lost',
-  ended: 'Live update ended',
-};
 
 /**
  * The banner as MARKUP, with no subscription of its own (extracted in Story 5.7).

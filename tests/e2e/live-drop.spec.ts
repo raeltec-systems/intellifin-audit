@@ -1,4 +1,6 @@
-import { expect, test } from '@playwright/test';
+import { captureStoryState } from './story-visual-capture';
+import AxeBuilder from '@axe-core/playwright';
+import { expect, test, type Page } from '@playwright/test';
 
 import { cancelRun, type CancelRunDependencies } from '@intellifin/application';
 import {
@@ -14,7 +16,7 @@ import {
 } from '@intellifin/infrastructure';
 
 import { FLAG_COPY } from '../../apps/web/src/design/copy';
-import { LIVE_GATE_REASONS, LIVE_LOST_MS, LIVE_SENTENCES } from '../../apps/web/src/runs/live-status';
+import { LIVE_GATE_NOTE_ID, LIVE_GATE_REASONS, LIVE_LOST_MS, LIVE_SENTENCES, LIVE_WORDS } from '../../apps/web/src/runs/live-status';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 
@@ -104,6 +106,115 @@ async function seedRun(state: 'RUNNING' | 'PAUSED' = 'RUNNING'): Promise<string>
   return runId;
 }
 
+/**
+ * The Run's chain moves on, the way a worker's own progress moves it: one event appended
+ * through the real writer, with the notification every writer issues. Nothing on the page
+ * reads this event's content; what it changes is the chain HEAD, which is the cursor the
+ * next server read of Live View hands the subscription.
+ */
+async function appendProgress(runId: string): Promise<void> {
+  await new PostgresRunsUnitOfWork(createDb(sql)).execute(async (context) => {
+    const event = await context.auditEvents.append({
+      actor: { type: 'system', id: 'live-drop-fixture' }, source: 'worker', outcome: 'success',
+      eventType: 'lifecycle.run-progressed', aggregateId: runId, correlationId: ids.next(),
+      sessionId: 'live-drop-progress', payload: {},
+    });
+    await context.notifyTimeline(runId, event.sequence);
+  });
+}
+
+/**
+ * What a reader is told about the live channel and what the live controls permit, read in
+ * ONE page read so no fact can change between two reads of it (a poll that reads a count
+ * and then a text can report a state the page was never in).
+ */
+async function liveFacts(page: Page): Promise<Record<string, unknown>> {
+  return page.evaluate(({ reason, noteId }) => {
+    const banner = document.querySelector('[data-live-status]');
+    const button = (name: string): Element | null =>
+      [...document.querySelectorAll('button')].find((candidate) => candidate.textContent?.trim() === name) ?? null;
+    // What a withdrawn control says to a screen reader: the text of what it is described by.
+    const described = (name: string): string | null => {
+      const ids = button(name)?.getAttribute('aria-describedby')?.split(/\s+/).filter(Boolean) ?? [];
+      return ids.length === 0 ? null : ids.map((id) => document.getElementById(id)?.textContent?.trim() ?? '').join(' ');
+    };
+    // What a SIGHTED reader can see: laid out and painted, and not the visually hidden
+    // description a screen reader gets. `toBeVisible` passes a 1px clipped element.
+    const painted = (element: Element | null): boolean => {
+      if (element === null || element.closest('.ls-visually-hidden') !== null) return false;
+      const box = element.getBoundingClientRect();
+      return element.checkVisibility() && box.width > 1 && box.height > 1;
+    };
+    const note = document.getElementById(noteId);
+    const flagReason = document.getElementById('run-flag-note-withdrawn');
+    return {
+      status: banner?.getAttribute('data-live-status') ?? null,
+      // The WORD is what the polite region announces; the sentence beside it is not.
+      word: banner?.querySelector('[aria-live]')?.textContent ?? null,
+      sentence: banner?.querySelector('[aria-hidden="true"]')?.textContent ?? null,
+      pause: button('Pause')?.getAttribute('aria-disabled') ?? null,
+      cancel: button('Cancel Run')?.getAttribute('aria-disabled') ?? null,
+      pauseReason: described('Pause'),
+      cancelReason: described('Cancel Run'),
+      // The flag form sits in a disclosure in the header (UX-48); its submit is in the DOM
+      // whether or not the disclosure is open.
+      flag: document.querySelector('#run-flag button[type="submit"]')?.getAttribute('aria-disabled') ?? null,
+      // The header's own statement of why its controls are withdrawn (Story 10.8 screenshot
+      // review), seen with the flag disclosure closed; and the caption inside the disclosure,
+      // which says why its note and submit are withdrawn. Each must be painted, not only there.
+      note: note?.textContent ?? null,
+      noteShown: painted(note),
+      flagReasonShown: painted(flagReason) && flagReason?.textContent === reason,
+      // Anywhere on the page, so the recovery can say the reason is gone from every place.
+      // `textContent` of the whole page would count hidden text too.
+      reasonShown: [...document.querySelectorAll('body *')].some((element) =>
+        element.children.length === 0 && (element.textContent ?? '').trim() === reason && painted(element)),
+    };
+  }, { reason: LIVE_GATE_REASONS.lost, noteId: LIVE_GATE_NOTE_ID });
+}
+
+/**
+ * Open the flag disclosure, whose caption is where a sighted reader is told why the live
+ * controls are withdrawn. After hydration, always: a native `<details>` clicked before React
+ * attaches gets an `open` the server never rendered, which is a hydration mismatch.
+ */
+async function openFlagPanel(page: Page): Promise<void> {
+  await expect(page.locator('#run-cancel')).toHaveAttribute('data-client-ready', 'true');
+  if (!(await page.locator('#run-flag').evaluate((details) => (details as HTMLDetailsElement).open))) {
+    await page.locator('#run-flag > summary').click();
+  }
+  await expect(page.locator('#run-flag')).toHaveJSProperty('open', true);
+}
+
+/** A lost stream as Live View must state it: the word, the sentence, and every live control withdrawn with its reason. */
+const LOST_LIVE_VIEW = {
+  status: 'lost',
+  word: LIVE_WORDS.lost,
+  sentence: LIVE_SENTENCES.lost,
+  pause: 'true',
+  cancel: 'true',
+  pauseReason: LIVE_GATE_REASONS.lost,
+  cancelReason: LIVE_GATE_REASONS.lost,
+  flag: 'true',
+  note: LIVE_GATE_REASONS.lost,
+  noteShown: true,
+  // Every caller has opened the flag disclosure first, where this caption is.
+  flagReasonShown: true,
+  reasonShown: true,
+} as const;
+
+/**
+ * Read the facts several times over a few seconds. The defect this guards against is a
+ * page that flips back to `live` a moment AFTER a re-read lands, so one read is not
+ * "throughout"; each sample is still a single page read.
+ */
+async function expectThroughout(page: Page, expected: Record<string, unknown>, samples = 8): Promise<void> {
+  for (let sample = 0; sample < samples; sample += 1) {
+    expect(await liveFacts(page), `sample ${sample + 1} of ${samples}`).toMatchObject(expected);
+    await page.waitForTimeout(500);
+  }
+}
+
 test.describe('Live View when the stream drops', () => {
   test.use({ storageState: AUTH_STATE.auditor });
 
@@ -127,17 +238,30 @@ test.describe('Live View when the stream drops', () => {
     await expect(page.locator('[data-live-status]'))
       .toHaveAttribute('data-live-status', 'lost', { timeout: LIVE_LOST_MS + 30_000 });
     await expect(page.getByText(LIVE_SENTENCES.lost)).toBeVisible();
+    // Said where a sighted reader looks, before anything is opened: the header states why
+    // its controls are withdrawn, rather than leaving greyed buttons whose reason only a
+    // screen reader or the closed flag disclosure could give.
+    const note = page.locator(`#${LIVE_GATE_NOTE_ID}`);
+    await expect(note).toBeVisible();
+    await expect(note).toHaveText(LIVE_GATE_REASONS.lost);
+    await captureStoryState(page, 'live-lost-controls');
+    await expect(page.locator('#run-flag')).toHaveJSProperty('open', false);
 
     // Every live control, disabled and saying why. `aria-disabled`, never `disabled`, so
     // the reason stays reachable by keyboard.
     // The flag form opens from a disclosure in the page header (UI cleanup 2026-09-22,
     // UX-48); a role locator does not see a control inside a closed one.
-    await page.locator('#run-flag > summary').click();
+    await openFlagPanel(page);
     for (const name of ['Pause', 'Cancel Run', FLAG_COPY.submit]) {
       const control = page.getByRole('button', { name, exact: true });
       await expect(control).toHaveAttribute('aria-disabled', 'true');
     }
-    await expect(page.getByText(LIVE_GATE_REASONS.lost).first()).toBeAttached();
+    // Seen, not only present: the caption under the flag note is the reason a sighted
+    // reader reads, and each withdrawn button is described by it for a screen reader.
+    await expect(page.locator('#run-flag-note-withdrawn')).toBeVisible();
+    await expect(page.locator('#run-flag-note-withdrawn')).toHaveText(LIVE_GATE_REASONS.lost);
+    await captureStoryState(page, 'live-lost-flag', page.locator('#run-flag'));
+    expect(await liveFacts(page)).toMatchObject(LOST_LIVE_VIEW);
 
     // A click on a withdrawn control does nothing at all — no dialog, no request.
     // `force`, because Playwright refuses to click an `aria-disabled` element and would
@@ -194,6 +318,156 @@ test.describe('Live View when the stream drops', () => {
     expect(row).toMatchObject({ state: 'RUNNING', cancel_requested_by: null });
   });
 
+  test('stays lost through a server re-read and a remount, and comes back only when the stream does (Story 10.8)', async ({ page }) => {
+    /**
+     * The defect: `useLiveTimeline` restarted its silence clock whenever its `[url, cursor]`
+     * effect ran, and a server re-read that moves the cursor re-runs it. So a re-read that
+     * landed during a drop — the shell's bell refreshing because ANOTHER Run ended — made
+     * the page say `live` and reopened every live control while the stream was still down.
+     *
+     * The re-read here is exactly that one: this Run's chain moves on while its stream is
+     * unreachable, then another Run ends, the bell re-reads the page, and the page comes
+     * back with a new cursor. The test first proves the re-read really re-subscribed (a
+     * new `EventSource` for this Run) — without that it would pass against the defect —
+     * and then reads the word, the sentence and the controls several times over.
+     */
+    test.setTimeout(240_000);
+    const runId = await seedRun();
+    // PAUSED, so the COMMAND ends it (`RUN_CANCEL_TRANSITIONS`) and the terminal events
+    // really reach the list stream the bell follows.
+    const otherRunId = await seedRun('PAUSED');
+    const stream = `/api/runs/${runId}/events`;
+
+    // Every `EventSource` the page constructs, by URL. A reconnect `EventSource` makes by
+    // itself constructs nothing; only the subscription effect does.
+    await page.addInitScript(() => {
+      const Native = window.EventSource;
+      const opened: string[] = [];
+      Object.defineProperty(window, '__liveStreamsOpened', { value: opened });
+      window.EventSource = class extends Native {
+        constructor(url: string | URL, init?: EventSourceInit) {
+          super(url, init);
+          opened.push(String(url));
+        }
+      };
+    });
+    const subscriptions = (): Promise<number> => page.evaluate((prefix) =>
+      ((window as unknown as { __liveStreamsOpened?: string[] }).__liveStreamsOpened ?? [])
+        .filter((url) => url.startsWith(prefix)).length, stream);
+
+    // Until the drop, each connection to THIS Run's stream answers with one heartbeat and
+    // closes, so the page is live and reconnects on its own every two seconds. From the
+    // drop on, every attempt fails at the network, as a real drop does. The list stream the
+    // bell follows is a different URL and is never touched.
+    let dropping = false;
+    let attemptsWhileDropping = 0;
+    await page.route(`**${stream}*`, async (route) => {
+      if (dropping) {
+        attemptsWhileDropping += 1;
+        await route.abort();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-store' },
+        body: `retry: 2000\n\nevent: heartbeat\ndata: ${JSON.stringify({ at: new Date().toISOString() })}\n\n`,
+      });
+    });
+
+    await page.goto(`/runs/${runId}/live`);
+    const banner = page.locator('[data-live-status]');
+    await expect(banner).toHaveAttribute('data-live-status', 'live', { timeout: 30_000 });
+    await expect(page.getByRole('button', { name: 'Pause', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+
+    dropping = true;
+    await expect(banner).toHaveAttribute('data-live-status', 'lost', { timeout: LIVE_LOST_MS + 30_000 });
+    await openFlagPanel(page);
+    await expectThroughout(page, LOST_LIVE_VIEW, 2);
+
+    // The Run's chain moves on while the page cannot hear it.
+    await appendProgress(runId);
+    const before = await subscriptions();
+
+    // An UNRELATED re-read: another Run ends and the shell's bell re-reads the page.
+    const reRead = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === 'GET' && request.resourceType() === 'fetch'
+        && new URL(response.url()).pathname === `/runs/${runId}/live`;
+    }, { timeout: 30_000 });
+    // Observed at once, so a failure of the command below cannot leave it unhandled.
+    void reRead.catch(() => undefined);
+    const cancelled = await cancelRun(cancelDependencies(), {
+      session: { userId: author, sessionId: `live-drop-${author}` },
+      request: { runId: otherRunId, reason: null },
+    });
+    expect(cancelled).toEqual({ ok: true, state: 'CANCELED', pending: false });
+    await reRead;
+
+    // The precondition that lets this test fail: the re-read handed the page a new cursor,
+    // so the subscription effect ran again and opened a new connection.
+    await expect.poll(subscriptions, { timeout: 15_000 }).toBeGreaterThan(before);
+    await expectThroughout(page, LOST_LIVE_VIEW);
+
+    // WCAG 2.1 AA on the surface in exactly this state.
+    await expect(page).toHaveTitle(/.+/);
+    const scan = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(scan.violations.map((v) => ({ id: v.id, nodes: v.nodes.map((n) => n.target.join(' ')) }))).toEqual([]);
+
+    // A remount is not recovery either. Run Detail and the Auditor Workspace follow the SAME
+    // stream, so moving between them hands the clock on rather than starting it again: every
+    // page says `lost` at once. A fresh clock would say `connecting` for fifteen seconds and
+    // then `stale` — and neither is a gate reason, so the live controls would be back for a
+    // whole minute on a stream that is still down.
+    await page.getByRole('link', { name: 'Open Run Detail' }).click();
+    await expect(page.getByRole('link', { name: 'Execution Timeline', exact: true })).toBeVisible();
+    await expect(banner).toHaveAttribute('data-live-status', 'lost', { timeout: 5_000 });
+    await expect(banner.locator('[aria-hidden="true"]')).toHaveText(LIVE_SENTENCES.lost);
+    // WCAG 2.1 AA on Run Detail in the state it inherited.
+    await expect(page).toHaveTitle(/.+/);
+    const detailScan = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(detailScan.violations.map((v) => ({ id: v.id, nodes: v.nodes.map((n) => n.target.join(' ')) }))).toEqual([]);
+    await captureStoryState(page, 'run-detail-lost');
+
+    await page.getByRole('link', { name: 'Open Auditor Workspace', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/runs/${runId}/workspace$`));
+    await expect(banner).toHaveAttribute('data-live-status', 'lost', { timeout: 5_000 });
+    await expect(banner.locator('[aria-hidden="true"]')).toHaveText(LIVE_SENTENCES.lost);
+    await expect(banner.locator('[aria-live]')).toHaveText(LIVE_WORDS.lost);
+    await captureStoryState(page, 'workspace-lost');
+
+    // Each step back waits for its OWN address before the next: a second `goBack` issued
+    // while the first soft navigation is still committing lands somewhere else.
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/runs/${runId}$`));
+    await expect(page.getByRole('link', { name: 'Execution Timeline', exact: true })).toBeVisible();
+    await expect(banner).toHaveAttribute('data-live-status', 'lost', { timeout: 5_000 });
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/runs/${runId}/live$`));
+    await expect(page.getByRole('heading', { name: /^Live View · / })).toBeVisible();
+    await openFlagPanel(page);
+    await expectThroughout(page, LOST_LIVE_VIEW);
+
+    // The stream returns: the browser's own retry reaches the real route, the stream itself
+    // answers, and only now is the page live and its controls back.
+    await page.unroute(`**${stream}*`);
+    await expect(banner).toHaveAttribute('data-live-status', 'live', { timeout: 30_000 });
+    await expect(page.getByText(LIVE_SENTENCES.live)).toBeVisible();
+    for (const name of ['Pause', 'Cancel Run', FLAG_COPY.submit]) {
+      await expect(page.getByRole('button', { name, exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+    }
+    // Every control back, and the reason gone with the state it described.
+    expect(await liveFacts(page)).toMatchObject({
+      status: 'live', pause: null, cancel: null, flag: null, pauseReason: null, cancelReason: null,
+      note: null, noteShown: false, flagReasonShown: false, reasonShown: false,
+    });
+    expect(attemptsWhileDropping).toBeGreaterThan(0);
+    await captureStoryState(page, 'live-reconnected');
+
+    // None of this changed the Run being watched.
+    const [row] = await sql`SELECT state, cancel_requested_by FROM audit_run WHERE run_id=${runId}`;
+    expect(row).toMatchObject({ state: 'RUNNING', cancel_requested_by: null });
+  });
+
   test('re-subscribes with a cursor it could hold, and never one ahead of the chain', async ({ page }) => {
     test.setTimeout(120_000);
     const runId = await seedRun();
@@ -203,8 +477,8 @@ test.describe('Live View when the stream drops', () => {
     // What this can and cannot establish, because CI proved the difference and this
     // machine did not. The frames below carry SYNTHETIC sequences that reach no chain, so
     // `router.refresh()` re-reads a server cursor that never advances past the seeded head.
-    // `useLiveTimeline` seeds `lastSeqRef` from that server `cursor` and re-runs its effect
-    // on `[url, cursor]`, so every remount re-subscribes at the SERVER's number — correct
+    // `useLiveTimeline` seeds its last sequence (`LiveStreamState.lastSeq`) from that server
+    // `cursor` when it mounts, so every remount re-subscribes at the SERVER's number — correct
     // in production, where the client's frames all came FROM the chain and the server's
     // cursor is therefore never behind, and unobservable here, where they did not.
     //

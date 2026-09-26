@@ -30,9 +30,17 @@ The notification is a wake-up only: what is streamed is always read from the tab
     8601 UTC instant, `eventType` the chain's closed `family.name`, `outcome` and
     `source` the chain's own fields. No payload travels: a consumer re-reads what it
     renders from the server at that sequence.
-  - `event: heartbeat` / `data: {"at":"<ISO instant>"}` every 10 seconds while no
-    Timeline event is sent. A client that has seen no frame for 15 seconds is stale, for
-    60 seconds has lost the stream (UX-DR25).
+  - `event: heartbeat` / `data: {"at":"<ISO instant>"}` once as soon as the stream is
+    armed and caught up (its LISTEN in place and the replay read, before the first tick),
+    and then every 10 seconds while no Timeline event is sent. A client that has seen no
+    frame for 15 seconds is stale, for 60 seconds has lost the stream (UX-DR25). The first
+    heartbeat is how a new connection is heard: a connection answering is not a frame (the
+    route answers before it has armed its LISTEN), so without it every planned renewal
+    and every page move would open up to a heartbeat interval of silence on a healthy,
+    quiet Run, and a page moved again before the first tick would hear nothing at all
+    (Story 10.8). It reads nothing, so between it and the first tick only a wake-up reads
+    the chain. A stream whose LISTEN fails, or whose replay cannot be read, sends `end`
+    with `unavailable` and no heartbeat.
   - `event: end` / `data: {"reason":"lifetime"|"unavailable"}` and then the response
     closes: `lifetime` after 14 minutes, so the client reconnects on its own schedule;
     `unavailable` when the server could not read the chain. `EventSource` reconnects

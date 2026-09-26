@@ -17,6 +17,7 @@ import { Reference } from '../../../../src/design/Reference';
 import { Timestamp } from '../../../../src/design/Timestamp';
 import { DetailTrail } from '../../../../src/procedures/DetailTrail';
 import { LiveGate } from '../../../../src/runs/LiveGate';
+import { LiveGateNote } from '../../../../src/runs/LiveGateNote';
 import { RunCancelControl } from '../../../../src/runs/RunCancelControl';
 import { RunFlagControl } from '../../../../src/runs/RunFlagControl';
 import { RunPauseControls } from '../../../../src/runs/RunPauseControls';
@@ -218,7 +219,11 @@ export default async function RunLivePage({
           <Reference kind="Run" value={run.runId} /> · started <Timestamp value={run.initiatedAt} precision="minute" />
         </>
       }
-    />
+    >
+      {/* Why the controls above are withdrawn, while the stream says they are: the gate
+          reads it, so it has to render inside the gate, which is where this header is. */}
+      <LiveGateNote />
+    </PageHeader>
   );
 
   return (
