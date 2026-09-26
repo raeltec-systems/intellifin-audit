@@ -6,7 +6,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 import { REPLAY_COPY, UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
 import { ReplayViewer, type ReplayFrameView } from './ReplayViewer';
-import { REPLAY_GAP_WORDS, replayGapPosition, replayIncompleteSentence, type ReplayGapsView, type ReplayJumpTarget } from './replay';
+import { REPLAY_BOUND_WORDS, REPLAY_GAP_WORDS, replayGapPosition, replayIncompleteSentence, type ReplayGapsView, type ReplayJumpTarget } from './replay';
 import { ADAPTER_ARTIFACT_WORDS } from './live-view';
 import { captureSentence } from './labels';
 
@@ -59,6 +59,7 @@ function render(input: Partial<React.ComponentProps<typeof ReplayViewer>> = {}):
     plannedSteps: 4,
     stageNote: REPLAY_COPY.noFrames,
     jumpTargets: [],
+    jumpTotals: { escalations: 0, exceptions: 0 },
     instructions: [],
     adapterSteps: [],
     ...input,
@@ -182,6 +183,83 @@ describe('a jump target with no frame to open', () => {
     const html = render({ framesTotal: 500, jumpTargets: [target] });
     expect(html).toContain(REPLAY_COPY.noFrameBeforeTarget);
     expect(html).not.toContain(REPLAY_COPY.frameNotRead.replace('{shown}', '3'));
+  });
+});
+
+/**
+ * A bounded jump list says what it covers, before it lists anything (Story 10.9). The page
+ * reads the first `REPLAY_PAGE_SIZE` Escalations and Exceptions; this list used to stop
+ * there and read as every one the Run raised.
+ */
+describe('a bounded jump list says what it covers (Story 10.9)', () => {
+  const WORK = '019823ab-0000-7000-8000-0000000000c9';
+  const escalation = (id: string): ReplayJumpTarget => ({ kind: 'escalation', id, label: 'Choose candidate', frameIndex: 0, absence: null });
+  const exception = (id: string): ReplayJumpTarget => ({ kind: 'exception', id, label: 'E-000105', frameIndex: 1, absence: null });
+  const [restBefore, restAfter] = REPLAY_BOUND_WORDS.rest.split(REPLAY_BOUND_WORDS.restLink);
+  const rest = `${restBefore}<a href="/runs/${RUN_ID}/evidence">${REPLAY_BOUND_WORDS.restLink}</a>${restAfter}`;
+
+  it('states each bounded kind with the exact totals, and links the way to the rest', () => {
+    const html = render({ jumpTargets: [escalation('w1'), escalation('w2'), exception('e1')],
+      jumpTotals: { escalations: 612, exceptions: 1_204 } });
+    expect(html).toContain('Showing the first 2 of 612 Escalations.');
+    expect(html).toContain('Showing the first 1 of 1,204 Exceptions.');
+    // The owner's sentence, word for word; only "record review" is a link.
+    expect(html).toContain(rest);
+  });
+
+  it('says it BEFORE the list, so a reader knows the list is partial before reading it', () => {
+    const html = render({ jumpTargets: [escalation('w1')], jumpTotals: { escalations: 900, exceptions: 0 } });
+    expect(html.indexOf('Showing the first 1 of 900 Escalations.')).toBeGreaterThan(html.indexOf('Jump to'));
+    expect(html.indexOf('Showing the first 1 of 900 Escalations.')).toBeLessThan(html.indexOf('ls-session__jumps'));
+  });
+
+  it('names only the kind that is bounded', () => {
+    const html = render({ jumpTargets: [escalation('w1'), exception('e1')], jumpTotals: { escalations: 1, exceptions: 700 } });
+    expect(html).toContain('Showing the first 1 of 700 Exceptions.');
+    expect([...html.matchAll(/Showing the first/g)]).toHaveLength(1);
+  });
+
+  it('says nothing when the list names every one, which is every Run under the bound', () => {
+    const html = render({ jumpTargets: [escalation('w1'), exception('e1')], jumpTotals: { escalations: 1, exceptions: 1 } });
+    expect(html).not.toContain('Showing the first');
+    expect(html).not.toContain(restBefore!);
+  });
+
+  it('counts what the list RENDERS, so the sentence describes the list under it', () => {
+    // Two Escalations listed of three: the shown number comes from the targets, never from
+    // a figure handed in beside them.
+    const html = render({ jumpTargets: [escalation('w1'), escalation('w2')], jumpTotals: { escalations: 3, exceptions: 0 } });
+    expect(html).toContain('Showing the first 2 of 3 Escalations.');
+  });
+
+  it('never says a bounded Run recorded nothing to jump to', () => {
+    const html = render({ jumpTargets: [], jumpTotals: { escalations: 5, exceptions: 0 } });
+    expect(html).not.toContain(REPLAY_COPY.noJumpTargets);
+    expect(html).toContain('Showing the first 0 of 5 Escalations.');
+    // Under the bound, an empty list still says the Run recorded nothing.
+    expect(render({ jumpTargets: [], jumpTotals: { escalations: 0, exceptions: 0 } })).toContain(REPLAY_COPY.noJumpTargets);
+  });
+
+  it('opens an Escalation it did not read at the inspection page that holds its frame', () => {
+    const target: ReplayJumpTarget = { kind: 'escalation', id: 'w-late', label: 'Choose candidate', workItemId: WORK,
+      inspectionCursor: 500, frameIndex: null, absence: 'not-read' };
+    const html = render({ framesTotal: 900, jumpTargets: [target], jumpTotals: { escalations: 1, exceptions: 0 } });
+    expect(html).toContain(REPLAY_COPY.frameNotRead.replace('{shown}', '3'));
+    expect(html).toContain(`href="/runs/${RUN_ID}/replay?workItem=${WORK}&amp;cursor=500"`);
+  });
+
+  it('keeps the first inspection page for a target whose frame is its record’s first', () => {
+    const target: ReplayJumpTarget = { kind: 'exception', id: 'e-late', label: 'E-000901', workItemId: WORK,
+      frameIndex: null, absence: 'not-read' };
+    const html = render({ framesTotal: 900, jumpTargets: [target], jumpTotals: { escalations: 0, exceptions: 1 } });
+    expect(html).toContain(`href="/runs/${RUN_ID}/replay?workItem=${WORK}"`);
+  });
+
+  it('says nothing about bounds on one record’s inspection, which lists no jump targets', () => {
+    const html = render({ jumpTargets: [], jumpTotals: null,
+      window: { kind: 'inspection', workItemId: WORK, label: 'E-000901 · LoanCore', total: 3, cursor: 0, previousCursor: null, nextCursor: null } });
+    expect(html).not.toContain('Showing the first');
+    expect(html).not.toContain('Jump to');
   });
 });
 

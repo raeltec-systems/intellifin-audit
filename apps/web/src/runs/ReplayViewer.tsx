@@ -10,17 +10,20 @@ import { REPLAY_COPY } from '../design/copy';
 import { AdapterStepLog, FrameSource, SessionChrome, SessionStage, type LiveViewerAdapterStep, type LiveViewerFrame } from './LiveViewer';
 import { UntrustedPolicy, UntrustedText } from './UntrustedText';
 import {
+  REPLAY_BOUND_WORDS,
   REPLAY_GAP_WORDS,
   clampReplayIndex,
   replayGapPosition,
   replayGapsAt,
   replayIncompleteSentence,
   replayInspectionHref,
+  replayJumpBoundSentence,
   type ReplayFrameAbsence,
   type ReplayGapView,
   type ReplayGapsView,
   type ReplayInitialSelection,
   type ReplayJumpTarget,
+  type ReplayJumpTotals,
   type ReplayWindow,
 } from './replay';
 import { recordFramePosition, toolActionNarration } from './session-words';
@@ -64,6 +67,12 @@ export interface ReplayViewerProps {
   readonly plannedSteps: number | null;
   readonly stageNote: string | null;
   readonly jumpTargets: readonly ReplayJumpTarget[];
+  /**
+   * The EXACT number of Escalations and Exceptions the Run holds, beside the bounded pages
+   * `jumpTargets` was built from (Story 10.9). REQUIRED, so no view can leave a bounded list
+   * unsaid by forgetting it; `null` only where no jump list renders, an inspection page.
+   */
+  readonly jumpTotals: ReplayJumpTotals | null;
   readonly instructions: readonly { readonly system: string; readonly text: string }[];
   readonly adapterSteps: readonly LiveViewerAdapterStep[];
   /** Where Replay opens: the first frame, a requested inspection, or a request it could not resolve. */
@@ -113,6 +122,41 @@ function GapMarker({ gap }: { readonly gap: ReplayGapView }): React.JSX.Element 
       aria-label={`${gap.mark}, ${replayGapPosition(gap.framesBefore)}: ${gap.narration}`}
       title={`${gap.mark}, ${replayGapPosition(gap.framesBefore)}`}
     />
+  );
+}
+
+/**
+ * The jump list's bound sentences, one per kind the list names only part of (Story 10.9).
+ *
+ * `shown` is counted from the targets this list RENDERS, never taken from a read, so the
+ * sentence cannot describe a list other than the one under it; `total` is the Run's exact
+ * count. Empty when the list names everything, which is every Run under the bound.
+ */
+function jumpBoundSentences(targets: readonly ReplayJumpTarget[], totals: ReplayJumpTotals | null): readonly string[] {
+  if (totals === null) return [];
+  const shown = (kind: ReplayJumpTarget['kind']): number => targets.filter((target) => target.kind === kind).length;
+  return [
+    replayJumpBoundSentence('escalation', shown('escalation'), totals.escalations),
+    replayJumpBoundSentence('exception', shown('exception'), totals.exceptions),
+  ].filter((sentence): sentence is string => sentence !== null);
+}
+
+/**
+ * What the jump list covers when it is bounded, and the way to the rest (Story 10.9): its
+ * record's own inspection, which the record review opens and which pages through every
+ * capture the Run retained for that record. The sentence is the owner's, word for word;
+ * only its "record review" is a link.
+ */
+function JumpBounds({ runId, bounds }: { readonly runId: string; readonly bounds: readonly string[] }): React.JSX.Element | null {
+  if (bounds.length === 0) return null;
+  const [before, after] = REPLAY_BOUND_WORDS.rest.split(REPLAY_BOUND_WORDS.restLink);
+  return (
+    <div className="ls-stack" data-jump-bounds="">
+      {bounds.map((sentence) => <p key={sentence} className="ls-caption">{sentence}</p>)}
+      <p className="ls-caption">
+        {before}<Link href={`/runs/${runId}/evidence`}>{REPLAY_BOUND_WORDS.restLink}</Link>{after}
+      </p>
+    </div>
   );
 }
 
@@ -243,6 +287,8 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
    * selected. A count of frames "for this record" over a session nobody jumped into is a
    * number about nothing.
    */
+  const jumpBounds = jumpBoundSentences(props.jumpTargets, props.jumpTotals);
+
   const ofRecord = ((): string | null => {
     if (frame === null || jumped === null || jumped.kind !== 'work-item') return null;
     const mine = props.frames.filter((item) => item.workItemId === jumped.id);
@@ -434,7 +480,9 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
           the link above, so it lists no jump targets of its own. */}
       {props.window !== undefined ? null : <section aria-labelledby="replay-jump-heading" className="ls-card ls-stack">
         <h3 id="replay-jump-heading">Jump to</h3>
-        {props.jumpTargets.length === 0 ? <p>{REPLAY_COPY.noJumpTargets}</p> : (
+        {/* Said BEFORE the list, so a reader knows it is partial before reading it. */}
+        <JumpBounds runId={props.runId} bounds={jumpBounds} />
+        {props.jumpTargets.length === 0 ? (jumpBounds.length === 0 ? <p>{REPLAY_COPY.noJumpTargets}</p> : null) : (
           <ul className="ls-session__jumps">
             {props.jumpTargets.map((target) => (
               <li key={`${target.kind}-${target.id}`}>
@@ -446,7 +494,9 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
                   <span>
                     {JUMP_WORDS[target.kind]} · <span className="ls-mono">{target.label}</span>
                     {' '}· {absenceSentence(target.absence, props.frames.length)}
-                    {target.absence === 'not-read' && target.workItemId !== undefined ? <> <Link href={replayInspectionHref(props.runId, target.workItemId)}>Open inspection Replay</Link></> : null}
+                    {/* The inspection page that HOLDS the frame: an Escalation's can sit past that
+                        record's first page (Story 10.9). */}
+                    {target.absence === 'not-read' && target.workItemId !== undefined ? <> <Link href={replayInspectionHref(props.runId, target.workItemId, target.inspectionCursor ?? 0)}>Open inspection Replay</Link></> : null}
                   </span>
                 ) : (
                   <button

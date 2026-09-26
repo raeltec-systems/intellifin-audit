@@ -1,5 +1,5 @@
 import { evaluationReviewJoin, effectiveEvaluationConfirmation, effectiveEvaluationValue } from './effective-evaluation.js';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import type {
   EvaluationConfirmation,
   EvaluationOrigin,
@@ -22,7 +22,6 @@ import type { Database, Transaction } from '../db/client.js';
 import { isUuidText } from '../db/identifier.js';
 import { captureSuppressedPredicate, frameMissingPredicate } from './replay-gaps.js';
 import {
-  auditEvents,
   populationExecution,
   runAgentWork,
   runEvidence,
@@ -41,7 +40,6 @@ import {
   runSessionStep,
   runStepExecution,
   runToolAction,
-  runWait,
   runWorkItem,
   runWorkspace,
 } from '../db/schema.js';
@@ -89,6 +87,12 @@ export const REPLAY_FRAME_LIMIT = 500;
  *
  * A limit belongs to the cardinality of the READ, not to the table it starts from — the
  * rule this file already learned once, in the PR 23 second pass.
+ *
+ * A bound is still a bound, and a Run can hold more of a thing than one page (Story 10.9):
+ * `readEscalations` and `readReplayExceptions` each answer the EXACT total beside their
+ * page, which the surface states whenever the page holds fewer; and the Observation count
+ * beside a frame is not summed from a page of registration events at all any more —
+ * `readFrames` counts it over the whole history.
  */
 export const REPLAY_PAGE_SIZE = REPLAY_FRAME_LIMIT;
 
@@ -443,6 +447,20 @@ export interface RunFrameRow {
   readonly actionStartedAt: string;
 }
 
+/**
+ * One of Replay's frames, with how many Observations the Run had registered when it was
+ * captured (Story 10.9).
+ *
+ * EXACT: counted in SQL over the Run's WHOLE registration history, at the frame's own
+ * action start, by the rule the selected-inspection page counts with. It used to be summed
+ * in the page over the first `REPLAY_PAGE_SIZE` registration events, so after the 500th
+ * the number beside a frame stopped growing while the sentence under it still claimed the
+ * total.
+ */
+export interface RunReplayFrameRow extends RunFrameRow {
+  readonly observations: number;
+}
+
 /** Rich inspection pages are bounded independently of the chronological Replay prefix. */
 export const REPLAY_INSPECTION_PAGE_SIZE = 100;
 
@@ -477,14 +495,46 @@ export interface RunReplayWait {
   readonly closedAt: string | null;
   readonly closureKind: string | null;
   readonly answerOptionId: string | null;
+  /**
+   * How many of the Run's frames were captured at or before this wait opened: the global
+   * position of the frame an Escalation's jump lands on, `0` when none was (Story 10.9).
+   *
+   * Counted in SQL over EVERY frame the Run holds, in Replay's own order. The page reads
+   * only the first `REPLAY_FRAME_LIMIT` frames, so an Escalation raised after the last of
+   * them asks about a screen the page never read — and it used to land on the last screen
+   * the page happened to have, which is a screen the question was not about.
+   */
+  readonly framesThrough: number;
+  /**
+   * Where that frame is among its own record's captures: the Work Item (Step first, the
+   * rule every frame read uses) and the selected-inspection page (`cursor`) that holds it.
+   * `null` when no frame preceded the wait, or that frame belongs to no Work Item.
+   */
+  readonly landing: { readonly workItemId: string; readonly cursor: number } | null;
 }
 
 /**
- * One Observation registration, as the chain recorded it (Story 5.8).
+ * One Exception as a Replay jump target, in the order it was raised (Story 10.9).
+ *
+ * Only what the jump list names: which Exception, the Work Item whose first frame it
+ * lands on, the record it was raised against, and when.
+ */
+export interface RunReplayException {
+  readonly exceptionId: string;
+  readonly workItemId: string;
+  readonly populationRecordKey: string;
+  readonly raisedAt: string;
+}
+
+/**
+ * One Observation registration, as the chain records it (Story 5.8).
  *
  * The DELTA and not the Observations: Replay says how many were registered at that point
- * in the session, and the Observation rows themselves are Run Detail's Observations tab.
- * Read from `audit_events`, which is where `replay-asset-set-v1.md` says it lives.
+ * in the session, and the Observation rows themselves are listed on the Evidence tab. The
+ * events live in `audit_events`, which is where `replay-asset-set-v1.md` says they live.
+ * Replay no longer reads a bounded page of them (Story 10.9): `readFrames` counts them in
+ * SQL over the whole history, and `replayObservationsThrough` states the same rule over a
+ * list of these, which the integration test holds the SQL to.
  */
 export interface RunReplayObservationDelta {
   readonly sequence: number;
@@ -601,8 +651,13 @@ export class DrizzleRunDetailRepository {
    * newest frame and Replay's last frame are the same row by construction. Bounded like
    * every other list this module reads, with the exact total beside the sample: a Run that
    * captured ten thousand frames must still render.
+   *
+   * Each frame carries the EXACT number of Observations the Run had registered when it was
+   * captured (Story 10.9), counted in SQL over the whole registration history at the
+   * frame's own action start — `observationTotals`, the rule the selected-inspection page
+   * counts with, so one frame never says two numbers on the two views.
    */
-  async readFrames(runId: string, limit = REPLAY_FRAME_LIMIT): Promise<Bounded<RunFrameRow>> {
+  async readFrames(runId: string, limit = REPLAY_FRAME_LIMIT): Promise<Bounded<RunReplayFrameRow>> {
     if (!isUuidText(runId)) return { rows: [], total: 0 };
     const counted = await this.db
       .select({ total: sql<number>`count(*)::int` })
@@ -620,7 +675,45 @@ export class DrizzleRunDetailRepository {
     // returning `null` here is unreachable — and it is FILTERED rather than coerced, so an
     // unserveable row is one the scrubber does not offer instead of a pill that opens
     // nothing. `total` stays the exact count of bound registered screenshots either way.
-    return { total, rows: rows.map(frameRow).filter((row): row is RunFrameRow => row !== null) };
+    const frames = rows.map(frameRow).filter((row): row is RunFrameRow => row !== null);
+    const observations = await this.observationsWhenCaptured(runId, frames.map((frame) => frame.evidenceId));
+    // Every frame just read is a registered, bound screenshot of this Run, so every one
+    // has its count; one without would be a frame whose number nobody measured, and it is
+    // filtered for the same reason as above rather than shown beside a guess.
+    return {
+      total,
+      rows: frames.flatMap((frame): RunReplayFrameRow[] => {
+        const count = observations.get(frame.evidenceId);
+        return count === undefined ? [] : [{ ...frame, observations: count }];
+      }),
+    };
+  }
+
+  /**
+   * How many Observations the Run had registered when each of these frames was captured,
+   * by Evidence id: exact, over the WHOLE registration history (Story 10.9).
+   *
+   * Keyed by the frames' own Evidence ids rather than a second copy of the prefix, so the
+   * instant each is counted at is its action's stored `started_at` at full precision — the
+   * one `readInspectionReplay` counts at — and never a millisecond rendering of it.
+   */
+  private async observationsWhenCaptured(runId: string, evidenceIds: readonly string[]): Promise<ReadonlyMap<string, number>> {
+    const ids = evidenceIds.filter(isUuidText);
+    if (ids.length === 0) return new Map();
+    const result = await this.db.execute<{ evidence_id: string; observations: string }>(sql`
+      WITH frames AS MATERIALIZED (
+        SELECT e.evidence_id, a.started_at AS action_started_at
+        FROM run_evidence e
+        JOIN run_evidence_capture c ON c.evidence_id = e.evidence_id AND c.run_id = ${runId}::uuid
+        JOIN run_tool_action a ON a.tool_action_id = c.tool_action_id AND a.run_id = ${runId}::uuid
+        WHERE e.run_id = ${runId}::uuid
+          AND e.evidence_id IN (SELECT value::uuid FROM jsonb_array_elements_text(${JSON.stringify(ids)}::text::jsonb))
+      ), ${observationTotals(runId, 'frames')}
+      SELECT f.evidence_id::text AS evidence_id, t.observations::text AS observations
+      FROM frames f JOIN observation_totals t ON t.instant = f.action_started_at`);
+    const counts = new Map<string, number>();
+    for (const row of result) counts.set(row.evidence_id, Number(row.observations));
+    return counts;
   }
 
   /**
@@ -738,20 +831,7 @@ export class DrizzleRunDetailRepository {
         FROM ranked WHERE work_item_id = ${workItemId}::uuid
       ), page AS (
         SELECT * FROM selected ORDER BY inspection_ordinal LIMIT ${REPLAY_INSPECTION_PAGE_SIZE} OFFSET ${cursor}
-      ), observation_times AS (
-        SELECT ev.occurred_at AS instant,
-          sum(CASE WHEN jsonb_typeof(ev.payload->'registered') = 'number'
-            THEN (ev.payload->>'registered')::numeric ELSE 0 END) AS delta
-        FROM audit_events ev WHERE ev.aggregate_id = ${runId}
-          AND ev.event_type = 'execution.observations-registered'
-          AND ev.occurred_at <= (SELECT max(action_started_at) FROM page)
-        GROUP BY ev.occurred_at
-        UNION ALL
-        SELECT DISTINCT action_started_at AS instant, 0::numeric AS delta FROM page
-      ), observation_totals AS MATERIALIZED (
-        SELECT instant, sum(sum(delta)) OVER (ORDER BY instant ROWS UNBOUNDED PRECEDING) AS observations
-        FROM observation_times GROUP BY instant
-      )
+      ), ${observationTotals(runId, 'page')}
       SELECT (SELECT count(*)::int FROM selected) AS total,
         (SELECT count(*)::int FROM ranked) AS frames_total,
         coalesce((SELECT jsonb_agg(jsonb_build_object(
@@ -795,62 +875,136 @@ export class DrizzleRunDetailRepository {
   }
 
   /**
-   * Every wait this Run held, oldest first — a pause among them (Story 5.8).
+   * Every Escalation this Run raised, oldest first: Replay's Escalation jump targets
+   * (Story 5.8), bounded, with the EXACT total beside the page and where each one lands in
+   * the WHOLE session (Story 10.9).
    *
-   * A pause is a wait and is not an Escalation, so the KIND is carried and the surface
-   * decides: the jump list names Escalations, and a pause is where the session stopped for
-   * a person rather than for an answer.
+   * It replaced `readWaits`, which read every wait into one bounded page and said nothing
+   * of its total. A PAUSE is a wait and is not an Escalation — it asks nothing and is never
+   * a jump target — so it is not read at all: a bound that counted pauses could leave an
+   * Escalation unlisted behind them. The kind is still carried and the surface still skips
+   * a pause, so the rule has two locks.
+   *
+   * The landing is one ordered pass over the frames and the waits together: at each wait,
+   * the running maximum frame ordinal is the number of frames captured at or before it (a
+   * frame at the SAME instant sorts first, so "at or before" includes it). It is decided
+   * over EVERY frame the Run holds, because the page reads only the first
+   * `REPLAY_FRAME_LIMIT`.
    */
-  async readWaits(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<readonly RunReplayWait[]> {
-    if (!isUuidText(runId)) return [];
-    const rows = await this.db
-      .select({
-        waitId: runWait.waitId,
-        kind: runWait.kind,
-        openedAt: runWait.openedAt,
-        closedAt: runWait.closedAt,
-        closureKind: runWait.closureKind,
-        answerOptionId: runWait.answerOptionId,
-      })
-      .from(runWait)
-      .where(eq(runWait.runId, runId))
-      .orderBy(asc(runWait.openedAt), asc(runWait.waitId))
-      .limit(Math.min(limit, REPLAY_PAGE_SIZE));
-    return rows.map((row) => ({
-      waitId: row.waitId,
-      kind: row.kind,
-      openedAt: row.openedAt.toISOString(),
-      closedAt: row.closedAt === null ? null : row.closedAt.toISOString(),
-      closureKind: row.closureKind,
-      answerOptionId: row.answerOptionId,
-    }));
+  async readEscalations(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<Bounded<RunReplayWait>> {
+    if (!isUuidText(runId)) return { rows: [], total: 0 };
+    const bound = Math.max(0, Math.min(Math.trunc(limit), REPLAY_PAGE_SIZE));
+    const result = await this.db.execute<{
+      total: number;
+      rows: readonly {
+        wait_id: string; kind: string; opened_at: string; closed_at: string | null;
+        closure_kind: string | null; answer_option_id: string | null; frames_through: number;
+        landing_work_item_id: string | null; landing_inspection_ordinal: number | null;
+      }[] | null;
+    }>(sql`
+      WITH frames AS MATERIALIZED (
+        SELECT fa.started_at,
+          coalesce(fs.work_item_id, fa.work_item_id) AS work_item_id,
+          row_number() OVER (ORDER BY fa.started_at, fa.tool_action_id, fe.evidence_id)::int AS ordinal
+        FROM run_evidence fe
+        JOIN run_evidence_capture fc ON fc.evidence_id = fe.evidence_id AND fc.run_id = ${runId}::uuid
+        JOIN run_tool_action fa ON fa.tool_action_id = fc.tool_action_id AND fa.run_id = ${runId}::uuid
+        JOIN run_step_execution fs ON fs.step_execution_id = fa.step_execution_id AND fs.run_id = ${runId}::uuid
+        LEFT JOIN run_work_item fw ON fw.work_item_id = coalesce(fs.work_item_id, fa.work_item_id) AND fw.run_id = ${runId}::uuid
+        WHERE fe.run_id = ${runId}::uuid AND fe.kind = 'screenshot' AND fe.state = 'REGISTERED'
+          AND (coalesce(fs.work_item_id, fa.work_item_id) IS NULL OR fw.work_item_id IS NOT NULL)
+      ), owned AS MATERIALIZED (
+        SELECT ordinal, work_item_id,
+          row_number() OVER (PARTITION BY work_item_id ORDER BY ordinal)::int AS inspection_ordinal
+        FROM frames WHERE work_item_id IS NOT NULL
+      ), page AS MATERIALIZED (
+        SELECT w.wait_id, w.kind, w.opened_at, w.closed_at, w.closure_kind, w.answer_option_id
+        FROM run_wait w
+        WHERE w.run_id = ${runId}::uuid AND w.kind <> 'pause'
+        ORDER BY w.opened_at, w.wait_id
+        LIMIT ${bound}
+      ), landed AS (
+        SELECT wait_id, is_wait,
+          coalesce(max(ordinal) OVER (ORDER BY at, is_wait ROWS UNBOUNDED PRECEDING), 0) AS frames_through
+        FROM (
+          SELECT started_at AS at, 0 AS is_wait, ordinal, NULL::uuid AS wait_id FROM frames
+          UNION ALL
+          SELECT opened_at, 1, NULL::int, wait_id FROM page
+        ) session
+      )
+      SELECT
+        (SELECT count(*) FROM run_wait WHERE run_id = ${runId}::uuid AND kind <> 'pause')::int AS total,
+        (SELECT jsonb_agg(jsonb_build_object(
+            'wait_id', p.wait_id, 'kind', p.kind, 'opened_at', p.opened_at, 'closed_at', p.closed_at,
+            'closure_kind', p.closure_kind, 'answer_option_id', p.answer_option_id,
+            'frames_through', l.frames_through,
+            'landing_work_item_id', o.work_item_id, 'landing_inspection_ordinal', o.inspection_ordinal)
+          ORDER BY p.opened_at, p.wait_id)
+         FROM page p
+         JOIN landed l ON l.wait_id = p.wait_id AND l.is_wait = 1
+         LEFT JOIN owned o ON o.ordinal = l.frames_through) AS rows`);
+    const read = result[0];
+    if (read === undefined) return { rows: [], total: 0 };
+    return {
+      total: Number(read.total),
+      rows: (read.rows ?? []).map((row): RunReplayWait => ({
+        waitId: row.wait_id,
+        kind: row.kind,
+        openedAt: new Date(row.opened_at).toISOString(),
+        closedAt: row.closed_at === null ? null : new Date(row.closed_at).toISOString(),
+        closureKind: row.closure_kind,
+        answerOptionId: row.answer_option_id,
+        framesThrough: Number(row.frames_through),
+        landing: row.landing_work_item_id === null || row.landing_inspection_ordinal === null
+          ? null
+          : {
+              workItemId: row.landing_work_item_id,
+              // The page of that record's inspection that holds the frame, on the same
+              // boundaries `readInspectionReplay` pages at.
+              cursor: Math.floor((Number(row.landing_inspection_ordinal) - 1) / REPLAY_INSPECTION_PAGE_SIZE)
+                * REPLAY_INSPECTION_PAGE_SIZE,
+            },
+      })),
+    };
   }
 
   /**
-   * The Observation registrations of a Run, oldest first, read from the chain (Story 5.8).
+   * Every Exception this Run raised, in the ORDER IT WAS RAISED: Replay's Exception jump
+   * targets, bounded, with the exact total beside the page (Story 10.9).
    *
-   * A payload field this build does not recognize is read as ABSENT rather than coerced: a
-   * chain row is immutable and an older build may have written a shape this one does not
-   * know, and a fabricated count would read as a fact nobody recorded.
+   * Not `readExceptions`, whose order is the identifier's (EXPERIENCE.md, Open Question 2).
+   * That is right for the Exceptions tab and wrong here: Replay's list reads the way the
+   * session ran, so "the first N" has to mean the first N raised, or a bounded page would
+   * be a scatter across the session that no sentence could truthfully describe.
    */
-  async readObservationDeltas(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<readonly RunReplayObservationDelta[]> {
-    if (!isUuidText(runId)) return [];
+  async readReplayExceptions(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<Bounded<RunReplayException>> {
+    if (!isUuidText(runId)) return { rows: [], total: 0 };
+    const counted = await this.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(runException)
+      .where(eq(runException.runId, runId));
+    const total = Number(counted[0]?.total ?? 0);
+    if (total === 0) return { rows: [], total: 0 };
     const rows = await this.db
-      .select({ sequence: auditEvents.sequence, occurredAt: auditEvents.occurredAt, payload: auditEvents.payload })
-      .from(auditEvents)
-      .where(and(eq(auditEvents.aggregateId, runId), eq(auditEvents.eventType, 'execution.observations-registered')))
-      .orderBy(asc(auditEvents.sequence))
-      .limit(Math.min(limit, REPLAY_PAGE_SIZE));
-    return rows.map((row) => {
-      const payload = (row.payload ?? {}) as Record<string, unknown>;
-      return {
-        sequence: Number(row.sequence),
-        occurredAt: row.occurredAt.toISOString(),
-        workItemId: typeof payload['workItemId'] === 'string' ? payload['workItemId'] : null,
-        stepExecutionId: typeof payload['stepExecutionId'] === 'string' ? payload['stepExecutionId'] : null,
-        registered: typeof payload['registered'] === 'number' ? payload['registered'] : 0,
-      };
-    });
+      .select({
+        exceptionId: runException.exceptionId,
+        workItemId: runException.workItemId,
+        populationRecordKey: runException.populationRecordKey,
+        raisedAt: runException.raisedAt,
+      })
+      .from(runException)
+      .where(eq(runException.runId, runId))
+      .orderBy(asc(runException.raisedAt), asc(runException.exceptionId))
+      .limit(Math.max(0, Math.min(Math.trunc(limit), REPLAY_PAGE_SIZE)));
+    return {
+      total,
+      rows: rows.map((row) => ({
+        exceptionId: row.exceptionId,
+        workItemId: row.workItemId,
+        populationRecordKey: row.populationRecordKey,
+        raisedAt: row.raisedAt.toISOString(),
+      })),
+    };
   }
 
   /** The agent phase's own position, read from its checkpoint; `null` before the phase starts. */
@@ -1491,6 +1645,39 @@ function stepExecutionRow(row: typeof runStepExecution.$inferSelect): RunStepExe
     completedAt: row.completedAt === null ? null : row.completedAt.toISOString(),
     diagnostic: row.diagnostic,
   };
+}
+
+/**
+ * How many Observations a Run had registered at each frame's instant: ONE rule for both of
+ * Replay's views (Story 5.8; shared since Story 10.9).
+ *
+ * A running total over the chain's own `execution.observations-registered` events,
+ * compared against the frame's ACTION start — the instant the frames are ordered by — and
+ * counted over the WHOLE registration history in one grouped scan, with no bounded page of
+ * events anywhere in it. A `registered` that is not a JSON number is ABSENT rather than
+ * coerced: a chain row is immutable, and a fabricated count would read as a fact nobody
+ * recorded.
+ *
+ * `instants` names a CTE with an `action_started_at` column; the fragment adds two CTEs,
+ * `observation_times` and `observation_totals` (`instant`, `observations`). The name is one
+ * of two literals, never request input, so `sql.raw` cannot carry anything else.
+ */
+function observationTotals(runId: string, instants: 'page' | 'frames'): SQL {
+  const source = sql.raw(instants);
+  return sql`observation_times AS (
+        SELECT ev.occurred_at AS instant,
+          sum(CASE WHEN jsonb_typeof(ev.payload->'registered') = 'number'
+            THEN (ev.payload->>'registered')::numeric ELSE 0 END) AS delta
+        FROM audit_events ev WHERE ev.aggregate_id = ${runId}
+          AND ev.event_type = 'execution.observations-registered'
+          AND ev.occurred_at <= (SELECT max(action_started_at) FROM ${source})
+        GROUP BY ev.occurred_at
+        UNION ALL
+        SELECT DISTINCT action_started_at AS instant, 0::numeric AS delta FROM ${source}
+      ), observation_totals AS MATERIALIZED (
+        SELECT instant, sum(sum(delta)) OVER (ORDER BY instant ROWS UNBOUNDED PRECEDING) AS observations
+        FROM observation_times GROUP BY instant
+      )`;
 }
 
 function frameRow(row: {
