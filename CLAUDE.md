@@ -1,3 +1,44 @@
+## 2026-09-26 — Only the stream brings a lost Live View back, and the route boundary claims only what it knows (Story 10.8)
+
+- **A server re-read is not stream recovery.** `useLiveTimeline`'s `[url, cursor]` effect
+  restarted the silence clock whenever it ran, and a re-read that moves the cursor re-runs
+  it, so `BellLive` refreshing a page because ANOTHER Run ended showed `live` for 15 s and
+  reopened every live control for 60 s while the stream was down. `LiveClock`
+  (`live-status.ts`) now moves only on what the stream sends (a frame, a heartbeat, or
+  `open`, the stream's server answering); `followLiveStream` (`live-stream.ts`) opens a
+  connection without touching it; and a remount takes the clock the last subscription to
+  the same stream left (`createLiveClockHandOff`). Thresholds and `RUN_ENDING_EVENTS` are
+  unchanged. Contract: `docs/contracts/live-view-v1.md`, "Only the stream brings a lost
+  page back".
+- **An effect body the unit suite must see lives outside the effect.** `followLiveStream`
+  has no React and no DOM and is driven with a fake `EventSource`; a new cursor is a second
+  call with the SAME state, which is exactly what the re-running effect does.
+- **"Throughout" means more than one read.** Mutation put the clock reset back and the
+  browser test failed on its THIRD sample, not its first: the status re-renders on a
+  one-second tick, so one read right after the re-read passes against the defect.
+  `expectThroughout` reads every fact in one page read, eight times over four seconds.
+- **A test that a re-read does NOT reset something must first prove the re-read
+  re-subscribed.** `live-drop.spec.ts` counts `EventSource` constructions per URL through an
+  init script and requires a new one before it asserts anything; without that precondition
+  it would pass against the defect whenever the cursor happened not to move.
+- **The route boundary cannot tell a page that failed to build from a Server Action whose
+  acknowledgement was lost, so it never says nothing was changed.** After a committed flag
+  "Couldn't load this page. Nothing was changed." was false. Its words are in
+  `apps/web/src/design/route-boundary-words.ts` (`[PROPOSED, owner to confirm]`; the Run
+  sentence is the owner's candidate, pinned against epics.md Story 10.8 on disk), and its
+  one control is a plain `<a href>` to the page: a GET that works without script and never
+  resubmits. Never `reset()` there: it re-renders the router cache, the page as it was
+  BEFORE the action, which is the view that invites a second submission.
+- **The deployed harness matches the boundary's HEADING**, which heads the boundary on every
+  path and which both banner sentences start with; `acceptance-sentences.test.ts` pins it
+  to the words module.
+- `[NAMED, NOT FIXED]` **The same class, on surfaces this story does not own.** The
+  Administration controls' client catch branches (`RoleControl`, `UserForm`, `BindingForm`,
+  `RegistrationForm`) and the administration actions' `UNAVAILABLE` still say "Nothing was
+  changed." when a Server Action throws or its response is lost. And without JavaScript a
+  flag's result page is the answer to a POST, so the browser's own Reload offers to
+  resubmit it; the boundary's link does not.
+
 ## 2026-09-25 — A single read of a moving preview sample is a race the broker refuses on purpose
 
 - **The preview route answers 503 for a read that meets a new sample, and that is the product

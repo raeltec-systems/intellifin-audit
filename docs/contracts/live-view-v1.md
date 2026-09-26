@@ -205,6 +205,39 @@ control is a person not being invited to do something that would be refused.
 the reason stays reachable by keyboard; activation is refused in the handler, which is what
 `disabled` was doing that mattered. There is no way to disable one silently.
 
+### Only the stream brings a lost page back (Story 10.8)
+
+`LiveClock` in `live-status.ts` is what a page has heard from one stream: the instant of the
+last thing the STREAM ITSELF delivered — a Timeline frame, a heartbeat, or `open`, the
+browser's signal that the stream's own server answered this connection — and whether it has
+answered at all. `heardFromStream` is the one way back to `live`, and so the one way a gate
+closed for `lost` or `ended` opens again. The 15-second and 60-second thresholds, the gate
+reasons and `RUN_ENDING_EVENTS` are unchanged.
+
+**A server re-read is not recovery.** A re-read that gives the page a new cursor makes the
+subscription close its connection and open the next one (`followLiveStream` in
+`live-stream.ts`), and neither step touches the clock: opening a connection is the page's own
+doing. The clock and the last sequence seen are one state (`LiveStreamState`) that outlives
+every connection. Before Story 10.8 the subscription effect restarted the clock whenever it
+ran, so a re-read that landed during a drop — the shell's bell refreshing because ANOTHER Run
+ended — made the page say `live` for up to 15 seconds and reopened every control for up to
+60, while the stream it depends on was still down.
+
+**A remount is not recovery either.** When a subscription ends it leaves its clock in a
+per-document hand-off keyed by the stream's URL (`createLiveClockHandOff`), and the next
+subscription to the same stream takes it. A lost stream stays lost and an ended one stays
+ended; the time in which nothing was subscribed is not counted as silence, because nothing
+was listening then; and the new subscription reads `connecting` rather than `live` until the
+stream answers it. Live View and Run Detail follow the same stream, so moving between them
+keeps saying `lost`. A full document load is a new page that knows nothing of the old one and
+waits for its stream as any page does.
+
+Proven three ways, each by mutation: `live-status.test.ts` (the clock and the hand-off),
+`live-stream.test.ts` (one subscription against a fake `EventSource`, a new cursor being a
+second call with the same state), and `live-drop.spec.ts` (a real re-read — another Run
+ending — and a remount, with the status word, the sentence and every control read in one
+page read, eight times over).
+
 ## A reconnect resumes from the last frame the page SAW
 
 `acceptsLiveSeq(lastSeq, seq)` is `seq > lastSeq`, and that one comparison is both halves of
