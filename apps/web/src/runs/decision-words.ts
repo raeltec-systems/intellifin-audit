@@ -94,10 +94,24 @@ export const ESCALATION_REPLAY_WORDS = {
   /** PROPOSED. The Escalation's jump target opened on a frame. */
   opened: 'Opened at the Escalation “{kind}”.',
   /** PROPOSED. The Escalation is a jump target with no frame to open. */
-  noFrame: 'Opened for the Escalation “{kind}”: {absence}. Choose a recorded target below.',
+  noFrame: 'Opened for the Escalation “{kind}”: {absence}.',
   /** PROPOSED. The link names an Escalation this Replay view cannot resolve. */
-  unavailable: 'The Escalation this link names is not available in this Replay view. Choose a recorded target below.',
+  unavailable: 'The Escalation this link names is not available in this Replay view.',
+  /**
+   * PROPOSED (the inspection link's own words on the same page). Said after `noFrame` or
+   * `unavailable` only when the "Jump to" list below holds a target with a frame: in a
+   * Replay where no target has one, it would send the reader to a list of absences.
+   */
+  chooseTarget: 'Choose a recorded target below.',
 } as const;
+
+/**
+ * The Replay note for an Escalation it cannot open at a frame: the reason, and the pointer to
+ * the "Jump to" list only when that list holds a recorded target to choose.
+ */
+export function escalationReplayAbsenceWords(sentence: string, recordedTarget: boolean): string {
+  return recordedTarget ? `${sentence} ${ESCALATION_REPLAY_WORDS.chooseTarget}` : sentence;
+}
 
 /**
  * A sentence with a `{name}` slot, split around it so a surface can put `ActorName` there.

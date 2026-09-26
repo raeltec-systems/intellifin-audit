@@ -121,17 +121,23 @@ function view(index: number): ReplayFrameView {
   };
 }
 
-function render(initialSelection: ReplayInitialSelection): string {
+function render(
+  initialSelection: ReplayInitialSelection,
+  session: { readonly frames: readonly ReplayFrameView[]; readonly jumpTargets: typeof TARGETS } = {
+    frames: [view(1), view(2), view(3)],
+    jumpTargets: TARGETS,
+  },
+): string {
   return renderToStaticMarkup(React.createElement(ReplayViewer, {
     runId: RUN,
     runState: 'CANCELED',
     stateSentence: 'Session REPLAY. This Run ended: CANCELED.',
     workspace: null,
-    frames: [view(1), view(2), view(3)],
-    framesTotal: 3,
+    frames: session.frames,
+    framesTotal: session.frames.length,
     plannedSteps: 4,
     stageNote: REPLAY_COPY.noFrames,
-    jumpTargets: TARGETS,
+    jumpTargets: session.jumpTargets,
     initialSelection,
     instructions: [],
     adapterSteps: [],
@@ -156,9 +162,28 @@ describe('what Replay says when an answered Escalation opened it', () => {
 
   it('never substitutes another screen for an Escalation it cannot resolve', () => {
     const html = render({ kind: 'escalation-unavailable', frameIndex: null });
-    expect(html).toContain(ESCALATION_REPLAY_WORDS.unavailable);
+    expect(html).toContain(`${ESCALATION_REPLAY_WORDS.unavailable} ${ESCALATION_REPLAY_WORDS.chooseTarget}`);
     expect(html).toContain('No selected frame');
     expect(html).not.toContain('/frames/');
     expect(html).not.toContain('The requested inspection is not available');
+  });
+
+  it('points at the "Jump to" list only when that list holds a recorded target to choose', () => {
+    // A Replay with no frame at all: every target is listed, and none can be opened.
+    const none = replayJumpTargets({
+      frames: [],
+      framesTotal: 0,
+      workItems: [{ workItemId: WORK, displayName: 'LoanCore', subjectKey: 'E-000102' }],
+      exceptions: [],
+      waits: [wait(EARLY, '2026-09-10T08:59:00.000Z')],
+    });
+    expect(none.length).toBeGreaterThan(0);
+    expect(none.every((target) => target.frameIndex === null)).toBe(true);
+    const early = render(replayEscalationSelection(EARLY, none)!, { frames: [], jumpTargets: none });
+    expect(early).toContain(`Opened for the Escalation “Retry or skip”: ${REPLAY_COPY.noFrameBeforeTarget}.`);
+    expect(early).not.toContain(ESCALATION_REPLAY_WORDS.chooseTarget);
+    const unavailable = render({ kind: 'escalation-unavailable', frameIndex: null }, { frames: [], jumpTargets: none });
+    expect(unavailable).toContain(ESCALATION_REPLAY_WORDS.unavailable);
+    expect(unavailable).not.toContain(ESCALATION_REPLAY_WORDS.chooseTarget);
   });
 });

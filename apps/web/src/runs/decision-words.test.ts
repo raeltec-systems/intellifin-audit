@@ -20,6 +20,7 @@ import {
   escalationAnswerWords,
   escalationAnswersShownWords,
   escalationRaiseSentences,
+  escalationReplayAbsenceWords,
   escalationReplayHref,
   pauseHistoryRows,
   pauseRequestSentences,
@@ -102,13 +103,21 @@ describe('the approved words, read back out of the story', () => {
       ESCALATION_REPLAY_WORDS.opened,
       ESCALATION_REPLAY_WORDS.noFrame,
       ESCALATION_REPLAY_WORDS.unavailable,
+      ESCALATION_REPLAY_WORDS.chooseTarget,
     ]) expect(APPROVED).not.toContain(sentence);
     expect(ESCALATION_ANSWER_WORDS.workItemNotRecorded).toBe('The Work Item this Escalation was raised for was not recorded.');
     expect(ESCALATION_ANSWER_WORDS.answerUnreadable).toBe('The answer this Escalation received could not be read.');
     expect(PAUSE_REQUEST_WORDS.replaced).toBe('A request to pause the Run at once replaced it before it took effect.');
     expect(PAUSE_REQUEST_WORDS.afterInspection).toBe('It asked to pause after {step}.');
-    expect(ESCALATION_REPLAY_WORDS.unavailable)
+    expect(ESCALATION_REPLAY_WORDS.unavailable).toBe('The Escalation this link names is not available in this Replay view.');
+    expect(ESCALATION_REPLAY_WORDS.noFrame).toBe('Opened for the Escalation “{kind}”: {absence}.');
+    expect(ESCALATION_REPLAY_WORDS.chooseTarget).toBe('Choose a recorded target below.');
+  });
+
+  it('points a Replay note at the "Jump to" list only when that list holds a recorded target', () => {
+    expect(escalationReplayAbsenceWords(ESCALATION_REPLAY_WORDS.unavailable, true))
       .toBe('The Escalation this link names is not available in this Replay view. Choose a recorded target below.');
+    expect(escalationReplayAbsenceWords(ESCALATION_REPLAY_WORDS.unavailable, false)).toBe(ESCALATION_REPLAY_WORDS.unavailable);
   });
 
   it('labels the candidate text with the existing inert source label', () => {

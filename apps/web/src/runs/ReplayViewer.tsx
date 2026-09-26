@@ -24,7 +24,7 @@ import {
   type ReplayWindow,
 } from './replay';
 import { recordFramePosition, toolActionNarration } from './session-words';
-import { ESCALATION_REPLAY_WORDS } from './decision-words';
+import { ESCALATION_REPLAY_WORDS, escalationReplayAbsenceWords } from './decision-words';
 import { utcStamp } from './labels';
 
 /** One frame and everything the platform already stored about the action that took it. */
@@ -98,13 +98,19 @@ function absenceSentence(absence: ReplayFrameAbsence, shown: number): string {
 /**
  * What Replay says when a Timeline entry opened it at an Escalation (Story 10.10): which
  * Escalation it opened at, or — when that target has no frame, or cannot be resolved —
- * why, in the resolver's own words. `null` for every other selection.
+ * why, in the resolver's own words, pointing at the "Jump to" list only when that list
+ * holds a recorded target (`recordedTarget`). `null` for every other selection.
  */
-function escalationNote(selection: ReplayInitialSelection | undefined, shown: number): string | null {
-  if (selection?.kind === 'escalation-unavailable') return ESCALATION_REPLAY_WORDS.unavailable;
+function escalationNote(selection: ReplayInitialSelection | undefined, shown: number, recordedTarget: boolean): string | null {
+  if (selection?.kind === 'escalation-unavailable') {
+    return escalationReplayAbsenceWords(ESCALATION_REPLAY_WORDS.unavailable, recordedTarget);
+  }
   if (selection?.kind !== 'escalation') return null;
   return selection.target.frameIndex === null
-    ? fillTemplate(ESCALATION_REPLAY_WORDS.noFrame, { kind: selection.target.label, absence: absenceSentence(selection.target.absence, shown) })
+    ? escalationReplayAbsenceWords(
+      fillTemplate(ESCALATION_REPLAY_WORDS.noFrame, { kind: selection.target.label, absence: absenceSentence(selection.target.absence, shown) }),
+      recordedTarget,
+    )
     : fillTemplate(ESCALATION_REPLAY_WORDS.opened, { kind: selection.target.label });
 }
 
@@ -250,7 +256,13 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
         ? 'The requested inspection is not available in this Replay view. Choose a recorded target below.'
         : selection?.kind === 'inspection' && selection.target.frameIndex === null
           ? `Requested inspection: ${selection.target.label}. ${absenceSentence(selection.target.absence, props.frames.length)} Choose a recorded target below.`
-          : escalationNote(selection, props.frames.length);
+          : escalationNote(
+            selection,
+            props.frames.length,
+            // The "Jump to" list is shown for the whole session only, and "recorded" is a
+            // target it offers as a button: one with a frame to open.
+            props.window === undefined && props.jumpTargets.some((target) => target.frameIndex !== null),
+          );
 
   /**
    * The selected record's own position, beside the global one and only when a record is
