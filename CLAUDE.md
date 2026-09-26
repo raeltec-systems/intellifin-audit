@@ -4653,3 +4653,12 @@ resolve the enabled opener and assert its dialog before testing later heartbeat 
 Never infer that an asynchronously rendered Acquire control is absent from an immediate
 `count()` after reload. Keep retained renewal events and their Run deletion in one
 Run-first cleanup transaction, including closed/open wait rows.
+
+## 2026-09-26 — Boundary mutation tests require sequential verification
+
+`tests/unit/boundaries.test.ts` plants `__boundary_violation__/violation.ts` files in the
+working tree while it proves each dependency rule. Run `pnpm typecheck`, `pnpm boundaries`
+and `pnpm test` sequentially in a worktree; parallel invocation can inspect a deliberate
+violation and report a false regression, or race another unit run's cleanup. Separate story
+worktrees remain independent. Confirm the runtime used by pnpm itself: a wrapper can pin a
+Node executable even when `node` on PATH reports the repository's required version.

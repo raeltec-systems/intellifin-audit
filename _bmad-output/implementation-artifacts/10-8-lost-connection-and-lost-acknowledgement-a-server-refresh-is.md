@@ -3,6 +3,7 @@ title: 'Lost connection and lost acknowledgement: a server refresh is not stream
 type: 'fix'
 created: '2026-09-25'
 status: 'in-review'
+followup_review_recommended: true
 review_loop_iteration: 0
 implementation_authorised: true
 implementation_authorisation: 'Owner, 2026-09-26: "go, new branches OK" (implement 10.6 to 10.10 on new branches)'
@@ -111,90 +112,8 @@ nothing changed only when its recorded outcome establishes it.
 
 ## Record of implementation (2026-09-26)
 
-Branch `claude/10-8-lost-connection`, from `429e08c`; not pushed.
-
-**The silence clock.** `LiveClock` in `live-status.ts` moves only on a frame the stream itself
-sends (a Timeline event or a heartbeat). `followLiveStream` in the new `live-stream.ts` is the
-subscription, moved out of `useLiveTimeline`'s effect so the unit suite can drive it with a
-fake `EventSource`; a new cursor closes one connection and opens the next without touching the
-clock. `open` (the route answering a connection) is not a frame: it makes a page that has never
-heard from its stream `live` at once, and moves nothing else, because the route answers before
-it arms its LISTEN and a stream that then delivers nothing must not read `live` again every two
-seconds. A remount takes the clock the last subscription to the same stream left
-(`createLiveClockHandOff`), so Live View, Run Detail and the workspace, which follow the same
-per-Run stream, keep saying `lost` across a move between them. The 15-second and 60-second
-thresholds, the gate reasons and `RUN_ENDING_EVENTS` are unchanged.
-
-**The route boundary.** `apps/web/app/error.tsx` no longer says that nothing was changed. Its
-words are in `apps/web/src/design/route-boundary-words.ts`; its one control is a plain link to
-the page's own address (a GET, which cannot resubmit and needs no script), in place of
-`reset()`, which re-rendered the page as it was before the action. The flag action's
-unknown-outcome sentence now comes from `FLAG_COPY`. The deployed harness matches the
-boundary's heading, pinned to the module.
-
-**Wording, approved by the owner on 2026-09-26 ("approve all").**
-- Run pages (banner title): "This page could not be loaded. Check the Run's current state before
-  repeating your last action." (the candidate in epics.md, verbatim, pinned there by a test)
-- Any other page: "This page could not be loaded. Check the current state before repeating your
-  last action."
-- Body: "Reload this page to read it again. Reloading from here does not repeat your last
-  action. If the page keeps failing, tell a PoC Administrator."
-- Control: "Reload this page". The heading "This page could not be loaded" is unchanged.
-- EXPERIENCE.md has no row for the route boundary; its "Action failed" row ("Couldn't {action}.
-  Nothing was changed.") is for a refused action, stays true for that case, and was not edited.
-
-**Verification.** Commits `d2c7add9`, `402caf9e`, `84a56164`, `1ba0ffdc`, `6d5cb64d`. Full
-unit suite 296 files, 5,447 tests passed; `pnpm --filter @intellifin/web typecheck`, the
-root-tests typecheck and `pnpm boundaries` (806 modules) passed. Browser, on the final code:
-`live-drop.spec.ts`, `live-timeline.spec.ts`, `live-view.spec.ts` and
-`live-escalation.spec.ts` 18 of 18, and `flag-run.spec.ts` 6 of 6 (setup cases apart). Proven by mutation: in the browser, restarting the clock when a connection
-opens fails the new journey at sample 3 of 8 with status `live` and every control reopened;
-dropping the clock hand-off fails it at the Run Detail step with `connecting`; restoring the
-old boundary title fails the committed-flag journey at the new wording. In the unit suites,
-seven boundary mutations (old claim, `reset()` button, every page naming a Run, the Runs list
-as a Run page, the flag throw claiming nothing changed, the owner's sentence reworded, the
-harness looking for the retired sentence) and two `open` mutations each fail a named case.
-Not run: the integration suite (no database-backed module changed) and the full browser
-suite.
-
-**Named, not fixed (outside this story's scope).** The Administration controls' client catch
-branches (`RoleControl`, `UserForm`, `BindingForm`, `RegistrationForm`) and the administration
-actions' `UNAVAILABLE` sentence still say "Nothing was changed." when a Server Action throws or
-its response is lost: the same defect class, on surfaces this story does not own. Without
-JavaScript a flag's result page is the answer to a POST, so the browser's own Reload offers to
-resubmit it (the boundary's link does not).
-
-## Review Triage Log
-
-### 2026-09-26 — Review pass
-- intent_gap: 0
-- bad_spec: 0
-- patch: 12: (high 0, medium 1, low 11)
-- defer: 4: (high 0, medium 2, low 2)
-- reject: 4: (high 0, medium 0, low 4)
-- addressed_findings:
-  - `[medium]` `[patch]` A new connection sent no frame until its first heartbeat ten seconds later, so with `open` no longer a frame a quiet, healthy stream read `stale` around every planned 14-minute renewal and after a soft navigation, and quick moves between Run pages could reach `lost`. The route now sends a heartbeat as soon as its LISTEN is armed and its first catch-up is read; `open` changes nothing.
-  - `[low]` `[patch]` The boundary's reload link kept the query only in an untested client path; it now reads `usePathname` and `useSearchParams` on server and client.
-  - `[low]` `[patch]` Hand-off edges in `useLiveTimeline`: a same-millisecond re-render bail-out, a frame between leaving and stopping, and `lastSeq` across a key change. Taking the larger of the server cursor and `lastSeq` was not applied: it can skip the frame that says the Run ended (CLAUDE.md, Story 10.8 note).
-  - `[low]` `[patch]` `live-stream.test.ts` did not observe `onChange`; the layout-effect ordering and the Workspace claim were unpinned.
-  - `[low]` `[patch]` Four separate "nothing changed" patterns missed rewordings; one shared pattern (`nothing-changed.ts`).
-  - `[low]` `[patch]` The approved boundary wording gained a row in EXPERIENCE.md, and all five sentences are pinned to it on disk.
-  - `[low]` `[patch]` Contract and doc comments that disagreed with the code (`ended`, `LiveStatusInputs`, the stale count after a hand-off); the full-document-load behaviour is named.
-  - `[low]` `[patch]` CLAUDE.md: four superseded entries marked; the hydration and dev-overlay lesson recorded.
-  - `[low]` `[patch]` The story record: later commits, the failed and fixed full-suite run, the approval after the build, and what Stories 5.5 and 5.7 need next.
-  - `[low]` `[patch]` `live-drop.spec.ts`: the Flag submit re-enabled on recovery, the comment, a visible reason, and axe on Run Detail in the inherited `lost` state.
-  - `[low]` `[patch]` A render test for a refused flag's own message.
-  - `[low]` `[patch]` The deployed harness counted a 404 or a denied Evidence link as opened.
-
-Open at the 2026-09-26 pause: browser verification of the connect-heartbeat, boundary, hand-off and
-live-drop patches (P1, P2, P4, P10) and of the screenshot fixes in `110c3baa`; the root typecheck,
-boundaries and the full unit suite after `110c3baa`; and the record update below, which is a draft.
-
-## Record update draft (not yet applied, 2026-09-26)
-
-## Record of implementation (2026-09-26)
-
-Branch `claude/10-8-lost-connection`, from `429e08c`; not pushed.
+Branch `claude/10-8-lost-connection`, from `429e08c`; pushed as draft PR #62.
+Continuation inspected remote head `2a2173e0d7f5ccfcdc0fc85e698d115dd08add85`.
 
 **The silence clock.** `LiveClock` in `live-status.ts` moves only on a frame the stream itself
 sends (a Timeline event or a heartbeat). `followLiveStream` in the new `live-stream.ts` is the
@@ -295,7 +214,7 @@ the existing browser fixtures (a throwaway spec, deleted) and read as a reader w
 route boundary on a Run page and on an Administration page with its link focused; Live View
 connecting, stale, `lost` (flag disclosure closed, then open) and recovered; Run Detail and
 the Auditor Workspace in the inherited `lost` state; and Run Detail's toolbar with a pause
-requested, paused and with an Escalation open. What was off, and fixed (SCREENSHOT-COMMIT):
+requested, paused and with an Escalation open. What was off, and fixed (`110c3baa`):
 - A link drawn as a button carried the browser's underline through its label: the boundary's
   "Reload this page", Run Detail's Watch and every other link-button. `.ls-button` sets
   `text-decoration: none`.
@@ -343,7 +262,31 @@ and no `/__nextjs*` POST, and making the boundary link also POST to the page URL
 `expect(posts)` with that URL. The earlier line "Not run: the full browser suite" was wrong:
 the coordinator ran it.
 
-After the review: VERIFY-RESULTS
+After the review, verified during continuation on 2026-09-26:
+
+- GitHub Actions [CI run 36242332535](https://github.com/raeltec-systems/intellifin-audit/actions/runs/36242332535)
+  passed all seven jobs at the exact inspected head `2a2173e0d7f5ccfcdc0fc85e698d115dd08add85`.
+  Job steps and raw logs were read, not inferred from the aggregate green status.
+- The full browser suite passed **286 tests**, with a separate focused authoring pass of 17.
+  The log explicitly includes all six `live-drop.spec.ts` cases (including server re-read,
+  remount and stream recovery), the lost-acknowledgement flag case, the non-Run route boundary
+  with its query and WCAG checks, and `live-timeline`, `live-view`, and `live-escalation`.
+- PostgreSQL 18 was checked by the CI job before migration. Its integration suite passed
+  **58 files / 784 tests**, including all four `run-timeline-connect.test.ts` cases.
+- The typecheck, dependency boundaries and full unit test CI job passed at that same head.
+- Local verification on Node **24.20.0** / pnpm **11.25.0**, run sequentially in this
+  isolated worktree: `pnpm typecheck` passed (including root tests), `pnpm boundaries`
+  passed (**812 modules**), and `pnpm test` passed (**301 files / 5,511 tests**, 90.71 s).
+  Initial parallel attempts raced the boundary suite's deliberate fixture files and failed;
+  those attempts are not presented as product failures or passing evidence. The final
+  sequential run had no failed or skipped tests. Frozen-lockfile installation succeeded.
+- Documentation checks passed: valid YAML; the frozen intent block, baseline revision and
+  all four deferred items are byte/content-equivalent to the incoming checkpoint; one
+  consolidated implementation record; `git diff --check` clean.
+- **Still open:** post-fix visual inspection of every changed state at 1280×800 (and the
+  Timeline at 1024 wide). The earlier screenshot inspection found the defects fixed by
+  `110c3baa`; it is not a post-fix inspection. Passing browser assertions do not substitute
+  for looking at these states. No new local browser or screenshot pass is claimed.
 
 **Named, not fixed.**
 - The Administration controls' client catch branches (`RoleControl`, `UserForm`,
@@ -373,3 +316,54 @@ After the review: VERIFY-RESULTS
 closure register's §3.3 names only Story 10-8 for each (`legacy-review-closure-register.md`,
 the 5.5 and 5.7 rows of the status table), so both can leave `review`. `sprint-status.yaml`
 is not edited here.
+
+## Review Triage Log
+
+### 2026-09-26 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 12: (high 0, medium 1, low 11)
+- defer: 4: (high 0, medium 2, low 2)
+- reject: 4: (high 0, medium 0, low 4)
+- addressed_findings:
+  - `[medium]` `[patch]` A new connection sent no frame until its first heartbeat ten seconds later, so with `open` no longer a frame a quiet, healthy stream read `stale` around every planned 14-minute renewal and after a soft navigation, and quick moves between Run pages could reach `lost`. The route now sends a heartbeat as soon as its LISTEN is armed and its first catch-up is read; `open` changes nothing.
+  - `[low]` `[patch]` The boundary's reload link kept the query only in an untested client path; it now reads `usePathname` and `useSearchParams` on server and client.
+  - `[low]` `[patch]` Hand-off edges in `useLiveTimeline`: a same-millisecond re-render bail-out, a frame between leaving and stopping, and `lastSeq` across a key change. Taking the larger of the server cursor and `lastSeq` was not applied: it can skip the frame that says the Run ended (CLAUDE.md, Story 10.8 note).
+  - `[low]` `[patch]` `live-stream.test.ts` did not observe `onChange`; the layout-effect ordering and the Workspace claim were unpinned.
+  - `[low]` `[patch]` Four separate "nothing changed" patterns missed rewordings; one shared pattern (`nothing-changed.ts`).
+  - `[low]` `[patch]` The approved boundary wording gained a row in EXPERIENCE.md, and all five sentences are pinned to it on disk.
+  - `[low]` `[patch]` Contract and doc comments that disagreed with the code (`ended`, `LiveStatusInputs`, the stale count after a hand-off); the full-document-load behaviour is named.
+  - `[low]` `[patch]` CLAUDE.md: four superseded entries marked; the hydration and dev-overlay lesson recorded.
+  - `[low]` `[patch]` The story record: later commits, the failed and fixed full-suite run, the approval after the build, and what Stories 5.5 and 5.7 need next.
+  - `[low]` `[patch]` `live-drop.spec.ts`: the Flag submit re-enabled on recovery, the comment, a visible reason, and axe on Run Detail in the inherited `lost` state.
+  - `[low]` `[patch]` A render test for a refused flag's own message.
+  - `[low]` `[patch]` The deployed harness counted a 404 or a denied Evidence link as opened.
+
+At continuation, the exact-head CI run above resolves the automated browser, integration,
+typecheck, boundaries and unit verification left open at the pause. The draft record is now
+folded into the record above. Post-fix visual inspection remains open.
+
+## Auto Run Result — continuation (2026-09-26)
+
+- **Outcome:** remains `in-review`; PR #62 stays draft/WIP. Automated verification is green,
+  but the owner's post-fix screenshot acceptance gate is not complete.
+- **Change:** consolidated the implementation record with all twelve completed review fixes,
+  corrected its stale push/verification statements, and linked exact-head CI evidence.
+  No application code, tests, lockfile, frozen intent or existing deferred item changed.
+- **Files:** this story specification (record and verification evidence); `CLAUDE.md`
+  (the verification sequencing lesson below).
+- **Review:** the completed four-reviewer pass patched 1 medium and 11 low findings, deferred
+  4 and rejected 4. Follow-up review remains recommended: `3 × 1 + 11 = 14`, above 5.
+  This continuation did not restart or claim another four-reviewer pass.
+- **Remaining visual gate:** read post-`110c3baa` screenshots of both route-boundary variants
+  and focused reload links; Live View connecting, stale, lost (flag disclosure closed/open)
+  and recovered; inherited lost state on Run Detail and the Workspace; Run Detail's toolbar
+  with pause requested, paused and an Escalation open. Use 1280×800, plus the Timeline at
+  1024 wide, as required by the handover.
+- **Local environment limits:** no PostgreSQL service or container runtime is present and
+  only UID 0 is mapped; PostgreSQL requires an unprivileged user. The Chromium installer
+  received a 195-byte HTML response from its binary URL, so no local browser was installed.
+  CI provides real PostgreSQL and browser evidence above; these local limitations do not
+  invalidate that evidence or create a new product decision.
+- **Residual risks:** the four existing deferred findings remain unchanged. No wording or
+  threshold decision is pending for Story 10.8; its five boundary sentences were approved.
