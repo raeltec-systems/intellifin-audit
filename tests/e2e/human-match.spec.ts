@@ -1,3 +1,4 @@
+import { captureStoryState } from './story-visual-capture';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
@@ -420,6 +421,7 @@ test.describe('a human-selected match, traced to its decision (Story 10.6, legac
     // A platform match shows no flag anywhere on the Result.
     await expect(list.locator('li').filter({ hasText: KEYS.platform })).toHaveCount(0);
     await expect(page.locator('.ls-human-match__flag')).toHaveCount(3);
+    await captureStoryState(page, 'human-match-result', list);
     await scan(page);
   });
 
@@ -431,6 +433,7 @@ test.describe('a human-selected match, traced to its decision (Story 10.6, legac
     await expect(card).toContainText(`Untrusted source content — ${MATCH_DECISION_WORDS.candidateField}.`);
     await expect(card.locator('pre.ls-untrusted__body').filter({ hasText: CHOSEN_LABEL })).toHaveCount(1);
     await expect(page.locator('.ls-human-match__flag')).toHaveCount(1);
+    await captureStoryState(page, 'human-match-exception', card);
     await scan(page);
   });
 
@@ -449,6 +452,7 @@ test.describe('a human-selected match, traced to its decision (Story 10.6, legac
     await expect(inspector).toContainText(KEYS.linked);
     await expectLinked(inspector);
     await expect(inspector.locator('pre.ls-untrusted__body').filter({ hasText: CHOSEN_LABEL })).toHaveCount(1);
+    await captureStoryState(page, 'human-match-inspector', inspector);
     await scan(page);
   });
 });
