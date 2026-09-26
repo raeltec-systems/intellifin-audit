@@ -1,3 +1,77 @@
+## 2026-09-26 — Stacked story PRs need an admitted CI base
+
+Stories 10.9 and 10.10 keep the handover's `claude/10-6-legacy-visibility` PR base.
+The CI pull-request branch filter must include that exact base or a published candidate
+receives no run. Adding the base changes admission only; jobs, assertions, permissions
+and main-only push behavior stay unchanged. Never infer verification from a successful push.
+
+## 2026-09-26 — Preserve the database's Replay landing ordinal (Story 10.9 continuation)
+
+`readEscalations` compares stored timestamps at database precision. The default Replay prefix
+must use its `framesThrough` ordinal for every landing, not recompute the in-prefix case with
+`Date.parse`: distinct stored instants can collapse into one millisecond and select a capture
+that happened after the question. Two red-green regressions cover an intervening wait and a
+wait before the first capture within the same rendered millisecond.
+
+A clicked record's optional frame denominator cannot be calculated from a bounded session
+prefix. Withhold that denominator when the full record total is unknown; retain the exact
+session counter. An inspection page has no jump buttons and does not enter that clicked state.
+The bounded-history P-4 fixture uses retry-or-skip decisions; P-4 refuses candidate matching.
+
+## 2026-09-26 — A bounded Replay view says what it covers, and the count beside a frame is exact (Story 10.9)
+
+Story 10.9 closes legacy 5.8's limitation (2): Replay's default view read its waits, its
+Observation-registration events and its Exceptions in pages of `REPLAY_PAGE_SIZE` (500) and
+said nothing when a page was full. No migration, no event type, no raised limit (the owner did
+not approve raising one). Contract: `replay-v1.md`, "A bounded jump list says what it covers".
+
+- **A count beside a frame is computed per frame in SQL, never summed from a bounded page.**
+  The view summed the first 500 registration events in the browser, so past them the count
+  stopped short while its sentence read as a total. `readFrames` now answers each frame's
+  count through `observationTotals`, the ONE fragment `readInspectionReplay` also uses, so one
+  frame cannot have two counts. Sixth appearance of "a limit belongs to the cardinality of the
+  read".
+- **A bounded list carries its exact total and says what it shows, ABOVE the list, in the
+  owner's words** (`REPLAY_BOUND_WORDS`). `readEscalations` and `readReplayExceptions` answer
+  `{ rows, total }`; `shown` is counted from the targets the list renders, never taken from a
+  read, so the sentence always describes the list under it. A pause is neither listed nor
+  counted: it is not a jump target.
+- **"The first N" must be true of the Run, so each list is read in RAISE order.** Exceptions
+  were read by `exception_id`, a derived UUIDv8 (a hash), so the 500 shown were an arbitrary
+  500. One registration raises its whole batch at one instant (a P-4 page raises every
+  parameter's Exception at once), so within an instant they are read by record, byte-wise
+  (`COLLATE "C"`), and the jump list keeps each read's order where targets tie on a frame.
+  An order no reader can see is no order: by id, a P-4 page's Exceptions were listed in none.
+- **An Escalation's landing frame is found over EVERY frame the Run registered.** Resolved over
+  the 500 frames read, an Escalation raised after them landed on the last frame read, a screen
+  the question was not about. The read returns how many frames precede its frame and the
+  inspection page (`?workItem=&cursor=`) that holds it; the row says the frame is not among
+  those shown and links that page.
+- **The rest is reached through the path that already exists.** "record review" in the
+  owner's sentence links the Evidence tab, where a record's inspector offers **Replay this
+  inspection**. No new route and no new read.
+- **Reading the screenshots found what every test passed over.** The default view's counter
+  said `Frame 500 of 500` over a Run of 520 frames, the bound presented as the session while
+  its inspection pages said `of 520`; it counts among every retained frame now. The
+  Exceptions of a P-4 page were listed in no order (above). The bound sentences, as three
+  paragraphs in an `ls-stack`, were spaced like three items of the card; they are one note,
+  a sentence to a line. And a row with no frame sat off the buttons' text edge in another
+  size; it shares their edge, size and row height now. A test asserts what it was told to;
+  only a reader looking at the page asks whether the page is true.
+
+Three mechanical notes:
+
+- **`jsonb_to_recordset` matches keys to its column list by exact name, and a key that does not
+  match is NULL, not an error.** The integration fixture's camelCase `stepExecutionId`
+  inserted NULLs until the keys were `step_execution_id`.
+- **`ORDER BY sequence` names the OUTPUT column when the select list has one called
+  `sequence`.** The test oracle selected `sequence::text AS sequence` and so ordered
+  1, 10, 100, ...; qualify it (`ORDER BY audit_events.sequence`).
+- **The over-the-bound browser fixture is its own spec file** (`replay-bounded-history.spec.ts`),
+  because Story 10.6's branch edits `replay.spec.ts`. It seeds one sealed, terminal Run in ONE
+  transaction, with its frame objects in storage BEFORE the commit: the worker's integrity
+  sweep reads a sealed package's artifacts, and a missing object is a permanent finding.
+
 ## 2026-09-26 — Review continuation keeps exact reads exact (Story 10.6)
 
 - Adapter Evidence readers accept at most 64 IDs. Batch distinct IDs at the caller; an

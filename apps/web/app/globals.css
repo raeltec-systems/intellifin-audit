@@ -2157,6 +2157,18 @@ input:is([type='date'], [type='time'], [type='datetime-local'], [type='month'], 
   list-style: none;
 }
 
+/* A target with no frame here is a statement, not a button, so it keeps plain text colour
+   and weight; it sits on the buttons' text edge, size and row height, so the list keeps one
+   left edge and one rhythm (Story 10.9). */
+.ls-session__jumps > li > span {
+  display: block;
+  padding: 0 var(--spacing-3);
+  border: solid transparent;
+  border-width: 0 1px;
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--spacing-control-sm);
+}
+
 .ls-session-desktop-only {
   display: none;
   padding: var(--spacing-2) var(--spacing-4);

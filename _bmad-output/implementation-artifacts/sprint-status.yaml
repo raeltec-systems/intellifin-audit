@@ -131,7 +131,7 @@ development_status:
   10-8-lost-connection-and-lost-acknowledgement-a-server-refresh-is: 
     ready-for-dev
   10-9-replay-bounded-history-completeness-a-bounded-view-says-what: 
-    ready-for-dev
+    blocked
   10-10-retained-decision-history-on-the-execution-timeline-an-answe: 
     ready-for-dev
   epic-10-retrospective: optional
