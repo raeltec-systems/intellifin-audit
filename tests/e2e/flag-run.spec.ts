@@ -10,6 +10,7 @@ import {
 } from '@intellifin/infrastructure';
 
 import { FLAG_COPY } from '../../apps/web/src/design/copy';
+import { NOTHING_CHANGED_CLAIM } from '../../apps/web/src/design/nothing-changed';
 import { ROUTE_BOUNDARY_COPY } from '../../apps/web/src/design/route-boundary-words';
 import { FLAG_MENU_LABEL, flagMenuLabel } from '../../apps/web/src/runs/session-words';
 import { activeRunVersion } from '../fixtures/active-run-version';
@@ -185,7 +186,10 @@ test.describe('flagging a Run from Live View', () => {
   test('flags once and only once when the acknowledgement is lost in transit', async ({ page }) => {
     test.setTimeout(120_000);
     const runId = await seedRun();
-    await page.goto(`/runs/${runId}/live`);
+    // Opened on an address WITH a query, so the boundary's reload link is proven to keep it
+    // (Story 10.8 review): a reload of `?…` is not the bare page.
+    const address = `/runs/${runId}/live?view=lost-acknowledgement`;
+    await page.goto(address);
     const panel = page.locator('#run-flag');
     // Every fresh load in this journey waits for hydration before it touches the page. A
     // click on the native `<details>` before React attaches leaves an `open` attribute the
@@ -200,8 +204,9 @@ test.describe('flagging a Run from Live View', () => {
     // pattern. A flag deliberately carries NO request token (`flagId` is minted per
     // call), so a second submission would write a second `run_flag` row and a second
     // full fan-out of notifications to every Audit Manager.
-    const liveUrl = page.url().split('#')[0]!;
-    await page.route(liveUrl, async route => {
+    // Matched by path, so the query the page was opened with cannot make a glob miss it.
+    const livePage = (url: URL): boolean => url.pathname === `/runs/${runId}/live`;
+    await page.route(livePage, async route => {
       if (route.request().method() !== 'POST') return route.continue();
       await route.fetch();
       await route.abort('failed');
@@ -218,7 +223,7 @@ test.describe('flagging a Run from Live View', () => {
     // that is asserted in `RunFlagControl.test.ts`.
     await expect(page.getByRole('heading', { name: ROUTE_BOUNDARY_COPY.heading, level: 1 })).toBeVisible();
     await expect(page.getByRole('button', { name: FLAG_COPY.submit })).toHaveCount(0);
-    await page.unroute(liveUrl);
+    await page.unroute(livePage);
 
     // The boundary states only what it knows (Story 10.8). The flag DID commit, so the
     // sentence it used to print here — "Couldn't load this page. Nothing was changed." —
@@ -226,7 +231,9 @@ test.describe('flagging a Run from Live View', () => {
     // anything, and says nothing about whether anything changed.
     await expect(page.getByRole('alert').filter({ hasText: ROUTE_BOUNDARY_COPY.run })).toBeVisible();
     await expect(page.getByText(ROUTE_BOUNDARY_COPY.body)).toBeVisible();
-    await expect(page.getByText(/nothing was changed/i)).toHaveCount(0);
+    await expect(page.getByText(NOTHING_CHANGED_CLAIM)).toHaveCount(0);
+    // The one control names this page's own address, query included.
+    await expect(page.getByRole('link', { name: ROUTE_BOUNDARY_COPY.reload })).toHaveAttribute('href', address);
     // WCAG 2.1 AA on the boundary as the reader meets it.
     await expect(page).toHaveTitle(/.+/);
     const scan = await new AxeBuilder({ page }).withTags(TAGS).analyze();
@@ -244,6 +251,7 @@ test.describe('flagging a Run from Live View', () => {
     });
     await page.getByRole('link', { name: ROUTE_BOUNDARY_COPY.reload }).click();
     await expect(page.getByRole('heading', { name: /^Live View · / })).toBeVisible();
+    expect(new URL(page.url()).search).toBe('?view=lost-acknowledgement');
     await expect(page.locator('#run-cancel')).toHaveAttribute('data-client-ready', 'true');
     // The page now shows what was recorded: one flag, with the note that was typed.
     await expect(panel.locator('> summary')).toHaveText(flagMenuLabel(1));

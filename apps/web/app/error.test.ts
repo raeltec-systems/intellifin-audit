@@ -2,9 +2,13 @@ import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const navigation = vi.hoisted(() => ({ pathname: '/' as string | null }));
-vi.mock('next/navigation', () => ({ usePathname: () => navigation.pathname }));
+const navigation = vi.hoisted(() => ({ pathname: '/' as string | null, search: '' }));
+vi.mock('next/navigation', () => ({
+  usePathname: () => navigation.pathname,
+  useSearchParams: () => new URLSearchParams(navigation.search),
+}));
 
+import { NOTHING_CHANGED_CLAIM } from '../src/design/nothing-changed';
 import { ROUTE_BOUNDARY_COPY } from '../src/design/route-boundary-words';
 import ErrorBoundary from './error';
 
@@ -20,8 +24,9 @@ import ErrorBoundary from './error';
 const RUN = '/runs/019823ab-0000-7000-8000-0000000000a1/live';
 const SECRET = 'connect ECONNREFUSED db.internal:5432 password=hunter2';
 
-function render(pathname: string | null): string {
+function render(pathname: string | null, search = ''): string {
   navigation.pathname = pathname;
+  navigation.search = search;
   const error = Object.assign(new Error(SECRET), { digest: 'digest-1' });
   return renderToStaticMarkup(React.createElement(ErrorBoundary, { error, reset: vi.fn() }));
 }
@@ -31,7 +36,7 @@ function text(html: string): string {
   return html.replace(/<[^>]+>/g, ' ').replace(/&#x27;|&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 }
 
-beforeEach(() => { navigation.pathname = '/'; });
+beforeEach(() => { navigation.pathname = '/'; navigation.search = ''; });
 
 describe('the route boundary states only what it knows', () => {
   it('on a Run page, names the Run and asks the reader to look before repeating anything', () => {
@@ -51,7 +56,7 @@ describe('the route boundary states only what it knows', () => {
 
   it('never claims that nothing was changed, on any page', () => {
     for (const pathname of [RUN, '/administration/users', null]) {
-      expect(text(render(pathname)), String(pathname)).not.toMatch(/nothing (was|has been|has) (changed|altered)|no run, result, or evidence/i);
+      expect(text(render(pathname)), String(pathname)).not.toMatch(NOTHING_CHANGED_CLAIM);
     }
   });
 
@@ -66,6 +71,19 @@ describe('the route boundary states only what it knows', () => {
     expect(html).toMatch(new RegExp(`<a [^>]*href="${RUN}"[^>]*>${ROUTE_BOUNDARY_COPY.reload}</a>`));
     expect(html).not.toContain('<button');
     expect(html).not.toContain('<form');
+  });
+
+  it('keeps the page\'s query in the reload link, on the server as in the browser', () => {
+    // A reload of `?cursor=…` is not page one. The address is the router's own path and
+    // query, which the server renders too — so this server render is the link a reader
+    // with no JavaScript follows, and a query-only navigation moves it with the page.
+    expect(render(RUN, 'cursor=41&view=lost')).toMatch(
+      new RegExp(`<a [^>]*href="${RUN}\\?cursor=41&amp;view=lost"[^>]*>${ROUTE_BOUNDARY_COPY.reload}</a>`),
+    );
+    expect(render('/administration/users', 'q=dana')).toContain('href="/administration/users?q=dana"');
+    // No query, no question mark: the link names exactly the page.
+    expect(render(RUN)).toContain(`href="${RUN}"`);
+    expect(render(null)).toContain('href="/"');
   });
 
   it('never prints the error itself', () => {

@@ -6,6 +6,7 @@ vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
 vi.mock('@intellifin/application', async original => ({ ...await original<typeof import('@intellifin/application')>(), initiateRun: mocks.initiate, cancelRun: mocks.cancel, rerunRun: mocks.rerun, flagRun: mocks.flag }));
 import { RUN_FLAG_REFUSALS } from '@intellifin/domain';
 import { FLAG_COPY } from '../../src/design/copy';
+import { NOTHING_CHANGED_CLAIM } from '../../src/design/nothing-changed';
 import { cancelRunAction, flagRunAction, flagRunFormAction, initiateRunAction, initiateRunFormAction, rerunAction } from './actions';
 
 const fields = { requestToken: '018f0000-0000-7000-8000-000000000099', procedureId: '018f0000-0000-7000-8000-000000000001', period: { from: '2026-09-01', to: '2026-09-30' } };
@@ -64,7 +65,7 @@ describe('Run action request boundary', () => {
     mocks.initiate.mockRejectedValue(error);
     const result = await initiateRunAction(fields);
     expect(result).toMatchObject({ ok: false, unknownOutcome: true });
-    expect(JSON.stringify(result)).not.toContain('Nothing was changed');
+    expect(JSON.stringify(result)).not.toMatch(NOTHING_CHANGED_CLAIM);
     expect(captureError).toHaveBeenCalledWith('Initiate Run failed', error, { correlationId: 'trusted-correlation', outcome: 'failure' });
   });
   it('handles a failed runtime without a framework exception', async () => {
@@ -118,7 +119,7 @@ describe('Cancel and Rerun request boundaries', () => {
     mocks.cancel.mockRejectedValue(error);
     const result = await cancelRunAction({ runId });
     expect(result).toMatchObject({ ok: false, unknownOutcome: true });
-    expect(JSON.stringify(result)).not.toContain('Nothing was changed');
+    expect(JSON.stringify(result)).not.toMatch(NOTHING_CHANGED_CLAIM);
     expect(captureError).toHaveBeenCalledWith('Cancel Run failed', error, { correlationId: 'trusted-correlation', outcome: 'failure' });
   });
   it('gates a rerun under run.initiate, because a rerun starts a Run', async () => {
@@ -159,7 +160,7 @@ describe('the flag action says nothing changed only when its outcome establishes
     mocks.flag.mockRejectedValue(error);
     const result = await flagRunAction({ runId, note: 'A note.' });
     expect(result).toEqual({ ok: false, reason: FLAG_COPY.unknown, unknownOutcome: true });
-    expect(JSON.stringify(result)).not.toMatch(/nothing was changed/i);
+    expect(JSON.stringify(result)).not.toMatch(NOTHING_CHANGED_CLAIM);
     expect(captureError).toHaveBeenCalledWith('Flag Run failed', error, { correlationId: 'trusted-correlation', outcome: 'failure' });
   });
   it('reaches the same action from the native form, with the note that was typed', async () => {

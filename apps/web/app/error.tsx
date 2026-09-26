@@ -1,20 +1,21 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
-import { useEffect, useSyncExternalStore } from 'react';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { useEffect } from 'react';
 
 import { Banner } from '../src/design/Banner';
 import { ROUTE_BOUNDARY_COPY, routeBoundarySentence } from '../src/design/route-boundary-words';
 
-/** The address can change under the boundary only by a history move. */
-function subscribeToAddress(onChange: () => void): () => void {
-  window.addEventListener('popstate', onChange);
-  return () => window.removeEventListener('popstate', onChange);
-}
-
-/** The page's own address, query included: a reload of `?cursor=…` is not page one. */
-function currentAddress(): string {
-  return `${window.location.pathname}${window.location.search}`;
+/**
+ * The page's own address, query included: a reload of `?cursor=…` is not page one.
+ *
+ * Built from the router's own path and query, which the server renders too, so the link is
+ * the same with JavaScript and without it, and a navigation that changes only the query while
+ * the boundary is showing moves it with the page.
+ */
+function boundaryAddress(pathname: string | null, search: string): string {
+  const path = pathname ?? '/';
+  return search === '' ? path : `${path}?${search}`;
 }
 
 /**
@@ -45,9 +46,7 @@ export default function ErrorBoundary({
   readonly reset: () => void;
 }): React.JSX.Element {
   const pathname = usePathname();
-  // On the server there is no `window`, so the link names the path; once the page is live
-  // it names the exact address, query included.
-  const here = useSyncExternalStore(subscribeToAddress, currentAddress, () => pathname ?? '/');
+  const here = boundaryAddress(pathname, useSearchParams().toString());
   useEffect(() => {
     // The server logs the cause. This is the browser's half: the digest ties the two
     // together without putting anything from the error itself on the screen.
