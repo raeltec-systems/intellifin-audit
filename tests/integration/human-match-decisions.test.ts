@@ -286,6 +286,45 @@ describe.skipIf(!url)('the decision behind a human-selected match on PostgreSQL'
     expect(await readRunHumanMatches(db, otherRunId)).toEqual({ total: 0, rows: [] });
   });
 
+  it('establishes no decision from a link to another kind of question, or from two links', async () => {
+    const runId = await startRun('2026-05-01', '2026-05-31');
+    // A question of another kind, answered with an option that is not one of the platform's
+    // own: no command can write it (the other kinds' options are fixed), so it is written
+    // raw. Only its KIND says it was not a candidate choice.
+    const otherKind = ids.next();
+    await sql`INSERT INTO run_wait(wait_id,run_id,kind,options,deadline,opened_at,closed_at,closure_kind,answer_option_id,actor)
+      VALUES(${otherKind},${runId},'unnamed-value',${JSON.stringify([{ id: 'value-a', label: 'Value A' }])}::text::jsonb,
+        ${new Date(baseNow.getTime() + 4 * 60 * 60 * 1000).toISOString()}::timestamptz,${baseNow.toISOString()}::timestamptz,
+        ${new Date(baseNow.getTime() + 60_000).toISOString()}::timestamptz,'answer','value-a',${author})`;
+    const byOtherKind = await register(runId, 'E-7', 'human-matched', { waitId: otherKind });
+
+    // One record whose registration named one answered choice, and a second link — written
+    // by the real appender, as a forged or duplicated registration event would be — naming a
+    // DIFFERENT answered choice for the same record. Two links establish no single decision.
+    const first = await answered(runId, 'choose-candidate', 'candidate-1');
+    const twice = await register(runId, 'E-8', 'human-matched', { waitId: first });
+    const second = await answered(runId, 'choose-candidate', 'candidate-2');
+    await new PostgresRunsUnitOfWork(db).execute(async (context) => {
+      const [run] = await sql<{ correlation_id: string; session_id: string }[]>`
+        SELECT correlation_id, session_id FROM audit_run WHERE run_id=${runId}`;
+      await context.auditEvents.append({
+        actor: { type: 'system', id: 'observation-registrar' },
+        eventType: 'execution.observations-registered',
+        source: 'worker',
+        outcome: 'success',
+        aggregateId: runId,
+        correlationId: run!.correlation_id,
+        sessionId: run!.session_id,
+        payload: { registered: 0, humanMatchDecisions: [{ observationId: twice.observationId, waitId: second }] },
+      });
+    });
+
+    const matches = await readHumanMatches(db, runId, { observationIds: [byOtherKind.observationId, twice.observationId] });
+    const byKey = new Map(matches.map((match) => [match.populationRecordKey, match.decision]));
+    expect(byKey.get('E-7')).toEqual({ state: 'not-linked' });
+    expect(byKey.get('E-8')).toEqual({ state: 'not-linked' });
+  });
+
   it('refuses a human-selected match registered without its decision, and writes nothing', async () => {
     const runId = await startRun('2026-06-01', '2026-06-30');
     const before = await sql`SELECT count(*)::int AS n FROM run_observation WHERE run_id=${runId}`;

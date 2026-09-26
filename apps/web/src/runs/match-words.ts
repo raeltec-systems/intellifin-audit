@@ -10,8 +10,7 @@ import { matchOriginWord } from './labels';
  * of React so the components and the browser specs read the same sentences — the
  * `run-start-words.ts` rule: a sentence retyped in a test is pinned against nothing.
  *
- * `[PROPOSED, needs owner confirmation]` Every sentence below except `flag` is wording the
- * UX artifacts do not contain (the story's "Ask First" rule for wording).
+ * Approved by the owner on 2026-09-26, handover sheet 1. The existing `flag` is unchanged.
  */
 export const MATCH_DECISION_WORDS = {
   /** The existing word for a human-selected match. */

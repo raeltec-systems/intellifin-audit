@@ -1415,7 +1415,7 @@ describe('human-selected matches on the Result and the Exceptions list (Story 10
     expect(html).toContain(MATCH_DECISION_WORDS.sectionIntro);
     expect(html).toContain('E-003');
     expect(html).toContain('on LoanCore');
-    expect(html).toContain(`/runs/${RUN_ID}/evidence/technical#observation-${OBSERVATION_ID}`);
+    expect(html).toContain(`/runs/${RUN_ID}/evidence/technical?observation=${OBSERVATION_ID}#observation-${OBSERVATION_ID}`);
     expect(flagCount(html)).toBe(1);
     expect(html).not.toContain(humanMatchesBoundedWords(1, 1));
     const masked = renderToStaticMarkup(React.createElement(HumanMatchesSection, {

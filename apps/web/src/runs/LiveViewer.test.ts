@@ -235,7 +235,7 @@ describe('the narration rail', () => {
     expect(html.slice(0, html.indexOf('Plan step identifier'))).not.toContain('session-2');
     // Story 10.6 (legacy 5.3): the row names WHICH Evidence it registered — a short
     // reference linked to its card, the full identifier under Technical details.
-    expect(html).toContain(`href="/runs/${RUN_ID}/evidence/technical#evidence-${evidenceId}"`);
+    expect(html).toContain(`href="/runs/${RUN_ID}/evidence/technical?evidence=${evidenceId}#evidence-${evidenceId}"`);
     expect(html).toContain('Evidence identifier');
     expect(html).not.toContain(ADAPTER_ARTIFACT_WORDS.none);
     expect(html).not.toContain(ADAPTER_ARTIFACT_WORDS.unavailable);

@@ -14,6 +14,8 @@ import {
   heldAfterInspectionWords,
   heldBeforeWords,
   heldInFlightWords,
+  keySegments,
+  pauseBannerResumeWords,
   pauseClosureSentences,
   pauseHoldRead,
   pauseHoldSentences,
@@ -22,6 +24,7 @@ import {
   planStepFacts,
   restartedWords,
   resumedByWords,
+  startedWords,
   stepWords,
   timedOutWords,
   withdrawnWords,
@@ -125,47 +128,111 @@ describe('where a pause held the Run', () => {
 
   it('gives the banner the superseded attempt, and an unreadable entry as unreadable', () => {
     const superseded = '019823ab-0000-7000-8000-0000000000c2';
-    const hold = recorded({ superseded: { stepExecutionId: superseded, planStepId: SIGN_IN.id, attempt: 1, workItem: null } });
+    const hold = recorded({
+      planStepId: INSPECT.id,
+      workItem: ITEM,
+      superseded: { stepExecutionId: superseded, planStepId: INSPECT.id, attempt: 1, workItem: ITEM },
+    });
     expect(pauseHoldRead({ mode: 'immediate', hold }, NAMER)).toEqual({
       kind: 'read',
-      sentences: [bannerHeldInFlightWords(NAMER.step(SIGN_IN.id, null), 1)],
+      sentences: [bannerHeldInFlightWords(NAMER.step(INSPECT.id, ITEM), 1)],
       supersededStepExecutionId: superseded,
+      resume: 'restart',
+      keys: [ITEM.subjectKey],
     });
-    expect(pauseHoldRead({ mode: 'immediate', hold: recorded() }, NAMER)).toMatchObject({ kind: 'read', supersededStepExecutionId: null });
+    expect(pauseHoldRead({ mode: 'immediate', hold: recorded() }, NAMER))
+      .toMatchObject({ kind: 'read', supersededStepExecutionId: null, resume: 'start', keys: [] });
+    expect(pauseHoldRead({ mode: 'immediate', hold: { kind: 'not-recorded' } }, NAMER))
+      .toMatchObject({ kind: 'read', supersededStepExecutionId: null, resume: 'unknown' });
     expect(pauseHoldRead(null, NAMER)).toEqual({ kind: 'unreadable' });
+  });
+
+  // Screenshot review, 2026-09-26: the banner said "No Step Execution was in flight." and,
+  // on the next line, "The agent restarts the current Step" — an attempt that never began.
+  it('ends the banner with what Resume does for THIS hold, and keeps the old sentence where nothing says', () => {
+    const read = (resume: 'restart' | 'start' | 'unknown') =>
+      ({ kind: 'read', sentences: [], supersededStepExecutionId: null, resume, keys: [] }) as const;
+    expect(pauseBannerResumeWords(read('restart'))).toBe(PAUSE_WORDS.resumeRestarts);
+    expect(pauseBannerResumeWords(read('start'))).toBe(PAUSE_WORDS.resumeStarts);
+    expect(pauseBannerResumeWords(read('unknown'))).toBe(PAUSE_WORDS.resumeUnknown);
+    expect(pauseBannerResumeWords({ kind: 'unreadable' })).toBe(PAUSE_WORDS.resumeUnknown);
+    expect(pauseBannerResumeWords({ kind: 'none' })).toBe(PAUSE_WORDS.resumeUnknown);
+    // Only an interrupted attempt is restarted; a between-units hold is started.
+    expect(PAUSE_WORDS.resumeStarts).not.toContain('restart');
+    expect(PAUSE_WORDS.resumeRestarts).toContain('restarts');
+  });
+});
+
+describe('keeping a record key on one line', () => {
+  it('splits a sentence at each record key and changes none of its text', () => {
+    const text = 'Held at “Inspect the record” for E-000102 on LoanCore, before E-000103.';
+    const segments = keySegments(text, ['E-000102', 'E-000103']);
+    expect(segments.map((segment) => segment.text).join('')).toBe(text);
+    expect(segments.filter((segment) => segment.key).map((segment) => segment.text)).toEqual(['E-000102', 'E-000103']);
+  });
+
+  it('keeps the longer key whole where two start at one place, and ignores keys that are not there', () => {
+    expect(keySegments('for AB-12 and AB-1.', ['AB-1', 'AB-12'])).toEqual([
+      { text: 'for ', key: false }, { text: 'AB-12', key: true }, { text: ' and ', key: false },
+      { text: 'AB-1', key: true }, { text: '.', key: false },
+    ]);
+    expect(keySegments('No key here.', ['E-1', ''])).toEqual([{ text: 'No key here.', key: false }]);
+    expect(keySegments('E-1', ['E-1', 'E-1'])).toEqual([{ text: 'E-1', key: true }]);
   });
 });
 
 describe('how a pause ended', () => {
   const render = { actor: (id: string | null) => (id === null ? null : `person ${id}`), time: (iso: string) => `at-${iso}` };
 
-  it('names the attempt a resume started, at the step and record it restarted', () => {
-    const closure: RunPauseClosure = {
-      kind: 'resumed',
-      resumedBy: 'u1',
-      resumedAt: '2026-09-26T10:00:00.000Z',
-      restart: { kind: 'started', attempt: { stepExecutionId: 'se', planStepId: INSPECT.id, attempt: 3, workItem: ITEM } },
-    };
-    expect(pauseClosureSentences(closure, NAMER, render)).toEqual([
+  const DEADLINE = '2026-09-26T10:30:00.000Z';
+  const ended = (hold: RunPauseHold, closure: RunPauseClosure) => ({ hold, closure, deadline: DEADLINE });
+  const inFlight = recorded({
+    planStepId: INSPECT.id,
+    workItem: ITEM,
+    superseded: { stepExecutionId: 'sx', planStepId: INSPECT.id, attempt: 3, workItem: ITEM },
+  });
+  const started: RunPauseClosure = {
+    kind: 'resumed',
+    resumedBy: 'u1',
+    resumedAt: '2026-09-26T10:00:00.000Z',
+    restart: { kind: 'started', attempt: { stepExecutionId: 'se', planStepId: INSPECT.id, attempt: 3, workItem: ITEM } },
+  };
+
+  it('says a resume RESTARTED the attempt a pause interrupted, at the step and record it was on', () => {
+    expect(pauseClosureSentences(ended(inFlight, started), NAMER, render)).toEqual([
       resumedByWords('person u1', 'at-2026-09-26T10:00:00.000Z'),
       restartedWords(NAMER.step(INSPECT.id, ITEM), 3),
     ]);
   });
 
+  // Screenshot review, 2026-09-26: a pause held before the sign-in said its resume
+  // "restarted" the sign-in, which had never begun.
+  it('says a resume STARTED the held step after a pause between units, and never that it restarted it', () => {
+    const between = recorded({ planStepId: INSPECT.id, workItem: ITEM });
+    const sentences = pauseClosureSentences(ended(between, started), NAMER, render);
+    expect(sentences).toEqual([
+      resumedByWords('person u1', 'at-2026-09-26T10:00:00.000Z'),
+      startedWords(NAMER.step(INSPECT.id, ITEM), 3),
+    ]);
+    expect(sentences.join(' ')).not.toContain('restarted');
+  });
+
   it('says when a resume has started no attempt yet, and when its attempt was never recorded', () => {
     const base = { kind: 'resumed', resumedBy: null, resumedAt: '2026-09-26T10:00:00.000Z' } as const;
-    expect(pauseClosureSentences({ ...base, restart: { kind: 'none' } }, NAMER, render))
+    expect(pauseClosureSentences(ended(inFlight, { ...base, restart: { kind: 'none' } }), NAMER, render))
       .toEqual([resumedByWords(null, 'at-2026-09-26T10:00:00.000Z'), PAUSE_WORDS.restartNone]);
-    expect(pauseClosureSentences({ ...base, restart: { kind: 'not-recorded' } }, NAMER, render))
+    expect(pauseClosureSentences(ended({ kind: 'not-recorded' }, { ...base, restart: { kind: 'not-recorded' } }), NAMER, render))
       .toEqual([resumedByWords(null, 'at-2026-09-26T10:00:00.000Z'), PAUSE_WORDS.restartNotRecorded]);
     expect(resumedByWords(null, 'x')).toBe('Resumed at x.');
   });
 
   it('says a pause is still open, ran out, was withdrawn, or ended in a way this build cannot name', () => {
-    expect(pauseClosureSentences({ kind: 'open' }, NAMER, render)).toEqual([PAUSE_WORDS.stillPaused]);
-    expect(pauseClosureSentences({ kind: 'timed-out', at: 't' }, NAMER, render)).toEqual([timedOutWords('at-t')]);
-    expect(pauseClosureSentences({ kind: 'withdrawn', at: 'w' }, NAMER, render)).toEqual([withdrawnWords('at-w')]);
-    expect(pauseClosureSentences({ kind: 'unknown' }, NAMER, render)).toEqual([PAUSE_WORDS.closureUnknown]);
+    expect(pauseClosureSentences(ended(inFlight, { kind: 'open' }), NAMER, render)).toEqual([PAUSE_WORDS.stillPaused]);
+    // A pause that ran out reached its DEADLINE; the wake that closed it can run later.
+    expect(pauseClosureSentences(ended(inFlight, { kind: 'timed-out', at: 't' }), NAMER, render))
+      .toEqual([timedOutWords(`at-${DEADLINE}`)]);
+    expect(pauseClosureSentences(ended(inFlight, { kind: 'withdrawn', at: 'w' }), NAMER, render)).toEqual([withdrawnWords('at-w')]);
+    expect(pauseClosureSentences(ended(inFlight, { kind: 'unknown' }), NAMER, render)).toEqual([PAUSE_WORDS.closureUnknown]);
   });
 });
 

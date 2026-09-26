@@ -180,7 +180,7 @@ function ReplayGaps({ gaps }: { readonly gaps: ReplayGapsView | undefined }): Re
       <details className="ls-disclosure">
         <summary>{REPLAY_GAP_WORDS.listSummary}</summary>
         <div className="ls-disclosure__body ls-stack">
-          <ul className="ls-plain-list">
+          <ul className="ls-plain-list ls-replay-gaps">
             {gaps.rows.map((gap) => (
               <li key={gap.toolActionId} data-gap={gap.kind}>
                 {gap.mark} · {replayGapPosition(gap.framesBefore)} · {gap.narration}
@@ -295,6 +295,9 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
    */
   const ofRecord = ((): string | null => {
     if (frame === null || jumped === null || jumped.kind !== 'work-item') return null;
+    // The prefix cannot establish a record's full frame total. Its exact session count
+    // remains visible; do not present this loaded subset as the whole record.
+    if (props.framesTotal > props.frames.length) return null;
     const mine = props.frames.filter((item) => item.workItemId === jumped.id);
     const position = mine.findIndex((item) => item.evidenceId === frame.evidenceId);
     if (position < 0 || mine.length === 0) return null;

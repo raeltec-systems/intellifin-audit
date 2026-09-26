@@ -1,3 +1,16 @@
+## 2026-09-26 — Preserve the database's Replay landing ordinal (Story 10.9 continuation)
+
+`readEscalations` compares stored timestamps at database precision. The default Replay prefix
+must use its `framesThrough` ordinal for every landing, not recompute the in-prefix case with
+`Date.parse`: distinct stored instants can collapse into one millisecond and select a capture
+that happened after the question. Two red-green regressions cover an intervening wait and a
+wait before the first capture within the same rendered millisecond.
+
+A clicked record's optional frame denominator cannot be calculated from a bounded session
+prefix. Withhold that denominator when the full record total is unknown; retain the exact
+session counter. An inspection page has no jump buttons and does not enter that clicked state.
+The bounded-history P-4 fixture uses retry-or-skip decisions; P-4 refuses candidate matching.
+
 ## 2026-09-26 — A bounded Replay view says what it covers, and the count beside a frame is exact (Story 10.9)
 
 Story 10.9 closes legacy 5.8's limitation (2): Replay's default view read its waits, its
@@ -52,6 +65,21 @@ Three mechanical notes:
   transaction, with its frame objects in storage BEFORE the commit: the worker's integrity
   sweep reads a sealed package's artifacts, and a missing object is a permanent finding.
 
+## 2026-09-26 — Review continuation keeps exact reads exact (Story 10.6)
+
+- Adapter Evidence readers accept at most 64 IDs. Batch distinct IDs at the caller; an
+  exact read must not silently drop the 65th artifact. A later batch failure keeps the
+  existing unreadable result for the whole read.
+- A pause while revisiting an acquired adapter reference holds the next unfinished unit.
+  Preserve cancellation checks at their original boundaries. If no unit remains, leave
+  the pause request for the next stage or terminal transition.
+- A metadata link beyond a bounded overview carries an exact selector. Resolve it only
+  after Run authorization, through the Run-bound reader, and deduplicate its anchor.
+- Keep record keys such as `E-000102` in the existing `ls-nowrap` span; Chromium breaks at
+  their hyphens. `completeRun` seals the result but does not itself move the Run state.
+- Handover sheet 1 is approved. Sheet-2 pause changes A1–A5 and the optional event payload
+  fields remain pending; a successful test is not owner approval.
+
 ## 2026-09-26 — A fact the records do not link is linked on new events, and read by identity (Story 10.6)
 
 Story 10.6 meets five compiler-1 visibility legs the closure register found on the retained
@@ -83,6 +111,20 @@ identity and says what an older record does not hold. Contracts: `run-pause-v1.m
   decision is not linked; a pause whose event named no step says its step was not recorded;
   a hold the banner cannot read says so. Nothing pairs a wait with a record, or a resume with
   an attempt, by time.
+- **A pause fixture sits where a stage really holds one.** The sign-in and adapter stages
+  pause only BETWEEN units; only the Work Item stage supersedes an attempt in flight, and it
+  gives the attempt back, so the restarted attempt carries the SAME number and only its Step
+  Execution tells the two apart. The first browser journey superseded a sign-in attempt and
+  restarted it as attempt 2 — a shape no Run produces — and passed. `pause-resume.spec.ts`
+  now holds the first pause before the sign-in and the second mid-attempt at the page's
+  inspection (a P-4 Work Item, subject key NULL).
+- **A human-selected match exists only in a P-1 Run.** The P-4 page path refuses a
+  choose-candidate decision (`human-decision-refused`); only P-1's name search offers two
+  accounts. The first `human-match.spec.ts` fixture recorded a human match in a P-4 Run and
+  passed. It is a P-1 Run now — LoanCore from the catalogue, one Work Item per record, the
+  leavers binding's own mask on `full_name` — and it asserts no surface beside the decision
+  note shows a masked name (proven by removing the mask: the Exceptions list and the record
+  review then fail).
 - **A selection a read cannot answer whole is refused, never cut.**
   `MATCH_DECISION_SELECTOR_LIMIT` is sized from the callers' own page limits; a dropped entry
   would render a human match as a platform one.

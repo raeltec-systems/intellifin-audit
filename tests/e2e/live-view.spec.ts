@@ -403,7 +403,7 @@ test.describe('Live View', () => {
 
     // The acquired step: the Evidence it registered, linked to its card, and its digest.
     await expect(acquired).toContainText(referenceDigest);
-    await expect(acquired.locator(`a[href="/runs/${seeded.runId}/evidence/technical#evidence-${referenceEvidenceId}"]`)).toBeVisible();
+    await expect(acquired.locator(`a[href="/runs/${seeded.runId}/evidence/technical?evidence=${referenceEvidenceId}#evidence-${referenceEvidenceId}"]`)).toBeVisible();
     await expect(acquired).not.toContainText(ADAPTER_ARTIFACT_WORDS.none);
     await expect(acquired).not.toContainText(ADAPTER_ARTIFACT_WORDS.unavailable);
     // Its full identifier is under the row's own Technical details, as the plan step's is.

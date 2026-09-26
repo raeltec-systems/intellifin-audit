@@ -706,7 +706,7 @@ export async function executeAdapterSteps(
    * superseded here. The checkpoint goes to `RETRY`, which is what the extraction recovery
    * sweep re-claims once the resume puts the Run back to `RUNNING`.
    */
-  const canceledAtBoundary = async (hold: PauseHold): Promise<boolean> => {
+  const canceledAtBoundary = async (hold: PauseHold | null): Promise<boolean> => {
     let stopped = false;
     await guarded(async (context) => {
       const request = context.run?.cancellation ?? null;
@@ -716,7 +716,7 @@ export async function executeAdapterSteps(
         return;
       }
       const pause = context.run?.pauseRequest ?? null;
-      if (pause === null) return;
+      if (pause === null || hold === null) return;
       stopped = true;
       const at = deps.clock.now().toISOString();
       await context.saveCheckpoint({ ...checkpoint, status: 'RETRY', leaseUntil: at, diagnostic: null }, 'PAUSED');
@@ -784,11 +784,20 @@ export async function executeAdapterSteps(
   // The attempt a resume restarts names that resume (Story 10.6, legacy 5.4).
   const linkResume = resumeLinker();
 
+  // A redelivery verifies acquired references again, but starts no attempt for them.
+  // Keep the cancellation boundary before that read; a pause names the next unit that
+  // can still run. With none left, the marker belongs to the next stage or completion.
+  const nextHold = (): PauseHold | null => {
+    const reference = steps.find((step) => step.state !== 'ACQUIRED');
+    if (reference !== undefined) return { planStepId: reference.stepId, workItemId: null, superseded: null };
+    const item = items.find((item) => item.state !== 'OBSERVED' && item.state !== 'FAILED' && item.state !== 'UNINSPECTED');
+    return item === undefined ? null : { planStepId: item.stepId, workItemId: item.workItemId, superseded: null };
+  };
+
   try {
     // ------------------------------------------------- Reference Sources, in order
     for (const entry of classification.references) {
-      // Held before this Reference Source, a Run-level Session Step: no Work Item.
-      if (await canceledAtBoundary({ planStepId: entry.stepId, workItemId: null, superseded: null })) return { retry: false };
+      if (await canceledAtBoundary(nextHold())) return { retry: false };
       const step = steps.find((row) => row.stepId === entry.stepId)!;
       if (step.state === 'FAILED') {
         // A Reference Source is a Run-level Session Step. Returning here would leave the

@@ -109,8 +109,8 @@ async function seedBoundedRun(): Promise<void> {
   const waits = [
     ...Array.from({ length: PAUSES }, (_, index) => ({ wait_id: ids.next(), kind: 'pause', opened_at: stamp(index + 1),
       opened_by: author, closure_kind: 'resume', answer_option_id: 'resume' })),
-    ...Array.from({ length: ESCALATIONS }, (_, index) => ({ wait_id: ids.next(), kind: 'choose-candidate',
-      opened_at: stamp((index + 11) * 10 + 5), opened_by: null, closure_kind: 'answer', answer_option_id: 'candidate-a' })),
+    ...Array.from({ length: ESCALATIONS }, (_, index) => ({ wait_id: ids.next(), kind: 'retry-or-skip',
+      opened_at: stamp((index + 11) * 10 + 5), opened_by: null, closure_kind: 'answer', answer_option_id: 'retry' })),
   ];
 
   // Record n's Exception is raised at 20,000 - n seconds, so the first 500 RAISED are the
@@ -197,7 +197,8 @@ async function seedBoundedRun(): Promise<void> {
 
     // Every question closed, as the product closes it.
     await tx`INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,opened_by,deadline,closed_at,closure_kind,answer_option_id,actor)
-      SELECT w.wait_id, ${runId}::uuid, w.kind, '[{"id":"candidate-a","label":"Candidate A"}]'::jsonb, w.opened_at, w.opened_by,
+      SELECT w.wait_id, ${runId}::uuid, w.kind, CASE WHEN w.kind = 'pause' THEN '[{"id":"resume","label":"Resume"}]'::jsonb
+          ELSE '[{"id":"retry","label":"Retry"},{"id":"skip","label":"Skip"}]'::jsonb END, w.opened_at, w.opened_by,
         w.opened_at + interval '30 minutes', w.opened_at + interval '1 second', w.closure_kind, w.answer_option_id, ${author}
       FROM jsonb_to_recordset(${JSON.stringify(waits)}::text::jsonb) AS w(wait_id uuid, kind text, opened_at timestamptz,
         opened_by text, closure_kind text, answer_option_id text)`;
@@ -387,6 +388,10 @@ test.describe('Replay past its default view’s bounds', () => {
     // The list is exactly what the sentences say: one Work Item, 500 of each kind.
     const rows = jump.locator('.ls-session__jumps > li');
     await expect(rows).toHaveCount(1 + SHOWN + SHOWN);
+    // Selecting the record cannot turn its 500 loaded captures into its full total.
+    await rows.filter({ hasText: /^Work Item ·/ }).getByRole('button').click();
+    await expect(page.locator('.ls-session__record-position')).toHaveCount(0);
+    await expect(page.getByText('Frame 1 of 520', { exact: true })).toBeVisible();
     await expect(rows.filter({ hasText: /^Escalation ·/ })).toHaveCount(SHOWN);
     await expect(rows.filter({ hasText: /^Exception ·/ })).toHaveCount(SHOWN);
     // Raised first, listed; raised among the last 100, not listed. They all land on the
@@ -415,7 +420,7 @@ test.describe('Replay past its default view’s bounds', () => {
     await expect(late).toHaveCount(10);
     await expect(late.filter({ hasText: /^Escalation ·/ })).toHaveCount(10);
     await expect(late.first()).toHaveText(
-      `Escalation · Choose candidate · ${REPLAY_COPY.frameNotRead.replace('{shown}', String(SHOWN))} · Open inspection Replay`);
+      `Escalation · Retry or skip · ${REPLAY_COPY.frameNotRead.replace('{shown}', String(SHOWN))} · Open inspection Replay`);
     // A row with no frame is text, not a button, and still keeps the buttons' text edge and
     // row height, so the list has one left edge and one rhythm.
     const edge = (row: Locator) => row.evaluate((item) => {

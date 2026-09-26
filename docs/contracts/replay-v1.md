@@ -84,6 +84,10 @@ page that HOLDS its frame (Story 10.9, below).
 Playing advances one frame every `FRAME_INTERVAL_MS` and STOPS at the last: a loop would
 make a finished session look like one still going.
 
+The optional clicked-record frame position is withheld when the default prefix is bounded:
+that prefix does not establish the record's complete frame total. The exact global frame
+counter remains visible.
+
 ## A Run that has not finished has no Replay
 
 `isActiveRunState` covers `QUEUED` as well as the three working states, so it is the whole
@@ -212,7 +216,9 @@ pattern `readFrames` already had:
   and the inspection page that holds it (`landing`: the Work Item and a cursor, the multiple
   of `REPLAY_INSPECTION_PAGE_SIZE` below the frame's position in that inspection). The
   landing rule is the one in the table above, with the same frame order and the same
-  ownership rule as the inspection pages.
+  ownership rule as the inspection pages. Within the default prefix the surface uses this
+  exact ordinal too: it does not repeat the timestamp comparison at JavaScript millisecond
+  precision, which can choose a capture made after the wait.
 - **`readReplayExceptions`** reads the Run's Exceptions in the order they were raised, with
   the exact total, so "the first N" is a statement about the Run and not about whatever order
   the rows were stored in. One registration raises its whole batch at one instant (a P-4 page

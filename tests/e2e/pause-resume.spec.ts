@@ -24,6 +24,7 @@ import {
   pauseStepNamer,
   pauseTitleWords,
   restartedWords,
+  startedWords,
 } from '../../apps/web/src/runs/pause-words';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
@@ -86,6 +87,8 @@ test.afterAll(async () => {
       await tx`DELETE FROM run_wait WHERE run_id=${runId}`;
       // The logical-step test seeds Step Executions (UX-47).
       await tx`DELETE FROM run_step_execution WHERE run_id=${runId}`;
+      // The pause-linkage journey seeds the Work Item its second pause holds (Story 10.6).
+      await tx`DELETE FROM run_work_item WHERE run_id=${runId}`;
       await tx`DELETE FROM run_result WHERE run_id=${runId}`;
       await tx`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
       await tx`DELETE FROM run_session_step WHERE run_id=${runId}`;
@@ -129,8 +132,12 @@ async function seedRun(state: 'RUNNING' | 'AWAITING_AUDITOR'): Promise<string> {
 type PauseHold = Parameters<typeof performPause>[1]['hold'];
 const SIGN_IN_HOLD: PauseHold = { planStepId: 'session-3', workItemId: null, superseded: null };
 
-/** Exactly what a stage does at its next boundary, through the same repository. */
-async function honourPause(runId: string, hold: PauseHold = SIGN_IN_HOLD): Promise<string> {
+/**
+ * Exactly what a stage does at its next boundary, through the same repository. `inFlight`
+ * is the Work Item whose attempt the pause supersedes: the existing `workItemId` key the
+ * Work Item stage writes beside the hold (`execute-agent-work-item.ts`).
+ */
+async function honourPause(runId: string, hold: PauseHold = SIGN_IN_HOLD, inFlight: string | null = null): Promise<string> {
   return new PostgresWaitRepository(createDb(sql)).transaction(runId, async (context) => {
     const run = context.run!;
     const request = run.pauseRequest!;
@@ -141,6 +148,7 @@ async function honourPause(runId: string, hold: PauseHold = SIGN_IN_HOLD): Promi
       waitId: ids.next(),
       at: new Date().toISOString(),
       hold,
+      workItemId: inFlight,
     });
     return wait.waitId;
   });
@@ -175,6 +183,44 @@ async function startResumedAttempt(runId: string, planStepId: string, registrati
         attemptId: ids.next(),
         stepId: planStepId,
         registrationId,
+        stepExecutionId,
+        attempt,
+        ...(resumedWaitId === null ? {} : { resumedWaitId }),
+      },
+    });
+  });
+  return resumedWaitId;
+}
+
+/**
+ * The worker starting the held Work Item's inspection again after a resume: its Step
+ * Execution and the stage's own `work-item-attempt-started` event, linked by the same
+ * production linker over the same production read as `startResumedAttempt`.
+ */
+async function startResumedWorkItemAttempt(runId: string, planStepId: string, workItemId: string, stepExecutionId: string, attempt: number): Promise<string | null> {
+  const db = createDb(sql);
+  const resumedWaitId = await resumeLinker()({ readPendingResume: () => readPendingResume(db, runId) }, { planStepId, workItemId });
+  await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at)
+    VALUES(${stepExecutionId},${runId},${planStepId},${workItemId},'inspect-record','RUNNING',${attempt},${new Date().toISOString()})`;
+  await new PostgresWaitRepository(db).transaction(runId, async (context) => {
+    const run = context.run!;
+    // The shape `execute-agent-work-item.ts` appends for `work-item-attempt-started`.
+    await context.auditEvents.append({
+      actor: { type: 'system', id: 'agent-worker' },
+      eventType: 'lifecycle.agent-work',
+      source: 'worker',
+      outcome: 'success',
+      aggregateId: runId,
+      correlationId: run.correlationId,
+      sessionId: run.sessionId,
+      payload: {
+        state: 'RUNNING',
+        diagnostic: 'work-item-attempt-started',
+        attemptId: ids.next(),
+        workItemId,
+        nextTurn: 1,
+        tokens: 0,
+        reservedTokens: 0,
         stepExecutionId,
         attempt,
         ...(resumedWaitId === null ? {} : { resumedWaitId }),
@@ -364,54 +410,83 @@ test.describe('pausing and resuming a Run', () => {
   // Story 10.6, legacy 5.4: "Given a Run paused and resumed more than once, when its
   // Timeline is read, then each pause and each resume names its exact plan step and Step
   // Execution attempt from durable records, and a resume names the attempt it starts."
-  test('names where each pause held the Run and the attempt each resume started, on the Timeline and the banner', async ({ page }) => {
-    test.setTimeout(180_000);
+  //
+  // Each pause is held where a stage really holds one. The sign-in stage pauses only
+  // BETWEEN units, before a sign-in, with nothing in flight (`execute-agent-steps.ts`). The
+  // Work Item stage pauses MID-ATTEMPT, supersedes the attempt and gives it back, so the
+  // attempt its resume restarts carries the same number and only the Step Execution tells
+  // the two apart (`execute-agent-work-item.ts`).
+  test('names where each pause held the Run and the attempt each resume started, over two pauses and two resumes', async ({ page }) => {
+    test.setTimeout(240_000);
     const runId = await seedRun('RUNNING');
     const [version] = await sql`SELECT compiled_plan FROM procedure_version WHERE version_id=${versionId}`;
     const plan = version!.compiled_plan as ExecutablePlan;
     const signIn = plan.sessionSteps.find((step) => step.action === 'sign-in')!;
     const inspect = plan.targetSystems[0]!.planSteps.find((step) => step.action === 'inspect-record')!;
     const system = plan.inputs.targets[0]!;
+    // The page's one Work Item. A P-4 Run inspects one page, so its Work Item has no record
+    // of its own (subject key NULL, as `agent-prodconsole.ts` writes it).
+    const item = { workItemId: ids.next(), subjectKey: null };
     const name = pauseStepNamer(plan, new Map());
     const signInStep = name.step(signIn.id, null);
-    const inspectStep = name.step(inspect.id, null);
-    // A step is named by its action and its system, never by the plan's identifier for it.
+    const inspectStep = name.step(inspect.id, item);
+    // A step is named by its action and its system, never by the plan's identifier for it,
+    // and a Work Item with no record of its own gains no dangling "for".
     expect(signInStep).toContain(planActionWord('sign-in'));
     expect(signInStep).toContain(system.displayName);
     expect(signInStep).not.toContain(signIn.id);
+    expect(inspectStep).toContain(system.displayName);
+    expect(inspectStep).not.toContain(' for ');
 
-    // The sign-in attempt the first pause interrupts.
-    const interrupted = ids.next();
-    await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at)
-      VALUES(${interrupted},${runId},${signIn.id},NULL,'sign-in','RUNNING',1,${new Date().toISOString()})`;
-
-    // Pause 1: requested through the control, honoured mid-attempt, which supersedes it.
+    // Pause 1, between units: requested through the control and honoured before the
+    // sign-in, with no attempt in flight.
     await page.goto(`/runs/${runId}/live`);
     await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
     await requestPause(page);
-    const firstWait = await honourPause(runId, { planStepId: signIn.id, workItemId: null, superseded: { stepExecutionId: interrupted, attempt: 1 } });
-    await sql`UPDATE run_step_execution SET state='SUPERSEDED', superseded_by='resume', completed_at=${new Date().toISOString()} WHERE step_execution_id=${interrupted}`;
+    const firstWait = await honourPause(runId, { planStepId: signIn.id, workItemId: null, superseded: null });
 
-    // The Paused banner says where the Run is held and names the attempt it superseded.
+    // The Paused banner says where the Run is held, and that nothing was in flight.
     await page.reload();
     const banner = page.locator('.ls-banner', { hasText: `Paused by ${authorName}` });
-    await expect(banner).toContainText(bannerHeldInFlightWords(signInStep, 1));
-    await expect(banner.locator(`[title="${interrupted}"]`)).toBeVisible();
+    await expect(banner).toContainText(bannerHeldBeforeWords(signInStep));
+    await expect(banner).toContainText(PAUSE_WORDS.noStepInFlight);
+    // And what Resume does here: it STARTS the held step, which never began.
+    await expect(banner).toContainText(PAUSE_WORDS.resumeStarts);
 
-    // Resume, through the controls, and the worker restarts the held step as attempt 2.
+    // Resume 1, through the controls, and the worker's first sign-in attempt names it.
     await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
     await acquireControl(page.getByRole('region', { name: 'Run controller', exact: true }));
     await resumeWithControl(page);
     await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
-    const restarted = ids.next();
-    expect(await startResumedAttempt(runId, signIn.id, system.registrationId, restarted, 2)).toBe(firstWait);
-    await sql`UPDATE run_step_execution SET state='SUCCEEDED', completed_at=${new Date().toISOString()} WHERE step_execution_id=${restarted}`;
+    const signingIn = ids.next();
+    expect(await startResumedAttempt(runId, signIn.id, system.registrationId, signingIn, 1)).toBe(firstWait);
+    await sql`UPDATE run_step_execution SET state='SUCCEEDED', completed_at=${new Date().toISOString()} WHERE step_execution_id=${signingIn}`;
 
-    // Pause 2, between units: held before the first inspection, with no attempt in flight.
+    // The Run advances to the page's inspection: its Work Item, and the attempt in flight.
+    const interrupted = ids.next();
+    await sql`INSERT INTO run_work_item(work_item_id,run_id,step_id,ordinal,registration_id,display_name,subject_key,
+      state,attempts,cycles,diagnostic,evidence_id,observations)
+      VALUES(${item.workItemId},${runId},${inspect.id},1,${system.registrationId},${system.displayName},${item.subjectKey},
+      'IN_PROGRESS',1,0,NULL,NULL,0)`;
+    await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at)
+      VALUES(${interrupted},${runId},${inspect.id},${item.workItemId},'inspect-record','RUNNING',1,${new Date().toISOString()})`;
+
+    // Pause 2, mid-attempt: the Work Item stage's boundary supersedes the attempt and gives
+    // it back, because a person pausing is not the agent failing.
     await page.reload();
     await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
     await requestPause(page);
-    const secondWait = await honourPause(runId, { planStepId: inspect.id, workItemId: null, superseded: null });
+    const secondWait = await honourPause(runId,
+      { planStepId: inspect.id, workItemId: item.workItemId, superseded: { stepExecutionId: interrupted, attempt: 1 } },
+      item.workItemId);
+    await sql`UPDATE run_step_execution SET state='SUPERSEDED', superseded_by='resume', completed_at=${new Date().toISOString()} WHERE step_execution_id=${interrupted}`;
+    await sql`UPDATE run_work_item SET attempts=0 WHERE work_item_id=${item.workItemId}`;
+
+    // The banner names the attempt this pause superseded, and that Resume restarts it.
+    await page.reload();
+    await expect(banner).toContainText(bannerHeldInFlightWords(inspectStep, 1));
+    await expect(banner.locator(`[title="${interrupted}"]`)).toBeVisible();
+    await expect(banner).toContainText(PAUSE_WORDS.resumeRestarts);
 
     // The Timeline: both pauses, in order, each with where it held the Run and how it ended.
     await page.goto(`/runs/${runId}/timeline`);
@@ -422,33 +497,62 @@ test.describe('pausing and resuming a Run', () => {
     const first = entries.nth(0);
     await expect(first.getByRole('heading', { name: pauseTitleWords(1), exact: true })).toBeVisible();
     await expect(first).toContainText(`Paused by ${authorName} at`);
-    await expect(first).toContainText(heldInFlightWords(signInStep, 1));
-    await expect(first.locator(`[title="${interrupted}"]`)).toBeVisible();
+    await expect(first).toContainText(heldBeforeWords(signInStep));
+    await expect(first).toContainText(PAUSE_WORDS.noStepInFlight);
     await expect(first).toContainText(`Resumed by ${authorName} at`);
-    await expect(first).toContainText(restartedWords(signInStep, 2));
-    await expect(first.locator(`[title="${restarted}"]`)).toBeVisible();
+    // The sign-in never began before this pause, so the resume STARTED it.
+    await expect(first).toContainText(startedWords(signInStep, 1));
+    await expect(first).not.toContainText('It restarted');
+    await expect(first.locator(`[title="${signingIn}"]`)).toBeVisible();
     const second = entries.nth(1);
     await expect(second.getByRole('heading', { name: pauseTitleWords(2), exact: true })).toBeVisible();
-    await expect(second).toContainText(heldBeforeWords(inspectStep));
-    await expect(second).toContainText(PAUSE_WORDS.noStepInFlight);
+    await expect(second).toContainText(heldInFlightWords(inspectStep, 1));
+    await expect(second.locator(`[title="${interrupted}"]`)).toBeVisible();
     await expect(second).toContainText(PAUSE_WORDS.stillPaused);
     // The banner on the same page names the second pause's hold, in the present tense.
-    await expect(page.locator('.ls-banner', { hasText: `Paused by ${authorName}` })).toContainText(bannerHeldBeforeWords(inspectStep));
+    await expect(banner).toContainText(bannerHeldInFlightWords(inspectStep, 1));
     // A person, never a user id.
     await expect(history).not.toContainText(author);
-    const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
-    expect(results.violations).toEqual([]);
+    const whilePaused = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+    expect(whilePaused.violations).toEqual([]);
 
-    // The durable facts the surface read, by identity: each pause's own event, and the
-    // restarted attempt's start event naming the first pause's wait.
-    const paused = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${runId} AND event_type='lifecycle.run-paused' ORDER BY sequence`;
-    expect(paused.map((row) => row.payload)).toEqual([
-      expect.objectContaining({ waitId: firstWait, planStepId: signIn.id, stepExecutionId: interrupted, attempt: 1 }),
-      expect.objectContaining({ waitId: secondWait, planStepId: inspect.id }),
+    // Resume 2, through the controls, and the worker restarts the page's inspection. The
+    // attempt was given back, so the restart is attempt 1 again, in a new Step Execution.
+    await page.goto(`/runs/${runId}/live`);
+    await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
+    await acquireControl(page.getByRole('region', { name: 'Run controller', exact: true }));
+    await resumeWithControl(page);
+    await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+    const restarted = ids.next();
+    expect(await startResumedWorkItemAttempt(runId, inspect.id, item.workItemId, restarted, 1)).toBe(secondWait);
+
+    // Both resumes now name the attempt each started.
+    await page.goto(`/runs/${runId}/timeline`);
+    await expect(second).toContainText(`Resumed by ${authorName} at`);
+    await expect(second).toContainText(restartedWords(inspectStep, 1));
+    await expect(second.locator(`[title="${restarted}"]`)).toBeVisible();
+    await expect(second).not.toContainText(PAUSE_WORDS.stillPaused);
+    // The Run is no longer paused, so no banner says where a pause holds it.
+    await expect(banner).toHaveCount(0);
+    const afterResume = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+    expect(afterResume.violations).toEqual([]);
+
+    // The durable facts the surface read, by identity: each pause's own event, and each
+    // restarted attempt's start event naming the wait of the pause its resume closed.
+    const pauses = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${runId} AND event_type='lifecycle.run-paused' ORDER BY sequence`;
+    expect(pauses.map((row) => row.payload)).toEqual([
+      expect.objectContaining({ waitId: firstWait, planStepId: signIn.id }),
+      expect.objectContaining({
+        waitId: secondWait, planStepId: inspect.id, heldWorkItemId: item.workItemId,
+        workItemId: item.workItemId, stepExecutionId: interrupted, attempt: 1,
+      }),
     ]);
-    expect(paused[1]!.payload).not.toHaveProperty('stepExecutionId');
-    const [linked] = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${runId} AND payload->>'resumedWaitId'=${firstWait}`;
-    expect(linked!.payload).toMatchObject({ stepExecutionId: restarted, attempt: 2 });
+    expect(pauses[0]!.payload).not.toHaveProperty('stepExecutionId');
+    expect(pauses[0]!.payload).not.toHaveProperty('heldWorkItemId');
+    const [linkedFirst] = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${runId} AND payload->>'resumedWaitId'=${firstWait}`;
+    expect(linkedFirst!.payload).toMatchObject({ stepExecutionId: signingIn, attempt: 1 });
+    const [linkedSecond] = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${runId} AND payload->>'resumedWaitId'=${secondWait}`;
+    expect(linkedSecond!.payload).toMatchObject({ stepExecutionId: restarted, workItemId: item.workItemId, attempt: 1 });
   });
 
   test('disables Pause on a Run waiting on an answer, and says why in words', async ({ page }) => {

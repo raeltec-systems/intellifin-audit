@@ -261,6 +261,25 @@ describe('an Escalation whose frame lies past the frames read (Story 10.9)', () 
     expect(target?.inspectionCursor).toBeUndefined();
   });
 
+  it('keeps the database landing when captures and the wait share a rendered millisecond', () => {
+    // Stored instants can differ by microseconds. The repository preserves their ordering
+    // in framesThrough, although each timestamp renders to the same JavaScript instant.
+    const frames = [
+      frame({ actionStartedAt: '2026-09-10T09:00:00.000Z' }),
+      frame({ actionStartedAt: '2026-09-10T09:00:00.000Z' }),
+    ];
+    const [target] = replayJumpTargets({ frames, framesTotal: 2, workItems: [], exceptions: [],
+      waits: [wait({ waitId: 'between-captures', openedAt: '2026-09-10T09:00:00.000Z', framesThrough: 1 })] });
+    expect(target).toMatchObject({ frameIndex: 0, absence: null });
+  });
+
+  it('does not invent a preceding frame when the database found none in the same millisecond', () => {
+    const frames = [frame({ actionStartedAt: '2026-09-10T09:00:00.000Z' })];
+    const [target] = replayJumpTargets({ frames, framesTotal: 1, workItems: [], exceptions: [],
+      waits: [wait({ waitId: 'before-capture', openedAt: '2026-09-10T09:00:00.000Z', framesThrough: 0, landing: null })] });
+    expect(target).toMatchObject({ frameIndex: null, absence: 'none-before' });
+  });
+
   it('changes nothing under the bound: the last frame at or before it, from the frames read', () => {
     const [target] = replayJumpTargets({ frames: FRAMES, framesTotal: FRAMES.length, workItems: [], exceptions: [],
       waits: [wait({ waitId: 'w1', openedAt: '2026-09-10T09:02:30.000Z' })] });

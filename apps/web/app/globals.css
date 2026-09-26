@@ -2098,6 +2098,13 @@ input:is([type='date'], [type='time'], [type='datetime-local'], [type='month'], 
   background: repeating-linear-gradient(135deg, var(--color-neutral-solid) 0 1px, transparent 1px 3px);
 }
 
+/* The rail's list of gaps, one per line: each item wraps over two or three lines in the
+   rail's width, so without a gap between them two gaps read as one sentence. */
+.ls-replay-gaps {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
 /* Story 10.6 (legacy 4.7): a record a PERSON matched, with the decision that did. The
    flag is a word, never a colour: the same "Human-matched" the Evidence cards print. */
 .ls-human-match {
