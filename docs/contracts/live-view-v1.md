@@ -130,6 +130,18 @@ is EXPERIENCE.md's:
 The adapter-only case is UX-DR25's own row: no workspace, so Adapter Session Steps render
 as compact log rows with their counts and digests instead of a screen.
 
+**Each row carries the Evidence it registered, through the page's real read (Story 10.6,
+legacy 5.3).** The page passed `digest: null` for every row, so an acquired step said "No
+artifact registered." over an artifact the Run had registered. `readAdapterLog` in
+`apps/web/src/runs/live-view.ts` is now the one read both session viewers use: it reads the
+Evidence EXACTLY by the ids the steps name (never the bounded Evidence overview, which a Run
+with more extractions than one page could push a step's artifact off), and each row's
+artifact is a REQUIRED three-way union rendered by one `AdapterStepLog` component — a
+`registered` artifact shows its Evidence reference and digest, a step with `none` keeps "No
+artifact registered.", and an `unavailable` read says so in its own sentence
+(`ADAPTER_ARTIFACT_WORDS.unavailable`, proposed wording). Three situations, never one
+sentence for all three.
+
 ## Narration is one sentence, used twice
 
 `stepNarration` builds `"<plan action word> on <target>, plan step <id>, started <instant>."`
@@ -281,6 +293,13 @@ concerned, and is not announced; the tick is also the moment the panel really di
 The skip link is EXPERIENCE.md's own `Go to open Escalation`, in `copy.ts` and pinned against
 the artifact on disk. It read `Skip to open Escalation` for two epics because it was typed
 inline in the component, where it was pinned against nothing.
+
+**The skip link moves focus INTO the panel (Story 10.6, legacy 5.6).** Its target,
+`#open-escalation`, had no `tabIndex`, so activating the link scrolled and left keyboard
+focus where it was. The target now carries `tabIndex={-1}`, as the shell's own skip-link
+target does, and `tests/e2e/live-escalation.spec.ts` — written and failing before the
+correction — presses Enter on the link, asserts focus is inside `#open-escalation`, and
+asserts every Tab stop from there to the panel's first answer control stays inside it.
 
 ### Pause, while a Run is waiting on an answer
 

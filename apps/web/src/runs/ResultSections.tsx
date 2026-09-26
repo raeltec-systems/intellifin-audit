@@ -13,8 +13,12 @@ import {
   SAFE_NEXT_ACTION_HEADING,
 } from '../design/copy';
 import { Criterion } from './Criterion';
+import { HumanMatchNote, humanMatchesForRecord, type HumanMatchIndex } from './HumanMatch';
+import { RecordLabel } from './RecordLabel';
 import { UntrustedList, UntrustedPolicy } from './UntrustedText';
 import { countText, evaluationOriginWord, evaluationValueWord, utcStamp } from './labels';
+import { MATCH_DECISION_WORDS, humanMatchesBoundedWords } from './match-words';
+import { NO_RECORD_NAMING, labelPartsWords, recordLabelParts, type RecordNaming } from './record-words';
 import { EXCEPTION_WORDS, RESULT_WORDS } from './result-words';
 import { STAGE_WORDS, stopReason } from './stop-reason';
 
@@ -458,6 +462,7 @@ export function FindingsSection({
   conditionText,
   templateId,
   systemName = () => null,
+  humanMatches,
 }: {
   readonly publication: RunResultPublication;
   /** The Run, so every named record can be opened where its evidence is. */
@@ -470,6 +475,11 @@ export function FindingsSection({
    * Work Item label rule of 2026-09-17); an id the plan does not name is shown as it is.
    */
   readonly systemName?: (registrationId: string) => string | null;
+  /**
+   * The human-selected matches among the records the Result names (Story 10.6, legacy
+   * 4.7). REQUIRED, so the page cannot leave a person's match unshown by not reading it.
+   */
+  readonly humanMatches: HumanMatchIndex;
 }): React.JSX.Element {
   const lists = [
     { key: 'exceptions', heading: 'Exceptions', findings: publication.exceptions },
@@ -504,6 +514,11 @@ export function FindingsSection({
                   <p className="ls-finding__record">
                     <strong>{record.populationRecordKey}</strong> on {systemName(record.targetSystem) ?? record.targetSystem}
                   </p>
+                  {/* A record a PERSON matched says so, with the decision that did; a
+                      platform match shows nothing here (Story 10.6, legacy 4.7). */}
+                  {humanMatchesForRecord(humanMatches, record.targetSystem, record.populationRecordKey).map((match) => (
+                    <HumanMatchNote key={match.observationId} match={match} names={humanMatches.names} />
+                  ))}
                   {record.conditionIds.map((conditionId) => (
                     <Criterion
                       key={conditionId}
@@ -541,6 +556,58 @@ export function FindingsSection({
           ) : null}
         </div>
       ))}
+    </section>
+  );
+}
+
+/**
+ * Every record of this Run a PERSON matched (Story 10.6, legacy 4.7).
+ *
+ * The Result names only the records that were Exceptions or were left Unevaluated, so a
+ * record a person matched and that then passed would appear nowhere on it — and a Pass that
+ * rests on a person's choice of which account is the record's is exactly what a reader
+ * needs to see. This is READ beside the sealed document, from the registration link each
+ * human-matched Observation carries; the published document is unchanged. The total is
+ * exact and the list is bounded, and the section says when it is. A Run with no human
+ * match renders nothing: a platform match shows no flag anywhere.
+ */
+export function HumanMatchesSection({
+  list,
+  runId,
+  systemName = () => null,
+  naming = NO_RECORD_NAMING,
+}: {
+  readonly list: HumanMatchIndex & { readonly total: number };
+  readonly runId: string;
+  readonly systemName?: (registrationId: string) => string | null;
+  /** How this Run names a record and what its frozen binding masks (UX-25, FR-41). */
+  readonly naming?: Pick<RecordNaming, 'keyMasked' | 'nameMasked' | 'nameColumn'>;
+}): React.JSX.Element | null {
+  if (list.total === 0) return null;
+  return (
+    <section className="ls-card ls-stack" aria-labelledby="human-matches-heading">
+      <h2 id="human-matches-heading">{MATCH_DECISION_WORDS.sectionHeading}</h2>
+      <p>{MATCH_DECISION_WORDS.sectionIntro}</p>
+      <ul className="ls-plain-list">
+        {list.matches.map((match) => {
+          const parts = recordLabelParts({ key: match.populationRecordKey }, naming);
+          return (
+            <li className="ls-finding ls-stack" key={match.observationId}>
+              <p className="ls-finding__record">
+                <RecordLabel parts={parts} /> on {systemName(match.targetSystem) ?? match.targetSystem}
+              </p>
+              <HumanMatchNote match={match} names={list.names} />
+              <p className="ls-finding__links">
+                <a href={`/runs/${runId}/evidence/technical?observation=${encodeURIComponent(match.observationId)}#observation-${match.observationId}`}>
+                  {EXCEPTION_WORDS.openEvidence}
+                  <span className="ls-visually-hidden"> for {labelPartsWords(parts)}</span>
+                </a>
+              </p>
+            </li>
+          );
+        })}
+      </ul>
+      {list.total > list.matches.length ? <p>{humanMatchesBoundedWords(list.matches.length, list.total)}</p> : null}
     </section>
   );
 }

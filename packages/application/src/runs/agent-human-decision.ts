@@ -76,6 +76,10 @@ export function applyAgentHumanDecision(input: AgentHumanDecisionInput): AgentHu
       stepExecutionId: input.stepExecutionId, captureMethod: 'agent', matchOrigin: human ? 'human-matched' : 'platform', identity,
       attributes, evidenceIds: [snapshot.evidenceId] },
     observedAtSource: input.observedAt, absence: null, expectedQueryKeys,
+    // The decision that matched it, carried to the registration event so every surface
+    // that says "Human-matched" can say WHOSE answer, and when (Story 10.6, legacy 4.7).
+    // A platform reading names no decision; registration refuses either half alone.
+    ...(human ? { matchDecision: { waitId: wait.waitId } } : {}),
   });
   const unresolved = (): AgentHumanDecisionResult => ({ ok: true, kind: 'register', item: base('ambiguous', null, [], false), workItemState: 'UNINSPECTED' });
   if (wait.kind === 'retry-or-skip') {

@@ -5,8 +5,12 @@ import type { RunFrameRow, RunReplayObservationDelta, RunReplayWait } from '@int
 import { ESCALATION_KIND_UNKNOWN } from '../design/plain-words';
 
 import {
+  REPLAY_GAP_WORDS,
   REPLAY_JUMP_KINDS,
   clampReplayIndex,
+  replayGapPosition,
+  replayGapsAt,
+  replayIncompleteSentence,
   replayFrameAt,
   replayFrameForWorkItem,
   replayInitialSelection,
@@ -250,5 +254,39 @@ describe('the Replay position', () => {
 
   it('is nowhere at all when a Run captured no frames', () => {
     expect(clampReplayIndex(0, 0)).toBe(-1);
+  });
+});
+
+/**
+ * The gaps in a Replay, in words (Story 10.6, legacy 5.2). A session with a gap looked
+ * complete, because nothing said an action had left no frame.
+ */
+describe('the gaps in a playback (Story 10.6, legacy 5.2)', () => {
+  it('states the limitation with the EXACT count, singular and plural', () => {
+    expect(replayIncompleteSentence(1)).toBe('Playback is incomplete: 1 frame is missing.');
+    expect(replayIncompleteSentence(2)).toBe('Playback is incomplete: 2 frames are missing.');
+    expect(replayIncompleteSentence(12_345)).toBe('Playback is incomplete: 12,345 frames are missing.');
+  });
+
+  it('says where a gap sits in the scrubber’s own numbering', () => {
+    expect(replayGapPosition(0)).toBe('before the first frame');
+    expect(replayGapPosition(3)).toBe('after frame 3');
+    expect(replayGapPosition(1_200)).toBe('after frame 1,200');
+  });
+
+  it('puts each gap at exactly one scrubber position', () => {
+    const gaps = {
+      missing: 2,
+      suppressed: 1,
+      rows: [
+        { toolActionId: 'a', kind: 'suppressed' as const, mark: 'Capture suppressed', narration: 'Signing in', framesBefore: 0 },
+        { toolActionId: 'b', kind: 'missing' as const, mark: REPLAY_GAP_WORDS.missing, narration: 'Opening a page', framesBefore: 2 },
+        { toolActionId: 'c', kind: 'missing' as const, mark: REPLAY_GAP_WORDS.missing, narration: 'Reading a field', framesBefore: 2 },
+      ],
+    };
+    expect(replayGapsAt(gaps, 0).map((gap) => gap.toolActionId)).toEqual(['a']);
+    expect(replayGapsAt(gaps, 1)).toEqual([]);
+    expect(replayGapsAt(gaps, 2).map((gap) => gap.toolActionId)).toEqual(['b', 'c']);
+    expect(replayGapsAt(undefined, 0)).toEqual([]);
   });
 });

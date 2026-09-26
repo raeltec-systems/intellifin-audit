@@ -1,3 +1,4 @@
+import { captureStoryState } from './story-visual-capture';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { spawn } from 'node:child_process';
@@ -23,7 +24,7 @@ import {
   LIVE_VIEW_QUEUED_SENTENCE,
   SESSION_ISOLATION_NOTE,
 } from '../../apps/web/src/design/copy';
-import { LIVE_VIEW_STAGE } from '../../apps/web/src/runs/live-view';
+import { ADAPTER_ARTIFACT_WORDS, LIVE_VIEW_STAGE } from '../../apps/web/src/runs/live-view';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { startSyntheticS3 } from '../fixtures/s3-server';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
@@ -372,6 +373,52 @@ test.describe('Live View', () => {
     await expect(page.getByText('session-2')).toBeHidden();
     await page.locator('.ls-session__log .ls-technical summary').first().click();
     await expect(page.getByText('session-2')).toBeVisible();
+  });
+
+  // Story 10.6, legacy 5.3 AC 2 (owner decision 2026-09-25). This page passed
+  // `digest: null` for every Adapter Session Step row, so an ACQUIRED Reference Source said
+  // "No artifact registered." over the artifact it had registered. The row now reads the
+  // Evidence the step names, through the page's own read, and a step that registered
+  // nothing still says so — two situations, two sentences. The third (an unavailable read)
+  // cannot be produced against a healthy database; the page-level unit test covers it.
+  test('shows the Evidence an acquired Reference Source registered, and says a step without one has none', async ({ page }) => {
+    const seeded = await seedRun({ workspace: false, frame: false });
+    const referenceEvidenceId = ids.next();
+    const referenceBytes = new TextEncoder().encode('entry,role,permission\n1,SYNTHETIC_ROLE,VIEW\n');
+    const referenceDigest = sha256HexOfBytes(referenceBytes);
+    await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,
+      state,required,captured_at,capture_method,capture_time_source,role)
+      VALUES(${referenceEvidenceId},${seeded.runId},'reference-source','rolematrix',
+      ${`reference-source/${seeded.runId}/session-3`},'text/csv',${referenceDigest},${referenceBytes.byteLength},'REGISTERED',true,
+      ${new Date().toISOString()},'adapter','registration','evidence')`;
+    await sql`INSERT INTO run_session_step(run_id,step_id,ordinal,registration_id,display_name,action,state,attempts,diagnostic,evidence_id)
+      VALUES(${seeded.runId},'session-3',3,'rolematrix','RoleMatrix','extract-adapter','ACQUIRED',1,NULL,${referenceEvidenceId})`;
+
+    await page.goto(`/runs/${seeded.runId}/live`);
+    const log = page.getByRole('region', { name: 'Systems read without a screen' });
+    await expect(log).toBeVisible();
+    const acquired = log.locator('li').filter({ hasText: 'RoleMatrix' });
+    const withoutArtifact = log.locator('li').filter({ hasText: 'AccessGate' });
+    await expect(acquired).toHaveCount(1);
+    await expect(withoutArtifact).toHaveCount(1);
+
+    // The acquired step: the Evidence it registered, linked to its card, and its digest.
+    await expect(acquired).toContainText(referenceDigest);
+    await expect(acquired.locator(`a[href="/runs/${seeded.runId}/evidence/technical?evidence=${referenceEvidenceId}#evidence-${referenceEvidenceId}"]`)).toBeVisible();
+    await expect(acquired).not.toContainText(ADAPTER_ARTIFACT_WORDS.none);
+    await expect(acquired).not.toContainText(ADAPTER_ARTIFACT_WORDS.unavailable);
+    // Its full identifier is under the row's own Technical details, as the plan step's is.
+    await acquired.locator('.ls-technical summary').click();
+    await expect(acquired.getByText(referenceEvidenceId, { exact: true })).toBeVisible();
+
+    // The step that registered nothing keeps the sentence that is true of it.
+    await expect(withoutArtifact).toContainText(ADAPTER_ARTIFACT_WORDS.none);
+    await expect(withoutArtifact).not.toContainText(ADAPTER_ARTIFACT_WORDS.unavailable);
+    await expect(withoutArtifact.locator('text=/[0-9a-f]{64}/')).toHaveCount(0);
+    await captureStoryState(page, 'adapter-artifacts-technical', log);
+
+    const scan = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+    expect(scan.violations, JSON.stringify(scan.violations, null, 2)).toEqual([]);
   });
 
   // UI cleanup 2026-09-22, UX-48. The walkthrough measured the workspace screen BELOW the

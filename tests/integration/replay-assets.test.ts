@@ -15,8 +15,10 @@ import {
   createDb,
   createSqlClient,
   CryptoUuidV7Generator,
+  DrizzleRunDetailRepository,
   PostgresProceduresUnitOfWork,
   PostgresWorkspaceRepository,
+  REPLAY_GAP_LIMIT,
   type Database,
   type Sql,
 } from '@intellifin/infrastructure';
@@ -109,10 +111,12 @@ describe.skipIf(!url)('the Replay asset set on PostgreSQL', () => {
       readonly capture: 'PERMITTED' | 'SUPPRESSED';
       readonly frame: 'registered' | 'reserved' | null;
       readonly kind?: 'screenshot' | 'structural-snapshot';
+      /** When the action started. Given explicitly where a test's subject is session ORDER. */
+      readonly at?: string;
     },
   ): Promise<string> {
     const toolActionId = ids.next();
-    const at = new Date().toISOString();
+    const at = options.at ?? new Date().toISOString();
     await sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,work_item_id,surface,target_system,
       action,method,destination,parameters,outcome,redirected,downloads,started_at,completed_at,capture,capture_suppression,denial)
       VALUES(${toolActionId},${run.runId},${run.stepExecutionId},NULL,'agent','loancore','read-attribute','GET',
@@ -219,6 +223,69 @@ describe.skipIf(!url)('the Replay asset set on PostgreSQL', () => {
     expect(events[0]!.outcome).toBe('failure');
     expect(events[0]!.payload['missing']).toBe(1);
     expect((events[0]!.payload['actions'] as unknown[])).toHaveLength(1);
+  });
+
+  /**
+   * Replay's gaps (Story 10.6, legacy 5.2). Replay played the frames a Run registered and
+   * said nothing about the actions that left none, so a session with a gap looked complete.
+   * The read counts missing frames with the SAME predicate the terminal transition used, so
+   * the two must agree, and it places each gap among the frames in Replay's own order.
+   */
+  const replayGaps = async (runId: string) => new DrizzleRunDetailRepository(db).readReplayGaps(runId);
+  const at = (second: number) => new Date(Date.UTC(2026, 6, 1, 9, 0, second)).toISOString();
+
+  it('marks each gap among the frames, keeps a suppressed capture apart, and counts as the Result counted', async () => {
+    const run = await seedRun();
+    // In session order, one second apart, so the order is the one written here.
+    const signIn = await toolAction(run, { outcome: 'performed', capture: 'SUPPRESSED', frame: null, at: at(1) });
+    await toolAction(run, { outcome: 'performed', capture: 'PERMITTED', frame: 'registered', at: at(2) });
+    const lost = await toolAction(run, { outcome: 'performed', capture: 'PERMITTED', frame: null, at: at(3) });
+    await toolAction(run, { outcome: 'performed', capture: 'PERMITTED', frame: 'registered', at: at(4) });
+    // Refused by the gate: nothing reached a screen, so nothing is owed and nothing is marked.
+    await toolAction(run, { outcome: 'denied', capture: 'PERMITTED', frame: null, at: at(5) });
+    // A Structural Snapshot is not a frame: this action still owes Replay a picture.
+    const snapshotOnly = await toolAction(run, { outcome: 'performed', capture: 'PERMITTED', frame: 'registered', kind: 'structural-snapshot', at: at(6) });
+
+    const gaps = await replayGaps(run.runId);
+    expect(gaps.rows.map((gap) => [gap.toolActionId, gap.kind, gap.framesBefore])).toEqual([
+      [signIn, 'suppressed', 0],
+      [lost, 'missing', 1],
+      [snapshotOnly, 'missing', 2],
+    ]);
+    expect(gaps.missing).toBe(2);
+    // The suppressed capture is counted on its own and NEVER among the missing.
+    expect(gaps.suppressed).toBe(1);
+    expect(gaps.rows[0]!.captureSuppression).toBe('credential-entry');
+    expect(gaps.rows.filter((gap) => gap.kind === 'missing').every((gap) => gap.captureSuppression === null)).toBe(true);
+    expect(gaps.rows.every((gap) => gap.stepExecutionId === run.stepExecutionId && gap.targetSystem === 'loancore')).toBe(true);
+    // One predicate: Replay's count is the terminal transition's count.
+    expect(gaps.missing).toBe((await missingFrames(run.runId)).total);
+  });
+
+  it('answers no gap for a Run whose every performed action left its frame', async () => {
+    const run = await seedRun();
+    await toolAction(run, { outcome: 'performed', capture: 'PERMITTED', frame: 'registered', at: at(1) });
+    expect(await replayGaps(run.runId)).toEqual({ missing: 0, suppressed: 0, rows: [] });
+  });
+
+  it('counts EVERY gap exactly while listing at most the bound', async () => {
+    const run = await seedRun();
+    const total = REPLAY_GAP_LIMIT + 7;
+    await sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,work_item_id,surface,target_system,
+      action,method,destination,parameters,outcome,redirected,downloads,started_at,completed_at,capture,capture_suppression,denial)
+      SELECT gen_random_uuid(),${run.runId},${run.stepExecutionId},NULL,'agent','loancore','read-attribute','GET',
+        ${SOURCE},'[]'::jsonb,'performed',false,0,
+        ${at(0)}::timestamptz + make_interval(secs => n),${at(0)}::timestamptz + make_interval(secs => n),'PERMITTED',NULL,NULL
+      FROM generate_series(1, ${total}) AS n`;
+    const gaps = await replayGaps(run.runId);
+    // A count is `count(*)`, never the length of the bounded list.
+    expect(gaps.missing).toBe(total);
+    expect(gaps.rows).toHaveLength(REPLAY_GAP_LIMIT);
+    expect(gaps.missing).toBe((await missingFrames(run.runId)).total);
+  });
+
+  it('reads no gap for an identifier that names no Run', async () => {
+    expect(await replayGaps('not-a-run')).toEqual({ missing: 0, suppressed: 0, rows: [] });
   });
 
   /**

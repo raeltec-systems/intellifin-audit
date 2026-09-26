@@ -13,6 +13,12 @@ import {
 import { activeRunVersion } from '../fixtures/active-run-version.js';
 import { PostgresRunConversationRepository } from '../../packages/infrastructure/src/runs/run-conversation-repository.js';
 
+/**
+ * Where the simulated worker boundary holds the Run (Story 10.6, legacy 5.4): before a
+ * Run-level Session Step (the fixture plan's `session-3`), with no attempt in flight.
+ */
+const BOUNDARY_HOLD = { planStepId: 'session-3', workItemId: null, superseded: null } as const;
+
 const url = process.env.DATABASE_URL;
 describe.skipIf(!url)('explicit manager transfer against PostgreSQL', () => {
   let client: Sql;
@@ -279,7 +285,7 @@ describe.skipIf(!url)('explicit manager transfer against PostgreSQL', () => {
     const [before]=await client`SELECT pause_requested_at::text,pause_requested_by FROM audit_run WHERE run_id=${runId}`;
     const review=await proposal(runId);expect(await confirm(runId,review.proposal.commandId)).toMatchObject({ok:true});
     expect(await client`SELECT pause_requested_at::text,pause_requested_by FROM audit_run WHERE run_id=${runId}`).toEqual([before]);
-    await new PostgresWaitRepository(db).transaction(runId,async context=>{const run=context.run!;await context.saveRunState('PAUSED');await performPause(context as never,{run,request:run.pauseRequest!,waitId:ids.next(),at:new Date().toISOString()});});
+    await new PostgresWaitRepository(db).transaction(runId,async context=>{const run=context.run!;await context.saveRunState('PAUSED');await performPause(context as never,{run,request:run.pauseRequest!,waitId:ids.next(),at:new Date().toISOString(),hold:BOUNDARY_HOLD});});
     const [run]=await client`SELECT revision FROM audit_run WHERE run_id=${runId}`;
     expect(await resumeRun({...waitDeps(),requireControllerLease:true},{session,request:{runId,expectedRunRevision:Number(run!.revision),expectedControlEpoch:1}})).toMatchObject({ok:false,code:'stale-control'});
     expect(await client`SELECT state FROM audit_run WHERE run_id=${runId}`).toEqual([{state:'PAUSED'}]);

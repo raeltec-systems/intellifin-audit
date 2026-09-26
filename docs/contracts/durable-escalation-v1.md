@@ -197,6 +197,29 @@ timeout, and can be closed exactly once.
 35. **A decision is only consumed when the Observation transaction commits.** The
     checkpoint's `waitId`/`pendingWait` are cleared inside the same `guarded` transaction
     that calls `registerObservations`.
+35a. **A record a person matched carries the answer that matched it (Story 10.6, legacy
+    4.7).** `applyAgentHumanDecision` sets `matchDecision: { waitId }` on the batch item it
+    builds from an answered `choose-candidate` wait, and `registerObservations` writes the
+    link into the batch's existing `execution.observations-registered` event as a
+    conditional `humanMatchDecisions` key — `[{observationId, waitId}]`, present only when
+    the batch holds a human-selected match, so every other event is byte for byte what it
+    was. It refuses (`match-decision`) a `human-matched` record without a decision, a
+    `platform` record with one, and a malformed wait id, before any read, so the batch rolls
+    back whole. No event type, column or migration was added, and the thirteen-key
+    Observation digest is unchanged.
+35b. **The surfaces read that link exactly, and nothing else.** `readHumanMatches` follows the
+    registration event's link to this Run's wait row and answers `linked` only when ONE wait
+    is named and it is a `choose-candidate` wait closed by an ANSWER that chose a candidate
+    (not a platform option) with an actor and a time: the chosen candidate's position among
+    those offered, its label (agent-generated, rendered inert), who answered and when. Any
+    other human-matched record — registered before the link existed, or with a link that
+    does not establish an answered choice — is `not-linked`, and the surface says the
+    decision is not linked. Nothing is paired by time. The Result, the record review queue
+    and inspector, and the Exceptions list all show the flag ("Human-matched", the word the
+    Evidence cards already print) with the decision; a platform match shows none. The
+    selection is refused above `MATCH_DECISION_SELECTOR_LIMIT` rather than cut, because a
+    dropped entry would show a human match as a platform one. The sentences are proposed
+    wording in `apps/web/src/runs/match-words.ts`.
 
 ## Untrusted question text
 

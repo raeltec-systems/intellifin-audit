@@ -36,7 +36,7 @@ import * as completion from './complete-run.js';
 import * as registration from './register-observations.js';
 import * as gate from './run-gate.js';
 import type { RunWait } from './waits.js';
-import type { RegisteredObservation, ObservationEvaluationRow } from './execution-ports.js';
+import type { RegisteredObservation, ObservationEvaluationRow, PendingResume } from './execution-ports.js';
 import type { AgentWorkCheckpoint, AgentTurnRecord, AgentWorkContext, AgentWorkRepository } from './agent-work-ports.js';
 
 const RUN_ID = '01920000-0000-7000-8000-000000000101';
@@ -163,6 +163,9 @@ class FakeRepository implements AgentWorkRepository {
   actions: AgentWorkContext['toolActions'][number][] = [];
   captures: AgentWorkContext['captures'][number][] = [];
   pauseWaits: RunWait[] = [];
+  /** The resume `readPendingResume` answers with, and how often a stage asked (Story 10.6). */
+  pendingResume: PendingResume | null = null;
+  pendingResumeReads = 0;
   deferred: RunDeferredPauseRequest | null = null;
   deferredSettlements: { state: string; reason?: string }[] = [];
   auditDrafts: AuditEventDraft[] = [];
@@ -258,6 +261,7 @@ class FakeRepository implements AgentWorkRepository {
       openPauseWait: async (wait: RunWait) => { this.pauseWaits.push(wait); },
       clearPauseRequest: async () => { this.run = { ...this.run, pauseRequest: null }; },
       readPauseRequest: async () => this.run.pauseRequest,
+      readPendingResume: async () => { this.pendingResumeReads += 1; return this.pendingResume; },
       readDeferredPause: async () => this.deferred,
       settleDeferredPause: async (state: 'APPLIED' | 'SUPERSEDED', _at: string, reason?: string) => {
         this.deferredSettlements.push({ state, ...(reason === undefined ? {} : { reason }) });
@@ -600,6 +604,11 @@ describe('executeAgentWorkItem', () => {
         actor: { type: 'human', id: 'original-controller' }, payload: { pauseMode: 'after-inspection',
           workItemId: repository.workItems[0]!.workItemId, subjectKey: RECORD.values.employee_id, registrationId: TARGET.registrationId },
       });
+      // Held after the settled inspection, before the next record (Story 10.6, legacy 5.4):
+      // `workItemId` keeps naming the settled one, and the hold names where the Run waits.
+      const held = repository.auditDrafts.find(event => event.eventType === 'lifecycle.run-paused')?.payload;
+      expect(held).toMatchObject({ planStepId: repository.workItems[1]!.stepId, heldWorkItemId: repository.workItems[1]!.workItemId });
+      expect(held).not.toHaveProperty('stepExecutionId');
       expect(gateCall).not.toHaveBeenCalled();
     }
   });
@@ -709,6 +718,102 @@ describe('executeAgentWorkItem', () => {
     // spend one of the Work Item's bounded retry cycles.
     expect(repository.workItems[0]?.attempts).toBe(0);
     expect(repository.workItems[0]?.state).toBe('IN_PROGRESS');
+  });
+
+  /**
+   * Where each pause held the Run, and which attempt each resume started (Story 10.6,
+   * legacy 5.4). The pause record named its Step Execution at the in-flight boundaries
+   * only; between units it named nothing, so its place could be found only by time.
+   */
+  it('names the Work Item and plan step a between-units pause holds the Run before, and no attempt', async () => {
+    const repository = new FakeRepository();
+    repository.run = {
+      ...repository.run,
+      pauseRequest: { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-07T03:30:00.000Z' },
+    };
+    await executeAgentWorkItem(deps(repository, browserFor(repository), { identity: identity(), propose: vi.fn(async () => response(null)) },
+      { raiseEscalation: vi.fn(async () => ({ ok: false as const, reason: 'test' })) }), JOB);
+
+    const item = repository.workItems[0]!;
+    const paused = repository.auditDrafts.find((event) => event.eventType === 'lifecycle.run-paused');
+    expect(paused?.payload).toMatchObject({ planStepId: item.stepId, heldWorkItemId: item.workItemId });
+    // Nothing was in flight, so no attempt is named, and the existing key keeps its meaning.
+    for (const key of ['stepExecutionId', 'attempt', 'workItemId']) expect(paused?.payload).not.toHaveProperty(key);
+  });
+
+  it('names the attempt an in-flight pause superseded, by its Step Execution and its number', async () => {
+    const repository = new FakeRepository();
+    const gateway: AgentModelGateway = {
+      identity: identity(),
+      propose: vi.fn(async () => {
+        repository.run = {
+          ...repository.run,
+          pauseRequest: { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-07T03:30:00.000Z' },
+        };
+        return response(null);
+      }),
+    };
+    await executeAgentWorkItem(deps(repository, browserFor(repository), gateway,
+      { raiseEscalation: vi.fn(async () => ({ ok: false as const, reason: 'test' })) }), JOB);
+
+    const item = repository.workItems[0]!;
+    const superseded = repository.executions.find((row) => row.state === 'SUPERSEDED')!;
+    const paused = repository.auditDrafts.find((event) => event.eventType === 'lifecycle.run-paused');
+    expect(paused?.payload).toMatchObject({
+      planStepId: superseded.planStepId,
+      heldWorkItemId: item.workItemId,
+      stepExecutionId: superseded.stepExecutionId,
+      attempt: superseded.attempt,
+      workItemId: item.workItemId,
+    });
+  });
+
+  describe('the attempt a resume restarts', () => {
+    const RESUMED_WAIT = '01920000-0000-7000-8000-000000000a51';
+    function starts(repository: FakeRepository): readonly Record<string, unknown>[] {
+      return repository.auditDrafts
+        .filter((event) => event.payload['diagnostic'] === 'work-item-attempt-started')
+        .map((event) => event.payload as Record<string, unknown>);
+    }
+    /** Arms the pending resume once the claim has created the Work Items it names. */
+    function armResume(repository: FakeRepository, workItemId: (item: AgentWorkContext['workItems'][number]) => string | null): void {
+      let armed = false;
+      repository.beforeTransaction = () => {
+        const item = repository.workItems[0];
+        if (armed || item === undefined) return;
+        armed = true;
+        repository.pendingResume = { waitId: RESUMED_WAIT, planStepId: item.stepId, workItemId: workItemId(item) };
+      };
+    }
+
+    it('writes the resume onto the attempt it restarts, once, and reads the chain once', async () => {
+      vi.spyOn(gate, 'runRunLevelGate').mockResolvedValue(undefined as never);
+      vi.spyOn(completion, 'completeRun').mockResolvedValue(undefined as never);
+      const repository = new FakeRepository();
+      armResume(repository, (item) => item.workItemId);
+      await executeAgentWorkItem(deps(repository, browserFor(repository), { identity: identity(), propose: vi.fn(async () => response(null)) },
+        durableWaitPort(repository)), JOB);
+
+      const started = starts(repository);
+      expect(started.length).toBeGreaterThan(0);
+      expect(started[0]).toMatchObject({ resumedWaitId: RESUMED_WAIT, workItemId: repository.workItems[0]!.workItemId });
+      // Its retries are the restarted attempt's successors, not the resume's.
+      for (const later of started.slice(1)) expect(later).not.toHaveProperty('resumedWaitId');
+      expect(repository.pendingResumeReads).toBe(1);
+    });
+
+    it('leaves an attempt at another Work Item unlinked', async () => {
+      vi.spyOn(gate, 'runRunLevelGate').mockResolvedValue(undefined as never);
+      vi.spyOn(completion, 'completeRun').mockResolvedValue(undefined as never);
+      const repository = new FakeRepository();
+      armResume(repository, () => '01920000-0000-7000-8000-000000000a52');
+      await executeAgentWorkItem(deps(repository, browserFor(repository), { identity: identity(), propose: vi.fn(async () => response(null)) },
+        durableWaitPort(repository)), JOB);
+
+      const started = starts(repository);
+      expect(started.length).toBeGreaterThan(0);
+      for (const start of started) expect(start).not.toHaveProperty('resumedWaitId');
+    });
   });
 
   it('holds a P-4 page model read at its response boundary, then resumes with a fresh attempt', async () => {

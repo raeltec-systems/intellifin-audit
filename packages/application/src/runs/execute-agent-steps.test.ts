@@ -39,6 +39,7 @@ import {
   type CredentialResolver,
   type GateCheckRow,
   type PackageSeal,
+  type PendingResume,
   type ResolvedCredential,
   type RunGatePopulationFacts,
   type SessionStepRecord,
@@ -277,6 +278,9 @@ interface Store {
   result: StoredRunResult | null;
   /** Every pause wait the stage opened, so a test can assert exactly one (Story 5.4). */
   pauseWaits: RunWait[];
+  /** What `readPendingResume` answers, and how often the stage asked (Story 10.6). */
+  pendingResume: PendingResume | null;
+  pendingResumeReads: number;
 }
 
 function store(plan: ExecutablePlan | null, overrides: Partial<Store> = {}): Store {
@@ -295,6 +299,8 @@ function store(plan: ExecutablePlan | null, overrides: Partial<Store> = {}): Sto
     seal: null,
     result: null,
     pauseWaits: [],
+    pendingResume: null,
+    pendingResumeReads: 0,
     ...overrides,
   };
 }
@@ -317,6 +323,10 @@ class FakeContext implements AgentExecutionContext {
   clearPauseRequest = async (): Promise<void> => {
     if (this.run) this.run = { ...this.run, pauseRequest: null };
     if (this.state.run) this.state.run = { ...this.state.run, pauseRequest: null };
+  };
+  readPendingResume = async (): Promise<PendingResume | null> => {
+    this.state.pendingResumeReads += 1;
+    return this.state.pendingResume;
   };
   checkpoint: AgentExecutionCheckpoint | null;
   populationStartedAt: string | null;
@@ -701,6 +711,23 @@ describe('the sign-in Session Step', () => {
 });
 
 describe('the public P-4 access proof', () => {
+  it('links a resumed public-access attempt to the held step and saved execution', async () => {
+    const plan = publicPlan();
+    const signIn = plan.sessionSteps.find((step) => step.action === 'sign-in')!;
+    const waitId = '01a06fd8-0000-7000-8000-00000000aa04';
+    const state = store(plan, { pendingResume: { waitId, planStepId: signIn.id, workItemId: null } });
+    const browser = new FakeBrowser({ result: { artifacts: [publicArtifact()] } });
+
+    expect(await executeAgentSteps(DEPS(state, browser), JOB)).toEqual({ retry: false, proceed: true });
+    const started = state.events.filter((event) => event.payload['diagnostic'] === 'public-access-attempt-started');
+    expect(started).toHaveLength(1);
+    expect(started[0]?.payload).toMatchObject({
+      resumedWaitId: waitId,
+      stepExecutionId: state.executions[0]?.stepExecutionId,
+    });
+    expect(state.pendingResumeReads).toBe(1);
+  });
+
   it('navigates without resolving the compatibility credential and validates the public landing link', async () => {
     const state = store(publicPlan());
     const browser = new FakeBrowser({ result: { artifacts: [publicArtifact()] } });
@@ -970,6 +997,50 @@ describe('a person paused the Run (Story 5.4)', () => {
     // The marker means "requested and NOT yet honoured", so the boundary that honours it
     // clears it — which is what makes a marker at a terminal transition mean superseded.
     expect(state.run?.pauseRequest).toBeNull();
+  });
+
+  /** Where the pause holds the Run, and which attempt the resume starts (Story 10.6). */
+  it('names the sign-in it holds the Run before, a Session Step with no Work Item and no attempt', async () => {
+    const plan = planFor('web');
+    const state = store(plan, {
+      run: {
+        ...RUN,
+        pauseRequest: { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-06T00:04:00.000Z' },
+      },
+    });
+    await executeAgentSteps(DEPS(state, new FakeBrowser()), JOB);
+
+    const signIn = plan.sessionSteps.find((step) => step.action === 'sign-in')!;
+    const paused = state.events.find((event) => event.eventType === 'lifecycle.run-paused');
+    expect(paused?.payload).toMatchObject({ planStepId: signIn.id });
+    for (const key of ['heldWorkItemId', 'stepExecutionId', 'attempt']) expect(paused?.payload).not.toHaveProperty(key);
+  });
+
+  it('writes the resume onto the sign-in attempt it restarts', async () => {
+    const plan = planFor('web');
+    const signIn = plan.sessionSteps.find((step) => step.action === 'sign-in')!;
+    const waitId = '01a06fd8-0000-7000-8000-00000000aa01';
+    const state = store(plan, { pendingResume: { waitId, planStepId: signIn.id, workItemId: null } });
+    await executeAgentSteps(DEPS(state, new FakeBrowser()), JOB);
+
+    const started = state.events.filter((event) => event.payload['diagnostic'] === 'sign-in-attempt-started');
+    expect(started).toHaveLength(1);
+    expect(started[0]?.payload).toMatchObject({ resumedWaitId: waitId, stepExecutionId: state.executions[0]?.stepExecutionId });
+    expect(state.pendingResumeReads).toBe(1);
+  });
+
+  it('leaves the sign-in unlinked when the pause held the Run at another step', async () => {
+    const plan = planFor('web');
+    const state = store(plan, {
+      // A resume of a pause in the Work Item stage: re-authenticating first is not the
+      // attempt that resume restarts.
+      pendingResume: { waitId: '01a06fd8-0000-7000-8000-00000000aa02', planStepId: 'loancore-1', workItemId: '01a06fd8-0000-7000-8000-00000000aa03' },
+    });
+    await executeAgentSteps(DEPS(state, new FakeBrowser()), JOB);
+
+    const started = state.events.filter((event) => event.payload['diagnostic'] === 'sign-in-attempt-started');
+    expect(started).toHaveLength(1);
+    expect(started[0]?.payload).not.toHaveProperty('resumedWaitId');
   });
 
   it('lets a CANCELLATION win: ending is stronger than holding', async () => {

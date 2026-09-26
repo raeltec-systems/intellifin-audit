@@ -1,3 +1,84 @@
+## 2026-09-26 — Review continuation keeps exact reads exact (Story 10.6)
+
+- Adapter Evidence readers accept at most 64 IDs. Batch distinct IDs at the caller; an
+  exact read must not silently drop the 65th artifact. A later batch failure keeps the
+  existing unreadable result for the whole read.
+- A pause while revisiting an acquired adapter reference holds the next unfinished unit.
+  Preserve cancellation checks at their original boundaries. If no unit remains, leave
+  the pause request for the next stage or terminal transition.
+- A metadata link beyond a bounded overview carries an exact selector. Resolve it only
+  after Run authorization, through the Run-bound reader, and deduplicate its anchor.
+- Keep record keys such as `E-000102` in the existing `ls-nowrap` span; Chromium breaks at
+  their hyphens. `completeRun` seals the result but does not itself move the Run state.
+- Handover sheet 1 is approved. Sheet-2 pause changes A1–A5 and the optional event payload
+  fields remain pending; a successful test is not owner approval.
+
+## 2026-09-26 — A fact the records do not link is linked on new events, and read by identity (Story 10.6)
+
+Story 10.6 meets five compiler-1 visibility legs the closure register found on the retained
+surfaces (4.7, 5.2, 5.3, 5.4, 5.6); 4.7 and 5.2 stay open until Story 14-11a's export legs.
+No event type, column or migration was added; each missing link rides on a key of
+an event that already exists, written on NEW events only, and every surface reads it by
+identity and says what an older record does not hold. Contracts: `run-pause-v1.md`,
+`durable-escalation-v1.md` (35a, 35b), `observation-registration-v1.md`, `replay-v1.md`,
+`replay-asset-set-v1.md`, `live-view-v1.md`.
+
+- **A conditional payload key is the no-migration way to add a link, and it must be absent,
+  not empty, when it does not apply.** `humanMatchDecisions` on
+  `execution.observations-registered` (4.7) and `planStepId`/`heldWorkItemId` on
+  `lifecycle.run-paused` (5.4) follow the `absenceDigests` precedent: an event without the
+  case is byte for byte what it was, and the Observation digest does not move. The existing
+  `workItemId` key on a pause keeps its meaning, because the interaction receipt guard
+  (generations 55 to 59) compares it.
+- **A resume cannot name the attempt it starts, because none exists yet; the attempt names
+  the resume.** The stage that starts the held step writes `resumedWaitId` on the attempt's
+  own start event. `RunPauseContext.readPendingResume` is REQUIRED, which is what found every
+  stage context; `resumeLinker` reads it once per stage invocation and links only the FIRST
+  attempt at the held plan step (and Work Item). A per-attempt read would scan the chain once
+  per attempt.
+- **`PauseHold` is REQUIRED on `performPause` and `hold` is REQUIRED on `PauseBanners`.** An
+  optional parameter that changes what a record says is one a call site can forget — the
+  lesson of the mid-item boundary that once passed no in-flight pair.
+- **"Not linked" and "not recorded" are said, never shown as a blank.** A human-matched record
+  whose link does not establish an answered candidate choice keeps its flag and says the
+  decision is not linked; a pause whose event named no step says its step was not recorded;
+  a hold the banner cannot read says so. Nothing pairs a wait with a record, or a resume with
+  an attempt, by time.
+- **A pause fixture sits where a stage really holds one.** The sign-in and adapter stages
+  pause only BETWEEN units; only the Work Item stage supersedes an attempt in flight, and it
+  gives the attempt back, so the restarted attempt carries the SAME number and only its Step
+  Execution tells the two apart. The first browser journey superseded a sign-in attempt and
+  restarted it as attempt 2 — a shape no Run produces — and passed. `pause-resume.spec.ts`
+  now holds the first pause before the sign-in and the second mid-attempt at the page's
+  inspection (a P-4 Work Item, subject key NULL).
+- **A human-selected match exists only in a P-1 Run.** The P-4 page path refuses a
+  choose-candidate decision (`human-decision-refused`); only P-1's name search offers two
+  accounts. The first `human-match.spec.ts` fixture recorded a human match in a P-4 Run and
+  passed. It is a P-1 Run now — LoanCore from the catalogue, one Work Item per record, the
+  leavers binding's own mask on `full_name` — and it asserts no surface beside the decision
+  note shows a masked name (proven by removing the mask: the Exceptions list and the record
+  review then fail).
+- **A selection a read cannot answer whole is refused, never cut.**
+  `MATCH_DECISION_SELECTOR_LIMIT` is sized from the callers' own page limits; a dropped entry
+  would render a human match as a platform one.
+- **One predicate per fact, shared by the writer and the surface.** `frameMissingPredicate`
+  serves the terminal transition's count and Replay's gaps; `readAdapterLog` serves Live View
+  and Replay, reading Evidence EXACTLY by the ids the steps name rather than the bounded
+  overview (the fifth appearance of "a limit belongs to the cardinality of the read").
+- **Every new sentence is proposed wording** in a words module (`match-words.ts`,
+  `pause-words.ts`, `replay.ts`'s `REPLAY_GAP_WORDS`, `live-view.ts`'s
+  `ADAPTER_ARTIFACT_WORDS.unavailable`), read back by the unit and browser tests, and needs
+  owner confirmation. The export legs of 4.7 and 5.2 are Story 14-11a's.
+
+Two mechanical notes:
+
+- **`node_modules/.bin/tsc` is a shell shim, not JavaScript.** `node --max-old-space-size=…
+  node_modules/.bin/tsc` fails with `SyntaxError: Invalid or unexpected token` before
+  checking anything; run `NODE_OPTIONS=--max-old-space-size=2048 pnpm exec tsc …` instead.
+- **A page test whose `vi.mock` factory lists a module's exports needs the page's NEW import
+  mocked too**, even when the new call returns early: `live/page.adapter-log.test.ts` now
+  mocks `pause-read` (`readPauseHold`), which reads the database on a PAUSED Run.
+
 ## 2026-09-25 — A single read of a moving preview sample is a race the broker refuses on purpose
 
 - **The preview route answers 503 for a read that meets a new sample, and that is the product
@@ -4545,3 +4626,11 @@ resolve the enabled opener and assert its dialog before testing later heartbeat 
 Never infer that an asynchronously rendered Acquire control is absent from an immediate
 `count()` after reload. Keep retained renewal events and their Run deletion in one
 Run-first cleanup transaction, including closed/open wait rows.
+
+### Story 10 screenshot evidence from CI
+
+The opt-in `STORY_VISUAL_CAPTURE=1` helper records actual synthetic browser states at 1280×800 and also 1024×800 for Timeline/Replay. The separate visual workflow retains PNGs and page facts in a small artifact, without changing the existing test gates. A successful capture is evidence to inspect, never a visual approval. Preserve the viewport and scroll position around captures so the original interactions still run.
+
+### Replay narration preserves record keys at 1024 pixels
+
+The Story 10 visual captures showed Chromium wrapping `E-000102` after the hyphen in Replay’s bold narration rail. Use the existing `keySegments` and `ls-nowrap` rendering for the frame’s exact subject key; leave the narration text and image alt unchanged. A passing browser assertion does not detect this typography defect: inspect the 1024×800 capture.

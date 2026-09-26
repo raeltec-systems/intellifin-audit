@@ -8,6 +8,7 @@ import { currentIdentity } from '../../../../src/server-session';
 import { DetailTrail } from '../../../../src/procedures/DetailTrail';
 import { RunDenied, openRun, OpenEscalationSection, PauseBanners } from '../../../../src/runs/detail';
 import { readOpenEscalation } from '../../../../src/runs/escalation-read';
+import { readPauseHold } from '../../../../src/runs/pause-read';
 import { readRunConversation, readCurrentRunInspection } from '../../../../src/runs/run-conversation-actions';
 import { LiveGate } from '../../../../src/runs/LiveGate';
 import { FrameSource, SessionStage } from '../../../../src/runs/LiveViewer';
@@ -54,6 +55,8 @@ export default async function RunWorkspacePage({ params, searchParams }: {
     run.state === 'AWAITING_AUDITOR' || run.state === 'PAUSED' ? readOpenEscalation(id) : Promise.resolve(null),
     isActiveRunState(run.state) ? readTimelineHead(runtime.db, id) : Promise.resolve(null), detail.readFlags(id), readCurrentRunInspection(id),
   ]);
+  // Where the pause holds the Run (Story 10.6, legacy 5.4), from the plan this page read.
+  const pauseHold = await readPauseHold(runtime.db, run, waits?.pause ?? null, plan);
   const names = await new DrizzleActorNameReader(runtime.db).namesFor([
     ...flags.map(flag => flag.flaggedBy), ...(waits?.pause?.openedBy ? [waits.pause.openedBy] : []),
     ...(run.pauseRequest ? [run.pauseRequest.requestedBy] : []),
@@ -96,7 +99,7 @@ export default async function RunWorkspacePage({ params, searchParams }: {
           <Link href={`/procedures/${run.procedureId}/versions/${run.versionId}`}>Approved procedure</Link></>}
         currentDecision={<><OpenEscalationSection run={run} escalation={waits} readAt={readAt}
           workspacePresentation={{ stepLabel: decisionStep === undefined ? null : planActionWord(decisionStep.action) }} />
-          <PauseBanners run={run} pause={waits?.pause ?? null} readAt={readAt} names={names} />
+          <PauseBanners run={run} pause={waits?.pause ?? null} hold={pauseHold} readAt={readAt} names={names} />
           {selected?.status === 'ready' && <p>Conversation context: {recordWords({ key: selected.row.recordLabel, name: selected.row.recordName ?? null }, naming)}. <Link href={`/runs/${id}/evidence?selected=${selected.row.sourceOrdinal}`}>Open record inspector</Link></p>}
           {ordinal !== null && selected?.status !== 'ready' && <p>The selected record is unavailable. Messages will have Run context only.</p>}</>}
         workspace={<div className="run-workspace-stage">

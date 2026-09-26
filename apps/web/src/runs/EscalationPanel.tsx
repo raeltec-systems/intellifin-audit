@@ -440,7 +440,10 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt, wor
   return (
     <>
       <a className="ls-skip-link" href="#open-escalation">{ESCALATION_PANEL_COPY.skipLink}</a>
-      <section id="open-escalation" className={`ls-card ls-stack${workspace ? ' escalation-panel--workspace' : ''}`} aria-labelledby={headingId}>
+      {/* `tabIndex={-1}`, as the shell's own skip-link target has: without it the skip link
+          scrolls the page and leaves focus on the link, so the next Tab walks the page
+          again instead of reaching the answers (legacy Story 5.6, Story 10.6). */}
+      <section id="open-escalation" tabIndex={-1} className={`ls-card ls-stack${workspace ? ' escalation-panel--workspace' : ''}`} aria-labelledby={headingId}>
         <h2 id={headingId}>Open Escalation</h2>
         {/* The panel's appearance and its two countdown milestones, in the ONE polite
             region this surface has (EXPERIENCE.md → Accessibility). It is always in the

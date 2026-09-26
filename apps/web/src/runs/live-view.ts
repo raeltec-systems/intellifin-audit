@@ -1,6 +1,7 @@
 import type { ExecutablePlan } from '@intellifin/domain';
 import type { RunFrameRow, RunStepExecutionRow } from '@intellifin/infrastructure';
 
+import { planActionWord } from './labels';
 import { planActionNarration, toolActionNarration, type NarrationSubject } from './session-words';
 
 /**
@@ -188,4 +189,135 @@ export function frameNarration(
   // The Step Execution could not be resolved. Narrate the ACTION that captured the frame
   // rather than inventing a Step: what is said is still true of the picture.
   return toolActionNarration(frame.action, at(subject, targetName, field));
+}
+
+/**
+ * What an adapter log row says about the artifact its Session Step registered
+ * (Story 10.6, legacy 5.3 AC 2; owner decision 2026-09-25).
+ *
+ * THREE situations, and never one sentence for all of them. Live View passed
+ * `digest: null` for every row, so every acquired step said "No artifact registered."
+ * over an artifact the Run HAD registered — a wiring defect that read exactly like a
+ * missing artifact. A discriminated union, so a row that names a digest without the
+ * Evidence it belongs to, or an unreadable row dressed as an empty one, does not compile.
+ *
+ * - `registered` — the step names an Evidence row and the exact read returned it
+ *   REGISTERED: the row shows that Evidence and its integrity digest.
+ * - `none` — the step names no Evidence, or names a reservation that was never
+ *   registered (a step still in progress, or one whose attempts failed). "No artifact
+ *   registered." is true of both.
+ * - `unavailable` — the step names an Evidence row and the read could not say what it is:
+ *   the read failed, or it did not return the row. Saying "No artifact registered." here
+ *   would state an absence nobody observed.
+ */
+export type AdapterStepArtifact =
+  | { readonly kind: 'registered'; readonly evidenceId: string; readonly digest: string }
+  | { readonly kind: 'none' }
+  | { readonly kind: 'unavailable' };
+
+/**
+ * The two sentences an adapter log row says instead of a digest. `none` is the sentence
+ * both viewers already said; the owner approved `unavailable` on 2026-09-26 (handover
+ * sheet 1): it says what is known — the record could not be read — and what to
+ * do, and claims neither that an artifact exists nor that none does.
+ */
+export const ADAPTER_ARTIFACT_WORDS = {
+  none: 'No artifact registered.',
+  unavailable: 'The artifact record for this step could not be read, so its digest is not shown. Reload the page to try again.',
+} as const;
+
+/** The two facts of an Evidence row the log needs: whether it is registered, and its digest. */
+export interface AdapterEvidenceFact {
+  readonly state: string;
+  readonly digest: string | null;
+}
+
+/**
+ * One step's artifact, decided from the Evidence id the step names and the exact read.
+ *
+ * `read` is `null` when the Evidence read itself failed. A row the read did not return is
+ * `unavailable` rather than `none`: the step names it, so something is there to report,
+ * and an absence nobody observed is not a fact this surface may state.
+ */
+export function adapterStepArtifact(
+  evidenceId: string | null,
+  read: ReadonlyMap<string, AdapterEvidenceFact> | null,
+): AdapterStepArtifact {
+  if (evidenceId === null) return { kind: 'none' };
+  if (read === null) return { kind: 'unavailable' };
+  const row = read.get(evidenceId);
+  if (row === undefined) return { kind: 'unavailable' };
+  if (row.state !== 'REGISTERED' || row.digest === null) return { kind: 'none' };
+  return { kind: 'registered', evidenceId, digest: row.digest };
+}
+
+/** One adapter log row, as both session viewers render it. */
+export interface AdapterLogStep {
+  readonly stepId: string;
+  readonly displayName: string;
+  readonly state: string;
+  readonly attempts: number;
+  readonly artifact: AdapterStepArtifact;
+}
+
+/** The Session Step facts the log reads — a `RunTimelineSessionStep`, structurally. */
+export interface AdapterLogSessionStep {
+  readonly stepId: string;
+  readonly action: string;
+  readonly displayName: string;
+  readonly state: string;
+  readonly attempts: number;
+  readonly evidenceId: string | null;
+}
+
+/** The ONE read the log makes: the exact Evidence rows its steps name, and nothing else. */
+export interface AdapterLogEvidenceReader {
+  readEvidenceItemsByIds(
+    runId: string,
+    evidenceIds: readonly string[],
+  ): Promise<readonly { readonly evidenceId: string; readonly state: string; readonly digest: string | null }[]>;
+}
+
+/**
+ * The adapter log rows of a Run: every `extract-adapter` Session Step with the artifact it
+ * registered, read EXACTLY by the Evidence ids the steps name.
+ *
+ * Not through the Evidence overview read. That read is a bounded sample ordered by kind,
+ * so on a Run with more adapter extractions than one page a Reference Source's artifact
+ * fell off the end and its row said "No artifact registered." over an artifact the
+ * database held — "a limit belongs to the cardinality of the read", one surface along.
+ * Live View and Replay both call this, so the two surfaces cannot disagree about one row.
+ *
+ * A read that throws makes every step that names an artifact `unavailable`; a step that
+ * names none is still `none`, because that half needed no read at all.
+ */
+export async function readAdapterLog(
+  reader: AdapterLogEvidenceReader,
+  runId: string,
+  sessionSteps: readonly AdapterLogSessionStep[],
+): Promise<readonly AdapterLogStep[]> {
+  const steps = sessionSteps.filter((step) => step.action === 'extract-adapter');
+  const named = [...new Set(steps.flatMap((step) => (step.evidenceId === null ? [] : [step.evidenceId])))];
+  let read: ReadonlyMap<string, AdapterEvidenceFact> | null = new Map();
+  if (named.length > 0) {
+    try {
+      const facts = new Map<string, AdapterEvidenceFact>();
+      // The repository accepts at most 64 distinct ids per read. Read the whole selection
+      // in bounded batches so later steps do not appear to have unreadable artifacts.
+      for (let offset = 0; offset < named.length; offset += 64) {
+        const rows = await reader.readEvidenceItemsByIds(runId, named.slice(offset, offset + 64));
+        for (const row of rows) facts.set(row.evidenceId, { state: row.state, digest: row.digest });
+      }
+      read = facts;
+    } catch {
+      read = null;
+    }
+  }
+  return steps.map((step) => ({
+    stepId: step.stepId,
+    displayName: `${planActionWord(step.action)} · ${step.displayName}`,
+    state: step.state,
+    attempts: step.attempts,
+    artifact: adapterStepArtifact(step.evidenceId, read),
+  }));
 }

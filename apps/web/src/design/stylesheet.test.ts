@@ -120,6 +120,11 @@ const DYNAMIC_CLASSES = [
   '.ls-step__mark--todo',
   '.ls-step__mark--attention',
   '.ls-step__mark--reference',
+  // `ls-scrubber-gap--${gap.kind}` on Replay's scrubber (Story 10.6, legacy 5.2). A gap
+  // marker with no rule would be an invisible span, and a missing frame would look like no
+  // gap at all — the defect the marker exists to remove.
+  '.ls-scrubber-gap--missing',
+  '.ls-scrubber-gap--suppressed',
 ];
 
 function tsxSources(dir: string): { path: string; source: string }[] {

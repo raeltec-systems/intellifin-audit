@@ -16,6 +16,11 @@ export * from './runs/run-list-repository.js';
 export * from './runs/pending-results.js';
 export * from './runs/run-stop-repository.js';
 export * from './runs/run-detail-repository.js';
+// Story 10.6 (legacy 4.7): the decision behind a human-selected match, read by the link the
+// registration event records. A read over PostgreSQL only; nothing outbound.
+export * from './runs/match-decisions.js';
+// Where each pause held a Run and which attempt each resume started (Story 10.6, legacy 5.4).
+export * from './runs/pause-history.js';
 export * from './runs/runs-unit-of-work.js';
 export * from './runs/population-repository.js';
 export * from './runs/population-queue.js';
