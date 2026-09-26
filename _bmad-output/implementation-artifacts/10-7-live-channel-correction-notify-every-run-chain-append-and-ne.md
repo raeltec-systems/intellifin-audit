@@ -107,3 +107,44 @@ The owner explicitly authorised implementation in the handoff and continuation r
   run locally. The managed environment rejected the user/group operations needed to
   start the disposable PostgreSQL server. Hosted PostgreSQL/browser execution remains
   required before these acceptance legs can be claimed.
+
+### Review corrections — 2026-09-26
+
+- Added the conversation-cap boundary regression: a valid immutable annotation at
+  sequence 1,000,000, followed by a narratable shared-writer append with no separate
+  command notification. The test checks the exact list envelope/raw wake-up and that
+  conversation metadata did not grow.
+- Held-transaction staging now propagates append rejection and always releases and
+  observes the transaction. Rollback proof explicitly requires a heartbeat and a
+  completed reconnect replay. The browser burst counter matches this fixture's Run.
+- PostgreSQL and browser acceptance remain pending hosted execution; these additional
+  assertions are not claimed as passed merely because they compile.
+
+### Hosted preview regression correction — 2026-09-26
+
+CI `36229159682`, preview job `108368875487`, failed the existing disconnected-viewer
+assertion: after setting the second context offline, the labelled preview region was
+absent instead of displaying unavailable/out-of-date. The preview fetch catch retains
+that region; the installed Next refresh implementation instead falls back to hard
+browser navigation on failed RSC data. Newly notified evidence reads can leave a
+scheduled page refresh at the disconnection boundary.
+
+The shared throttle now keeps the required read dirty while the browser explicitly
+reports offline, checks again when dispatching a timer, and flushes once on `online`.
+It removes its timer/listener on cleanup. No event-family filter, stream health rule,
+gate, timeout threshold or user-facing copy changed. Saved-frame URLs/keys remain stable
+and cacheable; preview polling itself appends no events, so no sustained read/refresh
+feedback loop was established by the code review.
+
+Two fake-time tests cover a pending read becoming offline and an event received already
+offline, including reconnect coalescing and cleanup. The bell/Overview browser proof
+now additionally forces a scheduled read across an offline interval and requires its
+final stored counts on return. The existing worker-preview proof retains all assertions
+and also checks document identity across disconnection/recovery. Targeted local unit
+checks pass **13 tests**; hosted browser/preview verification of this correction is
+still required. This guards dispatch while already offline, not a network failure that
+starts after a refresh request is in flight.
+
+Local verification after the offline-dispatch correction: `pnpm typecheck` passed for
+all packages and root tests; `pnpm boundaries` passed (802 modules); `git diff --check`
+was clean. No hosted preview/browser pass is implied by these local checks.

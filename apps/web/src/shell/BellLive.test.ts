@@ -23,8 +23,8 @@ import { BellLive } from './BellLive';
 function event(eventType = 'execution.escalation-raised'): void {
   harness.receive!({ runId: 'run', seq: 2, eventType, occurredAt: new Date().toISOString(), outcome: 'success', source: 'worker' });
 }
-beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-26T00:00:00Z')); harness.refresh.mockReset(); BellLive(); });
-afterEach(() => { harness.cleanup?.(); vi.useRealTimers(); });
+beforeEach(() => { vi.stubGlobal('navigator', { onLine: true }); vi.stubGlobal('window', new EventTarget()); vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-26T00:00:00Z')); harness.refresh.mockReset(); BellLive(); });
+afterEach(() => { harness.cleanup?.(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('BellLive trailing refresh', () => {
   it('coalesces a burst into one deferred read that includes the final change', () => {
@@ -49,6 +49,38 @@ describe('BellLive trailing refresh', () => {
     expect(harness.refresh).toHaveBeenCalledTimes(2);
     vi.advanceTimersByTime(900);
     expect(harness.refresh).toHaveBeenCalledTimes(3);
+  });
+
+  it('retains a trailing read that becomes offline and flushes it once on reconnect', () => {
+    event(); vi.advanceTimersByTime(100); event();
+    Object.assign(navigator, { onLine: false });
+    vi.advanceTimersByTime(900);
+    expect(harness.refresh).toHaveBeenCalledTimes(1);
+    event('lifecycle.run-flagged');
+    vi.advanceTimersByTime(5_000);
+    expect(harness.refresh).toHaveBeenCalledTimes(1);
+    Object.assign(navigator, { onLine: true });
+    window.dispatchEvent(new Event('online'));
+    expect(harness.refresh).toHaveBeenCalledTimes(2);
+    window.dispatchEvent(new Event('online'));
+    vi.advanceTimersByTime(1_000);
+    expect(harness.refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('queues an event already offline and removes its reconnect listener on unmount', () => {
+    Object.assign(navigator, { onLine: false });
+    event();
+    expect(harness.refresh).not.toHaveBeenCalled();
+    Object.assign(navigator, { onLine: true });
+    window.dispatchEvent(new Event('online'));
+    expect(harness.refresh).toHaveBeenCalledTimes(1);
+    Object.assign(navigator, { onLine: false });
+    event();
+    harness.cleanup!();
+    Object.assign(navigator, { onLine: true });
+    window.dispatchEvent(new Event('online'));
+    vi.advanceTimersByTime(2_000);
+    expect(harness.refresh).toHaveBeenCalledTimes(1);
   });
 
   it('ignores nonqualifying events and cancels a queued read on unmount', () => {

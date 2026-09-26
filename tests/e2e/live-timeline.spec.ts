@@ -131,7 +131,7 @@ test.describe('the live Timeline channel', () => {
     });
     // Cross the Overview's ten-item bound so its exact stored count is rendered.
     for (let index = 0; index < 10; index += 1) expect((await flag()).ok).toBe(true);
-    await page.addInitScript(() => {
+    await page.addInitScript((fixtureRunId: string) => {
       const state = { opens: 0, flags: 0, marker: 'same-document' };
       Object.assign(window, { __bellBurst: state });
       const NativeEventSource = window.EventSource;
@@ -141,11 +141,12 @@ test.describe('the live Timeline channel', () => {
           if (String(url) !== '/api/runs/events') return;
           this.addEventListener('open', () => { state.opens += 1; });
           this.addEventListener('timeline', event => {
-            if (JSON.parse((event as MessageEvent<string>).data).eventType === 'lifecycle.run-flagged') state.flags += 1;
+            const envelope = JSON.parse((event as MessageEvent<string>).data);
+            if (envelope.runId === fixtureRunId && envelope.eventType === 'lifecycle.run-flagged') state.flags += 1;
           });
         }
       };
-    });
+    }, runId);
     await page.goto('/');
     await expect.poll(() => page.evaluate(() => (window as unknown as { __bellBurst: { opens: number } }).__bellBurst.opens)).toBe(1);
     const bell = page.locator('.ls-bell__count');
@@ -167,6 +168,19 @@ test.describe('the live Timeline channel', () => {
     await expect(bell).toHaveText(new RegExp(`^${baseline + 2}\\s*unread$`));
     await expect(attention.getByRole('status').filter({ hasText: overviewBounded(10, baseline + 2) })).toBeVisible();
     expect(await page.evaluate(() => (window as unknown as { __bellBurst: { opens: number; marker: string } }).__bellBurst)).toMatchObject({ opens: 1, marker: 'armed' });
+    // A queued read must survive an offline interval without Next replacing the
+    // document. The last committed count appears when connectivity returns.
+    await page.clock.runFor(100);
+    expect((await flag()).ok).toBe(true);
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __bellBurst: { flags: number } }).__bellBurst.flags)).toBe(3);
+    await page.context().setOffline(true);
+    await page.clock.runFor(900);
+    await expect(bell).toHaveText(new RegExp(`^${baseline + 2}\\s*unread$`));
+    expect(await page.evaluate(() => (window as unknown as { __bellBurst: { marker: string } }).__bellBurst.marker)).toBe('armed');
+    await page.context().setOffline(false);
+    await expect(bell).toHaveText(new RegExp(`^${baseline + 3}\\s*unread$`));
+    await expect(attention.getByRole('status').filter({ hasText: overviewBounded(10, baseline + 3) })).toBeVisible();
+    expect(await page.evaluate(() => (window as unknown as { __bellBurst: { marker: string } }).__bellBurst.marker)).toBe('armed');
     await page.clock.resume();
     await cancelRun(cancelDependencies(), { session: session(), request: { runId, reason: null } });
   });

@@ -1,5 +1,12 @@
 ## 2026-09-26 — Run-chain wake-ups and the bell's trailing read (Story 10.7)
 
+- Hosted CI `36229159682` exposed a queued live refresh firing after a preview viewer
+  went offline: the preview region vanished instead of retaining its unavailable
+  state. Next's installed refresh path falls back to hard browser navigation when an
+  RSC fetch fails. The shared throttle now retains its dirty read while explicitly
+  offline, rechecks connectivity when its timer fires, and flushes once on `online`.
+  This does not treat network availability as a recovered stream or alter live gates.
+
 - `appendAuditEvent` owns the Run-chain NOTIFY regardless of whether conversation
   narration exists or has reached its cap. Keep it inside the append transaction;
   PostgreSQL discards it on rollback and coalesces identical notifications from

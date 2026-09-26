@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { cancelRun, initiateRun, type CancelRunDependencies, type RunDependencies } from '@intellifin/application';
+import { cancelRun, initiateRun, narrateRunConversationEvent, type CancelRunDependencies, type RunDependencies } from '@intellifin/application';
 import {
   createDb,
   createSqlClient,
@@ -257,12 +257,16 @@ describe.skipIf(!url)('the live Timeline channel', () => {
         appended();
         await held;
       });
-      await staged;
       try {
+        // A rejected append must fail this test, never strand it waiting for staged.
+        await Promise.race([staged, commit]);
         expect(await readTimelineHead(db, runId)).toBe(1);
         expect(wakeups).toEqual([]);
-      } finally { release(); }
-      await commit;
+      } finally {
+        release();
+        // Observe settlement even when staging or an assertion failed.
+        await commit;
+      }
       await Promise.all(streams.map((stream, index) => stream.until(
         () => stream.timeline().filter(x => JSON.parse(x.data!).runId === runId).length >= families.length + (index === 2 ? 0 : 1), 5_000,
       )));
@@ -307,9 +311,52 @@ describe.skipIf(!url)('the live Timeline channel', () => {
       })).rejects.toThrow('rollback after append');
       const heartbeats = stream.frames.filter(x => x.event === 'heartbeat').length;
       await stream.until(f => f.filter(x => x.event === 'heartbeat').length > heartbeats, 5_000);
+      expect(stream.frames.filter(x => x.event === 'heartbeat').length).toBeGreaterThan(heartbeats);
       expect(wakeups).toEqual([]);
       expect(await readTimelineHead(db, runId)).toBe(1);
       expect(stream.timeline().map(x => x.id)).toEqual(['1']);
+      // The live heartbeat is emitted before its catch-up read. Reconnect as well:
+      // the first heartbeat is armed only AFTER the initial replay has completed.
+      const resumed = open(runId, 0, { heartbeatMs: 50 });
+      try {
+        await resumed.until(f => f.some(x => x.event === 'heartbeat'), 5_000);
+        expect(resumed.frames.some(x => x.event === 'heartbeat')).toBe(true);
+        expect(resumed.timeline().map(x => x.id)).toEqual(['1']);
+      } finally { await resumed.close(); }
+    } finally { await stream.close(); await listener.unlisten(); }
+  });
+
+  it('notifies a narratable append even when the conversation has reached its cap', async () => {
+    const runId = await start(await seed());
+    // A valid annotation fixture reaches the bounded sequence without manufacturing
+    // a million rows or bypassing the metadata guard. Existing metadata is immutable.
+    await sql`INSERT INTO run_conversation_message(message_id,run_id,sequence,actor_id,kind,created_at)
+      VALUES (${ids.next()}::uuid,${runId}::uuid,1000000,${author},'annotation',now())`;
+    const before = await sql`SELECT message_id,sequence FROM run_conversation_message WHERE run_id=${runId} ORDER BY sequence`;
+    const wakeups: string[] = [];
+    const listener = await sql.listen('run_timeline', payload => {
+      if (JSON.parse(payload).runId === runId) wakeups.push(payload);
+    });
+    const stream = open(null, 0, { heartbeatMs: 50 });
+    try {
+      await stream.until(f => f.some(x => x.event === 'heartbeat'), 5_000);
+      expect(stream.frames.some(x => x.event === 'heartbeat')).toBe(true);
+      // No command-level notify can hide a misplaced notify after the cap return.
+      const record = await new PostgresAuditUnitOfWork(db).execute(context => context.auditEvents.append({
+        actor: { type: 'system', id: 'result-sealer' }, eventType: 'lifecycle.result-sealed',
+        source: 'worker', outcome: 'success', aggregateId: runId, sessionId: session.sessionId,
+        correlationId: ids.next(), payload: { runState: 'CANCELED', sealed: true, version: 1 },
+      }));
+      expect(narrateRunConversationEvent(record)).not.toBeNull();
+      await stream.until(f => f.some(x => x.event === 'timeline' && JSON.parse(x.data!).runId === runId), 5_000);
+      const frames = stream.timeline().filter(x => JSON.parse(x.data!).runId === runId);
+      expect(frames).toEqual([{ id: null, event: 'timeline', data: JSON.stringify({
+        runId, seq: record.sequence, eventType: record.eventType, occurredAt: record.occurredAt,
+        outcome: record.outcome, source: record.source,
+      }) }]);
+      expect(wakeups.map(payload => JSON.parse(payload))).toEqual([{ runId, sequence: record.sequence }]);
+      const after = await sql`SELECT message_id,sequence FROM run_conversation_message WHERE run_id=${runId} ORDER BY sequence`;
+      expect(after).toEqual(before);
     } finally { await stream.close(); await listener.unlisten(); }
   });
 
