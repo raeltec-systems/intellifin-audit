@@ -564,6 +564,24 @@ test.describe('pausing and resuming a Run', () => {
     expect(linkedSecond!.payload).toMatchObject({ stepExecutionId: restarted, workItemId: item.workItemId, attempt: 1 });
   });
 
+  test('names an unavailable historical plan step without an empty hold sentence', async ({ page }) => {
+    test.setTimeout(120_000);
+    const runId = await seedRun('RUNNING');
+    const legacyStep = 'historical-plan-step-019823ab-0000-7000-8000-0000000000f1';
+    await page.goto(`/runs/${runId}/live`);
+    await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
+    await requestPause(page);
+    await honourPause(runId, { planStepId: legacyStep, workItemId: null, superseded: null });
+    await page.reload();
+    const banner = page.locator('.ls-banner', { hasText: `Paused by ${authorName}` });
+    await expect(banner).toContainText(`plan step “${legacyStep}”`);
+    await captureStoryState(page, 'pause-unnamed-plan-step', banner);
+    await page.goto(`/runs/${runId}/timeline`);
+    const history = page.getByRole('region', { name: PAUSE_WORDS.heading });
+    await expect(history).toContainText(`plan step “${legacyStep}”`);
+    await captureStoryState(page, 'pause-timeline-unnamed-plan-step', history);
+  });
+
   test('disables Pause on a Run waiting on an answer, and says why in words', async ({ page }) => {
     const runId = await seedRun('AWAITING_AUDITOR');
     await page.goto(`/runs/${runId}`);
