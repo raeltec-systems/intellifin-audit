@@ -30,8 +30,8 @@
 - **The route boundary cannot tell a page that failed to build from a Server Action whose
   acknowledgement was lost, so it never says nothing was changed.** After a committed flag
   "Couldn't load this page. Nothing was changed." was false. Its words are in
-  `apps/web/src/design/route-boundary-words.ts` (`[PROPOSED, owner to confirm]`; the Run
-  sentence is the owner's candidate, pinned against epics.md Story 10.8 on disk), and its
+  `apps/web/src/design/route-boundary-words.ts` (approved by the owner on 2026-09-26; the
+  Run sentence is the owner's candidate, pinned against epics.md Story 10.8 on disk), and its
   one control is a plain `<a href>` to the page: a GET that works without script and never
   resubmits. Never `reset()` there: it re-renders the router cache, the page as it was
   BEFORE the action, which is the view that invites a second submission.

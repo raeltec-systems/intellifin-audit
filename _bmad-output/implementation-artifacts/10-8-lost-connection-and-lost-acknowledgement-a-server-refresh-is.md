@@ -2,7 +2,7 @@
 title: 'Lost connection and lost acknowledgement: a server refresh is not stream recovery, and a rendering error claims only what it knows'
 type: 'fix'
 created: '2026-09-25'
-status: 'review'
+status: 'in-review'
 review_loop_iteration: 0
 implementation_authorised: true
 implementation_authorisation: 'Owner, 2026-09-26: "go, new branches OK" (implement 10.6 to 10.10 on new branches)'
@@ -103,7 +103,7 @@ the page's own address (a GET, which cannot resubmit and needs no script), in pl
 unknown-outcome sentence now comes from `FLAG_COPY`. The deployed harness matches the
 boundary's heading, pinned to the module.
 
-**Proposed wording, for the owner to confirm (Ask First).**
+**Wording, approved by the owner on 2026-09-26 ("approve all").**
 - Run pages (banner title): "This page could not be loaded. Check the Run's current state before
   repeating your last action." (the candidate in epics.md, verbatim, pinned there by a test)
 - Any other page: "This page could not be loaded. Check the current state before repeating your

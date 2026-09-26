@@ -12,11 +12,10 @@
  * Whether something changed is a fact only the action's recorded outcome can establish,
  * and only the action's own message may say it.
  *
- * `[PROPOSED, owner to confirm]` The Run sentence is the owner's candidate from
- * epics.md Story 10.8, verbatim, and `route-boundary-words.test.ts` pins it there. The
- * other sentences are this story's proposal: `other` is the same sentence for a page that
- * shows no Run, because "the Run's current state" on an Administration page names
- * something that is not there.
+ * The owner approved all five sentences on 2026-09-26. The Run sentence is the owner's
+ * candidate from epics.md Story 10.8, verbatim, and `route-boundary-words.test.ts` pins it
+ * there. `other` is the same sentence for a page that shows no Run, because "the Run's
+ * current state" on an Administration page names something that is not there.
  *
  * Free of React and `next/navigation`, because the browser specs import it: a sentence
  * retyped in a test is a sentence pinned against nothing (the `run-start-words.ts` rule).
