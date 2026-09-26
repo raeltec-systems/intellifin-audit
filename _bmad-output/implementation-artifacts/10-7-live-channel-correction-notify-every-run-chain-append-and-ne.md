@@ -2,11 +2,41 @@
 title: 'Live channel correction: notify every Run-chain append, and never lose the last refresh'
 type: 'fix'
 created: '2026-09-25'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 implementation_authorised: true
 implementation_authorisation: 'Owner, 2026-09-26: "go, new branches OK" (implement 10.6 to 10.10 on new branches)'
 baseline_revision: '429e08cf703fee6c5320f17b5983948709fd5bdf'
+followup_review_recommended: true
+deferred:
+  - summary: >-
+      The list stream replays nothing, so a change made while it (re)connects, or at its planned 14-minute end, reaches the bell and the Runs list only with the next qualifying event.
+    evidence: |-
+      openRunTimelineStream forwards the rows a notification names and has no cursor for runId null; a reconnect after end('lifetime') or a drop does not read what was appended in between. Pre-existing; this story made more events reach the list stream but did not add a replay.
+    location: >-
+      packages/infrastructure/src/runs/run-timeline-channel.ts, apps/web/src/shell/BellLive.tsx
+    severity: medium
+  - summary: >-
+      The shell mounts BellLive only when the layout's open-item count succeeded, so a page whose count read failed gets no live badge updates.
+    evidence: |-
+      AppShell.tsx:95 renders BellLive inside the branch that has a count; app/layout.tsx:104-110 passes none when countOpenFor throws. Pre-existing.
+    location: >-
+      apps/web/src/shell/AppShell.tsx:95
+    severity: low
+  - summary: >-
+      useThrottledRefresh measures its window with Date.now, so a backward step of the system clock delays the next re-read by the size of the step.
+    evidence: |-
+      The deferred re-read is scheduled from lastRefreshAt + REFRESH_THROTTLE_MS - Date.now(); a clock set back makes that interval longer. Pre-existing; a monotonic clock (performance.now) would not move.
+    location: >-
+      apps/web/src/runs/LiveBanner.tsx
+    severity: low
+  - summary: >-
+      tests/integration/agent-isolation.test.ts "keeps concurrent authenticated Runs on the same origin in separate cookie and storage contexts" fails intermittently under load, at the baseline too.
+    evidence: |-
+      Measured in the review (P11): at 429e08c it failed 0 of 16 and then 1 of 16 depending on run order, and at this branch 3 of 16 and 1 of 16, always as the second run of a pair, at the same line (a snapshot capture after the other workspace is released, BrowserActionError unavailable). The test loads no file this story changed. Likely in the local browser capture after a release (packages/infrastructure/src/runs/browser-execution.ts).
+    location: >-
+      tests/integration/agent-isolation.test.ts:100
+    severity: low
 context:
   - '_bmad-output/implementation-artifacts/legacy-review-closure-register.md'
   - '_bmad-output/planning-artifacts/epics.md'
@@ -247,3 +277,76 @@ lock; with P1 they happen at human pace (one page render or one frame load each)
 ten-item bound (`overviewBounded`, when a group holds more than it lists), so
 `bell-burst.spec.ts` observes the Overview's re-read through the attention list's rows, which
 the same server read returns, not through a count.
+
+## Review Triage Log
+
+### 2026-09-26 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 13: (high 1, medium 3, low 9)
+- defer: 3: (high 0, medium 1, low 2)
+- reject: 4: (high 0, medium 0, low 4)
+- addressed_findings:
+  - `[high]` `[patch]` The Evidence inspector re-read itself about once a second on an active Run: each render appends `evidence-access.*` events, which the append now wakes the page's own stream with. Run surfaces no longer re-read on `evidence-access.*`, `notification.*` or `security.denied` (`refresh-events.ts`, `SurfaceLiveBanner`, `LiveGate`); the Run-ending latch stays unconditional. Unit and browser proofs, each killed by mutation.
+  - `[medium]` `[patch]` The Runs list re-read on every internal event of any Run; it mounts the same filtered banner, pinned by a source scan.
+  - `[medium]` `[patch]` The list stream sends one frame per notification, so once-per-event depends on every `pg_notify('run_timeline', …)` spelling the payload byte-identically; a source scan now pins every site and names each offender.
+  - `[medium]` `[patch]` `bell-burst.spec.ts` teardown ran separate statements without locking the Run; it now deletes each Run's rows in one transaction, the Run locked first.
+  - `[low]` `[patch]` The `BellLive` JSDoc and the decision-log note said more than the bell re-reads; narrowed to what is true.
+  - `[low]` `[patch]` The `audit-events.ts` comment overstated the old delay (a per-Run stream caught up on its 10-second heartbeat); reworded.
+  - `[low]` `[patch]` No test for an append in a rolled-back savepoint inside a committed transaction; added.
+  - `[low]` `[patch]` No test that the append's notify comes before the conversation's early return; added (a full conversation is one message at sequence 1,000,000).
+  - `[low]` `[patch]` The contract note now records only what is true and names the badge's events by `changesOpenWaits`, not a third copy of the list.
+  - `[low]` `[patch]` `bell-burst.spec.ts` retyped the Overview's item bound; `OVERVIEW_OPEN_ITEM_LIMIT` is now shared, and both checks give the same message.
+  - `[low]` `[patch]` Channel test streams were opened outside `try/finally`; each case now releases every stream and LISTEN it opened.
+  - `[low]` `[patch]` The notification-delivery case awaited `armed` with no deadline; bounded, with a message saying what did not happen.
+  - `[low]` `[patch]` The verification record gained the `agent-isolation` baseline comparison, the NOTIFY-cost sentence and the Overview-bound statement.
+
+## Auto Run Result
+
+**Summary.** Every append to a Run's audit chain now issues `NOTIFY run_timeline` in the
+appending transaction, as the channel contract already said (at least 18 writers relied on
+their own notify, and Evidence access, notification delivery and the evaluation review's
+`security.denied` had none). The bell's re-read is trailing, so a burst of flags never loses
+its last refresh; the Overview follows through it. Run surfaces do not re-read on the three
+internal event families, which stops a self-refresh loop the new notify would otherwise start
+on the Evidence inspector.
+
+**Files changed.**
+- `packages/infrastructure/src/db/audit-events.ts` — the Run-chain NOTIFY in the append, before any early return; the narration's own notify removed.
+- `packages/infrastructure/src/runs/run-timeline-channel.test.ts` — the payload-spelling scan over every notify site.
+- `apps/web/src/shell/BellLive.tsx`, `BellLive.test.ts` — trailing throttled re-read and its unit cases.
+- `apps/web/src/runs/refresh-events.ts`, `refresh-events.test.ts` — `refreshesSurface`, the exclusion list and its truth table.
+- `apps/web/src/runs/SurfaceLiveBanner.tsx`, `detail.tsx`, `apps/web/app/runs/page.tsx` — the filtered banner and its two server call sites.
+- `apps/web/src/runs/LiveGate.tsx`, `LiveGate.refresh.test.ts` — Live View asks `refreshesSurface` before it re-reads.
+- `apps/web/src/overview/overview-words.ts`, `apps/web/app/page.tsx` — the shared Overview item bound.
+- `tests/integration/run-timeline-channel.test.ts` — the channel cases through the real writers.
+- `tests/e2e/bell-burst.spec.ts`, `tests/e2e/surface-refresh.spec.ts` — the burst and no-self-refresh browser proofs.
+- `docs/contracts/live-timeline-channel-v1.md`, `CLAUDE.md`, this record, `sprint-status.yaml` — contract note, decision log, tracking.
+
+**Review findings.** 20: 13 patched (1 high, 3 medium, 9 low), 3 deferred (1 medium, 2
+low), 4 rejected (low). A pre-existing test flake measured during the review is also on the
+deferred list.
+
+**Follow-up review recommended: true.** A patched finding was high; patched medium 3 and low
+9 give a score of 3 × 3 + 9 = 18.
+
+**Verification.** On the patched head (`1f4c55ea`, record at `a4361cae`), Node 24.20.0,
+PostgreSQL 18, database `lane_b_test`: package and root-tests typecheck clean; `pnpm
+boundaries` clean (806 modules); `pnpm test` 5,404 of 5,404; the channel integration file 14 of
+14 three times; `surface-refresh.spec.ts` and `bell-burst.spec.ts` three times each; 59 of 59
+once across the live, pause-resume, flag, escalation, Run and Run Detail, evidence-inspector
+and Overview specs. Every mutation in the record was killed. The full integration suite (785
+of 786) and the full browser suite (285 passed, 12 skipped by their own opt-ins) were run on
+the pre-review head; the one integration failure is the deferred `agent-isolation` flake.
+
+**Residual risks.**
+- The full integration and browser suites were not re-run after the review patches; the
+  patches were verified by the focused runs above.
+- Every Run-chain append now issues a NOTIFY, which serializes those commits on PostgreSQL's
+  notification queue lock; evidence reads and grant decisions are human-paced.
+- Story 10.8 also edits `docs/contracts/live-timeline-channel-v1.md` and
+  `tests/integration/run-timeline-channel.test.ts`, and adds a heartbeat when a stream is
+  armed: whichever of the two merges second must reconcile those files and re-run the channel
+  tests.
+- A separate draft PR by another agent (#55) implements this story too; the owner chose this
+  branch.
