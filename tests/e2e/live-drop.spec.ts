@@ -132,6 +132,11 @@ async function liveFacts(page: Page): Promise<Record<string, unknown>> {
     const banner = document.querySelector('[data-live-status]');
     const button = (name: string): Element | null =>
       [...document.querySelectorAll('button')].find((candidate) => candidate.textContent?.trim() === name) ?? null;
+    // What a withdrawn control says to a screen reader: the text of what it is described by.
+    const described = (name: string): string | null => {
+      const ids = button(name)?.getAttribute('aria-describedby')?.split(/\s+/).filter(Boolean) ?? [];
+      return ids.length === 0 ? null : ids.map((id) => document.getElementById(id)?.textContent?.trim() ?? '').join(' ');
+    };
     return {
       status: banner?.getAttribute('data-live-status') ?? null,
       // The WORD is what the polite region announces; the sentence beside it is not.
@@ -139,12 +144,35 @@ async function liveFacts(page: Page): Promise<Record<string, unknown>> {
       sentence: banner?.querySelector('[aria-hidden="true"]')?.textContent ?? null,
       pause: button('Pause')?.getAttribute('aria-disabled') ?? null,
       cancel: button('Cancel Run')?.getAttribute('aria-disabled') ?? null,
-      // The flag form sits in a closed disclosure in the header (UX-48); its submit is in
-      // the DOM whether or not the disclosure is open.
+      pauseReason: described('Pause'),
+      cancelReason: described('Cancel Run'),
+      // The flag form sits in a disclosure in the header (UX-48); its submit is in the DOM
+      // whether or not the disclosure is open.
       flag: document.querySelector('#run-flag button[type="submit"]')?.getAttribute('aria-disabled') ?? null,
-      reasonShown: (document.body.textContent ?? '').includes(reason),
+      // The reason a SIGHTED reader can see: an element whose own text is the reason, laid
+      // out and painted, and not the visually hidden description a screen reader gets.
+      // `textContent` of the whole page would count hidden text too.
+      reasonShown: [...document.querySelectorAll('body *')].some((element) => {
+        if (element.children.length > 0 || (element.textContent ?? '').trim() !== reason) return false;
+        if (element.closest('.ls-visually-hidden') !== null) return false;
+        const box = element.getBoundingClientRect();
+        return element.checkVisibility() && box.width > 1 && box.height > 1;
+      }),
     };
   }, LIVE_GATE_REASONS.lost);
+}
+
+/**
+ * Open the flag disclosure, whose caption is where a sighted reader is told why the live
+ * controls are withdrawn. After hydration, always: a native `<details>` clicked before React
+ * attaches gets an `open` the server never rendered, which is a hydration mismatch.
+ */
+async function openFlagPanel(page: Page): Promise<void> {
+  await expect(page.locator('#run-cancel')).toHaveAttribute('data-client-ready', 'true');
+  if (!(await page.locator('#run-flag').evaluate((details) => (details as HTMLDetailsElement).open))) {
+    await page.locator('#run-flag > summary').click();
+  }
+  await expect(page.locator('#run-flag')).toHaveJSProperty('open', true);
 }
 
 /** A lost stream as Live View must state it: the word, the sentence, and every live control withdrawn with its reason. */
@@ -154,6 +182,8 @@ const LOST_LIVE_VIEW = {
   sentence: LIVE_SENTENCES.lost,
   pause: 'true',
   cancel: 'true',
+  pauseReason: LIVE_GATE_REASONS.lost,
+  cancelReason: LIVE_GATE_REASONS.lost,
   flag: 'true',
   reasonShown: true,
 } as const;
@@ -198,12 +228,16 @@ test.describe('Live View when the stream drops', () => {
     // the reason stays reachable by keyboard.
     // The flag form opens from a disclosure in the page header (UI cleanup 2026-09-22,
     // UX-48); a role locator does not see a control inside a closed one.
-    await page.locator('#run-flag > summary').click();
+    await openFlagPanel(page);
     for (const name of ['Pause', 'Cancel Run', FLAG_COPY.submit]) {
       const control = page.getByRole('button', { name, exact: true });
       await expect(control).toHaveAttribute('aria-disabled', 'true');
     }
-    await expect(page.getByText(LIVE_GATE_REASONS.lost).first()).toBeAttached();
+    // Seen, not only present: the caption under the flag note is the reason a sighted
+    // reader reads, and each withdrawn button is described by it for a screen reader.
+    await expect(page.locator('#run-flag-note-withdrawn')).toBeVisible();
+    await expect(page.locator('#run-flag-note-withdrawn')).toHaveText(LIVE_GATE_REASONS.lost);
+    expect(await liveFacts(page)).toMatchObject(LOST_LIVE_VIEW);
 
     // A click on a withdrawn control does nothing at all — no dialog, no request.
     // `force`, because Playwright refuses to click an `aria-disabled` element and would
@@ -323,6 +357,7 @@ test.describe('Live View when the stream drops', () => {
 
     dropping = true;
     await expect(banner).toHaveAttribute('data-live-status', 'lost', { timeout: LIVE_LOST_MS + 30_000 });
+    await openFlagPanel(page);
     await expectThroughout(page, LOST_LIVE_VIEW, 2);
 
     // The Run's chain moves on while the page cannot hear it.
@@ -354,15 +389,32 @@ test.describe('Live View when the stream drops', () => {
     const scan = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
     expect(scan.violations.map((v) => ({ id: v.id, nodes: v.nodes.map((n) => n.target.join(' ')) }))).toEqual([]);
 
-    // A remount is not recovery either. Run Detail follows the SAME stream, so moving there
-    // and back hands the clock on rather than starting it again: both pages say `lost` at
-    // once, where a fresh clock would say `connecting` for a whole minute.
+    // A remount is not recovery either. Run Detail and the Auditor Workspace follow the SAME
+    // stream, so moving between them hands the clock on rather than starting it again: every
+    // page says `lost` at once. A fresh clock would say `connecting` for fifteen seconds and
+    // then `stale` — and neither is a gate reason, so the live controls would be back for a
+    // whole minute on a stream that is still down.
     await page.getByRole('link', { name: 'Open Run Detail' }).click();
     await expect(page.getByRole('link', { name: 'Execution Timeline', exact: true })).toBeVisible();
     await expect(banner).toHaveAttribute('data-live-status', 'lost', { timeout: 5_000 });
     await expect(banner.locator('[aria-hidden="true"]')).toHaveText(LIVE_SENTENCES.lost);
+    // WCAG 2.1 AA on Run Detail in the state it inherited.
+    await expect(page).toHaveTitle(/.+/);
+    const detailScan = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(detailScan.violations.map((v) => ({ id: v.id, nodes: v.nodes.map((n) => n.target.join(' ')) }))).toEqual([]);
+
+    await page.getByRole('link', { name: 'Open Auditor Workspace', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/runs/${runId}/workspace$`));
+    await expect(banner).toHaveAttribute('data-live-status', 'lost', { timeout: 5_000 });
+    await expect(banner.locator('[aria-hidden="true"]')).toHaveText(LIVE_SENTENCES.lost);
+    await expect(banner.locator('[aria-live]')).toHaveText(LIVE_WORDS.lost);
+
+    await page.goBack();
+    await expect(page.getByRole('link', { name: 'Execution Timeline', exact: true })).toBeVisible();
+    await expect(banner).toHaveAttribute('data-live-status', 'lost', { timeout: 5_000 });
     await page.goBack();
     await expect(page.getByRole('heading', { name: /^Live View · / })).toBeVisible();
+    await openFlagPanel(page);
     await expectThroughout(page, LOST_LIVE_VIEW);
 
     // The stream returns: the browser's own retry reaches the real route, the stream itself
@@ -370,9 +422,13 @@ test.describe('Live View when the stream drops', () => {
     await page.unroute(`**${stream}*`);
     await expect(banner).toHaveAttribute('data-live-status', 'live', { timeout: 30_000 });
     await expect(page.getByText(LIVE_SENTENCES.live)).toBeVisible();
-    for (const name of ['Pause', 'Cancel Run']) {
+    for (const name of ['Pause', 'Cancel Run', FLAG_COPY.submit]) {
       await expect(page.getByRole('button', { name, exact: true })).not.toHaveAttribute('aria-disabled', 'true');
     }
+    // Every control back, and the reason gone with the state it described.
+    expect(await liveFacts(page)).toMatchObject({
+      status: 'live', pause: null, cancel: null, flag: null, pauseReason: null, cancelReason: null, reasonShown: false,
+    });
     expect(attemptsWhileDropping).toBeGreaterThan(0);
 
     // None of this changed the Run being watched.
@@ -389,8 +445,8 @@ test.describe('Live View when the stream drops', () => {
     // What this can and cannot establish, because CI proved the difference and this
     // machine did not. The frames below carry SYNTHETIC sequences that reach no chain, so
     // `router.refresh()` re-reads a server cursor that never advances past the seeded head.
-    // `useLiveTimeline` seeds `lastSeqRef` from that server `cursor` and re-runs its effect
-    // on `[url, cursor]`, so every remount re-subscribes at the SERVER's number — correct
+    // `useLiveTimeline` seeds its last sequence (`LiveStreamState.lastSeq`) from that server
+    // `cursor` when it mounts, so every remount re-subscribes at the SERVER's number — correct
     // in production, where the client's frames all came FROM the chain and the server's
     // cursor is therefore never behind, and unobservable here, where they did not.
     //
