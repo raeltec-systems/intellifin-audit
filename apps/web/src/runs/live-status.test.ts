@@ -6,9 +6,9 @@ import {
   createLiveClockHandOff,
   heardFromStream,
   liveClockStatus,
+  nextLiveTick,
   resumedLiveClock,
   streamClosed,
-  streamOpened,
   waitingLiveClock,
 } from './live-status';
 
@@ -66,21 +66,6 @@ describe('the silence clock moves only when the stream itself speaks (Story 10.8
     expect(liveGateReason(liveClockStatus(back, T + LIVE_LOST_MS * 5), false)).toBeNull();
   });
 
-  it('lets an answered connection make a page that has heard nothing live, and nothing more', () => {
-    // A fresh page is live as soon as its stream answers, not ten seconds later.
-    const opened = streamOpened(waitingLiveClock(T));
-    expect(liveClockStatus(opened, T)).toBe('live');
-    // But the answer is not a frame: the silence still counts from before it.
-    expect(opened.lastFrameAt).toBe(T);
-    expect(liveClockStatus(opened, T + LIVE_STALE_MS)).toBe('stale');
-    // And it brings back nothing the stream had lost: only a frame or a heartbeat does.
-    const lost = heardFromStream(T);
-    expect(liveClockStatus(streamOpened(lost), T + LIVE_LOST_MS)).toBe('lost');
-    expect(liveGateReason(liveClockStatus(streamOpened(lost), T + LIVE_LOST_MS), false)).toBe('lost');
-    expect(liveClockStatus(streamOpened(lost), T + LIVE_STALE_MS)).toBe('stale');
-    expect(liveClockStatus(streamOpened(streamClosed(heardFromStream(T))), T + 1_000)).toBe('ended');
-  });
-
   it('ends a closed stream whatever the clock says, and only the stream reopens it', () => {
     const closed = streamClosed(heardFromStream(T));
     expect(liveClockStatus(closed, T)).toBe('ended');
@@ -116,23 +101,40 @@ describe('a remount hands the clock on rather than starting it again (Story 10.8
     expect(liveClockStatus(handOff.take('stale', T + LIVE_STALE_MS + 1_000)!, T + LIVE_STALE_MS + 1_000)).toBe('stale');
   });
 
-  it('never hands a healthy clock on as live: the new subscription has heard nothing yet', () => {
+  it('hands a healthy clock on as live, and keeps counting its silence from the last frame', () => {
+    // Changed on purpose in the Story 10.8 review: it used to hand a healthy clock on as
+    // `connecting`, so every page move flickered to a word the stream never said. The new
+    // connection hears a heartbeat at once; until it does, the page says what the stream
+    // last said — and its silence keeps counting, so it goes stale on time, not later.
     const handOff = createLiveClockHandOff();
     handOff.leave(STREAM, heardFromStream(T), T + 2_000);
     const taken = handOff.take(STREAM, T + 2_000)!;
+    expect(liveClockStatus(taken, T + 2_000)).toBe('live');
+    expect(liveClockStatus(taken, T + LIVE_STALE_MS - 1)).toBe('live');
+    expect(liveClockStatus(taken, T + LIVE_STALE_MS)).toBe('stale');
+    expect(liveGateReason(liveClockStatus(taken, T + LIVE_LOST_MS), false)).toBe('lost');
+  });
+
+  it('hands a clock that had heard nothing on as connecting', () => {
+    // A page moved before its stream ever said anything claims nothing it did not hear.
+    const handOff = createLiveClockHandOff();
+    handOff.leave(STREAM, waitingLiveClock(T), T + 2_000);
+    const taken = handOff.take(STREAM, T + 2_000)!;
     expect(liveClockStatus(taken, T + 2_000)).toBe('connecting');
-    // And its silence keeps counting from the last frame, so it goes stale on time.
     expect(liveClockStatus(taken, T + LIVE_STALE_MS)).toBe('stale');
   });
 
   it('does not count the time nobody was subscribed as silence', () => {
     // Somebody left Live View while it was live and came back ten minutes later: nothing
     // was listening in between, so nothing was silent. What was lost stays lost (above);
-    // what was fine does not come back as lost.
+    // what was fine comes back as what it was — live, with the silence it had when it was
+    // left — and not as lost.
     const handOff = createLiveClockHandOff();
     handOff.leave(STREAM, heardFromStream(T), T + 3_000);
     const back = T + 3_000 + 10 * LIVE_LOST_MS;
-    expect(liveClockStatus(handOff.take(STREAM, back)!, back)).toBe('connecting');
+    const taken = handOff.take(STREAM, back)!;
+    expect(liveClockStatus(taken, back)).toBe('live');
+    expect(back - taken.lastFrameAt).toBe(3_000);
     expect(resumedLiveClock(heardFromStream(T), T + 3_000, back).lastFrameAt).toBe(T + 10 * LIVE_LOST_MS);
   });
 
@@ -144,6 +146,24 @@ describe('a remount hands the clock on rather than starting it again (Story 10.8
     expect(handOff.take(STREAM, T + LIVE_LOST_MS)).toBeNull();
     for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
       expect(handOff.take(name, T)).toBeNull();
+    }
+  });
+});
+
+describe('the render clock a live component repaints with (Story 10.8 review)', () => {
+  it('always moves forward, so React never skips the repaint that shows a new clock', () => {
+    // React skips a setter handed the value it already holds, and two reads of the wall
+    // clock inside one millisecond are equal: a remount that took a lost clock in the same
+    // millisecond it rendered would keep painting a fresh one, with the controls open.
+    expect(nextLiveTick(1_000, 1_000)).toBe(1_001);
+    expect(nextLiveTick(1_000, 999)).toBe(1_001);
+    expect(nextLiveTick(1_000, 5_000)).toBe(5_000);
+    let previous = 1_000;
+    for (const now of [1_000, 1_000, 1_000, 1_002, 1_001, 1_500]) {
+      const next = nextLiveTick(previous, now);
+      expect(next).toBeGreaterThan(previous);
+      expect(next).toBeGreaterThanOrEqual(now);
+      previous = next;
     }
   });
 });

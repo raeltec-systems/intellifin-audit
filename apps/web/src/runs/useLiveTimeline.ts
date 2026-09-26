@@ -6,11 +6,18 @@ import {
   LIVE_STALE_MS,
   createLiveClockHandOff,
   liveClockStatus,
+  nextLiveTick,
   silenceSeconds,
   waitingLiveClock,
   type LiveStatus,
 } from './live-status';
-import { followLiveStream, type LiveStreamState, type LiveTimelineEvent } from './live-stream';
+import {
+  beginLiveSubscription,
+  endLiveSubscription,
+  followLiveStream,
+  type LiveStreamState,
+  type LiveTimelineEvent,
+} from './live-stream';
 
 export type { LiveTimelineEvent } from './live-stream';
 
@@ -29,7 +36,11 @@ export interface LiveTimeline {
  * per-Run stream, so moving between them hands the clock on rather than starting again.
  *
  * It lives for the document: a full page load is a fresh read of the page and starts a
- * fresh clock, as it always has. It is touched only inside effects, never during render,
+ * fresh clock, as it always has. `[NAMED, NOT FIXED]` So after the browser's Reload, the
+ * route boundary's "Reload this page" or the `ended` sentence's "Refresh to continue" while
+ * the stream is still down, the new page reads `connecting` and then `stale` — neither a
+ * gate reason — and its live controls stay enabled until it has itself counted sixty
+ * seconds (`docs/contracts/live-view-v1.md`). It is touched only inside effects, never during render,
  * because the SERVER renders this component for every request and a module-level store
  * read there would be one user's stream health leaking into another's page.
  *
@@ -56,41 +67,56 @@ export function useLiveTimeline(
   onEvent: (event: LiveTimelineEvent) => void,
 ): LiveTimeline {
   const [now, setNow] = useState(() => Date.now());
+  // Every repaint goes through `nextLiveTick`, which always moves forward: a setter handed
+  // the value it already holds is skipped by React, and two reads of the wall clock in one
+  // millisecond are equal.
+  const repaint = (): void => { setNow((previous) => nextLiveTick(previous, Date.now())); };
   // One mutable state per subscription, the same object for the component's whole life:
   // the effects below write to it and a re-render reads it.
   const stream = useRef<LiveStreamState | null>(null);
   if (stream.current === null) stream.current = { clock: waitingLiveClock(Date.now()), lastSeq: cursor ?? 0 };
   const state = stream.current;
+  // The open connection, shared by both effects, so whichever ends first closes it.
+  const connection = useRef<(() => void) | null>(null);
+  const stopConnection = (): void => {
+    const stop = connection.current;
+    connection.current = null;
+    stop?.();
+  };
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
   const handOffKey = cursor === null ? null : url;
 
   // A LAYOUT effect, so a remount paints the clock it inherited rather than one frame of a
-  // fresh `connecting` with the controls open. It runs before the subscription effect
-  // below, so a new connection starts from the inherited clock too.
+  // fresh `connecting` with the controls open (`useLiveTimeline.test.ts` pins that). It
+  // runs before the subscription effect below, so a new connection starts from the
+  // inherited clock and from this page's cursor. Its cleanup runs before the subscription
+  // effect's does, so it is what closes the connection — before the clock is left, so a
+  // frame cannot arrive in between and land on state the next page never reads.
   useLayoutEffect(() => {
     if (handOffKey === null) return undefined;
-    const taken = RUN_STREAM_CLOCKS.take(handOffKey, Date.now());
-    state.clock = taken ?? waitingLiveClock(Date.now());
-    if (taken !== null) setNow(Date.now());
-    return () => { RUN_STREAM_CLOCKS.leave(handOffKey, state.clock, Date.now()); };
+    beginLiveSubscription(state, RUN_STREAM_CLOCKS, handOffKey, cursor, Date.now());
+    repaint();
+    return () => { endLiveSubscription(state, RUN_STREAM_CLOCKS, handOffKey, stopConnection, Date.now()); };
+    // The cursor is read when the stream changes, not followed: a new cursor on the same
+    // stream is the subscription effect's business, and it keeps the last sequence seen.
   }, [handOffKey, state]);
 
   useEffect(() => {
     if (typeof EventSource === 'undefined') return undefined;
-    const stop = followLiveStream({
+    connection.current = followLiveStream({
       url,
       cursor,
       state,
       open: (target) => new EventSource(target),
       now: () => Date.now(),
-      onChange: () => setNow(Date.now()),
+      onChange: repaint,
       onEvent: (event) => onEventRef.current(event),
     });
-    const tick = setInterval(() => setNow(Date.now()), 1_000);
+    const tick = setInterval(repaint, 1_000);
     return () => {
       clearInterval(tick);
-      stop();
+      stopConnection();
     };
     // `state` is the same object for the component's life, so it never re-runs this; the
     // cursor does, and a new cursor opens a new connection without touching the clock.

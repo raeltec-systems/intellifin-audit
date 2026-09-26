@@ -184,7 +184,7 @@ this order so that the first that holds is the one the reader is told:
 | `viewport` | the page has measured its viewport below 1024px | Outranks every stream reason. "Open this on a desktop" is the sentence a reader on a phone can act on, where "the connection is lost" is not — and a Run that has ended is still one they cannot supervise from there. |
 | `runEnded` | a run-ending event arrived, or the server rendered a terminal Run | Outranks the stream reasons. It closes the second between that event and the server re-read that removes the controls, in which every control was live on a Run that had already finished. |
 | `lost` | 60 seconds of silence (UX-DR25) | The page cannot claim to know what it is acting on. |
-| `ended` | the stream said `end` and will not reconnect | Included although the contract names only `lost`, because it is the STRONGER case: a lost stream is reconnecting and an ended one is not, so gating the recoverable state and not the permanent one would have it backwards. |
+| `ended` | the browser reported the stream CLOSED: it will not reconnect on its own (a 401, a 404, a wrong media type). Not the channel's `end` frame, which is a planned renewal the browser reconnects after by itself | Included although the contract names only `lost`, because it is the STRONGER case: a lost stream is reconnecting and an ended one is not, so gating the recoverable state and not the permanent one would have it backwards. |
 
 **`stale` is deliberately not a reason.** UX-DR25 disables at sixty seconds, not fifteen. A
 quiet Run goes stale routinely, and a surface that locked itself every fifteen seconds would
@@ -209,20 +209,32 @@ the reason stays reachable by keyboard; activation is refused in the handler, wh
 
 `LiveClock` in `live-status.ts` is what a page has heard from one stream: the instant of the
 last FRAME the stream itself delivered — a Timeline event or a heartbeat, the frames the
-channel contract measures silence in — and whether the stream has answered at all.
+channel contract measures silence in — and whether the stream has sent one at all.
 `heardFromStream` is the one way back to `live` from `stale`, `lost` or `ended`, and so the
 one way a gate closed for `lost` or `ended` opens again. The 15-second and 60-second
 thresholds, the gate reasons and `RUN_ENDING_EVENTS` are unchanged.
 
-**A connection answering is not a frame.** `EventSource`'s `open` fires when the route
-answers, and the route answers before it has armed its LISTEN or read the chain; one whose
-LISTEN then fails sends `end` and closes, and the browser opens the next connection two
-seconds later. Counted as a frame, `open` would call such a stream `live` and reopen the
-controls every two seconds while it can deliver nothing. `streamOpened` therefore only marks
-the stream as answered: a page that has never heard from its stream reads `live` rather than
-`connecting` (for as long as its silence allows), and a stale, lost or ended page stays so
-until the stream sends a frame. Where the chain moved on, that frame is the replay, at once;
-otherwise it is the first heartbeat, at most ten seconds later.
+**A connection answering is not a frame, and a new connection is heard at once.**
+`EventSource`'s `open` fires when the route answers, and the route answers before it has
+armed its LISTEN or read the chain; one whose LISTEN then fails sends `end` and closes, and
+the browser opens the next connection two seconds later. Counted as a frame, `open` would
+call such a stream `live` and reopen the controls every two seconds while it can deliver
+nothing, so the page does not listen for `open` at all. What a new connection is heard by
+instead is the stream itself: every stream sends one heartbeat as soon as it is armed and
+caught up (`live-timeline-channel-v1.md`), right after any replay. So a fresh page reads
+`connecting` until that heartbeat — moments after the route is ready — and a stale, lost or
+ended page stays so until it. A stream whose LISTEN fails sends no heartbeat, so the page goes
+stale at 15 seconds and lost at 60 exactly as if the stream were silent, which it is. Before
+the Story 10.8 review the first frame on a quiet Run was the first PERIODIC heartbeat, ten
+seconds after the connection: every planned renewal gave about twenty-two seconds of silence
+(the last heartbeat nearly ten seconds old when the lifetime ends, the two-second retry, then
+ten more), so every quiet, healthy surface said "No update for 15 seconds" every fourteen
+minutes, and a page moved again before its first tick never heard a frame at all.
+
+**The stale sentence counts the silence this document listened through.** `lastFrameAt` is
+shifted forward by any time in which no subscription on the page was following the stream
+(`resumedLiveClock`), for the count in "No update for {seconds} seconds" as for the 15- and
+60-second thresholds. Time with no subscriber is not silence: nothing was listening then.
 
 **A server re-read is not recovery.** A re-read that gives the page a new cursor makes the
 subscription close its connection and open the next one (`followLiveStream` in
@@ -233,20 +245,37 @@ ran, so a re-read that landed during a drop — the shell's bell refreshing beca
 ended — made the page say `live` for up to 15 seconds and reopened every control for up to
 60, while the stream it depends on was still down.
 
-**A remount is not recovery either.** When a subscription ends it leaves its clock in a
-per-document hand-off keyed by the stream's URL (`createLiveClockHandOff`), and the next
-subscription to the same stream takes it. A lost stream stays lost and an ended one stays
-ended; the time in which nothing was subscribed is not counted as silence, because nothing
-was listening then; and the new subscription reads `connecting` rather than `live` until the
-stream answers it. Live View and Run Detail follow the same stream, so moving between them
-keeps saying `lost`. A full document load is a new page that knows nothing of the old one and
-waits for its stream as any page does.
+**A remount is not recovery either.** When a subscription ends it closes its connection
+FIRST and only then leaves its clock in a per-document hand-off keyed by the stream's URL
+(`endLiveSubscription`, `createLiveClockHandOff`), so a frame cannot arrive in between and
+land on state the next page never reads. The next subscription to the same stream takes the
+clock (`beginLiveSubscription`), with its own page's cursor. Everything the clock said carries
+on: a lost stream stays lost, an ended one ended, a stale one stale, and a live one live —
+the new page does not drop back to `connecting`, because its stream is the same stream and
+says so within moments, at the new connection's first heartbeat. The time in which nothing was
+subscribed is not counted as silence, because nothing was listening then. The hand-off is
+taken in a layout effect, so the first paint of the new page is the clock it inherited, and
+its repaint cannot be skipped (`nextLiveTick`). Live View, Run Detail and the Auditor
+Workspace follow the same stream, so moving between them keeps saying `lost`.
 
-Proven three ways, each by mutation: `live-status.test.ts` (the clock and the hand-off),
+**`[NAMED, NOT FIXED]` A full document load starts a fresh clock.** The browser's Reload, the
+route boundary's "Reload this page" link and the `ended` sentence's "Refresh to continue" all
+load a new document, which knows nothing of the old one and waits for its stream as any page
+does. So while the stream is still down, that page reads `connecting` and then `stale`, and
+because neither is a gate reason its live controls stay enabled until the page has itself
+counted 60 seconds of silence. Deferred by the Story 10.8 review as a follow-up; what refuses
+a stale action in that minute is still the command.
+
+Proven these ways, each by mutation: `live-status.test.ts` (the clock and the hand-off),
 `live-stream.test.ts` (one subscription against a fake `EventSource`, a new cursor being a
-second call with the same state), and `live-drop.spec.ts` (a real re-read — another Run
-ending — and a remount, with the status word, the sentence and every control read in one
-page read, eight times over).
+second call with the same state, and how a subscription begins and ends),
+`useLiveTimeline.test.ts` (the hook's wiring: the layout effect, the order of the cleanup,
+the repaint), `tests/unit/live-channel-cadence.test.ts` (the real channel engine and the real
+subscription through an emulated `EventSource`: a planned renewal, a page move nine seconds
+after the last heartbeat, and a page moved every five seconds for a minute, all `live` at
+every second), and `live-drop.spec.ts` (a real re-read — another Run ending — and remounts
+onto Run Detail and the Auditor Workspace, with the status word, the sentence and every
+control read in one page read, eight times over).
 
 ## A reconnect resumes from the last frame the page SAW
 

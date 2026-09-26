@@ -99,7 +99,12 @@ export async function readTimelineHead(db: Database, runId: string): Promise<num
 
 /** `retry:` tells `EventSource` how long to wait before reconnecting with `Last-Event-ID`. */
 export const RETRY_FRAME = 'retry: 2000\n\n';
-/** At most every 30 seconds by AD-17; every 10 so a 15-second stale rule cannot flap on a healthy stream. */
+/**
+ * At most every 30 seconds by AD-17; every 10 so a 15-second stale rule cannot flap on a
+ * healthy stream. A stream also sends ONE heartbeat as soon as it is armed and caught up
+ * (see `openRunTimelineStream`), so a new connection's first frame does not wait for the
+ * first tick.
+ */
 export const HEARTBEAT_MS = 10_000;
 /** Under Railway's 15-minute response cap, so the reconnect is planned rather than proxy-forced. */
 export const STREAM_LIFETIME_MS = 14 * 60_000;
@@ -150,8 +155,8 @@ const encoder = new TextEncoder();
 /**
  * A `ReadableStream` of SSE bytes for one Run, or for every Run.
  *
- * Per-Run: LISTEN, then replay `sequence > after` in pages, then on every wake-up and
- * every heartbeat read `sequence > lastSent` again. Reads are serialized: a wake-up that
+ * Per-Run: LISTEN, then replay `sequence > after` in pages, then one heartbeat, then on
+ * every wake-up and every heartbeat read `sequence > lastSent` again. Reads are serialized: a wake-up that
  * lands during a read queues one more pass rather than a concurrent one, which is what
  * keeps the order and the once-only property without a lock.
  *
@@ -260,6 +265,14 @@ export function openRunTimelineStream(
       if (closed) { const release = unlisten; unlisten = null; await release?.(); return; }
       await catchUp();
       if (closed) return;
+      // One heartbeat now, as soon as the stream is armed and caught up (Story 10.8). A
+      // client counts silence from the last frame it received, and a new connection's
+      // first periodic heartbeat is HEARTBEAT_MS away: every planned renewal and every
+      // page move would otherwise open about twelve seconds of silence on a healthy, quiet
+      // Run, and a page moved again before that first tick would never hear a frame at
+      // all. A frame only: it does not read the chain again, so between here and the first
+      // tick nothing but a wake-up reads it.
+      send(formatHeartbeatFrame(now()));
       heartbeat = setInterval(() => { send(formatHeartbeatFrame(now())); void catchUp(); }, heartbeatMs);
       lifetime = setTimeout(() => { void end('lifetime'); }, lifetimeMs);
     },

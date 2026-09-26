@@ -18,11 +18,23 @@ export const LIVE_STATUSES = ['connecting', 'live', 'stale', 'lost', 'ended'] as
 export type LiveStatus = (typeof LIVE_STATUSES)[number];
 
 export interface LiveStatusInputs {
-  /** The stream reported `end` and will not reconnect on its own. */
+  /**
+   * The browser reported the stream CLOSED: it will not reconnect on its own (a 401, a 404,
+   * a wrong media type). Not the channel's `end` frame, which is a planned renewal the
+   * browser reconnects after by itself.
+   */
   readonly ended: boolean;
-  /** The instant of the last frame seen (event or heartbeat), or the instant the page started waiting. */
+  /**
+   * The instant of the last frame the stream sent (a Timeline event or a heartbeat), or the
+   * instant the page began waiting for one. After a hand-off to a remounted component it is
+   * shifted forward by the time no subscription was listening, so the silence counted is
+   * the silence a page actually listened through.
+   */
   readonly lastMessageAt: number;
-  /** Whether any frame has been seen at all since this subscription began. */
+  /**
+   * Whether the stream has sent any frame since the page began following it, counting the
+   * subscriptions whose clock this one took over. A connection answering is not a frame.
+   */
   readonly everConnected: boolean;
   readonly now: number;
 }
@@ -48,7 +60,10 @@ export function silenceSeconds(lastMessageAt: number, now: number): number {
  * event or a heartbeat — or, before any, the instant the page began waiting for one.
  * Nothing the page does to itself moves it: a server re-read, a new cursor, a new
  * subscription and a remount are all the page's own doing. Neither does a connection
- * opening (`streamOpened`): the route answers before it can deliver anything.
+ * opening: the route answers before it has armed its LISTEN or read the chain, so an
+ * answer says nothing about the stream. What the stream says instead is a heartbeat as
+ * soon as it is armed and caught up (`docs/contracts/live-timeline-channel-v1.md`), so a
+ * new connection is heard at once rather than a heartbeat interval later.
  *
  * That was the defect this shape removes. The subscription effect restarted the clock
  * every time it ran, and a server re-read that moved the cursor re-ran it — so a re-read
@@ -59,7 +74,7 @@ export function silenceSeconds(lastMessageAt: number, now: number): number {
  */
 export interface LiveClock {
   readonly lastFrameAt: number;
-  /** Whether the stream has answered this subscription at all. */
+  /** Whether the stream has sent a frame since the page began following it. */
   readonly everConnected: boolean;
   /** The browser reported the stream CLOSED: it will not reconnect on its own. */
   readonly ended: boolean;
@@ -80,22 +95,6 @@ export function heardFromStream(now: number): LiveClock {
   return { lastFrameAt: now, everConnected: true, ended: false };
 }
 
-/**
- * The stream's server answered a connection (`EventSource`'s `open`) and has sent nothing
- * on it yet.
- *
- * That is enough to call a page that has never heard from its stream `live`, for as long
- * as its silence allows, so a fresh page does not read `connecting` until the first
- * heartbeat ten seconds later. It is NOT a frame and never moves the silence clock: the
- * route answers before it has armed its LISTEN or read the chain, and one that then fails
- * ends the connection while the browser opens the next — so an `open` counted as a frame
- * would call a stream that can deliver nothing `live`, again every two seconds, and reopen
- * the controls on it. A stale, lost or ended stream stays so until a frame or a heartbeat.
- */
-export function streamOpened(clock: LiveClock): LiveClock {
-  return { ...clock, everConnected: true };
-}
-
 /** The browser closed the stream for good (a 401, a 404, a wrong media type). */
 export function streamClosed(clock: LiveClock): LiveClock {
   return { ...clock, ended: true };
@@ -108,19 +107,39 @@ export function liveClockStatus(clock: LiveClock, now: number): LiveStatus {
 /**
  * A clock taken over by a NEW subscription to the same stream — a remount.
  *
- * The silence it had carries on, so a stream that was lost stays lost and one that had
- * ended stays ended until the stream itself says something. Two things are adjusted, and
- * neither is a recovery: the time in which nothing on the page was subscribed is not
- * counted as silence, because nothing was listening for a frame then; and the new
- * subscription has heard nothing yet, so a healthy clock reads `connecting` rather than
- * claiming a connection it has not made.
+ * Everything it said carries on: a stream that was lost stays lost, one that had ended
+ * stays ended, one that was stale stays stale, and one that was live stays live, until the
+ * stream itself says something. The one adjustment is not a recovery: the time in which
+ * nothing on the page was subscribed is not counted as silence, because nothing was
+ * listening for a frame then — the count is the silence a page listened through.
+ *
+ * A live clock stays live rather than dropping back to `connecting` (Story 10.8 review): a
+ * page moved between Run pages is following the same stream, and the stream says so
+ * within moments, because every new connection hears a heartbeat as soon as the stream is
+ * armed. A page that flickered to `connecting` on every move would be saying something the
+ * stream never said.
  */
 export function resumedLiveClock(clock: LiveClock, leftAt: number, now: number): LiveClock {
   return {
     lastFrameAt: clock.lastFrameAt + Math.max(0, now - leftAt),
-    everConnected: false,
+    everConnected: clock.everConnected,
     ended: clock.ended,
   };
+}
+
+/**
+ * The next value of a component's render clock: now, and always later than the last one
+ * (Story 10.8 review).
+ *
+ * React skips a re-render when a state setter is handed the value it already holds, and two
+ * reads of `Date.now()` inside one millisecond are equal — so a remount that took a lost
+ * clock in the same millisecond it first rendered could keep painting the fresh clock, with
+ * the controls open, until the next one-second tick. A value that always moves forward
+ * cannot be skipped. It runs at most a few milliseconds ahead of the wall clock, and only
+ * while frames arrive faster than one a millisecond.
+ */
+export function nextLiveTick(previous: number, now: number): number {
+  return Math.max(now, previous + 1);
 }
 
 /**

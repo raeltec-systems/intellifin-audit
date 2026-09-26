@@ -1,4 +1,11 @@
-import { acceptsLiveSeq, heardFromStream, streamClosed, streamOpened, type LiveClock } from './live-status';
+import {
+  acceptsLiveSeq,
+  heardFromStream,
+  streamClosed,
+  waitingLiveClock,
+  type LiveClock,
+  type LiveClockHandOff,
+} from './live-status';
 
 /**
  * One subscription to a live Timeline stream, with no React and no DOM (Story 10.8).
@@ -83,12 +90,15 @@ export interface FollowLiveStream {
  * never skips and never repeats — and this still refuses a `seq` it has already seen, so a
  * repeat could not reach the page either way.
  *
- * **Opening a connection does not touch the clock.** Only what the stream SENDS does: a
- * Timeline frame or a heartbeat. A call to this function is the page's own doing (a first
- * subscription, or a new cursor from a server re-read), and the connection it opens
- * answering (`open`) says only that it is connected (`streamOpened`) — so a stream that
- * was lost is still lost until the stream sends a frame, and the gate over the live
- * controls stays closed until then.
+ * **Opening a connection does not touch the clock, and neither does it answering.** Only
+ * what the stream SENDS does: a Timeline frame or a heartbeat. A call to this function is
+ * the page's own doing (a first subscription, or a new cursor from a server re-read), and
+ * the route answers (`open`) before it has armed its LISTEN or read the chain, so an answer
+ * says nothing about the stream: a route whose LISTEN fails answers too, sends `end` and
+ * closes, and the browser opens the next connection two seconds later. So `open` is not
+ * listened for at all. A stream that was lost stays lost, and a fresh page stays
+ * `connecting`, until the stream sends a frame — which a healthy stream does at once,
+ * because every connection hears a heartbeat as soon as its stream is armed and caught up.
  */
 export function followLiveStream({ url, cursor, state, open, now, onChange, onEvent }: FollowLiveStream): () => void {
   const target = cursor === null ? url : `${url}?after=${state.lastSeq}`;
@@ -110,10 +120,6 @@ export function followLiveStream({ url, cursor, state, open, now, onChange, onEv
     onEvent(event);
   };
   const onHeartbeat = (): void => { heard(); };
-  const onOpen = (): void => {
-    state.clock = streamOpened(state.clock);
-    onChange();
-  };
   const onError = (): void => {
     // CLOSED means the browser will not retry (a 401, a 404, a wrong media type);
     // CONNECTING means it is retrying on its own and the silence clock decides.
@@ -124,13 +130,58 @@ export function followLiveStream({ url, cursor, state, open, now, onChange, onEv
   };
   source.addEventListener('timeline', onTimeline);
   source.addEventListener('heartbeat', onHeartbeat);
-  source.addEventListener('open', onOpen);
   source.addEventListener('error', onError);
   return () => {
     source.removeEventListener('timeline', onTimeline);
     source.removeEventListener('heartbeat', onHeartbeat);
-    source.removeEventListener('open', onOpen);
     source.removeEventListener('error', onError);
     source.close();
   };
+}
+
+/**
+ * A subscription to a per-Run stream begins (Story 10.8): it takes the clock the last
+ * subscription to the same stream left, or starts a fresh one, and it opens from THIS
+ * page's cursor.
+ *
+ * The cursor is reset because the state outlives the stream it was first opened for: a
+ * component that stays mounted while its stream changes would otherwise open the new
+ * stream after the old one's last sequence and skip every event before it. It is the
+ * page's own cursor and never the larger of it and the last one seen: the page reads its
+ * cursor beside its content, not after it, so a cursor ahead of what the page rendered
+ * would skip the one frame that says the Run ended.
+ *
+ * Returns whether a clock was inherited.
+ */
+export function beginLiveSubscription(
+  state: LiveStreamState,
+  handOff: LiveClockHandOff,
+  key: string,
+  cursor: number | null,
+  now: number,
+): boolean {
+  const taken = handOff.take(key, now);
+  state.clock = taken ?? waitingLiveClock(now);
+  state.lastSeq = cursor ?? 0;
+  return taken !== null;
+}
+
+/**
+ * A subscription to a per-Run stream ends: its connection is closed FIRST, and only then is
+ * its clock left for the next subscription (Story 10.8 review).
+ *
+ * The other order leaves a window in which the connection is still open and the clock has
+ * already been handed on, and a frame arriving in it lands on state nobody will read: the
+ * next page inherits a silence the stream had already broken. Closing first means the clock
+ * left is the last thing the stream said.
+ */
+export function endLiveSubscription(
+  state: LiveStreamState,
+  handOff: LiveClockHandOff,
+  key: string,
+  stop: () => void,
+  now: number,
+): void {
+  stop();
+  handOff.leave(key, state.clock, now);
 }
