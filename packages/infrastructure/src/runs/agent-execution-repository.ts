@@ -1,3 +1,4 @@
+import { readPendingResumeWait } from './pause-linkage.js';
 import { asc, eq, sql } from 'drizzle-orm';
 import type {
   AgentExecutionCheckpoint,
@@ -106,6 +107,7 @@ export class PostgresAgentExecutionRepository implements AgentExecutionRepositor
           }),
         ),
         auditEvents: createAuditEventWriter(tx, new SystemClock(), new CryptoUuidV7Generator()),
+    readPendingResumeWait: () => readPendingResumeWait(tx, runId),
         frozenPlan: () =>
           run
             ? new DrizzleFrozenExecutionReader(tx).readFrozenExecution(run.versionId, run.procedureId)

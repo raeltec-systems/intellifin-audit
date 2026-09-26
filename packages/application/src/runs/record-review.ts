@@ -1,4 +1,4 @@
-import type { JsonValue } from '@intellifin/domain';
+import { adapterSearchKeys, type ExecutablePlan, type JsonValue } from '@intellifin/domain';
 
 /** Presentation-only projection. None of these values authorizes an audit action. */
 export const RECORD_REVIEW_FILTERS = ['all', 'exceptions', 'needs-review', 'evidence-problems', 'not-inspected'] as const;
@@ -11,7 +11,20 @@ export interface RecordReviewQuery {
   readonly search?: string;
   readonly pageSize?: number;
 }
+export interface HumanMatchDecision {
+  readonly waitId: string;
+  readonly answerOptionId: string;
+  readonly answerLabel: string | null;
+  /** Explicit false is required before rendering source-derived labels, including old snapshots. */
+  readonly answerMasked?: boolean;
+  readonly actorName?: string;
+  readonly actorId: string;
+  readonly decidedAt: string;
+}
 export interface RecordReviewTarget {
+  /** Absent on historical presentation snapshots; never inferred from finding text. */
+  readonly matchOrigin?: string | null;
+  readonly matchingDecision?: HumanMatchDecision | null;
   readonly targetId: string;
   readonly targetName: string;
   readonly observationId: string | null;
@@ -93,3 +106,13 @@ export interface RecordReviewSelection {
   readonly changedSinceList: boolean;
 }
 export type RecordReviewSelectionResult = RecordReviewSelection | Exclude<RecordReviewResult, RecordReviewPage>;
+
+/** Candidate labels contain the frozen lookup values (secondary key, with identity fallback).
+ * Redact BEFORE storing a presentation snapshot; unreadable plans fail closed. */
+export function maskHumanMatchDecision(decision: HumanMatchDecision | null | undefined,
+  plan: ExecutablePlan | null): HumanMatchDecision | null {
+  if (decision == null) return null;
+  const keys = plan === null ? [] : adapterSearchKeys(plan.inputs.templateId) ?? [];
+  const masked = plan === null || keys.length === 0 || plan.inputs.sourceSnapshot?.contract.sensitive_fields === undefined || keys.some(key => plan.inputs.sourceSnapshot!.contract.sensitive_fields.includes(key));
+  return { ...decision, answerLabel: masked ? null : decision.answerLabel, answerMasked: masked };
+}

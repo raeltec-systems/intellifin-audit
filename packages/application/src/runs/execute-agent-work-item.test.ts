@@ -163,6 +163,7 @@ class FakeRepository implements AgentWorkRepository {
   actions: AgentWorkContext['toolActions'][number][] = [];
   captures: AgentWorkContext['captures'][number][] = [];
   pauseWaits: RunWait[] = [];
+  pendingResumeWaitId: string | null = null;
   deferred: RunDeferredPauseRequest | null = null;
   deferredSettlements: { state: string; reason?: string }[] = [];
   auditDrafts: AuditEventDraft[] = [];
@@ -255,6 +256,7 @@ class FakeRepository implements AgentWorkRepository {
       notifyTimeline: async () => undefined,
       // Story 5.4. Real behaviour, not stubs: the pause case asserts the one wait row, the
       // superseded attempt and the marker the boundary clears.
+      readPendingResumeWait: async () => this.auditDrafts.some(event => event.payload.resumedFromWaitId === this.pendingResumeWaitId) ? null : this.pendingResumeWaitId,
       openPauseWait: async (wait: RunWait) => { this.pauseWaits.push(wait); },
       clearPauseRequest: async () => { this.run = { ...this.run, pauseRequest: null }; },
       readPauseRequest: async () => this.run.pauseRequest,
@@ -672,6 +674,7 @@ describe('executeAgentWorkItem', () => {
     expect(repository.checkpoint?.pendingWait).toBeNull();
     // Nothing was in flight, so nothing is superseded and the model was never called.
     expect(repository.executions).toEqual([]);
+    expect(repository.auditDrafts.find(event => event.eventType === 'lifecycle.run-paused')?.payload).toMatchObject({ planStepId: repository.workItems[0]!.stepId, stepExecutionId: null, attempt: null, inFlight: false });
     expect(gateway.propose).not.toHaveBeenCalled();
     expect(repository.workItems[0]?.attempts).toBe(0);
   });
@@ -703,6 +706,7 @@ describe('executeAgentWorkItem', () => {
     expect(superseded).toHaveLength(1);
     // Nothing went wrong, so the diagnostic stays empty and the reason is its own column.
     expect(superseded[0]).toMatchObject({ supersededBy: 'resume', diagnostic: null });
+    expect(repository.auditDrafts.find(event => event.eventType === 'lifecycle.run-paused')?.payload).toMatchObject({ planStepId: superseded[0]!.planStepId, stepExecutionId: superseded[0]!.stepExecutionId, attempt: superseded[0]!.attempt, inFlight: true });
     // Its Tool Actions stay on the Timeline; the resume starts a NEW attempt.
     expect(repository.actions.length).toBeGreaterThan(0);
     // The attempt is GIVEN BACK: a person pausing is not the agent failing, so it must not
@@ -783,12 +787,16 @@ describe('executeAgentWorkItem', () => {
     expect(repository.observations).toHaveLength(0);
     expect(repository.turns.filter(turn => turn.response?.actions.some(action => action.action === 'read-attribute'))).toHaveLength(1);
 
+    repository.pendingResumeWaitId = repository.pauseWaits[0]!.waitId;
     answerLast(repository, 'resume');
     expect(await executeAgentWorkItem(dependencies, JOB)).toEqual({ retry: false });
     expect(repository.run.state).toBe('RUNNING');
     expect(repository.checkpoint).toMatchObject({ status: 'COMPLETE', workItemId: null });
     expect(repository.workItems[0]).toMatchObject({ state: 'OBSERVED', attempts: 1, observations: 1 });
     expect(repository.executions.map(execution => execution.state)).toEqual(['SUPERSEDED', 'SUCCEEDED']);
+    const linked = repository.auditDrafts.filter(event => event.payload.resumedFromWaitId === repository.pauseWaits[0]!.waitId);
+    expect(linked).toHaveLength(1);
+    expect(linked[0]!.payload).toMatchObject({ stepId: repository.executions[1]!.planStepId, stepExecutionId: repository.executions[1]!.stepExecutionId, attempt: repository.executions[1]!.attempt });
     expect(repository.observations).toHaveLength(1);
     expect(repository.turns.filter(turn => turn.response?.actions.some(action => action.action === 'read-attribute'))).toHaveLength(2);
   });
@@ -998,6 +1006,7 @@ describe('agent work consumes durable human decisions with original capture', ()
     const superseded = repository.executions.filter((row) => row.state === 'SUPERSEDED');
     expect(superseded).toHaveLength(1);
     expect(superseded[0]).toMatchObject({ supersededBy: 'resume', diagnostic: null });
+    expect(repository.auditDrafts.find(event => event.eventType === 'lifecycle.run-paused')?.payload).toMatchObject({ planStepId: superseded[0]!.planStepId, stepExecutionId: superseded[0]!.stepExecutionId, attempt: superseded[0]!.attempt, inFlight: true });
     expect(repository.executions.some((row) => row.state === 'RUNNING')).toBe(false);
     // The attempt is GIVEN BACK: a person pausing is not the agent failing.
     expect(repository.workItems[0]?.attempts).toBe(0);
@@ -1453,4 +1462,21 @@ describe('agent absence returns to its recorded search controls', () => {
     expect(actions.slice(-4)).toEqual(['navigate','search','navigate','search']);
     expect(repository.actions.every(action => action.runId === RUN_ID && action.destination === 'https://loancore.example.test/')).toBe(true);
   });
+});
+
+
+it('pauses at the next pending Work Item after an earlier item is terminal', async () => {
+  const repository = new FakeRepository();
+  repository.records = [RECORD, { ordinal: 2, values: { employee_id: 'E-000106', full_name: 'Second person' } }];
+  const request = { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-07T03:30:00.000Z' };
+  repository.run = { ...repository.run, pauseRequest: request };
+  const dependencies = deps(repository, browserFor(repository), { identity: identity(), propose: vi.fn(async () => response(null)) }, durableWaitPort(repository));
+  await executeAgentWorkItem(dependencies, JOB);
+  expect(repository.workItems).toHaveLength(2);
+  repository.workItems[0] = { ...repository.workItems[0]!, state: 'OBSERVED' };
+  repository.run = { ...repository.run, state: 'RUNNING', pauseRequest: request };
+  await executeAgentWorkItem(dependencies, JOB);
+  const pauses = repository.auditDrafts.filter(event => event.eventType === 'lifecycle.run-paused');
+  expect(pauses).toHaveLength(2);
+  expect(pauses[1]?.payload).toMatchObject({ workItemId: repository.workItems[1]!.workItemId, planStepId: repository.workItems[1]!.stepId, inFlight: false });
 });

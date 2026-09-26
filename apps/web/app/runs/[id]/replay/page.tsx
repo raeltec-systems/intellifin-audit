@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { isActiveRunState } from '@intellifin/domain';
-import { DrizzleFrozenExecutionReader, DrizzleRunDetailRepository, REPLAY_INSPECTION_PAGE_SIZE, REPLAY_PAGE_SIZE, readRecordNames } from '@intellifin/infrastructure';
+import { DrizzleFrozenExecutionReader, DrizzleRunDetailRepository, REPLAY_INSPECTION_PAGE_SIZE, REPLAY_PAGE_SIZE, readReplayCaptureGaps, readRecordNames } from '@intellifin/infrastructure';
 
 import { getRuntime } from '../../../../src/bootstrap';
 import { Banner } from '../../../../src/design/Banner';
@@ -106,6 +106,8 @@ export default async function RunReplayPage({
       new DrizzleFrozenExecutionReader(runtime.db).readFrozenExecution(run.versionId, run.procedureId),
     ]);
     const owner = selected.kind === 'inspection' ? selected.workItem : null;
+    // Resolve the requested inspection first; an invalid/foreign owner cannot widen this read.
+    const captureGaps = owner === null ? undefined : await readReplayCaptureGaps(runtime.db, run.runId, owner.workItemId);
     const system = owner === null ? null : plan?.inputs.targets
       .find(target => target.registrationId === owner.registrationId)?.displayName ?? null;
     // The record as the queue, the inspector and the Exception name it (UX-25): the key,
@@ -139,6 +141,7 @@ export default async function RunReplayPage({
           stateSentence={`Session REPLAY. This Run ended: ${run.state}.`}
           workspace={selected.kind === 'inspection' ? selected.workspace : null}
           frames={views}
+          captureGaps={captureGaps}
           framesTotal={selected.kind === 'inspection' ? selected.framesTotal : 0}
           plannedSteps={plannedStepCount(plan)}
           stageNote={null}
@@ -167,7 +170,7 @@ export default async function RunReplayPage({
   // frames this surface renders — up to `REPLAY_FRAME_LIMIT` of them — so a fifty-row
   // default silently dropped later Tool Actions, jump targets and Observation deltas from
   // a Run that had more than fifty. See `REPLAY_PAGE_SIZE`.
-  const [timeline, frames, waits, deltas, exceptions, plan, evidence] = await Promise.all([
+  const [timeline, frames, waits, deltas, exceptions, plan, evidence, captureGaps] = await Promise.all([
     detail.readTimeline(run.runId, REPLAY_PAGE_SIZE),
     detail.readFrames(run.runId),
     detail.readWaits(run.runId, REPLAY_PAGE_SIZE),
@@ -178,6 +181,7 @@ export default async function RunReplayPage({
     // every one: "No artifact registered." over artifacts that ARE registered. The Evidence
     // read this surface already has carries the digest per Evidence id.
     detail.readEvidenceItems(run.runId),
+    readReplayCaptureGaps(runtime.db, run.runId),
   ]);
   const digestByEvidence = new Map(evidence.map((item) => [item.evidenceId, item.digest]));
   // ONE record label with the queue, the inspector and the Exception (UX-25). Every place
@@ -271,6 +275,7 @@ export default async function RunReplayPage({
             : { mode: timeline.workspace.mode, reference: timeline.workspace.reference }
         }
         frames={views}
+        captureGaps={captureGaps}
         framesTotal={frames.total}
         plannedSteps={plannedStepCount(plan)}
         stageNote={REPLAY_COPY.noFrames}

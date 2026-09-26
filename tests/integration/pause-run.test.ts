@@ -1,3 +1,4 @@
+import { readPendingResumeWait, readRunPauseLinkage } from '../../packages/infrastructure/src/runs/pause-linkage.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { RUN_PAUSE_REFUSALS, RUN_RESUME_REFUSALS } from '@intellifin/domain';
 import {
@@ -171,7 +172,7 @@ describe.skipIf(!url)('pausing and resuming a Run', () => {
       await context.saveRunState('PAUSED');
       const wait = await performPause(
         context as never,
-        { run, request, waitId: ids.next(), at: at.toISOString() },
+        { run, request, planStepId: 'fixture-step', attempt: null, waitId: ids.next(), at: at.toISOString() },
       );
       return wait.waitId;
     });
@@ -569,6 +570,87 @@ describe.skipIf(!url)('pausing and resuming a Run', () => {
   });
 
   describe('resuming', () => {
+    it.each(['Run', 'Step', 'attempt'] as const)('rejects a causal link whose execution contradicts the recorded %s', async mismatch => {
+      const runId = await startRun();
+      const otherRun = await startRun();
+      await pauseRun(deps(), { session, request: { runId } });
+      const waitId = await honourPause(runId);
+      const [before] = await sql`SELECT revision FROM audit_run WHERE run_id=${runId}`;
+      expect((await resumeRun(deps(new Date('2026-09-10T09:10:00.000Z')), { session, request: { runId, expectedRunRevision: Number(before!.revision) } })).ok).toBe(true);
+      const executionId = ids.next();
+      await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,action,state,attempt,started_at)
+        VALUES (${executionId},${mismatch === 'Run' ? otherRun : runId},${mismatch === 'Step' ? 'other-step' : 'step-1'},'inspect-record','RUNNING',${mismatch === 'attempt' ? 2 : 1},${baseNow.toISOString()})`;
+      await db.transaction(async tx => {
+        await createAuditEventWriter(tx, new FixedClock(baseNow), ids).append({
+          actor: { type: 'system', id: 'agent-worker' }, eventType: 'lifecycle.agent-work', source: 'worker', outcome: 'success', aggregateId: runId, correlationId: ids.next(), sessionId: session.sessionId,
+          payload: { diagnostic: 'work-item-attempt-started', stepId: 'step-1', stepExecutionId: executionId, attempt: 1, resumedFromWaitId: waitId },
+        });
+      });
+      expect((await readRunPauseLinkage(db, runId)).rows.find(row => row.kind === 'resume')).toMatchObject({ planStepId: null, stepExecutionId: null, attempt: null });
+    });
+
+    it('continues beyond 100 pause events without losing rows or the exact total', async () => {
+      const runId = await startRun();
+      await db.transaction(async tx => {
+        const writer = createAuditEventWriter(tx, new FixedClock(baseNow), ids);
+        for (let index = 0; index < 103; index += 1) await writer.append({
+          actor: { type: 'human', id: author }, eventType: 'lifecycle.run-paused', source: 'worker', outcome: 'success', aggregateId: runId, correlationId: ids.next(), sessionId: session.sessionId,
+          payload: { waitId: ids.next(), planStepId: `step-${index}`, stepExecutionId: null, attempt: null, inFlight: false },
+        });
+      });
+      const first = await readRunPauseLinkage(db, runId);
+      expect(first.rows).toHaveLength(100); expect(first.total).toBe(103); expect(first.nextBeforeSequence).not.toBeNull();
+      const second = await readRunPauseLinkage(db, runId, first.nextBeforeSequence);
+      expect(second.rows).toHaveLength(3); expect(second.total).toBe(103); expect(second.nextBeforeSequence).toBeNull();
+      expect(new Set([...first.rows, ...second.rows].map(row => row.eventId)).size).toBe(103);
+      const empty = await readRunPauseLinkage(db, runId, second.rows.at(-1)!.sequence);
+      expect(empty.rows).toEqual([]); expect(empty.total).toBe(103);
+      await expect(readRunPauseLinkage(db, runId, -1)).rejects.toThrow('Invalid pause history cursor');
+    });
+
+    it('links only the first started attempt to each exact resumed wait, including rollback and later pauses', async () => {
+      const runId = await startRun();
+      const otherRun = await startRun();
+      const read = (id = runId) => db.transaction(async tx => readPendingResumeWait(tx, id));
+      for (let cycle = 0; cycle < 2; cycle += 1) {
+        await pauseRun(deps(), { session, request: { runId } });
+        const waitId = await honourPause(runId);
+        expect(await read()).toBeNull();
+        const [before] = await sql`SELECT revision FROM audit_run WHERE run_id=${runId}`;
+        expect((await resumeRun(deps(new Date('2026-09-10T09:10:00.000Z')), {
+          session, request: { runId, expectedRunRevision: Number(before!.revision) },
+        })).ok).toBe(true);
+        expect(await read()).toBe(waitId);
+        expect(await read(otherRun)).toBeNull();
+        const attempt = {
+          actor: { type: 'system' as const, id: 'agent-worker' }, eventType: 'lifecycle.agent-work' as const,
+          source: 'worker' as const, outcome: 'success' as const, aggregateId: runId,
+          correlationId: ids.next(), sessionId: session.sessionId,
+          payload: { diagnostic: 'work-item-attempt-started', stepId: `step-${cycle}`, stepExecutionId: ids.next(), attempt: 1, resumedFromWaitId: waitId },
+        };
+        await expect(db.transaction(async tx => {
+          await createAuditEventWriter(tx, new FixedClock(baseNow), ids).append(attempt);
+          expect(await readPendingResumeWait(tx, runId)).toBeNull();
+          throw new Error('rollback-start');
+        })).rejects.toThrow('rollback-start');
+        expect(await read()).toBe(waitId);
+        await db.transaction(async tx => { await createAuditEventWriter(tx, new FixedClock(baseNow), ids).append(attempt); });
+        expect(await read()).toBeNull();
+        // A causal event alone cannot invent an execution row.
+        expect((await readRunPauseLinkage(db, runId)).rows.find(row => row.kind === 'resume' && row.waitId === waitId)?.stepExecutionId).toBeNull();
+        await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,action,state,attempt,started_at)
+          VALUES (${attempt.payload.stepExecutionId},${runId},${attempt.payload.stepId},'inspect-record','RUNNING',1,${baseNow.toISOString()})`;
+        const linked = await readRunPauseLinkage(db, runId);
+        expect(linked.total).toBe((cycle + 1) * 2);
+        expect(linked.rows.find(row => row.kind === 'resume' && row.waitId === waitId)).toMatchObject({
+          planStepId: attempt.payload.stepId, stepExecutionId: attempt.payload.stepExecutionId, attempt: 1,
+        });
+        // Two claimed causes are ambiguous, even when their fields agree.
+        await db.transaction(async tx => { await createAuditEventWriter(tx, new FixedClock(baseNow), ids).append(attempt); });
+        expect((await readRunPauseLinkage(db, runId)).rows.find(row => row.kind === 'resume' && row.waitId === waitId)?.stepExecutionId).toBeNull();
+      }
+    });
+
     it('closes the wait by RESUME under the expected revision and returns the Run to RUNNING', async () => {
       const runId = await startRun();
       await pauseRun(deps(), { session, request: { runId } });

@@ -704,7 +704,8 @@ export async function executeAgentWorkItem(
    * resume restarts the Work Item from its first Tool Action.
    */
   const lifecycleBoundary = async (
-    inFlight?: { readonly item: WorkItemRecord; readonly execution: StepExecutionRecord },
+    inFlight: { readonly item: WorkItemRecord; readonly execution: StepExecutionRecord } | undefined,
+    boundaryItem?: WorkItemRecord,
   ): Promise<'continue' | 'stopped' | 'lost'> => {
     let stopped = false;
     const committed = await guarded(async (context) => {
@@ -721,7 +722,7 @@ export async function executeAgentWorkItem(
         return;
       }
       const pause = context.run?.pauseRequest ?? null;
-      if (pause === null) return;
+      if (pause === null || (inFlight === undefined && boundaryItem === undefined)) return;
       stopped = true;
       const at = nowIso(dependencies.clock);
       const deferred = typeof context.readDeferredPause === 'function' ? await context.readDeferredPause() : null;
@@ -781,7 +782,9 @@ export async function executeAgentWorkItem(
         waitId: dependencies.ids.next(),
         at,
         stepExecutionId: inFlight?.execution.stepExecutionId ?? null,
-        workItemId: inFlight?.item.workItemId ?? null,
+        planStepId: inFlight?.execution.planStepId ?? boundaryItem!.stepId,
+        attempt: inFlight?.execution.attempt ?? null,
+        workItemId: inFlight?.item.workItemId ?? boundaryItem?.workItemId ?? null,
       });
     });
     if (!committed) return 'lost';
@@ -801,8 +804,8 @@ export async function executeAgentWorkItem(
       // latch pending so cancellation or immediate Pause can supersede it atomically.
       if (context.run?.cancellation !== null || context.run?.pauseRequest !== null) return;
       const settled = context.workItems.find(candidate => candidate.workItemId === marker.workItemId);
-      const otherPending = context.workItems.some(candidate => candidate.workItemId !== marker.workItemId && !isTerminalWorkItem(candidate));
-      if (settled === undefined || !isTerminalWorkItem(settled) || !otherPending) return;
+      const nextItem = context.workItems.filter(candidate => candidate.workItemId !== marker.workItemId && !isTerminalWorkItem(candidate)).sort((left, right) => left.ordinal - right.ordinal)[0];
+      if (settled === undefined || !isTerminalWorkItem(settled) || nextItem === undefined) return;
       const at = nowIso(dependencies.clock);
       await context.settleDeferredPause('APPLIED', at);
       checkpoint = {
@@ -827,6 +830,8 @@ export async function executeAgentWorkItem(
         waitId: dependencies.ids.next(),
         at,
         workItemId: marker.workItemId,
+        planStepId: nextItem.stepId,
+        attempt: null,
         pauseMode: 'after-inspection',
         subjectKey: marker.subjectKey,
         registrationId: marker.registrationId,
@@ -1233,7 +1238,7 @@ export async function executeAgentWorkItem(
   try {
     await resolveFrozenCredentials();
     for (const item of items.sort((left, right) => left.ordinal - right.ordinal)) {
-      const itemBoundary = await lifecycleBoundary();
+      const itemBoundary = await lifecycleBoundary(undefined, items.find(candidate => candidate.ordinal >= item.ordinal && !isTerminalWorkItem(candidate)));
       if (itemBoundary !== 'continue') return { retry: false };
       // Re-read the sticky latch before every next unit, including after a target that
       // settled during this very invocation. Checking only initially terminal items
@@ -1270,6 +1275,8 @@ export async function executeAgentWorkItem(
         await context.saveWorkItem({ ...item, state: 'IN_PROGRESS', diagnostic: null });
         await context.saveStepExecution(execution);
         await appendEvent(context, run, 'work-item-attempt-started', 'RUNNING', checkpoint, {
+          resumedFromWaitId: await context.readPendingResumeWait(),
+          stepId: execution.planStepId,
           workItemId: item.workItemId, stepExecutionId: execution.stepExecutionId, attempt: item.attempts,
         });
       });

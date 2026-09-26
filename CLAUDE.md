@@ -1,3 +1,13 @@
+## 2026-09-26 — Story 10.6 retained-surface provenance
+
+- A human match is attributable only through the registration event's explicit Observation id, digest and answered wait id. New registrations carry that link; redelivery does not attach today's wait to a historical Observation. The Result's sealed publication remains unchanged.
+- Resume changes state before an execution starts. The first existing attempt-start event records the exact resumed wait id under the Run lock; readers accept it only when the same Run's stored execution agrees on step, attempt and identity. Never infer this relationship by time.
+- Candidate labels can include secondary lookup keys. Apply the frozen binding sensitivity policy before storing presentation snapshots; missing policies and historical snapshots without an explicit safe marker fail closed. Masking only the primary record key leaves secondary keys exposed.
+- Result provenance counts source-record identities, not per-target Observation rows, and links by exact source ordinal.
+- An Evidence overview is a bounded prefix. Adapter Session Steps must resolve their own Evidence ids directly, so an artifact outside that prefix is not described as absent.
+- Vitest's repository include pattern accepts `.test.ts`, not `.test.tsx`. Render tests use `React.createElement` in `.test.ts`; an uncollected test proves nothing.
+- Run typecheck after the full unit suite, not concurrently with it: the boundary tests temporarily create an intentional forbidden-import fixture under domain.
+
 ## 2026-09-25 — A single read of a moving preview sample is a race the broker refuses on purpose
 
 - **The preview route answers 503 for a read that meets a new sample, and that is the product

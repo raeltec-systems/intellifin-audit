@@ -1,3 +1,4 @@
+import { readPendingResumeWait } from './pause-linkage.js';
 import type { AgentJudgedEvaluationRow } from '@intellifin/application';
 import {
   AGENT_PAGE_DECLARATION_EVENT,
@@ -412,6 +413,7 @@ export async function withRunExecutionContext<T>(
       }),
     ),
     auditEvents: createAuditEventWriter(tx, new SystemClock(), new CryptoUuidV7Generator()),
+    readPendingResumeWait: () => readPendingResumeWait(tx, runId),
     frozenPlan: () =>
       run
         ? new DrizzleFrozenExecutionReader(tx).readFrozenExecution(run.versionId, run.procedureId)

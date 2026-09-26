@@ -195,7 +195,7 @@ async function honourPause(runId: string): Promise<string> {
     const run = context.run!;
     const request = run.pauseRequest!;
     await context.saveRunState('PAUSED');
-    const wait = await performPause(context as never, { run, request, waitId: ids.next(), at: new Date().toISOString() });
+    const wait = await performPause(context as never, { run, request, waitId: ids.next(), planStepId: 'fixture-step', attempt: null, at: new Date().toISOString() });
     return wait.waitId;
   });
 }
@@ -273,6 +273,13 @@ test.describe('Flow 3: supervising a Run from Live View', () => {
 
     // The panel's own contents, on this surface.
     await expect(page.getByRole('link', { name: ESCALATION_PANEL_COPY.skipLink })).toBeAttached();
+    const skip = page.getByRole('link', { name: ESCALATION_PANEL_COPY.skipLink });
+    await skip.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#open-escalation')).toBeFocused();
+    await page.keyboard.press('Tab');
+    expect(await page.locator('#open-escalation').evaluate(panel => panel.contains(document.activeElement))).toBe(true);
+    await expect(page.locator('#open-escalation').locator('a[href], button, input, textarea, select, summary, [tabindex="0"]').first()).toBeFocused();
     await expect(page.getByText('Choose candidate', { exact: true })).toBeVisible();
     await expect(page.getByText(ESCALATION_PANEL_COPY.questions['choose-candidate'])).toBeVisible();
     await expect(page.getByText(ESCALATION_PANEL_COPY.answerNoteLabel)).toBeVisible();

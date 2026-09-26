@@ -2,9 +2,9 @@ import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const calls = vi.hoisted(() => ({ openRun: vi.fn(), read: vi.fn(), prefix: vi.fn(), plan: vi.fn(), names: vi.fn(), frames: vi.fn() }));
+const calls = vi.hoisted(() => ({ openRun: vi.fn(), read: vi.fn(), prefix: vi.fn(), plan: vi.fn(), names: vi.fn(), frames: vi.fn(), gaps: vi.fn() }));
 vi.mock('@intellifin/infrastructure', () => ({
-  REPLAY_INSPECTION_PAGE_SIZE: 100, REPLAY_PAGE_SIZE: 500, readRecordNames: calls.names,
+  REPLAY_INSPECTION_PAGE_SIZE: 100, REPLAY_PAGE_SIZE: 500, readRecordNames: calls.names, readReplayCaptureGaps: calls.gaps,
   DrizzleRunDetailRepository: class {
     readInspectionReplay = calls.read; readTimeline = calls.prefix; readFrames = calls.frames;
     readWaits = async () => []; readObservationDeltas = async () => []; readExceptions = async () => ({ rows: [] });
@@ -41,6 +41,7 @@ beforeEach(() => {
     procedureName: 'Selected Replay', versionId: 'version', procedureId: 'procedure' }, readAt: new Date('2026-09-20T00:00:00Z') });
   calls.plan.mockResolvedValue(null);
   calls.names.mockResolvedValue(new Map());
+  calls.gaps.mockResolvedValue({ rows: [], total: 0, missing: 0, suppressed: 0 });
   calls.read.mockResolvedValue({ kind: 'inspection', workItem: { workItemId, subjectKey: 'E-LATE',
     displayName: 'LoanCore', registrationId: 'loancore' }, workspace: null, rows: [], total: 0, framesTotal: 600,
     cursor: 0, previousCursor: null, nextCursor: null });
@@ -50,7 +51,7 @@ describe('selected Replay route', () => {
   it('reauthorizes before any selected inspection read', async () => {
     calls.openRun.mockResolvedValue({ allowed: false, reason: 'forbidden' });
     expect(renderToStaticMarkup(await view({ workItem: workItemId }))).toContain('Run denied');
-    expect(calls.read).not.toHaveBeenCalled(); expect(calls.plan).not.toHaveBeenCalled();
+    expect(calls.read).not.toHaveBeenCalled(); expect(calls.plan).not.toHaveBeenCalled(); expect(calls.gaps).not.toHaveBeenCalled();
   });
   it('keeps active Runs on Live View without reading a replay', async () => {
     calls.openRun.mockResolvedValue({ allowed: true, run: { runId: id, state: 'RUNNING', procedureName: 'Active' }, readAt: new Date() });
@@ -62,11 +63,13 @@ describe('selected Replay route', () => {
     expect(calls.openRun).toHaveBeenCalledWith(id);
     expect(calls.read).toHaveBeenCalledWith(id, workItemId, 100);
     expect(calls.prefix).not.toHaveBeenCalled();
+    expect(calls.gaps).toHaveBeenCalledWith({}, id, workItemId);
   });
   it.each([{ workItem: [workItemId, workItemId] }, { workItem: workItemId, cursor: ['0', '0'] },
     { workItem: workItemId, cursor: '50' }, { cursor: '100' }])('does not query a capture for invalid request %j', async query => {
     const html = renderToStaticMarkup(await view(query));
     expect(html).toContain('unavailable'); expect(html).not.toContain('E-LATE');
+    expect(calls.gaps).not.toHaveBeenCalled();
     expect(calls.read).not.toHaveBeenCalled(); expect(calls.prefix).not.toHaveBeenCalled();
   });
   it('uses the frozen target name and exact returned action/step facts for late narration', async () => {
@@ -131,4 +134,17 @@ describe('selected Replay route', () => {
       .map(async request => viewerKey(await view(request))));
     expect(new Set(keys).size).toBe(keys.length);
   });
+});
+
+it('passes exact gap facts to session and selected inspection viewers', async () => {
+  calls.prefix.mockResolvedValue({ workItems: [], stepExecutions: { rows: [] }, toolActions: { rows: [] }, sessionSteps: [], workspace: null });
+  calls.frames.mockResolvedValue({ rows: [], total: 0 });
+  calls.gaps.mockResolvedValue({ rows: [{ toolActionId: 'gap-action', kind: 'missing' }], total: 4, missing: 3, suppressed: 1 });
+  for (const query of [{}, { workItem: workItemId }]) {
+    const html = renderToStaticMarkup(await view(query));
+    expect(html).toContain('gap-action'); expect(html).toContain('captureGaps');
+    expect(html).toContain('&quot;missing&quot;:3');
+  }
+  expect(calls.gaps).toHaveBeenCalledWith({}, id);
+  expect(calls.gaps).toHaveBeenCalledWith({}, id, workItemId);
 });

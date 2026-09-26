@@ -1,3 +1,5 @@
+import { PauseLinkageFacts } from './PauseLinkage';
+import type { RunPauseLinkage } from '@intellifin/infrastructure';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
@@ -6,6 +8,7 @@ import type { EvaluationReviewCommandStatus, RunWait } from '@intellifin/applica
 import {
   CryptoUuidV7Generator,
   DrizzleActorNameReader,
+  readRunPauseLinkage,
   DrizzleRunDetailRepository,
   DrizzleRunRepository,
   DrizzleRunStopReader,
@@ -220,6 +223,7 @@ export async function RunDetailFrame({
   const escalation = run.state === 'AWAITING_AUDITOR' || run.state === 'PAUSED'
     ? await readOpenEscalation(run.runId)
     : null;
+  const pauseLinkage = escalation?.pause == null ? null : (await readRunPauseLinkage((await getRuntime()).db, run.runId)).rows.find(entry => entry.kind === 'pause' && entry.waitId === escalation.pause!.waitId) ?? null;
   const lifecycle = runLifecycleWord(run.state);
   const conversationEnabled = (await getRuntime()).conversationEnabled;
   const here = runTabHref(run.runId, tab);
@@ -300,7 +304,7 @@ export async function RunDetailFrame({
       <Tabs label="Run Detail" tabs={RUN_TABS.map((entry) => ({ href: runTabHref(run.runId, entry.slug), label: entry.label }))} current={here} />
       {stop === null ? null : <StopReasonBanner facts={stop} />}
       <CancellationBanners run={run} names={names} />
-      <PauseBanners run={run} pause={escalation?.pause ?? null} readAt={readAt} names={names} />
+      <PauseBanners linkage={pauseLinkage} run={run} pause={escalation?.pause ?? null} readAt={readAt} names={names} />
       <RerunLinks runId={run.runId} />
       {/* Compact record review keeps its queue in the first viewport, so the Run's actions
           sit behind one disclosure there; ordinary Run Detail shows them as they were. */}
@@ -481,7 +485,8 @@ export function OpenEscalationSection({ run, escalation, readAt, workspacePresen
  * The second arm is the marker, which means "requested and NOT yet honoured": the boundary
  * that honours a pause clears it, so it cannot overlap the first arm.
  */
-export function PauseBanners({ run, pause, readAt, names }: {
+export function PauseBanners({ run, pause, readAt, names, linkage }: {
+  readonly linkage?: RunPauseLinkage | null;
   readonly run: RunRecord;
   readonly pause: RunWait | null;
   /** The instant the server read, so the countdown's first client render matches it. */
@@ -519,6 +524,7 @@ export function PauseBanners({ run, pause, readAt, names }: {
           readAt={readAt.toISOString()}
           expiredSentence={PAUSE_COPY.expired}
         />
+        {linkage == null ? null : <PauseLinkageFacts entry={linkage} />}
         <p>Evidence already collected is preserved. The agent restarts the current Step from its first Tool Action.</p>
       </Banner>
     );

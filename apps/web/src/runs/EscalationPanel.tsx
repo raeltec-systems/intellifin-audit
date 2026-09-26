@@ -440,7 +440,7 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt, wor
   return (
     <>
       <a className="ls-skip-link" href="#open-escalation">{ESCALATION_PANEL_COPY.skipLink}</a>
-      <section id="open-escalation" className={`ls-card ls-stack${workspace ? ' escalation-panel--workspace' : ''}`} aria-labelledby={headingId}>
+      <section id="open-escalation" tabIndex={-1} className={`ls-card ls-stack${workspace ? ' escalation-panel--workspace' : ''}`} aria-labelledby={headingId}>
         <h2 id={headingId}>Open Escalation</h2>
         {/* The panel's appearance and its two countdown milestones, in the ONE polite
             region this surface has (EXPERIENCE.md → Accessibility). It is always in the

@@ -43,6 +43,7 @@ export interface LiveViewerEvidence {
 }
 
 export interface LiveViewerAdapterStep {
+  readonly evidenceId?: string | null;
   readonly stepId: string;
   readonly displayName: string;
   readonly state: string;
@@ -363,7 +364,7 @@ export function LiveViewer(props: LiveViewerProps): React.JSX.Element {
               <li key={step.stepId}>
                 <span>{step.displayName}</span>
                 <span>{sessionStepWord(step.state)} · {countNoun(step.attempts, 'attempt')}</span>
-                {step.digest === null ? <span>No artifact registered.</span> : <Digest value={step.digest} label="Adapter artifact digest" />}
+                {step.digest === null ? step.evidenceId ? <a href={`/runs/${props.runId}/evidence/technical#evidence-${step.evidenceId}`}>Evidence</a> : <span>No artifact registered.</span> : <Digest value={step.digest} label="Adapter artifact digest" />}
                 <TechnicalDetails items={[{ label: 'Plan step identifier', value: step.stepId, mono: true }]} />
               </li>
             ))}

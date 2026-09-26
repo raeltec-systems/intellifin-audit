@@ -1,6 +1,12 @@
+import { recordReviewProjectionQuery } from './record-review-repository.js';
+import { DrizzleFrozenExecutionReader } from '../procedures/procedure-repository.js';
+import { DrizzleRunRepository } from './run-repository.js';
+import { readHumanMatchDecisions } from './human-match-provenance.js';
+import type { HumanMatchDecision } from '@intellifin/application';
 import { evaluationReviewJoin, effectiveEvaluationConfirmation, effectiveEvaluationValue } from './effective-evaluation.js';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type {
+  ExecutablePlan,
   EvaluationConfirmation,
   EvaluationOrigin,
   EvaluationValue,
@@ -16,7 +22,7 @@ import type {
   RunResultPublication,
   SystemOutcome,
 } from '@intellifin/domain';
-import { observationAbsenceDigest } from '@intellifin/application';
+import { maskHumanMatchDecision, observationAbsenceDigest } from '@intellifin/application';
 import { isObservationAbsenceProof, isObservationQueryKey, isRunResultPublication, workspaceReference } from '@intellifin/domain';
 import type { Database, Transaction } from '../db/client.js';
 import { isUuidText } from '../db/identifier.js';
@@ -169,7 +175,14 @@ function readAbsenceMetadata(row: typeof runObservationAbsence.$inferSelect): Ru
   } catch { return { proof: null, expectedQueryKeys: [], integrityValid: false }; }
 }
 
+export interface HumanMatchedRecordRow {
+  readonly sourceOrdinal: number;
+  readonly populationRecordKey: string;
+  readonly observations: readonly RunObservationRow[];
+}
+
 export interface RunObservationRow {
+  readonly matchingDecision?: HumanMatchDecision | null;
   /** Undefined means this historical Observation did not retain its absence provenance. */
   readonly absence?: RunObservationAbsence;
   readonly observationId: string;
@@ -895,6 +908,38 @@ export class DrizzleRunDetailRepository {
    * Observation id is derived from the Work Item and the record key, so it is stable, but
    * it is a UUIDv8 and reads as arbitrary to a person comparing two pages.
    */
+  private async matchingPlan(runId: string): Promise<ExecutablePlan | null> {
+    const run = await new DrizzleRunRepository(this.db).findRun(runId);
+    return run === null ? null : new DrizzleFrozenExecutionReader(this.db).readFrozenExecution(run.versionId, run.procedureId);
+  }
+
+  /** Source ordinals, not Observation rows: one record may have several target decisions. */
+  async readHumanMatchedRecords(runId: string): Promise<Bounded<HumanMatchedRecordRow>> {
+    if (!isUuidText(runId)) return { rows: [], total: 0 };
+    const plan = await this.matchingPlan(runId);
+    if (plan === null) return { rows: [], total: 0 };
+    const records = await this.db.execute<{ ordinal: number; key: string; observation_ids: string[]; total: number }>(sql`
+      WITH projected AS (${recordReviewProjectionQuery(runId, plan)})
+      SELECT ordinal,key,array_agg(observation_id) AS observation_ids,count(*) OVER ()::int AS total
+      FROM projected WHERE match_origin='human-matched' AND observation_id IS NOT NULL
+      GROUP BY ordinal,key ORDER BY ordinal LIMIT ${RUN_DETAIL_PAGE_SIZE}`);
+    const ids = records.flatMap(record => record.observation_ids);
+    if (ids.length === 0) return { rows: [], total: 0 };
+    const raw = await this.db.select().from(runObservation).where(and(eq(runObservation.runId, runId), inArray(runObservation.observationId, ids)));
+    const projected = new Map((await this.projectObservations(runId, raw, plan)).map(observation => [observation.observationId, observation]));
+    return { total: Number(records[0]?.total ?? 0), rows: records.map(record => ({ sourceOrdinal: record.ordinal,
+      populationRecordKey: record.key, observations: record.observation_ids.flatMap(id => projected.has(id) ? [projected.get(id)!] : []) })) };
+  }
+
+  async readHumanMatchedObservations(runId: string): Promise<Bounded<RunObservationRow>> {
+    if (!isUuidText(runId)) return { rows: [], total: 0 };
+    const predicate = and(eq(runObservation.runId, runId), eq(runObservation.matchOrigin, 'human-matched'));
+    const counted = await this.db.select({ total: sql<number>`count(*)::int` }).from(runObservation).where(predicate);
+    const rows = await this.db.select().from(runObservation).where(predicate)
+      .orderBy(asc(runObservation.targetSystem), asc(runObservation.populationRecordKey), asc(runObservation.observationId)).limit(RUN_DETAIL_PAGE_SIZE);
+    return { total: Number(counted[0]?.total ?? 0), rows: await this.projectObservations(runId, rows) };
+  }
+
   async readObservations(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<Bounded<RunObservationRow>> {
     if (!isUuidText(runId)) return { rows: [], total: 0 };
     const counted = await this.db
@@ -941,6 +986,7 @@ export class DrizzleRunDetailRepository {
   private async projectObservations(
     runId: string,
     rows: readonly (typeof runObservation.$inferSelect)[],
+    matchingPlan?: ExecutablePlan | null,
   ): Promise<readonly RunObservationRow[]> {
     if (rows.length === 0) return [];
     const ids = rows.map((row) => row.observationId);
@@ -958,7 +1004,10 @@ export class DrizzleRunDetailRepository {
       list.push({ check: check.checkName, outcome: check.outcome, diagnostic: check.diagnostic });
       byObservation.set(check.observationId, list);
     }
-    return rows.map((row): RunObservationRow => observationRow(row, absence, byObservation));
+    const humanIds = rows.filter(row => row.matchOrigin === 'human-matched').map(row => row.observationId);
+    const decisions = await readHumanMatchDecisions(this.db, runId, humanIds);
+    const plan = humanIds.length === 0 ? null : matchingPlan === undefined ? await this.matchingPlan(runId) : matchingPlan;
+    return rows.map((row): RunObservationRow => ({ ...observationRow(row, absence, byObservation), matchingDecision: maskHumanMatchDecision(decisions.get(row.observationId), plan) }));
   }
 
   /**

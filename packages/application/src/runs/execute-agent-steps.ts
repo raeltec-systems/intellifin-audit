@@ -324,6 +324,7 @@ export function agentStopCauseFor(
 }
 
 interface EventFields {
+  readonly resumedFromWaitId?: string | null;
   readonly stepId?: string;
   readonly stepExecutionId?: string;
   readonly registrationId?: string;
@@ -787,7 +788,7 @@ export async function executeAgentSteps(
    * superseded here. The checkpoint goes to `RETRY`, which is what the recovery sweep
    * re-claims once the resume puts the Run back to `RUNNING`.
    */
-  const canceledAtBoundary = async (): Promise<boolean> => {
+  const canceledAtBoundary = async (planStepId: string): Promise<boolean> => {
     let stopped = false;
     await guarded(async (context) => {
       const request = context.run?.cancellation ?? null;
@@ -811,7 +812,7 @@ export async function executeAgentSteps(
       const at = deps.clock.now().toISOString();
       const next = { ...checkpoint, status: 'RETRY' as const, leaseUntil: at, diagnostic: null };
       await context.saveCheckpoint(next, 'PAUSED');
-      await performPause(context, { run, request: pause, waitId: deps.ids.next(), at });
+      await performPause(context, { run, request: pause, waitId: deps.ids.next(), at, planStepId, attempt: null });
     });
     return stopped;
   };
@@ -834,7 +835,7 @@ export async function executeAgentSteps(
   for (const entry of targets) {
     const step = steps.find((row) => row.stepId === entry.stepId)!;
     if (step.state === 'ACQUIRED') continue;
-    if (await canceledAtBoundary()) return { retry: false, proceed: false };
+    if (await canceledAtBoundary(entry.stepId)) return { retry: false, proceed: false };
     if (step.state === 'FAILED') {
       await stopRun(
         (step.diagnostic ?? 'sign-in-unavailable') as AgentExecutionDiagnostic,
@@ -949,6 +950,7 @@ async function runSignInStep(
       await context.saveSessionStep(step);
       await context.saveStepExecution(execution);
       await event(context, 'sign-in-attempt-started', 'RUNNING', checkpoint, {
+        resumedFromWaitId: await context.readPendingResumeWait(),
         stepId: step.stepId,
         registrationId: step.registrationId,
         stepExecutionId: execution.stepExecutionId,
@@ -1171,6 +1173,7 @@ async function runPublicAccessStep(
       await context.saveSessionStep(step);
       await context.saveStepExecution(execution);
       await event(context, 'public-access-attempt-started', 'RUNNING', checkpoint, {
+        resumedFromWaitId: await context.readPendingResumeWait(),
         stepId: step.stepId,
         registrationId: step.registrationId,
         stepExecutionId: execution.stepExecutionId,

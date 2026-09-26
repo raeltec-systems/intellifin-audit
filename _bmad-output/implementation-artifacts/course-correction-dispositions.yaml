@@ -763,7 +763,7 @@ legacy_review_closure:
   follow_up:
     10-6-legacy-visibility-follow-up-human-matched-provenance-missing:
       prepared: '2026-09-25'
-      implementation_authorised: false
+      implementation_authorised: true
       scope_added_2026_09_25: register §3.1 items 2 and 3 (5.3 adapter digests on the real read path; 5.6 keyboard focus test then repair)
     10-7-live-channel-correction-notify-every-run-chain-append-and-ne:
       prepared: '2026-09-25'

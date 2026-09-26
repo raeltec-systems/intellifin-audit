@@ -13,6 +13,7 @@ import {
 } from '@intellifin/domain';
 import {
   createDb,
+  readReplayCaptureGaps,
   createSqlClient,
   CryptoUuidV7Generator,
   PostgresProceduresUnitOfWork,
@@ -160,6 +161,19 @@ describe.skipIf(!url)('the Replay asset set on PostgreSQL', () => {
     expect(frames.sample.map(entry => entry.toolActionId).sort()).toEqual([nothing, snapshotOnly].sort());
     expect(frames.sample.every(entry => entry.stepExecutionId === run.stepExecutionId)).toBe(true);
     expect(frames.sample.every(entry => entry.targetSystem === 'loancore')).toBe(true);
+  });
+
+  it('reads exact missing and intentionally suppressed positions separately for Replay', async () => {
+    const run = await seedRun();
+    const missing = await toolAction(run, { outcome: 'performed', capture: 'PERMITTED', frame: null });
+    const suppressed = await toolAction(run, { outcome: 'performed', capture: 'SUPPRESSED', frame: null });
+    await toolAction(run, { outcome: 'performed', capture: 'PERMITTED', frame: 'registered' });
+    const gaps = await readReplayCaptureGaps(db, run.runId);
+    expect(gaps).toMatchObject({ missing: 1, suppressed: 1, total: 2 });
+    expect(gaps.rows.find(row => row.toolActionId === missing)).toMatchObject({ kind: 'missing', stepExecutionId: run.stepExecutionId });
+    expect(gaps.rows.find(row => row.toolActionId === suppressed)).toMatchObject({ kind: 'suppressed', stepExecutionId: run.stepExecutionId });
+    const other = await seedRun();
+    expect(await readReplayCaptureGaps(db, other.runId)).toEqual({ rows: [], total: 0, missing: 0, suppressed: 0 });
   });
 
   it('cannot be given a capture bound to Evidence that is not registered', async () => {

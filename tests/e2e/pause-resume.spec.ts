@@ -1,13 +1,13 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 
-import { performPause } from '@intellifin/application';
+import { performPause, type StepExecutionRecord } from '@intellifin/application';
 import {
   createDb,
   createSqlClient,
   CryptoUuidV7Generator,
   PostgresProceduresUnitOfWork,
-  PostgresWaitRepository,
+  PostgresAdapterExecutionRepository,
   type Sql,
 } from '@intellifin/infrastructure';
 
@@ -23,7 +23,7 @@ import { acquireControl, expectRunEvents, resumeWithControl } from './run-contro
  * commands, PostgreSQL, the revision compare-and-set, the durable wake, and the Timeline.
  * The one thing standing in for production is the worker's Tool Action boundary — the
  * journey calls the SAME `performPause` the three stages call, through the same
- * `PostgresWaitRepository`, rather than starting a worker and racing it to a boundary. The
+ * `PostgresAdapterExecutionRepository`, rather than starting a worker and racing it to a boundary. The
  * boundary itself (which marker it reads, what it supersedes, that the attempt is given
  * back, that a cancellation wins) is proven in `execute-agent-work-item.test.ts`,
  * `execute-agent-steps.test.ts` and `tests/integration/pause-run.test.ts`.
@@ -109,16 +109,19 @@ async function seedRun(state: 'RUNNING' | 'AWAITING_AUDITOR'): Promise<string> {
 }
 
 /** Exactly what a stage does at its next boundary, through the same repository. */
-async function honourPause(runId: string): Promise<string> {
-  return new PostgresWaitRepository(createDb(sql)).transaction(runId, async (context) => {
+async function honourPause(runId: string, execution?: StepExecutionRecord): Promise<string> {
+  return new PostgresAdapterExecutionRepository(createDb(sql)).transaction(runId, async (context) => {
     const run = context.run!;
     const request = run.pauseRequest!;
+    const at = new Date().toISOString();
+    if (execution !== undefined) await context.saveStepExecution({ ...execution, state: 'SUPERSEDED', supersededBy: 'resume', completedAt: at });
     await context.saveRunState('PAUSED');
-    const wait = await performPause(context as never, {
+    const wait = await performPause(context, {
       run,
       request,
-      waitId: ids.next(),
-      at: new Date().toISOString(),
+      planStepId: execution?.planStepId ?? 'fixture-step',
+      attempt: execution?.attempt ?? null, stepExecutionId: execution?.stepExecutionId ?? null,
+      waitId: ids.next(), at,
     });
     return wait.waitId;
   });
@@ -214,6 +217,81 @@ test.describe('pausing and resuming a Run', () => {
     expect(new Date(wait!.deadline as string).getTime() - new Date(wait!.opened_at as string).getTime()).toBe(30 * 60 * 1000);
     await page.goto(`/runs/${runId}`);
     await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  });
+
+  test('retains each exact pause and resumed attempt after repeated pauses and advancement', async ({ page }) => {
+    test.setTimeout(180_000);
+    const runId = await seedRun('RUNNING');
+    const [version] = await sql`SELECT compiled_plan FROM procedure_version WHERE version_id=${versionId}`;
+    const plan = version!.compiled_plan as { sessionSteps: { id: string }[]; targetSystems: { planSteps: { id: string }[] }[] };
+    const stepIds = [...plan.sessionSteps.map(step => step.id), ...plan.targetSystems.flatMap(target => target.planSteps.map(step => step.id))];
+    expect(stepIds.length).toBeGreaterThan(1);
+    const repository = new PostgresAdapterExecutionRepository(createDb(sql));
+    // Only the worker is represented by a fixture. It commits the same execution row,
+    // exact pending resume wait and existing attempt-start event under the Run lock.
+    const startAttempt = async (planStepId: string, attempt: number, expectedWaitId: string | null): Promise<StepExecutionRecord> => {
+      const execution: StepExecutionRecord = { stepExecutionId: ids.next(), planStepId, workItemId: null,
+        action: 'inspect-record', state: 'RUNNING', attempt, startedAt: new Date().toISOString(), completedAt: null, diagnostic: null };
+      await repository.transaction(runId, async context => {
+        const resumedFromWaitId = await context.readPendingResumeWait();
+        expect(resumedFromWaitId).toBe(expectedWaitId);
+        await context.saveStepExecution(execution);
+        const event = await context.auditEvents.append({
+          actor: { type: 'system', id: 'agent-worker' }, eventType: 'lifecycle.agent-work', source: 'worker', outcome: 'success',
+          aggregateId: runId, correlationId: context.run!.correlationId, sessionId: context.run!.sessionId,
+          payload: { diagnostic: 'work-item-attempt-started', stepId: planStepId, stepExecutionId: execution.stepExecutionId, attempt, resumedFromWaitId },
+        });
+        await context.notifyTimeline(event.sequence);
+      });
+      return execution;
+    };
+    const assertFacts = async (scope: Locator, execution: StepExecutionRecord): Promise<void> => {
+      for (const [label, value] of [['Step', execution.planStepId], ['Attempt', String(execution.attempt)], ['Step Execution identifier', execution.stepExecutionId]]) {
+        await expect(scope.locator('dl > div').filter({ has: page.locator('dt').filter({ hasText: new RegExp(`^${label}$`) }) }).locator('dd')).toHaveText(value!);
+      }
+    };
+    const history: { waitId: string; paused: StepExecutionRecord; resumed: StepExecutionRecord }[] = [];
+    let current = await startAttempt(stepIds[0]!, 1, null);
+    for (let cycle = 0; cycle < 2; cycle += 1) {
+      await page.goto(`/runs/${runId}`);
+      await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
+      await page.getByRole('button', { name: 'Pause', exact: true }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Pause Run', exact: true }).click();
+      await expect(page.getByText(`Pause requested by ${authorName}`, { exact: false })).toBeVisible();
+      const waitId = await honourPause(runId, current);
+      await page.reload();
+      const banner = page.locator('.ls-banner').filter({ hasText: `Paused by ${authorName}` });
+      await expect(banner).toBeVisible();
+      await assertFacts(banner, current);
+      expect((await new AxeBuilder({ page }).withTags(TAGS).analyze()).violations).toEqual([]);
+      await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
+      await acquireControl(page.getByRole('region', { name: 'Run controller', exact: true }));
+      await resumeWithControl(page);
+      await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+      const resumed = await startAttempt(current.planStepId, current.attempt + 1, waitId);
+      history.push({ waitId, paused: current, resumed });
+      if (cycle === 0) {
+        await repository.transaction(runId, context => context.saveStepExecution({ ...resumed, state: 'SUCCEEDED', completedAt: new Date().toISOString() }));
+        // Advance to another frozen Step. Its first failed attempt is retained, so the
+        // second pause visibly identifies a different Step AND attempt number.
+        const failed = await startAttempt(stepIds[1]!, 1, null);
+        await repository.transaction(runId, context => context.saveStepExecution({ ...failed, state: 'FAILED', diagnostic: 'fixture-retry', completedAt: new Date().toISOString() }));
+        current = await startAttempt(stepIds[1]!, 2, null);
+      }
+    }
+    expect(history[0]!.paused.planStepId).not.toBe(history[1]!.paused.planStepId);
+    expect(history[0]!.paused.attempt).not.toBe(history[1]!.paused.attempt);
+    await page.goto(`/runs/${runId}/timeline`);
+    const section = page.getByRole('region', { name: 'Pause · Resume', exact: true });
+    await expect(section.getByRole('listitem')).toHaveCount(4);
+    for (const entry of history) for (const [kind, execution] of [['Pause', entry.paused], ['Resume', entry.resumed]] as const) {
+      const row = section.getByRole('listitem').filter({ has: page.getByRole('heading', { name: kind, exact: true }) }).filter({ hasText: entry.waitId });
+      await expect(row).toHaveCount(1);
+      await row.locator('summary').click();
+      await expect(row.getByText(entry.waitId, { exact: true })).toBeVisible();
+      await assertFacts(row, execution);
+    }
+    expect((await new AxeBuilder({ page }).withTags(TAGS).analyze()).violations).toEqual([]);
   });
 
   // UI cleanup 2026-09-22, UX-47. After a pause and a resume the chrome read "Step 7 of 6":

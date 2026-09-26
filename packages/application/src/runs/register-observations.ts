@@ -135,6 +135,8 @@ export function observationAbsenceDigest(
 
 /** One Observation offered for registration, with everything needed to judge it. */
 export interface ObservationBatchItem {
+  /** Exact answered wait consumed by the human-decision producer; new registrations only. */
+  readonly matchingWaitId?: string;
   readonly record: ObservationRecord;
   /** The capture time exactly as the source presented it: UTC, or offset-bearing. */
   readonly observedAtSource: string;
@@ -809,6 +811,7 @@ export async function registerObservations(
       // which a per-row digest can see because each row would still agree with itself.
       digests,
       batchDigest,
+      ...(fresh.some(entry => entry.record.matchOrigin === 'human-matched' && entry.item.matchingWaitId !== undefined) ? { matchingDecisions: fresh.flatMap(entry => entry.record.matchOrigin === 'human-matched' && entry.item.matchingWaitId !== undefined ? [{ observationId: entry.record.observationId, digest: entry.digest, waitId: entry.item.matchingWaitId }] : []) } : {}),
       // Bind adjacent provenance into the same immutable audit chain, without including
       // source query values or changing any Observation wire digest.
       ...(rows.some(row => row.absence !== undefined) ? { absenceDigests: rows.flatMap(row => row.absence === undefined ? [] : [{ observationId: row.record.observationId, digest: row.absence.digest }]) } : {}),

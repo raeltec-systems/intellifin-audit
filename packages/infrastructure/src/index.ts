@@ -76,3 +76,7 @@ export * from './runs/run-control-transfer-repository.js';
 export * from './runs/workspace-preview-repository.js';
 
 export { WorkspacePreviewProxy } from './runs/workspace-preview-transport.js';
+
+export { readRunPauseLinkage, PAUSE_LINKAGE_LIMIT, type RunPauseLinkage } from './runs/pause-linkage.js';
+
+export * from './runs/replay-capture-gaps.js';

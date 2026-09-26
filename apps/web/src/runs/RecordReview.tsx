@@ -1,3 +1,4 @@
+import { HumanMatch } from './HumanMatch';
 import Link from 'next/link';
 
 import type { JsonValue } from '@intellifin/domain';
@@ -469,6 +470,7 @@ function RecordReviewQueueRow({
         </div>
         <span className={`record-review__state ${assessment.className}`}>{assessment.word}</span>
       </div>
+      {row.targets.map(target => <div key={target.targetId}>{target.matchOrigin === 'human-matched' ? <strong>{target.targetName}</strong> : null}<HumanMatch runId={runId} matchOrigin={target.matchOrigin} decision={target.matchingDecision} /></div>)}
       <dl className="record-review__row-facts">
         <div><dt>Observed account</dt><dd>{rowSubjectText(row.targets)}</dd></div>
         <div><dt>Captured status</dt><dd>{rowCapturedStatusText(row.targets)}</dd></div>
@@ -600,7 +602,7 @@ export function RecordReviewInspector({
         <div className="record-review__target-list">
           {selection.row.targets.length === 0 ? <p>No target system was recorded for this source record.</p> : selection.row.targets.map((target) => {
             const observation = target.observationId === null ? null : observations.find((row) => row.observationId === target.observationId) ?? null;
-            return <CapturedTarget key={target.targetId} target={target} observation={observation} masked={masked} />;
+            return <div key={target.targetId}><HumanMatch runId={runId} matchOrigin={observation?.matchOrigin} decision={observation?.matchingDecision} /><CapturedTarget target={target} observation={observation} masked={masked} /></div>;
           })}
         </div>
         <section id="recorded-source-values" className="record-review__source-record" aria-labelledby="record-review-source-heading">

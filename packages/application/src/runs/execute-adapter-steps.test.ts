@@ -214,6 +214,7 @@ const RECORDS: readonly PopulationRecord[] = [
 /** An in-memory stand-in for `PostgresAdapterExecutionRepository`, with the same seams. */
 class FakeRepository implements AdapterExecutionRepository {
   pauseWaits: RunWait[] = [];
+  pendingResumeWaitId: string | null = null;
   run: RunRecord = { ...RUN };
   population: PopulationCheckpoint | null = {
     revision: 1, status: 'POPULATION_READY', attempts: 1,
@@ -405,6 +406,7 @@ class FakeRepository implements AdapterExecutionRepository {
       readPauseRequest: async () => repository.run.pauseRequest,
       /** Generation 47. This context never opens a wait, so there is never one to withdraw. */
       withdrawOpenWait: async (): Promise<null> => null,
+      readPendingResumeWait: async () => repository.events.some(event => event.payload.resumedFromWaitId === repository.pendingResumeWaitId) ? null : repository.pendingResumeWaitId,
       openPauseWait: async (wait: RunWait) => { repository.pauseWaits.push(wait); },
       clearPauseRequest: async () => { repository.run = { ...repository.run, pauseRequest: null }; },
       saveGateChecks: async (rows) => {
@@ -1414,4 +1416,39 @@ describe('executeAdapterSteps', () => {
     expect(test.repository.checkpoint?.diagnostic).toBe('run-time-limit');
     expect(test.repository.result).toMatchObject({ outcome: 'INCONCLUSIVE' });
   });
+});
+
+
+describe('resume provenance on adapter producers', () => {
+  it.each(['reference', 'work-item'] as const)('binds only the first %s attempt to its pending resumed wait', async kind => {
+    let calls = 0;
+    const acquire = async () => {
+      if (calls++ === 0) throw new PopulationAcquisitionError('transport');
+      return { bytes: utf8Bytes(kind === 'reference' ? ROLE_MATRIX : ACCOUNTS), mediaType: kind === 'reference' ? 'text/csv' : 'application/json', location: 'https://synthetic.invalid/' };
+    };
+    const test = harness({ plan: plan(kind === 'reference' ? [reference, adapter] : [adapter]),
+      ...(kind === 'reference' ? { reference: acquire } : { extract: acquire }) });
+    test.repository.pendingResumeWaitId = 'resumed-wait';
+    await executeAdapterSteps(test.deps, JOB);
+    const starts = test.repository.events.filter(event => String(event.payload.diagnostic).endsWith('-attempt-started'));
+    expect(starts.length).toBeGreaterThan(1);
+    expect(starts[0]?.payload.diagnostic).toBe(`${kind}-attempt-started`);
+    expect(starts.map(event => event.payload.resumedFromWaitId)).toEqual(['resumed-wait', ...starts.slice(1).map(() => null)]);
+    expect(starts[0]?.payload).toMatchObject({ stepId: test.repository.executions[0]!.planStepId, stepExecutionId: test.repository.executions[0]!.stepExecutionId, attempt: test.repository.executions[0]!.attempt });
+  });
+});
+
+
+it('pauses at pending adapter work after an earlier Reference Source was acquired', async () => {
+  const test = harness({ plan: plan([reference, adapter]) });
+  const request = { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-05T00:00:00.000Z' };
+  test.repository.run = { ...test.repository.run, pauseRequest: request };
+  await executeAdapterSteps(test.deps, JOB);
+  const acquired = test.repository.steps.get('session-2')!;
+  test.repository.steps.set('session-2', { ...acquired, state: 'ACQUIRED' });
+  test.repository.run = { ...test.repository.run, state: 'RUNNING', pauseRequest: request };
+  await executeAdapterSteps(test.deps, JOB);
+  const pauses = test.repository.events.filter(event => event.eventType === 'lifecycle.run-paused');
+  expect(pauses).toHaveLength(2);
+  expect(pauses[1]?.payload).toMatchObject({ planStepId: 'session-3', workItemId: [...test.repository.items.values()][0]!.workItemId, inFlight: false });
 });

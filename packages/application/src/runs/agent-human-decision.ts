@@ -76,6 +76,7 @@ export function applyAgentHumanDecision(input: AgentHumanDecisionInput): AgentHu
       stepExecutionId: input.stepExecutionId, captureMethod: 'agent', matchOrigin: human ? 'human-matched' : 'platform', identity,
       attributes, evidenceIds: [snapshot.evidenceId] },
     observedAtSource: input.observedAt, absence: null, expectedQueryKeys,
+    ...(human ? { matchingWaitId: wait.waitId } : {}),
   });
   const unresolved = (): AgentHumanDecisionResult => ({ ok: true, kind: 'register', item: base('ambiguous', null, [], false), workItemState: 'UNINSPECTED' });
   if (wait.kind === 'retry-or-skip') {

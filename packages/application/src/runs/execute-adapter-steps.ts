@@ -194,6 +194,7 @@ const LIMIT_DIAGNOSTIC: Readonly<Record<RunLimitCause, AdapterExecutionDiagnosti
 const COLLECTION_KEYS = ['accounts', 'transactions', 'employees', 'approvals'] as const;
 
 interface EventFields {
+  readonly resumedFromWaitId?: string | null;
   readonly stepId?: string;
   readonly workItemId?: string;
   readonly stepExecutionId?: string;
@@ -706,7 +707,7 @@ export async function executeAdapterSteps(
    * superseded here. The checkpoint goes to `RETRY`, which is what the extraction recovery
    * sweep re-claims once the resume puts the Run back to `RUNNING`.
    */
-  const canceledAtBoundary = async (): Promise<boolean> => {
+  const canceledAtBoundary = async (planStepId: string | undefined, workItemId: string | null = null): Promise<boolean> => {
     let stopped = false;
     await guarded(async (context) => {
       const request = context.run?.cancellation ?? null;
@@ -716,11 +717,11 @@ export async function executeAdapterSteps(
         return;
       }
       const pause = context.run?.pauseRequest ?? null;
-      if (pause === null) return;
+      if (pause === null || planStepId === undefined) return;
       stopped = true;
       const at = deps.clock.now().toISOString();
       await context.saveCheckpoint({ ...checkpoint, status: 'RETRY', leaseUntil: at, diagnostic: null }, 'PAUSED');
-      await performPause(context, { run, request: pause, waitId: deps.ids.next(), at });
+      await performPause(context, { run, request: pause, waitId: deps.ids.next(), at, planStepId, workItemId, attempt: null });
     });
     return stopped;
   };
@@ -784,8 +785,10 @@ export async function executeAdapterSteps(
   try {
     // ------------------------------------------------- Reference Sources, in order
     for (const entry of classification.references) {
-      if (await canceledAtBoundary()) return { retry: false };
       const step = steps.find((row) => row.stepId === entry.stepId)!;
+      const pendingReference = classification.references.find(candidate => steps.find(row => row.stepId === candidate.stepId)?.state !== 'ACQUIRED');
+      const pendingItem = items.find(candidate => !['OBSERVED', 'FAILED', 'UNINSPECTED'].includes(candidate.state));
+      if (await canceledAtBoundary(pendingReference?.stepId ?? pendingItem?.stepId, pendingReference ? null : pendingItem?.workItemId ?? null)) return { retry: false };
       if (step.state === 'FAILED') {
         // A Reference Source is a Run-level Session Step. Returning here would leave the
         // claim EXECUTING with a live lease and nothing to move it.
@@ -843,7 +846,7 @@ export async function executeAdapterSteps(
       const item = items.find((row) => row.stepId === entry.stepId)!;
       if (item.state === 'OBSERVED' || item.state === 'FAILED' || item.state === 'UNINSPECTED') continue;
       // Before starting further Target System work, and after every unit that finished.
-      if (await canceledAtBoundary()) return { retry: false };
+      if (await canceledAtBoundary(entry.stepId, item.workItemId)) return { retry: false };
       const spent = limitReached();
       if (spent !== null) {
         await stopForCause(spent, { workItemId: item.workItemId });
@@ -1010,6 +1013,7 @@ async function runReferenceStep(
       await context.saveSessionStep(step);
       await context.saveStepExecution(execution);
       await event(context, 'reference-attempt-started', 'RUNNING', checkpoint, {
+        resumedFromWaitId: await context.readPendingResumeWait(),
         stepId: step.stepId,
         registrationId: step.registrationId,
         evidenceId: evidence.evidenceId,
@@ -1161,6 +1165,7 @@ async function runWorkItem(
       await context.saveWorkItem(item);
       await context.saveStepExecution(execution);
       await event(context, 'work-item-attempt-started', 'RUNNING', checkpoint, {
+        resumedFromWaitId: await context.readPendingResumeWait(),
         workItemId: item.workItemId,
         stepId: item.stepId,
         registrationId: item.registrationId,

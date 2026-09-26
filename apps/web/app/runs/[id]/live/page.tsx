@@ -8,6 +8,7 @@ import {
   DrizzleRunDetailRepository,
   readRecordNames,
   readTimelineHead,
+  readRunPauseLinkage,
 } from '@intellifin/infrastructure';
 
 import { getRuntime } from '../../../../src/bootstrap';
@@ -84,6 +85,11 @@ export default async function RunLivePage({
     isActiveRunState(run.state) ? readTimelineHead(runtime.db, run.runId) : Promise.resolve(null),
     detail.readFlags(run.runId),
   ]);
+  // Session Steps retain exact Evidence ids. Resolve those ids directly; the generic
+  // Evidence overview is a bounded prefix and cannot establish that an artifact is absent.
+  const adapterEvidence = await detail.readEvidenceItemsByIds(run.runId,
+    timeline.sessionSteps.filter(step => step.action === 'extract-adapter').flatMap(step => step.evidenceId === null ? [] : [step.evidenceId]));
+  const digestByEvidence = new Map(adapterEvidence.map(item => [item.evidenceId, item.state === 'REGISTERED' ? item.digest : null]));
   // Names, not ids. A Run records its actors as user IDs because an address cannot enter
   // the audit chain; printing one at a reader is the platform speaking its own language.
   const actorNames = await new DrizzleActorNameReader(runtime.db)
@@ -143,6 +149,8 @@ export default async function RunLivePage({
   const waits = run.state === 'AWAITING_AUDITOR' || run.state === 'PAUSED'
     ? await readOpenEscalation(run.runId)
     : null;
+
+  const pauseLinkage = waits?.pause == null ? null : (await readRunPauseLinkage(runtime.db, run.runId)).rows.find(entry => entry.kind === 'pause' && entry.waitId === waits.pause!.waitId) ?? null;
 
   // The Paused banner names the person who paused the Run, not their user id.
   const pauseNames = await new DrizzleActorNameReader(runtime.db).namesFor([
@@ -259,7 +267,7 @@ export default async function RunLivePage({
             politely, which is what UX-DR27 asks for; taking focus from somebody mid-word
             is a context change nobody asked for. */}
         <OpenEscalationSection run={run} escalation={waits} readAt={readAt} />
-        <PauseBanners run={run} pause={waits?.pause ?? null} readAt={readAt} names={pauseNames} />
+        <PauseBanners linkage={pauseLinkage} run={run} pause={waits?.pause ?? null} readAt={readAt} names={pauseNames} />
         {/* The server's own statement of a requested cancellation, as on Run Detail: the
             control's transitional "Cancellation requested." is dropped once the page has
             re-read the Run (UX-49), so this is what says it from then on. */}
@@ -344,7 +352,8 @@ export default async function RunLivePage({
               displayName: `${planActionWord(step.action)} · ${step.displayName}`,
               state: step.state,
               attempts: step.attempts,
-              digest: null,
+              evidenceId: step.evidenceId,
+              digest: step.evidenceId === null ? null : digestByEvidence.get(step.evidenceId) ?? null,
             }))}
         />
       </LiveGate>

@@ -279,7 +279,7 @@ describe.skipIf(!url)('explicit manager transfer against PostgreSQL', () => {
     const [before]=await client`SELECT pause_requested_at::text,pause_requested_by FROM audit_run WHERE run_id=${runId}`;
     const review=await proposal(runId);expect(await confirm(runId,review.proposal.commandId)).toMatchObject({ok:true});
     expect(await client`SELECT pause_requested_at::text,pause_requested_by FROM audit_run WHERE run_id=${runId}`).toEqual([before]);
-    await new PostgresWaitRepository(db).transaction(runId,async context=>{const run=context.run!;await context.saveRunState('PAUSED');await performPause(context as never,{run,request:run.pauseRequest!,waitId:ids.next(),at:new Date().toISOString()});});
+    await new PostgresWaitRepository(db).transaction(runId,async context=>{const run=context.run!;await context.saveRunState('PAUSED');await performPause(context as never,{run,planStepId:'fixture-step',attempt:null,request:run.pauseRequest!,waitId:ids.next(),at:new Date().toISOString()});});
     const [run]=await client`SELECT revision FROM audit_run WHERE run_id=${runId}`;
     expect(await resumeRun({...waitDeps(),requireControllerLease:true},{session,request:{runId,expectedRunRevision:Number(run!.revision),expectedControlEpoch:1}})).toMatchObject({ok:false,code:'stale-control'});
     expect(await client`SELECT state FROM audit_run WHERE run_id=${runId}`).toEqual([{state:'PAUSED'}]);

@@ -11,7 +11,7 @@ import { FrameSource, SessionChrome, SessionStage, type LiveViewerAdapterStep, t
 import { UntrustedPolicy, UntrustedText } from './UntrustedText';
 import { clampReplayIndex, replayInspectionHref, type ReplayFrameAbsence, type ReplayInitialSelection, type ReplayJumpTarget, type ReplayWindow } from './replay';
 import { recordFramePosition, toolActionNarration } from './session-words';
-import { sessionStepWord, utcStamp } from './labels';
+import { captureSentence, sessionStepWord, utcStamp } from './labels';
 
 /** One frame and everything the platform already stored about the action that took it. */
 export interface ReplayFrameView extends LiveViewerFrame {
@@ -57,6 +57,13 @@ export interface ReplayViewerProps {
   readonly initialSelection?: ReplayInitialSelection;
   /** One inspection's own captures, paged, when Replay was opened at a record's inspection. */
   readonly window?: ReplayWindow;
+  /** Exact stored gaps, separate from client-local protected-read failures. New missing/
+   * incomplete prose remains subject to Story 10.6's frozen Ask First copy decision. */
+  readonly captureGaps?: {
+    readonly rows: readonly { readonly toolActionId: string; readonly stepExecutionId: string;
+      readonly startedAt: string; readonly kind: 'missing' | 'suppressed'; readonly captureSuppression: string | null }[];
+    readonly total: number; readonly missing: number; readonly suppressed: number;
+  };
 }
 
 /** How long one frame is held while Replay is playing. */
@@ -101,7 +108,7 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
     ? -1 : clampReplayIndex(props.initialSelection?.frameIndex ?? 0, props.frames.length));
   const [playing, setPlaying] = useState(false);
   const [jumped, setJumped] = useState<ReplayJumpTarget | null>(null);
-  const [unavailableFrame, setUnavailableFrame] = useState<string | null>(null);
+  const [unavailableFrames, setUnavailableFrames] = useState<ReadonlySet<string>>(() => new Set());
   const viewer = useRef<HTMLDivElement>(null);
   const frame = index < 0 ? null : props.frames[index] ?? null;
   // Whether this rail carries source content at all: the frame's captured location and the
@@ -179,7 +186,10 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
   })();
 
   return (
-    <section className="ls-session" aria-labelledby="replay-session-heading">
+    <section className="ls-session" aria-labelledby="replay-session-heading"
+      data-missing-frames={props.captureGaps?.missing ?? 0}
+      data-unavailable-frames={unavailableFrames.size}
+      data-playback-incomplete={(props.captureGaps?.missing ?? 0) > 0 || unavailableFrames.size > 0}>
       <h2 id="replay-session-heading" className="ls-visually-hidden">Agent session replay</h2>
       <SessionChrome
         chrome="REPLAY"
@@ -216,11 +226,11 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
       >
         <SessionStage
           runId={props.runId}
-          onFrameError={(evidenceId) => { setPlaying(false); setUnavailableFrame(evidenceId); }}
+          onFrameError={(evidenceId) => { setPlaying(false); setUnavailableFrames(current => new Set([...current, evidenceId])); }}
           frame={frame}
-          imageUnavailable={frame !== null && frame.evidenceId === unavailableFrame}
-          onRetryFrame={() => { setPlaying(false); setUnavailableFrame(null); }}
-          stageNote={frame?.evidenceId === unavailableFrame
+          imageUnavailable={frame !== null && unavailableFrames.has(frame.evidenceId)}
+          onRetryFrame={() => { setPlaying(false); if (frame !== null) setUnavailableFrames(current => { const next = new Set(current); next.delete(frame.evidenceId); return next; }); }}
+          stageNote={frame !== null && unavailableFrames.has(frame.evidenceId)
             ? 'This recorded frame could not be read from Evidence storage. Its Evidence record is unchanged.'
             : frame === null ? selectionNote ?? props.stageNote : null}
         />
@@ -264,6 +274,21 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
               </p>
             ) : null}
           </section>
+
+          {/* Ordered absent capture positions are not frames: no image URL or Evidence id is
+              invented. The missing/incomplete narrative is deliberately pending copy approval. */}
+          {props.captureGaps === undefined || props.captureGaps.rows.length === 0 ? null : (
+            <ol className="ls-stack" data-capture-gaps-total={props.captureGaps.total}>
+              {props.captureGaps.rows.map(gap => <li key={gap.toolActionId} data-capture-kind={gap.kind}>
+                {gap.kind === 'suppressed' ? <p>{captureSentence('SUPPRESSED', gap.captureSuppression)}</p> : null}
+                <TechnicalDetails items={[
+                  { label: 'Tool Action identifier', value: gap.toolActionId, mono: true },
+                  { label: 'Action started at', value: utcStamp(gap.startedAt), mono: true },
+                  { label: 'Capture state', value: gap.kind === 'suppressed' ? 'SUPPRESSED' : 'PERMITTED', mono: true },
+                ]} />
+              </li>)}
+            </ol>
+          )}
 
           {/* The policy sentence ONCE, above the untrusted blocks this rail carries (UX-27). */}
           {untrusted ? <UntrustedPolicy /> : null}

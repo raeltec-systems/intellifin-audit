@@ -120,7 +120,7 @@ describe.skipIf(!url)('controller leases against PostgreSQL and existing Resume 
       await new PostgresWaitRepository(db).transaction(runId, async context => {
         const run = context.run!;
         await context.saveRunState('PAUSED');
-        await performPause(context as never, { run, request: run.pauseRequest!, waitId: ids.next(), at: new Date().toISOString() });
+        await performPause(context as never, { run, request: run.pauseRequest!, planStepId: 'fixture-step', attempt: null, waitId: ids.next(), at: new Date().toISOString() });
       });
     } finally { await client`INSERT INTO user_role(user_id,role) VALUES (${other},'auditor')`; }
     const [before] = await client`SELECT revision FROM audit_run WHERE run_id=${runId}`;

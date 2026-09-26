@@ -290,6 +290,21 @@ async function refusal(work: () => Promise<unknown>): Promise<string> {
 }
 
 describe('registerObservations', () => {
+  it('binds only fresh human matches to the exact answered wait without changing the Observation digest', async () => {
+    const context = new FakeContext();
+    const record = { ...found('AG-1001'), matchOrigin: 'human-matched' as const };
+    const offered = item(record, { matchingWaitId: '01920000-0000-7000-8000-000000000099' });
+    await registerObservations(context, batch([offered]), SEAMS);
+    expect(context.events[0]!.payload['matchingDecisions']).toEqual([{ observationId: record.observationId,
+      digest: observationDigest(record), waitId: offered.matchingWaitId }]);
+    const events = context.events.length;
+    await registerObservations(context, batch([item(record, { matchingWaitId: 'different-wait' })]), SEAMS);
+    expect(context.events).toHaveLength(events);
+    const platform = new FakeContext();
+    await registerObservations(platform, batch([item(found('AG-1001'), { matchingWaitId: 'stray' })]), SEAMS);
+    expect(platform.events[0]!.payload).not.toHaveProperty('matchingDecisions');
+  });
+
   it('commits rows, checks and one event carrying every digest, in order', async () => {
     const context = new FakeContext();
     const records = [found('AG-1001'), absent('AG-9999'), { ...absent('AG-1007'), found: 'ambiguous' as const }];

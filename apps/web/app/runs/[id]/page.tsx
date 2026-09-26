@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { isActiveRunState } from '@intellifin/domain';
+import { adapterLookupColumn, isActiveRunState } from '@intellifin/domain';
 import {
   DrizzleActorNameReader,
   DrizzleProcedureRepository,
@@ -27,6 +27,7 @@ import {
   ExecutionFailurePanel,
   FindingsSection,
   PopulationReconciliation,
+  HumanMatchedRecords,
   SafeNextActionPanel,
   type FailedStep,
 } from '../../../src/runs/ResultSections';
@@ -77,7 +78,7 @@ export default async function RunResultPage({
 
   const runtime = await getRuntime();
   const detail = new DrizzleRunDetailRepository(runtime.db);
-  const [result, gate, population, execution, version, names, stop, review] = await Promise.all([
+  const [result, gate, population, execution, version, names, stop, review, humanMatches] = await Promise.all([
     detail.readResult(run.runId),
     detail.readGateChecks(run.runId),
     new PostgresPopulationRepository(runtime.db).readPopulation(run.runId),
@@ -92,6 +93,7 @@ export default async function RunResultPage({
     run.state === 'COMPLETED' || run.state === 'INCONCLUSIVE'
       ? readEvaluationReview(run.runId)
       : Promise.resolve(null),
+    detail.readHumanMatchedRecords(run.runId),
   ]);
 
   const failedGate = gate.filter((row) => row.outcome === 'FAIL').length;
@@ -173,6 +175,8 @@ export default async function RunResultPage({
           explains what is still true, which is what a reader needs next. */}
       {result !== null && publication === null ? <p>{RESULT_WORDS.unreadableDocument}</p> : null}
 
+      <HumanMatchedRecords runId={run.runId} records={humanMatches.rows} systemName={systemName} total={humanMatches.total} masked={version?.compiledPlan?.inputs.sourceSnapshot?.contract.sensitive_fields.includes(adapterLookupColumn(version.compiledPlan.inputs.templateId) ?? '') ?? false} />
+
       {publication === null ? null : (
         <>
           {/* 3. The records the Result names. */}
@@ -183,6 +187,7 @@ export default async function RunResultPage({
             templateId={templateId}
             systemName={systemName}
           />
+
 
           {/* 4. Coverage, scope and the reconciliation, compact. */}
           <CoverageSection publication={publication} systemName={systemName} />

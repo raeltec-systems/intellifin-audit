@@ -33,6 +33,7 @@ describe('closed human candidate decisions preserve platform grounding', () => {
     const input = fixture(); const result = applyAgentHumanDecision(input);
     expect(result).toMatchObject({ ok: true, kind: 'register', workItemState: 'OBSERVED' });
     if (!result.ok || result.kind !== 'register') throw new Error('Missing Observation');
+    expect(result.item.matchingWaitId).toBe(input.wait.waitId);
     expect(result.item.record).toMatchObject({ found: 'true', matchOrigin: 'human-matched', identity: { normalizedValue: 'E-1', grounding: { locator: '$.nodes[5].value', evidenceId: input.snapshot.evidenceId } } });
     expect(result.item.record.attributes).toContainEqual(expect.objectContaining({ name: 'account_status', originalValue: 'disabled', grounding: expect.objectContaining({ locator: '$.nodes[7].value' }) }));
     expect(result.item.record.attributes).toContainEqual(expect.objectContaining({ name: 'username', originalValue: 'synthetic-1' }));

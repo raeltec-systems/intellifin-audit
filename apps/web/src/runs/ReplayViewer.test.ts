@@ -235,3 +235,25 @@ describe('the playback controls sit beside the screen (UX-29)', () => {
     expect(html.split(UNTRUSTED_CONTENT_SENTENCE).length - 1).toBe(1);
   });
 });
+
+
+describe('stored capture gaps', () => {
+  it('preserves ordered absent positions, separates suppressed from missing, and never invents Evidence', () => {
+    const html = render({ captureGaps: { missing: 2, suppressed: 1, total: 3, rows: [
+      { toolActionId: 'missing-action', stepExecutionId: 'step', kind: 'missing', startedAt: '2026-09-10T09:00:00Z', captureSuppression: null },
+      { toolActionId: 'suppressed-action', stepExecutionId: 'step', kind: 'suppressed', startedAt: '2026-09-10T09:01:00Z', captureSuppression: 'credential-entry' },
+    ] } });
+    expect(html).toContain('data-missing-frames="2"');
+    expect(html).toContain('data-playback-incomplete="true"');
+    expect(html.indexOf('missing-action')).toBeLessThan(html.indexOf('suppressed-action'));
+    expect(html).toContain('Capture suppressed');
+    expect(html).not.toContain('/frames/missing-action');
+    expect(html).not.toContain('/frames/suppressed-action');
+    // No unapproved missing/count sentence is silently shipped.
+    expect(html).not.toContain('Playback is incomplete:');
+  });
+  it('does not call credential suppression incomplete playback', () => {
+    expect(render({ captureGaps: { rows: [], missing: 0, suppressed: 3, total: 3 } }))
+      .toContain('data-playback-incomplete="false"');
+  });
+});
