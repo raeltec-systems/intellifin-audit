@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
-import { performPause, resumeLinker } from '@intellifin/application';
+import { performPause, raiseEscalation, resumeLinker, wakeEscalation } from '@intellifin/application';
 import type { ExecutablePlan } from '@intellifin/domain';
 import {
   createDb,
@@ -10,10 +10,13 @@ import {
   PostgresProceduresUnitOfWork,
   PostgresWaitRepository,
   readPendingResume,
+  SystemClock,
   type Sql,
 } from '@intellifin/infrastructure';
 
 import { ESCALATION_PANEL_COPY, PAUSE_COPY } from '../../apps/web/src/design/copy';
+import { readableStamp } from '../../apps/web/src/design/time';
+import { ESCALATION_ANSWER_WORDS, PAUSE_REQUEST_WORDS } from '../../apps/web/src/runs/decision-words';
 import { planActionWord } from '../../apps/web/src/runs/labels';
 import {
   PAUSE_WORDS,
@@ -449,6 +452,49 @@ test.describe('pausing and resuming a Run', () => {
     expect(paused[1]!.payload).not.toHaveProperty('stepExecutionId');
     const [linked] = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${runId} AND payload->>'resumedWaitId'=${firstWait}`;
     expect(linked!.payload).toMatchObject({ stepExecutionId: restarted, attempt: 2 });
+  });
+
+  // Story 10.10, legacy 5.4 AC 3: "a pause requested when no further Tool Action boundary
+  // occurs is recorded as superseded on the Timeline and the Run proceeds to its terminal
+  // state". The request is made through the control; nothing ever honours it; the Run ends
+  // through the durable wake of an Escalation whose deadline passed, which reaches the
+  // terminal transition with the marker still set.
+  test('lists a pause request the Run ended before reaching, with who asked, when, and that the Run ended first', async ({ page }) => {
+    test.setTimeout(120_000);
+    const runId = await seedRun('RUNNING');
+    await page.goto(`/runs/${runId}/live`);
+    await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
+    await requestPause(page);
+    const [marker] = await sql`SELECT to_char(pause_requested_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS requested_at
+      FROM audit_run WHERE run_id=${runId}`;
+    expect(marker?.requested_at).toBeTruthy();
+
+    const repository = new PostgresWaitRepository(createDb(sql));
+    const raised = await raiseEscalation(
+      { repository, ids, clock: { now: () => new Date(Date.now() - 5 * 60 * 60 * 1000) } },
+      { runId, kind: 'retry-or-skip', stepId: 'session-3' },
+    );
+    if (!raised.ok) throw new Error(`The fixture could not raise its Escalation: ${raised.reason}`);
+    await wakeEscalation({ repository, clock: new SystemClock() }, { schemaVersion: 1, runId, waitId: raised.wait.waitId });
+    await expect.poll(async () => (await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)[0]?.state).toBe('INCONCLUSIVE');
+    const [superseded] = await sql`SELECT actor_type, actor_id, source, outcome FROM audit_events
+      WHERE aggregate_id=${runId} AND event_type='lifecycle.pause-superseded'`;
+    expect(superseded).toMatchObject({ actor_type: 'system', actor_id: 'result-sealer', source: 'worker', outcome: 'failure' });
+
+    await page.goto(`/runs/${runId}/timeline`);
+    const history = page.getByRole('region', { name: PAUSE_WORDS.heading });
+    await expect(history).toBeVisible();
+    // The request is the section's only entry: nothing ever paused this Run.
+    await expect(history.locator('.ls-pause-history__entry')).toHaveCount(1);
+    const request = history.locator('[data-pause-request="immediate"]');
+    await expect(request.getByRole('heading', { level: 3, name: PAUSE_REQUEST_WORDS.title, exact: true })).toBeVisible();
+    await expect(request).toContainText(`Requested by ${authorName} at ${readableStamp(String(marker!.requested_at))}.`);
+    await expect(request).toContainText(PAUSE_REQUEST_WORDS.runEnded);
+    await expect(history).not.toContainText(author);
+    // The Escalation the Run ended on timed out: nobody answered it, so it is no answer.
+    await expect(page.getByRole('region', { name: ESCALATION_ANSWER_WORDS.heading })).toHaveCount(0);
+    const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+    expect(results.violations).toEqual([]);
   });
 
   test('disables Pause on a Run waiting on an answer, and says why in words', async ({ page }) => {

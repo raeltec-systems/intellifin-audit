@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 
 import { raiseEscalation } from '@intellifin/application';
+import type { ExecutablePlan } from '@intellifin/domain';
 import {
   createDb,
   createSqlClient,
@@ -15,7 +16,10 @@ import {
   type Database,
   type Sql,
 } from '@intellifin/infrastructure';
-import { ESCALATION_PANEL_COPY } from '../../apps/web/src/design/copy';
+import { ESCALATION_PANEL_COPY, fillTemplate } from '../../apps/web/src/design/copy';
+import { readableStamp } from '../../apps/web/src/design/time';
+import { ESCALATION_ANSWER_WORDS, escalationRaiseSentences } from '../../apps/web/src/runs/decision-words';
+import { pauseStepNamer } from '../../apps/web/src/runs/pause-words';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { executablePlanInputs } from '../fixtures/executable-plan';
 import { startSyntheticS3 } from '../fixtures/s3-server';
@@ -472,6 +476,33 @@ test.describe('the Escalation panel as an Auditor', () => {
     expect(answerEvent?.payload).toMatchObject({ recordedNote: 'Auditor note stays in the audit record.' });
     const agentTurns = await sql`SELECT response::text AS response FROM run_agent_turn WHERE run_id=${runs.answered}`;
     expect(agentTurns.some((turn) => String(turn.response).includes('Auditor note'))).toBe(false);
+
+    // Story 10.10 (legacy 4.8 AC 4, 5.6 AC 3): the answered Escalation is now an entry on the
+    // Execution Timeline, read from the wait row and its events — the question it was, who
+    // answered and when, the answer, and where it was raised. This fixture's supporting
+    // Evidence was never bound to a captured Tool Action, so its Work Item is not
+    // established and the entry says so; the Run is still going, so there is no Replay yet
+    // and no link to one. The note is the audit record's, never the Timeline's.
+    const [version] = await sql`SELECT compiled_plan FROM procedure_version WHERE version_id=${versionId}`;
+    const [auditor] = await sql`SELECT name FROM auth_user WHERE id=${auditorId}`;
+    const [closed] = await sql`SELECT to_char(closed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS closed_at
+      FROM run_wait WHERE wait_id=${answeredWaitId}`;
+    await page.goto(`/runs/${runs.answered}/timeline`);
+    const answers = page.getByRole('region', { name: ESCALATION_ANSWER_WORDS.heading, exact: true });
+    await expect(answers).toBeVisible();
+    const entry = answers.locator(`[data-wait-id="${answeredWaitId}"]`);
+    await expect(entry.getByRole('heading', { level: 3, name: 'Choose candidate', exact: true })).toBeVisible();
+    await expect(entry).toContainText(`Answered by ${String(auditor!.name)} at ${readableStamp(String(closed!.closed_at))}.`);
+    await expect(entry).toContainText(fillTemplate(ESCALATION_ANSWER_WORDS.candidate, { n: '1', m: '2' }));
+    await expect(entry.locator('.ls-untrusted__body')).toHaveText('Alice A');
+    await expect(entry).toContainText(escalationRaiseSentences(
+      { kind: 'recorded', planStepId: 'agent-step-1', workItem: null },
+      pauseStepNamer(version!.compiled_plan as ExecutablePlan, new Map()),
+    ).join(' '));
+    await expect(entry.getByRole('link', { name: ESCALATION_ANSWER_WORDS.openInReplay })).toHaveCount(0);
+    await expect(answers).not.toContainText('Auditor note stays in the audit record.');
+    await expect(answers).not.toContainText(auditorId);
+    await scan(page);
   });
 
   test('shows the compare-and-set refusal after the Run changes', async ({ page }) => {
