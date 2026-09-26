@@ -21,6 +21,9 @@ export * from './runs/run-detail-repository.js';
 export * from './runs/match-decisions.js';
 // Where each pause held a Run and which attempt each resume started (Story 10.6, legacy 5.4).
 export * from './runs/pause-history.js';
+// Every answered Escalation and every pause request the Run never honoured, as the
+// Execution Timeline lists them (Story 10.10). A read over PostgreSQL only.
+export * from './runs/decision-history.js';
 export * from './runs/runs-unit-of-work.js';
 export * from './runs/population-repository.js';
 export * from './runs/population-queue.js';

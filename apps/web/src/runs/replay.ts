@@ -112,7 +112,11 @@ export function effectiveFrameWorkItemId(
 export type ReplayInitialSelection =
   | { readonly kind: 'start'; readonly frameIndex: number }
   | { readonly kind: 'inspection'; readonly target: ReplayJumpTarget; readonly frameIndex: number | null }
-  | { readonly kind: 'unavailable'; readonly frameIndex: null };
+  | { readonly kind: 'unavailable'; readonly frameIndex: null }
+  /** Opened from a Timeline entry at an Escalation's own jump target (Story 10.10). */
+  | { readonly kind: 'escalation'; readonly target: ReplayJumpTarget; readonly frameIndex: number | null }
+  /** An Escalation this view cannot resolve: said in words, never a guessed frame. */
+  | { readonly kind: 'escalation-unavailable'; readonly frameIndex: null };
 
 /** Resolve only against this authorized Run's stored targets. A bad or bounded-out
  * deep link must never silently show a different record's first capture. */
@@ -127,6 +131,41 @@ export function replayInitialSelection(
   const target = targets.find(item => item.kind === 'work-item' && item.id === workItem.toLowerCase());
   return target === undefined ? { kind: 'unavailable', frameIndex: null }
     : { kind: 'inspection', target, frameIndex: target.frameIndex };
+}
+
+/**
+ * Where Replay opens for a Timeline entry's "Open in Replay" (Story 10.10): the Escalation's
+ * own jump target, resolved only against THIS Run's stored targets — the `?workItem=` rule.
+ * An id that is malformed, repeated, another Run's, or not among the waits this view read
+ * is `escalation-unavailable`, never a guess at a different frame. `null` when no
+ * Escalation was asked for, so the caller opens where it always did.
+ */
+export function replayEscalationSelection(
+  escalation: string | readonly string[] | undefined,
+  targets: readonly ReplayJumpTarget[],
+): ReplayInitialSelection | null {
+  if (escalation === undefined) return null;
+  if (typeof escalation !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(escalation))
+    return { kind: 'escalation-unavailable', frameIndex: null };
+  const target = targets.find((item) => item.kind === 'escalation' && item.id === escalation.toLowerCase());
+  return target === undefined
+    ? { kind: 'escalation-unavailable', frameIndex: null }
+    : { kind: 'escalation', target, frameIndex: target.frameIndex };
+}
+
+/**
+ * The viewer key for a whole-session Replay: the request's key, and — when a Timeline entry
+ * opened it at an Escalation (Story 10.10) — that selection too, so a different Escalation
+ * starts again at its own frame while a re-read of the same one keeps the reader's frame.
+ */
+export function replaySelectionKey(runId: string, request: ReplayRequest, selection: ReplayInitialSelection): string {
+  const base = replayViewerKey(runId, request);
+  switch (selection.kind) {
+    case 'escalation': return `${base}:escalation:${selection.target.id}`;
+    case 'escalation-unavailable': return `${base}:escalation-unavailable`;
+    default: return base;
+  }
 }
 
 function landing(frameIndex: number | null, whenMissing: ReplayFrameAbsence):

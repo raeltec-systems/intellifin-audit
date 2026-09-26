@@ -16,7 +16,7 @@ import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
 import { captureSentence, runLifecycleWord, workItemLabel } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
 import { frameNarration, plannedStepCount, readAdapterLog, stepNarration } from '../../../../src/runs/live-view';
-import { REPLAY_GAP_WORDS, effectiveFrameWorkItemId, replayInitialSelection, replayJumpTargets, replayObservationsThrough, replayRequest, replayViewerKey, resolveFrameWorkItems, type ReplayGapsView } from '../../../../src/runs/replay';
+import { REPLAY_GAP_WORDS, effectiveFrameWorkItemId, replayEscalationSelection, replayInitialSelection, replayJumpTargets, replayObservationsThrough, replayRequest, replaySelectionKey, replayViewerKey, resolveFrameWorkItems, type ReplayGapsView } from '../../../../src/runs/replay';
 import { recordNaming, recordWords } from '../../../../src/runs/record-words';
 import { toolActionNarration } from '../../../../src/runs/session-words';
 
@@ -45,7 +45,12 @@ export default async function RunReplayPage({
   searchParams,
 }: {
   readonly params: Promise<{ id: string }>;
-  readonly searchParams: Promise<{ readonly workItem?: string | string[]; readonly cursor?: string | string[] }>;
+  readonly searchParams: Promise<{
+    readonly workItem?: string | string[];
+    readonly cursor?: string | string[];
+    /** An Escalation a Timeline entry opened this Replay at (Story 10.10). */
+    readonly escalation?: string | string[];
+  }>;
 }): Promise<React.JSX.Element> {
   const { id } = await params;
   const access = await openRun(id);
@@ -98,7 +103,8 @@ export default async function RunReplayPage({
 
   const runtime = await getRuntime();
   const detail = new DrizzleRunDetailRepository(runtime.db);
-  const request = replayRequest(await searchParams, REPLAY_INSPECTION_PAGE_SIZE);
+  const query = await searchParams;
+  const request = replayRequest(query, REPLAY_INSPECTION_PAGE_SIZE);
   if (request.kind !== 'prefix') {
     const [selected, plan] = await Promise.all([
       request.kind === 'inspection'
@@ -262,7 +268,10 @@ export default async function RunReplayPage({
     })),
     waits,
   });
-  const initialSelection = replayInitialSelection(undefined, targets, views.length);
+  // A Timeline entry's "Open in Replay" names its Escalation; it opens at that jump target,
+  // resolved against this Run's own targets and said in words when it cannot (Story 10.10).
+  const initialSelection = replayEscalationSelection(query.escalation, targets)
+    ?? replayInitialSelection(undefined, targets, views.length);
 
   // Each gap in words: a missing frame is marked missing, a suppressed capture says the
   // platform's own capture sentence and is never counted as missing. The action is narrated
@@ -286,7 +295,7 @@ export default async function RunReplayPage({
     <div className="ls-stack">
       {header}
       <ReplayViewer
-        key={replayViewerKey(run.runId, request)}
+        key={replaySelectionKey(run.runId, request, initialSelection)}
         runId={run.runId}
         runState={run.state}
         stateSentence={`Session REPLAY. This Run ended: ${run.state}.`}
