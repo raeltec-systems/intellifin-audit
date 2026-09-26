@@ -27,6 +27,7 @@ import {
   type ReplayWindow,
 } from './replay';
 import { recordFramePosition, toolActionNarration } from './session-words';
+import { keySegments } from './pause-words';
 import { utcStamp } from './labels';
 
 /** One frame and everything the platform already stored about the action that took it. */
@@ -404,7 +405,10 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
           <section aria-labelledby="replay-step-heading" className="ls-stack">
             <h3 id="replay-step-heading">What the Agent was doing</h3>
             {frame === null ? <p>{selectionNote ?? (props.framesTotal > 0 ? 'Choose a recorded frame to see its inspection step.' : REPLAY_COPY.noFrames)}</p> : (
-              <p className="ls-session__narration">{frame.stepNarration}</p>
+              <p className="ls-session__narration">
+                {keySegments(frame.stepNarration, frame.subjectKey === null ? [] : [frame.subjectKey]).map((part, index) =>
+                  part.key ? <span key={index} className="ls-nowrap">{part.text}</span> : part.text)}
+              </p>
             )}
             {frame?.workItemLabel === null || frame?.workItemLabel === undefined
               ? null
