@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import { LIVE_STALE_MS, acceptsLiveSeq, liveStatus, silenceSeconds, type LiveStatus } from './live-status';
+import { LIVE_STALE_MS, acceptsLiveSeq, isRunEndingEvent, liveStatus, silenceSeconds, type LiveStatus } from './live-status';
 
 /** One Timeline event as the channel carries it (`docs/contracts/live-timeline-channel-v1.md`). */
 export interface LiveTimelineEvent {
@@ -16,6 +16,8 @@ export interface LiveTimelineEvent {
 
 export interface LiveTimeline {
   readonly status: LiveStatus;
+  /** A terminal event observed on this per-Run stream; survives component remounts. */
+  readonly runEnded: boolean;
   /** The last sequence seen on a per-Run stream; the cursor a reconnect resumes from. */
   readonly lastSeq: number;
   /** Whole seconds since the last frame, for the stale sentence. */
@@ -27,17 +29,45 @@ function parseEvent(data: string): LiveTimelineEvent | null {
     const value: unknown = JSON.parse(data);
     if (typeof value !== 'object' || value === null) return null;
     const event = value as Record<string, unknown>;
-    if (typeof event['runId'] !== 'string' || typeof event['seq'] !== 'number' || typeof event['eventType'] !== 'string') return null;
+    const nonblank = (field: unknown): field is string => typeof field === 'string' && field.trim().length > 0;
+    if (!nonblank(event['runId']) || typeof event['seq'] !== 'number'
+      || !Number.isSafeInteger(event['seq']) || event['seq'] < 1 || !nonblank(event['eventType'])
+      || !nonblank(event['occurredAt']) || !Number.isFinite(Date.parse(event['occurredAt']))
+      || !nonblank(event['outcome']) || !nonblank(event['source'])) return null;
     return {
-      runId: event['runId'],
-      seq: event['seq'],
-      eventType: event['eventType'],
-      occurredAt: typeof event['occurredAt'] === 'string' ? event['occurredAt'] : '',
-      outcome: typeof event['outcome'] === 'string' ? event['outcome'] : '',
-      source: typeof event['source'] === 'string' ? event['source'] : '',
+      runId: event['runId'], seq: event['seq'], eventType: event['eventType'],
+      occurredAt: event['occurredAt'], outcome: event['outcome'], source: event['source'],
     };
   } catch {
     return null;
+  }
+}
+
+interface StreamHealth {
+  lastMessageAt: number;
+  everConnected: boolean;
+  ended: boolean;
+  runEnded: boolean;
+}
+
+// Browser-document lifetime: React remounts and RSC refreshes are not stream signals.
+// Never write server-rendered subscriptions here: server modules are shared by users.
+// Only timestamps/health and the terminal latch are retained, not event payloads. Each mounted
+// consumer keeps its own replay cursor so another consumer cannot make it skip events.
+const browserHealth = new Map<string, StreamHealth>();
+
+function healthFor(url: string): StreamHealth {
+  const fresh = (): StreamHealth => ({ lastMessageAt: Date.now(), everConnected: false, ended: false, runEnded: false });
+  if (typeof window === 'undefined') return fresh();
+  let health = browserHealth.get(url);
+  if (!health) { health = fresh(); browserHealth.set(url, health); }
+  return { ...health };
+}
+
+function rememberHealth(url: string, health: StreamHealth): void {
+  if (typeof window !== 'undefined') {
+    health.runEnded ||= browserHealth.get(url)?.runEnded ?? false;
+    browserHealth.set(url, { ...health });
   }
 }
 
@@ -59,66 +89,70 @@ export function useLiveTimeline(
   cursor: number | null,
   onEvent: (event: LiveTimelineEvent) => void,
 ): LiveTimeline {
-  const [now, setNow] = useState(() => Date.now());
+  const [, setRevision] = useState(0);
+  const revision = useRef(0);
+  const now = Date.now();
   const lastSeqRef = useRef(cursor ?? 0);
-  const lastMessageAtRef = useRef(Date.now());
-  const everConnectedRef = useRef(false);
-  const endedRef = useRef(false);
+  const subscription = useRef({ url, health: healthFor(url) });
+  if (subscription.current.url !== url) {
+    subscription.current = { url, health: healthFor(url) };
+    lastSeqRef.current = cursor ?? 0;
+  }
+  const health = subscription.current.health;
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
 
   useEffect(() => {
     if (typeof EventSource === 'undefined') return undefined;
-    lastMessageAtRef.current = Date.now();
     const target = cursor === null ? url : `${url}?after=${lastSeqRef.current}`;
     const source = new EventSource(target);
     const touch = (): void => {
-      lastMessageAtRef.current = Date.now();
-      everConnectedRef.current = true;
-      endedRef.current = false;
-      setNow(Date.now());
+      health.lastMessageAt = Date.now();
+      health.everConnected = true;
+      health.ended = false;
+      rememberHealth(url, health);
+      setRevision(++revision.current);
     };
     const onTimeline = (message: MessageEvent<string>): void => {
       const event = parseEvent(message.data);
       if (event === null) return;
+      // The terminal latch belongs to the per-Run stream, never the global bell stream.
+      if (cursor !== null && isRunEndingEvent(event.eventType)) health.runEnded = true;
+      touch();
       if (cursor !== null) {
         // The one rule that makes a reconnect lossless AND duplicate-free, and it lives in
         // `live-status.ts` so the property is tested without a browser.
         if (!acceptsLiveSeq(lastSeqRef.current, event.seq)) return;
         lastSeqRef.current = event.seq;
       }
-      touch();
       onEventRef.current(event);
     };
     const onHeartbeat = (): void => touch();
-    const onOpen = (): void => touch();
     const onError = (): void => {
       // CLOSED means the browser will not retry (a 401, a 404, a wrong media type);
       // CONNECTING means it is retrying on its own and the silence clock decides.
-      if (source.readyState === EventSource.CLOSED) { endedRef.current = true; setNow(Date.now()); }
+      if (source.readyState === EventSource.CLOSED) { health.ended = true; rememberHealth(url, health); setRevision(++revision.current); }
     };
     source.addEventListener('timeline', onTimeline as EventListener);
     source.addEventListener('heartbeat', onHeartbeat);
-    source.addEventListener('open', onOpen);
     source.addEventListener('error', onError);
-    const clock = setInterval(() => setNow(Date.now()), 1_000);
+    const clock = setInterval(() => setRevision(++revision.current), 1_000);
     return () => {
       clearInterval(clock);
       source.removeEventListener('timeline', onTimeline as EventListener);
       source.removeEventListener('heartbeat', onHeartbeat);
-      source.removeEventListener('open', onOpen);
       source.removeEventListener('error', onError);
       source.close();
     };
-  }, [url, cursor]);
+  }, [url, cursor, health]);
 
   const status = liveStatus({
-    ended: endedRef.current,
-    lastMessageAt: lastMessageAtRef.current,
-    everConnected: everConnectedRef.current,
+    ended: health.ended,
+    lastMessageAt: health.lastMessageAt,
+    everConnected: health.everConnected,
     now,
   });
-  return { status, lastSeq: lastSeqRef.current, silence: silenceSeconds(lastMessageAtRef.current, now) };
+  return { status, runEnded: cursor !== null && health.runEnded, lastSeq: lastSeqRef.current, silence: silenceSeconds(health.lastMessageAt, now) };
 }
 
 /** Exported for the banner's own test: the threshold it must not restate. */
