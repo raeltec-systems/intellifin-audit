@@ -36,6 +36,36 @@ describe('the sentences the deployed acceptance looks for', () => {
     expect(HARNESS).not.toContain("Couldn't load this page");
   });
 
+  it('counts an error status as a failed link, whatever the page says', () => {
+    // A 404 or a 403 answered with a page that happens to carry a heading is still a link
+    // that did not open.
+    expect(HARNESS).toContain('const status = response === null ? null : response.status();');
+    expect(HARNESS).toContain('status === null || status >= 400');
+    expect(HARNESS).toContain('report.evidenceLinks.push({ href, status, opened });');
+  });
+
+  it('uses the not-found page\'s own heading for a missing address', () => {
+    // A page that calls `notFound()` after it has started streaming answers 200, so the
+    // status alone does not catch it; the heading does.
+    const notFound = readFileSync('apps/web/app/not-found.tsx', 'utf8');
+    expect(notFound).toContain('<h1>Page not found</h1>');
+    expect(HARNESS).toContain("headings.includes('Page not found')");
+  });
+
+  it('uses the refused Run page\'s own shape for a denial', () => {
+    // `RunDenied` is what every Run page renders to a role without the action: the bare
+    // heading "Run" over a destructive banner, and no Run fact at all.
+    const detail = readFileSync('apps/web/src/runs/detail.tsx', 'utf8');
+    const denied = /export function RunDenied[\s\S]*?\n}\n/.exec(detail)?.[0] ?? '';
+    expect(denied).toContain('<h1>Run</h1>');
+    expect(denied).toContain('<Banner tone="danger" title={reason} />');
+    const banner = readFileSync('apps/web/src/design/Banner.tsx', 'utf8');
+    expect(banner).toContain('ls-banner--${tone}');
+    const inspector = readFileSync('apps/web/app/runs/[id]/evidence/[evidenceId]/page.tsx', 'utf8');
+    expect(inspector).toContain('return <RunDenied reason={access.reason} />;');
+    expect(HARNESS).toContain("headings.includes('Run') && await auditor.locator('.ls-banner--danger').count() > 0");
+  });
+
   it('reads the predetermined truth off disk rather than importing it', () => {
     // AD-12: nothing that executes a Run may import an expectation file, and the harness
     // drives a real Run. It reads the oracle with `readFileSync`, never an import.

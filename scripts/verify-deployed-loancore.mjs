@@ -525,18 +525,27 @@ try {
     .evaluateAll(nodes => [...new Set(nodes.map(node => node.getAttribute('href')))]);
   report.evidenceLinks = [];
   for (const href of groundingLinks.slice(0, 6)) {
-    await auditor.goto(BASE + href, { waitUntil: 'domcontentloaded' });
+    const response = await auditor.goto(BASE + href, { waitUntil: 'domcontentloaded' });
+    const status = response === null ? null : response.status();
     const body = await auditor.locator('body').innerText();
-    // The inspector states EVERY read failure under one banner title, and the route
-    // boundary heads every failure with one heading (its banner sentence depends on the
-    // path, and both start with that heading; Story 10.8). Both are exact strings taken
-    // from the pages themselves, and `acceptance-sentences.test.ts` reads them back: a
-    // loose phrase nobody renders would make this check unable to fail, which is the
+    const headings = (await auditor.getByRole('heading', { level: 1 }).allInnerTexts()).map(text => text.trim());
+    // A link fails if the server said so, or if the page it renders says so. The inspector
+    // states EVERY read failure under one banner title; the route boundary heads every
+    // failure with one heading (its banner sentence depends on the path, and both start
+    // with that heading; Story 10.8); a missing address renders the not-found heading, which
+    // is not always a 404 once a page has started streaming; and a refused Run page
+    // (`RunDenied`) is the bare heading "Run" over a destructive banner. Every one is an
+    // exact string taken from the page itself, and `acceptance-sentences.test.ts` reads them
+    // back: a loose phrase nobody renders would make this check unable to fail, which is the
     // defect this whole pass is about.
-    const failed = body.includes('Snapshot cell unavailable')
-      || body.includes('This page could not be loaded');
-    const opened = !failed && await auditor.getByRole('heading', { level: 1 }).count() > 0;
-    report.evidenceLinks.push({ href, opened });
+    const denied = headings.includes('Run') && await auditor.locator('.ls-banner--danger').count() > 0;
+    const failed = status === null || status >= 400
+      || body.includes('Snapshot cell unavailable')
+      || body.includes('This page could not be loaded')
+      || headings.includes('Page not found')
+      || denied;
+    const opened = !failed && headings.length > 0;
+    report.evidenceLinks.push({ href, status, opened });
   }
   report.checks.evidenceLinksOpen = report.evidenceLinks.length > 0 && report.evidenceLinks.every(link => link.opened);
   await shot(auditor, '06-evidence-opened');
