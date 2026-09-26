@@ -38,8 +38,13 @@
 - **A throttle may delay the final re-read; it may never drop it.** `BellLive` was
   leading-edge only, so a second qualifying event inside one second of the last re-read was
   dropped and the bell and the Overview ended a burst one change short. It composes
-  `useThrottledRefresh` (trailing) now, the one throttle Run Detail, the Runs list and Live
-  View already use. The Overview opens no stream of its own; the bell's re-read is its refresh.
+  `useThrottledRefresh` (trailing) now, the throttle Run Detail, the Runs list and Live View
+  already use. That is one rule, not one budget: the bell and a page's own banner are two
+  instances of it, each with its own one-second window. The Overview opens no stream of its
+  own, so the bell's re-read is its only live refresh, and it fires only on the bell's own
+  events (an Escalation raised, answered or timed out, a Run flagged, a Run ending). Recent
+  Runs, the versions awaiting approval and the Drafts stay as read until the reader navigates
+  or the next of those events arrives.
 - **A browser burst test freezes the page's clock** (`page.clock.setFixedTime`). With a real
   clock a slow `next dev` round trip stretches the gap past the one-second window, and the
   leading-edge throttle passes by accident; timers still run, so a trailing re-read still

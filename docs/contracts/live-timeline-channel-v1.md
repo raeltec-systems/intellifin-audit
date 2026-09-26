@@ -8,9 +8,17 @@ notification badge. Version 1; a change to a field's meaning is a new version.
 
 The Run's Timeline events are its audit-chain events: `audit_events` rows with
 `aggregate_id = <run id>`, `sequence` allocated under the `audit_event_heads` row lock,
-gapless and commit-ordered across writers. Every append issues
-`NOTIFY run_timeline, '{"runId":"<run id>","sequence":<n>}'` in the appending transaction.
-The notification is a wake-up only: what is streamed is always read from the table.
+gapless and commit-ordered across writers. Every append to a Run's chain issues
+`NOTIFY run_timeline, '{"runId":"<run id>","sequence":<n>}'` in the appending transaction;
+an append to any other chain (a Procedure's, the platform chain) issues none. The
+notification is a wake-up only: what is streamed is always read from the table.
+
+The payload is spelled exactly that way everywhere, keys in that order. A transaction may
+notify twice for one event (the append, and the writer's own port), and PostgreSQL delivers
+the two as ONE notification only because their bytes are identical: it folds identical
+(channel, payload) pairs of one transaction. A source scan
+(`packages/infrastructure/src/runs/run-timeline-channel.test.ts`) requires that spelling at
+every notify site.
 
 ## Per-Run stream
 
@@ -46,12 +54,26 @@ The notification is a wake-up only: what is streamed is always read from the tab
 `GET /api/runs/events`, same authorization, no cursor. For every `run_timeline`
 notification it reads the named row and forwards the same envelope as
 `event: timeline` / `data: {"runId","seq","eventType","occurredAt","outcome","source"}`,
-with the same heartbeat and lifetime frames. It exists so a list and a badge can refresh
-(the badge only on the events that can change what it counts: an Escalation raised,
-answered or timed out, a Run flagged, a Run ending); it makes no replay guarantee — a
-refresh reads the whole list — which is why it carries no `id`.
+with the same heartbeat and lifetime frames. It forwards one frame per notification, so it
+forwards an event once because every notifier of that event spells the payload the same
+way (see Source). It exists so a list and a badge can refresh (the badge only on the events
+`changesOpenWaits` in `apps/web/src/shell/BellLive.tsx` names); it makes no replay
+guarantee — a refresh reads the whole list — which is why it carries no `id`.
+
+## When a surface re-reads
+
+The streams carry every append. The Run surfaces (Run Detail, the Runs list, Live View,
+the Auditor Workspace) re-read on every event except three families that no surface
+renders: `evidence-access.*` (a read grant decided, a read recorded), `notification.*` (a
+delivery recorded) and `security.denied` (a person refused an action). The reason is
+evidence access: every read of a frame or a snapshot cell appends its grant decision and its
+read record, both `evidence-access.*`, to the Run's own chain, so a surface that re-read on
+them would re-read itself, about once a second, for as long as it is open on an active Run.
+The rule is `refreshesSurface` in `apps/web/src/runs/refresh-events.ts`. It is an exclusion
+list, so a family added later re-reads by default. The badge re-reads only on the events
+`changesOpenWaits` names.
 
 ## What this contract does not decide
 
-Which surfaces subscribe (UX-DR35 decides), what a surface re-reads, and how Live View
-renders a frame (Stories 5.2 and 5.3).
+Which surfaces subscribe (UX-DR35 decides), what a surface reads when it re-reads, and how
+Live View renders a frame (Stories 5.2 and 5.3).
