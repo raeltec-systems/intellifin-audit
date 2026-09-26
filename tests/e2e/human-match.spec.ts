@@ -1,5 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import {
   answerEscalation,
@@ -10,10 +12,19 @@ import {
   registerObservations,
 } from '@intellifin/application';
 import {
+  bindingDigest,
+  bindingDigestEnvelope,
+  initialDraftEvidence,
+  initialDraftPopulation,
+  initialDraftSections,
   observationDigest,
   observationIdFor,
   POPULATION_CHECK_NAMES,
+  registrationDigest,
+  snapshotFromRegistration,
+  type FrozenPlanInputs,
   type ObservationRecord,
+  type PermittedReadAction,
 } from '@intellifin/domain';
 import {
   createDb,
@@ -30,12 +41,21 @@ import {
 
 import { MATCH_DECISION_WORDS, choseCandidateWords } from '../../apps/web/src/runs/match-words';
 import { activeRunVersion } from '../fixtures/active-run-version';
+import { canonicalLoanCoreCompliance } from '../fixtures/canonical-loancore-compliance';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
+import { LOANCORE_CREDENTIAL } from './credentials';
+import { NORTHSTAR_BASE_URL } from './northstar';
 
 /**
  * Story 10.6 (legacy 4.7): a record a PERSON matched is flagged, with the decision that
  * matched it, on the Result, the record review queue and inspector and the Exceptions list;
  * a platform match shows no flag.
+ *
+ * The Run is a P-1 Run, because only P-1 matches a record by a person's choice: a name
+ * search that finds two accounts raises a choose-candidate question, and the P-4 page path
+ * refuses such a decision. The target is LoanCore from the Northstar catalogue, each
+ * population record has its own Work Item as the agent path writes it, and the leavers
+ * binding masks `full_name`, as the synthetic export declares.
  *
  * The decision is made by the REAL commands — `raiseEscalation` and `answerEscalation` —
  * and the human-matched Observation is registered by the REAL `registerObservations` in the
@@ -52,17 +72,80 @@ const ids = new CryptoUuidV7Generator();
 const procedureId = ids.next();
 const versionId = ids.next();
 const runId = ids.next();
-const targetRegistrationId = '018f0000-0000-7000-8000-0000000000a1';
 const runAt = '2026-09-10T09:00:00.000Z';
 const leaseUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-const KEYS = { linked: 'parameter-0001', legacy: 'parameter-0002', platform: 'parameter-0003' } as const;
+const KEYS = { linked: 'E-000101', legacy: 'E-000102', platform: 'E-000103' } as const;
 const CHOSEN_LABEL = 'Synthetic candidate B';
+
+/** LoanCore as the Northstar catalogue registers it: the one P-1 agent-driven target. */
+const loancore = (JSON.parse(readFileSync(
+  fileURLToPath(new URL('../../fixtures/northstar/datasets/systems.json', import.meta.url)),
+  'utf8',
+)) as {
+  readonly target_systems: readonly {
+    readonly id: string;
+    readonly display_name: string;
+    readonly origin_path: string;
+    readonly authentication_destination_path?: string;
+    readonly permitted_actions: readonly PermittedReadAction[];
+    readonly attribute_label_patterns: readonly string[];
+    readonly secondary_key: string;
+  }[];
+}).target_systems.find((entry) => entry.id === 'loancore');
+if (loancore?.authentication_destination_path === undefined) {
+  throw new Error('The Northstar catalogue has no complete LoanCore target.');
+}
+const LOANCORE_FIELDS = {
+  registrationId: ids.next(),
+  displayName: loancore.display_name,
+  kind: 'web' as const,
+  allowedOrigins: [`${NORTHSTAR_BASE_URL}${loancore.origin_path}`],
+  applicationIdentity: '',
+  credentialRef: LOANCORE_CREDENTIAL,
+  permittedActions: loancore.permitted_actions,
+  attributeLabelPatterns: loancore.attribute_label_patterns,
+  secondaryKey: loancore.secondary_key,
+  authenticationDestination: `${NORTHSTAR_BASE_URL}${loancore.authentication_destination_path}`,
+};
+const LOANCORE = { ...LOANCORE_FIELDS, digest: registrationDigest(LOANCORE_FIELDS) };
+const targetRegistrationId = LOANCORE.registrationId;
+
+/** The leavers export's own columns, and its own mask on `full_name`. */
+const LEAVERS_SCHEMA = ['employee_id', 'full_name', 'department', 'employment_status', 'termination_effective_date', 'manager'];
+const LEAVERS = {
+  kind: 'versioned-file' as const,
+  location: 'https://synthetic.invalid/leavers-export.csv',
+  declaredSchema: LEAVERS_SCHEMA,
+  sensitiveFields: ['full_name'],
+  declaredCountMechanism: 'cover-sheet' as const,
+};
+
+function p1Inputs(): FrozenPlanInputs {
+  return {
+    ...initialDraftPopulation('P-1'),
+    ...canonicalLoanCoreCompliance(),
+    ...initialDraftEvidence('P-1'),
+    templateId: 'P-1',
+    controlName: `Human match ${procedureId}`,
+    sections: initialDraftSections('P-1'),
+    scope: 'Every terminated employee in the period.',
+    period: { from: '2026-08-01', to: '2026-08-31' },
+    sourceSnapshot: { bindingId: ids.next(), displayName: 'Leavers export', digest: bindingDigest(LEAVERS), contract: bindingDigestEnvelope(LEAVERS) },
+    schedule: { frequency: 'once', startTime: '00:00', periodDerivationRule: 'explicit-period' },
+    targets: [snapshotFromRegistration(LOANCORE)],
+    instructions: [{ registrationId: LOANCORE.registrationId, text: 'Find each leaver and read the account status and roles.' }],
+  };
+}
 
 let sql: Sql;
 let auditorName = '';
 let waitId = '';
 
 async function scan(page: Page): Promise<void> {
+  // The leavers binding masks `full_name`, so no surface that carries a human match may
+  // show one: the decision note names the person who chose and the candidate the agent
+  // described, never the population's masked value.
+  for (const index of [1, 2, 3]) await expect(page.locator('main')).not.toContainText(`Synthetic Leaver ${index}`);
   const result = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
   const violations = result.violations.map((violation) => ({
     id: violation.id, impact: violation.impact, help: violation.help,
@@ -86,7 +169,7 @@ test.beforeAll(async () => {
   if (!auditor) throw new Error('Seed the synthetic Auditor before the human-match journey.');
   auditorName = auditor.name;
 
-  const version = activeRunVersion(procedureId, versionId, auditor.id);
+  const version = activeRunVersion(procedureId, versionId, auditor.id, p1Inputs());
   const plan = version.compiledPlan;
   if (plan === null) throw new Error('The human-match fixture could not derive its frozen plan.');
   const inspectStep = plan.targetSystems.find((entry) => entry.registrationId === targetRegistrationId)
@@ -112,8 +195,12 @@ test.beforeAll(async () => {
     await tx`INSERT INTO population_snapshot(run_id,included,excluded,indeterminate,rows_digest,checks,generated_at,declared_count,retrieved_count)
       VALUES(${runId},3,0,0,${'a'.repeat(64)},${json(checks)}::jsonb,'2026-09-01T00:00:00.000Z',3,3)`;
     for (const [index, key] of [KEYS.linked, KEYS.legacy, KEYS.platform].entries()) {
+      const values = {
+        employee_id: key, full_name: `Synthetic Leaver ${index + 1}`, department: 'Servicing',
+        employment_status: 'Terminated', termination_effective_date: '2026-08-04', manager: 'Synthetic Manager',
+      };
       await tx`INSERT INTO population_row(run_id,ordinal,values,disposition,reasons)
-        VALUES(${runId},${index + 1},${json({ parameter: key })}::jsonb,'included','[]'::jsonb)`;
+        VALUES(${runId},${index + 1},${json(values)}::jsonb,'included','[]'::jsonb)`;
     }
   });
 
@@ -139,62 +226,70 @@ test.beforeAll(async () => {
   );
   if (!answer.ok) throw new Error(`human-match fixture could not answer its question: ${answer.reason}`);
 
-  // The page the agent read: one registered Structural Snapshot, and ONE page Work Item as
-  // P-4 writes it (no subject key; every Observation carries its source key).
-  const evidenceId = ids.next();
-  const workItemId = ids.next();
-  const stepExecutionId = ids.next();
+  // What the agent path writes for P-1: ONE Work Item per population record, subject key
+  // the record's key, each inspected in its own Step Execution on its own captured page.
   const at = new Date().toISOString();
-  await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required,
-      captured_at,capture_method,capture_time_source,role)
-    VALUES(${evidenceId},${runId},'structural-snapshot',${targetRegistrationId},${`human-match/${runId}/snapshot`},
-      'application/vnd.intellifin.web-tree+json',${'b'.repeat(64)},128,'REGISTERED',false,${runAt},'agent','registration','evidence')`;
-  const record = (key: string, index: number, matchOrigin: ObservationRecord['matchOrigin']): ObservationRecord => ({
+  const units = new Map<string, { workItemId: string; stepExecutionId: string; evidenceId: string }>();
+  for (const [index, key] of [KEYS.linked, KEYS.legacy, KEYS.platform].entries()) {
+    const unit = { workItemId: ids.next(), stepExecutionId: ids.next(), evidenceId: ids.next() };
+    units.set(key, unit);
+    await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required,
+        captured_at,capture_method,capture_time_source,role)
+      VALUES(${unit.evidenceId},${runId},'structural-snapshot',${targetRegistrationId},${`human-match/${runId}/snapshot-${index + 1}`},
+        'application/vnd.intellifin.web-tree+json',${String(index + 1).repeat(64)},128,'REGISTERED',false,${runAt},'agent','registration','evidence')`;
+    await db.transaction((tx) => withRunExecutionContext(tx, runId, async (context) => {
+      await context.saveWorkItem({ workItemId: unit.workItemId, subjectKey: key, stepId: inspectStep.id, ordinal: index + 1,
+        registrationId: targetRegistrationId, displayName: LOANCORE.displayName, state: 'OBSERVED', attempts: 1, cycles: 0,
+        diagnostic: null, evidenceId: unit.evidenceId, observations: 1 });
+      await context.saveStepExecution({ stepExecutionId: unit.stepExecutionId, planStepId: inspectStep.id, workItemId: unit.workItemId,
+        action: 'inspect-record', state: 'SUCCEEDED', attempt: 1, startedAt: at, completedAt: at, diagnostic: null });
+    }));
+  }
+  const unitOf = (key: string) => units.get(key)!;
+  const record = (key: string, matchOrigin: ObservationRecord['matchOrigin']): ObservationRecord => ({
     schemaVersion: 1,
-    observationId: observationIdFor(workItemId, key),
-    workItemId,
+    observationId: observationIdFor(unitOf(key).workItemId, key),
+    workItemId: unitOf(key).workItemId,
     populationRecordKey: key,
     targetSystem: targetRegistrationId,
     found: 'true',
     observedAt: at,
-    stepExecutionId,
+    stepExecutionId: unitOf(key).stepExecutionId,
     captureMethod: 'agent',
     matchOrigin,
     identity: {
-      name: 'parameter', originalValue: key, normalizedValue: key, corroboration: null,
-      grounding: { evidenceId, locator: `$.nodes[${index}].value`, label: 'Parameter', extractedText: key },
+      name: 'employee_id', originalValue: key, normalizedValue: key, corroboration: null,
+      grounding: { evidenceId: unitOf(key).evidenceId, locator: '$.nodes[0].value', label: 'Employee ID', extractedText: key },
     },
     attributes: [],
-    evidenceIds: [evidenceId],
+    evidenceIds: [unitOf(key).evidenceId],
   });
-  const linked = record(KEYS.linked, 0, 'human-matched');
-  const platform = record(KEYS.platform, 2, 'platform');
-  await db.transaction((tx) => withRunExecutionContext(tx, runId, async (context) => {
-    await context.saveWorkItem({ workItemId, subjectKey: null, stepId: inspectStep.id, ordinal: 1, registrationId: targetRegistrationId,
-      displayName: 'ProdConsole', state: 'OBSERVED', attempts: 1, cycles: 0, diagnostic: null, evidenceId, observations: 3 });
-    await context.saveStepExecution({ stepExecutionId, planStepId: inspectStep.id, workItemId, action: 'inspect-record',
-      state: 'SUCCEEDED', attempt: 1, startedAt: at, completedAt: at, diagnostic: null });
-    await registerObservations(context, {
-      run: context.run!, workItemId, stepExecutionId, targetSystem: targetRegistrationId, templateId: 'P-4',
-      runStartedAt: runAt, registeredAt: at, evidenceRequirements: [],
-      items: [
-        { record: linked, observedAtSource: at, absence: null, expectedQueryKeys: [{ key: 'parameter', value: KEYS.linked }], matchDecision: { waitId } },
-        { record: platform, observedAtSource: at, absence: null, expectedQueryKeys: [{ key: 'parameter', value: KEYS.platform }] },
-      ],
+  const linked = record(KEYS.linked, 'human-matched');
+  const platform = record(KEYS.platform, 'platform');
+  // Each record's batch, registered by the real command in the Run's own transaction.
+  for (const [observation, decision] of [[linked, { waitId }], [platform, undefined]] as const) {
+    await db.transaction((tx) => withRunExecutionContext(tx, runId, (context) => registerObservations(context, {
+      run: context.run!, workItemId: observation.workItemId, stepExecutionId: observation.stepExecutionId,
+      targetSystem: targetRegistrationId, templateId: 'P-1', runStartedAt: runAt, registeredAt: at, evidenceRequirements: [],
+      items: [{
+        record: observation, observedAtSource: at, absence: null,
+        expectedQueryKeys: [{ key: 'employee_id', value: observation.populationRecordKey }],
+        ...(decision === undefined ? {} : { matchDecision: decision }),
+      }],
     }, {
       corroboration: NO_CORROBORATION,
       evaluation: NO_EVALUATION,
       exceptions: { keyId: 'human-match-fixture', fingerprint: () => { throw new Error('The evaluator is not exercised here.'); } },
-    });
-  }));
+    })));
+  }
 
   // A human-matched Observation an earlier build registered: no link in any event.
-  const legacy = record(KEYS.legacy, 1, 'human-matched');
+  const legacy = record(KEYS.legacy, 'human-matched');
   await sql`INSERT INTO run_observation(observation_id,run_id,work_item_id,schema_version,population_record_key,target_system,
       found,observed_at,step_execution_id,capture_method,match_origin,identity,attributes,evidence_ids,digest,coverage,
       observed_at_source,corroboration)
-    VALUES(${legacy.observationId},${runId},${workItemId},1,${KEYS.legacy},${targetRegistrationId},'true',${at},${stepExecutionId},
-      'agent','human-matched',${json(legacy.identity)}::jsonb,'[]'::jsonb,${json([evidenceId])}::jsonb,${observationDigest(legacy)},
+    VALUES(${legacy.observationId},${runId},${legacy.workItemId},1,${KEYS.legacy},${targetRegistrationId},'true',${at},${legacy.stepExecutionId},
+      'agent','human-matched',${json(legacy.identity)}::jsonb,'[]'::jsonb,${json(legacy.evidenceIds)}::jsonb,${observationDigest(legacy)},
       'COVERED',${at},'UNJUDGED')`;
 
   // The rule evaluations the deterministic evaluator would write: the linked record fails
@@ -203,17 +298,17 @@ test.beforeAll(async () => {
     SELECT condition."conditionId" AS condition_id FROM procedure_version,
       jsonb_to_recordset(compiled_plan->'inputs'->'complianceConditions') AS condition("conditionId" text)
     WHERE version_id=${versionId}`;
-  for (const [observationId, value] of [[linked.observationId, 'EXCEPTION'], [legacy.observationId, 'COMPLIANT'], [platform.observationId, 'COMPLIANT']] as const) {
+  for (const [observation, value] of [[linked, 'EXCEPTION'], [legacy, 'COMPLIANT'], [platform, 'COMPLIANT']] as const) {
     for (const condition of conditions) {
       await sql`INSERT INTO run_observation_evaluation(observation_id,coverage,corroboration,run_id,condition_id,origin,value,
           confirmation,confidence,rationale,diagnostic,evidence_ids)
-        VALUES(${observationId},'COVERED','UNJUDGED',${runId},${condition.condition_id},'RULE',${value},NULL,NULL,NULL,NULL,
-          ${json([evidenceId])}::jsonb)`;
+        VALUES(${observation.observationId},'COVERED','UNJUDGED',${runId},${condition.condition_id},'RULE',${value},NULL,NULL,NULL,NULL,
+          ${json(observation.evidenceIds)}::jsonb)`;
     }
   }
   await sql`INSERT INTO run_exception(exception_id,run_id,observation_id,work_item_id,target_system,population_record_key,
       condition_ids,diagnostics,fingerprint,fingerprint_key_id,raised_at)
-    VALUES(${ids.next()},${runId},${linked.observationId},${workItemId},${targetRegistrationId},${KEYS.linked},
+    VALUES(${ids.next()},${runId},${linked.observationId},${linked.workItemId},${targetRegistrationId},${KEYS.linked},
       ${json(conditions.map((condition) => condition.condition_id))}::jsonb,'[]'::jsonb,${'e'.repeat(64)},'human-match-fixture',${at})`;
 
   // The Result, sealed by the real terminal transition over what the Run recorded.

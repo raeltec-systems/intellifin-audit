@@ -36,6 +36,13 @@ identity and says what an older record does not hold. Contracts: `run-pause-v1.m
   restarted it as attempt 2 — a shape no Run produces — and passed. `pause-resume.spec.ts`
   now holds the first pause before the sign-in and the second mid-attempt at the page's
   inspection (a P-4 Work Item, subject key NULL).
+- **A human-selected match exists only in a P-1 Run.** The P-4 page path refuses a
+  choose-candidate decision (`human-decision-refused`); only P-1's name search offers two
+  accounts. The first `human-match.spec.ts` fixture recorded a human match in a P-4 Run and
+  passed. It is a P-1 Run now — LoanCore from the catalogue, one Work Item per record, the
+  leavers binding's own mask on `full_name` — and it asserts no surface beside the decision
+  note shows a masked name (proven by removing the mask: the Exceptions list and the record
+  review then fail).
 - **A selection a read cannot answer whole is refused, never cut.**
   `MATCH_DECISION_SELECTOR_LIMIT` is sized from the callers' own page limits; a dropped entry
   would render a human match as a platform one.
