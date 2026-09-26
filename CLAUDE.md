@@ -72,6 +72,17 @@
   server never rendered; React reports the hydration mismatch and `next dev`'s overlay POSTs
   `/__nextjs_original-stack-frames` to symbolicate it. The full browser suite failed
   `flag-run.spec.ts:185` on exactly that POST, counted as a resubmission (`1ee6a204`).
+- **Screenshots read as a reader would found four things no test could.** A withdrawn
+  control's reason was only its visually hidden description, so a `lost` Live View showed
+  greyed Pause and Cancel and said why nowhere unless the flag disclosure was opened:
+  `LiveGateNote` now states the stream's reason in the header of Live View and the Workspace.
+  Every link drawn as a button was underlined (`.ls-button` sets `text-decoration: none`).
+  The flag opener had no size class and sat shorter than its neighbours. And Run Detail's
+  toolbar laid Pause out in a centred column: a rule that sets `display: flex` on an
+  `.ls-stack` keeps the stack's `flex-direction: column` unless it says `row`. Two harness
+  rules came with them: `toBeVisible` passes a 1px clipped element, so "a sighted reader sees
+  it" is asserted as a painted size outside `.ls-visually-hidden`; and a second `goBack`
+  waits for the first one's address.
 - `[NAMED, NOT FIXED]` **The same class, on surfaces this story does not own.** The
   Administration controls' client catch branches (`RoleControl`, `UserForm`, `BindingForm`,
   `RegistrationForm`) and the administration actions' `UNAVAILABLE` still say "Nothing was

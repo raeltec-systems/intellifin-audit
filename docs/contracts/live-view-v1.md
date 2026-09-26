@@ -205,6 +205,14 @@ control is a person not being invited to do something that would be refused.
 the reason stays reachable by keyboard; activation is refused in the handler, which is what
 `disabled` was doing that mattered. There is no way to disable one silently.
 
+**And the reason is visible text, not only a description (Story 10.8).** Each control's copy
+of the reason is its visually hidden accessible description, so while the stream's reason
+(`lost` or `ended`) closes the gate, `LiveGateNote` states it once in the page header, under
+the meta line, on Live View and on the Auditor Workspace; it renders nothing while the
+controls may be used. The narrow viewport's reason is already the stage's own sentence, and
+`runEnded` lasts only until the re-read removes the controls, so neither is repeated there.
+Run Detail has no gate, so it has no note.
+
 ### Only the stream brings a lost page back (Story 10.8)
 
 `LiveClock` in `live-status.ts` is what a page has heard from one stream: the instant of the

@@ -250,6 +250,14 @@ export const LIVE_GATE_REASONS = {
   ended: 'Controls are unavailable because this page is no longer updating on its own. Refresh to continue.',
 } as const;
 
+/**
+ * The id of the one VISIBLE statement of the gate's reason (`LiveGateNote`, Story 10.8
+ * screenshot review). Here rather than beside the component so a browser spec can find that
+ * node without importing React: each withdrawn control also carries the same sentence as a
+ * visually hidden description, so a text locator would match those too.
+ */
+export const LIVE_GATE_NOTE_ID = 'live-gate-note';
+
 export type LiveGateReason = keyof typeof LIVE_GATE_REASONS;
 
 /**

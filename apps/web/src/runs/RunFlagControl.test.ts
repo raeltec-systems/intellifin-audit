@@ -164,7 +164,9 @@ describe('the Flag to Audit Manager control', () => {
   it('opens from a native disclosure whose opener is not the submit button', () => {
     const html = render({ flaggable: true, flags: [] });
     expect(html).toMatch(/^<details id="run-flag" class="ls-flag-menu">/);
-    expect(html).toContain(`<summary class="ls-button ls-button--secondary">${FLAG_MENU_LABEL}</summary>`);
+    // `--sm`, the size Button gives Pause and Cancel on the same row (Story 10.8 screenshot
+    // review): an opener with no size took its line height and sat shorter than both.
+    expect(html).toContain(`<summary class="ls-button ls-button--secondary ls-button--sm">${FLAG_MENU_LABEL}</summary>`);
     expect(FLAG_MENU_LABEL).not.toBe(FLAG_COPY.submit);
     expect(FLAG_COPY.submit.includes(FLAG_MENU_LABEL)).toBe(false);
   });

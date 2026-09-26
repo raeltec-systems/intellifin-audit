@@ -15,7 +15,7 @@ import {
 } from '@intellifin/infrastructure';
 
 import { FLAG_COPY } from '../../apps/web/src/design/copy';
-import { LIVE_GATE_REASONS, LIVE_LOST_MS, LIVE_SENTENCES, LIVE_WORDS } from '../../apps/web/src/runs/live-status';
+import { LIVE_GATE_NOTE_ID, LIVE_GATE_REASONS, LIVE_LOST_MS, LIVE_SENTENCES, LIVE_WORDS } from '../../apps/web/src/runs/live-status';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 
@@ -128,7 +128,7 @@ async function appendProgress(runId: string): Promise<void> {
  * and then a text can report a state the page was never in).
  */
 async function liveFacts(page: Page): Promise<Record<string, unknown>> {
-  return page.evaluate((reason) => {
+  return page.evaluate(({ reason, noteId }) => {
     const banner = document.querySelector('[data-live-status]');
     const button = (name: string): Element | null =>
       [...document.querySelectorAll('button')].find((candidate) => candidate.textContent?.trim() === name) ?? null;
@@ -137,6 +137,15 @@ async function liveFacts(page: Page): Promise<Record<string, unknown>> {
       const ids = button(name)?.getAttribute('aria-describedby')?.split(/\s+/).filter(Boolean) ?? [];
       return ids.length === 0 ? null : ids.map((id) => document.getElementById(id)?.textContent?.trim() ?? '').join(' ');
     };
+    // What a SIGHTED reader can see: laid out and painted, and not the visually hidden
+    // description a screen reader gets. `toBeVisible` passes a 1px clipped element.
+    const painted = (element: Element | null): boolean => {
+      if (element === null || element.closest('.ls-visually-hidden') !== null) return false;
+      const box = element.getBoundingClientRect();
+      return element.checkVisibility() && box.width > 1 && box.height > 1;
+    };
+    const note = document.getElementById(noteId);
+    const flagReason = document.getElementById('run-flag-note-withdrawn');
     return {
       status: banner?.getAttribute('data-live-status') ?? null,
       // The WORD is what the polite region announces; the sentence beside it is not.
@@ -149,17 +158,18 @@ async function liveFacts(page: Page): Promise<Record<string, unknown>> {
       // The flag form sits in a disclosure in the header (UX-48); its submit is in the DOM
       // whether or not the disclosure is open.
       flag: document.querySelector('#run-flag button[type="submit"]')?.getAttribute('aria-disabled') ?? null,
-      // The reason a SIGHTED reader can see: an element whose own text is the reason, laid
-      // out and painted, and not the visually hidden description a screen reader gets.
+      // The header's own statement of why its controls are withdrawn (Story 10.8 screenshot
+      // review), seen with the flag disclosure closed; and the caption inside the disclosure,
+      // which says why its note and submit are withdrawn. Each must be painted, not only there.
+      note: note?.textContent ?? null,
+      noteShown: painted(note),
+      flagReasonShown: painted(flagReason) && flagReason?.textContent === reason,
+      // Anywhere on the page, so the recovery can say the reason is gone from every place.
       // `textContent` of the whole page would count hidden text too.
-      reasonShown: [...document.querySelectorAll('body *')].some((element) => {
-        if (element.children.length > 0 || (element.textContent ?? '').trim() !== reason) return false;
-        if (element.closest('.ls-visually-hidden') !== null) return false;
-        const box = element.getBoundingClientRect();
-        return element.checkVisibility() && box.width > 1 && box.height > 1;
-      }),
+      reasonShown: [...document.querySelectorAll('body *')].some((element) =>
+        element.children.length === 0 && (element.textContent ?? '').trim() === reason && painted(element)),
     };
-  }, LIVE_GATE_REASONS.lost);
+  }, { reason: LIVE_GATE_REASONS.lost, noteId: LIVE_GATE_NOTE_ID });
 }
 
 /**
@@ -185,6 +195,10 @@ const LOST_LIVE_VIEW = {
   pauseReason: LIVE_GATE_REASONS.lost,
   cancelReason: LIVE_GATE_REASONS.lost,
   flag: 'true',
+  note: LIVE_GATE_REASONS.lost,
+  noteShown: true,
+  // Every caller has opened the flag disclosure first, where this caption is.
+  flagReasonShown: true,
   reasonShown: true,
 } as const;
 
@@ -223,6 +237,13 @@ test.describe('Live View when the stream drops', () => {
     await expect(page.locator('[data-live-status]'))
       .toHaveAttribute('data-live-status', 'lost', { timeout: LIVE_LOST_MS + 30_000 });
     await expect(page.getByText(LIVE_SENTENCES.lost)).toBeVisible();
+    // Said where a sighted reader looks, before anything is opened: the header states why
+    // its controls are withdrawn, rather than leaving greyed buttons whose reason only a
+    // screen reader or the closed flag disclosure could give.
+    const note = page.locator(`#${LIVE_GATE_NOTE_ID}`);
+    await expect(note).toBeVisible();
+    await expect(note).toHaveText(LIVE_GATE_REASONS.lost);
+    await expect(page.locator('#run-flag')).toHaveJSProperty('open', false);
 
     // Every live control, disabled and saying why. `aria-disabled`, never `disabled`, so
     // the reason stays reachable by keyboard.
@@ -409,10 +430,14 @@ test.describe('Live View when the stream drops', () => {
     await expect(banner.locator('[aria-hidden="true"]')).toHaveText(LIVE_SENTENCES.lost);
     await expect(banner.locator('[aria-live]')).toHaveText(LIVE_WORDS.lost);
 
+    // Each step back waits for its OWN address before the next: a second `goBack` issued
+    // while the first soft navigation is still committing lands somewhere else.
     await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/runs/${runId}$`));
     await expect(page.getByRole('link', { name: 'Execution Timeline', exact: true })).toBeVisible();
     await expect(banner).toHaveAttribute('data-live-status', 'lost', { timeout: 5_000 });
     await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/runs/${runId}/live$`));
     await expect(page.getByRole('heading', { name: /^Live View · / })).toBeVisible();
     await openFlagPanel(page);
     await expectThroughout(page, LOST_LIVE_VIEW);
@@ -427,7 +452,8 @@ test.describe('Live View when the stream drops', () => {
     }
     // Every control back, and the reason gone with the state it described.
     expect(await liveFacts(page)).toMatchObject({
-      status: 'live', pause: null, cancel: null, flag: null, pauseReason: null, cancelReason: null, reasonShown: false,
+      status: 'live', pause: null, cancel: null, flag: null, pauseReason: null, cancelReason: null,
+      note: null, noteShown: false, flagReasonShown: false, reasonShown: false,
     });
     expect(attemptsWhileDropping).toBeGreaterThan(0);
 

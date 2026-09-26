@@ -658,6 +658,11 @@ input:is([type='date'], [type='time'], [type='datetime-local'], [type='month'], 
   font-weight: var(--type-row-title-font-weight);
   cursor: pointer;
   white-space: nowrap;
+  /* A link drawn as a button (the route boundary's "Reload this page", Watch, New
+   * procedure) is a button to the eye: its border and fill already mark it as a control,
+   * and the browser's link underline drew a second, different affordance through the
+   * label (Story 10.8 screenshot review). */
+  text-decoration: none;
 }
 
 .ls-button--sm {
@@ -2557,8 +2562,34 @@ input:is([type='date'], [type='time'], [type='datetime-local'], [type='month'], 
   gap: var(--spacing-2);
 }
 
+/* Each control group (Pause, Cancel) is transparent to the row, so every control is an
+   item of ONE row whichever group renders it (Story 10.8 screenshot review). The groups
+   are `.ls-stack`s, and the rule that made each a flex row never overrode the stack's
+   column direction: with the Run control panel inside the Pause group, Pause sat in a
+   centred column under "Acquire control". The groups are plain `div`s with no role, so
+   `display: contents` takes nothing from the accessibility tree. */
 .ls-toolbar__group .ls-actions > div {
-  display: flex;
+  display: contents;
+}
+
+/* A group's message and its "Reload this Run" link take a line of their own above the
+   controls, as the toolbar's own message does; its "Unavailable actions" panel takes the
+   line below them, rather than sitting between two buttons. */
+.ls-toolbar__group .ls-actions > div > :is(div, p) {
+  order: -1;
+  flex-basis: 100%;
+}
+
+.ls-toolbar__group .ls-actions > div > .ls-unavailable {
+  order: 1;
+  flex-basis: 100%;
+}
+
+/* The control panel is a row inside the row: its status sentence and its button read as
+   one phrase. Stacked, the sentence set the panel's width and left a hole after its
+   button. */
+.ls-toolbar__group .run-controller {
+  flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--spacing-2);
