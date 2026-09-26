@@ -187,6 +187,12 @@ test.describe('flagging a Run from Live View', () => {
     const runId = await seedRun();
     await page.goto(`/runs/${runId}/live`);
     const panel = page.locator('#run-flag');
+    // Every fresh load in this journey waits for hydration before it touches the page. A
+    // click on the native `<details>` before React attaches leaves an `open` attribute the
+    // server never rendered, React reports the hydration mismatch, and the dev overlay's
+    // own POST to symbolicate it is not a resubmission. `#run-cancel` hydrates with the
+    // flag control: they are siblings in Live View's header.
+    await expect(page.locator('#run-cancel')).toHaveAttribute('data-client-ready', 'true');
     await openFlag(page);
     await expect(panel.getByRole('heading', { name: FLAG_COPY.heading })).toBeVisible();
 
@@ -226,18 +232,26 @@ test.describe('flagging a Run from Live View', () => {
     const scan = await new AxeBuilder({ page }).withTags(TAGS).analyze();
     expect(scan.violations).toEqual([]);
 
-    // Reloading reads the page again and never resubmits: every POST from here on is
-    // counted, through the boundary's own control and then the browser's reload.
+    // Reloading reads the page again and never resubmits: every POST from here on that
+    // could carry the flag again is counted, through the boundary's own control and then
+    // the browser's reload. A Server Action posts to the page's own URL, so that counts.
     const posts: string[] = [];
-    page.on('request', request => { if (request.method() === 'POST') posts.push(request.url()); });
+    page.on('request', request => {
+      if (request.method() !== 'POST') return;
+      // `/__nextjs*` is `next dev`'s own tooling (the overlay symbolicating a stack), never an app action.
+      if (new URL(request.url()).pathname.startsWith('/__nextjs')) return;
+      posts.push(request.url());
+    });
     await page.getByRole('link', { name: ROUTE_BOUNDARY_COPY.reload }).click();
     await expect(page.getByRole('heading', { name: /^Live View · / })).toBeVisible();
+    await expect(page.locator('#run-cancel')).toHaveAttribute('data-client-ready', 'true');
     // The page now shows what was recorded: one flag, with the note that was typed.
     await expect(panel.locator('> summary')).toHaveText(flagMenuLabel(1));
     await openFlag(page);
     await expect(panel.getByText('The response will be lost.')).toBeVisible();
     await page.reload();
     await expect(page.getByRole('heading', { name: /^Live View · / })).toBeVisible();
+    await expect(page.locator('#run-cancel')).toHaveAttribute('data-client-ready', 'true');
     await expect(panel.locator('> summary')).toHaveText(flagMenuLabel(1));
     expect(posts).toEqual([]);
 
