@@ -27,8 +27,8 @@ import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
  * reaches an open Run Detail within 5 seconds with NO reload, that a terminal Run keeps
  * the plain refresh banner, that the stale indicator appears after 15 seconds without a
  * frame and clears when the stream is back, and that the Runs list gains a Run that was
- * just initiated. No worker runs in this suite, so every Run stays QUEUED — which is
- * active, and exactly what a subscribing surface has to follow.
+ * just initiated. Most fixtures stay QUEUED; the flag burst has a RUNNING fixture with
+ * held checkpoints, because QUEUED Runs are deliberately not flaggable.
  */
 
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
@@ -56,6 +56,10 @@ test.afterAll(async () => {
       const runs = await sql`SELECT run_id::text AS id FROM audit_run WHERE procedure_id=${procedureId}`;
       for (const run of runs) {
         await sql`DELETE FROM pgboss.job WHERE name='runs' AND data->>'runId'=${run.id}`;
+        await sql`DELETE FROM notification WHERE run_id=${run.id}`;
+        await sql`DELETE FROM run_flag WHERE run_id=${run.id}`;
+        await sql`DELETE FROM run_execution WHERE run_id=${run.id}`;
+        await sql`DELETE FROM population_execution WHERE run_id=${run.id}`;
         await sql`DELETE FROM audit_events WHERE aggregate_id=${run.id}`;
         await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${run.id}`;
       }
@@ -94,6 +98,30 @@ async function queuedRun(): Promise<string> {
   return outcome.runId;
 }
 
+/** Flagging requires a running Run; held checkpoints prevent a worker sweep claiming it. */
+async function flaggableRun(): Promise<string> {
+  const row = activeRunVersion(ids.next(), ids.next(), auditorId);
+  procedures.push(row.procedureId);
+  await new PostgresProceduresUnitOfWork(db).execute(async context => {
+    await context.procedures.insertProcedure(row);
+    await context.procedures.insertVersion(row);
+  });
+  const runId = ids.next();
+  const at = new Date().toISOString();
+  const held = new Date(Date.now() + 3_600_000).toISOString();
+  await sql.begin(async tx => {
+    await tx`INSERT INTO audit_run(request_token,run_id,correlation_id,procedure_id,version_id,version_number,
+      procedure_name,period_from,period_to,state,kind,initiator_id,session_id,authorization_role,initiated_at)
+      VALUES(${ids.next()},${runId},${ids.next()},${row.procedureId},${row.versionId},1,'Live bell burst',
+      '2026-08-01','2026-08-31','RUNNING','STANDARD',${auditorId},'live-bell-fixture','auditor',${at})`;
+    await tx`INSERT INTO population_execution(run_id,revision,status,attempts,started_at,attempt_started_at,lease_until,step_id,attempt_id)
+      VALUES(${runId},1,'POPULATION_READY',1,${at},${at},${held},'session-1',${ids.next()})`;
+    await tx`INSERT INTO run_execution(run_id,revision,status,attempts,run_started_at,started_at,attempt_started_at,lease_until,attempt_id)
+      VALUES(${runId},1,'EXECUTING',1,${at},${at},${at},${held},${ids.next()})`;
+  });
+  return runId;
+}
+
 test.describe('the live Timeline channel', () => {
   test.use({ storageState: AUTH_STATE.auditor });
 
@@ -125,10 +153,14 @@ test.describe('the live Timeline channel', () => {
 
   test('a burst refreshes the bell and Overview through their shared subscription without a reload', async ({ page }) => {
     test.setTimeout(90_000);
-    const runId = await queuedRun();
-    const flag = () => flagRun({ ...runDependencies(), repository: new PostgresRunFlagRepository(db) }, {
-      session: session(), request: { runId, note: null },
-    });
+    const runId = await flaggableRun();
+    const flag = async () => {
+      const outcome = await flagRun({ ...runDependencies(), repository: new PostgresRunFlagRepository(db) }, {
+        session: session(), request: { runId, note: null },
+      });
+      expect(outcome, outcome.ok ? undefined : outcome.reason).toMatchObject({ ok: true });
+      return outcome;
+    };
     // Cross the Overview's ten-item bound so its exact stored count is rendered.
     for (let index = 0; index < 10; index += 1) expect((await flag()).ok).toBe(true);
     await page.addInitScript((fixtureRunId: string) => {

@@ -148,3 +148,17 @@ starts after a refresh request is in flight.
 Local verification after the offline-dispatch correction: `pnpm typecheck` passed for
 all packages and root tests; `pnpm boundaries` passed (802 modules); `git diff --check`
 was clean. No hosted preview/browser pass is implied by these local checks.
+
+### Browser fixture correction — 2026-09-26
+
+Hosted candidate `7fc33a9` passed 5,394 unit tests, 783 PostgreSQL integration tests
+(including nine channel cases), database/hydrated mutation checks, all 15 protected
+preview checks, design checks and containers. Full browser CI `36229646300` passed
+284 tests but failed the new burst fixture before opening the page: its first flag
+was correctly refused because the Run was QUEUED. No refresh assertion was reached.
+
+The fixture now seeds a RUNNING Run with held population and execution checkpoints
+in one transaction, matching the established flag journey. The command's state guard
+is unchanged. Flag assertions now report refusal reasons, and fixture cleanup removes
+real notifications, flags and held checkpoints before deleting the Run. A new hosted
+run must still prove the full browser journey; prior passing suites do not close it.

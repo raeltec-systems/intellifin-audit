@@ -1,3 +1,12 @@
+## 2026-09-26 — Bell burst fixtures must be flaggable (Story 10.7)
+
+- The full browser gate refused the new test's first flag because its Run was QUEUED.
+  Flagging accepts RUNNING, PAUSED or AWAITING_AUDITOR only. Seed a RUNNING fixture
+  with held population/execution checkpoints in one transaction, as the flag journey
+  does; preserve the command guard and report refusal reasons in test assertions.
+- Delete the fixture's notification and flag rows before deleting its Run; the burst
+  creates real durable flags, not a mocked event stream.
+
 ## 2026-09-26 — Run-chain wake-ups and the bell's trailing read (Story 10.7)
 
 - Hosted CI `36229159682` exposed a queued live refresh firing after a preview viewer
