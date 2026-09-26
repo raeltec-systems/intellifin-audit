@@ -15,7 +15,7 @@ import {
   type Sql,
 } from '@intellifin/infrastructure';
 
-import { ATTENTION_HEADING } from '../../apps/web/src/overview/overview-words';
+import { ATTENTION_HEADING, OVERVIEW_OPEN_ITEM_LIMIT } from '../../apps/web/src/overview/overview-words';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 
@@ -41,8 +41,6 @@ const procedureId = ids.next();
 const versionId = ids.next();
 /** Far enough out that no sweep can treat a seeded claim as expired mid-run. */
 const LEASE = new Date(Date.now() + 3_600_000).toISOString();
-/** The Overview's own bound on open items (`OPEN_ITEM_LIMIT` in `apps/web/app/page.tsx`). */
-const OVERVIEW_OPEN_ITEMS = 10;
 /** A deferred re-read fires one second after the event, then the page is read again. */
 const SETTLE_MS = 15_000;
 
@@ -71,17 +69,26 @@ test.afterAll(async () => {
   if (!sql) return;
   try {
     for (const runId of runs) {
-      await sql`DELETE FROM pgboss.job WHERE data->>'runId'=${runId}`;
-      // Notification rows point AT the flag, so they go first whatever the cascade says.
-      await sql`DELETE FROM notification WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_flag WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_result WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_execution WHERE run_id=${runId}`;
-      await sql`DELETE FROM population_execution WHERE run_id=${runId}`;
-      await sql`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
-      await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
-      await sql`DELETE FROM run_initiation_request WHERE run_id=${runId} OR refused_run_id=${runId}`;
+      // One transaction per Run, with the Run locked first, as the sibling live specs do.
+      // A worker that holds a Run can still commit to it while this runs; taking the Run's
+      // lock first makes that commit land before the delete or wait for it, and deleting
+      // the children, the events and the Run together means a refused step leaves every
+      // row in place rather than half a Run for the next spec to meet.
+      await sql.begin(async (tx) => {
+        await tx`SELECT 1 FROM audit_run WHERE run_id=${runId} FOR UPDATE`;
+        await tx`DELETE FROM pgboss.job WHERE data->>'runId'=${runId}`;
+        // Notification rows point AT the flag, so they go first whatever the cascade says.
+        await tx`DELETE FROM notification WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_flag WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_result WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_execution WHERE run_id=${runId}`;
+        await tx`DELETE FROM population_execution WHERE run_id=${runId}`;
+        await tx`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
+        await tx`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
+        await tx`DELETE FROM run_initiation_request WHERE run_id=${runId} OR refused_run_id=${runId}`;
+        await tx`DELETE FROM audit_run WHERE run_id=${runId}`;
+      });
     }
     await sql`DELETE FROM audit_run WHERE procedure_id=${procedureId}`;
     await sql`DELETE FROM procedure_version WHERE procedure_id=${procedureId}`;
@@ -128,6 +135,20 @@ async function flag(runId: string): Promise<void> {
     { session, request: { runId, note: null } },
   );
   if (!outcome.ok) throw new Error(outcome.reason);
+}
+
+/**
+ * A precondition, not the subject: the flag is among the open items the Overview reads.
+ * The Overview holds only its first `OVERVIEW_OPEN_ITEM_LIMIT` open items, so leftover open
+ * Escalations or flags in the test database would push this Run's flag off the list, and
+ * the page would then be right not to show it.
+ */
+async function expectListed(runId: string): Promise<void> {
+  const inbox = await new DrizzleNotificationRepository(db).openFor(session, OVERVIEW_OPEN_ITEM_LIMIT);
+  expect(
+    inbox.some((item) => item.kind === 'flag' && item.runId === runId),
+    'the Overview lists its first open items only; clear leftover open Escalations from the test database',
+  ).toBe(true);
 }
 
 /** What the bell must say: the count the server itself answers, as `NotificationBell` words it. */
@@ -186,6 +207,7 @@ test.describe('the bell and the Overview after a burst', () => {
 
     // The first flag of the burst: re-read at once, which starts the one-second window.
     await flag(first);
+    await expectListed(first);
     await expect(bell).toHaveText(await expectedBell(), { timeout: SETTLE_MS });
     await expect(flagged(first)).toBeVisible({ timeout: SETTLE_MS });
 
@@ -193,11 +215,7 @@ test.describe('the bell and the Overview after a burst', () => {
     // that shows it; it may never drop it.
     await flag(second);
     const last = await expectedBell();
-    const inbox = await new DrizzleNotificationRepository(db).openFor(session, OVERVIEW_OPEN_ITEMS);
-    expect(
-      inbox.some((item) => item.kind === 'flag' && item.runId === second),
-      'the Overview lists its first open items only; clear leftover open Escalations from the test database',
-    ).toBe(true);
+    await expectListed(second);
     await expect(bell).toHaveText(last, { timeout: SETTLE_MS });
     await expect(flagged(second)).toBeVisible({ timeout: SETTLE_MS });
     await expect(flagged(first)).toBeVisible();
