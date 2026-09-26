@@ -1,3 +1,4 @@
+import { captureStoryState } from './story-visual-capture';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
@@ -262,6 +263,7 @@ test.describe('pausing and resuming a Run', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     await expect(dialog.getByText('ends Inconclusive if it is still paused after 30 minutes', { exact: false })).toBeVisible();
+    await captureStoryState(page, 'pause-confirmation', dialog);
     await dialog.getByRole('button', { name: 'Pause Run', exact: true }).click();
 
     // The REQUEST succeeded. It never claims the Run is paused: the worker does that. The
@@ -274,6 +276,7 @@ test.describe('pausing and resuming a Run', () => {
     await expect(page.getByText(PAUSE_COPY.requested, { exact: true })).toHaveCount(0);
     const [requested] = await sql`SELECT state, pause_requested_by FROM audit_run WHERE run_id=${runId}`;
     expect(requested).toMatchObject({ state: 'RUNNING', pause_requested_by: author });
+    await captureStoryState(page, 'pause-requested');
     await page.reload();
     await expect(page.getByText(`Pause requested by ${authorName}`, { exact: false })).toBeVisible();
 
@@ -293,6 +296,7 @@ test.describe('pausing and resuming a Run', () => {
 
     const paused = await new AxeBuilder({ page }).withTags(TAGS).analyze();
     expect(paused.violations).toEqual([]);
+    await captureStoryState(page, 'pause-detail-legacy-hold');
 
     // Live View carries the same control and the same banner.
     await page.goto(`/runs/${runId}/live`);
@@ -302,6 +306,7 @@ test.describe('pausing and resuming a Run', () => {
     await expect(page.getByRole('button', { name: 'Resume', exact: true })).toBeVisible();
     const live = await new AxeBuilder({ page }).withTags(TAGS).analyze();
     expect(live.violations).toEqual([]);
+    await captureStoryState(page, 'pause-live-legacy-hold');
 
     // v1.1 requires current controller ownership and explicit confirmation on every surface.
     await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
@@ -455,6 +460,7 @@ test.describe('pausing and resuming a Run', () => {
     await expect(banner).toContainText(PAUSE_WORDS.noStepInFlight);
     // And what Resume does here: it STARTS the held step, which never began.
     await expect(banner).toContainText(PAUSE_WORDS.resumeStarts);
+    await captureStoryState(page, 'pause-before-step', banner);
 
     // Resume 1, through the controls, and the worker's first sign-in attempt names it.
     await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
@@ -490,6 +496,7 @@ test.describe('pausing and resuming a Run', () => {
     await expect(banner).toContainText(bannerHeldInFlightWords(inspectStep, 1));
     await expect(banner.locator(`[title="${interrupted}"]`)).toBeVisible();
     await expect(banner).toContainText(PAUSE_WORDS.resumeRestarts);
+    await captureStoryState(page, 'pause-in-flight', banner);
 
     // The Timeline: both pauses, in order, each with where it held the Run and how it ended.
     await page.goto(`/runs/${runId}/timeline`);
@@ -518,6 +525,7 @@ test.describe('pausing and resuming a Run', () => {
     await expect(history).not.toContainText(author);
     const whilePaused = await new AxeBuilder({ page }).withTags(TAGS).analyze();
     expect(whilePaused.violations).toEqual([]);
+    await captureStoryState(page, 'pause-timeline-held', history);
 
     // Resume 2, through the controls, and the worker restarts the page's inspection. The
     // attempt was given back, so the restart is attempt 1 again, in a new Step Execution.
@@ -539,6 +547,7 @@ test.describe('pausing and resuming a Run', () => {
     await expect(banner).toHaveCount(0);
     const afterResume = await new AxeBuilder({ page }).withTags(TAGS).analyze();
     expect(afterResume.violations).toEqual([]);
+    await captureStoryState(page, 'pause-timeline-resumed', history);
 
     // The durable facts the surface read, by identity: each pause's own event, and each
     // restarted attempt's start event naming the wait of the pause its resume closed.
@@ -594,6 +603,7 @@ test.describe('pausing and resuming a Run', () => {
     await expect(request.getByRole('heading', { level: 3, name: PAUSE_REQUEST_WORDS.title, exact: true })).toBeVisible();
     await expect(request).toContainText(`Requested by ${authorName} at ${readableStamp(String(marker!.requested_at))}.`);
     await expect(request).toContainText(PAUSE_REQUEST_WORDS.runEnded);
+    await captureStoryState(page, 'pause-request-ended-first', history);
     await expect(history).not.toContainText(author);
     // The Escalation the Run ended on timed out: nobody answered it, so it is no answer.
     await expect(page.getByRole('region', { name: ESCALATION_ANSWER_WORDS.heading })).toHaveCount(0);

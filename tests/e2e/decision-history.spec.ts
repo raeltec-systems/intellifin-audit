@@ -1,3 +1,4 @@
+import { captureStoryState } from './story-visual-capture';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
@@ -293,18 +294,21 @@ test.describe('the decisions a Run recorded, on the Execution Timeline', () => {
       .toHaveAttribute('href', `/runs/${seeded.runId}/replay?escalation=${seeded.aborted}`);
     await link.focus();
     await expect(link).toBeFocused();
+    await captureStoryState(page, 'decision-timeline-focus', chose);
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(new RegExp(`/runs/${seeded.runId}/replay\\?escalation=${seeded.chose}$`));
     // The note is Replay's own status line; the stage beside it shows the frame.
     await expect(replayNote(page)).toHaveText(fillTemplate(ESCALATION_REPLAY_WORDS.opened, { kind: 'Choose candidate' }));
     await expect(page.getByText('Frame 2 of 3')).toBeVisible();
     await expect(page.locator('.ls-session__frame')).toHaveAttribute('src', `/api/runs/${seeded.runId}/frames/${seeded.frames[1]}`);
+    await captureStoryState(page, 'decision-replay-candidate');
     await scan(page);
 
     // The Abort was raised after the third screen, so its target is the third.
     await page.goto(`/runs/${seeded.runId}/replay?escalation=${seeded.aborted}`);
     await expect(replayNote(page)).toHaveText(fillTemplate(ESCALATION_REPLAY_WORDS.opened, { kind: 'Retry or skip' }));
     await expect(page.getByText('Frame 3 of 3')).toBeVisible();
+    await captureStoryState(page, 'decision-replay-abort');
 
     // An Escalation this Run does not hold opens no screen at all, and says so — and points
     // at the "Jump to" list, which here holds recorded targets to choose.
@@ -312,5 +316,6 @@ test.describe('the decisions a Run recorded, on the Execution Timeline', () => {
     await expect(replayNote(page)).toHaveText(`${ESCALATION_REPLAY_WORDS.unavailable} ${ESCALATION_REPLAY_WORDS.chooseTarget}`);
     await expect(page.locator('.ls-session__frame')).toHaveCount(0);
     await expect(page.getByRole('region', { name: 'Jump to' }).getByRole('button').first()).toBeVisible();
+    await captureStoryState(page, 'decision-replay-unavailable');
   });
 });
