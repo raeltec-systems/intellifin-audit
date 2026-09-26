@@ -1,3 +1,10 @@
+## 2026-09-26 — Stacked story PRs need an admitted CI base
+
+Stories 10.9 and 10.10 keep the handover's `claude/10-6-legacy-visibility` PR base.
+The CI pull-request branch filter must include that exact base or a published candidate
+receives no run. Adding the base changes admission only; jobs, assertions, permissions
+and main-only push behavior stay unchanged. Never infer verification from a successful push.
+
 ## 2026-09-26 — Preserve the database's Replay landing ordinal (Story 10.9 continuation)
 
 `readEscalations` compares stored timestamps at database precision. The default Replay prefix

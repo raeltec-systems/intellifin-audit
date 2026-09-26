@@ -205,3 +205,12 @@ had injected a transient `.rsync-tmp/violation.ts` inside the boundary mutation 
 No assertion was weakened or skipped; the complete unchanged gate passed outside that
 synchronization path. Fresh PR CI must still supply PostgreSQL/browser verification and
 visual acceptance remains open. The latest changes after this gate are this record only.
+
+
+### Stacked-PR CI admission
+
+The existing CI workflow admitted only PR bases `main` and `codex/epic-5-controls`.
+This excluded the handover's stacked PRs based on `claude/10-6-legacy-visibility`,
+so publishing their code did not start a verification run. Added that exact base to the
+pull-request filter. Job definitions, permissions, test assertions and main-only push
+behavior are unchanged. The workflow YAML was parsed and both branch filters checked.
