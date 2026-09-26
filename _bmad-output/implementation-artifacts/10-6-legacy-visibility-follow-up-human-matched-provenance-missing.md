@@ -289,3 +289,13 @@ Node 24.20.0 / pnpm 11.25.0, run sequentially after the review patches:
 were observed failing before their patches. Exact-selector tests exercise the real page
 function after mocked authorization, including denied access and deduplicated anchors.
 Browser/DB results for this new candidate remain pending CI; no screenshot claim is made.
+
+### Screenshot review — 2026-09-26
+
+Inspected real Chromium captures at 1280×800 and, for Timeline/Replay, 1024×800.
+The [shared screenshot review](screenshot-review-10-6-to-10-10-2026-09-26.md) records exact states, evidence, findings and coverage limits.
+Capture run [36249693811](https://github.com/raeltec-systems/intellifin-audit/actions/runs/36249693811)
+on `4846dcf2` passed 27 browser tests. The report identifies the Replay record-key wrapping
+fix and its post-fix captures, and distinguishes known presentation findings and uncaptured
+rare variants from passing checks. Proposed wording and owner decisions remain pending;
+this entry does not claim exhaustive all-state acceptance or finalize the story.
