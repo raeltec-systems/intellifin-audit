@@ -34,6 +34,9 @@ import { readOpenEscalation, type OpenEscalationRead } from './escalation-read';
 import { LiveBanner } from './LiveBanner';
 import { RunLifecycleActions } from './RunLifecycleActions';
 import { WaitCountdown } from './WaitCountdown';
+import { PauseHoldNote } from './PauseHistory';
+import { readPauseHold } from './pause-read';
+import type { PauseHoldRead } from './pause-words';
 import { periodText, runLifecycleWord, utcStamp } from './labels';
 import { ActorName } from './ActorName';
 import { StopReasonBanner } from './StopReason';
@@ -237,6 +240,9 @@ export async function RunDetailFrame({
     ...(run.pauseRequest === null ? [] : [run.pauseRequest.requestedBy]),
     ...(run.cancellation === null ? [] : [run.cancellation.requestedBy]),
   ]);
+  // Where the pause holds the Run (Story 10.6, legacy 5.4), for the Paused banner. Read
+  // only for a PAUSED Run, so an ordinary render costs nothing more.
+  const hold = await readPauseHold((await getRuntime()).db, run, escalation?.pause ?? null);
   // Why a stopped Run stopped, on EVERY tab (owner correction 2026-09-15). The reason a
   // Run ended before its Gate was recorded by the stage that ended it and shown only on
   // the Timeline tab, as a code word; the header said "Inconclusive" and nothing else.
@@ -300,7 +306,7 @@ export async function RunDetailFrame({
       <Tabs label="Run Detail" tabs={RUN_TABS.map((entry) => ({ href: runTabHref(run.runId, entry.slug), label: entry.label }))} current={here} />
       {stop === null ? null : <StopReasonBanner facts={stop} />}
       <CancellationBanners run={run} names={names} />
-      <PauseBanners run={run} pause={escalation?.pause ?? null} readAt={readAt} names={names} />
+      <PauseBanners run={run} pause={escalation?.pause ?? null} hold={hold} readAt={readAt} names={names} />
       <RerunLinks runId={run.runId} />
       {/* Compact record review keeps its queue in the first viewport, so the Run's actions
           sit behind one disclosure there; ordinary Run Detail shows them as they were. */}
@@ -481,9 +487,15 @@ export function OpenEscalationSection({ run, escalation, readAt, workspacePresen
  * The second arm is the marker, which means "requested and NOT yet honoured": the boundary
  * that honours a pause clears it, so it cannot overlap the first arm.
  */
-export function PauseBanners({ run, pause, readAt, names }: {
+export function PauseBanners({ run, pause, hold, readAt, names }: {
   readonly run: RunRecord;
   readonly pause: RunWait | null;
+  /**
+   * Where the pause holds the Run (Story 10.6, legacy 5.4), from `readPauseHold`. REQUIRED,
+   * so every surface that shows this banner says it: an optional prop is one a caller can
+   * forget, and a banner that named no step would read as a pause that held the Run nowhere.
+   */
+  readonly hold: PauseHoldRead;
   /** The instant the server read, so the countdown's first client render matches it. */
   readonly readAt: Date;
   /**
@@ -519,6 +531,7 @@ export function PauseBanners({ run, pause, readAt, names }: {
           readAt={readAt.toISOString()}
           expiredSentence={PAUSE_COPY.expired}
         />
+        <PauseHoldNote hold={hold} />
         <p>Evidence already collected is preserved. The agent restarts the current Step from its first Tool Action.</p>
       </Banner>
     );

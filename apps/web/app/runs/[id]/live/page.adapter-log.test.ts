@@ -49,6 +49,8 @@ vi.mock('../../../../src/runs/detail', () => ({
   PauseBanners: () => null,
 }));
 vi.mock('../../../../src/runs/escalation-read', () => ({ readOpenEscalation: async () => null }));
+// The Paused banner's hold (Story 10.6, legacy 5.4); `PauseBanners` itself is stood in for above.
+vi.mock('../../../../src/runs/pause-read', () => ({ readPauseHold: async () => ({ kind: 'none' }) }));
 vi.mock('../../../../src/runs/LiveGate', () => ({
   LiveGate: ({ children, header }: { readonly children?: React.ReactNode; readonly header?: React.ReactNode }) =>
     React.createElement(React.Fragment, null, header, children),

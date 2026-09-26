@@ -142,6 +142,50 @@ boundary inside it, so the request simply takes effect at the stage after it. `o
 is EXTENDED onto the three stage contexts rather than injected, so a composition root cannot
 leave it out.
 
+## Where a pause holds the Run, and which attempt a resume starts (Story 10.6)
+
+Every pause and every resume names its exact plan step and Step Execution attempt from
+durable records, read by identity and never paired by time. No event type, column or
+migration was added: the facts ride on keys of the events that already exist, and they are
+written on NEW events only. A historical event stays as written, and a surface says what it
+does not record.
+
+**The pause event (`lifecycle.run-paused`) says where it held the Run.** Every boundary in
+the table above passes a required `PauseHold` to `performPause`, and the event records it:
+
+| Key | When | Meaning |
+| --- | --- | --- |
+| `planStepId` | always | The plan step the Run is held at: the one in flight, or the next one still to run. |
+| `heldWorkItemId` | the Work Item stage | The Work Item the Run is held at. |
+| `stepExecutionId`, `attempt` | an attempt was in flight | The attempt the pause superseded. |
+| `workItemId` | unchanged | Its existing meaning — the in-flight item, or a deferred pause's settled inspection — because the conversation receipts and the interaction receipt guard (generations 55 to 59) read it. |
+
+A pause between units (the sign-in and adapter stages, between Work Items, after a settled
+inspection) has no `stepExecutionId`, and the surfaces say that no Step Execution was in
+flight. `PauseHold` is REQUIRED on `performPause`, so a boundary cannot forget it — the
+lesson of the one mid-item boundary that once passed no in-flight pair.
+
+**The resume is named by the attempt it starts.** A resume performs `PAUSED → RUNNING`
+before any attempt exists, so it cannot name one; the stage that later starts the held step
+writes `resumedWaitId` on that attempt's own start event (`work-item-attempt-started`,
+`reference-attempt-started`, `sign-in-attempt-started`, `public-access-attempt-started`).
+`RunPauseContext.readPendingResume` is REQUIRED on every stage context: it answers the Run's
+LATEST pause wait when it was closed by a resume, its event recorded a `planStepId`, and no
+event already names it. `resumeLinker` reads it once per invocation and links only the FIRST
+attempt at the held plan step — and at the held Work Item, when the pause named one. A resume
+of a pause that recorded no held step is never linked, because nothing says which attempt it
+restarted.
+
+**The reads follow those identities.** `readPauseHistory` (every pause of a Run, in the order
+they happened: an exact total and a bounded list of `PAUSE_HISTORY_LIMIT`) and
+`readPauseEntry` (one pause, for the Paused banner) join the wait row to its event by wait
+id, the event to its Step Execution by id, and a resume to its attempt by the `resumedWaitId`
+on the attempt's start event. An older pause is read for what it holds: one honoured
+mid-attempt named its Step Execution, whose row gives the plan step and the attempt
+exactly; one that named nothing reads as `not-recorded`. The Execution Timeline lists the
+pauses ("Pauses and resumes"), and the Paused banner says where the pause holds the Run now.
+The sentences are proposed wording in `apps/web/src/runs/pause-words.ts`.
+
 ## The windows
 
 | Wait kind | Window | Timeout outcome |

@@ -23,6 +23,7 @@ import { RunPauseControls } from '../../../../src/runs/RunPauseControls';
 import { RunControllerLease } from '../../../../src/runs/RunControllerLease';
 import { SharedRunControl } from '../../../../src/runs/SharedRunControl';
 import { readOpenEscalation } from '../../../../src/runs/escalation-read';
+import { readPauseHold } from '../../../../src/runs/pause-read';
 import { CancellationBanners, OpenEscalationSection, PauseBanners } from '../../../../src/runs/detail';
 import { LiveViewer } from '../../../../src/runs/LiveViewer';
 import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
@@ -150,6 +151,9 @@ export default async function RunLivePage({
     ? await readOpenEscalation(run.runId)
     : null;
 
+  // Where the pause holds the Run (Story 10.6, legacy 5.4), from the plan this page read.
+  const pauseHold = await readPauseHold(runtime.db, run, waits?.pause ?? null, plan);
+
   // The Paused banner names the person who paused the Run, not their user id.
   const pauseNames = await new DrizzleActorNameReader(runtime.db).namesFor([
     ...(waits?.pause?.openedBy == null ? [] : [waits.pause.openedBy]),
@@ -265,7 +269,7 @@ export default async function RunLivePage({
             politely, which is what UX-DR27 asks for; taking focus from somebody mid-word
             is a context change nobody asked for. */}
         <OpenEscalationSection run={run} escalation={waits} readAt={readAt} />
-        <PauseBanners run={run} pause={waits?.pause ?? null} readAt={readAt} names={pauseNames} />
+        <PauseBanners run={run} pause={waits?.pause ?? null} hold={pauseHold} readAt={readAt} names={pauseNames} />
         {/* The server's own statement of a requested cancellation, as on Run Detail: the
             control's transitional "Cancellation requested." is dropped once the page has
             re-read the Run (UX-49), so this is what says it from then on. */}

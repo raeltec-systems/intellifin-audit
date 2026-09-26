@@ -1,17 +1,30 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
-import { performPause } from '@intellifin/application';
+import { performPause, resumeLinker } from '@intellifin/application';
+import type { ExecutablePlan } from '@intellifin/domain';
 import {
   createDb,
   createSqlClient,
   CryptoUuidV7Generator,
   PostgresProceduresUnitOfWork,
   PostgresWaitRepository,
+  readPendingResume,
   type Sql,
 } from '@intellifin/infrastructure';
 
 import { ESCALATION_PANEL_COPY, PAUSE_COPY } from '../../apps/web/src/design/copy';
+import { planActionWord } from '../../apps/web/src/runs/labels';
+import {
+  PAUSE_WORDS,
+  bannerHeldBeforeWords,
+  bannerHeldInFlightWords,
+  heldBeforeWords,
+  heldInFlightWords,
+  pauseStepNamer,
+  pauseTitleWords,
+  restartedWords,
+} from '../../apps/web/src/runs/pause-words';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 import { acquireControl, expectRunEvents, resumeWithControl } from './run-control';
@@ -131,6 +144,56 @@ async function honourPause(runId: string, hold: PauseHold = SIGN_IN_HOLD): Promi
     });
     return wait.waitId;
   });
+}
+
+/**
+ * The worker starting the held step again after a resume (Story 10.6, legacy 5.4): a new
+ * Step Execution and the stage's own attempt-start event. Which resume the attempt names is
+ * decided by the stages' own linker over the stages' own read — `resumeLinker` and
+ * `readPendingResume` — so the link under test is production's, not the fixture's.
+ */
+async function startResumedAttempt(runId: string, planStepId: string, registrationId: string, stepExecutionId: string, attempt: number): Promise<string | null> {
+  const db = createDb(sql);
+  const resumedWaitId = await resumeLinker()({ readPendingResume: () => readPendingResume(db, runId) }, { planStepId, workItemId: null });
+  await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at)
+    VALUES(${stepExecutionId},${runId},${planStepId},NULL,'sign-in','RUNNING',${attempt},${new Date().toISOString()})`;
+  await new PostgresWaitRepository(db).transaction(runId, async (context) => {
+    const run = context.run!;
+    // The shape `execute-agent-steps.ts` appends for `sign-in-attempt-started`.
+    await context.auditEvents.append({
+      actor: { type: 'system', id: 'agent-worker' },
+      eventType: 'lifecycle.agent-execution',
+      source: 'worker',
+      outcome: 'success',
+      aggregateId: runId,
+      correlationId: run.correlationId,
+      sessionId: run.sessionId,
+      payload: {
+        state: 'RUNNING',
+        diagnostic: 'sign-in-attempt-started',
+        attempts: attempt,
+        attemptId: ids.next(),
+        stepId: planStepId,
+        registrationId,
+        stepExecutionId,
+        attempt,
+        ...(resumedWaitId === null ? {} : { resumedWaitId }),
+      },
+    });
+  });
+  return resumedWaitId;
+}
+
+/** Requests a pause through the control, clicking it only while it is enabled. */
+async function requestPause(page: Page): Promise<void> {
+  const enabled = page.locator(':not([aria-disabled="true"])');
+  const dialog = page.getByRole('dialog');
+  await expect(async () => {
+    if (!(await dialog.isVisible())) await page.getByRole('button', { name: 'Pause', exact: true }).and(enabled).click({ timeout: 5_000 });
+    await expect(dialog).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await dialog.getByRole('button', { name: 'Pause Run', exact: true }).click();
+  await expect(page.getByText(`Pause requested by ${authorName}`, { exact: false })).toBeVisible();
 }
 
 test.describe('pausing and resuming a Run', () => {
@@ -296,6 +359,96 @@ test.describe('pausing and resuming a Run', () => {
     await expectWithin(stepIds.length);
     // The retry is said beside the counter where a step is running; it is never IN it.
     await expect(counter).not.toContainText(String(stepIds.length + 1));
+  });
+
+  // Story 10.6, legacy 5.4: "Given a Run paused and resumed more than once, when its
+  // Timeline is read, then each pause and each resume names its exact plan step and Step
+  // Execution attempt from durable records, and a resume names the attempt it starts."
+  test('names where each pause held the Run and the attempt each resume started, on the Timeline and the banner', async ({ page }) => {
+    test.setTimeout(180_000);
+    const runId = await seedRun('RUNNING');
+    const [version] = await sql`SELECT compiled_plan FROM procedure_version WHERE version_id=${versionId}`;
+    const plan = version!.compiled_plan as ExecutablePlan;
+    const signIn = plan.sessionSteps.find((step) => step.action === 'sign-in')!;
+    const inspect = plan.targetSystems[0]!.planSteps.find((step) => step.action === 'inspect-record')!;
+    const system = plan.inputs.targets[0]!;
+    const name = pauseStepNamer(plan, new Map());
+    const signInStep = name.step(signIn.id, null);
+    const inspectStep = name.step(inspect.id, null);
+    // A step is named by its action and its system, never by the plan's identifier for it.
+    expect(signInStep).toContain(planActionWord('sign-in'));
+    expect(signInStep).toContain(system.displayName);
+    expect(signInStep).not.toContain(signIn.id);
+
+    // The sign-in attempt the first pause interrupts.
+    const interrupted = ids.next();
+    await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at)
+      VALUES(${interrupted},${runId},${signIn.id},NULL,'sign-in','RUNNING',1,${new Date().toISOString()})`;
+
+    // Pause 1: requested through the control, honoured mid-attempt, which supersedes it.
+    await page.goto(`/runs/${runId}/live`);
+    await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
+    await requestPause(page);
+    const firstWait = await honourPause(runId, { planStepId: signIn.id, workItemId: null, superseded: { stepExecutionId: interrupted, attempt: 1 } });
+    await sql`UPDATE run_step_execution SET state='SUPERSEDED', superseded_by='resume', completed_at=${new Date().toISOString()} WHERE step_execution_id=${interrupted}`;
+
+    // The Paused banner says where the Run is held and names the attempt it superseded.
+    await page.reload();
+    const banner = page.locator('.ls-banner', { hasText: `Paused by ${authorName}` });
+    await expect(banner).toContainText(bannerHeldInFlightWords(signInStep, 1));
+    await expect(banner.locator(`[title="${interrupted}"]`)).toBeVisible();
+
+    // Resume, through the controls, and the worker restarts the held step as attempt 2.
+    await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
+    await acquireControl(page.getByRole('region', { name: 'Run controller', exact: true }));
+    await resumeWithControl(page);
+    await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+    const restarted = ids.next();
+    expect(await startResumedAttempt(runId, signIn.id, system.registrationId, restarted, 2)).toBe(firstWait);
+    await sql`UPDATE run_step_execution SET state='SUCCEEDED', completed_at=${new Date().toISOString()} WHERE step_execution_id=${restarted}`;
+
+    // Pause 2, between units: held before the first inspection, with no attempt in flight.
+    await page.reload();
+    await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
+    await requestPause(page);
+    const secondWait = await honourPause(runId, { planStepId: inspect.id, workItemId: null, superseded: null });
+
+    // The Timeline: both pauses, in order, each with where it held the Run and how it ended.
+    await page.goto(`/runs/${runId}/timeline`);
+    const history = page.getByRole('region', { name: PAUSE_WORDS.heading });
+    await expect(history).toBeVisible();
+    const entries = history.locator('.ls-pause-history__entry');
+    await expect(entries).toHaveCount(2);
+    const first = entries.nth(0);
+    await expect(first.getByRole('heading', { name: pauseTitleWords(1), exact: true })).toBeVisible();
+    await expect(first).toContainText(`Paused by ${authorName} at`);
+    await expect(first).toContainText(heldInFlightWords(signInStep, 1));
+    await expect(first.locator(`[title="${interrupted}"]`)).toBeVisible();
+    await expect(first).toContainText(`Resumed by ${authorName} at`);
+    await expect(first).toContainText(restartedWords(signInStep, 2));
+    await expect(first.locator(`[title="${restarted}"]`)).toBeVisible();
+    const second = entries.nth(1);
+    await expect(second.getByRole('heading', { name: pauseTitleWords(2), exact: true })).toBeVisible();
+    await expect(second).toContainText(heldBeforeWords(inspectStep));
+    await expect(second).toContainText(PAUSE_WORDS.noStepInFlight);
+    await expect(second).toContainText(PAUSE_WORDS.stillPaused);
+    // The banner on the same page names the second pause's hold, in the present tense.
+    await expect(page.locator('.ls-banner', { hasText: `Paused by ${authorName}` })).toContainText(bannerHeldBeforeWords(inspectStep));
+    // A person, never a user id.
+    await expect(history).not.toContainText(author);
+    const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+    expect(results.violations).toEqual([]);
+
+    // The durable facts the surface read, by identity: each pause's own event, and the
+    // restarted attempt's start event naming the first pause's wait.
+    const paused = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${runId} AND event_type='lifecycle.run-paused' ORDER BY sequence`;
+    expect(paused.map((row) => row.payload)).toEqual([
+      expect.objectContaining({ waitId: firstWait, planStepId: signIn.id, stepExecutionId: interrupted, attempt: 1 }),
+      expect.objectContaining({ waitId: secondWait, planStepId: inspect.id }),
+    ]);
+    expect(paused[1]!.payload).not.toHaveProperty('stepExecutionId');
+    const [linked] = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${runId} AND payload->>'resumedWaitId'=${firstWait}`;
+    expect(linked!.payload).toMatchObject({ stepExecutionId: restarted, attempt: 2 });
   });
 
   test('disables Pause on a Run waiting on an answer, and says why in words', async ({ page }) => {
