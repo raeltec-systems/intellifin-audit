@@ -21,6 +21,7 @@ vi.mock('react', async () => {
   return { ...actual, useActionState: () => [actionState, () => undefined, false] };
 });
 
+import { RUN_FLAG_REFUSALS } from '@intellifin/domain';
 import { FLAG_COPY, RUN_LOST_RESPONSE } from '../design/copy';
 import type { FlagRunActionResult } from '../../app/runs/actions';
 import { RunFlagControl, type RunFlagView } from './RunFlagControl';
@@ -80,6 +81,23 @@ describe('the Flag to Audit Manager control', () => {
     expect(html).toContain('aria-disabled="true"');
     expect(html).toContain(RUN_LOST_RESPONSE);
     expect(html).not.toContain('disabled=""');
+  });
+
+  it('shows a refusal in the action\'s own words, and leaves the control live', () => {
+    // A refusal is the command saying no BEFORE it wrote anything, so its own message is
+    // the one thing that may say so (Story 10.8): not the lost-response sentence, not the
+    // unknown-outcome one, and no reload link, because nothing is uncertain.
+    for (const reason of Object.values(RUN_FLAG_REFUSALS)) {
+      actionState = { ok: false, reason };
+      const html = render({ flaggable: true, flags: [] });
+      expect(html).toMatch(new RegExp(`<div class="ls-banner ls-banner--danger[^"]*" role="alert"[^>]*>[\\s\\S]*${reason.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+      expect(html).not.toContain(FLAG_COPY.unknown);
+      expect(html).not.toContain(RUN_LOST_RESPONSE);
+      expect(html).not.toContain('Reload this Run');
+      expect(html).not.toContain('aria-disabled="true"');
+      // The answer is never hidden behind a closed opener.
+      expect(html).toContain('<details id="run-flag" class="ls-flag-menu" open=""');
+    }
   });
 
   it('leaves the control live while nothing has been lost', () => {
