@@ -286,13 +286,13 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
           ? `Requested inspection: ${selection.target.label}. ${absenceSentence(selection.target.absence, props.frames.length)} Choose a recorded target below.`
           : null;
 
+  const jumpBounds = jumpBoundSentences(props.jumpTargets, props.jumpTotals);
+
   /**
    * The selected record's own position, beside the global one and only when a record is
    * selected. A count of frames "for this record" over a session nobody jumped into is a
    * number about nothing.
    */
-  const jumpBounds = jumpBoundSentences(props.jumpTargets, props.jumpTotals);
-
   const ofRecord = ((): string | null => {
     if (frame === null || jumped === null || jumped.kind !== 'work-item') return null;
     const mine = props.frames.filter((item) => item.workItemId === jumped.id);

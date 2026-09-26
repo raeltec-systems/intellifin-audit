@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 
@@ -416,6 +416,16 @@ test.describe('Replay past its default view’s bounds', () => {
     await expect(late.filter({ hasText: /^Escalation ·/ })).toHaveCount(10);
     await expect(late.first()).toHaveText(
       `Escalation · Choose candidate · ${REPLAY_COPY.frameNotRead.replace('{shown}', String(SHOWN))} · Open inspection Replay`);
+    // A row with no frame is text, not a button, and still keeps the buttons' text edge and
+    // row height, so the list has one left edge and one rhythm.
+    const edge = (row: Locator) => row.evaluate((item) => {
+      const box = item.firstElementChild as HTMLElement;
+      const range = document.createRange();
+      range.selectNodeContents(document.createTreeWalker(box, NodeFilter.SHOW_TEXT).nextNode()!);
+      return { text: Math.round(range.getBoundingClientRect().left), height: Math.round(box.getBoundingClientRect().height) };
+    });
+    const buttonRow = rows.filter({ hasText: /^Escalation ·/ }).filter({ has: page.locator('button') }).first();
+    expect(await edge(late.first())).toEqual(await edge(buttonRow));
     const inspection = `/runs/${runId}/replay?workItem=${workItemId}&cursor=500`;
     await expect(late.first().getByRole('link', { name: 'Open inspection Replay', exact: true })).toHaveAttribute('href', inspection);
     await late.first().getByRole('link', { name: 'Open inspection Replay', exact: true }).click();
