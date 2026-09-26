@@ -184,6 +184,25 @@ keeps its metadata and only that frame is retried, as above. The sentences are p
 wording (`REPLAY_GAP_WORDS`, `replayIncompleteSentence`, `replayGapPosition` in
 `apps/web/src/runs/replay.ts`).
 
+## Opened at an answered Escalation (Story 10.10)
+
+Each answered Escalation on the Execution Timeline links to
+`/runs/<id>/replay?escalation=<waitId>` ("Open in Replay"), offered only once the Run has
+ended. `replayEscalationSelection` resolves the id against THIS Run's own jump targets and
+nothing else — the `?workItem=` rule — so the whole-session view opens, paused, at the
+Escalation's own target (the table above: the last frame captured at or before it was
+raised) and says which Escalation it opened at. A target with no frame opens no frame and
+says why, in the resolver's words. An id that is malformed, repeated, a pause, a Work Item,
+another Run's or otherwise not one of this view's Escalation targets opens NO frame and says
+the Escalation is not available in this view; it never falls back to the first frame. A
+`workItem` in the same query still selects the inspection path. The viewer is keyed by the
+selection as well as the request (`replaySelectionKey`), so following a second Escalation's
+link starts at its own frame while a re-read of the same selection keeps the reader's place.
+Either sentence for a link that opened no frame points at the "Jump to" list ("Choose a
+recorded target below.") only when that list holds a target WITH a frame: in a Replay whose
+targets all lack one, the pointer would send the reader to a list of absences. The sentences
+are proposed wording (`ESCALATION_REPLAY_WORDS` in `apps/web/src/runs/decision-words.ts`).
+
 ## The keyboard
 
 | Key | What it does |

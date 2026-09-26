@@ -1,3 +1,54 @@
+## 2026-09-26 — A decision a Run recorded is a Timeline entry, read by identity (Story 10.10)
+
+Story 10.10 meets legacy 4.8 AC 4, 5.6 AC 3 and 5.4 AC 3: an answered or aborted Escalation and
+a pause request the Run never honoured were events in the audit chain and nothing a reader could
+see. The Execution Timeline now lists them — "Escalation answers" beside "Pauses and resumes",
+and a "Pause request" entry inside it. No event type, column or migration was added, and no
+event is rewritten. Contracts: `durable-escalation-v1.md` (35c–35f), `run-pause-v1.md`,
+`replay-v1.md`.
+
+- **Every fact is read by identity, never by time.** A wait's ONE `execution.escalation-raised`
+  and ONE `execution.escalation-answered` event are found by `payload->>'waitId'`; a wait with
+  more than one establishes nothing. The Work Item is established only when EVERY supporting
+  Evidence id the raise named resolves through `run_evidence_capture` → `run_tool_action` →
+  `run_step_execution` (the Step Execution's Work Item first), every join bound to the Run, to
+  ONE Work Item at the raise's own plan step; otherwise the entry names the step and says the
+  Work Item was not recorded. "The Run was canceled by this answer." comes from the answer's own
+  event, never from the Run's present state.
+- **Each event is read only from the writer that appends it** — the raise from
+  `escalation-platform`/platform/success, `lifecycle.pause-superseded` from
+  `result-sealer`/worker/failure, `lifecycle.deferred-pause-superseded` from
+  `deferred-pause-coordinator`/web or worker/failure. **A forged-writer test changes ONE field
+  per case**: a fixture that differs in every field is refused by whichever check survives, so
+  it proves one check exists and not which. The first version did that, and the mutation that
+  dropped one writer check survived it.
+- **"Every Evidence id" needs a MIXED case.** `every` → `some` survived the first round, because
+  each fixture's Evidence either all resolved or none did. The test that kills it names one
+  captured and one uncaptured artifact on one raise.
+- **An approved sentence can be false in a case its list did not foresee.** "The Run ended
+  before the pause took effect, so its own outcome stands." is right for a request the Run
+  outran; a "pause after this inspection" request retired by a request to pause at once saw no
+  Run end, so it says a PROPOSED sentence that a pause at once replaced it, and a reason this
+  build does not name says it could not be read. Every proposed sentence is in
+  `apps/web/src/runs/decision-words.ts` and needs owner confirmation.
+- **The owner's approved layout fixes the entry order** — title, who answered, the answer (and
+  the abort), where it was raised, "Open in Replay". It is not chronological like a pause entry,
+  and that is the approval, not an inconsistency to repair.
+- **Reading the screenshots found a false sentence no test could.** A Run with no frames, opened
+  from "Open in Replay", said "…no frame was captured before it was raised. Choose a recorded
+  target below." over a "Jump to" list of absences. The pointer is now said only when that list
+  holds a target with a frame (`escalationReplayAbsenceWords`), proven by mutation both ways.
+- **Replay writes a selection note in up to four places when no frame is selected** (the status
+  line, the stage, "What the Agent was doing", "Observations") — the inspection link's pattern.
+  A browser assertion on it targets the status line, `.ls-session > p[role="status"]`; a
+  `getByText` meets Playwright's strict mode there.
+- **The reads live in `decision-history.ts`, not in `run-detail-repository.ts`** as the Code Map
+  said, so Story 10.9's parallel edits to that file cannot conflict. `capture-run-binding`
+  survives mutation by design: the Run-bound `workItems()` read is a second lock on that door.
+- **A cropped screenshot is not a measurement.** In one crop the two section headings looked
+  different sizes; `getComputedStyle` read 16px/600 for both, and all seven entries of the two
+  lists had the same gap, padding, border, left edge and width. Measure before changing CSS.
+
 ## 2026-09-26 — A fact the records do not link is linked on new events, and read by identity (Story 10.6)
 
 Story 10.6 meets five compiler-1 visibility legs the closure register found on the retained
