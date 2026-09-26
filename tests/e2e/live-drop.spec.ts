@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+import { expect, test, type Page } from '@playwright/test';
 
 import { cancelRun, type CancelRunDependencies } from '@intellifin/application';
 import {
@@ -14,7 +15,7 @@ import {
 } from '@intellifin/infrastructure';
 
 import { FLAG_COPY } from '../../apps/web/src/design/copy';
-import { LIVE_GATE_REASONS, LIVE_LOST_MS, LIVE_SENTENCES } from '../../apps/web/src/runs/live-status';
+import { LIVE_GATE_REASONS, LIVE_LOST_MS, LIVE_SENTENCES, LIVE_WORDS } from '../../apps/web/src/runs/live-status';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 
@@ -104,6 +105,71 @@ async function seedRun(state: 'RUNNING' | 'PAUSED' = 'RUNNING'): Promise<string>
   return runId;
 }
 
+/**
+ * The Run's chain moves on, the way a worker's own progress moves it: one event appended
+ * through the real writer, with the notification every writer issues. Nothing on the page
+ * reads this event's content; what it changes is the chain HEAD, which is the cursor the
+ * next server read of Live View hands the subscription.
+ */
+async function appendProgress(runId: string): Promise<void> {
+  await new PostgresRunsUnitOfWork(createDb(sql)).execute(async (context) => {
+    const event = await context.auditEvents.append({
+      actor: { type: 'system', id: 'live-drop-fixture' }, source: 'worker', outcome: 'success',
+      eventType: 'lifecycle.run-progressed', aggregateId: runId, correlationId: ids.next(),
+      sessionId: 'live-drop-progress', payload: {},
+    });
+    await context.notifyTimeline(runId, event.sequence);
+  });
+}
+
+/**
+ * What a reader is told about the live channel and what the live controls permit, read in
+ * ONE page read so no fact can change between two reads of it (a poll that reads a count
+ * and then a text can report a state the page was never in).
+ */
+async function liveFacts(page: Page): Promise<Record<string, unknown>> {
+  return page.evaluate((reason) => {
+    const banner = document.querySelector('[data-live-status]');
+    const button = (name: string): Element | null =>
+      [...document.querySelectorAll('button')].find((candidate) => candidate.textContent?.trim() === name) ?? null;
+    return {
+      status: banner?.getAttribute('data-live-status') ?? null,
+      // The WORD is what the polite region announces; the sentence beside it is not.
+      word: banner?.querySelector('[aria-live]')?.textContent ?? null,
+      sentence: banner?.querySelector('[aria-hidden="true"]')?.textContent ?? null,
+      pause: button('Pause')?.getAttribute('aria-disabled') ?? null,
+      cancel: button('Cancel Run')?.getAttribute('aria-disabled') ?? null,
+      // The flag form sits in a closed disclosure in the header (UX-48); its submit is in
+      // the DOM whether or not the disclosure is open.
+      flag: document.querySelector('#run-flag button[type="submit"]')?.getAttribute('aria-disabled') ?? null,
+      reasonShown: (document.body.textContent ?? '').includes(reason),
+    };
+  }, LIVE_GATE_REASONS.lost);
+}
+
+/** A lost stream as Live View must state it: the word, the sentence, and every live control withdrawn with its reason. */
+const LOST_LIVE_VIEW = {
+  status: 'lost',
+  word: LIVE_WORDS.lost,
+  sentence: LIVE_SENTENCES.lost,
+  pause: 'true',
+  cancel: 'true',
+  flag: 'true',
+  reasonShown: true,
+} as const;
+
+/**
+ * Read the facts several times over a few seconds. The defect this guards against is a
+ * page that flips back to `live` a moment AFTER a re-read lands, so one read is not
+ * "throughout"; each sample is still a single page read.
+ */
+async function expectThroughout(page: Page, expected: Record<string, unknown>, samples = 8): Promise<void> {
+  for (let sample = 0; sample < samples; sample += 1) {
+    expect(await liveFacts(page), `sample ${sample + 1} of ${samples}`).toMatchObject(expected);
+    await page.waitForTimeout(500);
+  }
+}
+
 test.describe('Live View when the stream drops', () => {
   test.use({ storageState: AUTH_STATE.auditor });
 
@@ -190,6 +256,126 @@ test.describe('Live View when the stream drops', () => {
     expect(attempts).toBeGreaterThan(0);
 
     // And nothing was committed: this is the assertion the guard exists for.
+    const [row] = await sql`SELECT state, cancel_requested_by FROM audit_run WHERE run_id=${runId}`;
+    expect(row).toMatchObject({ state: 'RUNNING', cancel_requested_by: null });
+  });
+
+  test('stays lost through a server re-read and a remount, and comes back only when the stream does (Story 10.8)', async ({ page }) => {
+    /**
+     * The defect: `useLiveTimeline` restarted its silence clock whenever its `[url, cursor]`
+     * effect ran, and a server re-read that moves the cursor re-runs it. So a re-read that
+     * landed during a drop — the shell's bell refreshing because ANOTHER Run ended — made
+     * the page say `live` and reopened every live control while the stream was still down.
+     *
+     * The re-read here is exactly that one: this Run's chain moves on while its stream is
+     * unreachable, then another Run ends, the bell re-reads the page, and the page comes
+     * back with a new cursor. The test first proves the re-read really re-subscribed (a
+     * new `EventSource` for this Run) — without that it would pass against the defect —
+     * and then reads the word, the sentence and the controls several times over.
+     */
+    test.setTimeout(240_000);
+    const runId = await seedRun();
+    // PAUSED, so the COMMAND ends it (`RUN_CANCEL_TRANSITIONS`) and the terminal events
+    // really reach the list stream the bell follows.
+    const otherRunId = await seedRun('PAUSED');
+    const stream = `/api/runs/${runId}/events`;
+
+    // Every `EventSource` the page constructs, by URL. A reconnect `EventSource` makes by
+    // itself constructs nothing; only the subscription effect does.
+    await page.addInitScript(() => {
+      const Native = window.EventSource;
+      const opened: string[] = [];
+      Object.defineProperty(window, '__liveStreamsOpened', { value: opened });
+      window.EventSource = class extends Native {
+        constructor(url: string | URL, init?: EventSourceInit) {
+          super(url, init);
+          opened.push(String(url));
+        }
+      };
+    });
+    const subscriptions = (): Promise<number> => page.evaluate((prefix) =>
+      ((window as unknown as { __liveStreamsOpened?: string[] }).__liveStreamsOpened ?? [])
+        .filter((url) => url.startsWith(prefix)).length, stream);
+
+    // Until the drop, each connection to THIS Run's stream answers with one heartbeat and
+    // closes, so the page is live and reconnects on its own every two seconds. From the
+    // drop on, every attempt fails at the network, as a real drop does. The list stream the
+    // bell follows is a different URL and is never touched.
+    let dropping = false;
+    let attemptsWhileDropping = 0;
+    await page.route(`**${stream}*`, async (route) => {
+      if (dropping) {
+        attemptsWhileDropping += 1;
+        await route.abort();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-store' },
+        body: `retry: 2000\n\nevent: heartbeat\ndata: ${JSON.stringify({ at: new Date().toISOString() })}\n\n`,
+      });
+    });
+
+    await page.goto(`/runs/${runId}/live`);
+    const banner = page.locator('[data-live-status]');
+    await expect(banner).toHaveAttribute('data-live-status', 'live', { timeout: 30_000 });
+    await expect(page.getByRole('button', { name: 'Pause', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+
+    dropping = true;
+    await expect(banner).toHaveAttribute('data-live-status', 'lost', { timeout: LIVE_LOST_MS + 30_000 });
+    await expectThroughout(page, LOST_LIVE_VIEW, 2);
+
+    // The Run's chain moves on while the page cannot hear it.
+    await appendProgress(runId);
+    const before = await subscriptions();
+
+    // An UNRELATED re-read: another Run ends and the shell's bell re-reads the page.
+    const reRead = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === 'GET' && request.resourceType() === 'fetch'
+        && new URL(response.url()).pathname === `/runs/${runId}/live`;
+    }, { timeout: 30_000 });
+    // Observed at once, so a failure of the command below cannot leave it unhandled.
+    void reRead.catch(() => undefined);
+    const cancelled = await cancelRun(cancelDependencies(), {
+      session: { userId: author, sessionId: `live-drop-${author}` },
+      request: { runId: otherRunId, reason: null },
+    });
+    expect(cancelled).toEqual({ ok: true, state: 'CANCELED', pending: false });
+    await reRead;
+
+    // The precondition that lets this test fail: the re-read handed the page a new cursor,
+    // so the subscription effect ran again and opened a new connection.
+    await expect.poll(subscriptions, { timeout: 15_000 }).toBeGreaterThan(before);
+    await expectThroughout(page, LOST_LIVE_VIEW);
+
+    // WCAG 2.1 AA on the surface in exactly this state.
+    await expect(page).toHaveTitle(/.+/);
+    const scan = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(scan.violations.map((v) => ({ id: v.id, nodes: v.nodes.map((n) => n.target.join(' ')) }))).toEqual([]);
+
+    // A remount is not recovery either. Run Detail follows the SAME stream, so moving there
+    // and back hands the clock on rather than starting it again: both pages say `lost` at
+    // once, where a fresh clock would say `connecting` for a whole minute.
+    await page.getByRole('link', { name: 'Open Run Detail' }).click();
+    await expect(page.getByRole('link', { name: 'Execution Timeline', exact: true })).toBeVisible();
+    await expect(banner).toHaveAttribute('data-live-status', 'lost', { timeout: 5_000 });
+    await expect(banner.locator('[aria-hidden="true"]')).toHaveText(LIVE_SENTENCES.lost);
+    await page.goBack();
+    await expect(page.getByRole('heading', { name: /^Live View · / })).toBeVisible();
+    await expectThroughout(page, LOST_LIVE_VIEW);
+
+    // The stream returns: the browser's own retry reaches the real route, the stream itself
+    // answers, and only now is the page live and its controls back.
+    await page.unroute(`**${stream}*`);
+    await expect(banner).toHaveAttribute('data-live-status', 'live', { timeout: 30_000 });
+    await expect(page.getByText(LIVE_SENTENCES.live)).toBeVisible();
+    for (const name of ['Pause', 'Cancel Run']) {
+      await expect(page.getByRole('button', { name, exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+    }
+    expect(attemptsWhileDropping).toBeGreaterThan(0);
+
+    // None of this changed the Run being watched.
     const [row] = await sql`SELECT state, cancel_requested_by FROM audit_run WHERE run_id=${runId}`;
     expect(row).toMatchObject({ state: 'RUNNING', cancel_requested_by: null });
   });
