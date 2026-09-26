@@ -1,3 +1,55 @@
+## 2026-09-26 — A fact the records do not link is linked on new events, and read by identity (Story 10.6)
+
+Story 10.6 meets five compiler-1 visibility legs the closure register found on the retained
+surfaces (4.7, 5.2, 5.3, 5.4, 5.6); 4.7 and 5.2 stay open until Story 14-11a's export legs.
+No event type, column or migration was added; each missing link rides on a key of
+an event that already exists, written on NEW events only, and every surface reads it by
+identity and says what an older record does not hold. Contracts: `run-pause-v1.md`,
+`durable-escalation-v1.md` (35a, 35b), `observation-registration-v1.md`, `replay-v1.md`,
+`replay-asset-set-v1.md`, `live-view-v1.md`.
+
+- **A conditional payload key is the no-migration way to add a link, and it must be absent,
+  not empty, when it does not apply.** `humanMatchDecisions` on
+  `execution.observations-registered` (4.7) and `planStepId`/`heldWorkItemId` on
+  `lifecycle.run-paused` (5.4) follow the `absenceDigests` precedent: an event without the
+  case is byte for byte what it was, and the Observation digest does not move. The existing
+  `workItemId` key on a pause keeps its meaning, because the interaction receipt guard
+  (generations 55 to 59) compares it.
+- **A resume cannot name the attempt it starts, because none exists yet; the attempt names
+  the resume.** The stage that starts the held step writes `resumedWaitId` on the attempt's
+  own start event. `RunPauseContext.readPendingResume` is REQUIRED, which is what found every
+  stage context; `resumeLinker` reads it once per stage invocation and links only the FIRST
+  attempt at the held plan step (and Work Item). A per-attempt read would scan the chain once
+  per attempt.
+- **`PauseHold` is REQUIRED on `performPause` and `hold` is REQUIRED on `PauseBanners`.** An
+  optional parameter that changes what a record says is one a call site can forget — the
+  lesson of the mid-item boundary that once passed no in-flight pair.
+- **"Not linked" and "not recorded" are said, never shown as a blank.** A human-matched record
+  whose link does not establish an answered candidate choice keeps its flag and says the
+  decision is not linked; a pause whose event named no step says its step was not recorded;
+  a hold the banner cannot read says so. Nothing pairs a wait with a record, or a resume with
+  an attempt, by time.
+- **A selection a read cannot answer whole is refused, never cut.**
+  `MATCH_DECISION_SELECTOR_LIMIT` is sized from the callers' own page limits; a dropped entry
+  would render a human match as a platform one.
+- **One predicate per fact, shared by the writer and the surface.** `frameMissingPredicate`
+  serves the terminal transition's count and Replay's gaps; `readAdapterLog` serves Live View
+  and Replay, reading Evidence EXACTLY by the ids the steps name rather than the bounded
+  overview (the fifth appearance of "a limit belongs to the cardinality of the read").
+- **Every new sentence is proposed wording** in a words module (`match-words.ts`,
+  `pause-words.ts`, `replay.ts`'s `REPLAY_GAP_WORDS`, `live-view.ts`'s
+  `ADAPTER_ARTIFACT_WORDS.unavailable`), read back by the unit and browser tests, and needs
+  owner confirmation. The export legs of 4.7 and 5.2 are Story 14-11a's.
+
+Two mechanical notes:
+
+- **`node_modules/.bin/tsc` is a shell shim, not JavaScript.** `node --max-old-space-size=…
+  node_modules/.bin/tsc` fails with `SyntaxError: Invalid or unexpected token` before
+  checking anything; run `NODE_OPTIONS=--max-old-space-size=2048 pnpm exec tsc …` instead.
+- **A page test whose `vi.mock` factory lists a module's exports needs the page's NEW import
+  mocked too**, even when the new call returns early: `live/page.adapter-log.test.ts` now
+  mocks `pause-read` (`readPauseHold`), which reads the database on a PAUSED Run.
+
 ## 2026-09-25 — A single read of a moving preview sample is a race the broker refuses on purpose
 
 - **The preview route answers 503 for a read that meets a new sample, and that is the product

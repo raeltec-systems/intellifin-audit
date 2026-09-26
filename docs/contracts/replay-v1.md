@@ -159,6 +159,31 @@ The dedicated selected Replay browser counter measures **browser** requests to o
 origins. Its worker starts without provider/model credentials, but that counter does not
 instrument server or worker network calls and must not be reported as such telemetry.
 
+## A gap is shown where it sits, and playback says it is incomplete (Story 10.6)
+
+Replay used to play the frames a Run registered and say nothing about the actions that left
+none, so a session with a gap looked complete while the Result counted `framesMissing` and
+the chain held `failure.frame-missing`. It now shows both kinds of gap, and keeps them apart:
+
+- **A missing frame** is an action that owed one and has none: `frameMissingPredicate` in
+  `packages/infrastructure/src/runs/replay-gaps.ts`, the ONE predicate the terminal
+  transition's `readMissingFrames` and Replay's `readReplayGaps` both use, so the surface and
+  the Result cannot disagree about the count (`replay-asset-set-v1.md` states the rule).
+- **A suppressed frame** is a credential-entry action (`capture = 'SUPPRESSED'`), marked with
+  the existing capture sentence ("Capture suppressed — a credential was presented on this
+  request") and NEVER counted as missing: suppression is the guarantee working, and
+  reporting it as a gap would raise a finding against it.
+
+`readReplayGaps` answers the EXACT count of each kind and a bounded, ordered list of
+positions — how many frames precede each gap, in the scrubber's own order. The viewer draws
+a marker in the scrubber where each gap sits, says "Playback is incomplete: N frames are
+missing." whenever N > 0, and lists every gap in words. A record's selected-inspection page
+reads no gaps, because it is not the whole session and a count over it would describe
+something else. A frame whose protected read FAILS is unavailable rather than missing: it
+keeps its metadata and only that frame is retried, as above. The sentences are proposed
+wording (`REPLAY_GAP_WORDS`, `replayIncompleteSentence`, `replayGapPosition` in
+`apps/web/src/runs/replay.ts`).
+
 ## The keyboard
 
 | Key | What it does |

@@ -105,6 +105,14 @@ An older Result document has no `framesMissing` key at all. That is "this build 
 record it" and not "none were missing", and a surface says which rather than rendering a
 zero — the same rule the `artifacts` key follows.
 
+**Replay shows the gap where it sits (Story 10.6, legacy 5.2).** The predicate above is
+`frameMissingPredicate` in `packages/infrastructure/src/runs/replay-gaps.ts`, and it is the
+ONE predicate both `readMissingFrames` (the terminal transition's count) and
+`readReplayGaps` (the surface's) use, beside `captureSuppressedPredicate` for the suppressed
+kind, so Replay and the Result cannot disagree. Replay marks each missing and each
+suppressed position and states that playback is incomplete with the count; see
+`replay-v1.md`. The export leg of "flagged on Replay and export" is Story 14-11a's.
+
 ## The session recording
 
 `SOLARI_RECORDING` must be **on at session creation** or the provider has no recording, for
