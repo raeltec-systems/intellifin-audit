@@ -1,4 +1,4 @@
-## 2026-09-26 — Every append to a Run's chain wakes the channel (Story 10.7)
+## 2026-09-26 — Every append to a Run's chain wakes the channel, and a burst keeps its last re-read (Story 10.7)
 
 - **The wake-up belongs to the append, not to its writers.** `appendAuditEvent` issues
   `pg_notify('run_timeline', {runId, sequence})` for every append whose aggregate is a Run, in
@@ -21,6 +21,17 @@
   work, under a 50 ms heartbeat, so a row committed with no wake-up would still be found. To
   commit into the window between LISTEN and replay, hook the `listen` promise
   (`countedSql(onListening)` in `run-timeline-channel.test.ts`).
+- **A throttle may delay the final re-read; it may never drop it.** `BellLive` was
+  leading-edge only, so a second qualifying event inside one second of the last re-read was
+  dropped and the bell and the Overview ended a burst one change short. It composes
+  `useThrottledRefresh` (trailing) now, the one throttle Run Detail, the Runs list and Live
+  View already use. The Overview opens no stream of its own; the bell's re-read is its refresh.
+- **A browser burst test freezes the page's clock** (`page.clock.setFixedTime`). With a real
+  clock a slow `next dev` round trip stretches the gap past the one-second window, and the
+  leading-edge throttle passes by accident; timers still run, so a trailing re-read still
+  fires. The list stream has no replay, so wait for its first HEARTBEAT (sent only once its
+  LISTEN is armed) before committing anything the page must see. Proven by mutation: the old
+  `BellLive` fails `bell-burst.spec.ts` with the bell still at "1 unread".
 
 ## 2026-09-25 — A single read of a moving preview sample is a race the broker refuses on purpose
 

@@ -47,7 +47,8 @@ The notification is a wake-up only: what is streamed is always read from the tab
 notification it reads the named row and forwards the same envelope as
 `event: timeline` / `data: {"runId","seq","eventType","occurredAt","outcome","source"}`,
 with the same heartbeat and lifetime frames. It exists so a list and a badge can refresh
-(the badge on `execution.escalation-*` events only); it makes no replay guarantee — a
+(the badge only on the events that can change what it counts: an Escalation raised,
+answered or timed out, a Run flagged, a Run ending); it makes no replay guarantee — a
 refresh reads the whole list — which is why it carries no `id`.
 
 ## What this contract does not decide
