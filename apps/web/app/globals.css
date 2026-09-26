@@ -2157,6 +2157,18 @@ input:is([type='date'], [type='time'], [type='datetime-local'], [type='month'], 
   list-style: none;
 }
 
+/* A target with no frame here is a statement, not a button, so it keeps plain text colour
+   and weight; it sits on the buttons' text edge, size and row height, so the list keeps one
+   left edge and one rhythm (Story 10.9). */
+.ls-session__jumps > li > span {
+  display: block;
+  padding: 0 var(--spacing-3);
+  border: solid transparent;
+  border-width: 0 1px;
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--spacing-control-sm);
+}
+
 .ls-session-desktop-only {
   display: none;
   padding: var(--spacing-2) var(--spacing-4);
@@ -3296,5 +3308,31 @@ input:is([type='date'], [type='time'], [type='datetime-local'], [type='month'], 
 .run-control-transfer-source .ls-untrusted__body { overflow-wrap: anywhere; white-space: pre-wrap; }
 .ls-dialog:has(.run-control-transfer-source) { max-height: calc(100dvh - 48px); overflow: auto; }
 .ls-dialog:has(.run-control-transfer-source) > :not(.run-control-transfer-source) { flex-shrink: 0; }
+
+/* Story 10.10: every Escalation a person answered, on the Execution Timeline. The same
+   row treatment as the pauses beside it, so the two lists of decisions read alike. */
+.ls-escalation-answers {
+  display: grid;
+  gap: var(--spacing-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ls-escalation-answers__entry {
+  display: grid;
+  gap: var(--spacing-2);
+  padding-top: var(--spacing-3);
+  border-top: 1px solid var(--color-border-default);
+}
+
+.ls-escalation-answers__entry h3 {
+  margin: 0;
+}
+
+.ls-escalation-answers__line {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
 
 /* --------------------------------------------------------------- end of file ---- */

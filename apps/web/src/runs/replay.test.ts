@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import type { RunFrameRow, RunReplayObservationDelta, RunReplayWait } from '@intellifin/infrastructure';
@@ -5,6 +7,7 @@ import type { RunFrameRow, RunReplayObservationDelta, RunReplayWait } from '@int
 import { ESCALATION_KIND_UNKNOWN } from '../design/plain-words';
 
 import {
+  REPLAY_BOUND_WORDS,
   REPLAY_GAP_WORDS,
   REPLAY_JUMP_KINDS,
   clampReplayIndex,
@@ -14,6 +17,7 @@ import {
   replayFrameAt,
   replayFrameForWorkItem,
   replayInitialSelection,
+  replayJumpBoundSentence,
   replayJumpTargets,
   resolveFrameWorkItems,
   replayObservationsThrough,
@@ -53,8 +57,21 @@ const FRAMES: readonly RunFrameRow[] = [
   frame({ actionStartedAt: '2026-09-10T09:03:00.000Z', workItemId: WORK_B }),
 ];
 
+/**
+ * A wait, placed in the WHOLE session the way the repository places it (Story 10.9): by
+ * default the session is `FRAMES`, so `framesThrough` counts its frames at or before the
+ * instant, and the landing names the Work Item of the last of them.
+ */
 function wait(overrides: Partial<RunReplayWait> & { readonly waitId: string; readonly openedAt: string }): RunReplayWait {
-  return { kind: 'choose-candidate', closedAt: null, closureKind: null, answerOptionId: null, ...overrides };
+  const at = Date.parse(overrides.openedAt);
+  const through = FRAMES.filter((item) => Date.parse(item.actionStartedAt) <= at);
+  const last = through.at(-1);
+  return {
+    kind: 'choose-candidate', closedAt: null, closureKind: null, answerOptionId: null,
+    framesThrough: through.length,
+    landing: last?.workItemId == null ? null : { workItemId: last.workItemId, cursor: 0 },
+    ...overrides,
+  };
 }
 
 describe('where a Replay jump lands', () => {
@@ -136,6 +153,33 @@ describe('the Replay jump list', () => {
     expect(targets.find((target) => target.kind === 'exception')?.label).toBe('E-000105');
   });
 
+  // A P-4 page raises every Exception against ONE frame. Ordered by identifier (a hash),
+  // they were listed in no order a reader could see, and a bounded list's "first N" did not
+  // start at its top. Ties keep the order the read returned: raised first, first listed.
+  it('keeps the order each read returned where targets land on one frame (Story 10.9)', () => {
+    const tied = replayJumpTargets({
+      frames: FRAMES,
+      framesTotal: FRAMES.length,
+      workItems: [],
+      exceptions: [
+        { exceptionId: 'ffff', workItemId: WORK_B, populationRecordKey: 'raised-first' },
+        { exceptionId: 'aaaa', workItemId: WORK_B, populationRecordKey: 'raised-second' },
+        { exceptionId: 'cccc', workItemId: WORK_B, populationRecordKey: 'raised-third' },
+      ],
+      waits: [
+        wait({ waitId: 'w-z', openedAt: '2026-09-10T09:02:10.000Z' }),
+        wait({ waitId: 'w-a', openedAt: '2026-09-10T09:02:20.000Z' }),
+      ],
+    });
+    expect(tied.map((target) => [target.kind, target.frameIndex, target.id])).toEqual([
+      ['exception', 2, 'ffff'],
+      ['exception', 2, 'aaaa'],
+      ['exception', 2, 'cccc'],
+      ['escalation', 2, 'w-z'],
+      ['escalation', 2, 'w-a'],
+    ]);
+  });
+
   // `displayName` is the TARGET SYSTEM's name and is the SAME on every Work Item of a
   // Run, so labelling a jump with it gave a three-leaver Run three pills reading
   // "LoanCore" — on the surface a reader follows from a captured screen to a conclusion,
@@ -178,6 +222,98 @@ describe('why a jump target has no frame, said only as far as the read knows (PR
     // at all does -- decidable under any bound, and never "not read".
     expect(of(FRAMES.length, 'w-early')).toMatchObject({ frameIndex: null, absence: 'none-before' });
     expect(of(FRAMES.length + 1, 'w-early')).toMatchObject({ frameIndex: null, absence: 'none-before' });
+  });
+});
+
+/**
+ * An Escalation whose frame the page never read (Story 10.9). The page reads the first
+ * `REPLAY_FRAME_LIMIT` frames; where an Escalation lands is decided over EVERY frame, and a
+ * landing past the frames read used to fall back to the last frame read -- a screen
+ * captured before the question, which the question was not about.
+ */
+describe('an Escalation whose frame lies past the frames read (Story 10.9)', () => {
+  // The session holds eight frames and the page read the first four (`FRAMES`).
+  const late = (landing: RunReplayWait['landing']) => replayJumpTargets({
+    frames: FRAMES, framesTotal: 8, workItems: [], exceptions: [],
+    waits: [wait({ waitId: 'w-late', openedAt: '2026-09-10T09:07:30.000Z', framesThrough: 7, landing })],
+  })[0]!;
+
+  it('is NOT READ, and never lands on the last frame the page happened to read', () => {
+    expect(late({ workItemId: WORK_B, cursor: 0 })).toMatchObject({ kind: 'escalation', frameIndex: null, absence: 'not-read' });
+  });
+
+  it('names the inspection page that holds its frame, which need not be the first', () => {
+    expect(late({ workItemId: WORK_B, cursor: 500 })).toMatchObject({ workItemId: WORK_B, inspectionCursor: 500 });
+  });
+
+  it('offers no inspection when its frame belongs to no record, and still says only "not read"', () => {
+    const target = late(null);
+    expect(target).toMatchObject({ frameIndex: null, absence: 'not-read' });
+    expect(target.workItemId).toBeUndefined();
+    expect(target.inspectionCursor).toBeUndefined();
+  });
+
+  it('lands on the last frame read when that IS the frame at or before it', () => {
+    // Four frames at or before it, four read: the boundary is inside the page, not past it.
+    const [target] = replayJumpTargets({ frames: FRAMES, framesTotal: 8, workItems: [], exceptions: [],
+      waits: [wait({ waitId: 'w4', openedAt: '2026-09-10T09:03:30.000Z' })] });
+    expect(target).toMatchObject({ frameIndex: 3, absence: null });
+    expect(target?.inspectionCursor).toBeUndefined();
+  });
+
+  it('keeps the database landing when captures and the wait share a rendered millisecond', () => {
+    // Stored instants can differ by microseconds. The repository preserves their ordering
+    // in framesThrough, although each timestamp renders to the same JavaScript instant.
+    const frames = [
+      frame({ actionStartedAt: '2026-09-10T09:00:00.000Z' }),
+      frame({ actionStartedAt: '2026-09-10T09:00:00.000Z' }),
+    ];
+    const [target] = replayJumpTargets({ frames, framesTotal: 2, workItems: [], exceptions: [],
+      waits: [wait({ waitId: 'between-captures', openedAt: '2026-09-10T09:00:00.000Z', framesThrough: 1 })] });
+    expect(target).toMatchObject({ frameIndex: 0, absence: null });
+  });
+
+  it('does not invent a preceding frame when the database found none in the same millisecond', () => {
+    const frames = [frame({ actionStartedAt: '2026-09-10T09:00:00.000Z' })];
+    const [target] = replayJumpTargets({ frames, framesTotal: 1, workItems: [], exceptions: [],
+      waits: [wait({ waitId: 'before-capture', openedAt: '2026-09-10T09:00:00.000Z', framesThrough: 0, landing: null })] });
+    expect(target).toMatchObject({ frameIndex: null, absence: 'none-before' });
+  });
+
+  it('changes nothing under the bound: the last frame at or before it, from the frames read', () => {
+    const [target] = replayJumpTargets({ frames: FRAMES, framesTotal: FRAMES.length, workItems: [], exceptions: [],
+      waits: [wait({ waitId: 'w1', openedAt: '2026-09-10T09:02:30.000Z' })] });
+    expect(target).toMatchObject({ frameIndex: 2, absence: null });
+    expect(target?.workItemId).toBeUndefined();
+  });
+});
+
+/**
+ * What a bounded jump list says (Story 10.9). The owner approved the wording on
+ * 2026-09-26; the story file is where that approval is recorded, so the words are read
+ * back from it rather than compared with a copy of themselves.
+ */
+describe('what a bounded jump list says (Story 10.9)', () => {
+  const story = readFileSync(fileURLToPath(new URL(
+    '../../../../_bmad-output/implementation-artifacts/10-9-replay-bounded-history-completeness-a-bounded-view-says-what.md',
+    import.meta.url,
+  )), 'utf8').replace(/\s+/g, ' ');
+
+  it('is the owner’s approved wording, word for word', () => {
+    for (const sentence of [REPLAY_BOUND_WORDS.escalations, REPLAY_BOUND_WORDS.exceptions, REPLAY_BOUND_WORDS.rest])
+      expect(story).toContain(`"${sentence}"`);
+    // The linked words occur ONCE, so the sentence splits around its link into two halves.
+    expect(REPLAY_BOUND_WORDS.rest.split(REPLAY_BOUND_WORDS.restLink)).toHaveLength(2);
+  });
+
+  it('says the exact numbers when the list names fewer than the Run holds', () => {
+    expect(replayJumpBoundSentence('escalation', 500, 612)).toBe('Showing the first 500 of 612 Escalations.');
+    expect(replayJumpBoundSentence('exception', 500, 1_204)).toBe('Showing the first 500 of 1,204 Exceptions.');
+  });
+
+  it('says nothing when the list names every one, which is every Run under the bound', () => {
+    expect(replayJumpBoundSentence('escalation', 3, 3)).toBeNull();
+    expect(replayJumpBoundSentence('exception', 0, 0)).toBeNull();
   });
 });
 

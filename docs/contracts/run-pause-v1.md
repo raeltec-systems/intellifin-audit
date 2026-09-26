@@ -189,6 +189,33 @@ exactly; one that named nothing reads as `not-recorded`. The Execution Timeline 
 pauses ("Pauses and resumes"), and the Paused banner says where the pause holds the Run now.
 The sentences are proposed wording in `apps/web/src/runs/pause-words.ts`.
 
+## A pause request the Run never honoured, on the Timeline (Story 10.10)
+
+An event in the audit chain is not a history entry a reader can see (owner, 2026-09-25), so a
+superseded pause request is an entry titled "Pause request" in "Pauses and resumes" (legacy
+5.4 AC 3). It is placed among the pauses by the instant its own record holds — a pause by
+when it held the Run, a request by when it was asked for, or, when its record holds no
+request time, by when it was recorded as superseded. That orders rows; nothing pairs a
+request with a pause, and each pause keeps its ordinal. No event type, column or migration
+was added, and no event is rewritten.
+
+`readPauseRequests` (`packages/infrastructure/src/runs/decision-history.ts`) reads the two
+events that record a request as superseded, each only from the writer that appends it — the
+filter the interaction receipts already apply, so an event dressed as one from any other
+writer is not read:
+
+| Event | Writer | What the entry says |
+| --- | --- | --- |
+| `lifecycle.pause-superseded` | `result-sealer`, `worker`, `failure` | Who asked and when (the event's `requestedBy` and `requestedAt`), and that the Run ended before the pause took effect. |
+| `lifecycle.deferred-pause-superseded` | `deferred-pause-coordinator`, `web` or `worker`, `failure` | Who asked (`requestedBy`); when (the `run_deferred_pause` row the event's `commandId` names); the inspection it asked to pause after (that row's Work Item, in this Run, at its plan step); and why: `cancellation` and `run-finalized` say the Run ended first, `immediate-pause` says a request to pause at once replaced it. |
+
+A reason this build does not name, a requester or a time the record does not hold, and an
+inspection that does not resolve are each said in words rather than guessed or paired by
+time. The read answers an exact total and a bounded list of `PAUSE_REQUEST_LIMIT`, in chain
+order. The owner approved "Pause request", "Requested by {name} at {time}." and "The Run ended
+before the pause took effect, so its own outcome stands." on 2026-09-26; the other sentences
+are proposed wording in `apps/web/src/runs/decision-words.ts`.
+
 ## The windows
 
 | Wait kind | Window | Timeout outcome |

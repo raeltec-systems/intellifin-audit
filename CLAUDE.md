@@ -1,3 +1,147 @@
+## 2026-09-26 — Stacked story PRs need an admitted CI base
+
+Stories 10.9 and 10.10 keep the handover's `claude/10-6-legacy-visibility` PR base.
+The CI pull-request branch filter must include that exact base or a published candidate
+receives no run. Adding the base changes admission only; jobs, assertions, permissions
+and main-only push behavior stay unchanged. Never infer verification from a successful push.
+
+## 2026-09-26 — Decision-history review reads a total and its rows together (Story 10.10 continuation)
+
+A bounded history's count and rows must share a statement snapshot while another decision
+commits. Use a window count in the row query, including a zero-limit request; do not count
+first and then read a newer list. The regression test commits a second fact after the first
+real SELECT resolves and checks that the returned count still describes its rows.
+
+Supporting Evidence IDs are accepted as case-insensitive UUID text but PostgreSQL returns
+lowercase UUIDs. Normalize the map lookup, not the immutable event. Sentences that name an
+instant leave a slot for the shared `Timestamp`, retaining exact `datetime` and `title` with
+readable UTC text. Independent raise-writer negatives and absent/duplicate/mismatched Abort
+events pin the existing read contract; invalid option duplicates are already refused by the
+real raise command. Sheet 2B, omitted-history access and a request-aware introduction remain
+owner decisions, and this continuation remains WIP pending the database/browser gates.
+
+## 2026-09-26 — A decision a Run recorded is a Timeline entry, read by identity (Story 10.10)
+
+Story 10.10 meets legacy 4.8 AC 4, 5.6 AC 3 and 5.4 AC 3: an answered or aborted Escalation and
+a pause request the Run never honoured were events in the audit chain and nothing a reader could
+see. The Execution Timeline now lists them — "Escalation answers" beside "Pauses and resumes",
+and a "Pause request" entry inside it. No event type, column or migration was added, and no
+event is rewritten. Contracts: `durable-escalation-v1.md` (35c–35f), `run-pause-v1.md`,
+`replay-v1.md`.
+
+- **Every fact is read by identity, never by time.** A wait's ONE `execution.escalation-raised`
+  and ONE `execution.escalation-answered` event are found by `payload->>'waitId'`; a wait with
+  more than one establishes nothing. The Work Item is established only when EVERY supporting
+  Evidence id the raise named resolves through `run_evidence_capture` → `run_tool_action` →
+  `run_step_execution` (the Step Execution's Work Item first), every join bound to the Run, to
+  ONE Work Item at the raise's own plan step; otherwise the entry names the step and says the
+  Work Item was not recorded. "The Run was canceled by this answer." comes from the answer's own
+  event, never from the Run's present state.
+- **Each event is read only from the writer that appends it** — the raise from
+  `escalation-platform`/platform/success, `lifecycle.pause-superseded` from
+  `result-sealer`/worker/failure, `lifecycle.deferred-pause-superseded` from
+  `deferred-pause-coordinator`/web or worker/failure. **A forged-writer test changes ONE field
+  per case**: a fixture that differs in every field is refused by whichever check survives, so
+  it proves one check exists and not which. The first version did that, and the mutation that
+  dropped one writer check survived it.
+- **"Every Evidence id" needs a MIXED case.** `every` → `some` survived the first round, because
+  each fixture's Evidence either all resolved or none did. The test that kills it names one
+  captured and one uncaptured artifact on one raise.
+- **An approved sentence can be false in a case its list did not foresee.** "The Run ended
+  before the pause took effect, so its own outcome stands." is right for a request the Run
+  outran; a "pause after this inspection" request retired by a request to pause at once saw no
+  Run end, so it says a PROPOSED sentence that a pause at once replaced it, and a reason this
+  build does not name says it could not be read. Every proposed sentence is in
+  `apps/web/src/runs/decision-words.ts` and needs owner confirmation.
+- **The owner's approved layout fixes the entry order** — title, who answered, the answer (and
+  the abort), where it was raised, "Open in Replay". It is not chronological like a pause entry,
+  and that is the approval, not an inconsistency to repair.
+- **Reading the screenshots found a false sentence no test could.** A Run with no frames, opened
+  from "Open in Replay", said "…no frame was captured before it was raised. Choose a recorded
+  target below." over a "Jump to" list of absences. The pointer is now said only when that list
+  holds a target with a frame (`escalationReplayAbsenceWords`), proven by mutation both ways.
+- **Replay writes a selection note in up to four places when no frame is selected** (the status
+  line, the stage, "What the Agent was doing", "Observations") — the inspection link's pattern.
+  A browser assertion on it targets the status line, `.ls-session > p[role="status"]`; a
+  `getByText` meets Playwright's strict mode there.
+- **The reads live in `decision-history.ts`, not in `run-detail-repository.ts`** as the Code Map
+  said, so Story 10.9's parallel edits to that file cannot conflict. `capture-run-binding`
+  survives mutation by design: the Run-bound `workItems()` read is a second lock on that door.
+- **A cropped screenshot is not a measurement.** In one crop the two section headings looked
+  different sizes; `getComputedStyle` read 16px/600 for both, and all seven entries of the two
+  lists had the same gap, padding, border, left edge and width. Measure before changing CSS.
+- **Vitest does not check types.** The integration file passed 6/6 three times while it gave
+  `pauseRun` a `requireControllerLease` dependency it does not have (a pause takes no
+  controller lease) and typed a forged event type as `string`; only the root `pnpm typecheck`
+  refused both. Run it before committing a test file, not only after.
+
+## 2026-09-26 — Preserve the database's Replay landing ordinal (Story 10.9 continuation)
+
+`readEscalations` compares stored timestamps at database precision. The default Replay prefix
+must use its `framesThrough` ordinal for every landing, not recompute the in-prefix case with
+`Date.parse`: distinct stored instants can collapse into one millisecond and select a capture
+that happened after the question. Two red-green regressions cover an intervening wait and a
+wait before the first capture within the same rendered millisecond.
+
+A clicked record's optional frame denominator cannot be calculated from a bounded session
+prefix. Withhold that denominator when the full record total is unknown; retain the exact
+session counter. An inspection page has no jump buttons and does not enter that clicked state.
+The bounded-history P-4 fixture uses retry-or-skip decisions; P-4 refuses candidate matching.
+
+## 2026-09-26 — A bounded Replay view says what it covers, and the count beside a frame is exact (Story 10.9)
+
+Story 10.9 closes legacy 5.8's limitation (2): Replay's default view read its waits, its
+Observation-registration events and its Exceptions in pages of `REPLAY_PAGE_SIZE` (500) and
+said nothing when a page was full. No migration, no event type, no raised limit (the owner did
+not approve raising one). Contract: `replay-v1.md`, "A bounded jump list says what it covers".
+
+- **A count beside a frame is computed per frame in SQL, never summed from a bounded page.**
+  The view summed the first 500 registration events in the browser, so past them the count
+  stopped short while its sentence read as a total. `readFrames` now answers each frame's
+  count through `observationTotals`, the ONE fragment `readInspectionReplay` also uses, so one
+  frame cannot have two counts. Sixth appearance of "a limit belongs to the cardinality of the
+  read".
+- **A bounded list carries its exact total and says what it shows, ABOVE the list, in the
+  owner's words** (`REPLAY_BOUND_WORDS`). `readEscalations` and `readReplayExceptions` answer
+  `{ rows, total }`; `shown` is counted from the targets the list renders, never taken from a
+  read, so the sentence always describes the list under it. A pause is neither listed nor
+  counted: it is not a jump target.
+- **"The first N" must be true of the Run, so each list is read in RAISE order.** Exceptions
+  were read by `exception_id`, a derived UUIDv8 (a hash), so the 500 shown were an arbitrary
+  500. One registration raises its whole batch at one instant (a P-4 page raises every
+  parameter's Exception at once), so within an instant they are read by record, byte-wise
+  (`COLLATE "C"`), and the jump list keeps each read's order where targets tie on a frame.
+  An order no reader can see is no order: by id, a P-4 page's Exceptions were listed in none.
+- **An Escalation's landing frame is found over EVERY frame the Run registered.** Resolved over
+  the 500 frames read, an Escalation raised after them landed on the last frame read, a screen
+  the question was not about. The read returns how many frames precede its frame and the
+  inspection page (`?workItem=&cursor=`) that holds it; the row says the frame is not among
+  those shown and links that page.
+- **The rest is reached through the path that already exists.** "record review" in the
+  owner's sentence links the Evidence tab, where a record's inspector offers **Replay this
+  inspection**. No new route and no new read.
+- **Reading the screenshots found what every test passed over.** The default view's counter
+  said `Frame 500 of 500` over a Run of 520 frames, the bound presented as the session while
+  its inspection pages said `of 520`; it counts among every retained frame now. The
+  Exceptions of a P-4 page were listed in no order (above). The bound sentences, as three
+  paragraphs in an `ls-stack`, were spaced like three items of the card; they are one note,
+  a sentence to a line. And a row with no frame sat off the buttons' text edge in another
+  size; it shares their edge, size and row height now. A test asserts what it was told to;
+  only a reader looking at the page asks whether the page is true.
+
+Three mechanical notes:
+
+- **`jsonb_to_recordset` matches keys to its column list by exact name, and a key that does not
+  match is NULL, not an error.** The integration fixture's camelCase `stepExecutionId`
+  inserted NULLs until the keys were `step_execution_id`.
+- **`ORDER BY sequence` names the OUTPUT column when the select list has one called
+  `sequence`.** The test oracle selected `sequence::text AS sequence` and so ordered
+  1, 10, 100, ...; qualify it (`ORDER BY audit_events.sequence`).
+- **The over-the-bound browser fixture is its own spec file** (`replay-bounded-history.spec.ts`),
+  because Story 10.6's branch edits `replay.spec.ts`. It seeds one sealed, terminal Run in ONE
+  transaction, with its frame objects in storage BEFORE the commit: the worker's integrity
+  sweep reads a sealed package's artifacts, and a missing object is a permanent finding.
+
 ## 2026-09-26 — Review continuation keeps exact reads exact (Story 10.6)
 
 - Adapter Evidence readers accept at most 64 IDs. Batch distinct IDs at the caller; an

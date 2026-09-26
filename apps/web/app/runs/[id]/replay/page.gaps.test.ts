@@ -17,7 +17,7 @@ vi.mock('@intellifin/infrastructure', () => ({
   REPLAY_INSPECTION_PAGE_SIZE: 100, REPLAY_PAGE_SIZE: 500, readRecordNames: async () => new Map(),
   DrizzleRunDetailRepository: class {
     readTimeline = calls.timeline; readFrames = async () => ({ rows: [], total: 0 });
-    readWaits = async () => []; readObservationDeltas = async () => []; readExceptions = async () => ({ rows: [] });
+    readEscalations = async () => ({ rows: [], total: 0 }); readReplayExceptions = async () => ({ rows: [], total: 0 });
     readEvidenceItems = async () => []; readEvidenceItemsByIds = async () => [];
     readReplayGaps = calls.gaps;
     readInspectionReplay = async () => ({ kind: 'unavailable' });

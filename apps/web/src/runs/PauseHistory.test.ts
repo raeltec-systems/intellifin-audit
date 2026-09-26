@@ -96,9 +96,12 @@ const HISTORICAL: RunPauseEntry = {
   closure: { kind: 'resumed', resumedBy: AUDITOR, resumedAt: '2026-09-26T09:15:00.000Z', restart: { kind: 'not-recorded' } },
 };
 
+/** A Run with no pause request left unhonoured: the list is the pauses alone (Story 10.10). */
+const NO_REQUESTS = { requests: { total: 0, entries: [] }, plan: null, recordNames: new Map(), actorNames: new Map() } as const;
+
 function render(history: RunPauseHistory, plan: ExecutablePlan | null = PLAN): string {
   return renderToStaticMarkup(
-    React.createElement(PauseHistorySection, { history, plan, recordNames: new Map(), actorNames: NAMES }),
+    React.createElement(PauseHistorySection, { history, plan, recordNames: new Map(), actorNames: NAMES, requests: NO_REQUESTS }),
   );
 }
 
