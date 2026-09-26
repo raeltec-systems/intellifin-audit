@@ -1,3 +1,4 @@
+import { captureStoryState } from './story-visual-capture';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { spawn } from 'node:child_process';
@@ -427,6 +428,7 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
     await gaps.getByText(REPLAY_GAP_WORDS.listSummary, { exact: true }).click();
     await expect(gaps.locator('[data-gap="missing"]')).toContainText(`${REPLAY_GAP_WORDS.missing} · ${replayGapPosition(1)}`);
     await expect(gaps.locator('[data-gap="suppressed"]')).toContainText(`${suppressed} · ${replayGapPosition(3)}`);
+    await captureStoryState(page, 'replay-missing-and-suppressed', gaps);
 
     const scan = await new AxeBuilder({ page }).withTags(TAGS).analyze();
     expect(scan.violations, JSON.stringify(scan.violations, null, 2)).toEqual([]);

@@ -90,7 +90,7 @@ jobs:
           if [[ "$STORY_BRANCH" == claude/10-8-* ]]; then
             specs=(live-drop route-boundary flag-run)
           else
-            specs=(human-match pause-resume live-view)
+            specs=(human-match pause-resume live-view replay)
             if [[ -f tests/e2e/replay-bounded-history.spec.ts ]]; then specs+=(replay-bounded-history); fi
             if [[ -f tests/e2e/decision-history.spec.ts ]]; then specs+=(decision-history); fi
           fi
