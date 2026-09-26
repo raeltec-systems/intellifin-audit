@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
 import { isActiveRunState } from '@intellifin/domain';
 import { DrizzleFrozenExecutionReader, DrizzleRunDetailRepository, REPLAY_INSPECTION_PAGE_SIZE, REPLAY_PAGE_SIZE, readRecordNames } from '@intellifin/infrastructure';
@@ -16,7 +17,7 @@ import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
 import { planActionWord, runLifecycleWord, workItemLabel } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
 import { frameNarration, plannedStepCount, stepNarration } from '../../../../src/runs/live-view';
-import { effectiveFrameWorkItemId, replayInitialSelection, replayJumpTargets, replayObservationsThrough, replayRequest, replayViewerKey, resolveFrameWorkItems } from '../../../../src/runs/replay';
+import { effectiveFrameWorkItemId, replayInitialSelection, replayJumpTargets, replayHistoryCursor, replayRequest, replayViewerKey, resolveFrameWorkItems } from '../../../../src/runs/replay';
 import { recordNaming, recordWords } from '../../../../src/runs/record-words';
 
 export const metadata: Metadata = { title: 'Run · Replay · IntelliFin Audit' };
@@ -44,7 +45,7 @@ export default async function RunReplayPage({
   searchParams,
 }: {
   readonly params: Promise<{ id: string }>;
-  readonly searchParams: Promise<{ readonly workItem?: string | string[]; readonly cursor?: string | string[] }>;
+  readonly searchParams: Promise<{ readonly workItem?: string | string[]; readonly cursor?: string | string[]; readonly history?: string | string[]; readonly wait?: string | string[]; readonly capture?: string | string[] }>;
 }): Promise<React.JSX.Element> {
   const { id } = await params;
   const access = await openRun(id);
@@ -97,15 +98,23 @@ export default async function RunReplayPage({
 
   const runtime = await getRuntime();
   const detail = new DrizzleRunDetailRepository(runtime.db);
-  const request = replayRequest(await searchParams, REPLAY_INSPECTION_PAGE_SIZE);
+  const query = await searchParams;
+  let historyCursor = replayHistoryCursor(query.history, REPLAY_PAGE_SIZE);
+  if (query.wait !== undefined) {
+    historyCursor = typeof query.wait === 'string' && query.history === undefined && query.workItem === undefined && query.cursor === undefined && query.capture === undefined
+      ? await detail.readReplayWaitCursor(run.runId, query.wait) : null;
+  }
+  const request = historyCursor === null || ((query.history !== undefined || query.wait !== undefined) && (query.workItem !== undefined || query.cursor !== undefined || query.capture !== undefined))
+    ? { kind: 'unavailable' } as const : replayRequest(query, REPLAY_INSPECTION_PAGE_SIZE);
   if (request.kind !== 'prefix') {
     const [selected, plan] = await Promise.all([
       request.kind === 'inspection'
         ? detail.readInspectionReplay(run.runId, request.workItemId, request.cursor)
+        : request.kind === 'capture' ? detail.readReplayCapture(run.runId, request.evidenceId)
         : Promise.resolve({ kind: 'unavailable' } as const),
       new DrizzleFrozenExecutionReader(runtime.db).readFrozenExecution(run.versionId, run.procedureId),
     ]);
-    const owner = selected.kind === 'inspection' ? selected.workItem : null;
+    const owner = selected.kind === 'unavailable' ? null : selected.workItem;
     const system = owner === null ? null : plan?.inputs.targets
       .find(target => target.registrationId === owner.registrationId)?.displayName ?? null;
     // The record as the queue, the inspector and the Exception name it (UX-25): the key,
@@ -137,19 +146,21 @@ export default async function RunReplayPage({
           runId={run.runId}
           runState={run.state}
           stateSentence={`Session REPLAY. This Run ended: ${run.state}.`}
-          workspace={selected.kind === 'inspection' ? selected.workspace : null}
+          workspace={selected.kind !== 'unavailable' ? selected.workspace : null}
           frames={views}
-          framesTotal={selected.kind === 'inspection' ? selected.framesTotal : 0}
+          framesTotal={selected.kind !== 'unavailable' ? selected.framesTotal : 0}
           plannedSteps={plannedStepCount(plan)}
           stageNote={null}
           jumpTargets={[]}
           initialSelection={selected.kind === 'unavailable'
             ? { kind: 'unavailable', frameIndex: null }
+            : selected.kind === 'capture' ? { kind: 'start', frameIndex: 0 }
             : { kind: 'inspection', frameIndex: views.length === 0 ? null : 0,
                 target: { kind: 'work-item', id: selected.workItem.workItemId, label: label!,
                   ...(views.length === 0 ? { frameIndex: null, absence: 'none-captured' } as const
                     : { frameIndex: 0, absence: null } as const) } }}
           window={selected.kind === 'unavailable' ? { kind: 'unavailable' }
+            : selected.kind === 'capture' ? { kind: 'capture' }
             : { kind: 'inspection', workItemId: selected.workItem.workItemId, label: label!,
                 total: selected.total, cursor: selected.cursor,
                 previousCursor: selected.previousCursor, nextCursor: selected.nextCursor }}
@@ -167,18 +178,21 @@ export default async function RunReplayPage({
   // frames this surface renders — up to `REPLAY_FRAME_LIMIT` of them — so a fifty-row
   // default silently dropped later Tool Actions, jump targets and Observation deltas from
   // a Run that had more than fifty. See `REPLAY_PAGE_SIZE`.
-  const [timeline, frames, waits, deltas, exceptions, plan, evidence] = await Promise.all([
+  const [timeline, frames, waits, exceptions, plan, evidence] = await Promise.all([
     detail.readTimeline(run.runId, REPLAY_PAGE_SIZE),
     detail.readFrames(run.runId),
-    detail.readWaits(run.runId, REPLAY_PAGE_SIZE),
-    detail.readObservationDeltas(run.runId, REPLAY_PAGE_SIZE),
-    detail.readExceptions(run.runId, REPLAY_PAGE_SIZE),
+    detail.readWaits(run.runId, REPLAY_PAGE_SIZE, historyCursor ?? 0, true),
+    detail.readExceptions(run.runId, REPLAY_PAGE_SIZE, historyCursor ?? 0),
     new DrizzleFrozenExecutionReader(runtime.db).readFrozenExecution(run.versionId, run.procedureId),
     // The adapter log rows below promise "its integrity digest", and printed `null` for
     // every one: "No artifact registered." over artifacts that ARE registered. The Evidence
     // read this surface already has carries the digest per Evidence id.
     detail.readEvidenceItems(run.runId),
   ]);
+  // A syntactically valid but stale/out-of-range offset resumes at the last useful page.
+  const lastHistoryCursor = Math.floor(Math.max(0, Math.max(waits.total, exceptions.total) - 1) / REPLAY_PAGE_SIZE) * REPLAY_PAGE_SIZE;
+  if ((historyCursor ?? 0) > lastHistoryCursor) redirect(`${here}?history=${lastHistoryCursor}`);
+  const observationCounts = await detail.readReplayObservationCounts(run.runId, frames.rows);
   const digestByEvidence = new Map(evidence.map((item) => [item.evidenceId, item.digest]));
   // ONE record label with the queue, the inspector and the Exception (UX-25). Every place
   // below that names a record — a pill, the rail, the frame's narration — says this.
@@ -240,7 +254,7 @@ export default async function RunReplayPage({
         captureSuppression: action.captureSuppression,
         startedAt: action.startedAt,
       },
-      observations: replayObservationsThrough(deltas, frame),
+      observations: observationCounts.get(frame.evidenceId) ?? 0,
     };
   });
 
@@ -253,7 +267,7 @@ export default async function RunReplayPage({
       workItemId: row.workItemId,
       populationRecordKey: subjectLabel(row.populationRecordKey) ?? row.populationRecordKey,
     })),
-    waits,
+    waits: waits.rows,
   });
   const initialSelection = replayInitialSelection(undefined, targets, views.length);
 
@@ -261,7 +275,7 @@ export default async function RunReplayPage({
     <div className="ls-stack">
       {header}
       <ReplayViewer
-        key={replayViewerKey(run.runId, request)}
+        key={`${replayViewerKey(run.runId, request)}:history:${historyCursor}`}
         runId={run.runId}
         runState={run.state}
         stateSentence={`Session REPLAY. This Run ended: ${run.state}.`}
@@ -275,6 +289,9 @@ export default async function RunReplayPage({
         plannedSteps={plannedStepCount(plan)}
         stageNote={REPLAY_COPY.noFrames}
         jumpTargets={targets}
+        history={{ cursor: historyCursor ?? 0, pageSize: REPLAY_PAGE_SIZE,
+          waits: { shown: waits.rows.length, total: waits.total },
+          exceptions: { shown: exceptions.rows.length, total: exceptions.total } }}
         initialSelection={initialSelection}
         instructions={(plan?.inputs.instructions ?? []).map((instruction) => ({
           system: targetName(instruction.registrationId) ?? instruction.registrationId,

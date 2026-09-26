@@ -8,6 +8,7 @@ import {
   REPLAY_JUMP_KINDS,
   clampReplayIndex,
   replayFrameAt,
+  replayHistoryCursor,
   replayFrameForWorkItem,
   replayInitialSelection,
   replayJumpTargets,
@@ -250,5 +251,20 @@ describe('the Replay position', () => {
 
   it('is nowhere at all when a Run captured no frames', () => {
     expect(clampReplayIndex(0, 0)).toBe(-1);
+  });
+});
+
+describe('bounded Replay history', () => {
+  it.each([undefined, '0', '500', '1000'])('accepts canonical page %s', cursor => {
+    expect(replayHistoryCursor(cursor, 500)).toBe(cursor === undefined ? 0 : Number(cursor));
+  });
+  it.each(['-500', '0500', '1', '5e2', '2147484000', ['500', '500']])('refuses malformed page %s', cursor => {
+    expect(replayHistoryCursor(cursor, 500)).toBeNull();
+  });
+  it('never claims the prefix last frame is a later escalation exact capture', () => {
+    const targets = replayJumpTargets({ frames: [frame({ actionStartedAt: '2026-09-20T00:00:00Z' })], framesTotal: 600,
+      workItems: [], exceptions: [], waits: [{ waitId: 'late', kind: 'choose-candidate', openedAt: '2026-09-20T01:00:00Z',
+        closedAt: null, closureKind: null, answerOptionId: null, frameEvidenceId: 'later-evidence', frameWorkItemId: WORK_B }] });
+    expect(targets[0]).toMatchObject({ frameIndex: null, absence: 'not-read', workItemId: WORK_B });
   });
 });

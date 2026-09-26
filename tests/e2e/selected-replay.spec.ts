@@ -63,7 +63,7 @@ interface Replayed {
   readonly recordKey: string;
 }
 
-async function seedReplayRun(): Promise<Replayed> {
+async function seedReplayRun(lateEscalations = false): Promise<Replayed> {
   const runId = ids.next();
   const at = Date.now();
   const stamp = (offsetSeconds: number): string => new Date(at + offsetSeconds * 1_000).toISOString();
@@ -123,7 +123,7 @@ async function seedReplayRun(): Promise<Replayed> {
   }
 
   for (const [index, evidenceId] of frames.entries()) {
-    const workItemId = workItems[index < 505 ? 0 : 1]!;
+    const workItemId = lateEscalations && index === frames.length - 1 ? null : workItems[index < 505 ? 0 : 1]!;
     const stepExecutionId = ids.next();
     const toolActionId = ids.next();
     storage.objects.set(`screenshot/${runId}/${evidenceId}`, new Uint8Array(PNG));
@@ -155,6 +155,17 @@ async function seedReplayRun(): Promise<Replayed> {
     });
     await context.notifyTimeline(runId, event.sequence);
   });
+
+  if (lateEscalations) {
+    await sql`INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,deadline,closed_at,closure_kind,actor)
+      SELECT overlay(overlay(md5(${runId} || 'wait-' || n) placing '7' from 13) placing '8' from 17)::uuid,
+        ${runId}, 'choose-candidate', '[{"id":"one","label":"One"}]'::jsonb,
+        ${stamp(-100)}::timestamptz + n * interval '1 millisecond', ${stamp(-1)}, ${stamp(-1)}, 'timeout', 'wait-wake'
+      FROM generate_series(1,500) n`;
+    for (const index of [608,609]) await sql`INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,deadline,closed_at,closure_kind,actor)
+      VALUES(${ids.next()},${runId},'choose-candidate','[{"id":"one","label":"One"}]'::jsonb,
+        ${stamp(index * 10 + 1)},${stamp(index * 10 + 2)},${stamp(index * 10 + 2)},'timeout','wait-wake')`;
+  }
 
   // Terminal, sealed. Two statements, because postgres.js autocommits each one and
   // generation 21's DEFERRED trigger fires at the end of the second.
@@ -415,6 +426,33 @@ test.describe('an inspection beyond the first 500 Replay captures', () => {
     // This measures browser destinations. It is not server/worker network telemetry.
     expect(offOrigin).toEqual([]); expect(errors).toEqual([]);
     expect((await new AxeBuilder({ page }).withTags(TAGS).analyze()).violations).toEqual([]);
+  });
+
+  test('opens exact late escalation captures beyond both prefix and inspection page, including no owner', async ({ page, baseURL }) => {
+    test.setTimeout(180_000);
+    const seeded = await seedReplayRun(true);
+    const waits = await sql`SELECT wait_id FROM run_wait WHERE run_id=${seeded.runId} ORDER BY opened_at,wait_id OFFSET 500`;
+    let outbound = 0;
+    await page.route('**/*', route => {
+      if (new URL(route.request().url()).origin !== new URL(baseURL!).origin) { outbound++; return route.abort(); }
+      return route.continue();
+    });
+    for (const [offset, wait] of waits.entries()) {
+      await page.goto(`/runs/${seeded.runId}/replay?wait=${String(wait.wait_id)}#replay-escalation-${String(wait.wait_id)}`);
+      const target = page.locator(`[id="replay-escalation-${String(wait.wait_id)}"]`);
+      const link = target.getByRole('link', { name: 'Open session Replay', exact: true });
+      await expect(link).toHaveAttribute('href', `/runs/${seeded.runId}/replay?capture=${seeded.frames[608 + offset]}`);
+      await link.focus(); await link.press('Enter');
+      const image = page.locator('.ls-session__frame');
+      await expect(image).toHaveAttribute('src', `/api/runs/${seeded.runId}/frames/${seeded.frames[608 + offset]}`);
+      await expect.poll(() => image.evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth > 0), { timeout: 30_000 }).toBe(true);
+      await expect(page.getByText(`Frame ${609 + offset} of 610`, { exact: true })).toBeVisible();
+      await expect(page.getByText('Showing the first', { exact: false })).toHaveCount(0);
+      await page.reload();
+      await expect(image).toHaveAttribute('src', `/api/runs/${seeded.runId}/frames/${seeded.frames[608 + offset]}`);
+    }
+    expect((await new AxeBuilder({ page }).withTags(TAGS).analyze()).violations).toEqual([]);
+    expect(outbound).toBe(0);
   });
 
   test('follows the actual record-review inspection link and distinguishes its empty retained capture set', async ({ page }) => {

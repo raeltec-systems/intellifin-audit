@@ -84,6 +84,27 @@ describe.skipIf(!url)('selected Replay beyond the chronological prefix on Postgr
         payload: { workItemId: selected, registered },
       }));
     }
+    await sql`INSERT INTO run_observation(observation_id,run_id,work_item_id,step_execution_id,target_system,
+      population_record_key,schema_version,capture_method,match_origin,digest,observed_at_source,found,
+      coverage,corroboration,identity,attributes,evidence_ids,observed_at)
+      SELECT overlay(overlay(md5(${runId} || 'observation-' || n) placing '7' from 13) placing '8' from 17)::uuid, ${runId}, ${selected}, ${firstSelectedStep}, 'loancore',
+        'LATE-' || n, 1, 'agent', 'platform', repeat('b',64), ${stamp(600)}, 'true',
+        'COVERED', 'MATCHED', '{"locator":"$.rows[0].id","corroboration":"matched"}'::jsonb, '[]'::jsonb,
+        ${JSON.stringify([selectedFrames[0]])}::jsonb, ${stamp(600)} FROM generate_series(1,501) n`;
+    await sql`INSERT INTO run_exception(exception_id,run_id,observation_id,work_item_id,target_system,
+      population_record_key,condition_ids,diagnostics,fingerprint,fingerprint_key_id,raised_at)
+      SELECT overlay(overlay(md5(${runId} || 'exception-' || n) placing '7' from 13) placing '8' from 17)::uuid, ${runId}, overlay(overlay(md5(${runId} || 'observation-' || n) placing '7' from 13) placing '8' from 17)::uuid,
+        ${selected}, 'loancore', 'LATE-' || n, '["C1"]'::jsonb, '[]'::jsonb,
+        repeat('c',64), 'test-key', ${stamp(600)} FROM generate_series(1,501) n`;
+    await sql`INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,deadline,closed_at,closure_kind,actor)
+      SELECT overlay(overlay(md5(${runId} || 'wait-' || n) placing '7' from 13) placing '8' from 17)::uuid, ${runId}, 'choose-candidate', '[{"id":"one","label":"One"}]'::jsonb,
+        ${stamp(600)}::timestamptz + n * interval '1 millisecond', ${stamp(700)}, ${stamp(700)}, 'timeout', 'wait-wake'
+      FROM generate_series(1,501) n`;
+    await sql`INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,opened_by,deadline,closed_at,closure_kind,actor,answer_option_id)
+      SELECT overlay(overlay(md5(${runId} || 'pause-' || n) placing '7' from 13) placing '8' from 17)::uuid,
+        ${runId}, 'pause', '[{"id":"resume","label":"Resume"}]'::jsonb,
+        ${stamp(600)}::timestamptz + n * interval '1 millisecond', ${author}, ${stamp(700)}, ${stamp(700)}, 'resume', ${author}, 'resume'
+      FROM generate_series(499,501) n`;
   }, 90_000);
 
   async function capture(evidenceId: string, action: string, at: string, ownerRun = runId) {
@@ -102,6 +123,9 @@ describe.skipIf(!url)('selected Replay beyond the chronological prefix on Postgr
       // captures/actions before any referenced Steps, in one transaction; never weaken
       // the foreign keys or delete rows outside these saved Run identities.
       await sql.begin(async tx => {
+        await tx`DELETE FROM run_exception WHERE run_id IN (${runId}, ${foreignRunId})`;
+        await tx`DELETE FROM run_observation WHERE run_id IN (${runId}, ${foreignRunId})`;
+        await tx`DELETE FROM run_wait WHERE run_id IN (${runId}, ${foreignRunId})`;
         await tx`DELETE FROM run_evidence_capture WHERE run_id IN (${runId}, ${foreignRunId})`;
         await tx`DELETE FROM run_tool_action WHERE run_id IN (${runId}, ${foreignRunId})`;
         await tx`DELETE FROM run_step_execution WHERE run_id IN (${runId}, ${foreignRunId})`;
@@ -115,6 +139,48 @@ describe.skipIf(!url)('selected Replay beyond the chronological prefix on Postgr
       await sql`DELETE FROM procedure WHERE procedure_id=${procedureId}`;
       await sql`DELETE FROM auth_user WHERE id=${author}`;
     } finally { await sql.end({ timeout: 5 }); }
+  });
+
+  it('counts every registration for a default frame page without serializing the event history', async () => {
+    const read = await detail.readInspectionReplay(runId, selected);
+    if (read.kind !== 'inspection') throw new Error('Fixture inspection missing');
+    const counts = await detail.readReplayObservationCounts(runId, read.rows.map(row => row.frame));
+    expect(counts.size).toBe(100);
+    expect([...counts.values()].every(value => value === 512)).toBe(true);
+    const events = await detail.readObservationDeltas(runId, 500);
+    const tail = await detail.readObservationDeltas(runId, 500, 500);
+    expect(events.total).toBe(508); expect(events.rows).toHaveLength(500);
+    expect(tail.total).toBe(508); expect(tail.rows).toHaveLength(8);
+    expect(tail.rows[0]!.sequence).toBeGreaterThan(events.rows.at(-1)!.sequence);
+    expect(await detail.readReplayObservationCounts(foreignRunId, read.rows.map(row => row.frame)))
+      .toEqual(new Map(read.rows.map(row => [row.frame.evidenceId, 0])));
+  });
+
+  it('retains exact bounded wait totals, continuation, landing and deep-link location', async () => {
+    const prefix = await detail.readWaits(runId, 500, 0, true);
+    const tail = await detail.readWaits(runId, 500, 500, true);
+    expect(prefix.rows).toHaveLength(500); expect(prefix.total).toBe(501);
+    expect((await detail.readWaits(runId, 500)).total).toBe(504);
+    expect(prefix.rows.every(row => row.kind !== 'pause')).toBe(true);
+    expect(tail.rows).toHaveLength(1); expect(tail.total).toBe(501);
+    const target = tail.rows[0]!;
+    expect(prefix.rows.some(row => row.waitId === target.waitId)).toBe(false);
+    expect(target.frameEvidenceId).toBe(ties.at(-1));
+    expect(target.frameWorkItemId).toBe(selected);
+    expect(await detail.readReplayWaitCursor(runId, target.waitId)).toBe(500);
+    expect(await detail.readReplayWaitCursor(foreignRunId, target.waitId)).toBeNull();
+    expect(await detail.readReplayWaitCursor(runId, 'invalid')).toBeNull();
+    expect(await detail.readWaits(runId, 500, 1)).toEqual({ rows: [], total: 0 });
+  });
+
+  it('counts and reaches every Exception beyond the first 500 without cross-Run rows', async () => {
+    const prefix = await detail.readExceptions(runId, 500);
+    const tail = await detail.readExceptions(runId, 500, 500);
+    expect(prefix.total).toBe(501); expect(prefix.rows).toHaveLength(500);
+    expect(tail.total).toBe(501); expect(tail.rows).toHaveLength(1);
+    expect(tail.rows[0]!.workItemId).toBe(selected);
+    expect(prefix.rows.some(row => row.exceptionId === tail.rows[0]!.exceptionId)).toBe(false);
+    expect(await detail.readExceptions(foreignRunId, 500, 500)).toEqual({ rows: [], total: 0 });
   });
 
   it('keeps the 500-frame prefix while selecting the exact late capture and full context', async () => {
@@ -204,6 +270,28 @@ describe.skipIf(!url)('selected Replay beyond the chronological prefix on Postgr
     // actual validate_evidence_capture trigger, before a forged row reaches any read.
     await expect(sql`INSERT INTO run_evidence_capture(evidence_id,run_id,tool_action_id,source_location)
       VALUES(${selectedFrames[0]!},${foreignRunId},${firstSelectedAction},${source})`).rejects.toMatchObject({ code: '23514' });
+  });
+
+  it('selects the exact late owned capture beyond its first inspection page, and no-owner captures', async () => {
+    const lastOwned = await detail.readReplayCapture(runId, ties[1]!);
+    expect(lastOwned).toMatchObject({ kind: 'capture', total: 1, framesTotal: 610,
+      rows: [{ globalOrdinal: 610, frame: { evidenceId: ties[1] }, observations: 512 }] });
+    if (lastOwned.kind !== 'capture') throw new Error('Exact capture missing');
+    expect(lastOwned.rows).toHaveLength(1); expect(lastOwned.workItem?.workItemId).toBe(selected);
+    expect(await detail.readReplayCapture(foreignRunId, ties[1]!)).toEqual({ kind: 'unavailable' });
+    expect(await detail.readReplayCapture(runId, 'bad')).toEqual({ kind: 'unavailable' });
+    const step = ids.next(), action = ids.next(), evidence = ids.next();
+    await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at)
+      VALUES(${step},${runId},'no-owner-capture',NULL,'inspect-record','SUCCEEDED',1,${stamp(700)})`;
+    await sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,work_item_id,surface,target_system,
+      action,method,destination,parameters,outcome,status,redirected,downloads,started_at,completed_at,capture)
+      VALUES(${action},${runId},${step},NULL,'agent','loancore','read-attribute','GET',${source},'[]'::jsonb,
+        'performed',200,false,0,${stamp(700)},${stamp(700)},'PERMITTED')`;
+    await capture(evidence, action, stamp(700));
+    const unowned = await detail.readReplayCapture(runId, evidence);
+    expect(unowned).toMatchObject({ kind: 'capture', workItem: null, total: 1, framesTotal: 611,
+      rows: [{ globalOrdinal: 611, frame: { evidenceId: evidence, workItemId: null }, observations: 521 }] });
+    if (unowned.kind === 'capture') expect(unowned.rows).toHaveLength(1);
   });
 
   it('counts a larger distinct-timestamp history once while retaining a bounded frame page', async () => {

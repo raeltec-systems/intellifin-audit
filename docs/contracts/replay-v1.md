@@ -126,9 +126,10 @@ history, including events at the action start and excluding later events. JSON s
 are not numeric deltas. Only the requested frame page and its context are serialized;
 large frame and event histories are counted/ranked in the database. A single grouped
 registration-event scan and materialized cumulative total serve all selected page timestamps;
-there is no separate base-history sum for each frame. The default session
-view retains its existing bounded timeline/delta reads; it does not gain an unbounded
-history payload through inspection selection.
+there is no separate base-history sum for each frame. The default session view now uses the same complete-history aggregation discipline for
+its bounded frame page. Registration events never become an unbounded history payload.
+`readObservationDeltas` retains a bounded page with an exact total and explicit offset for
+callers that need the individual events.
 
 ## One session viewer, in two modes
 
@@ -187,3 +188,20 @@ who cannot see the picture hears exactly what the picture is captioned with.
   Replay is whole without it. A supplementary link to it is a later story's.
 - **Exception investigation** (Epic 6). The jump list reaches an Exception's frame; the
   provenance chain behind it is Exception Detail's.
+
+## Bounded jump history (Story 10.9 implementation)
+
+Escalations and Exceptions retain their 500-row bound and exact totals. `?history=<offset>`
+selects a shared page, using canonical nonnegative multiples of 500. Previous/Next links
+make every retained target reachable. Numeric ranges use the existing Escalations/Exceptions
+labels; new explanatory sentences remain owner decisions, not implicitly approved copy.
+Pauses are excluded before the Escalation count and page are calculated.
+
+`?wait=<id>` resolves a same-Run Escalation to its page before rendering its stable
+`replay-escalation-<id>` anchor. Invalid, duplicated, cross-Run, or ambiguous inspection/history
+requests are unavailable. A wait's landing is resolved against the full retained capture set;
+a later capture never silently lands on the prefix's last frame. A known exact capture outside the prefix links to `?capture=<evidence-id>`, which selects
+one authorized retained capture with full stored context and its global session ordinal.
+This works without a Work Item and beyond an inspection's own first page. Duplicate,
+foreign, invalid or mixed capture selectors are unavailable. Valid history offsets beyond
+the exact total redirect to the last useful page; malformed offsets are refused.

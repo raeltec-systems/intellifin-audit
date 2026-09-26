@@ -2,12 +2,12 @@ import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const calls = vi.hoisted(() => ({ openRun: vi.fn(), read: vi.fn(), prefix: vi.fn(), plan: vi.fn(), names: vi.fn(), frames: vi.fn() }));
+const calls = vi.hoisted(() => ({ openRun: vi.fn(), read: vi.fn(), prefix: vi.fn(), plan: vi.fn(), names: vi.fn(), frames: vi.fn(), waits: vi.fn(), waitCursor: vi.fn(), exceptions: vi.fn(), capture: vi.fn() }));
 vi.mock('@intellifin/infrastructure', () => ({
   REPLAY_INSPECTION_PAGE_SIZE: 100, REPLAY_PAGE_SIZE: 500, readRecordNames: calls.names,
   DrizzleRunDetailRepository: class {
-    readInspectionReplay = calls.read; readTimeline = calls.prefix; readFrames = calls.frames;
-    readWaits = async () => []; readObservationDeltas = async () => []; readExceptions = async () => ({ rows: [] });
+    readInspectionReplay = calls.read; readReplayCapture = calls.capture; readTimeline = calls.prefix; readFrames = calls.frames;
+    readWaits = calls.waits; readReplayWaitCursor = calls.waitCursor; readReplayObservationCounts = async () => new Map(); readExceptions = calls.exceptions;
     readEvidenceItems = async () => [];
   },
   DrizzleFrozenExecutionReader: class { readFrozenExecution = calls.plan; },
@@ -32,7 +32,7 @@ function viewerKey(node: unknown): string | null {
 
 const id = '019823ab-0000-7000-8000-000000000001';
 const workItemId = '019823ab-0000-7000-8000-000000000002';
-const view = (searchParams: { workItem?: string | string[]; cursor?: string | string[] }) =>
+const view = (searchParams: { workItem?: string | string[]; cursor?: string | string[]; history?: string | string[]; wait?: string | string[]; capture?: string | string[] }) =>
   RunReplayPage({ params: Promise.resolve({ id }), searchParams: Promise.resolve(searchParams) });
 
 beforeEach(() => {
@@ -41,6 +41,10 @@ beforeEach(() => {
     procedureName: 'Selected Replay', versionId: 'version', procedureId: 'procedure' }, readAt: new Date('2026-09-20T00:00:00Z') });
   calls.plan.mockResolvedValue(null);
   calls.names.mockResolvedValue(new Map());
+  calls.waits.mockResolvedValue({ rows: [], total: 0 });
+  calls.exceptions.mockResolvedValue({ rows: [], total: 0 });
+  calls.waitCursor.mockResolvedValue(null);
+  calls.capture.mockResolvedValue({ kind: 'unavailable' });
   calls.read.mockResolvedValue({ kind: 'inspection', workItem: { workItemId, subjectKey: 'E-LATE',
     displayName: 'LoanCore', registrationId: 'loancore' }, workspace: null, rows: [], total: 0, framesTotal: 600,
     cursor: 0, previousCursor: null, nextCursor: null });
@@ -131,4 +135,44 @@ describe('selected Replay route', () => {
       .map(async request => viewerKey(await view(request))));
     expect(new Set(keys).size).toBe(keys.length);
   });
+});
+
+describe('bounded history route', () => {
+  beforeEach(() => {
+    calls.prefix.mockResolvedValue({ workspace: null, workItems: [], stepExecutions: { rows: [] }, toolActions: { rows: [] }, sessionSteps: [] });
+    calls.frames.mockResolvedValue({ rows: [], total: 0 });
+  });
+  it('reaches the same-Run late wait page without widening either list', async () => {
+    calls.waitCursor.mockResolvedValue(500);
+    calls.waits.mockResolvedValue({ rows: [], total: 501 });
+    await view({ wait: workItemId });
+    expect(calls.waitCursor).toHaveBeenCalledWith(id, workItemId);
+    expect(calls.waits).toHaveBeenCalledWith(id, 500, 500, true);
+    expect(calls.exceptions).toHaveBeenCalledWith(id, 500, 500);
+  });
+  it.each([{ history: '1' }, { history: ['500', '500'] }, { history: '500', workItem: workItemId },
+    { wait: [workItemId, workItemId] }, { wait: workItemId, history: '500' }, { wait: workItemId }])('refuses ambiguous or unavailable selection %j', async query => {
+    const html = renderToStaticMarkup(await view(query));
+    expect(html).toContain('unavailable'); expect(calls.waits).not.toHaveBeenCalled();
+  });
+});
+
+it('clamps a valid out-of-range history offset to the last useful retained page', async () => {
+  calls.prefix.mockResolvedValue({ workspace: null, workItems: [], stepExecutions: { rows: [] }, toolActions: { rows: [] }, sessionSteps: [] });
+  calls.frames.mockResolvedValue({ rows: [], total: 0 });
+  calls.waits.mockResolvedValue({ rows: [], total: 501 });
+  await expect(view({ history: '2147483500' })).rejects.toMatchObject({ digest: expect.stringContaining(`replay?history=500`) });
+});
+
+it('loads an exact retained capture without a default prefix or inspection-first substitution', async () => {
+  await view({ capture: workItemId });
+  expect(calls.capture).toHaveBeenCalledWith(id, workItemId);
+  expect(calls.prefix).not.toHaveBeenCalled(); expect(calls.read).not.toHaveBeenCalled();
+});
+
+it.each([{ capture: [workItemId, workItemId] }, { capture: workItemId, history: '0' },
+  { capture: workItemId, wait: workItemId }, { capture: workItemId, workItem: workItemId },
+  { capture: 'bad' }, { capture: workItemId, cursor: '0' }])('rejects mixed or invalid capture selection %j', async query => {
+  expect(renderToStaticMarkup(await view(query))).toContain('unavailable');
+  expect(calls.capture).not.toHaveBeenCalled();
 });

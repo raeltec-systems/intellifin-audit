@@ -50,6 +50,9 @@ export interface ReplayViewerProps {
   readonly framesTotal: number;
   readonly plannedSteps: number | null;
   readonly stageNote: string | null;
+  readonly history?: { readonly cursor: number; readonly pageSize: number;
+    readonly waits: { readonly shown: number; readonly total: number };
+    readonly exceptions: { readonly shown: number; readonly total: number } };
   readonly jumpTargets: readonly ReplayJumpTarget[];
   readonly instructions: readonly { readonly system: string; readonly text: string }[];
   readonly adapterSteps: readonly LiveViewerAdapterStep[];
@@ -150,7 +153,7 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
   const inspection = props.window?.kind === 'inspection' ? props.window : null;
   // An inspection page numbers its frames among every capture the Run retained, so the
   // counter says where this screen sits in the whole session, not in the loaded page.
-  const counterTotal = inspection === null ? props.frames.length : props.framesTotal;
+  const counterTotal = inspection === null && props.window?.kind !== 'capture' ? props.frames.length : props.framesTotal;
   const counter = index < 0
     ? props.window !== undefined || props.frames.length > 0 ? 'No selected frame' : 'No frames'
     : `Frame ${(frame?.globalOrdinal ?? index + 1).toLocaleString('en-US')} of ${counterTotal.toLocaleString('en-US')}`;
@@ -354,10 +357,21 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
           the link above, so it lists no jump targets of its own. */}
       {props.window !== undefined ? null : <section aria-labelledby="replay-jump-heading" className="ls-card ls-stack">
         <h3 id="replay-jump-heading">Jump to</h3>
+        {props.history === undefined ? null : <div className="ls-stack">
+          <dl>
+            <dt>Escalations</dt><dd>{props.history.waits.shown === 0 ? '0' : `${props.history.cursor + 1}–${props.history.cursor + props.history.waits.shown}`} / {props.history.waits.total}</dd>
+            <dt>Exceptions</dt><dd>{props.history.exceptions.shown === 0 ? '0' : `${props.history.cursor + 1}–${props.history.cursor + props.history.exceptions.shown}`} / {props.history.exceptions.total}</dd>
+          </dl>
+          <nav aria-label="Jump to">
+            {props.history.cursor === 0 ? null : <Link href={`/runs/${props.runId}/replay?history=${props.history.cursor - props.history.pageSize}`}>Previous</Link>}
+            {' '}
+            {props.history.cursor + props.history.pageSize >= Math.max(props.history.waits.total, props.history.exceptions.total) ? null : <Link href={`/runs/${props.runId}/replay?history=${props.history.cursor + props.history.pageSize}`}>Next</Link>}
+          </nav>
+        </div>}
         {props.jumpTargets.length === 0 ? <p>{REPLAY_COPY.noJumpTargets}</p> : (
           <ul className="ls-session__jumps">
             {props.jumpTargets.map((target) => (
-              <li key={`${target.kind}-${target.id}`}>
+              <li key={`${target.kind}-${target.id}`} id={`replay-${target.kind}-${target.id}`} tabIndex={-1}>
                 {target.frameIndex === null ? (
                   // Nowhere to go, said in words -- and said only as far as it is KNOWN. A
                   // pill that opens nothing looks exactly like one that opens the right
@@ -366,7 +380,7 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
                   <span>
                     {JUMP_WORDS[target.kind]} · <span className="ls-mono">{target.label}</span>
                     {' '}· {absenceSentence(target.absence, props.frames.length)}
-                    {target.absence === 'not-read' && target.workItemId !== undefined ? <> <Link href={replayInspectionHref(props.runId, target.workItemId)}>Open inspection Replay</Link></> : null}
+                    {target.absence === 'not-read' && target.frameEvidenceId !== undefined ? <> <Link href={`/runs/${props.runId}/replay?capture=${encodeURIComponent(target.frameEvidenceId)}`}>Open session Replay</Link></> : target.absence === 'not-read' && target.workItemId !== undefined ? <> <Link href={replayInspectionHref(props.runId, target.workItemId)}>Open inspection Replay</Link></> : null}
                   </span>
                 ) : (
                   <button
