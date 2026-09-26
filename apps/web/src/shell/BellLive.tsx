@@ -1,8 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useRef } from 'react';
-
+import { useThrottledRefresh } from '../runs/LiveBanner';
 import { isRunEndingEvent } from '../runs/live-status';
 import { useLiveTimeline } from '../runs/useLiveTimeline';
 
@@ -29,15 +27,23 @@ export function changesOpenWaits(eventType: string): boolean {
  * to the events that can change an open-wait count, each re-reading the shell so the
  * bell shows a count somebody counted rather than one this component guessed. Renders
  * nothing; the bell itself stays the typed, server-counted component it was.
+ *
+ * The re-read also re-renders whatever page is open, and that is how the Overview's counts
+ * stay current: the Overview opens no stream of its own (owner decision 2026-09-25), so
+ * this is its subscription too.
+ *
+ * `[REPAIRED 2026-09-26, Story 10.7]` The throttle is TRAILING. It used to drop a second
+ * qualifying event inside one second of the last re-read and schedule nothing later, so a
+ * short burst — two Runs flagged together, a question answered as another opened — left
+ * the bell and the Overview one change short until some unrelated event arrived. A
+ * throttle may delay the final re-read; it may never lose it. `useThrottledRefresh` is
+ * the throttle Run Detail, the Runs list and Live View already use, so the shell and the
+ * surfaces follow one rule for how often a page may re-read, not two.
  */
 export function BellLive(): null {
-  const router = useRouter();
-  const lastRefreshAt = useRef(0);
+  const refresh = useThrottledRefresh();
   useLiveTimeline('/api/runs/events', null, (event) => {
-    if (!changesOpenWaits(event.eventType)) return;
-    if (Date.now() - lastRefreshAt.current < 1_000) return;
-    lastRefreshAt.current = Date.now();
-    router.refresh();
+    if (changesOpenWaits(event.eventType)) refresh();
   });
   return null;
 }
