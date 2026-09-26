@@ -14,6 +14,17 @@
 - **Only a Run's chain wakes it.** A Procedure's chain, or a UUID-shaped aggregate that names
   no Run, must not: the list stream reads the row a notification names and would forward it as
   a Run's event. Mutation: dropping the `if (run)` guard fails the any-writer case.
+- **A Run surface does not re-read on the reads of its own evidence.** Once every append woke
+  the channel, the Evidence inspector's own grant read (two `evidence-access.*` events on the
+  Run's own chain per render) woke the inspector again, and on an active Run it re-read itself
+  about once a second: two permanent chain events and one worker grant job each time.
+  `refreshesSurface` (`apps/web/src/runs/refresh-events.ts`) skips `evidence-access.*`,
+  `notification.*` and `security.denied`, which no Run surface renders. It is an exclusion
+  list, so a family added later still re-reads. Run Detail and the Runs list mount it through
+  `SurfaceLiveBanner` (a server component cannot pass a function to a client one); `LiveGate`
+  asks it before `refresh()` and keeps the Run-ending latch unconditional; and
+  `refresh-events.test.ts` refuses any other direct `<LiveBanner` mount. `BellLive` keeps its
+  own filter. The stream still carries every family; only the re-read skips three.
 - **Prove a WAKE-UP, not a heartbeat or a replay.** Open the per-Run stream one event behind
   the head, wait for that replayed frame, keep the heartbeat a minute away and the delivery
   deadline far below it. Count raw wake-ups on a second LISTEN and flush with a probe NOTIFY

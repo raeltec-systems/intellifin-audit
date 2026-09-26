@@ -6,6 +6,7 @@ import { ACTION_GATE_OPEN, ActionGateProvider, useActionGate, type ActionGateSta
 import { EndedBanner } from './LiveViewer';
 import { LiveBannerView, useThrottledRefresh } from './LiveBanner';
 import { LIVE_GATE_REASONS, isRunEndingEvent, liveGateReason, subscribeViewport } from './live-status';
+import { refreshesSurface } from './refresh-events';
 import { useLiveTimeline } from './useLiveTimeline';
 
 /**
@@ -164,7 +165,10 @@ function SubscribedGate({
   const ended = useRef(false);
   const live = useLiveTimeline(url, cursor, (event) => {
     if (isRunEndingEvent(event.eventType) && !ended.current) { ended.current = true; setRunEnded(true); }
-    refresh();
+    // Not on the families no surface renders (Story 10.7 review). A frame this page shows
+    // is read through a grant, and each read appends two `evidence-access.*` events to
+    // this Run's own chain: re-reading on them would re-read the page for its own frames.
+    if (refreshesSurface(event.eventType)) refresh();
   });
   const desktop = useDesktopViewport();
   const reason = liveGateReason(live.status, runEnded, desktop);
