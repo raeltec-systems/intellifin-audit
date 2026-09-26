@@ -189,3 +189,12 @@ The isolated gate avoids workspace sync files inside temporary boundary mutation
 no assertion was weakened or skipped. New database regressions remain unrun locally;
 the actual published candidate must pass PR CI. Visual acceptance and handover sheet 2B
 remain open. This candidate is not approved, ready to merge or deployed.
+
+
+### Stacked-PR CI admission
+
+The existing CI workflow admitted only PR bases `main` and `codex/epic-5-controls`.
+This excluded the handover's stacked PRs based on `claude/10-6-legacy-visibility`,
+so publishing their code did not start a verification run. Added that exact base to the
+pull-request filter. Job definitions, permissions, test assertions and main-only push
+behavior are unchanged. The workflow YAML was parsed and both branch filters checked.
