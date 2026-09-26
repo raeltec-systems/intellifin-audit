@@ -10,7 +10,10 @@
 - **So the payload is spelled exactly as the writers spell it, `JSON.stringify({ runId,
   sequence })`, key order included.** Another spelling is a second, unfolded notification, and
   the list stream (one frame per wake-up, no cursor) forwards the event twice. Proven by
-  mutation: swapping the two keys fails the list-stream case with `[2, 2, 3, 4]`.
+  mutation: swapping the two keys fails the list-stream case with `[2, 2, 3, 4]`. The spelling
+  is pinned at EVERY site, not only the ones a test drives: `run-timeline-channel.test.ts`
+  walks the package and requires each `pg_notify('run_timeline', …)` to stringify an object
+  literal whose keys are `runId` then `sequence`, and names each offender by file and line.
 - **Only a Run's chain wakes it.** A Procedure's chain, or a UUID-shaped aggregate that names
   no Run, must not: the list stream reads the row a notification names and would forward it as
   a Run's event. Mutation: dropping the `if (run)` guard fails the any-writer case.
