@@ -43,6 +43,7 @@ export type ReplayJumpTarget = {
   readonly label: string;
   /** Exact inspection route when its capture is outside the prefix. */
   readonly workItemId?: string;
+  readonly frameEvidenceId?: string;
 } & (
   | { readonly frameIndex: number; readonly absence: null }
   | { readonly frameIndex: null; readonly absence: ReplayFrameAbsence }
@@ -51,10 +52,12 @@ export type ReplayJumpTarget = {
 /** A page is an explicit, stable inspection offset; it never changes the prefix limit. */
 export type ReplayRequest =
   | { readonly kind: 'prefix' }
+  | { readonly kind: 'capture'; readonly evidenceId: string }
   | { readonly kind: 'unavailable' }
   | { readonly kind: 'inspection'; readonly workItemId: string; readonly cursor: number };
 
 export type ReplayWindow =
+  | { readonly kind: 'capture' }
   | { readonly kind: 'unavailable' }
   | { readonly kind: 'inspection'; readonly workItemId: string; readonly label: string;
       readonly total: number; readonly cursor: number;
@@ -63,7 +66,13 @@ export type ReplayWindow =
 export function replayRequest(query: {
   readonly workItem?: string | readonly string[];
   readonly cursor?: string | readonly string[];
+  readonly capture?: string | readonly string[];
 }, pageSize: number): ReplayRequest {
+  if (query.capture !== undefined) {
+    return typeof query.capture === 'string' && query.workItem === undefined && query.cursor === undefined &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(query.capture)
+      ? { kind: 'capture', evidenceId: query.capture.toLowerCase() } : { kind: 'unavailable' };
+  }
   if (query.workItem === undefined && query.cursor === undefined) return { kind: 'prefix' };
   if (typeof query.workItem !== 'string' ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(query.workItem))
@@ -92,6 +101,7 @@ export function replayRequest(query: {
 export function replayViewerKey(runId: string, request: ReplayRequest): string {
   switch (request.kind) {
     case 'prefix': return `${runId}:prefix`;
+    case 'capture': return `${runId}:capture:${request.evidenceId}`;
     case 'unavailable': return `${runId}:unavailable`;
     case 'inspection': return `${runId}:inspection:${request.workItemId}:${request.cursor}`;
   }
@@ -254,9 +264,15 @@ export function replayJumpTargets(input: {
       // question an auditor asked, and the plain-words pass removed exactly this from the
       // authoring screens; Replay reintroduced it in a new place.
       label: escalationKindWord(wait.kind),
-      // Decided whatever the bound: the frames read are the earliest, so none preceding the
-      // instant among them means none preceding it at all.
-      ...landing(replayFrameAt(input.frames, wait.openedAt), 'none-before'),
+      ...(wait.frameEvidenceId == null ? {} : { frameEvidenceId: wait.frameEvidenceId }),
+      ...(wait.frameWorkItemId == null ? {} : { workItemId: wait.frameWorkItemId }),
+      // Stored landing metadata distinguishes a later capture from the prefix's last frame.
+      ...(wait.frameEvidenceId !== undefined
+        ? landing(wait.frameEvidenceId === null ? null : (() => {
+            const index = input.frames.findIndex(frame => frame.evidenceId === wait.frameEvidenceId);
+            return index < 0 ? null : index;
+          })(), wait.frameEvidenceId === null ? 'none-before' : 'not-read')
+        : landing(replayFrameAt(input.frames, wait.openedAt), 'none-before')),
     });
   }
   const rank = (target: ReplayJumpTarget): number => REPLAY_JUMP_KINDS.indexOf(target.kind);
@@ -298,4 +314,12 @@ export function clampReplayIndex(index: number, frames: number): number {
   if (frames <= 0) return -1;
   if (!Number.isFinite(index)) return 0;
   return Math.max(0, Math.min(frames - 1, Math.trunc(index)));
+}
+
+/** Canonical bounded-history navigation, separate from inspection frame cursors. */
+export function replayHistoryCursor(value: string | readonly string[] | undefined, pageSize: number): number | null {
+  if (value === undefined) return 0;
+  if (typeof value !== 'string' || !/^(0|[1-9][0-9]{0,9})$/.test(value)) return null;
+  const cursor = Number(value);
+  return Number.isSafeInteger(cursor) && cursor <= 2_147_483_500 && cursor % pageSize === 0 ? cursor : null;
 }

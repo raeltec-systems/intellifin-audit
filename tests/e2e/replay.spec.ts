@@ -75,7 +75,7 @@ interface Replayed {
  * A terminal Run with three frames across two Work Items, one Exception and one answered
  * Escalation — one of everything the jump list names.
  */
-async function seedReplayRun(): Promise<Replayed> {
+async function seedReplayRun(largeHistory = false): Promise<Replayed> {
   const runId = ids.next();
   const at = Date.now();
   const stamp = (offsetSeconds: number): string => new Date(at + offsetSeconds * 1_000).toISOString();
@@ -203,6 +203,33 @@ async function seedReplayRun(): Promise<Replayed> {
     });
     await context.notifyTimeline(runId, event.sequence);
   });
+
+  if (largeHistory) {
+    // Fixture-only retained history; all limits remain 500. UUID ordering is deterministic.
+    await sql`INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,deadline,closed_at,closure_kind,actor)
+      SELECT overlay(overlay(md5(${runId} || 'wait-' || n) placing '7' from 13) placing '8' from 17)::uuid, ${runId}, 'choose-candidate', '[{"id":"one","label":"One"}]'::jsonb,
+        ${stamp(-20)}::timestamptz + n * interval '1 millisecond', ${stamp(60)}, ${stamp(60)}, 'timeout', 'wait-wake'
+      FROM generate_series(1,500) n`;
+    await sql`INSERT INTO run_observation(observation_id,run_id,work_item_id,step_execution_id,target_system,
+      population_record_key,schema_version,capture_method,match_origin,digest,observed_at_source,found,
+      coverage,corroboration,identity,attributes,evidence_ids,observed_at)
+      SELECT overlay(overlay(md5(${runId} || 'observation-' || n) placing '7' from 13) placing '8' from 17)::uuid, run_id, work_item_id, step_execution_id,target_system,
+        'LATE-' || n,schema_version,capture_method,match_origin,digest,observed_at_source,found,
+        coverage,corroboration,identity,attributes,evidence_ids,observed_at
+      FROM run_observation CROSS JOIN generate_series(1,500) n WHERE observation_id=${observationId}`;
+    await sql`INSERT INTO run_exception(exception_id,run_id,observation_id,work_item_id,target_system,
+      population_record_key,condition_ids,diagnostics,fingerprint,fingerprint_key_id,raised_at)
+      SELECT overlay(overlay(md5(${runId} || 'exception-' || n) placing '7' from 13) placing '8' from 17)::uuid, ${runId}, overlay(overlay(md5(${runId} || 'observation-' || n) placing '7' from 13) placing '8' from 17)::uuid,
+        ${workItems[1]!}, 'loancore', 'LATE-' || n, '["C1"]'::jsonb, '[]'::jsonb,
+        repeat('c',64), 'e2e-key', ${stamp(12)} FROM generate_series(1,500) n`;
+    await new PostgresRunsUnitOfWork(createDb(sql), { clock: { now: () => new Date(stamp(-1)) } }).execute(async context => {
+      for (let n = 0; n < 501; n++) await context.auditEvents.append({
+        actor: { type: 'system', id: 'observation-registrar' }, eventType: 'execution.observations-registered',
+        source: 'worker', outcome: 'success', aggregateId: runId, correlationId: ids.next(), sessionId: 'replay-fixture',
+        payload: { workItemId: workItems[1]!, registered: 1 },
+      });
+    });
+  }
 
   // Terminal, sealed. Two statements, because postgres.js autocommits each one and
   // generation 21's DEFERRED trigger fires at the end of the second.
@@ -368,6 +395,34 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
 
     // Nothing left this origin. Not for a provider, not for a recording, not for a font.
     expect(offOrigin).toEqual([]);
+  });
+
+  test('keeps over-500 history reachable with exact counts and accessible continuation', async ({ page, baseURL }) => {
+    test.setTimeout(120_000);
+    const fixture = await seedReplayRun(true);
+    let outbound = 0;
+    await page.route('**/*', route => {
+      if (new URL(route.request().url()).origin !== new URL(baseURL!).origin) { outbound++; return route.abort(); }
+      return route.continue();
+    });
+    await page.goto(`/runs/${fixture.runId}/replay`);
+    const jumps = page.getByRole('region', { name: 'Jump to' });
+    await expect(jumps.getByText('1–500 / 501', { exact: true })).toHaveCount(2);
+    // 501 registrations precede the first frame; the original registration is at/after it.
+    await expect(page.getByText(/501 Observations/)).toBeVisible();
+    await jumps.getByRole('link', { name: 'Next', exact: true }).click();
+    await expect(page).toHaveURL(/history=500/);
+    await expect(jumps.getByText('501–501 / 501', { exact: true })).toHaveCount(2);
+    await expect(jumps.getByRole('link', { name: 'Next', exact: true })).toHaveCount(0);
+    const [late] = await sql`SELECT wait_id FROM run_wait WHERE run_id=${fixture.runId}
+      ORDER BY opened_at,wait_id OFFSET 500 LIMIT 1`;
+    await page.goto(`/runs/${fixture.runId}/replay?wait=${String(late!.wait_id)}#replay-escalation-${String(late!.wait_id)}`);
+    await expect(page.locator(`[id="replay-escalation-${String(late!.wait_id)}"]`)).toBeVisible();
+    await expect(jumps.getByText('501–501 / 501', { exact: true })).toHaveCount(2);
+    expect((await new AxeBuilder({ page }).withTags(TAGS).analyze()).violations).toEqual([]);
+    await jumps.getByRole('link', { name: 'Previous', exact: true }).click();
+    await expect(jumps.getByText('1–500 / 501', { exact: true })).toHaveCount(2);
+    expect(outbound).toBe(0);
   });
 
   test('steps, plays and jumps from the keyboard alone', async ({ page }) => {

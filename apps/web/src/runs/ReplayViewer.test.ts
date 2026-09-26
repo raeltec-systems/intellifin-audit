@@ -235,3 +235,24 @@ describe('the playback controls sit beside the screen (UX-29)', () => {
     expect(html.split(UNTRUSTED_CONTENT_SENTENCE).length - 1).toBe(1);
   });
 });
+
+it('labels exact history ranges and keeps the last retained page reachable', () => {
+  const first = render({ history: { cursor: 0, pageSize: 500, waits: { shown: 500, total: 501 }, exceptions: { shown: 2, total: 2 } } });
+  expect(first).toContain('1–500 / 501'); expect(first).toContain('1–2 / 2');
+  expect(first).toContain('?history=500'); expect(first).not.toContain('>Previous<');
+  const last = render({ history: { cursor: 500, pageSize: 500, waits: { shown: 1, total: 501 }, exceptions: { shown: 0, total: 2 } } });
+  expect(last).toContain('501–501 / 501'); expect(last).toContain('0 / 2');
+  expect(last).toContain('?history=0'); expect(last).not.toContain('>Next<');
+});
+
+it('offers an exact session capture link even when the late escalation has no Work Item', () => {
+  const html = render({ jumpTargets: [{ kind: 'escalation', id: 'late', label: 'Choose candidate',
+    frameIndex: null, absence: 'not-read', frameEvidenceId: 'late-capture' }] });
+  expect(html).toContain('?capture=late-capture'); expect(html).toContain('Open session Replay');
+});
+
+it('numbers a single exact capture globally without claiming it is the session prefix', () => {
+  const html = render({ frames: [frameView(1, { globalOrdinal: 611, workItemId: null })], framesTotal: 700, window: { kind: 'capture' } });
+  expect(html).toContain('Frame 611 of 700'); expect(html).not.toContain('Showing the first');
+  expect(html).not.toContain('Selected inspection:');
+});

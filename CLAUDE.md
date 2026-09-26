@@ -4545,3 +4545,13 @@ resolve the enabled opener and assert its dialog before testing later heartbeat 
 Never infer that an asynchronously rendered Acquire control is absent from an immediate
 `count()` after reload. Keep retained renewal events and their Run deletion in one
 Run-first cleanup transaction, including closed/open wait rows.
+
+## 2026-09-26 — Replay bounded history (Story 10.9)
+
+A Replay frame count must aggregate the complete registration-event history in SQL; raising
+the event page limit only moves the undercount. Group timestamps once and serialize only the
+bounded frame results. Escalation/Exception history pages carry exact totals and explicit
+continuation; resolve a wait's exact retained landing before treating the prefix's last frame
+as its target. Story 10.10 can link `?wait=<id>#replay-escalation-<id>` without guessing an offset.
+
+A late Escalation must link its exact Evidence ID (`?capture=<id>`), not merely its Work Item's first Replay page. A capture can have no Work Item. Reuse the ranked, authorized retained-capture query and return one row with its global ordinal; never raise the frame limit. History offsets beyond the exact total redirect to the last useful page.

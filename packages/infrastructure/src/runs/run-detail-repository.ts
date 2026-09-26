@@ -1,5 +1,5 @@
 import { evaluationReviewJoin, effectiveEvaluationConfirmation, effectiveEvaluationValue } from './effective-evaluation.js';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import type {
   EvaluationConfirmation,
   EvaluationOrigin,
@@ -422,8 +422,17 @@ export type RunInspectionReplayRead =
       readonly nextCursor: number | null;
     };
 
+type RunCaptureReplayRead =
+  | { readonly kind: 'unavailable' }
+  | (Omit<Extract<RunInspectionReplayRead, { kind: 'inspection' }>, 'kind' | 'workItem'> & {
+      readonly kind: 'capture';
+      readonly workItem: Extract<RunInspectionReplayRead, { kind: 'inspection' }>['workItem'] | null;
+    });
+
 /** One wait a Run held, closed or open — a Replay jump target (Story 5.8). */
 export interface RunReplayWait {
+  readonly frameEvidenceId?: string | null;
+  readonly frameWorkItemId?: string | null;
   readonly waitId: string;
   readonly kind: string;
   readonly openedAt: string;
@@ -583,14 +592,26 @@ export class DrizzleRunDetailRepository {
    * Cursor is the zero-based inspection offset, always a whole page boundary.
    */
   async readInspectionReplay(runId: string, workItemId: string, cursor = 0): Promise<RunInspectionReplayRead> {
-    if (!isUuidText(runId) || !isUuidText(workItemId) || !Number.isSafeInteger(cursor) ||
+    const read = await this.readReplaySelection(runId, workItemId, cursor);
+    return read.kind === 'capture' ? { kind: 'unavailable' } : read;
+  }
+
+  /** A single exact retained capture, including session captures with no Work Item. */
+  async readReplayCapture(runId: string, evidenceId: string): Promise<RunCaptureReplayRead> {
+    if (!isUuidText(evidenceId)) return { kind: 'unavailable' };
+    const read = await this.readReplaySelection(runId, null, 0, evidenceId);
+    return read.kind === 'inspection' ? { kind: 'unavailable' } : read;
+  }
+
+  private async readReplaySelection(runId: string, workItemId: string | null, cursor: number, evidenceId?: string): Promise<RunInspectionReplayRead | RunCaptureReplayRead> {
+    if (!isUuidText(runId) || (workItemId !== null && !isUuidText(workItemId)) || !Number.isSafeInteger(cursor) ||
       cursor < 0 || cursor > 2_147_483_600 || cursor % REPLAY_INSPECTION_PAGE_SIZE !== 0)
       return { kind: 'unavailable' };
-    const [owner] = await this.db.select({
+    const [owner] = workItemId === null ? [] : await this.db.select({
       workItemId: runWorkItem.workItemId, subjectKey: runWorkItem.subjectKey,
       displayName: runWorkItem.displayName, registrationId: runWorkItem.registrationId,
     }).from(runWorkItem).where(and(eq(runWorkItem.runId, runId), eq(runWorkItem.workItemId, workItemId))).limit(1);
-    if (owner === undefined) return { kind: 'unavailable' };
+    if (owner === undefined && evidenceId === undefined) return { kind: 'unavailable' };
     const result = await this.db.execute<{
       total: number; frames_total: number; rows: RunInspectionReplayFrame[];
     }>(sql`
@@ -607,7 +628,7 @@ export class DrizzleRunDetailRepository {
           AND (coalesce(s.work_item_id, a.work_item_id) IS NULL OR w.work_item_id IS NOT NULL)
       ), selected AS MATERIALIZED (
         SELECT *, row_number() OVER (ORDER BY global_ordinal)::int AS inspection_ordinal
-        FROM ranked WHERE work_item_id = ${workItemId}::uuid
+        FROM ranked WHERE ${evidenceId === undefined ? sql`work_item_id = ${workItemId}::uuid` : sql`evidence_id = ${evidenceId}::uuid`}
       ), page AS (
         SELECT * FROM selected ORDER BY inspection_ordinal LIMIT ${REPLAY_INSPECTION_PAGE_SIZE} OFFSET ${cursor}
       ), observation_times AS (
@@ -654,16 +675,22 @@ export class DrizzleRunDetailRepository {
         ), '[]'::jsonb) AS rows
     `);
     const read = result[0];
-    if (read === undefined || (cursor > 0 && cursor >= read.total)) return { kind: 'unavailable' };
+    if (read === undefined || (cursor > 0 && cursor >= read.total) || (evidenceId !== undefined && read.total !== 1)) return { kind: 'unavailable' };
     const [workspace] = await this.db.select({ mode: runWorkspace.mode }).from(runWorkspace)
       .where(eq(runWorkspace.runId, runId)).limit(1);
-    return {
-      kind: 'inspection', workItem: owner,
+    const common = {
       workspace: workspace === undefined ? null : { mode: workspace.mode, reference: workspaceReference(runId) },
       rows: read.rows, total: read.total, framesTotal: read.frames_total, cursor,
       previousCursor: cursor === 0 ? null : cursor - REPLAY_INSPECTION_PAGE_SIZE,
       nextCursor: cursor + REPLAY_INSPECTION_PAGE_SIZE < read.total ? cursor + REPLAY_INSPECTION_PAGE_SIZE : null,
     };
+    if (evidenceId === undefined) return { kind: 'inspection', workItem: owner!, ...common };
+    const captureOwnerId = read.rows[0]?.frame.workItemId;
+    const [captureOwner] = captureOwnerId == null ? [] : await this.db.select({
+      workItemId: runWorkItem.workItemId, subjectKey: runWorkItem.subjectKey,
+      displayName: runWorkItem.displayName, registrationId: runWorkItem.registrationId,
+    }).from(runWorkItem).where(and(eq(runWorkItem.runId, runId), eq(runWorkItem.workItemId, captureOwnerId))).limit(1);
+    return { kind: 'capture', workItem: captureOwner ?? null, ...common };
   }
 
   /**
@@ -673,8 +700,10 @@ export class DrizzleRunDetailRepository {
    * decides: the jump list names Escalations, and a pause is where the session stopped for
    * a person rather than for an answer.
    */
-  async readWaits(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<readonly RunReplayWait[]> {
-    if (!isUuidText(runId)) return [];
+  async readWaits(runId: string, limit = RUN_DETAIL_PAGE_SIZE, cursor = 0, escalationsOnly = false): Promise<Bounded<RunReplayWait>> {
+    if (!isUuidText(runId) || !validReplayOffset(cursor)) return { rows: [], total: 0 };
+    const where = and(eq(runWait.runId, runId), ...(escalationsOnly ? [ne(runWait.kind, 'pause')] : []));
+    const [counted] = await this.db.select({ total: sql<number>`count(*)::int` }).from(runWait).where(where);
     const rows = await this.db
       .select({
         waitId: runWait.waitId,
@@ -685,17 +714,39 @@ export class DrizzleRunDetailRepository {
         answerOptionId: runWait.answerOptionId,
       })
       .from(runWait)
-      .where(eq(runWait.runId, runId))
+      .where(where)
       .orderBy(asc(runWait.openedAt), asc(runWait.waitId))
-      .limit(Math.min(limit, REPLAY_PAGE_SIZE));
-    return rows.map((row) => ({
+      .limit(Math.min(limit, REPLAY_PAGE_SIZE)).offset(cursor);
+    const landingRows = rows.length === 0 ? [] : await this.db.execute<{
+      wait_id: string; evidence_id: string | null; work_item_id: string | null;
+    }>(sql`
+      WITH captures AS MATERIALIZED (
+        SELECT e.evidence_id, a.tool_action_id, a.started_at, coalesce(s.work_item_id, a.work_item_id) AS work_item_id
+        FROM run_evidence e
+        JOIN run_evidence_capture c ON c.evidence_id = e.evidence_id AND c.run_id = ${runId}::uuid
+        JOIN run_tool_action a ON a.tool_action_id = c.tool_action_id AND a.run_id = ${runId}::uuid
+        JOIN run_step_execution s ON s.step_execution_id = a.step_execution_id AND s.run_id = ${runId}::uuid
+        LEFT JOIN run_work_item owner ON owner.work_item_id = coalesce(s.work_item_id, a.work_item_id) AND owner.run_id = ${runId}::uuid
+        WHERE e.run_id = ${runId}::uuid AND e.kind = 'screenshot' AND e.state = 'REGISTERED'
+          AND (coalesce(s.work_item_id, a.work_item_id) IS NULL OR owner.work_item_id IS NOT NULL)
+      ) SELECT w.wait_id, landed.evidence_id, landed.work_item_id FROM run_wait w
+      LEFT JOIN LATERAL (
+        SELECT evidence_id, work_item_id FROM captures WHERE started_at <= w.opened_at
+        ORDER BY started_at DESC, tool_action_id DESC, evidence_id DESC LIMIT 1
+      ) landed ON true
+      WHERE w.run_id = ${runId}::uuid AND w.wait_id IN (${sql.join(rows.map(row => sql`${row.waitId}::uuid`), sql`, `)})
+    `);
+    const landings = new Map(landingRows.map(row => [row.wait_id, row]));
+    return { total: Number(counted?.total ?? 0), rows: rows.map((row) => ({
       waitId: row.waitId,
+      frameEvidenceId: landings.get(row.waitId)?.evidence_id ?? null,
+      frameWorkItemId: landings.get(row.waitId)?.work_item_id ?? null,
       kind: row.kind,
       openedAt: row.openedAt.toISOString(),
       closedAt: row.closedAt === null ? null : row.closedAt.toISOString(),
       closureKind: row.closureKind,
       answerOptionId: row.answerOptionId,
-    }));
+    })) };
   }
 
   /**
@@ -705,15 +756,17 @@ export class DrizzleRunDetailRepository {
    * chain row is immutable and an older build may have written a shape this one does not
    * know, and a fabricated count would read as a fact nobody recorded.
    */
-  async readObservationDeltas(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<readonly RunReplayObservationDelta[]> {
-    if (!isUuidText(runId)) return [];
+  async readObservationDeltas(runId: string, limit = RUN_DETAIL_PAGE_SIZE, cursor = 0): Promise<Bounded<RunReplayObservationDelta>> {
+    if (!isUuidText(runId) || !validReplayOffset(cursor)) return { rows: [], total: 0 };
+    const [counted] = await this.db.select({ total: sql<number>`count(*)::int` }).from(auditEvents)
+      .where(and(eq(auditEvents.aggregateId, runId), eq(auditEvents.eventType, 'execution.observations-registered')));
     const rows = await this.db
       .select({ sequence: auditEvents.sequence, occurredAt: auditEvents.occurredAt, payload: auditEvents.payload })
       .from(auditEvents)
       .where(and(eq(auditEvents.aggregateId, runId), eq(auditEvents.eventType, 'execution.observations-registered')))
       .orderBy(asc(auditEvents.sequence))
-      .limit(Math.min(limit, REPLAY_PAGE_SIZE));
-    return rows.map((row) => {
+      .limit(Math.min(limit, REPLAY_PAGE_SIZE)).offset(cursor);
+    return { total: Number(counted?.total ?? 0), rows: rows.map((row) => {
       const payload = (row.payload ?? {}) as Record<string, unknown>;
       return {
         sequence: Number(row.sequence),
@@ -722,7 +775,45 @@ export class DrizzleRunDetailRepository {
         stepExecutionId: typeof payload['stepExecutionId'] === 'string' ? payload['stepExecutionId'] : null,
         registered: typeof payload['registered'] === 'number' ? payload['registered'] : 0,
       };
-    });
+    }) };
+  }
+
+  /** Locate a retained question without exposing a foreign Run's wait. */
+  async readReplayWaitCursor(runId: string, waitId: string): Promise<number | null> {
+    if (!isUuidText(runId) || !isUuidText(waitId)) return null;
+    const rows = await this.db.execute<{ cursor: number }>(sql`
+      WITH ranked AS (
+        SELECT wait_id, row_number() OVER (ORDER BY opened_at, wait_id) - 1 AS ordinal
+        FROM run_wait WHERE run_id = ${runId}::uuid AND kind <> 'pause'
+      ) SELECT ((ordinal / ${REPLAY_PAGE_SIZE}) * ${REPLAY_PAGE_SIZE})::int AS cursor
+        FROM ranked WHERE wait_id = ${waitId}::uuid
+    `);
+    return rows[0]?.cursor ?? null;
+  }
+
+  /** Complete registration history, aggregated once in SQL, bounded by requested frames. */
+  async readReplayObservationCounts(runId: string, frames: readonly RunFrameRow[]): Promise<ReadonlyMap<string, number>> {
+    if (!isUuidText(runId) || frames.length === 0) return new Map();
+    if (frames.length > REPLAY_FRAME_LIMIT) throw new RangeError('Replay frame page exceeds its bound');
+    const instants = [...new Set(frames.map(frame => new Date(frame.actionStartedAt).toISOString()))];
+    const rows = await this.db.execute<{ instant: string; observations: string }>(sql`
+      WITH requested AS (SELECT value::timestamptz AS instant FROM jsonb_array_elements_text(${JSON.stringify(instants)}::jsonb)),
+      changes AS (
+        SELECT ev.occurred_at AS instant,
+          sum(CASE WHEN jsonb_typeof(ev.payload->'registered') = 'number'
+            THEN (ev.payload->>'registered')::numeric ELSE 0 END) AS delta
+        FROM audit_events ev WHERE ev.aggregate_id = ${runId}
+          AND ev.event_type = 'execution.observations-registered'
+          AND ev.occurred_at <= (SELECT max(instant) FROM requested)
+        GROUP BY ev.occurred_at
+        UNION ALL SELECT instant, 0::numeric FROM requested
+      ), totals AS MATERIALIZED (
+        SELECT instant, sum(sum(delta)) OVER (ORDER BY instant ROWS UNBOUNDED PRECEDING) AS observations
+        FROM changes GROUP BY instant
+      ) SELECT instant::text, observations::text FROM totals WHERE instant IN (SELECT instant FROM requested)
+    `);
+    const byInstant = new Map(rows.map(row => [new Date(row.instant).getTime(), Number(row.observations)]));
+    return new Map(frames.map(frame => [frame.evidenceId, byInstant.get(Date.parse(frame.actionStartedAt)) ?? 0]));
   }
 
   /** The agent phase's own position, read from its checkpoint; `null` before the phase starts. */
@@ -1022,8 +1113,8 @@ export class DrizzleRunDetailRepository {
   }
 
   /** Every Exception this Run raised, ordered by identifier (EXPERIENCE.md, Open Question 2). */
-  async readExceptions(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<Bounded<RunExceptionRow>> {
-    if (!isUuidText(runId)) return { rows: [], total: 0 };
+  async readExceptions(runId: string, limit = RUN_DETAIL_PAGE_SIZE, cursor = 0): Promise<Bounded<RunExceptionRow>> {
+    if (!isUuidText(runId) || !validReplayOffset(cursor)) return { rows: [], total: 0 };
     const counted = await this.db
       .select({ total: sql<number>`count(*)::int` })
       .from(runException)
@@ -1035,7 +1126,7 @@ export class DrizzleRunDetailRepository {
       .from(runException)
       .where(eq(runException.runId, runId))
       .orderBy(asc(runException.exceptionId))
-      .limit(Math.min(limit, REPLAY_PAGE_SIZE));
+      .limit(Math.min(limit, REPLAY_PAGE_SIZE)).offset(cursor);
     const observationIds = rows.map((row) => row.observationId);
     const effectiveRows = observationIds.length === 0 ? [] : await this.db
       .select({
@@ -1394,4 +1485,8 @@ function frameRow(row: {
     capturedAt: row.capturedAt === null ? null : row.capturedAt.toISOString(),
     actionStartedAt: row.actionStartedAt.toISOString(),
   };
+}
+
+function validReplayOffset(cursor: number): boolean {
+  return Number.isSafeInteger(cursor) && cursor >= 0 && cursor <= 2_147_483_500 && cursor % REPLAY_PAGE_SIZE === 0;
 }
