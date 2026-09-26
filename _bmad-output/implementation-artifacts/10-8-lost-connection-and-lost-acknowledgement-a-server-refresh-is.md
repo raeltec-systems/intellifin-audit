@@ -367,3 +367,13 @@ folded into the record above. Post-fix visual inspection remains open.
   invalidate that evidence or create a new product decision.
 - **Residual risks:** the four existing deferred findings remain unchanged. No wording or
   threshold decision is pending for Story 10.8; its five boundary sentences were approved.
+
+### Screenshot review — 2026-09-26
+
+Inspected real Chromium captures at 1280×800 and, for Timeline/Replay, 1024×800.
+The [shared screenshot review](screenshot-review-10-6-to-10-10-2026-09-26.md) records exact states, evidence, findings and coverage limits.
+Capture run [36249110555](https://github.com/raeltec-systems/intellifin-audit/actions/runs/36249110555)
+on `e9c58dbb` passed 16 browser tests. The report identifies the Replay record-key wrapping
+fix and its post-fix captures, and distinguishes known presentation findings and uncaptured
+rare variants from passing checks. Proposed wording and owner decisions remain pending;
+this entry does not claim exhaustive all-state acceptance or finalize the story.
