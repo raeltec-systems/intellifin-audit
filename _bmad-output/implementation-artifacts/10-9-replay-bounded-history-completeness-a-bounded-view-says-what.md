@@ -2,7 +2,7 @@
 title: 'Replay bounded-history completeness: a bounded view says what it covers, and the rest stays reachable'
 type: 'fix'
 created: '2026-09-25'
-status: 'in-progress'
+status: 'review'
 review_loop_iteration: 0
 implementation_authorised: true
 implementation_authorisation: 'Owner, 2026-09-26: "go, new branches OK" (implement 10.6 to 10.10 on new branches); wording approved 2026-09-26 ("approve all")'

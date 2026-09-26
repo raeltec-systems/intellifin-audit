@@ -137,6 +137,15 @@ describe('Replay, as the server first paints it', () => {
     expect(render()).not.toContain('Showing the first');
   });
 
+  // It said "Frame 1 of 3" over a Run of 900 frames: the bound presented as the total, where
+  // the inspection pages of the same Run say "of 900" (Story 10.9).
+  it('counts a frame among EVERY frame the Run retained, not among the frames read', () => {
+    const html = render({ framesTotal: 900 });
+    expect(html).toContain('Frame 1 of 900');
+    expect(html).toContain('aria-label="Frame 3 of 900: Opening the record for E-000103 on LoanCore"');
+    expect(html).not.toContain('of 3');
+  });
+
   it('names a jump target that has nowhere to go instead of offering a dead pill', () => {
     const targets: readonly ReplayJumpTarget[] = [
       { kind: 'work-item', id: 'w1', label: 'Leaver 1', frameIndex: 0, absence: null },
@@ -213,6 +222,13 @@ describe('a bounded jump list says what it covers (Story 10.9)', () => {
     expect(html.indexOf('Showing the first 1 of 900 Escalations.')).toBeLessThan(html.indexOf('ls-session__jumps'));
   });
 
+  it('says it as ONE note, not as items of the card', () => {
+    const html = render({ jumpTargets: [escalation('w1'), exception('e1')], jumpTotals: { escalations: 612, exceptions: 1_204 } });
+    const note = /<p class="ls-caption" data-jump-bounds="">(.*?)<\/p>/.exec(html)?.[1] ?? '';
+    expect(note).toBe(`<span>Showing the first 1 of 612 Escalations.</span> <br/><span>Showing the first 1 of 1,204 Exceptions.</span> <br/><span>${rest}</span>`);
+    expect([...html.matchAll(/data-jump-bounds/g)]).toHaveLength(1);
+  });
+
   it('names only the kind that is bounded', () => {
     const html = render({ jumpTargets: [escalation('w1'), exception('e1')], jumpTotals: { escalations: 1, exceptions: 700 } });
     expect(html).toContain('Showing the first 1 of 700 Exceptions.');
@@ -244,8 +260,9 @@ describe('a bounded jump list says what it covers (Story 10.9)', () => {
     const target: ReplayJumpTarget = { kind: 'escalation', id: 'w-late', label: 'Choose candidate', workItemId: WORK,
       inspectionCursor: 500, frameIndex: null, absence: 'not-read' };
     const html = render({ framesTotal: 900, jumpTargets: [target], jumpTotals: { escalations: 1, exceptions: 0 } });
-    expect(html).toContain(REPLAY_COPY.frameNotRead.replace('{shown}', '3'));
-    expect(html).toContain(`href="/runs/${RUN_ID}/replay?workItem=${WORK}&amp;cursor=500"`);
+    // The link is the row's last part, set off like the others rather than run into the
+    // sentence. (React separates adjacent text with an empty comment; it renders nothing.)
+    expect(html.replaceAll('<!-- -->', '')).toContain(`${REPLAY_COPY.frameNotRead.replace('{shown}', '3')} · <a href="/runs/${RUN_ID}/replay?workItem=${WORK}&amp;cursor=500">Open inspection Replay</a>`);
   });
 
   it('keeps the first inspection page for a target whose frame is its record’s first', () => {

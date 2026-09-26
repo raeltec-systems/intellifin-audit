@@ -150,13 +150,15 @@ function jumpBoundSentences(targets: readonly ReplayJumpTarget[], totals: Replay
 function JumpBounds({ runId, bounds }: { readonly runId: string; readonly bounds: readonly string[] }): React.JSX.Element | null {
   if (bounds.length === 0) return null;
   const [before, after] = REPLAY_BOUND_WORDS.rest.split(REPLAY_BOUND_WORDS.restLink);
+  // ONE note, so it reads as one statement about the list under it: as separate paragraphs
+  // the stack's gap spaced each sentence like another item of the card. A sentence to a
+  // line, so the two counts sit one above the other and the way to the rest is not broken
+  // across lines; each is its own span, so each can still be found by its words.
   return (
-    <div className="ls-stack" data-jump-bounds="">
-      {bounds.map((sentence) => <p key={sentence} className="ls-caption">{sentence}</p>)}
-      <p className="ls-caption">
-        {before}<Link href={`/runs/${runId}/evidence`}>{REPLAY_BOUND_WORDS.restLink}</Link>{after}
-      </p>
-    </div>
+    <p className="ls-caption" data-jump-bounds="">
+      {bounds.map((sentence) => <Fragment key={sentence}><span>{sentence}</span>{' '}<br /></Fragment>)}
+      <span>{before}<Link href={`/runs/${runId}/evidence`}>{REPLAY_BOUND_WORDS.restLink}</Link>{after}</span>
+    </p>
   );
 }
 
@@ -265,9 +267,11 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
    * details; what a reader following a session wants is where they are in it.
    */
   const inspection = props.window?.kind === 'inspection' ? props.window : null;
-  // An inspection page numbers its frames among every capture the Run retained, so the
-  // counter says where this screen sits in the whole session, not in the loaded page.
-  const counterTotal = inspection === null ? props.frames.length : props.framesTotal;
+  // Both views number a frame among EVERY capture the Run retained, so the counter says
+  // where this screen sits in the whole session, not in the loaded page. The default view
+  // said "Frame 500 of 500" over a Run of 520 frames -- the bound presented as the total
+  // (Story 10.9); its first frames ARE the session's first, so the position is unchanged.
+  const counterTotal = Math.max(props.framesTotal, props.frames.length);
   const counter = index < 0
     ? props.window !== undefined || props.frames.length > 0 ? 'No selected frame' : 'No frames'
     : `Frame ${(frame?.globalOrdinal ?? index + 1).toLocaleString('en-US')} of ${counterTotal.toLocaleString('en-US')}`;
@@ -496,7 +500,7 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
                     {' '}· {absenceSentence(target.absence, props.frames.length)}
                     {/* The inspection page that HOLDS the frame: an Escalation's can sit past that
                         record's first page (Story 10.9). */}
-                    {target.absence === 'not-read' && target.workItemId !== undefined ? <> <Link href={replayInspectionHref(props.runId, target.workItemId, target.inspectionCursor ?? 0)}>Open inspection Replay</Link></> : null}
+                    {target.absence === 'not-read' && target.workItemId !== undefined ? <>{' · '}<Link href={replayInspectionHref(props.runId, target.workItemId, target.inspectionCursor ?? 0)}>Open inspection Replay</Link></> : null}
                   </span>
                 ) : (
                   <button

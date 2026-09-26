@@ -153,6 +153,33 @@ describe('the Replay jump list', () => {
     expect(targets.find((target) => target.kind === 'exception')?.label).toBe('E-000105');
   });
 
+  // A P-4 page raises every Exception against ONE frame. Ordered by identifier (a hash),
+  // they were listed in no order a reader could see, and a bounded list's "first N" did not
+  // start at its top. Ties keep the order the read returned: raised first, first listed.
+  it('keeps the order each read returned where targets land on one frame (Story 10.9)', () => {
+    const tied = replayJumpTargets({
+      frames: FRAMES,
+      framesTotal: FRAMES.length,
+      workItems: [],
+      exceptions: [
+        { exceptionId: 'ffff', workItemId: WORK_B, populationRecordKey: 'raised-first' },
+        { exceptionId: 'aaaa', workItemId: WORK_B, populationRecordKey: 'raised-second' },
+        { exceptionId: 'cccc', workItemId: WORK_B, populationRecordKey: 'raised-third' },
+      ],
+      waits: [
+        wait({ waitId: 'w-z', openedAt: '2026-09-10T09:02:10.000Z' }),
+        wait({ waitId: 'w-a', openedAt: '2026-09-10T09:02:20.000Z' }),
+      ],
+    });
+    expect(tied.map((target) => [target.kind, target.frameIndex, target.id])).toEqual([
+      ['exception', 2, 'ffff'],
+      ['exception', 2, 'aaaa'],
+      ['exception', 2, 'cccc'],
+      ['escalation', 2, 'w-z'],
+      ['escalation', 2, 'w-a'],
+    ]);
+  });
+
   // `displayName` is the TARGET SYSTEM's name and is the SAME on every Work Item of a
   // Run, so labelling a jump with it gave a three-leaver Run three pills reading
   // "LoanCore" — on the surface a reader follows from a captured screen to a conclusion,

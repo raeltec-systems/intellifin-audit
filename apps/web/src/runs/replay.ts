@@ -216,7 +216,12 @@ export function replayFrameAt(frames: readonly RunFrameRow[], instant: string): 
  *
  * Ordered by the frame each target lands on, so the list reads the way the session ran; a
  * target with no frame sorts last, because it is somewhere a reader cannot go. Ties break
- * on kind then id, so the order is deterministic rather than whatever the reads returned.
+ * on kind, then on the order the target's own read returned: Work Items in the Timeline's
+ * order, Exceptions and Escalations in the order they were raised. Every one of those reads
+ * fixes its order, so the list is deterministic. The tie used to break on the id, which is
+ * no order a reader can see -- an Exception's id is a hash -- so the many Exceptions a P-4
+ * page raises against one frame were listed in no order at all, and a bounded list's
+ * "first N" did not start at its top (Story 10.9).
  *
  * A PAUSE is not in it. EXPERIENCE.md's Replay row names Work Items, Exceptions and
  * Escalations, and a pause is a wait that asks nothing — the distinction generation 45
@@ -286,13 +291,15 @@ export function replayJumpTargets(input: {
     });
   }
   const rank = (target: ReplayJumpTarget): number => REPLAY_JUMP_KINDS.indexOf(target.kind);
+  // Pushed kind by kind in each read's own order, so a target's position here IS its read order.
+  const position = new Map(targets.map((target, index) => [target, index] as const));
   return targets.sort((left, right) => {
     if (left.frameIndex !== right.frameIndex) {
       if (left.frameIndex === null) return 1;
       if (right.frameIndex === null) return -1;
       return left.frameIndex - right.frameIndex;
     }
-    return rank(left) - rank(right) || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+    return rank(left) - rank(right) || position.get(left)! - position.get(right)!;
   });
 }
 

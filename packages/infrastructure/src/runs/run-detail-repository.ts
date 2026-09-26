@@ -976,6 +976,11 @@ export class DrizzleRunDetailRepository {
    * That is right for the Exceptions tab and wrong here: Replay's list reads the way the
    * session ran, so "the first N" has to mean the first N raised, or a bounded page would
    * be a scatter across the session that no sentence could truthfully describe.
+   *
+   * One registration raises all of its batch's Exceptions at the batch's own instant -- a
+   * P-4 page raises the Exceptions for all of its parameters at once -- so within an instant
+   * they are read by RECORD, byte-wise so the order does not move with the database's
+   * collation. The identifier alone would order them by a hash.
    */
   async readReplayExceptions(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<Bounded<RunReplayException>> {
     if (!isUuidText(runId)) return { rows: [], total: 0 };
@@ -994,7 +999,7 @@ export class DrizzleRunDetailRepository {
       })
       .from(runException)
       .where(eq(runException.runId, runId))
-      .orderBy(asc(runException.raisedAt), asc(runException.exceptionId))
+      .orderBy(asc(runException.raisedAt), sql`${runException.populationRecordKey} COLLATE "C"`, asc(runException.exceptionId))
       .limit(Math.max(0, Math.min(Math.trunc(limit), REPLAY_PAGE_SIZE)));
     return {
       total,

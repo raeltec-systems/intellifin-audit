@@ -45,6 +45,10 @@ const PAUSES = 3;
 // Exceptions n = 1..620 are GENERATED in that order and RAISED in the reverse one.
 const EXCEPTIONS = 620;
 const exceptionIds: string[] = [];
+// And three RAISED together, before all of them, as one registration raises its batch: within
+// one instant they are read by record, so their identifiers are given the other order.
+const TIED_KEYS = ['parameter-0901', 'parameter-0902', 'parameter-0903'] as const;
+const tiedIds = [ids.next(), ids.next(), ids.next()].sort().reverse();
 
 let sql: Sql, db: Database, detail: DrizzleRunDetailRepository;
 
@@ -127,6 +131,8 @@ describe.skipIf(!url)('Replay’s bounded history on PostgreSQL (Story 10.9)', (
       return { observation_id: ids.next(), exception_id: exceptionId, key: `parameter-${String(n).padStart(4, '0')}`,
         raised_at: stamp(20_000 - n) };
     });
+    TIED_KEYS.forEach((key, index) =>
+      exceptions.push({ observation_id: ids.next(), exception_id: tiedIds[index]!, key, raised_at: stamp(19_000) }));
     const exceptionJson = JSON.stringify(exceptions);
     await sql`INSERT INTO run_observation(observation_id,run_id,work_item_id,step_execution_id,target_system,
       population_record_key,schema_version,capture_method,match_origin,digest,observed_at_source,found,
@@ -333,17 +339,29 @@ describe.skipIf(!url)('Replay’s bounded history on PostgreSQL (Story 10.9)', (
 
   it('reads the Exceptions in the order they were RAISED, with their exact total', async () => {
     const read = await detail.readReplayExceptions(runId, REPLAY_PAGE_SIZE);
-    expect(read.total).toBe(EXCEPTIONS);
+    expect(read.total).toBe(EXCEPTIONS + TIED_KEYS.length);
     expect(read.rows).toHaveLength(REPLAY_PAGE_SIZE);
-    // Raised in the reverse of generation order, so the first 500 raised are the LAST 500
-    // generated -- which an identifier-ordered page would never have named.
-    expect(read.rows.map((row) => row.exceptionId)).toEqual(exceptionIds.slice(EXCEPTIONS - REPLAY_PAGE_SIZE).reverse());
-    expect(read.rows.map((row) => row.populationRecordKey).slice(0, 2)).toEqual(['parameter-0620', 'parameter-0619']);
+    // The three raised together come first, by RECORD although their identifiers sort the
+    // other way; then the rest, raised in the reverse of generation order -- so the first
+    // 500 raised are the LAST generated, which an identifier-ordered page would never name.
+    expect(read.rows.map((row) => row.exceptionId)).toEqual([
+      ...tiedIds, ...exceptionIds.slice(EXCEPTIONS - (REPLAY_PAGE_SIZE - TIED_KEYS.length)).reverse(),
+    ]);
+    expect(read.rows.map((row) => row.populationRecordKey).slice(0, 5))
+      .toEqual([...TIED_KEYS, 'parameter-0620', 'parameter-0619']);
     expect(read.rows.every((row, index) => index === 0 || row.raisedAt >= read.rows[index - 1]!.raisedAt)).toBe(true);
     expect(read.rows.every((row) => row.workItemId === MAIN)).toBe(true);
     const small = await detail.readReplayExceptions(runId, 2);
-    expect(small).toMatchObject({ total: EXCEPTIONS });
-    expect(small.rows.map((row) => row.exceptionId)).toEqual([exceptionIds[EXCEPTIONS - 1], exceptionIds[EXCEPTIONS - 2]]);
+    expect(small).toMatchObject({ total: EXCEPTIONS + TIED_KEYS.length });
+    expect(small.rows.map((row) => row.populationRecordKey)).toEqual(['parameter-0901', 'parameter-0902']);
     expect(await detail.readReplayExceptions('not-a-run')).toEqual({ rows: [], total: 0 });
+
+    // The jump list keeps that order where the Exceptions land on one frame, as every one
+    // of MAIN's does: its first Exception is the first raised, not the smallest identifier.
+    const prefix = await detail.readFrames(runId);
+    const targets = replayJumpTargets({ frames: prefix.rows, framesTotal: prefix.total, workItems: [], waits: [],
+      exceptions: read.rows.map((row) => ({ exceptionId: row.exceptionId, workItemId: row.workItemId,
+        populationRecordKey: row.populationRecordKey })) });
+    expect(targets.map((target) => target.label).slice(0, 5)).toEqual([...TIED_KEYS, 'parameter-0620', 'parameter-0619']);
   });
 });

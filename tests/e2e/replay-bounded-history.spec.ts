@@ -361,6 +361,9 @@ test.describe('Replay past its default view’s bounds', () => {
     const jump = page.getByRole('region', { name: 'Jump to', exact: true });
     await expect(jump).toBeVisible();
     await showsFrame(0);
+    // The counter places a frame among EVERY frame the Run retained, as the inspection
+    // pages do: "of 500" would present the bound as the session.
+    await expect(page.getByText('Frame 1 of 520', { exact: true })).toBeVisible();
 
     // What the list covers, in the owner's words, with the exact totals: the two pauses
     // are not Escalations, so they are neither listed nor counted.
@@ -368,7 +371,11 @@ test.describe('Replay past its default view’s bounds', () => {
     await expect(jump.getByText(replayJumpBoundSentence('exception', SHOWN, RECORDS)!, { exact: true })).toBeVisible();
     await expect(jump.getByText('Showing the first 500 of 510 Escalations.', { exact: true })).toBeVisible();
     await expect(jump.getByText('Showing the first 500 of 600 Exceptions.', { exact: true })).toBeVisible();
-    const rest = jump.locator('[data-jump-bounds] p').last();
+    // One note, not three items: the two bounds and the way to the rest, in that order.
+    const note = jump.locator('[data-jump-bounds]');
+    await expect(note).toHaveText(
+      `${replayJumpBoundSentence('escalation', SHOWN, ESCALATIONS)!} ${replayJumpBoundSentence('exception', SHOWN, RECORDS)!} ${REPLAY_BOUND_WORDS.rest}`);
+    const rest = note.locator('span').last();
     await expect(rest).toHaveText(REPLAY_BOUND_WORDS.rest);
     await expect(rest.getByRole('link', { name: REPLAY_BOUND_WORDS.restLink, exact: true }))
       .toHaveAttribute('href', `/runs/${runId}/evidence`);
@@ -382,9 +389,12 @@ test.describe('Replay past its default view’s bounds', () => {
     await expect(rows).toHaveCount(1 + SHOWN + SHOWN);
     await expect(rows.filter({ hasText: /^Escalation ·/ })).toHaveCount(SHOWN);
     await expect(rows.filter({ hasText: /^Exception ·/ })).toHaveCount(SHOWN);
-    // Raised first, listed; raised among the last 100, not listed.
+    // Raised first, listed; raised among the last 100, not listed. They all land on the
+    // page's one frame, so they are listed as they were raised: the first raised first.
     await expect(rows.filter({ hasText: key(600) })).toHaveCount(1);
     await expect(rows.filter({ hasText: key(5) })).toHaveCount(0);
+    await expect(rows.filter({ hasText: /^Exception ·/ }).first()).toHaveText(`Exception · ${key(600)}`);
+    await expect(rows.filter({ hasText: /^Exception ·/ }).nth(1)).toHaveText(`Exception · ${key(599)}`);
 
     // The count beside a frame is EXACT. The sixth frame on had 600 registered, where a
     // page of 500 registration events stopped at 500.
@@ -393,6 +403,7 @@ test.describe('Replay past its default view’s bounds', () => {
     await viewer.focus();
     await viewer.press('End');
     await showsFrame(SHOWN - 1);
+    await expect(page.getByText('Frame 500 of 520', { exact: true })).toBeVisible();
     await expect(page.getByText(REPLAY_COPY.observationsThrough.replace('{count}', '600 Observations'), { exact: true })).toBeVisible();
     await expect(page.getByText(REPLAY_COPY.bounded.replace('{shown}', String(SHOWN)).replace('{total}', String(FRAMES)), { exact: true }))
       .toBeVisible();
@@ -403,6 +414,8 @@ test.describe('Replay past its default view’s bounds', () => {
     const late = rows.filter({ hasText: REPLAY_COPY.frameNotRead.replace('{shown}', String(SHOWN)) });
     await expect(late).toHaveCount(10);
     await expect(late.filter({ hasText: /^Escalation ·/ })).toHaveCount(10);
+    await expect(late.first()).toHaveText(
+      `Escalation · Choose candidate · ${REPLAY_COPY.frameNotRead.replace('{shown}', String(SHOWN))} · Open inspection Replay`);
     const inspection = `/runs/${runId}/replay?workItem=${workItemId}&cursor=500`;
     await expect(late.first().getByRole('link', { name: 'Open inspection Replay', exact: true })).toHaveAttribute('href', inspection);
     await late.first().getByRole('link', { name: 'Open inspection Replay', exact: true }).click();
