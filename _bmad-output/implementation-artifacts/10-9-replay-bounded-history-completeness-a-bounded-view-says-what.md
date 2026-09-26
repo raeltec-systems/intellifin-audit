@@ -214,3 +214,13 @@ This excluded the handover's stacked PRs based on `claude/10-6-legacy-visibility
 so publishing their code did not start a verification run. Added that exact base to the
 pull-request filter. Job definitions, permissions, test assertions and main-only push
 behavior are unchanged. The workflow YAML was parsed and both branch filters checked.
+
+### Screenshot review — 2026-09-26
+
+Inspected real Chromium captures at 1280×800 and, for Timeline/Replay, 1024×800.
+The [shared screenshot review](screenshot-review-10-6-to-10-10-2026-09-26.md) records exact states, evidence, findings and coverage limits.
+Capture run [36249828385](https://github.com/raeltec-systems/intellifin-audit/actions/runs/36249828385)
+on `dec4f12c` passed 28 browser tests. The report identifies the Replay record-key wrapping
+fix and its post-fix captures, and distinguishes known presentation findings and uncaptured
+rare variants from passing checks. Proposed wording and owner decisions remain pending;
+this entry does not claim exhaustive all-state acceptance or finalize the story.
