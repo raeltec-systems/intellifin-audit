@@ -5,11 +5,11 @@ import { fileURLToPath } from 'node:url';
 
 import {
   answerEscalation,
-  completeRun,
   NO_CORROBORATION,
   NO_EVALUATION,
   raiseEscalation,
   registerObservations,
+  runRunLevelGate,
 } from '@intellifin/application';
 import {
   bindingDigest,
@@ -59,12 +59,13 @@ import { NORTHSTAR_BASE_URL } from './northstar';
  *
  * The decision is made by the REAL commands — `raiseEscalation` and `answerEscalation` —
  * and the human-matched Observation is registered by the REAL `registerObservations` in the
- * Run's own transaction, which writes the link into its registration event. The Result is
- * sealed by the real `completeRun`. Only what no command writes is seeded: the frozen
- * population rows, a registered snapshot row, the rule evaluations and the Exception (the
- * deterministic evaluator is not what this story is about), and ONE historical
- * human-matched Observation written the way a build before this story wrote it — with no
- * link — which the current command refuses to write.
+ * Run's own transaction, which writes the link into its registration event. The Run ends
+ * through the real Run-level Gate, which seals the Result. Only what no command writes is
+ * seeded: the frozen population rows, each inspection's capture (the reading action, its
+ * structural snapshot and its screenshot, bound as the agent capture path binds them), the
+ * rule evaluations and the Exception (the deterministic evaluator is not what this story
+ * is about), and ONE historical human-matched Observation written the way a build before
+ * this story wrote it — with no link — which the current command refuses to write.
  */
 
 const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
@@ -109,6 +110,9 @@ const LOANCORE_FIELDS = {
 };
 const LOANCORE = { ...LOANCORE_FIELDS, digest: registrationDigest(LOANCORE_FIELDS) };
 const targetRegistrationId = LOANCORE.registrationId;
+
+/** What each record's account shows on LoanCore: the Exception is the account left Active. */
+const ACCOUNT_STATUS: Readonly<Record<string, string>> = { 'E-000101': 'Active', 'E-000102': 'Disabled', 'E-000103': 'Disabled' };
 
 /** The leavers export's own columns, and its own mask on `full_name`. */
 const LEAVERS_SCHEMA = ['employee_id', 'full_name', 'department', 'employment_status', 'termination_effective_date', 'manager'];
@@ -227,16 +231,22 @@ test.beforeAll(async () => {
   if (!answer.ok) throw new Error(`human-match fixture could not answer its question: ${answer.reason}`);
 
   // What the agent path writes for P-1: ONE Work Item per population record, subject key
-  // the record's key, each inspected in its own Step Execution on its own captured page.
+  // the record's key, each inspected in its own Step Execution on its own captured page —
+  // the reading action, its structural snapshot and its screenshot, bound to that action
+  // as the agent capture path binds them, so the Observation's own evidence checks pass.
   const at = new Date().toISOString();
-  const units = new Map<string, { workItemId: string; stepExecutionId: string; evidenceId: string }>();
+  const units = new Map<string, { workItemId: string; stepExecutionId: string; evidenceId: string; screenshotId: string }>();
   for (const [index, key] of [KEYS.linked, KEYS.legacy, KEYS.platform].entries()) {
-    const unit = { workItemId: ids.next(), stepExecutionId: ids.next(), evidenceId: ids.next() };
+    const unit = { workItemId: ids.next(), stepExecutionId: ids.next(), evidenceId: ids.next(), screenshotId: ids.next() };
     units.set(key, unit);
     await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required,
         captured_at,capture_method,capture_time_source,role)
       VALUES(${unit.evidenceId},${runId},'structural-snapshot',${targetRegistrationId},${`human-match/${runId}/snapshot-${index + 1}`},
         'application/vnd.intellifin.web-tree+json',${String(index + 1).repeat(64)},128,'REGISTERED',false,${runAt},'agent','registration','evidence')`;
+    await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required,
+        captured_at,capture_method,capture_time_source,role)
+      VALUES(${unit.screenshotId},${runId},'screenshot',${targetRegistrationId},${`human-match/${runId}/screenshot-${index + 1}`},
+        'image/png',${String(index + 4).repeat(64)},256,'REGISTERED',false,${runAt},'agent','registration','evidence')`;
     await db.transaction((tx) => withRunExecutionContext(tx, runId, async (context) => {
       await context.saveWorkItem({ workItemId: unit.workItemId, subjectKey: key, stepId: inspectStep.id, ordinal: index + 1,
         registrationId: targetRegistrationId, displayName: LOANCORE.displayName, state: 'OBSERVED', attempts: 1, cycles: 0,
@@ -244,6 +254,16 @@ test.beforeAll(async () => {
       await context.saveStepExecution({ stepExecutionId: unit.stepExecutionId, planStepId: inspectStep.id, workItemId: unit.workItemId,
         action: 'inspect-record', state: 'SUCCEEDED', attempt: 1, startedAt: at, completedAt: at, diagnostic: null });
     }));
+    const toolActionId = ids.next();
+    const page = `${NORTHSTAR_BASE_URL}${loancore.origin_path}/accounts/${key}`;
+    await sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,work_item_id,surface,target_system,
+        action,method,destination,parameters,outcome,redirected,downloads,started_at,capture)
+      VALUES(${toolActionId},${runId},${unit.stepExecutionId},${unit.workItemId},'agent',${targetRegistrationId},'read-attribute','GET',
+        ${page},'[]'::jsonb,'performed',false,0,${at},'PERMITTED')`;
+    for (const evidenceId of [unit.evidenceId, unit.screenshotId]) {
+      await sql`INSERT INTO run_evidence_capture(evidence_id,run_id,tool_action_id,source_location)
+        VALUES(${evidenceId},${runId},${toolActionId},${page})`;
+    }
   }
   const unitOf = (key: string) => units.get(key)!;
   const record = (key: string, matchOrigin: ObservationRecord['matchOrigin']): ObservationRecord => ({
@@ -261,8 +281,18 @@ test.beforeAll(async () => {
       name: 'employee_id', originalValue: key, normalizedValue: key, corroboration: null,
       grounding: { evidenceId: unitOf(key).evidenceId, locator: '$.nodes[0].value', label: 'Employee ID', extractedText: key },
     },
-    attributes: [],
-    evidenceIds: [unitOf(key).evidenceId],
+    // What the account page shows, grounded in the same captured page.
+    attributes: [
+      {
+        name: 'username', originalValue: `synthetic.${key.toLowerCase()}`, normalizedValue: `synthetic.${key.toLowerCase()}`, corroboration: null,
+        grounding: { evidenceId: unitOf(key).evidenceId, locator: '$.nodes[1].value', label: 'Username', extractedText: `synthetic.${key.toLowerCase()}` },
+      },
+      {
+        name: 'account_status', originalValue: ACCOUNT_STATUS[key]!, normalizedValue: ACCOUNT_STATUS[key]!, corroboration: null,
+        grounding: { evidenceId: unitOf(key).evidenceId, locator: '$.nodes[2].value', label: 'Account status', extractedText: ACCOUNT_STATUS[key]! },
+      },
+    ],
+    evidenceIds: [unitOf(key).evidenceId, unitOf(key).screenshotId],
   });
   const linked = record(KEYS.linked, 'human-matched');
   const platform = record(KEYS.platform, 'platform');
@@ -289,8 +319,13 @@ test.beforeAll(async () => {
       found,observed_at,step_execution_id,capture_method,match_origin,identity,attributes,evidence_ids,digest,coverage,
       observed_at_source,corroboration)
     VALUES(${legacy.observationId},${runId},${legacy.workItemId},1,${KEYS.legacy},${targetRegistrationId},'true',${at},${legacy.stepExecutionId},
-      'agent','human-matched',${json(legacy.identity)}::jsonb,'[]'::jsonb,${json(legacy.evidenceIds)}::jsonb,${observationDigest(legacy)},
+      'agent','human-matched',${json(legacy.identity)}::jsonb,${json(legacy.attributes)}::jsonb,${json(legacy.evidenceIds)}::jsonb,${observationDigest(legacy)},
       'COVERED',${at},'UNJUDGED')`;
+  // That build recorded its per-Observation checks too; only the link is what it lacked.
+  // Its checks are the ones the current command wrote for a record captured the same way.
+  await sql`INSERT INTO run_observation_check(observation_id,run_id,check_name,outcome,diagnostic)
+    SELECT ${legacy.observationId},run_id,check_name,outcome,diagnostic FROM run_observation_check
+    WHERE observation_id=${platform.observationId}`;
 
   // The rule evaluations the deterministic evaluator would write: the linked record fails
   // every frozen condition, the other two pass. Then the Exception on the linked record.
@@ -311,9 +346,11 @@ test.beforeAll(async () => {
     VALUES(${ids.next()},${runId},${linked.observationId},${linked.workItemId},${targetRegistrationId},${KEYS.linked},
       ${json(conditions.map((condition) => condition.condition_id))}::jsonb,'[]'::jsonb,${'e'.repeat(64)},'human-match-fixture',${at})`;
 
-  // The Result, sealed by the real terminal transition over what the Run recorded.
+  // The Run ends through the real Run-level Gate, which records every §H row over what
+  // the Run recorded, moves the Run to its terminal state and seals the Result.
   await db.transaction((tx) => withRunExecutionContext(tx, runId, (context) =>
-    completeRun(context, { run: context.run!, state: 'INCONCLUSIVE', at: new Date().toISOString(), plan })));
+    runRunLevelGate(context, { run: context.run!, plan, decidedAt: new Date().toISOString() })));
+  await sql`UPDATE run_agent_execution SET status='TERMINAL' WHERE run_id=${runId}`;
 });
 
 test.afterAll(async () => {
@@ -329,6 +366,8 @@ test.afterAll(async () => {
       await tx`DELETE FROM run_evidence_integrity WHERE run_id=${runId}`;
       await tx`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
       await tx`DELETE FROM run_gate_check WHERE run_id=${runId}`;
+      await tx`DELETE FROM run_evidence_capture WHERE run_id=${runId}`;
+      await tx`DELETE FROM run_tool_action WHERE run_id=${runId}`;
       await tx`DELETE FROM run_observation_evaluation WHERE run_id=${runId}`;
       await tx`DELETE FROM run_observation_check WHERE run_id=${runId}`;
       // The Exception cascades with its Observation; its guard refuses a direct delete.

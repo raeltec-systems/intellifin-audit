@@ -24,6 +24,7 @@ import {
   pauseStepNamer,
   pauseTitleWords,
   restartedWords,
+  startedWords,
 } from '../../apps/web/src/runs/pause-words';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
@@ -449,6 +450,8 @@ test.describe('pausing and resuming a Run', () => {
     const banner = page.locator('.ls-banner', { hasText: `Paused by ${authorName}` });
     await expect(banner).toContainText(bannerHeldBeforeWords(signInStep));
     await expect(banner).toContainText(PAUSE_WORDS.noStepInFlight);
+    // And what Resume does here: it STARTS the held step, which never began.
+    await expect(banner).toContainText(PAUSE_WORDS.resumeStarts);
 
     // Resume 1, through the controls, and the worker's first sign-in attempt names it.
     await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
@@ -479,10 +482,11 @@ test.describe('pausing and resuming a Run', () => {
     await sql`UPDATE run_step_execution SET state='SUPERSEDED', superseded_by='resume', completed_at=${new Date().toISOString()} WHERE step_execution_id=${interrupted}`;
     await sql`UPDATE run_work_item SET attempts=0 WHERE work_item_id=${item.workItemId}`;
 
-    // The banner names the attempt this pause superseded.
+    // The banner names the attempt this pause superseded, and that Resume restarts it.
     await page.reload();
     await expect(banner).toContainText(bannerHeldInFlightWords(inspectStep, 1));
     await expect(banner.locator(`[title="${interrupted}"]`)).toBeVisible();
+    await expect(banner).toContainText(PAUSE_WORDS.resumeRestarts);
 
     // The Timeline: both pauses, in order, each with where it held the Run and how it ended.
     await page.goto(`/runs/${runId}/timeline`);
@@ -496,7 +500,9 @@ test.describe('pausing and resuming a Run', () => {
     await expect(first).toContainText(heldBeforeWords(signInStep));
     await expect(first).toContainText(PAUSE_WORDS.noStepInFlight);
     await expect(first).toContainText(`Resumed by ${authorName} at`);
-    await expect(first).toContainText(restartedWords(signInStep, 1));
+    // The sign-in never began before this pause, so the resume STARTED it.
+    await expect(first).toContainText(startedWords(signInStep, 1));
+    await expect(first).not.toContainText('It restarted');
     await expect(first.locator(`[title="${signingIn}"]`)).toBeVisible();
     const second = entries.nth(1);
     await expect(second.getByRole('heading', { name: pauseTitleWords(2), exact: true })).toBeVisible();
