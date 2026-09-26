@@ -205,6 +205,26 @@ async function scan(page: Page): Promise<void> {
   expect(result.violations, JSON.stringify(result.violations, null, 2)).toEqual([]);
 }
 
+/**
+ * A Run a worker is holding, seeded rather than initiated (the `pause-resume.spec.ts`
+ * pattern), for a test whose subject is the panel and not the journey to it. Its period is
+ * its own month, so the one-active-Standard-Run-per-period rule never meets the journey's.
+ */
+async function seedRunningRun(): Promise<string> {
+  const runId = ids.next();
+  const at = new Date().toISOString();
+  await sql`INSERT INTO audit_run(request_token,run_id,correlation_id,procedure_id,version_id,version_number,
+    procedure_name,period_from,period_to,state,kind,initiator_id,session_id,authorization_role,initiated_at)
+    VALUES(${ids.next()},${runId},${ids.next()},${procedureId},${versionId},1,${controlName},
+    '2026-12-01','2026-12-31','RUNNING','STANDARD',${author},'skip-link-fixture','auditor',${at})`;
+  runs.push(runId);
+  await sql`INSERT INTO population_execution(run_id,revision,status,attempts,started_at,attempt_started_at,lease_until,step_id,attempt_id)
+    VALUES(${runId},1,'POPULATION_READY',1,${at},${at},${LEASE},'session-1',${ids.next()})`;
+  await sql`INSERT INTO run_execution(run_id,revision,status,attempts,run_started_at,started_at,attempt_started_at,lease_until,attempt_id)
+    VALUES(${runId},1,'EXECUTING',1,${at},${at},${at},${LEASE},${ids.next()})`;
+  return runId;
+}
+
 test.describe('Flow 3: supervising a Run from Live View', () => {
   test.use({ storageState: AUTH_STATE.auditor });
 
@@ -379,5 +399,55 @@ test.describe('Flow 3: supervising a Run from Live View', () => {
       'lifecycle.run-resumed',
       'execution.escalation-raised',
     ]);
+  });
+
+  /**
+   * Legacy Story 5.6, AC 2 (owner decision 2026-09-25, Story 10.6): the skip link MOVES
+   * FOCUS to the panel. Written before the correction, and it failed there: the link's
+   * target had no `tabIndex`, so activating it scrolled the page and left focus on the
+   * link. Finding the link, or seeing the section scrolled into view, is not enough — the
+   * test establishes where focus lands and that the next keyboard interaction reaches the
+   * panel's own controls.
+   */
+  test('the skip link moves keyboard focus into the open Escalation, and Tab reaches its answers', async ({ page }) => {
+    test.setTimeout(120_000);
+    const runId = await seedRunningRun();
+    await raise(runId);
+
+    await page.goto(`/runs/${runId}/live`);
+    await expect(page.getByRole('heading', { name: 'Open Escalation', exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
+
+    // Reach the link from the keyboard, the way a keyboard user does, and activate it.
+    const link = page.getByRole('link', { name: ESCALATION_PANEL_COPY.skipLink, exact: true });
+    await link.focus();
+    await expect(link).toBeFocused();
+    await page.keyboard.press('Enter');
+
+    // Focus is INSIDE the panel now, not left on the link.
+    const where = () => page.evaluate(() => {
+      const active = document.activeElement;
+      const panel = document.querySelector('#open-escalation');
+      return {
+        inside: panel !== null && active !== null && (active === panel || panel.contains(active)),
+        tag: active?.tagName ?? null,
+        id: active?.id ?? null,
+        text: (active?.textContent ?? '').trim().slice(0, 80),
+      };
+    });
+    expect(await where()).toMatchObject({ inside: true });
+
+    // The NEXT keyboard interaction reaches the panel's controls, without walking the page
+    // again: every Tab stop from here to the first answer is inside the panel.
+    const firstAnswer = page.locator('#open-escalation').getByRole('button', { name: 'Select candidate 1', exact: true });
+    let reached = false;
+    for (let stop = 0; stop < 12 && !reached; stop += 1) {
+      await page.keyboard.press('Tab');
+      const now = await where();
+      expect(now, `Tab stop ${stop + 1} left the panel: ${JSON.stringify(now)}`).toMatchObject({ inside: true });
+      reached = await firstAnswer.evaluate((element) => element === document.activeElement);
+    }
+    expect(reached).toBe(true);
+    await scan(page);
   });
 });
