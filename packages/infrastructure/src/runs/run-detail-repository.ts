@@ -1,3 +1,4 @@
+import { readTimelineDecisions, type TimelineDecisions } from './timeline-decisions.js';
 import { evaluationReviewJoin, effectiveEvaluationConfirmation, effectiveEvaluationValue } from './effective-evaluation.js';
 import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import type {
@@ -348,6 +349,7 @@ export interface RunTimelineWorkItem extends Omit<RunTimelineSessionStep, 'ordin
 }
 
 export interface RunTimelineRead {
+  readonly decisions: TimelineDecisions;
   /**
    * The Agent Workspace, when this Run's frozen plan required one (Story 4.1).
    *
@@ -1216,8 +1218,8 @@ export class DrizzleRunDetailRepository {
    * neither returns the timestamps a Timeline row needs. This returns the three levels
    * with their clocks and nothing else.
    */
-  async readTimeline(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<RunTimelineRead> {
-    const empty: RunTimelineRead = { workspace: null, population: null, execution: null, sessionSteps: [], workItems: [], stepExecutions: { rows: [], total: 0 }, toolActions: { rows: [], total: 0 } };
+  async readTimeline(runId: string, limit = RUN_DETAIL_PAGE_SIZE, decisionsAfter = 0, decisionWaitId?: string): Promise<RunTimelineRead> {
+    const empty: RunTimelineRead = { decisions: { rows: [], total: 0, nextCursor: null, selectionFound: true }, workspace: null, population: null, execution: null, sessionSteps: [], workItems: [], stepExecutions: { rows: [], total: 0 }, toolActions: { rows: [], total: 0 } };
     if (!isUuidText(runId)) return empty;
     // Explicit projection: do not even read the provider capability for an auditor surface.
     const [workspace] = await this.db.select({
@@ -1297,6 +1299,7 @@ export class DrizzleRunDetailRepository {
       })),
       stepExecutions,
       toolActions: await this.readToolActions(runId, limit),
+      decisions: await readTimelineDecisions(this.db, runId, decisionsAfter, decisionWaitId),
     };
   }
 

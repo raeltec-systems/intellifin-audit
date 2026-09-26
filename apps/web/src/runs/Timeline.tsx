@@ -1,3 +1,4 @@
+import { TimelineDecisionRow } from './TimelineDecision';
 import { Fragment } from 'react';
 import type {
   RunStepExecutionRow,
@@ -56,7 +57,11 @@ import {
 export function ExecutionTimeline({
   timeline,
   runId,
+  names = new Map<string, string>(),
+  runState = 'RUNNING',
 }: {
+  readonly runState?: string;
+  readonly names?: ReadonlyMap<string, string>;
   readonly timeline: RunTimelineRead;
   readonly runId: string;
 }): React.JSX.Element {
@@ -82,6 +87,7 @@ export function ExecutionTimeline({
   }
   return (
     <ol className="ls-timeline">
+      {timeline.decisions.rows.map(decision => <TimelineDecisionRow key={decision.sequence} decision={decision} runId={runId} names={names} runState={runState} />)}
       {timeline.workspace === null ? null : (
         <>
           {/*

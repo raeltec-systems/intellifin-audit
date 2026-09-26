@@ -76,3 +76,5 @@ export * from './runs/run-control-transfer-repository.js';
 export * from './runs/workspace-preview-repository.js';
 
 export { WorkspacePreviewProxy } from './runs/workspace-preview-transport.js';
+
+export type { TimelineDecision, TimelineDecisions } from './runs/timeline-decisions.js';

@@ -21,6 +21,7 @@ import {
   CryptoUuidV7Generator,
   createAuditEventWriter,
   DrizzleNotificationRepository,
+  DrizzleRunDetailRepository,
   DrizzleRoleRepository,
   PostgresProceduresUnitOfWork,
   PostgresRunCancellationRepository,
@@ -719,6 +720,9 @@ describe.skipIf(!url)('pausing and resuming a Run', () => {
       const events = await sql`SELECT event_type, payload FROM audit_events WHERE aggregate_id=${runId} AND event_type='lifecycle.pause-superseded'`;
       expect(events).toHaveLength(1);
       expect(events[0]!.payload).toMatchObject({ requestedBy: author, state: 'INCONCLUSIVE' });
+      const decisions = (await new DrizzleRunDetailRepository(db).readTimeline(runId)).decisions;
+      expect(decisions.rows).toHaveLength(1);
+      expect(decisions.rows[0]).toMatchObject({ kind: 'pause', actorId: author, state: 'INCONCLUSIVE', requestedAt: events[0]!.payload.requestedAt });
       const [run] = await sql`SELECT state, pause_requested_by FROM audit_run WHERE run_id=${runId}`;
       // The marker stays as the record of who asked; the Run's own outcome stands.
       expect(run).toMatchObject({ state: 'INCONCLUSIVE', pause_requested_by: author });

@@ -826,6 +826,7 @@ const timeline = (overrides: Partial<RunTimelineRead> = {}): RunTimelineRead => 
     ],
   },
   toolActions: { total: 0, rows: [] },
+  decisions: { total: 0, rows: [], nextCursor: null, selectionFound: true },
   ...overrides,
 });
 

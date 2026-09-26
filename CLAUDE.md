@@ -1,3 +1,25 @@
+## 2026-09-26 — Stacked story PRs must enter the CI gate
+
+- Story 10.10 depends on 10.9's exact Replay selectors, so its PR targets the 10.9
+  branch. CI previously allowed only main and the older Epic 5 stack as PR bases;
+  explicitly allow the 10.9 base before claiming hosted verification of 10.10.
+
+## 2026-09-26 — Retained Timeline decisions (Story 10.10)
+
+The Timeline reads an answered Escalation only when its immutable answer envelope agrees
+with the same-Run closed wait (kind, answer and actor). The raise event supplies the Step;
+related Work Item requires a unique same-Run agent-turn binding through the explicitly
+recorded supporting Evidence and Step. A nearby timestamp or a cleared agent checkpoint is
+never a historical binding. Missing work remains explicit. Candidate labels use UntrustedText;
+notes and questions never leave this read. Names use ActorName after name resolution, with
+an explicit unavailable label rather than a raw actor identifier when resolution fails.
+Decision history is a 50-entry sequence page with exact total and continuation. A selected
+wait resolves from the same qualified decision relation; invalid, ambiguous or absent selections
+return 404 rather than the first page. Active Runs link retained Work Items on the Timeline;
+Replay links are offered only after the Run ends. UUID columns compare to audit aggregate text
+by casting the UUID to text, never casting arbitrary global aggregate IDs to UUID. Replay wait deep links require Story 10.9's wait-ID page resolver;
+this story adds only the stable jump anchor. No historical chain rows or contracts change.
+
 ## 2026-09-25 — A single read of a moving preview sample is a race the broker refuses on purpose
 
 - **The preview route answers 503 for a read that meets a new sample, and that is the product

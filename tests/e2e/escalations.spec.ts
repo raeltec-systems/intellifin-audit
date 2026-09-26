@@ -472,6 +472,20 @@ test.describe('the Escalation panel as an Auditor', () => {
     expect(answerEvent?.payload).toMatchObject({ recordedNote: 'Auditor note stays in the audit record.' });
     const agentTurns = await sql`SELECT response::text AS response FROM run_agent_turn WHERE run_id=${runs.answered}`;
     expect(agentTurns.some((turn) => String(turn.response).includes('Auditor note'))).toBe(false);
+    await page.goto(`/runs/${runs.answered}/timeline?wait=${answeredWaitId}#wait-${answeredWaitId}`);
+    const history = page.locator(`#wait-${answeredWaitId}`);
+    await expect(history).toContainText('Choose candidate');
+    await expect(history).toContainText('Answered');
+    const [actor] = await sql`SELECT name FROM auth_user WHERE id=${auditorId}`;
+    await expect(history).toContainText(String(actor!.name));
+    await expect(history).not.toContainText(auditorId);
+    await expect(history).not.toContainText('Auditor note');
+    const workLink = history.getByRole('link', { name: 'Work Item', exact: true });
+    await expect(workLink).toHaveAttribute('href', `/runs/${runs.answered}/timeline#work-item-${workItemId}`);
+    await workLink.focus();
+    await expect(workLink).toBeFocused();
+    expect((await new AxeBuilder({ page }).withTags(TAGS).analyze()).violations).toEqual([]);
+
   });
 
   test('shows the compare-and-set refusal after the Run changes', async ({ page }) => {
