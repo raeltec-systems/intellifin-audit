@@ -147,3 +147,103 @@ no database, and its modules never reach the changed append path.
 | A notify for every aggregate (no Run guard) | the non-Run case |
 | The payload spelled `{sequence, runId}` | the list-stream case, `[2, 2, 3, 4]` |
 | The old leading-edge `BellLive` | `bell-burst.spec.ts` (bell stays at "1 unread"); two unit cases |
+
+### Review patches (2026-09-26)
+
+Review findings P1 to P11 (one high, three medium, the rest low), fixed in `9e227520` (P1,
+P2), `990d934e` (P3), `b1946765` (P5, P6, P8), `142c0321` (P4, P9), `023f9729` (P7, P10) and
+`1f4c55ea` (the P1 browser proofs), and recorded (P11) in the commit that adds this section.
+Not pushed.
+
+**What changed.**
+
+- **P1, P2.** Once every append woke the channel, the Evidence inspector's own grant read woke
+  the inspector again. On an active Run it re-read itself about once a second, and each re-read
+  wrote two permanent chain events and one worker grant job. `refreshesSurface`
+  (`apps/web/src/runs/refresh-events.ts`) now skips `evidence-access.*`, `notification.*` and
+  `security.denied`, which no Run surface renders. It is an exclusion list, so a family added
+  later still re-reads. Run Detail and the Runs list mount it through `SurfaceLiveBanner`,
+  because both are server components and cannot pass a function. `LiveGate` asks it before it
+  re-reads; its Run-ending latch is unchanged. `BellLive`'s filter and `LiveBanner.tsx` are
+  unchanged. A source scan refuses any other direct `<LiveBanner` mount and pins both server
+  call sites.
+- **P3.** A source scan requires every `pg_notify('run_timeline', …)` in the package to
+  stringify an object literal whose keys are `runId` then `sequence`, and names each offender by
+  file and line. No notify site changed.
+- **P4.** `bell-burst.spec.ts` deletes each Run's children, events and the Run in one
+  transaction, the Run locked first.
+- **P5, P6, P8.** Words only. The bell re-reads the page only on its own events (an Escalation
+  raised, answered or timed out, a Run flagged, a Run ending), so Recent Runs, the versions
+  awaiting approval and the Drafts stay as read until navigation, and the bell and a page's
+  banner are two instances of one throttle. Before this story a per-Run stream found the three
+  families at its next heartbeat (up to ten seconds later), and the list stream never saw them.
+  The contract now says that the notify is for a Run's chain only, that the list stream
+  forwards an event once only because every notifier spells the payload the same way (pinned
+  by P3), and that the Run surfaces skip three families and why; it names the badge's events
+  by `changesOpenWaits` instead of keeping a second list. Its Source section already defines a
+  Timeline event as an append to a Run's chain, so "every append to a Run's chain" narrows
+  nothing.
+- **P7.** Two channel cases. A unit of work in a savepoint that rolls back, inside a
+  transaction that commits, wakes nothing, and a later commit that takes its sequence arrives
+  once. A narrated event appended when the Run's conversation is already full still wakes the
+  stream, and the conversation takes no message for it. The bound was cheap to reach: it is
+  checked on the conversation's highest sequence, so one message at sequence 1,000,000 fills it.
+- **P9.** `OVERVIEW_OPEN_ITEM_LIMIT` lives in `overview-words.ts`. The Overview and the burst
+  spec import the one constant, and both flags check, with the same message, that they are
+  among the open items the Overview reads.
+- **P10.** Every stream and raw LISTEN a channel case opens belongs to the case from the moment
+  it is opened, and the case's `finally` closes them all, so a failure during setup no longer
+  leaks a listener. The list stream's armed wait is bounded and names what did not happen.
+
+**Tests** (Node 24.20.0, PostgreSQL 18, database `lane_b_test`).
+
+- At `1f4c55ea`: `pnpm typecheck` (every package, then the root tests config) clean;
+  `pnpm boundaries` clean, 806 modules; `pnpm test` 5404 of 5404 in 296 files.
+- `tests/integration/run-timeline-channel.test.ts`: 14 of 14, three times.
+- `tests/e2e/surface-refresh.spec.ts` (new; the inspector case and the Live View case): passed
+  three times. `tests/e2e/bell-burst.spec.ts`: passed three times.
+- Once each, in one run at `1f4c55ea`: `live-view` (8), `live-drop` (5), `live-timeline` (3),
+  `live-escalation` (1), `pause-resume` (3), `flag-run` (6), `escalations` (3), `runs` (12),
+  `run-surfaces` (11), `evidence-inspector` (4) and `overview` (3): 59 of 59.
+
+**Mutations, each run and restored.**
+
+| Mutation | Killed by |
+|---|---|
+| `refreshesSurface` returns true for every event | `refresh-events.test.ts` ("evidence-access.grant-issued: expected true to be false"); `LiveGate.refresh.test.ts` (6 re-reads, not 0) |
+| `LiveGate` re-reads on every event | `LiveGate.refresh.test.ts` (6, not 0); `surface-refresh.spec.ts` Live View case (2 re-reads, not 0) |
+| `SurfaceLiveBanner` re-reads on every event | `surface-refresh.spec.ts` inspector case (28 `evidence-access.*` events past the heartbeat, not 4) |
+| A direct `<LiveBanner` on Run Detail, or on the Runs list | the source scan and the pin, each naming the file |
+| The payload keys swapped at `runs/workspace-repository.ts:53` | the P3 scan: "the keys are [sequence, runId]" |
+| A spread, an extra `JSON.stringify` argument, a non-literal payload at `db/audit-events.ts:137` | the P3 scan, each with its own named problem |
+| The append's notify moved below the conversation's early return | the full-conversation case (`['1']`, not `['1', '2']`) |
+
+**(a) `agent-isolation.test.ts` at the baseline.** Run in a detached worktree of `429e08c` with
+its own install and this lane's database, interleaved with runs at `1f4c55ea`:
+
+| Condition | Baseline `429e08c` | `1f4c55ea` |
+|---|---|---|
+| No added load, 4 runs each | 4 passed | 4 passed |
+| Four CPU-bound processes; the baseline runs first in each of 16 pairs | 16 passed | 13 passed, 3 failed |
+| The same load; `1f4c55ea` runs first in each of 16 pairs | 15 passed, 1 failed | 15 passed, 1 failed |
+
+Four failures are the one case this record already named, at the same line: "keeps concurrent
+authenticated Runs on the same origin in separate cookie and storage contexts", line 100, a
+`BrowserActionError` of `unavailable` when Run B captures a Structural Snapshot after Run A's
+workspace is released. The baseline fails it too, so it is not a regression of this story. All
+four were the SECOND run of a pair, and none of the 32 first runs failed it: the first batch's
+3 of 16 against 0 of 16 was the order, not the commit. The fifth failure was the first run
+after the machine restarted, when Chromium did not launch within the test's 10-second limit
+(line 67). The test's module graph holds no file this story changed: it loads
+`@intellifin/domain` and `@intellifin/application`, both unchanged since `429e08c`, and ten
+infrastructure modules (`runs/browser-execution.ts` and what it imports), none of which is
+`db/audit-events.ts`, the one infrastructure source file this story changed.
+
+**(b) What the notify costs.** Evidence reads and grant decisions now issue a NOTIFY, and
+PostgreSQL serializes the commits of all notifying transactions on its notification-queue
+lock; with P1 they happen at human pace (one page render or one frame load each), not in a loop.
+
+**(c) What the burst proof observes on the Overview.** The Overview shows a count only past its
+ten-item bound (`overviewBounded`, when a group holds more than it lists), so
+`bell-burst.spec.ts` observes the Overview's re-read through the attention list's rows, which
+the same server read returns, not through a count.

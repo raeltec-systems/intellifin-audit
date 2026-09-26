@@ -56,6 +56,13 @@
   fires. The list stream has no replay, so wait for its first HEARTBEAT (sent only once its
   LISTEN is armed) before committing anything the page must see. Proven by mutation: the old
   `BellLive` fails `bell-burst.spec.ts` with the bell still at "1 unread".
+- **Compare a flaky test at two commits in BOTH orders.** `agent-isolation.test.ts` failed 3 of
+  16 loaded runs at this story's head and 0 of 16 at the baseline `429e08c` while the baseline
+  always ran first in each pair; with the order swapped the baseline failed the same case at
+  the same line (1 of 16). All four failures were the second run of a pair, none of the 32
+  first runs failed it, and it passed 4 of 4 at both commits with no added load. The test's
+  module graph holds no file the story changed. A pair run in one fixed order confounds the
+  commit with the position, and read alone it would have named a regression that is not one.
 
 ## 2026-09-25 — A single read of a moving preview sample is a race the broker refuses on purpose
 
