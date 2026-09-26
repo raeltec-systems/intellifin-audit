@@ -127,7 +127,7 @@ development_status:
   10-6-legacy-visibility-follow-up-human-matched-provenance-missing: 
     ready-for-dev
   10-7-live-channel-correction-notify-every-run-chain-append-and-ne: 
-    ready-for-dev
+    review
   10-8-lost-connection-and-lost-acknowledgement-a-server-refresh-is: 
     ready-for-dev
   10-9-replay-bounded-history-completeness-a-bounded-view-says-what: 
