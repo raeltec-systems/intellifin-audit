@@ -779,5 +779,6 @@ legacy_review_closure:
       covers: legacy 5.8 — bounded reads say what they cover; the rest stays reachable; no Replay redesign
     10-10-retained-decision-history-on-the-execution-timeline-an-answe:
       prepared: '2026-09-25'
-      implementation_authorised: false
+      implementation_authorised: true
+      authorised: '2026-09-26 owner request: implement remaining legacy stories in parallel'
       covers: legacy 4.8 AC 4, 5.6 AC 3, 5.4 AC 3 — compact inspectable Timeline entries for answered Escalations and superseded pauses

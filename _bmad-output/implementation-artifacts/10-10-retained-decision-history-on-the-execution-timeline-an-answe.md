@@ -2,9 +2,11 @@
 title: 'Retained decision history on the Execution Timeline: an answered Escalation and a superseded pause are inspectable entries'
 type: 'fix'
 created: '2026-09-25'
-status: 'ready-for-dev'
+status: 'in-progress'
 review_loop_iteration: 0
-implementation_authorised: false
+implementation_authorised: true
+baseline_commit: '3d999798db9d861efe3be66f97a93d2ebdaaf489'
+authorisation: 'Owner request, 2026-09-26: implement remaining legacy stories in parallel.'
 context:
   - '_bmad-output/implementation-artifacts/legacy-review-closure-register.md'
   - '_bmad-output/planning-artifacts/epics.md'
@@ -72,3 +74,59 @@ the time, and the related Work Item and Step where one exists. No full expanded 
 - tests: integration (the read on PostgreSQL 18), unit (words and branches), browser (each entry, WCAG 2.1 AA)
 
 **Acceptance Criteria:** as `epics.md`, Story 10.10.
+
+## Implementation checkpoint — 2026-09-26
+
+Owner authorised implementation in the current request. The frozen intent above is unchanged.
+The code reads immutable answer/raise records and same-Run closed waits, and displays named
+actors, fixed answer words or labelled untrusted candidate text, timestamps and exact work
+links. A historical missing Step reuses `ESCALATION_PANEL_COPY.noStep`; missing Work Item
+and unavailable name are short labels, not new sentences. Superseded pauses reuse the existing
+`Pause requested.`, `Superseded` and Run-state words with both request and completion times.
+No new sentence or row hierarchy has been introduced.
+
+- [x] Bounded durable decision read, exact total, sequence continuation and selected-wait resolution.
+- [x] Compact answer/abort/superseded pause entries; existing vocabulary; no question/note projection.
+- [x] Six new unit branches and 63 existing RunDetail tests passed (69 total).
+- [x] Full monorepo and root-test typecheck; dependency boundaries (804 modules) passed.
+- [ ] PostgreSQL 18 integration acceptance: tests written, requires hosted execution.
+- [ ] Browser/axe acceptance: answered candidate work link and abort/superseded-pause journeys written, requires hosted execution.
+- [ ] BMAD independent review and matrix verification, owned by the parent workflow.
+
+Replay escalation deep links use `?wait=<wait-id>#replay-escalation-<wait-id>`. The same-Run
+wait-ID page resolver is Story 10.9's dependency for a target beyond the first Replay page;
+Story 10.10 must be verified and delivered with that resolver available. Timeline itself uses
+`?wait=<wait-id>#wait-<wait-id>` and resolves all retained decision pages independently.
+
+No migrations, historical rewrites, external renames, deployment, merge or tenancy approvals.
+Local PostgreSQL/browser execution is unavailable in this managed environment, so tests are
+not represented as passing before hosted CI runs. Status remains in progress.
+
+### Review repair checkpoint
+
+Accepted independent review findings: corrected UUID/text SQL joins; selected waits now resolve
+only from the same qualified decision relation; uppercase UUIDs normalize; malformed, repeated,
+unknown, foreign and conflicting selectors never fall back to unrelated history. Invalid or absent
+selection uses the existing 404 flow. Active Run decisions keep exact Timeline Work Item links;
+terminal-only Replay links appear after completion. Superseded pause related work remains
+explicitly unrecorded. PostgreSQL tests now cover unique, ambiguous and foreign evidence-turn
+bindings. The composed browser test follows a Timeline decision beyond Replay's first 500 waits,
+activates its jump with the keyboard and verifies the exact rendered frame plus axe.
+
+Targeted verification after repairs: 80 tests passed (7 decision rendering, 10 selection parser,
+63 existing RunDetail). Earlier full suite: 5,395 passed; one boundary-mutation fixture failed
+because dependency-cruiser saw a disappearing `.rsync-tmp/violation.ts` (not a product assertion).
+No false full-suite pass is recorded. PostgreSQL/browser proof still requires hosted CI.
+
+### Composed checkpoint verification
+
+This branch is stacked on Story 10.9 commit `3d999798db9d861efe3be66f97a93d2ebdaaf489`
+(PR #57), so its Replay destinations exist in the tested tree. The shared large-history
+fixture contains one 500-wait expansion, the real answer envelope and the composed
+Timeline-to-Replay keyboard/capture assertion. No branch or PR was merged.
+
+The composed tree passed 166 targeted Replay/Timeline/RunDetail tests, full typecheck
+and boundaries (807 modules). Frozen-policy candidate labels are redacted before
+projection if a lookup key is sensitive or policy is unavailable; UI also fails closed.
+Unrelated Timeline section selectors remain compatible with pause-history pagination.
+Hosted PostgreSQL and browser results are still required before completion.

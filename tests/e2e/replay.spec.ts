@@ -10,6 +10,7 @@ import {
   createSqlClient,
   CryptoUuidV7Generator,
   PostgresProceduresUnitOfWork,
+  PostgresAuditUnitOfWork,
   PostgresRunsUnitOfWork,
   PostgresWaitRepository,
   SystemClock,
@@ -69,6 +70,7 @@ interface Replayed {
   readonly workItems: readonly string[];
   readonly recordKey: string;
   readonly waitLabel: string;
+  readonly waitId: string;
 }
 
 /**
@@ -175,6 +177,13 @@ async function seedReplayRun(largeHistory = false): Promise<Replayed> {
   await sql`UPDATE run_wait SET closed_at=${stamp(20)}, closure_kind='answer', answer_option_id='candidate-a',
     actor=${author} WHERE wait_id=${raised.wait.waitId}`;
 
+  await new PostgresAuditUnitOfWork(createDb(sql)).execute(c => c.auditEvents.append({
+    actor: { type: 'human', id: author }, source: 'web', outcome: 'success', eventType: 'execution.escalation-answered',
+    aggregateId: runId, correlationId: ids.next(), sessionId: 'replay-fixture',
+    payload: { waitId: raised.wait.waitId, kind: 'choose-candidate', answerOptionId: 'candidate-a', closureKind: 'answer' },
+  }));
+
+
   // One Observation and the Exception raised against it.
   const observationId = ids.next();
   await sql`INSERT INTO run_observation(observation_id,run_id,work_item_id,step_execution_id,target_system,
@@ -245,7 +254,7 @@ async function seedReplayRun(largeHistory = false): Promise<Replayed> {
 
   // The stored kind is `choose-candidate`; what a reader must SEE is the question it
   // means. The spec pinned the key, so it pinned the plain-words defect as intended.
-  return { runId, frames, workItems, recordKey, waitLabel: 'Choose candidate' };
+  return { runId, frames, workItems, recordKey, waitLabel: 'Choose candidate', waitId: raised.wait.waitId };
 }
 
 test.beforeAll(async () => {
@@ -423,6 +432,24 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
     await jumps.getByRole('link', { name: 'Previous', exact: true }).click();
     await expect(jumps.getByText('1–500 / 501', { exact: true })).toHaveCount(2);
     expect(outbound).toBe(0);
+  });
+
+  test('follows the retained Timeline decision to its Replay target after the first history page', async ({ page }) => {
+    test.setTimeout(120_000);
+    const seeded = await seedReplayRun(true);
+    await page.goto(`/runs/${seeded.runId}/timeline?wait=${seeded.waitId}#wait-${seeded.waitId}`);
+    const decision = page.locator(`#wait-${seeded.waitId}`);
+    await expect(decision).toContainText('Answered');
+    await decision.getByRole('link', { name: 'Escalation', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/replay\\?wait=${seeded.waitId}#replay-escalation-${seeded.waitId}$`));
+    const target = page.locator(`#replay-escalation-${seeded.waitId}`);
+    await expect(target).toBeVisible();
+    const jump = target.getByRole('button', { name: 'Escalation · Choose candidate' });
+    await jump.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.ls-session__frame')).toHaveAttribute('src', `/api/runs/${seeded.runId}/frames/${seeded.frames[1]}`);
+    await expect.poll(() => page.locator('.ls-session__frame').evaluate((image: HTMLImageElement) => image.naturalWidth), { timeout: 30_000 }).toBe(1);
+    expect((await new AxeBuilder({ page }).withTags(TAGS).analyze()).violations).toEqual([]);
   });
 
   test('steps, plays and jumps from the keyboard alone', async ({ page }) => {

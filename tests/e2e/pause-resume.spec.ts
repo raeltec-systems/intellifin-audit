@@ -1,13 +1,14 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
-import { performPause } from '@intellifin/application';
+import { performPause, raiseEscalation } from '@intellifin/application';
 import {
   createDb,
   createSqlClient,
   CryptoUuidV7Generator,
   PostgresProceduresUnitOfWork,
   PostgresWaitRepository,
+  SystemClock,
   type Sql,
 } from '@intellifin/infrastructure';
 
@@ -287,6 +288,37 @@ test.describe('pausing and resuming a Run', () => {
     await expectWithin(stepIds.length);
     // The retry is said beside the counter where a step is running; it is never IN it.
     await expect(counter).not.toContainText(String(stepIds.length + 1));
+  });
+
+  test('retains an aborted Escalation and the pause that the terminal Run superseded', async ({ page }) => {
+    const runId = await seedRun('RUNNING');
+    await page.goto(`/runs/${runId}`);
+    await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
+    await page.getByRole('button', { name: 'Pause', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Pause Run', exact: true }).click();
+    await expect.poll(async () => (await sql`SELECT pause_requested_by FROM audit_run WHERE run_id=${runId}`)[0]?.pause_requested_by).toBe(author);
+    const raised = await raiseEscalation({ repository: new PostgresWaitRepository(createDb(sql)), ids, clock: new SystemClock() },
+      { runId, kind: 'retry-or-skip' });
+    expect(raised.ok).toBe(true);
+    if (!raised.ok) throw new Error('Escalation fixture refused');
+    await page.reload();
+    await page.getByRole('button', { name: 'Abort', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Abort Run', exact: true }).click();
+    await expect.poll(async () => (await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)[0]?.state).toBe('CANCELED');
+    await page.goto(`/runs/${runId}/timeline`);
+    const answer = page.locator(`#wait-${raised.wait.waitId}`);
+    await expect(answer).toContainText('Abort');
+    await expect(answer).toContainText(authorName);
+    await expect(answer).toContainText(ESCALATION_PANEL_COPY.noStep);
+    const pause = page.locator('.ls-timeline__row').filter({ hasText: 'Pause requested.' });
+    await expect(pause).toContainText('Superseded');
+    await expect(pause).toContainText('Canceled');
+    await expect(pause).toContainText(authorName);
+    await expect(pause.locator('time')).toHaveCount(2);
+    const link = answer.getByRole('link', { name: 'Escalation', exact: true });
+    await link.focus();
+    await expect(link).toBeFocused();
+    expect((await new AxeBuilder({ page }).withTags(TAGS).analyze()).violations).toEqual([]);
   });
 
   test('disables Pause on a Run waiting on an answer, and says why in words', async ({ page }) => {
