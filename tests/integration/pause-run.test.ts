@@ -10,10 +10,13 @@ import {
   pauseWaitFor,
   performPause,
   raiseEscalation,
+  resumeLinker,
   resumeRun,
   wakeEscalation,
   type AuditUnitOfWork,
   type Clock,
+  type PauseHold,
+  type RunPauseContext,
 } from '@intellifin/application';
 import {
   createDb,
@@ -26,10 +29,14 @@ import {
   PostgresRunCancellationRepository,
   PostgresRunsUnitOfWork,
   SystemClock,
+  readPauseEntry,
+  readPauseHistory,
+  readPendingResume,
   type Database,
   type Sql,
   type Transaction,
 } from '@intellifin/infrastructure';
+import { withRunExecutionContext } from '../../packages/infrastructure/src/runs/adapter-execution-repository.js';
 import { activeRunVersion } from '../fixtures/active-run-version.js';
 import { PostgresWaitRepository, WAIT_QUEUE } from '../../packages/infrastructure/src/runs/wait-repository.js';
 
@@ -44,6 +51,9 @@ import { PostgresWaitRepository, WAIT_QUEUE } from '../../packages/infrastructur
  * the inbox that must not show one.
  */
 const url = process.env.DATABASE_URL;
+
+/** Before the fixture plan's sign-in (`session-3`): a Session Step, no attempt in flight. */
+const SIGN_IN_HOLD: PauseHold = { planStepId: 'session-3', workItemId: null, superseded: null };
 
 class FixedClock implements Clock {
   constructor(private readonly value: Date) {}
@@ -163,15 +173,19 @@ describe.skipIf(!url)('pausing and resuming a Run', () => {
     };
   }
 
-  /** Everything the worker's boundary does, in one transaction, as the stage does it. */
-  async function honourPause(runId: string, at = baseNow): Promise<string> {
+  /**
+   * Everything the worker's boundary does, in one transaction, as the stage does it. The
+   * hold is where the boundary holds the Run (Story 10.6, legacy 5.4); by default before
+   * the fixture plan's sign-in, a Run-level Session Step with no attempt in flight.
+   */
+  async function honourPause(runId: string, at = baseNow, hold: PauseHold = SIGN_IN_HOLD): Promise<string> {
     return new PostgresWaitRepository(db).transaction(runId, async (context) => {
       const run = context.run!;
       const request = context.run!.pauseRequest!;
       await context.saveRunState('PAUSED');
       const wait = await performPause(
         context as never,
-        { run, request, waitId: ids.next(), at: at.toISOString() },
+        { run, request, waitId: ids.next(), at: at.toISOString(), hold },
       );
       return wait.waitId;
     });
@@ -542,6 +556,179 @@ describe.skipIf(!url)('pausing and resuming a Run', () => {
         { runId, kind: 'retry-or-skip', stepId: 'step-1' },
       );
       expect(raised.ok).toBe(false);
+    });
+  });
+
+  /**
+   * Where each pause held the Run, and which attempt each resume started (Story 10.6,
+   * legacy 5.4), on real rows. Every link below is followed by identity: the pause event
+   * by its wait, the superseded and restarted attempts by their Step Execution ids. None
+   * is paired by time.
+   */
+  describe('where each pause held the Run, and which attempt each resume started', () => {
+    const INSPECT = 'loancore-1';
+
+    /** A Work Item of this Run, as the agent path writes it. */
+    async function workItem(runId: string, key: string, ordinal: number): Promise<string> {
+      const workItemId = ids.next();
+      await db.transaction((tx) => withRunExecutionContext(tx, runId, async (context) => {
+        await context.saveWorkItem({ workItemId, subjectKey: key, stepId: INSPECT, ordinal, registrationId: 'loancore', displayName: 'LoanCore',
+          state: 'PENDING', attempts: 0, cycles: 0, diagnostic: null, evidenceId: null, observations: 0 });
+      }));
+      return workItemId;
+    }
+
+    /** What a stage does as an attempt starts: the Step Execution, and its event naming the resume. */
+    async function startAttempt(runId: string, workItemId: string, attempt: number, at: Date): Promise<{ stepExecutionId: string; resumedWaitId: string | null }> {
+      const stepExecutionId = ids.next();
+      let resumedWaitId: string | null = null;
+      await db.transaction((tx) => withRunExecutionContext(tx, runId, async (context) => {
+        await context.saveStepExecution({ stepExecutionId, planStepId: INSPECT, workItemId, action: 'inspect-record',
+          state: 'RUNNING', attempt, startedAt: at.toISOString(), completedAt: null, diagnostic: null });
+        resumedWaitId = await resumeLinker()(context, { planStepId: INSPECT, workItemId });
+        await context.auditEvents.append({
+          actor: { type: 'system', id: 'agent-worker' }, eventType: 'lifecycle.agent-work', source: 'worker', outcome: 'success',
+          aggregateId: runId, correlationId: context.run!.correlationId, sessionId: context.run!.sessionId,
+          payload: { state: 'RUNNING', diagnostic: 'work-item-attempt-started', workItemId, stepExecutionId, attempt,
+            ...(resumedWaitId === null ? {} : { resumedWaitId }) },
+        });
+      }));
+      return { stepExecutionId, resumedWaitId };
+    }
+
+    async function resume(runId: string, at: Date): Promise<void> {
+      const [before] = await sql`SELECT revision FROM audit_run WHERE run_id=${runId}`;
+      const outcome = await resumeRun(deps(at), { session, request: { runId, expectedRunRevision: Number(before!.revision) } });
+      expect(outcome.ok).toBe(true);
+    }
+
+    const pending = (runId: string) => db.transaction((tx) => readPendingResume(tx, runId));
+
+    it('links two pauses and their resumes exactly, as the Run advances between them', async () => {
+      const runId = await startRun();
+      const first = await workItem(runId, 'E-000102', 1);
+      const second = await workItem(runId, 'E-000103', 2);
+      // Pause 1, mid-attempt on the first record: the attempt is superseded.
+      const interrupted = await startAttempt(runId, first, 1, new Date('2026-09-10T08:59:00.000Z'));
+      expect(interrupted.resumedWaitId).toBeNull();
+      await pauseRun(deps(), { session, request: { runId } });
+      await sql`UPDATE run_step_execution SET state='SUPERSEDED', superseded_by='resume', completed_at=${baseNow.toISOString()}::timestamptz WHERE step_execution_id=${interrupted.stepExecutionId}`;
+      const firstWait = await honourPause(runId, baseNow,
+        { planStepId: INSPECT, workItemId: first, superseded: { stepExecutionId: interrupted.stepExecutionId, attempt: 1 } });
+      // A resume that has not started its attempt is pending only once it is resumed.
+      expect(await pending(runId)).toBeNull();
+      await resume(runId, new Date('2026-09-10T09:10:00.000Z'));
+      expect(await pending(runId)).toEqual({ waitId: firstWait, planStepId: INSPECT, workItemId: first });
+      const restarted = await startAttempt(runId, first, 1, new Date('2026-09-10T09:11:00.000Z'));
+      expect(restarted.resumedWaitId).toBe(firstWait);
+      // Linked once: the next attempt anywhere names no resume.
+      expect(await pending(runId)).toBeNull();
+
+      // The Run advances to the second record, and is paused BETWEEN units before it.
+      await pauseRun(deps(new Date('2026-09-10T09:20:00.000Z')), { session, request: { runId } });
+      const secondWait = await honourPause(runId, new Date('2026-09-10T09:20:00.000Z'),
+        { planStepId: INSPECT, workItemId: second, superseded: null });
+      await resume(runId, new Date('2026-09-10T09:30:00.000Z'));
+      expect(await pending(runId)).toEqual({ waitId: secondWait, planStepId: INSPECT, workItemId: second });
+      // An attempt at another record is not the one the resume restarts.
+      expect((await startAttempt(runId, first, 2, new Date('2026-09-10T09:31:00.000Z'))).resumedWaitId).toBeNull();
+      const secondStart = await startAttempt(runId, second, 1, new Date('2026-09-10T09:32:00.000Z'));
+      expect(secondStart.resumedWaitId).toBe(secondWait);
+
+      const history = await readPauseHistory(db, runId);
+      expect(history.total).toBe(2);
+      expect(history.entries.map((entry) => entry.waitId)).toEqual([firstWait, secondWait]);
+      expect(history.entries[0]).toMatchObject({
+        pausedBy: author,
+        mode: 'immediate',
+        hold: {
+          kind: 'recorded', planStepId: INSPECT, workItem: { workItemId: first, subjectKey: 'E-000102' },
+          superseded: { stepExecutionId: interrupted.stepExecutionId, attempt: 1, planStepId: INSPECT }, settled: null,
+        },
+        closure: {
+          kind: 'resumed', resumedBy: author, resumedAt: '2026-09-10T09:10:00.000Z',
+          restart: { kind: 'started', attempt: { stepExecutionId: restarted.stepExecutionId, attempt: 1, planStepId: INSPECT,
+            workItem: { workItemId: first, subjectKey: 'E-000102' } } },
+        },
+      });
+      expect(history.entries[1]).toMatchObject({
+        hold: { kind: 'recorded', planStepId: INSPECT, workItem: { workItemId: second, subjectKey: 'E-000103' }, superseded: null },
+        closure: { kind: 'resumed', restart: { kind: 'started', attempt: { stepExecutionId: secondStart.stepExecutionId } } },
+      });
+      // One pause, read alone, is the same entry the history holds.
+      expect(await readPauseEntry(db, runId, secondWait)).toEqual(history.entries[1]);
+    });
+
+    it('says a resume has started no attempt yet, and a pause that is still open is open', async () => {
+      const runId = await startRun();
+      await pauseRun(deps(), { session, request: { runId } });
+      const waitId = await honourPause(runId);
+      expect((await readPauseEntry(db, runId, waitId))?.closure).toEqual({ kind: 'open' });
+      await resume(runId, new Date('2026-09-10T09:10:00.000Z'));
+      const entry = await readPauseEntry(db, runId, waitId);
+      expect(entry?.hold).toEqual({ kind: 'recorded', planStepId: 'session-3', workItem: null, superseded: null, settled: null });
+      expect(entry?.closure).toMatchObject({ kind: 'resumed', restart: { kind: 'none' } });
+    });
+
+    it('reads a pause an older build wrote for what it holds, and never guesses the rest', async () => {
+      const runId = await startRun();
+      const item = await workItem(runId, 'E-000104', 1);
+      const interrupted = await startAttempt(runId, item, 1, new Date('2026-09-10T08:58:00.000Z'));
+      // Two pauses in the shape the build before this story wrote them: the first honoured
+      // mid-attempt (it names the Step Execution), the second between units (it names none).
+      const olderPause = async (at: Date, extra: Record<string, unknown>): Promise<string> => {
+        await pauseRun(deps(at), { session, request: { runId } });
+        return new PostgresWaitRepository(db).transaction(runId, async (context) => {
+          const run = context.run!;
+          const request = run.pauseRequest!;
+          await context.saveRunState('PAUSED');
+          const wait = pauseWaitFor({ waitId: ids.next(), runId, request, at: at.toISOString() });
+          // The wait context is built on the shared execution context, which carries the
+          // pause writers the stages use; its declared type names only the wait commands'.
+          const writers = context as unknown as Pick<RunPauseContext, 'openPauseWait' | 'clearPauseRequest'>;
+          await writers.openPauseWait(wait);
+          await writers.clearPauseRequest();
+          await context.auditEvents.append({
+            actor: { type: 'human', id: request.requestedBy }, eventType: 'lifecycle.run-paused', source: 'worker', outcome: 'success',
+            aggregateId: runId, correlationId: run.correlationId, sessionId: request.sessionId,
+            payload: { priorState: 'RUNNING', state: 'PAUSED', waitId: wait.waitId, requestedAt: request.requestedAt,
+              occurredAt: at.toISOString(), deadline: wait.deadline, pauseMode: 'immediate', ...extra },
+          });
+          return wait.waitId;
+        });
+      };
+      const inFlight = await olderPause(baseNow, { stepExecutionId: interrupted.stepExecutionId, workItemId: item });
+      await resume(runId, new Date('2026-09-10T09:10:00.000Z'));
+      // No held step was recorded, so the attempt the resume restarts cannot be named.
+      expect(await pending(runId)).toBeNull();
+      expect((await startAttempt(runId, item, 1, new Date('2026-09-10T09:11:00.000Z'))).resumedWaitId).toBeNull();
+      const between = await olderPause(new Date('2026-09-10T09:20:00.000Z'), {});
+      await resume(runId, new Date('2026-09-10T09:30:00.000Z'));
+
+      const history = await readPauseHistory(db, runId);
+      expect(history.entries.map((entry) => entry.waitId)).toEqual([inFlight, between]);
+      // The Step Execution the older event named holds the plan step and attempt exactly.
+      expect(history.entries[0]?.hold).toMatchObject({
+        kind: 'recorded', planStepId: INSPECT, superseded: { stepExecutionId: interrupted.stepExecutionId, attempt: 1 },
+        workItem: { workItemId: item, subjectKey: 'E-000104' },
+      });
+      expect(history.entries[0]?.closure).toMatchObject({ kind: 'resumed', restart: { kind: 'not-recorded' } });
+      expect(history.entries[1]?.hold).toEqual({ kind: 'not-recorded' });
+      expect(history.entries[1]?.closure).toMatchObject({ kind: 'resumed', restart: { kind: 'not-recorded' } });
+      // Nothing was rewritten: the older events still hold exactly their own keys.
+      const events = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${runId} AND event_type='lifecycle.run-paused' ORDER BY sequence`;
+      for (const event of events) expect(event.payload).not.toHaveProperty('planStepId');
+    });
+
+    it('says a pause that reached its deadline ended without a resume', async () => {
+      const runId = await startRun();
+      const anHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      await pauseRun(deps(anHourAgo), { session, request: { runId } });
+      const waitId = await honourPause(runId, anHourAgo);
+      await wakeEscalation({ repository: new PostgresWaitRepository(db), clock: new SystemClock() }, { schemaVersion: 1, runId, waitId });
+      const entry = await readPauseEntry(db, runId, waitId);
+      expect(entry?.closure.kind).toBe('timed-out');
+      expect(await pending(runId)).toBeNull();
     });
   });
 

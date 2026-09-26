@@ -18,7 +18,7 @@ import {
   waitTimeoutMs,
   type RunWait,
 } from './escalation-kind.js';
-import type { RunPauseContext } from './execution-ports.js';
+import type { PendingResume, RunPauseContext } from './execution-ports.js';
 import type { WaitRepository } from './waits.js';
 import { DEFERRED_PAUSE_SUPERSEDED_EVENT } from './deferred-pause-run.js';
 
@@ -86,6 +86,71 @@ export const RESUMED_EVENT = 'lifecycle.run-resumed';
 // `lifecycle.pause-superseded` is `CompleteRun`'s, defined where it is appended.
 
 /**
+ * Where a pause holds the Run (Story 10.6, legacy 5.4).
+ *
+ * The pause record used to name its Step Execution only at the six in-flight Work Item
+ * boundaries, and nothing at all at the others, so a reader could tie a pause to a step
+ * only by lining the chain up in time. Every stage now says, in the pause's own event,
+ * the plan step it holds the Run at, the Work Item when it is in the Work Item stage, and
+ * the attempt it superseded when one was in flight. REQUIRED, so a boundary cannot pause
+ * a Run and leave its place unsaid; historical events stay exactly as they were written.
+ */
+export interface PauseHold {
+  /** The plan step at which the Run is held: the step a resume restarts. */
+  readonly planStepId: string;
+  /** The Work Item the Run is held at, in the Work Item stage; `null` at a Session Step. */
+  readonly workItemId: string | null;
+  /** The attempt this pause superseded, or `null` when no Step Execution was in flight. */
+  readonly superseded: { readonly stepExecutionId: string; readonly attempt: number } | null;
+}
+
+/**
+ * The resume an attempt restarts, when it restarts one (Story 10.6, legacy 5.4).
+ *
+ * The attempt is the resume's when it is the first one started at the place the pause
+ * held the Run: the same plan step and, when the pause named one, the same Work Item. A
+ * re-authentication, a workspace, or any other unit that runs first is not the attempt
+ * the resume restarts, so it does not take the link. The answer is written onto the
+ * attempt's own event as `resumedWaitId`, which is what lets every reader follow the link
+ * by identity instead of by the order events happened to be written in.
+ */
+export function resumeStartedBy(
+  pending: PendingResume | null,
+  attempt: { readonly planStepId: string; readonly workItemId: string | null },
+): string | null {
+  if (pending === null || pending.planStepId !== attempt.planStepId) return null;
+  if (pending.workItemId !== null && pending.workItemId !== attempt.workItemId) return null;
+  return pending.waitId;
+}
+
+/** What a stage calls as each attempt starts: the resume that attempt restarts, or `null`. */
+export type ResumeLinker = (
+  context: Pick<RunPauseContext, 'readPendingResume'>,
+  attempt: { readonly planStepId: string; readonly workItemId: string | null },
+) => Promise<string | null>;
+
+/**
+ * One stage invocation's view of the pending resume, read once (Story 10.6, legacy 5.4).
+ *
+ * A resume needs the Run `PAUSED`, and a stage that pauses a Run returns, so nothing can
+ * create a new resume while one invocation holds the Run: what the first attempt start
+ * reads stays true for the rest of the invocation, except for the link this invocation
+ * writes itself. Reading it once keeps a long Run from re-reading its chain at every
+ * attempt; a link written in a transaction that then fails to commit is simply made by
+ * the next invocation, which reads again.
+ */
+export function resumeLinker(): ResumeLinker {
+  let pending: PendingResume | null | undefined;
+  return async (context, attempt) => {
+    if (pending === undefined) pending = await context.readPendingResume();
+    const waitId = resumeStartedBy(pending, attempt);
+    // One attempt per resume: the retries of the same unit are that attempt's successors.
+    if (waitId !== null) pending = null;
+    return waitId;
+  };
+}
+
+/**
  * The ONE place a Run becomes `PAUSED`.
  *
  * Three stages reach it and each calls it inside the guarded transaction that has already
@@ -94,15 +159,22 @@ export const RESUMED_EVENT = 'lifecycle.run-resumed';
  * `PAUSED` Run with no wait row would be a Run nothing could ever end.
  */
 export async function performPause(
-  context: RunPauseContext,
+  // A pause starts no attempt, so it has no use for the pending-resume read.
+  context: Omit<RunPauseContext, 'readPendingResume'>,
   input: {
     readonly run: RunRecord;
     readonly request: RunPauseRequest;
     /** A fresh id. The wait itself is DERIVED, so no caller can mis-shape one. */
     readonly waitId: string;
     readonly at: string;
-    /** The Step Execution this pause superseded, when a stage had one in flight. */
-    readonly stepExecutionId?: string | null;
+    /** Where the pause holds the Run, and the attempt it superseded (Story 10.6). */
+    readonly hold: PauseHold;
+    /**
+     * The Work Item the existing `workItemId` key names: the one whose attempt was
+     * superseded, or — for a deferred pause — the settled inspection. Its meaning is
+     * unchanged, because the conversation receipts read it; the place the Run is held is
+     * `hold`, under keys of its own.
+     */
     readonly workItemId?: string | null;
     /** Deferred steering names the settled logical unit in the applied event. */
     readonly pauseMode?: 'immediate' | 'after-inspection';
@@ -141,8 +213,16 @@ export async function performPause(
       ...(input.request.commandId !== undefined && input.request.commandId !== null
         ? { commandId: input.request.commandId }
         : {}),
-      ...(input.stepExecutionId ? { stepExecutionId: input.stepExecutionId } : {}),
+      ...(input.hold.superseded === null ? {} : {
+        stepExecutionId: input.hold.superseded.stepExecutionId,
+        attempt: input.hold.superseded.attempt,
+      }),
       ...(input.workItemId ? { workItemId: input.workItemId } : {}),
+      // Where the Run is held (Story 10.6, legacy 5.4). New keys, on new events only: an
+      // event written before them stays as it was, and a surface says its step was not
+      // recorded rather than guessing one.
+      planStepId: input.hold.planStepId,
+      ...(input.hold.workItemId === null ? {} : { heldWorkItemId: input.hold.workItemId }),
       pauseMode: input.pauseMode ?? 'immediate',
       ...(input.pauseMode === 'after-inspection' ? {
         subjectKey: input.subjectKey ?? null,

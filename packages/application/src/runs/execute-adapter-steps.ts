@@ -66,7 +66,7 @@ import {
 import { guardedCredentials, type CredentialGuard } from './credential-guard.js';
 import { completeRun } from './complete-run.js';
 import { performCancellation } from './cancel-run.js';
-import { performPause } from './pause-run.js';
+import { performPause, resumeLinker, type PauseHold, type ResumeLinker } from './pause-run.js';
 import { runRunLevelGate, SECURITY_DENIED_EVENT } from './run-gate.js';
 
 /**
@@ -706,7 +706,7 @@ export async function executeAdapterSteps(
    * superseded here. The checkpoint goes to `RETRY`, which is what the extraction recovery
    * sweep re-claims once the resume puts the Run back to `RUNNING`.
    */
-  const canceledAtBoundary = async (): Promise<boolean> => {
+  const canceledAtBoundary = async (hold: PauseHold): Promise<boolean> => {
     let stopped = false;
     await guarded(async (context) => {
       const request = context.run?.cancellation ?? null;
@@ -720,7 +720,8 @@ export async function executeAdapterSteps(
       stopped = true;
       const at = deps.clock.now().toISOString();
       await context.saveCheckpoint({ ...checkpoint, status: 'RETRY', leaseUntil: at, diagnostic: null }, 'PAUSED');
-      await performPause(context, { run, request: pause, waitId: deps.ids.next(), at });
+      // `hold` is the unit this boundary sits before (Story 10.6, legacy 5.4).
+      await performPause(context, { run, request: pause, waitId: deps.ids.next(), at, hold });
     });
     return stopped;
   };
@@ -780,11 +781,14 @@ export async function executeAdapterSteps(
    * `ACQUIRED` and re-read here — so a resumed Run evaluates exactly as a first one does.
    */
   const references: ReferenceArtifact[] = [];
+  // The attempt a resume restarts names that resume (Story 10.6, legacy 5.4).
+  const linkResume = resumeLinker();
 
   try {
     // ------------------------------------------------- Reference Sources, in order
     for (const entry of classification.references) {
-      if (await canceledAtBoundary()) return { retry: false };
+      // Held before this Reference Source, a Run-level Session Step: no Work Item.
+      if (await canceledAtBoundary({ planStepId: entry.stepId, workItemId: null, superseded: null })) return { retry: false };
       const step = steps.find((row) => row.stepId === entry.stepId)!;
       if (step.state === 'FAILED') {
         // A Reference Source is a Run-level Session Step. Returning here would leave the
@@ -818,7 +822,7 @@ export async function executeAdapterSteps(
       }
       const outcome = await runReferenceStep(deps, {
         checkpoint, plan, run, entry, step, guarded, renewLease, budget,
-        startStepExecution, attemptsPerCycle, limitReached, evidence, references, guard,
+        startStepExecution, attemptsPerCycle, limitReached, evidence, references, guard, linkResume,
       });
       if (outcome === 'limit') {
         await stopForCause(limitReached() ?? 'run-time-limit', { stepId: step.stepId });
@@ -843,7 +847,7 @@ export async function executeAdapterSteps(
       const item = items.find((row) => row.stepId === entry.stepId)!;
       if (item.state === 'OBSERVED' || item.state === 'FAILED' || item.state === 'UNINSPECTED') continue;
       // Before starting further Target System work, and after every unit that finished.
-      if (await canceledAtBoundary()) return { retry: false };
+      if (await canceledAtBoundary({ planStepId: item.stepId, workItemId: item.workItemId, superseded: null })) return { retry: false };
       const spent = limitReached();
       if (spent !== null) {
         await stopForCause(spent, { workItemId: item.workItemId });
@@ -851,7 +855,7 @@ export async function executeAdapterSteps(
       }
       const outcome = await runWorkItem(deps, {
         checkpoint, plan, run, entry, item, records, guarded, renewLease, budget,
-        startStepExecution, attemptsPerCycle, limitReached, evidence, references, guard,
+        startStepExecution, attemptsPerCycle, limitReached, evidence, references, guard, linkResume,
       });
       if (outcome === 'limit') {
         await stopForCause(limitReached() ?? 'run-time-limit', { workItemId: item.workItemId });
@@ -928,6 +932,8 @@ interface UnitContext {
    * evaluator. Mutable on purpose — every Reference Source is acquired before any Work
    * Item, so by the time a Work Item reads it the list is complete. */
   references: ReferenceArtifact[];
+  /** The resume an attempt restarts, read once per invocation (Story 10.6, legacy 5.4). */
+  linkResume: ResumeLinker;
   /**
    * Every credential this stage has presented so far (Story 4.3).
    *
@@ -1009,12 +1015,15 @@ async function runReferenceStep(
       await context.saveEvidence(evidence);
       await context.saveSessionStep(step);
       await context.saveStepExecution(execution);
+      // The attempt a resume restarts names that resume (Story 10.6, legacy 5.4).
+      const resumedWaitId = await unit.linkResume(context, { planStepId: step.stepId, workItemId: null });
       await event(context, 'reference-attempt-started', 'RUNNING', checkpoint, {
         stepId: step.stepId,
         registrationId: step.registrationId,
         evidenceId: evidence.evidenceId,
         stepExecutionId: execution.stepExecutionId,
         attempt: step.attempts,
+        ...(resumedWaitId === null ? {} : { resumedWaitId }),
       });
     });
     if (!reserved) return 'lost';
@@ -1160,6 +1169,8 @@ async function runWorkItem(
       await context.saveEvidence(evidence);
       await context.saveWorkItem(item);
       await context.saveStepExecution(execution);
+      // The attempt a resume restarts names that resume (Story 10.6, legacy 5.4).
+      const resumedWaitId = await unit.linkResume(context, { planStepId: item.stepId, workItemId: item.workItemId });
       await event(context, 'work-item-attempt-started', 'RUNNING', checkpoint, {
         workItemId: item.workItemId,
         stepId: item.stepId,
@@ -1167,6 +1178,7 @@ async function runWorkItem(
         evidenceId: evidence.evidenceId,
         stepExecutionId: execution.stepExecutionId,
         attempt: item.attempts,
+        ...(resumedWaitId === null ? {} : { resumedWaitId }),
       });
     });
     if (!reserved) return 'lost';

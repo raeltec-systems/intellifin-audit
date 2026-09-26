@@ -19,6 +19,12 @@ import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 import { acquireControl, expectRunEvents, resumeWithControl } from './run-control';
 
 /**
+ * Where the simulated worker boundary holds the Run (Story 10.6, legacy 5.4): before a
+ * Run-level Session Step (the fixture plan's `session-3`), with no attempt in flight.
+ */
+const BOUNDARY_HOLD = { planStepId: 'session-3', workItemId: null, superseded: null } as const;
+
+/**
  * Flow 3: watch a Run, answer its Escalation without leaving Live View, pause it, resume it
  * (Story 5.6, FR-24, FR-25, FR-27, UX-DR24, UX-DR25, UX-DR27, UX-DR40, AD-12, AD-16).
  *
@@ -195,7 +201,7 @@ async function honourPause(runId: string): Promise<string> {
     const run = context.run!;
     const request = run.pauseRequest!;
     await context.saveRunState('PAUSED');
-    const wait = await performPause(context as never, { run, request, waitId: ids.next(), at: new Date().toISOString() });
+    const wait = await performPause(context as never, { run, request, waitId: ids.next(), at: new Date().toISOString(), hold: BOUNDARY_HOLD });
     return wait.waitId;
   });
 }

@@ -11,6 +11,12 @@ import {
 } from '@intellifin/infrastructure';
 import { activeRunVersion } from '../fixtures/active-run-version.js';
 
+/**
+ * Where the simulated worker boundary holds the Run (Story 10.6, legacy 5.4): before a
+ * Run-level Session Step (the fixture plan's `session-3`), with no attempt in flight.
+ */
+const BOUNDARY_HOLD = { planStepId: 'session-3', workItemId: null, superseded: null } as const;
+
 const url = process.env.DATABASE_URL;
 describe.skipIf(!url)('controller leases against PostgreSQL and existing Resume authority', () => {
   let client: Sql;
@@ -120,7 +126,7 @@ describe.skipIf(!url)('controller leases against PostgreSQL and existing Resume 
       await new PostgresWaitRepository(db).transaction(runId, async context => {
         const run = context.run!;
         await context.saveRunState('PAUSED');
-        await performPause(context as never, { run, request: run.pauseRequest!, waitId: ids.next(), at: new Date().toISOString() });
+        await performPause(context as never, { run, request: run.pauseRequest!, waitId: ids.next(), at: new Date().toISOString(), hold: BOUNDARY_HOLD });
       });
     } finally { await client`INSERT INTO user_role(user_id,role) VALUES (${other},'auditor')`; }
     const [before] = await client`SELECT revision FROM audit_run WHERE run_id=${runId}`;

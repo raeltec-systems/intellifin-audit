@@ -108,8 +108,16 @@ async function seedRun(state: 'RUNNING' | 'AWAITING_AUDITOR'): Promise<string> {
   return runId;
 }
 
+/**
+ * Where a stage's boundary holds the Run (Story 10.6, legacy 5.4). The default is the
+ * boundary before the fixture plan's sign-in — ProdConsole's `session-3`, a Run-level
+ * Session Step with no attempt in flight.
+ */
+type PauseHold = Parameters<typeof performPause>[1]['hold'];
+const SIGN_IN_HOLD: PauseHold = { planStepId: 'session-3', workItemId: null, superseded: null };
+
 /** Exactly what a stage does at its next boundary, through the same repository. */
-async function honourPause(runId: string): Promise<string> {
+async function honourPause(runId: string, hold: PauseHold = SIGN_IN_HOLD): Promise<string> {
   return new PostgresWaitRepository(createDb(sql)).transaction(runId, async (context) => {
     const run = context.run!;
     const request = run.pauseRequest!;
@@ -119,6 +127,7 @@ async function honourPause(runId: string): Promise<string> {
       request,
       waitId: ids.next(),
       at: new Date().toISOString(),
+      hold,
     });
     return wait.waitId;
   });

@@ -24,7 +24,7 @@ import {
   type WaitOperation,
   type WaitRepository,
 } from './waits.js';
-import { pauseRun, pauseWaitFor, performPause, resumeRun } from './pause-run.js';
+import { pauseRun, pauseWaitFor, performPause, resumeLinker, resumeRun, resumeStartedBy } from './pause-run.js';
 import type { GateCheckRow, PackageSeal, RunGatePopulationFacts, StoredRunResult, WithdrawnWait } from './execution-ports.js';
 
 /**
@@ -377,7 +377,7 @@ describe('performPause', () => {
       request,
       waitId: '01a06fd8-0000-7000-8000-0000000000c1',
       at: NOW.toISOString(),
-      stepExecutionId: 'step-execution',
+      hold: { planStepId: 'loancore-1', workItemId: 'work-item', superseded: { stepExecutionId: 'step-execution', attempt: 2 } },
       workItemId: 'work-item',
     });
 
@@ -399,6 +399,84 @@ describe('performPause', () => {
       stepExecutionId: 'step-execution',
       workItemId: 'work-item',
     });
+  });
+
+  /**
+   * Where the pause holds the Run (Story 10.6, legacy 5.4). The pause record named its
+   * Step Execution at the six in-flight boundaries only, and no step anywhere else.
+   */
+  it('names the plan step, the Work Item and the superseded attempt it holds the Run at', async () => {
+    const context = new FakeWaitContext({ ...RUN, state: 'PAUSED' });
+    const request: RunPauseRequest = { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-10T08:59:00.000Z' };
+    context.pauseRequest = request;
+    const withPause = Object.assign(context, {
+      openPauseWait: async (wait: RunWait) => { context.wait = wait; },
+      clearPauseRequest: async () => { context.pauseRequest = null; },
+    });
+    await performPause(withPause, {
+      run: { ...RUN, state: 'RUNNING' },
+      request,
+      waitId: '01a06fd8-0000-7000-8000-0000000000c3',
+      at: NOW.toISOString(),
+      hold: { planStepId: 'loancore-1', workItemId: 'work-item-2', superseded: { stepExecutionId: 'step-execution-7', attempt: 3 } },
+      workItemId: 'work-item-2',
+    });
+    expect(context.events[0]?.payload).toMatchObject({
+      planStepId: 'loancore-1',
+      heldWorkItemId: 'work-item-2',
+      stepExecutionId: 'step-execution-7',
+      attempt: 3,
+    });
+  });
+
+  it('holds a Run between units with no Step Execution in flight, and says only that', async () => {
+    const context = new FakeWaitContext({ ...RUN, state: 'PAUSED' });
+    const request: RunPauseRequest = { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-10T08:59:00.000Z' };
+    context.pauseRequest = request;
+    const withPause = Object.assign(context, {
+      openPauseWait: async (wait: RunWait) => { context.wait = wait; },
+      clearPauseRequest: async () => { context.pauseRequest = null; },
+    });
+    await performPause(withPause, {
+      run: { ...RUN, state: 'RUNNING' },
+      request,
+      waitId: '01a06fd8-0000-7000-8000-0000000000c4',
+      at: NOW.toISOString(),
+      // A Run-level Session Step: a sign-in, a Reference Source or an adapter extraction.
+      hold: { planStepId: 'session-3', workItemId: null, superseded: null },
+    });
+    const payload = context.events[0]?.payload ?? {};
+    expect(payload).toMatchObject({ planStepId: 'session-3' });
+    // Nothing was in flight: no attempt, and no Work Item to name.
+    for (const key of ['stepExecutionId', 'attempt', 'heldWorkItemId', 'workItemId']) expect(payload).not.toHaveProperty(key);
+  });
+});
+
+describe('the attempt a resume restarts (Story 10.6, legacy 5.4)', () => {
+  const PENDING = { waitId: '01a06fd8-0000-7000-8000-0000000000d1', planStepId: 'loancore-1', workItemId: 'work-item-2' };
+
+  it('is the first attempt at the place the pause held the Run, and no other', () => {
+    expect(resumeStartedBy(PENDING, { planStepId: 'loancore-1', workItemId: 'work-item-2' })).toBe(PENDING.waitId);
+    // Another step — a re-authentication, a workspace, the next record's system — is not it.
+    expect(resumeStartedBy(PENDING, { planStepId: 'session-3', workItemId: null })).toBeNull();
+    // The same step for a different record is not it either.
+    expect(resumeStartedBy(PENDING, { planStepId: 'loancore-1', workItemId: 'work-item-3' })).toBeNull();
+    expect(resumeStartedBy(null, { planStepId: 'loancore-1', workItemId: 'work-item-2' })).toBeNull();
+    // A pause held at a Run-level Session Step names no Work Item, so the step decides.
+    expect(resumeStartedBy({ ...PENDING, planStepId: 'session-3', workItemId: null }, { planStepId: 'session-3', workItemId: null }))
+      .toBe(PENDING.waitId);
+  });
+
+  it('reads the pending resume once per invocation and gives it to one attempt only', async () => {
+    let reads = 0;
+    const context = { readPendingResume: async () => { reads += 1; return PENDING; } };
+    const link = resumeLinker();
+    // A unit that runs first and is not the held one does not take the link...
+    expect(await link(context, { planStepId: 'session-3', workItemId: null })).toBeNull();
+    // ...the held one does, once; its own retries are its successors, not the resume's.
+    expect(await link(context, { planStepId: 'loancore-1', workItemId: 'work-item-2' })).toBe(PENDING.waitId);
+    expect(await link(context, { planStepId: 'loancore-1', workItemId: 'work-item-2' })).toBeNull();
+    expect(reads).toBe(1);
   });
 });
 
