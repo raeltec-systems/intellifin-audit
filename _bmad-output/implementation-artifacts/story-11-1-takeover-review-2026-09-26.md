@@ -30,3 +30,12 @@ Frozen-spec amendment for owner approval: replace the locking-read parenthesis w
 Current branch listing and recent PRs contained no pushed implementation corresponding to Stories 10.6–10.10. This does not recover or rule out Claude's unpushed work. The owner's 26 September continuation instruction and PR #54 supersede their 25 September preparation-only flags.
 
 Next executable work: Story 10.7 on `codex/story-10-7-live-channel`, based directly on `429e08cf703fee6c5320f17b5983948709fd5bdf`. Its Run notification and trailing bell-refresh changes are independent of this PR. Do not merge, deploy, expand PR #54, or begin tenancy privilege/schema changes from this record.
+
+## Correction (later on 2026-09-26)
+
+The "Continuation" section above is superseded. Stories 10.6 to 10.10 were already being built on
+the `claude/10-*` branches, which were not yet pushed when this review looked. The owner chose
+those branches. Continue from
+`_bmad-output/implementation-artifacts/handover-10-6-to-10-10-2026-09-26.md`, which is on every
+`claude/10-*` branch (PRs #60 to #64). The `codex/story-10-*` branches (PRs #55 to #59) are
+superseded: do not continue, merge or copy from them.
