@@ -29,6 +29,13 @@ identity and says what an older record does not hold. Contracts: `run-pause-v1.m
   decision is not linked; a pause whose event named no step says its step was not recorded;
   a hold the banner cannot read says so. Nothing pairs a wait with a record, or a resume with
   an attempt, by time.
+- **A pause fixture sits where a stage really holds one.** The sign-in and adapter stages
+  pause only BETWEEN units; only the Work Item stage supersedes an attempt in flight, and it
+  gives the attempt back, so the restarted attempt carries the SAME number and only its Step
+  Execution tells the two apart. The first browser journey superseded a sign-in attempt and
+  restarted it as attempt 2 — a shape no Run produces — and passed. `pause-resume.spec.ts`
+  now holds the first pause before the sign-in and the second mid-attempt at the page's
+  inspection (a P-4 Work Item, subject key NULL).
 - **A selection a read cannot answer whole is refused, never cut.**
   `MATCH_DECISION_SELECTOR_LIMIT` is sized from the callers' own page limits; a dropped entry
   would render a human match as a platform one.
