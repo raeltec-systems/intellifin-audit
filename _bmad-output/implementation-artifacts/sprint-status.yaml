@@ -125,7 +125,7 @@ development_status:
   10-4-retire-the-builder-write-path-after-the-slice-4-acceptance: backlog
   10-5-legacy-acceptance-harness-coverage-mapping: backlog
   10-6-legacy-visibility-follow-up-human-matched-provenance-missing: 
-    ready-for-dev
+    in-progress
   10-7-live-channel-correction-notify-every-run-chain-append-and-ne: 
     ready-for-dev
   10-8-lost-connection-and-lost-acknowledgement-a-server-refresh-is: 

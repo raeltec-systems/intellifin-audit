@@ -2,9 +2,11 @@
 title: 'Legacy visibility follow-up: human-matched provenance, missing-frame indication and exact pause and resume linkage on the retained compiler-1 surfaces'
 type: 'fix'
 created: '2026-09-25'
-status: 'ready-for-dev'
+status: 'in-progress'
 review_loop_iteration: 0
-implementation_authorised: false
+implementation_authorised: true
+implementation_authorisation: 'Owner, 2026-09-26: "go, new branches OK" (implement 10.6 to 10.10 on new branches)'
+baseline_revision: '429e08cf703fee6c5320f17b5983948709fd5bdf'
 context:
   - '_bmad-output/implementation-artifacts/legacy-review-closure-register.md'
   - '_bmad-output/planning-artifacts/epics.md'
