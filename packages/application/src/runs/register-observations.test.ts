@@ -289,6 +289,65 @@ async function refusal(work: () => Promise<unknown>): Promise<string> {
   throw new Error('the batch was not refused');
 }
 
+/**
+ * Story 10.6 (legacy 4.7): a record a person matched is registered with the decision that
+ * matched it, so every surface that says "Human-matched" can say whose answer and when —
+ * read back exactly, never by lining a wait up with a record by time.
+ */
+describe('registerObservations — the decision behind a human-selected match', () => {
+  const WAIT = '01920000-0000-7000-8000-00000000d001';
+  const humanMatched = (key: string): ObservationRecord => ({ ...found(key), matchOrigin: 'human-matched' });
+
+  it('writes the decision into the registration event beside the record it matched', async () => {
+    const context = new FakeContext();
+    const record = humanMatched('AG-1001');
+    await registerObservations(context, batch([
+      item(record, { matchDecision: { waitId: WAIT } }),
+      item(found('AG-1002')),
+    ]), SEAMS);
+    expect(context.events).toHaveLength(1);
+    expect(context.events[0]!.payload['humanMatchDecisions']).toEqual([{ observationId: record.observationId, waitId: WAIT }]);
+    // The link is beside the row, never inside it: the digest covers the thirteen wire keys only.
+    expect(context.observations[0]!.digest).toBe(observationDigest(record));
+  });
+
+  it('leaves a batch with no human-selected match exactly as it was', async () => {
+    const context = new FakeContext();
+    await registerObservations(context, batch([item(found('AG-1001'))]), SEAMS);
+    expect(context.events[0]!.payload).not.toHaveProperty('humanMatchDecisions');
+  });
+
+  it('refuses a human-selected match that names no decision, and writes nothing', async () => {
+    const context = new FakeContext();
+    for (const decision of [undefined, null]) {
+      expect(await refusal(() => registerObservations(context, batch([
+        item(humanMatched('AG-1001'), decision === undefined ? {} : { matchDecision: decision }),
+      ]), SEAMS))).toBe('match-decision');
+    }
+    expect(context.wroteNothing()).toBe(true);
+  });
+
+  it('refuses a decision on a record the platform matched, and one that names no wait', async () => {
+    const context = new FakeContext();
+    expect(await refusal(() => registerObservations(context, batch([
+      item(found('AG-1001'), { matchDecision: { waitId: WAIT } }),
+    ]), SEAMS))).toBe('match-decision');
+    expect(await refusal(() => registerObservations(context, batch([
+      item(humanMatched('AG-1001'), { matchDecision: { waitId: 'not-a-wait' } }),
+    ]), SEAMS))).toBe('match-decision');
+    expect(context.wroteNothing()).toBe(true);
+  });
+
+  it('names a decision once: a redelivered batch appends no second link', async () => {
+    const context = new FakeContext();
+    const decided = item(humanMatched('AG-1001'), { matchDecision: { waitId: WAIT } });
+    await registerObservations(context, batch([decided]), SEAMS);
+    await registerObservations(context, batch([decided]), SEAMS);
+    const links = context.events.flatMap((event) => (event.payload['humanMatchDecisions'] as unknown[] | undefined) ?? []);
+    expect(links).toHaveLength(1);
+  });
+});
+
 describe('registerObservations', () => {
   it('commits rows, checks and one event carrying every digest, in order', async () => {
     const context = new FakeContext();
