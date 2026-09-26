@@ -1,3 +1,4 @@
+import { captureStoryState } from './story-visual-capture';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { spawn } from 'node:child_process';
@@ -414,6 +415,7 @@ test.describe('Live View', () => {
     await expect(withoutArtifact).toContainText(ADAPTER_ARTIFACT_WORDS.none);
     await expect(withoutArtifact).not.toContainText(ADAPTER_ARTIFACT_WORDS.unavailable);
     await expect(withoutArtifact.locator('text=/[0-9a-f]{64}/')).toHaveCount(0);
+    await captureStoryState(page, 'adapter-artifacts-technical', log);
 
     const scan = await new AxeBuilder({ page }).withTags(TAGS).analyze();
     expect(scan.violations, JSON.stringify(scan.violations, null, 2)).toEqual([]);

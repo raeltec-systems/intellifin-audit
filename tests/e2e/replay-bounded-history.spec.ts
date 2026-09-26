@@ -1,3 +1,4 @@
+import { captureStoryState } from './story-visual-capture';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { spawn } from 'node:child_process';
@@ -384,6 +385,7 @@ test.describe('Replay past its default view’s bounds', () => {
     const bounds = await jump.locator('[data-jump-bounds]').boundingBox();
     const list = await jump.locator('.ls-session__jumps').boundingBox();
     expect(bounds!.y).toBeLessThan(list!.y);
+    await captureStoryState(page, 'replay-bounds', note);
 
     // The list is exactly what the sentences say: one Work Item, 500 of each kind.
     const rows = jump.locator('.ls-session__jumps > li');
@@ -400,6 +402,7 @@ test.describe('Replay past its default view’s bounds', () => {
     await expect(rows.filter({ hasText: key(5) })).toHaveCount(0);
     await expect(rows.filter({ hasText: /^Exception ·/ }).first()).toHaveText(`Exception · ${key(600)}`);
     await expect(rows.filter({ hasText: /^Exception ·/ }).nth(1)).toHaveText(`Exception · ${key(599)}`);
+    await captureStoryState(page, 'replay-record-selected');
 
     // The count beside a frame is EXACT. The sixth frame on had 600 registered, where a
     // page of 500 registration events stopped at 500.
@@ -431,6 +434,7 @@ test.describe('Replay past its default view’s bounds', () => {
     });
     const buttonRow = rows.filter({ hasText: /^Escalation ·/ }).filter({ has: page.locator('button') }).first();
     expect(await edge(late.first())).toEqual(await edge(buttonRow));
+    await captureStoryState(page, 'replay-late-target', late.first());
     const inspection = `/runs/${runId}/replay?workItem=${workItemId}&cursor=500`;
     await expect(late.first().getByRole('link', { name: 'Open inspection Replay', exact: true })).toHaveAttribute('href', inspection);
     await late.first().getByRole('link', { name: 'Open inspection Replay', exact: true }).click();
@@ -439,6 +443,7 @@ test.describe('Replay past its default view’s bounds', () => {
     // The first of them was raised after frame 501, so its frame is the first on this page.
     await showsFrame(SHOWN);
     await expect(page.getByText('Frame 501 of 520', { exact: false })).toBeVisible();
+    await captureStoryState(page, 'replay-inspection-page');
     await expect(page.getByText(REPLAY_COPY.observationsThrough.replace('{count}', '600 Observations'), { exact: true })).toBeVisible();
     await scan(page);
 

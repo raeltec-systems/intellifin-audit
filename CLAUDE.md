@@ -4700,3 +4700,7 @@ resolve the enabled opener and assert its dialog before testing later heartbeat 
 Never infer that an asynchronously rendered Acquire control is absent from an immediate
 `count()` after reload. Keep retained renewal events and their Run deletion in one
 Run-first cleanup transaction, including closed/open wait rows.
+
+### Story 10 screenshot evidence from CI
+
+The opt-in `STORY_VISUAL_CAPTURE=1` helper records actual synthetic browser states at 1280×800 and also 1024×800 for Timeline/Replay. The separate visual workflow retains PNGs and page facts in a small artifact, without changing the existing test gates. A successful capture is evidence to inspect, never a visual approval. Preserve the viewport and scroll position around captures so the original interactions still run.
