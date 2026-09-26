@@ -66,6 +66,22 @@ describe('the sentences the deployed acceptance looks for', () => {
     expect(HARNESS).toContain("headings.includes('Run') && await auditor.locator('.ls-banner--danger').count() > 0");
   });
 
+  it('fails a link on every one of those, and opens it on none of them', () => {
+    // Each condition above is pinned where it is DEFINED; this pins that the verdict USES
+    // every one of them, so dropping one from the expression cannot pass for the whole list.
+    const failed = /const failed = ([\s\S]*?);\n/.exec(HARNESS)?.[1] ?? '';
+    for (const condition of [
+      'status === null || status >= 400',
+      "body.includes('Snapshot cell unavailable')",
+      `body.includes('${ROUTE_BOUNDARY_COPY.heading}')`,
+      "headings.includes('Page not found')",
+      '|| denied',
+    ]) {
+      expect(failed, condition).toContain(condition);
+    }
+    expect(HARNESS).toContain('const opened = !failed && headings.length > 0;');
+  });
+
   it('reads the predetermined truth off disk rather than importing it', () => {
     // AD-12: nothing that executes a Run may import an expectation file, and the harness
     // drives a real Run. It reads the oracle with `readFileSync`, never an import.
