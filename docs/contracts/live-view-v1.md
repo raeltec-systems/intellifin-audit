@@ -208,11 +208,21 @@ the reason stays reachable by keyboard; activation is refused in the handler, wh
 ### Only the stream brings a lost page back (Story 10.8)
 
 `LiveClock` in `live-status.ts` is what a page has heard from one stream: the instant of the
-last thing the STREAM ITSELF delivered — a Timeline frame, a heartbeat, or `open`, the
-browser's signal that the stream's own server answered this connection — and whether it has
-answered at all. `heardFromStream` is the one way back to `live`, and so the one way a gate
-closed for `lost` or `ended` opens again. The 15-second and 60-second thresholds, the gate
-reasons and `RUN_ENDING_EVENTS` are unchanged.
+last FRAME the stream itself delivered — a Timeline event or a heartbeat, the frames the
+channel contract measures silence in — and whether the stream has answered at all.
+`heardFromStream` is the one way back to `live` from `stale`, `lost` or `ended`, and so the
+one way a gate closed for `lost` or `ended` opens again. The 15-second and 60-second
+thresholds, the gate reasons and `RUN_ENDING_EVENTS` are unchanged.
+
+**A connection answering is not a frame.** `EventSource`'s `open` fires when the route
+answers, and the route answers before it has armed its LISTEN or read the chain; one whose
+LISTEN then fails sends `end` and closes, and the browser opens the next connection two
+seconds later. Counted as a frame, `open` would call such a stream `live` and reopen the
+controls every two seconds while it can deliver nothing. `streamOpened` therefore only marks
+the stream as answered: a page that has never heard from its stream reads `live` rather than
+`connecting` (for as long as its silence allows), and a stale, lost or ended page stays so
+until the stream sends a frame. Where the chain moved on, that frame is the replay, at once;
+otherwise it is the first heartbeat, at most ten seconds later.
 
 **A server re-read is not recovery.** A re-read that gives the page a new cursor makes the
 subscription close its connection and open the next one (`followLiveStream` in

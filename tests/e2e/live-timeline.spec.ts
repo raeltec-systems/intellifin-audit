@@ -132,9 +132,13 @@ test.describe('the live Timeline channel', () => {
     await expect(status).toHaveAttribute('data-live-status', 'stale', { timeout: 25_000 });
     await expect(page.getByText(/No update for \d+ seconds\./)).toBeVisible();
     await expect(page.locator('.ls-banner--warning [data-live-status]')).toHaveCount(1);
-    // The stream returns: the browser's own retry connects and the page is live again.
+    // The stream returns: the browser's own retry connects and the page is live again at
+    // the stream's first frame. The connection answering is not recovery on its own (Story
+    // 10.8), and this Run's chain has nothing to replay, so that frame is the first
+    // heartbeat: up to ten seconds after the retry, which Chromium makes up to three
+    // seconds after the route stops refusing it.
     await page.unroute('**/api/runs/*/events*');
-    await expect(status).toHaveAttribute('data-live-status', 'live', { timeout: 15_000 });
+    await expect(status).toHaveAttribute('data-live-status', 'live', { timeout: 30_000 });
     await expect(page.getByText(LIVE_SENTENCES.live)).toBeVisible();
     await cancelRun(cancelDependencies(), { session: session(), request: { runId, reason: null } });
   });

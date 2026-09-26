@@ -45,9 +45,10 @@ export function silenceSeconds(lastMessageAt: number, now: number): number {
  * (Story 10.8).
  *
  * `lastFrameAt` is the instant of the last frame the STREAM ITSELF delivered — a Timeline
- * event, a heartbeat, or the stream answering when it opens — or, before any, the instant
- * the page began waiting for one. Nothing the page does to itself moves it: a server
- * re-read, a new cursor, a new subscription and a remount are all the page's own doing.
+ * event or a heartbeat — or, before any, the instant the page began waiting for one.
+ * Nothing the page does to itself moves it: a server re-read, a new cursor, a new
+ * subscription and a remount are all the page's own doing. Neither does a connection
+ * opening (`streamOpened`): the route answers before it can deliver anything.
  *
  * That was the defect this shape removes. The subscription effect restarted the clock
  * every time it ran, and a server re-read that moved the cursor re-ran it — so a re-read
@@ -70,11 +71,29 @@ export function waitingLiveClock(now: number): LiveClock {
 }
 
 /**
- * The stream itself said something. The ONE way back to `live`, and so the one way a
- * gate closed for `lost` or `ended` opens again.
+ * The stream itself sent a frame: a Timeline event or a heartbeat. The ONE way back to
+ * `live` from `stale`, `lost` or `ended`, and so the one way a gate closed for `lost` or
+ * `ended` opens again — the recovery the channel contract names (a client that has seen
+ * no frame for 60 seconds has lost the stream).
  */
 export function heardFromStream(now: number): LiveClock {
   return { lastFrameAt: now, everConnected: true, ended: false };
+}
+
+/**
+ * The stream's server answered a connection (`EventSource`'s `open`) and has sent nothing
+ * on it yet.
+ *
+ * That is enough to call a page that has never heard from its stream `live`, for as long
+ * as its silence allows, so a fresh page does not read `connecting` until the first
+ * heartbeat ten seconds later. It is NOT a frame and never moves the silence clock: the
+ * route answers before it has armed its LISTEN or read the chain, and one that then fails
+ * ends the connection while the browser opens the next — so an `open` counted as a frame
+ * would call a stream that can deliver nothing `live`, again every two seconds, and reopen
+ * the controls on it. A stale, lost or ended stream stays so until a frame or a heartbeat.
+ */
+export function streamOpened(clock: LiveClock): LiveClock {
+  return { ...clock, everConnected: true };
 }
 
 /** The browser closed the stream for good (a 401, a 404, a wrong media type). */

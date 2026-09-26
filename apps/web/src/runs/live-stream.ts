@@ -1,4 +1,4 @@
-import { acceptsLiveSeq, heardFromStream, streamClosed, type LiveClock } from './live-status';
+import { acceptsLiveSeq, heardFromStream, streamClosed, streamOpened, type LiveClock } from './live-status';
 
 /**
  * One subscription to a live Timeline stream, with no React and no DOM (Story 10.8).
@@ -83,11 +83,12 @@ export interface FollowLiveStream {
  * never skips and never repeats — and this still refuses a `seq` it has already seen, so a
  * repeat could not reach the page either way.
  *
- * **Opening a connection does not touch the clock.** Only what the stream sends does: a
- * Timeline frame, a heartbeat, or `open` — the stream itself answering. A call to this
- * function is the page's own doing (a first subscription, or a new cursor from a server
- * re-read), so a stream that was lost is still lost until the new connection hears
- * something, and the gate over the live controls stays closed until then.
+ * **Opening a connection does not touch the clock.** Only what the stream SENDS does: a
+ * Timeline frame or a heartbeat. A call to this function is the page's own doing (a first
+ * subscription, or a new cursor from a server re-read), and the connection it opens
+ * answering (`open`) says only that it is connected (`streamOpened`) — so a stream that
+ * was lost is still lost until the stream sends a frame, and the gate over the live
+ * controls stays closed until then.
  */
 export function followLiveStream({ url, cursor, state, open, now, onChange, onEvent }: FollowLiveStream): () => void {
   const target = cursor === null ? url : `${url}?after=${state.lastSeq}`;
@@ -109,7 +110,10 @@ export function followLiveStream({ url, cursor, state, open, now, onChange, onEv
     onEvent(event);
   };
   const onHeartbeat = (): void => { heard(); };
-  const onOpen = (): void => { heard(); };
+  const onOpen = (): void => {
+    state.clock = streamOpened(state.clock);
+    onChange();
+  };
   const onError = (): void => {
     // CLOSED means the browser will not retry (a 401, a 404, a wrong media type);
     // CONNECTING means it is retrying on its own and the silence clock decides.

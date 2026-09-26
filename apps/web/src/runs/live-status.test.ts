@@ -8,6 +8,7 @@ import {
   liveClockStatus,
   resumedLiveClock,
   streamClosed,
+  streamOpened,
   waitingLiveClock,
 } from './live-status';
 
@@ -63,6 +64,21 @@ describe('the silence clock moves only when the stream itself speaks (Story 10.8
     const back = heardFromStream(T + LIVE_LOST_MS * 5);
     expect(liveClockStatus(back, T + LIVE_LOST_MS * 5)).toBe('live');
     expect(liveGateReason(liveClockStatus(back, T + LIVE_LOST_MS * 5), false)).toBeNull();
+  });
+
+  it('lets an answered connection make a page that has heard nothing live, and nothing more', () => {
+    // A fresh page is live as soon as its stream answers, not ten seconds later.
+    const opened = streamOpened(waitingLiveClock(T));
+    expect(liveClockStatus(opened, T)).toBe('live');
+    // But the answer is not a frame: the silence still counts from before it.
+    expect(opened.lastFrameAt).toBe(T);
+    expect(liveClockStatus(opened, T + LIVE_STALE_MS)).toBe('stale');
+    // And it brings back nothing the stream had lost: only a frame or a heartbeat does.
+    const lost = heardFromStream(T);
+    expect(liveClockStatus(streamOpened(lost), T + LIVE_LOST_MS)).toBe('lost');
+    expect(liveGateReason(liveClockStatus(streamOpened(lost), T + LIVE_LOST_MS), false)).toBe('lost');
+    expect(liveClockStatus(streamOpened(lost), T + LIVE_STALE_MS)).toBe('stale');
+    expect(liveClockStatus(streamOpened(streamClosed(heardFromStream(T))), T + 1_000)).toBe('ended');
   });
 
   it('ends a closed stream whatever the clock says, and only the stream reopens it', () => {

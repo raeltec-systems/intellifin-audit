@@ -4,12 +4,18 @@
   restarted the silence clock whenever it ran, and a re-read that moves the cursor re-runs
   it, so `BellLive` refreshing a page because ANOTHER Run ended showed `live` for 15 s and
   reopened every live control for 60 s while the stream was down. `LiveClock`
-  (`live-status.ts`) now moves only on what the stream sends (a frame, a heartbeat, or
-  `open`, the stream's server answering); `followLiveStream` (`live-stream.ts`) opens a
-  connection without touching it; and a remount takes the clock the last subscription to
-  the same stream left (`createLiveClockHandOff`). Thresholds and `RUN_ENDING_EVENTS` are
-  unchanged. Contract: `docs/contracts/live-view-v1.md`, "Only the stream brings a lost
-  page back".
+  (`live-status.ts`) now moves only on a frame the stream sends (a Timeline event or a
+  heartbeat); `followLiveStream` (`live-stream.ts`) opens a connection without touching it;
+  and a remount takes the clock the last subscription to the same stream left
+  (`createLiveClockHandOff`). Thresholds and `RUN_ENDING_EVENTS` are unchanged. Contract:
+  `docs/contracts/live-view-v1.md`, "Only the stream brings a lost page back".
+- **`open` is not a frame.** The events route answers before it arms its LISTEN, and one
+  whose LISTEN fails sends `end`, closes and is reopened two seconds later, so an `open`
+  counted as a frame calls a stream that delivers nothing `live` every two seconds.
+  `streamOpened` only marks the stream as answered: a fresh page reads `live` at once, but
+  `stale`, `lost` and `ended` wait for a frame (the replay at once, or the first heartbeat
+  within ten seconds). `live-timeline.spec.ts`'s return-to-live wait grew to 30 s for that
+  heartbeat.
 - **An effect body the unit suite must see lives outside the effect.** `followLiveStream`
   has no React and no DOM and is driven with a fake `EventSource`; a new cursor is a second
   call with the SAME state, which is exactly what the re-running effect does.

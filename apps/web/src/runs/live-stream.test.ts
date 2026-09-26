@@ -211,17 +211,27 @@ describe('a server re-read is not stream recovery (Story 10.8)', () => {
     expect(run.latest().target).toBe(`${URL_BASE}?after=0`);
   });
 
-  it('comes back when, and only when, the new connection hears from the stream', () => {
+  it('comes back when, and only when, the stream sends a frame or a heartbeat', () => {
     for (const heard of [
       (source: FakeSource) => source.emit('heartbeat', '{"at":"2026-09-26T09:01:00.000Z"}'),
       (source: FakeSource) => source.emit('timeline', frame(1)),
-      (source: FakeSource) => source.emit('open'),
     ]) {
       const run = lostThenReRead();
       heard(run.latest());
       expect(run.status()).toBe('live');
       expect(run.gate()).toBeNull();
     }
+  });
+
+  it('is not brought back by the new connection answering', () => {
+    // `open` says the route answered, and the route answers before it has armed its LISTEN
+    // or read the chain. It is not a frame, so a lost page stays lost on it.
+    const run = lostThenReRead();
+    run.latest().emit('open');
+    expect(run.status()).toBe('lost');
+    expect(run.gate()).toBe('lost');
+    run.latest().emit('heartbeat', '{"at":"2026-09-26T09:01:00.000Z"}');
+    expect(run.status()).toBe('live');
   });
 
   it('keeps a stale stream stale, and a live one counting, across a new connection', () => {
@@ -247,7 +257,7 @@ describe('a server re-read is not stream recovery (Story 10.8)', () => {
     expect(live.status()).toBe('stale');
   });
 
-  it('keeps an ended stream ended until the new connection answers', () => {
+  it('keeps an ended stream ended until the stream itself sends a frame', () => {
     const run = subscription(0);
     const stop = run.follow(0);
     run.latest().readyState = LIVE_SOURCE_CLOSED;
@@ -257,7 +267,27 @@ describe('a server re-read is not stream recovery (Story 10.8)', () => {
     run.follow(2);
     expect(run.status()).toBe('ended');
     run.latest().emit('open');
+    expect(run.status()).toBe('ended');
+    run.latest().emit('heartbeat', '{"at":"2026-09-26T09:01:00.000Z"}');
     expect(run.status()).toBe('live');
+  });
+
+  it('does not call a stream that answers and then sends nothing live for longer than its silence allows', () => {
+    // A route whose LISTEN fails answers, sends `end`, and closes; the browser opens the
+    // next connection two seconds later and the route answers again. Every answer is an
+    // `open` and none is a frame, so the page goes stale and then lost as if the stream
+    // were silent — which, as far as the Run goes, it is.
+    const run = subscription(0);
+    run.follow(0);
+    run.latest().emit('open');
+    expect(run.status()).toBe('live');
+    for (let second = 2; second <= 70; second += 2) {
+      run.advance(2_000);
+      run.latest().emit('error');
+      run.latest().emit('open');
+    }
+    expect(run.status()).toBe('lost');
+    expect(run.gate()).toBe('lost');
   });
 });
 
