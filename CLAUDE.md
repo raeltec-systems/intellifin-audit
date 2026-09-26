@@ -1,3 +1,11 @@
+## 2026-09-26 — Story 10.7 hosted completion checkpoint
+
+- Candidate `726de68c9545bb0251a7f1383d838f4d2f9b861e` passed all seven jobs in CI
+  `36232776048`. Full browser/WCAG job `108378944022`: 285 passed, 12 skipped.
+- The earlier QUEUED fixture and offline-preview failures are superseded by this
+  candidate's hosted proof. BMAD implementation is done; sprint remains review.
+  Owner acceptance, merge and deployment are separate decisions.
+
 ## 2026-09-26 — Bell burst fixtures must be flaggable (Story 10.7)
 
 - The full browser gate refused the new test's first flag because its Run was QUEUED.

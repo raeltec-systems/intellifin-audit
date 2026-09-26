@@ -768,6 +768,10 @@ legacy_review_closure:
     10-7-live-channel-correction-notify-every-run-chain-append-and-ne:
       prepared: '2026-09-25'
       implementation_authorised: true
+      implementation_status: done
+      review_status: review
+      verified_candidate: 726de68c9545bb0251a7f1383d838f4d2f9b861e
+      verification: CI 36232776048 — all seven jobs successful; full browser 285 passed, 12 skipped. Owner acceptance pending.
       covers: legacy 5.1 — NOTIFY for every Run-chain append with rollback and reconnect proof; BellLive trailing refresh; Overview shared-refresh proof
     10-8-lost-connection-and-lost-acknowledgement-a-server-refresh-is:
       prepared: '2026-09-25'

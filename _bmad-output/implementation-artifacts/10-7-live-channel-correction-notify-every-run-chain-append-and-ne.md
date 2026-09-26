@@ -2,7 +2,7 @@
 title: 'Live channel correction: notify every Run-chain append, and never lose the last refresh'
 type: 'fix'
 created: '2026-09-25'
-status: 'in-progress'
+status: 'done'
 baseline_commit: '429e08cf703fee6c5320f17b5983948709fd5bdf'
 review_loop_iteration: 0
 implementation_authorised: true
@@ -162,3 +162,38 @@ in one transaction, matching the established flag journey. The command's state g
 is unchanged. Flag assertions now report refusal reasons, and fixture cleanup removes
 real notifications, flags and held checkpoints before deleting the Run. A new hosted
 run must still prove the full browser journey; prior passing suites do not close it.
+
+### Hosted completion evidence — 2026-09-26
+
+Candidate `726de68c9545bb0251a7f1383d838f4d2f9b861e`, CI [36232776048](https://github.com/raeltec-systems/intellifin-audit/actions/runs/36232776048), passed all seven jobs: typecheck/boundaries/unit tests, PostgreSQL 18 integration and database mutation checks, hydrated agent mutations, protected preview/compiled-worker lifecycle, P0 design browser checks, container smoke checks, and the full accessibility/shell browser gate. Browser job [108378944022](https://github.com/raeltec-systems/intellifin-audit/actions/runs/36232776048/job/108378944022) reports **285 passed, 12 skipped** (31.7 minutes). Skipped cases are not counted as passes. The browser checkout log identifies synthetic merge `4ad9164` of this candidate into baseline `429e08cf703fee6c5320f17b5983948709fd5bdf`; the real burst/Overview regression at `live-timeline.spec.ts:154` passed.
+
+This hosted run supersedes the pending-execution notes above and proves the corrected burst/offline fixture through the browser gate. BMAD implementation status is done and sprint status is review; neither status asserts owner acceptance, merge permission or deployment approval. This documentation update changes no code.
+
+## Suggested Review Order
+
+**Transactional wake-ups**
+
+- Keep every Run-chain append visible through one transaction-bound notification.
+  [audit-events.ts:125](../../packages/infrastructure/src/db/audit-events.ts#L125)
+
+**Trailing reads**
+
+- Retain the final refresh across bursts and explicitly offline intervals.
+  [LiveBanner.tsx:57](../../apps/web/src/runs/LiveBanner.tsx#L57)
+
+- Reuse the shared throttle for the bell subscription.
+  [BellLive.tsx:1](../../apps/web/src/shell/BellLive.tsx#L1)
+
+**Regression evidence**
+
+- Prove formerly omitted event families, rollback, reconnect and conversation-cap behavior.
+  [run-timeline-channel.test.ts:223](../../tests/integration/run-timeline-channel.test.ts#L223)
+
+- Pin deferred refresh and reconnect coalescing with fake time.
+  [BellLive.test.ts:29](../../apps/web/src/shell/BellLive.test.ts#L29)
+
+- Verify real durable flags refresh both bell and Overview without reload.
+  [live-timeline.spec.ts:154](../../tests/e2e/live-timeline.spec.ts#L154)
+
+- Retain document identity when the protected preview disconnects and recovers.
+  [workspace-preview-worker.spec.ts:212](../../tests/e2e/workspace-preview-worker.spec.ts#L212)
