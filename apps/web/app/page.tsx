@@ -37,6 +37,7 @@ import {
   OVERVIEW_LEDE,
   OVERVIEW_NOT_YOUR_SUMMARY,
   OVERVIEW_NO_ROLE,
+  OVERVIEW_OPEN_ITEM_LIMIT,
   OVERVIEW_STOPPED_LIMIT,
   RECENT_RUNS_HEADING,
   REVIEWS_LINK,
@@ -54,9 +55,6 @@ export const dynamic = 'force-dynamic';
 
 /** How many Runs the Overview's Recent Runs table holds. The register holds the rest. */
 const RECENT_RUN_LIMIT = 10;
-
-/** How many open Escalations and flags the attention list holds. The count beside it is exact. */
-const OPEN_ITEM_LIMIT = 10;
 
 /**
  * Overview (UX-DR6, EXPERIENCE.md → Overview).
@@ -146,7 +144,7 @@ async function OverviewSections({
     // sidebar count: three call sites reading the repositories directly would be three
     // chances to apply the role rule differently, and the failure mode is a sidebar badge
     // counting work the page it leads to does not show.
-    readReviewQueues(session, role, { pending: OPEN_ITEM_LIMIT, wantVersions: mayApproveVersions }),
+    readReviewQueues(session, role, { pending: OVERVIEW_OPEN_ITEM_LIMIT, wantVersions: mayApproveVersions }),
     mayAuthor
       ? new DrizzleProcedureListReader(runtime.db).listAuthoredDrafts(
           session.userId,
@@ -253,7 +251,7 @@ async function readOpenItems(
   const repository = new DrizzleNotificationRepository(runtime.db);
   let items: readonly OpenNotification[];
   try {
-    items = await repository.openFor(session, OPEN_ITEM_LIMIT);
+    items = await repository.openFor(session, OVERVIEW_OPEN_ITEM_LIMIT);
   } catch (error) {
     runtime.telemetry.captureError('Notification count could not be read', error, { outcome: 'failure' });
     return null;

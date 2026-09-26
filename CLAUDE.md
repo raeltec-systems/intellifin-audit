@@ -1,3 +1,69 @@
+## 2026-09-26 — Every append to a Run's chain wakes the channel, and a burst keeps its last re-read (Story 10.7)
+
+- **The wake-up belongs to the append, not to its writers.** `appendAuditEvent` issues
+  `pg_notify('run_timeline', {runId, sequence})` for every append whose aggregate is a Run, in
+  the appending transaction and before anything below it can return early. Three families had
+  none (`evidence-access.*`, `notification.*-delivery`, the evaluation review's
+  `security.denied`), and the conversation narration's own notify sat after an early return
+  (a conversation at 1,000,000 messages). The writers' `notifyTimeline` ports stay: PostgreSQL
+  folds identical payloads of one transaction into one. No migration, trigger or event type.
+- **So the payload is spelled exactly as the writers spell it, `JSON.stringify({ runId,
+  sequence })`, key order included.** Another spelling is a second, unfolded notification, and
+  the list stream (one frame per wake-up, no cursor) forwards the event twice. Proven by
+  mutation: swapping the two keys fails the list-stream case with `[2, 2, 3, 4]`. The spelling
+  is pinned at EVERY site, not only the ones a test drives: `run-timeline-channel.test.ts`
+  walks the package and requires each `pg_notify('run_timeline', …)` to stringify an object
+  literal whose keys are `runId` then `sequence`, and names each offender by file and line.
+- **Only a Run's chain wakes it.** A Procedure's chain, or a UUID-shaped aggregate that names
+  no Run, must not: the list stream reads the row a notification names and would forward it as
+  a Run's event. Mutation: dropping the `if (run)` guard fails the any-writer case.
+- **A Run surface does not re-read on the reads of its own evidence.** Once every append woke
+  the channel, the Evidence inspector's own grant read (two `evidence-access.*` events on the
+  Run's own chain per render) woke the inspector again, and on an active Run it re-read itself
+  about once a second: two permanent chain events and one worker grant job each time.
+  `refreshesSurface` (`apps/web/src/runs/refresh-events.ts`) skips `evidence-access.*`,
+  `notification.*` and `security.denied`, which no Run surface renders. It is an exclusion
+  list, so a family added later still re-reads. Run Detail and the Runs list mount it through
+  `SurfaceLiveBanner` (a server component cannot pass a function to a client one); `LiveGate`
+  asks it before `refresh()` and keeps the Run-ending latch unconditional; and
+  `refresh-events.test.ts` refuses any other direct `<LiveBanner` mount. `BellLive` keeps its
+  own filter. The stream still carries every family; only the re-read skips three.
+  `surface-refresh.spec.ts` proves both paths with the real worker's grants: the inspector is
+  re-read once for a Run event and then holds at four `evidence-access.*` events past a
+  heartbeat (without the filter: 28), and Live View loads its frame with no re-read (without
+  the filter: 2). Its trigger is a `failure.retry` append, not a flag: the bell re-reads on a
+  flag too, so a flag's re-read count would depend on timing.
+- **Prove a WAKE-UP, not a heartbeat or a replay.** Open the per-Run stream one event behind
+  the head, wait for that replayed frame, keep the heartbeat a minute away and the delivery
+  deadline far below it. Count raw wake-ups on a second LISTEN and flush with a probe NOTIFY
+  (they arrive in commit order). A rolled-back append is a unit of work that throws AFTER its
+  work, under a 50 ms heartbeat, so a row committed with no wake-up would still be found. To
+  commit into the window between LISTEN and replay, hook the `listen` promise
+  (`countedSql(onListening)` in `run-timeline-channel.test.ts`).
+- **A throttle may delay the final re-read; it may never drop it.** `BellLive` was
+  leading-edge only, so a second qualifying event inside one second of the last re-read was
+  dropped and the bell and the Overview ended a burst one change short. It composes
+  `useThrottledRefresh` (trailing) now, the throttle Run Detail, the Runs list and Live View
+  already use. That is one rule, not one budget: the bell and a page's own banner are two
+  instances of it, each with its own one-second window. The Overview opens no stream of its
+  own, so the bell's re-read is its only live refresh, and it fires only on the bell's own
+  events (an Escalation raised, answered or timed out, a Run flagged, a Run ending). Recent
+  Runs, the versions awaiting approval and the Drafts stay as read until the reader navigates
+  or the next of those events arrives.
+- **A browser burst test freezes the page's clock** (`page.clock.setFixedTime`). With a real
+  clock a slow `next dev` round trip stretches the gap past the one-second window, and the
+  leading-edge throttle passes by accident; timers still run, so a trailing re-read still
+  fires. The list stream has no replay, so wait for its first HEARTBEAT (sent only once its
+  LISTEN is armed) before committing anything the page must see. Proven by mutation: the old
+  `BellLive` fails `bell-burst.spec.ts` with the bell still at "1 unread".
+- **Compare a flaky test at two commits in BOTH orders.** `agent-isolation.test.ts` failed 3 of
+  16 loaded runs at this story's head and 0 of 16 at the baseline `429e08c` while the baseline
+  always ran first in each pair; with the order swapped the baseline failed the same case at
+  the same line (1 of 16). All four failures were the second run of a pair, none of the 32
+  first runs failed it, and it passed 4 of 4 at both commits with no added load. The test's
+  module graph holds no file the story changed. A pair run in one fixed order confounds the
+  commit with the position, and read alone it would have named a regression that is not one.
+
 ## 2026-09-25 — A single read of a moving preview sample is a race the broker refuses on purpose
 
 - **The preview route answers 503 for a read that meets a new sample, and that is the product

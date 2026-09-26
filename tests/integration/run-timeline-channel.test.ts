@@ -1,12 +1,34 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { cancelRun, initiateRun, type CancelRunDependencies, type RunDependencies } from '@intellifin/application';
+import {
+  EVIDENCE_READ_GRANT_QUEUE,
+  EVIDENCE_READ_GRANT_SCHEMA_VERSION,
+  FRAME_LOCATOR,
+  cancelRun,
+  createFlagNotification,
+  flagRun,
+  initiateRun,
+  issueEvidenceReadGrant,
+  narrateRunConversationEvent,
+  requestEvidenceReadGrant,
+  reviewEvaluationInContext,
+  type CancelRunDependencies,
+  type RunDependencies,
+} from '@intellifin/application';
+import { sha256HexOfBytes, utf8Bytes } from '@intellifin/domain';
 import {
   createDb,
   createSqlClient,
   CryptoUuidV7Generator,
   DrizzleRoleRepository,
+  InAppNotificationSender,
+  migrateRunsQueue,
+  parseTimelineNotification,
+  PostgresAuditUnitOfWork,
+  PostgresEvaluationReviewRepository,
+  PostgresEvidenceReadGrantRepository,
   PostgresProceduresUnitOfWork,
   PostgresRunCancellationRepository,
+  PostgresRunFlagRepository,
   PostgresRunsUnitOfWork,
   SystemClock,
   openRunTimelineStream,
@@ -78,6 +100,37 @@ class FrameReader {
   async close(): Promise<void> { await this.reader.cancel().catch(() => undefined); }
 }
 
+/**
+ * What one case opened: its streams and its raw LISTEN, each registered the moment it is
+ * opened and closed by the case's `finally`, last opened first, whatever failed. A stream
+ * opened before its `try` leaks its LISTEN when a later step of the same setup throws.
+ */
+class Opened {
+  private readonly closers: Array<() => Promise<void>> = [];
+  add(close: () => Promise<void>): void { this.closers.push(close); }
+  stream(reader: FrameReader): FrameReader { this.add(() => reader.close()); return reader; }
+  async close(): Promise<void> {
+    const failures: unknown[] = [];
+    for (const close of this.closers.splice(0).reverse()) {
+      try { await close(); } catch (error) { failures.push(error); }
+    }
+    if (failures.length > 0) throw failures[0];
+  }
+}
+
+/** `promise`, or a failure that names what did not happen within `timeoutMs`. */
+async function within<T>(promise: Promise<T>, timeoutMs: number, missing: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`${missing} within ${timeoutMs} ms`)), timeoutMs); }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const url = process.env.DATABASE_URL;
 describe.skipIf(!url)('the live Timeline channel', () => {
   let sql: Sql, db: Database;
@@ -98,6 +151,11 @@ describe.skipIf(!url)('the live Timeline channel', () => {
     db = createDb(sql);
     await sql`INSERT INTO auth_user(id,name,email) VALUES (${author},'Live channel test',${`${author}@test.invalid`})`;
     await sql`INSERT INTO user_role(user_id,role) VALUES (${author},'auditor')`;
+    // Evidence read grants are enqueued on their own pg-boss queue. Provisioning it is
+    // idempotent, and it goes through a single-connection client because queue creation
+    // is a raw transaction block (the evidence-read-grant suite does the same).
+    const queueSql = createSqlClient(url!, { max: 1 });
+    try { await migrateRunsQueue(createDb(queueSql)); } finally { await queueSql.end({ timeout: 5 }); }
   });
 
   afterAll(async () => {
@@ -107,13 +165,19 @@ describe.skipIf(!url)('the live Timeline channel', () => {
         const runs = await sql`SELECT run_id::text AS id FROM audit_run WHERE procedure_id=${id}`;
         for (const run of runs) {
           await sql`DELETE FROM pgboss.job WHERE name='runs' AND data->>'runId'=${run.id}`;
+          await sql`DELETE FROM pgboss.job WHERE name=${EVIDENCE_READ_GRANT_QUEUE} AND data->>'grantId' IN (SELECT grant_id::text FROM evidence_read_grant WHERE run_id=${run.id})`;
           await sql`DELETE FROM audit_events WHERE aggregate_id=${run.id}`;
           await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${run.id}`;
         }
+        // A notification names its flag, its Run, its version and its recipient with no
+        // cascade, so it goes before every one of them.
+        await sql`DELETE FROM notification WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${id})`;
         await sql`DELETE FROM run_result WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${id})`;
         await sql`DELETE FROM run_gate_check WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${id})`;
         await sql`DELETE FROM run_evidence_integrity WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${id})`;
         await sql`DELETE FROM run_evidence_package WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${id})`;
+        // After the package (a sealed package freezes its Evidence); its grants cascade.
+        await sql`DELETE FROM run_evidence WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${id})`;
         await sql`DELETE FROM run_initiation_request WHERE procedure_id=${id}`;
         await sql`DELETE FROM audit_run WHERE procedure_id=${id}`;
         await sql`DELETE FROM procedure_succession WHERE procedure_id=${id}`;
@@ -127,15 +191,31 @@ describe.skipIf(!url)('the live Timeline channel', () => {
     }
   });
 
-  /** The real client, with the listener hand-over counted so a teardown is observable. */
-  function countedSql(): Sql {
+  /** A failure inside an `onListening` hook, kept for the test that installed it. */
+  const hookFailures: unknown[] = [];
+
+  /**
+   * The real client, with the listener hand-over counted so a teardown is observable.
+   *
+   * `onListening` runs once the LISTEN is armed and BEFORE the stream continues to its
+   * replay, so a test can commit into exactly the window between the two — the window the
+   * arming order exists for. A failure inside it is kept for the test to rethrow, never
+   * thrown into the stream, whose listener would then never be released.
+   */
+  function countedSql(onListening?: () => Promise<void>): Sql {
     return new Proxy(sql, {
       get(target, property, receiver) {
         if (property !== 'listen') return Reflect.get(target, property, receiver);
         return (channel: string, handler: (payload: string) => void) => {
           listened += 1;
           const request = target.listen(channel, handler);
-          return request.then((meta) => ({ ...meta, unlisten: async () => { released += 1; await meta.unlisten(); } }));
+          return request.then(async (meta) => {
+            const counted = { ...meta, unlisten: async () => { released += 1; await meta.unlisten(); } };
+            if (onListening !== undefined) {
+              try { await onListening(); } catch (error) { hookFailures.push(error); }
+            }
+            return counted;
+          });
         };
       },
     });
@@ -161,8 +241,8 @@ describe.skipIf(!url)('the live Timeline channel', () => {
     return outcome.runId;
   }
 
-  function open(runId: string | null, after: number, options: { heartbeatMs?: number; lifetimeMs?: number; pageSize?: number; signal?: AbortSignal; db?: Database } = {}): FrameReader {
-    return new FrameReader(openRunTimelineStream({ sql: countedSql(), db: options.db ?? db }, {
+  function open(runId: string | null, after: number, options: { heartbeatMs?: number; lifetimeMs?: number; pageSize?: number; signal?: AbortSignal; db?: Database; onListening?: () => Promise<void> } = {}): FrameReader {
+    return new FrameReader(openRunTimelineStream({ sql: countedSql(options.onListening), db: options.db ?? db }, {
       runId, after, signal: options.signal, heartbeatMs: options.heartbeatMs ?? 60_000, lifetimeMs: options.lifetimeMs ?? 60_000, pageSize: options.pageSize ?? 200,
     }));
   }
@@ -267,6 +347,484 @@ describe.skipIf(!url)('the live Timeline channel', () => {
     expect(stream.timeline()).toHaveLength(0);
     await stream.until(() => false, 300);
     expect(stream.done).toBe(true);
+  });
+
+  /* ------------------------------------------------------------------------------------
+   * Story 10.7: every append to a Run's chain wakes the channel in its own transaction.
+   *
+   * The register found three families appended to a Run's chain with no NOTIFY:
+   * `evidence-access.*` (web reads, worker grant decisions), `notification.*-delivery`
+   * (worker) and the evaluation review's `security.denied`. Each is appended here through
+   * its REAL writer. The streams that watch them are opened AFTER their replay and with a
+   * heartbeat a minute away, so the only thing that can deliver a new event within the
+   * deadline is the wake-up the appending transaction issued.
+   * ---------------------------------------------------------------------------------- */
+
+  const clock = new SystemClock();
+  const WEB_TREE_MEDIA_TYPE = 'application/vnd.intellifin.web-tree+json';
+  const SNAPSHOT_LOCATOR = '$.nodes[0].value';
+  /** Far below the one-minute heartbeat: a delivery inside it can only be a wake-up. */
+  const WAKE_DEADLINE_MS = 5_000;
+
+  /** A raw LISTEN beside the streams, to count the wake-ups themselves. */
+  interface Wakeups {
+    /** How many wake-ups named exactly this Run and sequence. */
+    count(runId: string, sequence: number): number;
+    /** Commit a probe and wait for it: wake-ups arrive in commit order, so every earlier commit's has arrived too. */
+    flush(): Promise<void>;
+  }
+
+  /** The raw LISTEN is released by the case's `Opened`, from the moment it is armed. */
+  async function listenForWakeups(opened: Opened): Promise<Wakeups> {
+    const payloads: string[] = [];
+    const listening = await sql.listen('run_timeline', (payload) => { payloads.push(payload); });
+    opened.add(() => listening.unlisten());
+    return {
+      count: (runId, sequence) => payloads.filter((payload) => {
+        const notification = parseTimelineNotification(payload);
+        return notification !== null && notification.runId === runId && notification.sequence === sequence;
+      }).length,
+      async flush() {
+        const probe = ids.next();
+        await sql.notify('run_timeline', JSON.stringify({ probe }));
+        await expect.poll(() => payloads.some((payload) => payload.includes(probe)), { timeout: WAKE_DEADLINE_MS }).toBe(true);
+      },
+    };
+  }
+
+  /**
+   * A per-Run stream that has finished its replay: it is opened one event behind the head
+   * and the test waits for that one replayed frame. The LISTEN is armed before the replay,
+   * so from here on nothing but a wake-up reads the chain until the heartbeat, a minute away.
+   * The stream belongs to the case's `Opened` before anything here can fail.
+   */
+  async function followFromHead(opened: Opened, runId: string, heartbeatMs = 60_000): Promise<FrameReader> {
+    const head = await readTimelineHead(db, runId);
+    if (head < 1) throw new Error('A followed Run needs one event to replay');
+    const stream = opened.stream(open(runId, head - 1, { heartbeatMs }));
+    await stream.until((frames) => frames.some((frame) => frame.event === 'timeline' && frame.id === String(head)), WAKE_DEADLINE_MS);
+    expect(stream.timeline().map((frame) => frame.id)).toEqual([String(head)]);
+    return stream;
+  }
+
+  /** The Run's chain after `after`, as the channel envelopes name it. */
+  async function chainAfter(runId: string, after: number): Promise<readonly { readonly seq: number; readonly eventType: string; readonly source: string }[]> {
+    const rows = await sql`SELECT sequence, event_type, source FROM audit_events WHERE aggregate_id=${runId} AND sequence > ${after} ORDER BY sequence`;
+    return rows.map((row) => ({ seq: Number(row.sequence), eventType: row.event_type as string, source: row.source as string }));
+  }
+
+  /** The `id` of each frame: the chain sequence a reconnect would resume from. */
+  function sequencesOf(frames: readonly Frame[]): readonly string[] {
+    return frames.map((frame) => frame.id ?? '');
+  }
+
+  /** How many frames of `event` a stream has received so far. */
+  function countOf(frames: readonly Frame[], event: string): number {
+    return frames.filter((frame) => frame.event === event).length;
+  }
+
+  /** A REGISTERED Structural Snapshot of the Run, which a grant can name. */
+  async function registerSnapshot(runId: string): Promise<string> {
+    const evidenceId = ids.next();
+    const bytes = utf8Bytes(JSON.stringify({
+      schemaVersion: 1,
+      nodes: [{ group: 'record:0', role: 'datum', label: 'Employee ID', value: 'E-1', target: null }],
+    }));
+    await sql`INSERT INTO run_evidence(
+      evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,
+      required,captured_at,capture_method,capture_time_source,role) VALUES (
+      ${evidenceId},${runId},'structural-snapshot','live-channel-target',${`structural-snapshot/${runId}/${evidenceId}`},
+      ${WEB_TREE_MEDIA_TYPE},${sha256HexOfBytes(bytes)},${bytes.byteLength},'REGISTERED',false,
+      ${clock.now().toISOString()},'agent','registration','evidence')`;
+    return evidenceId;
+  }
+
+  const grants = (): PostgresEvidenceReadGrantRepository => new PostgresEvidenceReadGrantRepository(db, { clock, ids });
+
+  /** The web requests a read; the WORKER decides it (`evidence-access.grant-issued` or `.denied`). */
+  async function decideGrant(runId: string, evidenceId: string, locator: string, repository = grants()): Promise<{ readonly grantId: string; readonly status: string }> {
+    const requested = await requestEvidenceReadGrant(
+      { repository, ids, clock },
+      { session: { userId: author, sessionId: `${author}-session` }, correlationId: ids.next(), request: { runId, evidenceId, locator } },
+    );
+    if (!requested.ok) throw new Error(requested.reason);
+    const decided = await issueEvidenceReadGrant(
+      {
+        repository,
+        clock,
+        signer: { signGet: async ({ expiresAt }) => ({ signedUrl: `https://objects.invalid/${evidenceId}`, signedUrlExpiresAt: expiresAt }) },
+      },
+      { schemaVersion: EVIDENCE_READ_GRANT_SCHEMA_VERSION, grantId: requested.grantId },
+    );
+    return { grantId: requested.grantId, status: decided.status };
+  }
+
+  /** One complete read of a stored snapshot: the worker issues it, the web records it. Two Run-chain events. */
+  async function readStoredSnapshot(runId: string, evidenceId: string): Promise<void> {
+    const repository = grants();
+    const { grantId, status } = await decideGrant(runId, evidenceId, SNAPSHOT_LOCATOR, repository);
+    expect(status).toBe('issued');
+    expect(await repository.recordAccess({ grantId, actorId: author, correlationId: ids.next(), at: clock.now().toISOString() })).toBe(true);
+  }
+
+  /** A Run the flag command accepts: initiated for real, then moved to RUNNING as a claiming worker would. */
+  async function runningRun(): Promise<string> {
+    const runId = await start(await seed());
+    await sql`UPDATE audit_run SET state='RUNNING' WHERE run_id=${runId}`;
+    return runId;
+  }
+
+  /**
+   * The database, except that every unit of work fails AFTER its work — its appends included — has run.
+   * Given a transaction instead of the pool, the unit of work it wraps runs in a SAVEPOINT of that
+   * transaction, and the failure rolls back the savepoint only.
+   */
+  function failingAfterWork(target: Database): Database {
+    return new Proxy(target, {
+      get(inner, property, receiver) {
+        if (property !== 'transaction') return Reflect.get(inner, property, receiver);
+        return (work: (transaction: unknown) => Promise<unknown>) => inner.transaction(async (transaction) => {
+          await work(transaction);
+          throw new Error('the unit of work failed after its append');
+        });
+      },
+    }) as Database;
+  }
+
+  /** An append by a writer that issues no wake-up of its own: only the append path can issue it. */
+  function appendRetry(target: Database, aggregateId: string, attempt: number) {
+    return new PostgresAuditUnitOfWork(target, { clock, ids }).execute(({ auditEvents }) => auditEvents.append({
+      actor: { type: 'system', id: 'worker' }, eventType: 'failure.retry', source: 'worker', outcome: 'failure',
+      sessionId: 'live-channel', correlationId: ids.next(), aggregateId, payload: { attempt },
+    }));
+  }
+
+  it('wakes the Run for Evidence access from the worker and from the web, once each and in order', async () => {
+    const runId = await start(await seed());
+    const evidenceId = await registerSnapshot(runId);
+    const opened = new Opened();
+    try {
+      const wakeups = await listenForWakeups(opened);
+      const stream = await followFromHead(opened, runId);
+      // Worker: a grant issued. Web: the read recorded.
+      await readStoredSnapshot(runId, evidenceId);
+      // Worker: a grant refused — the frame sentinel names a screenshot, and this is a snapshot.
+      expect((await decideGrant(runId, evidenceId, FRAME_LOCATOR)).status).toBe('denied');
+      // Web: an issued capability refused because its deadline has passed.
+      const repository = grants();
+      const { grantId, status } = await decideGrant(runId, evidenceId, SNAPSHOT_LOCATOR, repository);
+      expect(status).toBe('issued');
+      const lapsed = new Date(Date.now() + 10 * 60_000).toISOString();
+      expect(await repository.readForActor({ grantId, actorId: author, now: lapsed })).toBeNull();
+
+      const appended = await chainAfter(runId, 1);
+      expect(appended.map((event) => `${event.eventType} ${event.source}`)).toEqual([
+        'evidence-access.grant-issued worker',
+        'evidence-access.read web',
+        'evidence-access.denied worker',
+        'evidence-access.grant-issued worker',
+        'evidence-access.denied web',
+      ]);
+      const expected = ['1', ...appended.map((event) => String(event.seq))];
+      await stream.until((frames) => countOf(frames, 'timeline') >= expected.length, WAKE_DEADLINE_MS);
+      expect(sequencesOf(stream.timeline())).toEqual(expected);
+      expect(stream.timeline().slice(1).map((frame) => JSON.parse(frame.data!).eventType)).toEqual(appended.map((event) => event.eventType));
+      await wakeups.flush();
+      for (const event of appended) expect(wakeups.count(runId, event.seq), event.eventType).toBe(1);
+      // Wake-ups only: however many follow, nothing is sent twice and no payload travels.
+      await stream.until(() => false, 300);
+      expect(sequencesOf(stream.timeline())).toEqual(expected);
+      expect(stream.timeline().every((frame) => !('payload' in JSON.parse(frame.data!)))).toBe(true);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('wakes every open stream on the Run for notification deliveries, and the list stream forwards each event once', async () => {
+    const runId = await runningRun();
+    const opened = new Opened();
+    try {
+      const wakeups = await listenForWakeups(opened);
+      let listArmed!: () => void;
+      const armed = new Promise<void>((resolve) => { listArmed = resolve; });
+      const list = opened.stream(open(null, 0, { onListening: async () => { listArmed(); } }));
+      const first = await followFromHead(opened, runId);
+      const second = await followFromHead(opened, runId);
+      // The list stream has no replay: a wake-up committed before its LISTEN reaches nothing.
+      await within(armed, WAKE_DEADLINE_MS, 'the list stream did not arm its LISTEN');
+      // A flag: its writer notifies through its own port as well, and the two identical
+      // wake-ups of one transaction arrive as one.
+      const flagged = await flagRun(
+        { roles: new DrizzleRoleRepository(db), unitOfWork: new PostgresRunsUnitOfWork(db), repository: new PostgresRunFlagRepository(db), ids, clock },
+        { session, request: { runId, note: null } },
+      );
+      if (!flagged.ok) throw new Error(flagged.reason);
+      // The worker delivers the author's notification: in-app and email, one transaction.
+      const [row] = await sql`SELECT procedure_id::text AS procedure_id, version_id::text AS version_id, procedure_name, version_number
+        FROM notification WHERE run_id=${runId} AND recipient_id=${author} AND kind='flag'`;
+      await new InAppNotificationSender(db, { clock, ids }).send(createFlagNotification({
+        recipientId: author, runId, flagId: flagged.flagId,
+        procedureId: row!.procedure_id as string, versionId: row!.version_id as string,
+        procedureName: row!.procedure_name as string, versionNumber: Number(row!.version_number),
+      }));
+
+      const appended = await chainAfter(runId, 1);
+      expect(appended.map((event) => event.eventType)).toEqual([
+        'lifecycle.run-flagged', 'notification.in-app-delivery', 'notification.email-delivery',
+      ]);
+      const expected = ['1', ...appended.map((event) => String(event.seq))];
+      for (const stream of [first, second]) {
+        await stream.until((frames) => countOf(frames, 'timeline') >= expected.length, WAKE_DEADLINE_MS);
+      }
+      const forwarded = (): readonly number[] => list.timeline()
+        .map((frame) => JSON.parse(frame.data!) as { runId: string; seq: number })
+        .filter((envelope) => envelope.runId === runId)
+        .map((envelope) => envelope.seq);
+      await list.until(() => appended.every((event) => forwarded().includes(event.seq)), WAKE_DEADLINE_MS);
+      await wakeups.flush();
+      await Promise.all([first, second, list].map((stream) => stream.until(() => false, 300)));
+
+      for (const stream of [first, second]) expect(sequencesOf(stream.timeline())).toEqual(expected);
+      // The list stream has no cursor and forwards one frame per wake-up, so this is also
+      // the proof that one append is one wake-up, whichever writers asked for it. It makes no
+      // ordering promise (each forward is its own read), so it is compared as a set of once.
+      expect([...forwarded()].sort((a, b) => a - b)).toEqual(appended.map((event) => event.seq));
+      for (const event of appended) expect(wakeups.count(runId, event.seq), event.eventType).toBe(1);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('wakes the Run for the evaluation review\'s refusal of a person without the role', async () => {
+    const runId = await start(await seed());
+    const roleless = `${ids.next()}-no-role`;
+    const opened = new Opened();
+    try {
+      const wakeups = await listenForWakeups(opened);
+      const stream = await followFromHead(opened, runId);
+      const refused = await new PostgresEvaluationReviewRepository(db).transaction(runId, (context) =>
+        reviewEvaluationInContext({ ids, clock }, context, {
+          session: { userId: roleless, sessionId: `${roleless}-session` },
+          request: { runId, observationId: ids.next(), conditionId: 'C1', expectedReviewRevision: 0 },
+        }, 'confirm', { correlationId: ids.next(), source: 'worker' }));
+      expect(refused).toMatchObject({ ok: false, code: 'unauthorized' });
+
+      const appended = await chainAfter(runId, 1);
+      expect(appended.map((event) => `${event.eventType} ${event.source}`)).toEqual(['security.denied worker']);
+      await stream.until((frames) => countOf(frames, 'timeline') >= 2, WAKE_DEADLINE_MS);
+      expect(sequencesOf(stream.timeline())).toEqual(['1', String(appended[0]!.seq)]);
+      await wakeups.flush();
+      expect(wakeups.count(runId, appended[0]!.seq)).toBe(1);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('wakes nothing for an append its unit of work rolls back, and the committed retry arrives once', async () => {
+    const runId = await runningRun();
+    const evidenceId = await registerSnapshot(runId);
+    const flagged = await flagRun(
+      { roles: new DrizzleRoleRepository(db), unitOfWork: new PostgresRunsUnitOfWork(db), repository: new PostgresRunFlagRepository(db), ids, clock },
+      { session, request: { runId, note: null } },
+    );
+    if (!flagged.ok) throw new Error(flagged.reason);
+    const [row] = await sql`SELECT procedure_id::text AS procedure_id, version_id::text AS version_id, procedure_name, version_number
+      FROM notification WHERE run_id=${runId} AND recipient_id=${author} AND kind='flag'`;
+    const notification = createFlagNotification({
+      recipientId: author, runId, flagId: flagged.flagId,
+      procedureId: row!.procedure_id as string, versionId: row!.version_id as string,
+      procedureName: row!.procedure_name as string, versionNumber: Number(row!.version_number),
+    });
+    const repository = grants();
+    const { grantId, status } = await decideGrant(runId, evidenceId, SNAPSHOT_LOCATOR, repository);
+    expect(status).toBe('issued');
+
+    const opened = new Opened();
+    try {
+      // Heartbeats every 50 ms: each one reads the chain again, which is how a stream would
+      // find a row that had been committed with no wake-up — and there must be none.
+      const stream = await followFromHead(opened, runId, 50);
+      const wakeups = await listenForWakeups(opened);
+      const head = await readTimelineHead(db, runId);
+      // The worker's delivery appends both outcomes, then its unit of work fails.
+      await expect(new InAppNotificationSender(failingAfterWork(db), { clock, ids }).send(notification))
+        .rejects.toThrow('the unit of work failed after its append');
+      // The web's read is appended, then its unit of work fails.
+      await expect(new PostgresEvidenceReadGrantRepository(failingAfterWork(db), { clock, ids })
+        .recordAccess({ grantId, actorId: author, correlationId: ids.next(), at: clock.now().toISOString() }))
+        .rejects.toThrow('the unit of work failed after its append');
+
+      expect(await readTimelineHead(db, runId)).toBe(head);
+      expect(await chainAfter(runId, head)).toEqual([]);
+      await wakeups.flush();
+      for (const sequence of [head + 1, head + 2]) expect(wakeups.count(runId, sequence)).toBe(0);
+      const heartbeats = countOf(stream.frames, 'heartbeat');
+      await stream.until((frames) => countOf(frames, 'heartbeat') >= heartbeats + 3, WAKE_DEADLINE_MS);
+      expect(sequencesOf(stream.timeline())).toEqual([String(head)]);
+
+      // Committed this time: the retry takes the sequences the rolled-back attempt did not
+      // keep, and each arrives once.
+      await new InAppNotificationSender(db, { clock, ids }).send(notification);
+      expect(await repository.recordAccess({ grantId, actorId: author, correlationId: ids.next(), at: clock.now().toISOString() })).toBe(true);
+      const appended = await chainAfter(runId, head);
+      expect(appended.map((event) => `${event.seq} ${event.eventType}`)).toEqual([
+        `${head + 1} notification.in-app-delivery`, `${head + 2} notification.email-delivery`, `${head + 3} evidence-access.read`,
+      ]);
+      await stream.until((frames) => countOf(frames, 'timeline') >= 4, WAKE_DEADLINE_MS);
+      await wakeups.flush();
+      await stream.until(() => false, 200);
+      expect(sequencesOf(stream.timeline())).toEqual([head, head + 1, head + 2, head + 3].map(String));
+      for (const event of appended) expect(wakeups.count(runId, event.seq), event.eventType).toBe(1);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('wakes nothing for an append in a savepoint that rolls back, though the transaction around it commits', async () => {
+    const runId = await start(await seed());
+    const opened = new Opened();
+    try {
+      // Heartbeats every 50 ms, as in the rollback case: a row committed with no wake-up
+      // would still be found by one of them, and a wake-up with no row would name nothing.
+      const stream = await followFromHead(opened, runId, 50);
+      const wakeups = await listenForWakeups(opened);
+      const head = await readTimelineHead(db, runId);
+      // ONE transaction that commits: an append that stays, then a unit of work run in a
+      // SAVEPOINT of that transaction, whose append is rolled back with the savepoint. The
+      // append's NOTIFY was issued inside the savepoint, and it goes with it.
+      await db.transaction(async (outer) => {
+        const kept = await appendRetry(outer as unknown as Database, runId, 1);
+        expect(kept.sequence).toBe(head + 1);
+        await expect(appendRetry(failingAfterWork(outer as unknown as Database), runId, 2))
+          .rejects.toThrow('the unit of work failed after its append');
+      });
+
+      expect(await chainAfter(runId, head)).toEqual([{ seq: head + 1, eventType: 'failure.retry', source: 'worker' }]);
+      await wakeups.flush();
+      expect(wakeups.count(runId, head + 1)).toBe(1);
+      expect(wakeups.count(runId, head + 2)).toBe(0);
+      const heartbeats = countOf(stream.frames, 'heartbeat');
+      await stream.until((frames) => countOf(frames, 'heartbeat') >= heartbeats + 3, WAKE_DEADLINE_MS);
+      expect(sequencesOf(stream.timeline())).toEqual([head, head + 1].map(String));
+
+      // A later commit takes the sequence the savepoint did not keep, and it arrives once.
+      const retried = await appendRetry(db, runId, 2);
+      expect(retried.sequence).toBe(head + 2);
+      await stream.until((frames) => countOf(frames, 'timeline') >= 3, WAKE_DEADLINE_MS);
+      await wakeups.flush();
+      await stream.until(() => false, 200);
+      expect(sequencesOf(stream.timeline())).toEqual([head, head + 1, head + 2].map(String));
+      expect(wakeups.count(runId, head + 2)).toBe(1);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('wakes the Run for a narrated event when the Run\'s conversation is already full', async () => {
+    const runId = await start(await seed());
+    // The conversation's bound is its highest sequence, so one message at the bound fills it.
+    await sql`INSERT INTO run_conversation_message(message_id,run_id,sequence,actor_id,kind,created_at)
+      VALUES (${ids.next()},${runId},1000000,'live-channel','annotation',${clock.now().toISOString()}::timestamptz)`;
+    const messages = async (): Promise<number> =>
+      Number((await sql`SELECT count(*)::int AS n FROM run_conversation_message WHERE run_id=${runId}`)[0]!.n);
+    const opened = new Opened();
+    try {
+      const wakeups = await listenForWakeups(opened);
+      // The heartbeat a minute away: only a wake-up can deliver within the deadline.
+      const stream = await followFromHead(opened, runId);
+      const before = await messages();
+      const created = await new PostgresAuditUnitOfWork(db, { clock, ids }).execute(({ auditEvents }) => auditEvents.append({
+        actor: { type: 'system', id: 'workspace-worker' }, eventType: 'lifecycle.agent-workspace', source: 'worker', outcome: 'success',
+        sessionId: 'live-channel', correlationId: ids.next(), aggregateId: runId,
+        payload: { diagnostic: 'workspace-created', state: 'RUNNING', stepId: 'session-1' },
+      }));
+      // The conversation narrates this event, and the full conversation took no message for
+      // it: the append returned early, after its wake-up.
+      expect(narrateRunConversationEvent(created)).not.toBeNull();
+      expect(await messages()).toBe(before);
+
+      await stream.until((frames) => countOf(frames, 'timeline') >= 2, WAKE_DEADLINE_MS);
+      expect(sequencesOf(stream.timeline())).toEqual(['1', String(created.sequence)]);
+      await wakeups.flush();
+      expect(wakeups.count(runId, created.sequence)).toBe(1);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('resumes from the last-seen sequence during a burst: every event after it arrives once, in order', async () => {
+    const runId = await start(await seed());
+    const evidenceId = await registerSnapshot(runId);
+    const opened = new Opened();
+    try {
+      // Watching: two events committed live arrive on a wake-up, and the stream is dropped.
+      const before = await followFromHead(opened, runId);
+      await readStoredSnapshot(runId, evidenceId);
+      await before.until((frames) => countOf(frames, 'timeline') >= 3, WAKE_DEADLINE_MS);
+      expect(sequencesOf(before.timeline())).toEqual(['1', '2', '3']);
+      const lastSeen = Number(before.timeline().at(-1)!.id);
+      await before.close();
+
+      // Dropped: the burst goes on with nobody listening.
+      await readStoredSnapshot(runId, evidenceId);
+      // Reconnecting from the last-seen sequence, paging one event at a time. More of the
+      // burst commits in the window between the LISTEN being armed and the replay starting,
+      // so those events are BOTH replayed and announced; and more commits after the replay.
+      const failuresBefore = hookFailures.length;
+      let inWindow: Promise<void> | null = null;
+      const resumed = opened.stream(open(runId, lastSeen, {
+        pageSize: 1,
+        onListening: () => (inWindow = readStoredSnapshot(runId, evidenceId)),
+      }));
+      await expect.poll(() => inWindow !== null, { timeout: WAKE_DEADLINE_MS }).toBe(true);
+      await inWindow;
+      expect(hookFailures.slice(failuresBefore)).toEqual([]);
+      await resumed.until((frames) => frames.some((frame) => frame.event === 'timeline'), WAKE_DEADLINE_MS);
+      // And the rest of the burst commits once the stream is live again.
+      await readStoredSnapshot(runId, evidenceId);
+
+      const burst = await chainAfter(runId, lastSeen);
+      expect(burst.map((event) => event.eventType)).toEqual([
+        'evidence-access.grant-issued', 'evidence-access.read',
+        'evidence-access.grant-issued', 'evidence-access.read',
+        'evidence-access.grant-issued', 'evidence-access.read',
+      ]);
+      const expected = burst.map((event) => String(event.seq));
+      await resumed.until((frames) => countOf(frames, 'timeline') >= expected.length, WAKE_DEADLINE_MS);
+      await resumed.until(() => false, 300);
+      expect(sequencesOf(resumed.timeline())).toEqual(expected);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('wakes the Run for an append by any writer, and nothing for a chain that is not a Run\'s', async () => {
+    const procedureId = await seed();
+    const runId = await start(procedureId);
+    const stranger = ids.next();
+    const opened = new Opened();
+    try {
+      const wakeups = await listenForWakeups(opened);
+      const stream = await followFromHead(opened, runId);
+      const onRun = await appendRetry(db, runId, 1);
+      // A Procedure's chain, and a Run-shaped id that names no Run: neither is a Timeline,
+      // and a wake-up for either would have the list stream forward it as a Run's event.
+      const onProcedure = await appendRetry(db, procedureId, 1);
+      const onNothing = await appendRetry(db, stranger, 1);
+      await stream.until((frames) => countOf(frames, 'timeline') >= 2, WAKE_DEADLINE_MS);
+      expect(sequencesOf(stream.timeline())).toEqual(['1', String(onRun.sequence)]);
+      await wakeups.flush();
+      expect(wakeups.count(runId, onRun.sequence)).toBe(1);
+      expect(wakeups.count(procedureId, onProcedure.sequence)).toBe(0);
+      expect(wakeups.count(stranger, onNothing.sequence)).toBe(0);
+    } finally {
+      try {
+        await opened.close();
+      } finally {
+        await sql`DELETE FROM audit_events WHERE aggregate_id IN (${procedureId}, ${stranger})`;
+        await sql`DELETE FROM audit_event_heads WHERE aggregate_id IN (${procedureId}, ${stranger})`;
+      }
+    }
   });
 
   it('counts a listener per stream and releases every one', () => {

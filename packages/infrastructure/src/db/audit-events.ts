@@ -122,6 +122,24 @@ async function appendAuditEvent(
     .set({ lastSequence: sequence, lastEventHash: eventHash })
     .where(eq(auditEventHeads.aggregateId, aggregateId));
 
+  // Every append to a Run's chain wakes the live Timeline channel, in the appending
+  // transaction (live-timeline-channel-v1; Story 10.7). The contract says every append, and
+  // three families issued none: evidence access, the notification deliveries and the
+  // evaluation review's refusal. A per-Run stream still found them at its next heartbeat,
+  // up to ten seconds later, because it re-reads `sequence > lastSent` then; the list
+  // stream reads only the row a notification names, so it never saw them. Issued HERE, the
+  // one path every append passes through, it holds for every writer and wakes a stream at
+  // commit rather than at a heartbeat. It is issued before anything below can return
+  // early, so a full conversation cannot skip it either. PostgreSQL delivers it only at
+  // COMMIT (a rolled-back append, or a rolled-back savepoint, wakes nothing) and folds
+  // identical payloads of one transaction into one, so a writer that also notifies through
+  // its own port, spelled the same way, adds no second wake-up. It names the row as stored,
+  // and it is a wake-up, never the data: every stream reads what it sends from
+  // `audit_events`.
+  if (run) {
+    await transaction.execute(sql`SELECT pg_notify('run_timeline', ${JSON.stringify({ runId: record.aggregateId, sequence: record.sequence })})`);
+  }
+
   // The existing aggregate head lock orders these references with human messages.
   await projectRunInteractionEvent(transaction, record);
 
@@ -142,7 +160,7 @@ async function appendAuditEvent(
       createdAt: new Date(record.occurredAt),
       sourceEventSequence: record.sequence,
     });
-    await transaction.execute(sql`SELECT pg_notify('run_timeline', ${JSON.stringify({ runId: run.runId, sequence: record.sequence })})`);
+    // The wake-up for this message is the append's own, issued above for every Run event.
   }
 
   return record;
