@@ -130,3 +130,5 @@ and boundaries (807 modules). Frozen-policy candidate labels are redacted before
 projection if a lookup key is sensitive or policy is unavailable; UI also fails closed.
 Unrelated Timeline section selectors remain compatible with pause-history pagination.
 Hosted PostgreSQL and browser results are still required before completion.
+
+CI base filter now includes `codex/story-10-9`; the original stacked PR did not trigger CI under the old main/Epic-5-only filter. No missing workflow was counted as a pass.

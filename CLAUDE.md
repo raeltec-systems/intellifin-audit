@@ -1,3 +1,9 @@
+## 2026-09-26 — Stacked story PRs must enter the CI gate
+
+- Story 10.10 depends on 10.9's exact Replay selectors, so its PR targets the 10.9
+  branch. CI previously allowed only main and the older Epic 5 stack as PR bases;
+  explicitly allow the 10.9 base before claiming hosted verification of 10.10.
+
 ## 2026-09-26 — Retained Timeline decisions (Story 10.10)
 
 The Timeline reads an answered Escalation only when its immutable answer envelope agrees
