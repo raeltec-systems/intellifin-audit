@@ -2,9 +2,11 @@
 title: 'Replay bounded-history completeness: a bounded view says what it covers, and the rest stays reachable'
 type: 'fix'
 created: '2026-09-25'
-status: 'ready-for-dev'
+status: 'in-progress'
 review_loop_iteration: 0
-implementation_authorised: false
+implementation_authorised: true
+implementation_authorisation: 'Owner, 2026-09-26: "go, new branches OK" (implement 10.6 to 10.10 on new branches); wording approved 2026-09-26 ("approve all")'
+baseline_revision: 'e8728b0c874b9f4e8981f07fbc6b707e819f372b'
 context:
   - '_bmad-output/implementation-artifacts/legacy-review-closure-register.md'
   - '_bmad-output/planning-artifacts/epics.md'
@@ -53,6 +55,24 @@ through pagination, continuation or the existing `?workItem=` inspection path.
 | Jump target beyond the bound | an Escalation raised after the 500th delta | Listed as reachable through continuation or the inspection path, never silently absent | N/A |
 
 </frozen-after-approval>
+
+## Approved wording (owner, 2026-09-26)
+
+The owner approved these sentences on 2026-09-26 ("approve all"). They answer this story's Ask
+First item for wording. Put each sentence in a words module and pin it with a test that reads it
+back. `{shown}` and `{total}` are exact numbers.
+
+- Jump list, Escalations past the bound: "Showing the first {shown} of {total} Escalations."
+- Jump list, Exceptions past the bound: "Showing the first {shown} of {total} Exceptions."
+- How to reach the rest: "To see one of the rest, open its record in the record review and choose
+  Replay."
+- The Observation count beside each frame is EXACT: it is read from the database for each frame,
+  not counted from a bounded page of registration events. So the existing sentence "{count} had
+  been registered when this screen was captured." stays true, and no new sentence is needed.
+
+The owner did not approve raising `REPLAY_PAGE_SIZE` or `REPLAY_FRAME_LIMIT`; they stay as they
+are. A sentence this list does not hold is still Ask First.
+
 
 ## Code Map
 
