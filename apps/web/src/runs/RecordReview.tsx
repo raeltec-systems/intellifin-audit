@@ -25,6 +25,7 @@ import { TechnicalDetails } from '../design/TechnicalDetails';
 import { Timestamp } from '../design/Timestamp';
 import { countNoun } from '../design/words';
 import { EvaluationReview } from './EvaluationReview';
+import { HumanMatchNote, humanMatchFor, type HumanMatchIndex } from './HumanMatch';
 import { RecordLabel } from './RecordLabel';
 import { UntrustedList, UntrustedPolicy, UntrustedText } from './UntrustedText';
 import {
@@ -304,6 +305,12 @@ export interface RecordReviewQueueProps {
   readonly naming?: RecordNaming;
   /** The record the inspector shows when the reader arrived without choosing one. */
   readonly selectedOrdinal?: number | null;
+  /**
+   * Which of this page's Observations a PERSON matched, with the decision that did (Story
+   * 10.6, legacy 4.7). REQUIRED, so the page cannot leave a person's match unshown by not
+   * reading it; a page that read none passes `NO_HUMAN_MATCHES`.
+   */
+  readonly humanMatches: HumanMatchIndex;
 }
 
 /**
@@ -320,6 +327,7 @@ export function RecordReviewQueue({
   navigation,
   naming = NO_RECORD_NAMING,
   selectedOrdinal,
+  humanMatches,
 }: RecordReviewQueueProps): React.JSX.Element {
   const refreshHref = recordReviewHref(runId, navigation, { cursor: null });
   const firstHref = recordReviewHref(runId, navigation, { cursor: null });
@@ -430,6 +438,7 @@ export function RecordReviewQueue({
               navigation={navigation}
               naming={naming}
               selected={selected === row.sourceOrdinal}
+              humanMatches={humanMatches}
             />
           ))}
         </ol>
@@ -451,15 +460,24 @@ function RecordReviewQueueRow({
   navigation,
   naming,
   selected,
+  humanMatches,
 }: {
   readonly runId: string;
   readonly row: RecordReviewRow;
   readonly navigation: RecordReviewNavigation;
   readonly naming: RecordNaming;
   readonly selected: boolean;
+  readonly humanMatches: HumanMatchIndex;
 }): React.JSX.Element {
   const href = recordReviewHref(runId, navigation, { selected: row.sourceOrdinal });
   const assessment = rowAssessment(row.targets);
+  // Each system on which a PERSON matched this record, with the decision that did. The
+  // system is named only when the record has more than one, so a single-system row reads
+  // as one line (Story 10.6, legacy 4.7).
+  const matched = row.targets.flatMap((target) => {
+    const match = humanMatchFor(humanMatches, target.observationId);
+    return match === null ? [] : [{ target, match }];
+  });
   return (
     <li className={`record-review__row${selected ? ' record-review__row--selected' : ''}`} aria-current={selected ? 'true' : undefined}>
       <div className="record-review__row-head">
@@ -474,6 +492,14 @@ function RecordReviewQueueRow({
         <div><dt>Captured status</dt><dd>{rowCapturedStatusText(row.targets)}</dd></div>
         <div><dt>Evidence checks</dt><dd>{rowChecksWord(row.targets)}</dd></div>
       </dl>
+      {matched.map(({ target, match }) => (
+        <HumanMatchNote
+          key={match.observationId}
+          match={match}
+          names={humanMatches.names}
+          prefix={row.targets.length > 1 ? target.targetName : null}
+        />
+      ))}
       {row.duplicateIdentity || row.missingIdentity || row.disposition !== 'included' ? (
         <p className="record-review__row-note">
           {row.duplicateIdentity ? 'The source lists this record more than once. ' : ''}
@@ -515,6 +541,11 @@ export interface RecordReviewInspectorProps {
   readonly navigation: RecordReviewNavigation;
   readonly page: RecordReviewPage;
   readonly naming?: RecordNaming;
+  /**
+   * Which of the selected record's Observations a PERSON matched, read in the same
+   * transaction as the selection (Story 10.6, legacy 4.7). REQUIRED, as on the queue.
+   */
+  readonly humanMatches: HumanMatchIndex;
 }
 
 /**
@@ -536,6 +567,7 @@ export function RecordReviewInspector({
   navigation,
   page,
   naming = NO_RECORD_NAMING,
+  humanMatches,
 }: RecordReviewInspectorProps): React.JSX.Element {
   if (selection === null) {
     return (
@@ -600,7 +632,15 @@ export function RecordReviewInspector({
         <div className="record-review__target-list">
           {selection.row.targets.length === 0 ? <p>No target system was recorded for this source record.</p> : selection.row.targets.map((target) => {
             const observation = target.observationId === null ? null : observations.find((row) => row.observationId === target.observationId) ?? null;
-            return <CapturedTarget key={target.targetId} target={target} observation={observation} masked={masked} />;
+            return (
+              <CapturedTarget
+                key={target.targetId}
+                target={target}
+                observation={observation}
+                masked={masked}
+                humanMatches={humanMatches}
+              />
+            );
           })}
         </div>
         <section id="recorded-source-values" className="record-review__source-record" aria-labelledby="record-review-source-heading">
@@ -742,11 +782,15 @@ export function RecordReviewInspector({
   );
 }
 
-function CapturedTarget({ target, observation, masked }: {
+function CapturedTarget({ target, observation, masked, humanMatches }: {
   readonly target: RecordReviewTarget;
   readonly observation: RunObservationRow | null;
   readonly masked: ReadonlySet<string>;
+  readonly humanMatches: HumanMatchIndex;
 }): React.JSX.Element {
+  // Whether a PERSON matched this record on this system, and the decision that did: the
+  // candidate's own text is the Audit Agent's and is rendered inert (Story 10.6, 4.7).
+  const humanMatch = humanMatchFor(humanMatches, target.observationId);
   // Captured attributes are named like source fields; one the binding designates
   // sensitive is masked here exactly as it is in the source table (FR-41).
   const captured = observation === null ? [] : observation.attributes.map((attribute) =>
@@ -763,6 +807,7 @@ function CapturedTarget({ target, observation, masked }: {
         <div><dt>Found</dt><dd>{targetFound(target.found)}</dd></div>
         <div><dt>Observed</dt><dd>{observation === null ? 'Not recorded' : <Timestamp value={observation.observedAt} />}</dd></div>
       </dl>
+      {humanMatch === null ? null : <HumanMatchNote match={humanMatch} names={humanMatches.names} detail />}
       <h5 className="record-review__checks-heading">Evidence checks</h5>
       {observation === null ? (
         <p>Not checked yet: no Observation was recorded for this system.</p>

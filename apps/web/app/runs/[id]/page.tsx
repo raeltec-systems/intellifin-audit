@@ -26,6 +26,7 @@ import {
   EvidencePackageSection,
   ExecutionFailurePanel,
   FindingsSection,
+  HumanMatchesSection,
   PopulationReconciliation,
   SafeNextActionPanel,
   type FailedStep,
@@ -33,6 +34,8 @@ import {
 import { RESULT_WORDS } from '../../../src/runs/result-words';
 import { ConclusionTriptych } from '../../../src/runs/Triptych';
 import { RunDenied, RunDetailFrame, openRun, readEvaluationReview } from '../../../src/runs/detail';
+import { readHumanMatchIndex, readRunHumanMatchList } from '../../../src/runs/human-match-read';
+import { recordNaming } from '../../../src/runs/record-words';
 import { utcStamp } from '../../../src/runs/labels';
 import { isStoppedState } from '../../../src/runs/stop-reason';
 
@@ -121,6 +124,19 @@ export default async function RunResultPage({
   const systemName = (registrationId: string): string | null =>
     version?.compiledPlan?.inputs.targets.find((target) => target.registrationId === registrationId)?.displayName ?? null;
 
+  // The human-selected matches (Story 10.6, legacy 4.7): among the records the Result
+  // names, by the record it names them by, and every one of the Run's, for the Result's own
+  // list — each read from the registration link, never by lining a wait up by time.
+  const namedRecords = result?.publication === null || result?.publication === undefined
+    ? []
+    : [...result.publication.exceptions.records, ...result.publication.unevaluated.records]
+      .map((record) => ({ targetSystem: record.targetSystem, populationRecordKey: record.populationRecordKey }));
+  const [findingMatches, humanMatchList] = await Promise.all([
+    readHumanMatchIndex(runtime.db, run.runId, { records: namedRecords }),
+    readRunHumanMatchList(runtime.db, run.runId),
+  ]);
+  const naming = recordNaming(version?.compiledPlan ?? null);
+
   const declaredCountPassed =
     population?.summary?.checks.find((check) => check.name === 'declared-count')?.passed ?? null;
   const publication = result?.publication ?? null;
@@ -182,6 +198,7 @@ export default async function RunResultPage({
             conditionText={conditionText}
             templateId={templateId}
             systemName={systemName}
+            humanMatches={findingMatches}
           />
 
           {/* 4. Coverage, scope and the reconciliation, compact. */}
@@ -204,6 +221,10 @@ export default async function RunResultPage({
           />
         </>
       )}
+
+      {/* 3b. Every record a person matched, whether or not the Result names it. Read
+             beside the sealed document; renders nothing for a Run with no such match. */}
+      <HumanMatchesSection list={humanMatchList} runId={run.runId} systemName={systemName} naming={naming} />
 
       {/* 5. The evidence checks: a summary line, the failed rows open, the passed rows
              behind a disclosure. */}

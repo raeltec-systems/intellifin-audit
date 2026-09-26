@@ -11,6 +11,7 @@ import { labelPartsWords, recordLabelParts, type RecordNaming } from './record-w
 import { readSimpleCondition } from '../procedures/simple-condition';
 import { fieldWords } from '../procedures/condition-words';
 import { Criterion } from './Criterion';
+import { HumanMatchNote, humanMatchFor, type HumanMatchIndex } from './HumanMatch';
 import { replayInspectionHref } from './replay';
 import { UntrustedList, UntrustedText } from './UntrustedText';
 import { evaluationOriginWord, evaluationValueWord, utcStamp } from './labels';
@@ -53,6 +54,7 @@ export function ExceptionCard({
   masked,
   recordName = null,
   naming,
+  humanMatches,
 }: {
   readonly exception: RunExceptionRow;
   /** The per-condition evaluations of this Exception's own Observation. */
@@ -74,6 +76,12 @@ export function ExceptionCard({
   readonly recordName?: string | null;
   /** Which column names a record and whether the frozen binding masks it. */
   readonly naming?: Pick<RecordNaming, 'nameColumn' | 'nameMasked'>;
+  /**
+   * The human-selected matches this page read (Story 10.6, legacy 4.7). REQUIRED, so a
+   * caller cannot leave a person's match unshown by forgetting to read it; a page that read
+   * none passes `NO_HUMAN_MATCHES`.
+   */
+  readonly humanMatches: HumanMatchIndex;
 }): React.JSX.Element {
   // ONE label rule for the record queue, the inspector, this card and Replay (UX-25).
   const label = recordLabelParts(
@@ -86,6 +94,9 @@ export function ExceptionCard({
   // set the finding was raised under is under Technical details, where it belongs: it is
   // what the fingerprint is bound to and never what a reader acts on today.
   const failing = exception.effectiveConditionIds;
+  // A finding on a record a PERSON matched says so, with the decision that matched it: an
+  // Exception raised on a human-selected match rests on that choice (Story 10.6, 4.7).
+  const humanMatch = humanMatchFor(humanMatches, exception.observationId);
   return (
     <li className="ls-exception ls-stack" id={`exception-${exception.exceptionId}`}>
       <div className="ls-exception__header">
@@ -104,6 +115,7 @@ export function ExceptionCard({
           {groundedText(observation.identity.originalValue)}
         </UntrustedText>
       )}
+      {humanMatch === null ? null : <HumanMatchNote match={humanMatch} names={humanMatches.names} detail />}
 
       <h4 className="ls-overline">{EXCEPTION_WORDS.failedCriterion}</h4>
       {failing.length === 0 ? (
