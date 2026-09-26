@@ -12,7 +12,7 @@ import {
   wakeEscalation,
   type Clock,
 } from '@intellifin/application';
-import { classifyPlanTargets, sha256HexOfBytes, utf8Bytes } from '@intellifin/domain';
+import { classifyPlanTargets, sha256HexOfBytes, utf8Bytes, type AuditEventType } from '@intellifin/domain';
 import {
   createAuditEventWriter,
   createDb,
@@ -364,7 +364,7 @@ describe.skipIf(!url)('the decisions on the Execution Timeline, on PostgreSQL', 
     it('reads a request to pause at once that the Run outran, with who asked and when', async () => {
       const runId = await startRun();
       const paused = await pauseRun(
-        { requireControllerLease: false, roles: new DrizzleRoleRepository(db), unitOfWork: new PostgresRunsUnitOfWork(db),
+        { roles: new DrizzleRoleRepository(db), unitOfWork: new PostgresRunsUnitOfWork(db),
           repository: new PostgresWaitRepository(db), ids, clock: new SystemClock() },
         { session, request: { runId } },
       );
@@ -402,7 +402,7 @@ describe.skipIf(!url)('the decisions on the Execution Timeline, on PostgreSQL', 
       const runId = await startRun();
       const repository = new PostgresWaitRepository(db);
       expect(await pauseRun(
-        { requireControllerLease: false, roles: new DrizzleRoleRepository(db), unitOfWork: new PostgresRunsUnitOfWork(db),
+        { roles: new DrizzleRoleRepository(db), unitOfWork: new PostgresRunsUnitOfWork(db),
           repository, ids, clock: new SystemClock() },
         { session, request: { runId } },
       )).toMatchObject({ ok: true });
@@ -428,7 +428,7 @@ describe.skipIf(!url)('the decisions on the Execution Timeline, on PostgreSQL', 
 
       // Superseded-looking events, each from a writer that differs from the true one in
       // exactly ONE field, so every field of the writer filter is what refuses one of them.
-      const forge = (eventType: string, actor: { readonly type: 'human' | 'agent' | 'adapter' | 'system'; readonly id: string },
+      const forge = (eventType: AuditEventType, actor: { readonly type: 'human' | 'agent' | 'adapter' | 'system'; readonly id: string },
         source: 'web' | 'worker' | 'adapter' | 'platform', outcome: 'success' | 'failure' | 'denied') =>
         db.transaction((tx) => createAuditEventWriter(tx, new SystemClock(), ids).append({
           actor, eventType, source, outcome, aggregateId: runId, correlationId: ids.next(), sessionId: session.sessionId,

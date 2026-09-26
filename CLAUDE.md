@@ -48,6 +48,10 @@ event is rewritten. Contracts: `durable-escalation-v1.md` (35c–35f), `run-paus
 - **A cropped screenshot is not a measurement.** In one crop the two section headings looked
   different sizes; `getComputedStyle` read 16px/600 for both, and all seven entries of the two
   lists had the same gap, padding, border, left edge and width. Measure before changing CSS.
+- **Vitest does not check types.** The integration file passed 6/6 three times while it gave
+  `pauseRun` a `requireControllerLease` dependency it does not have (a pause takes no
+  controller lease) and typed a forged event type as `string`; only the root `pnpm typecheck`
+  refused both. Run it before committing a test file, not only after.
 
 ## 2026-09-26 — A fact the records do not link is linked on new events, and read by identity (Story 10.6)
 
