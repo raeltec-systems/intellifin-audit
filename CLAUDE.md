@@ -28,6 +28,11 @@
   asks it before `refresh()` and keeps the Run-ending latch unconditional; and
   `refresh-events.test.ts` refuses any other direct `<LiveBanner` mount. `BellLive` keeps its
   own filter. The stream still carries every family; only the re-read skips three.
+  `surface-refresh.spec.ts` proves both paths with the real worker's grants: the inspector is
+  re-read once for a Run event and then holds at four `evidence-access.*` events past a
+  heartbeat (without the filter: 28), and Live View loads its frame with no re-read (without
+  the filter: 2). Its trigger is a `failure.retry` append, not a flag: the bell re-reads on a
+  flag too, so a flag's re-read count would depend on timing.
 - **Prove a WAKE-UP, not a heartbeat or a replay.** Open the per-Run stream one event behind
   the head, wait for that replayed frame, keep the heartbeat a minute away and the delivery
   deadline far below it. Count raw wake-ups on a second LISTEN and flush with a probe NOTIFY
