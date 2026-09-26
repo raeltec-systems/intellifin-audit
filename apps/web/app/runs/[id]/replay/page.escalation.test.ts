@@ -7,7 +7,7 @@ vi.mock('@intellifin/infrastructure', () => ({
   REPLAY_INSPECTION_PAGE_SIZE: 100, REPLAY_PAGE_SIZE: 500, readRecordNames: async () => new Map(),
   DrizzleRunDetailRepository: class {
     readInspectionReplay = calls.read; readTimeline = calls.prefix; readFrames = calls.frames;
-    readWaits = calls.waits; readObservationDeltas = async () => []; readExceptions = async () => ({ rows: [] });
+    readEscalations = calls.waits; readReplayExceptions = async () => ({ rows: [], total: 0 });
     readEvidenceItems = async () => []; readEvidenceItemsByIds = async () => [];
     readReplayGaps = async () => ({ missing: 0, suppressed: 0, rows: [] });
   },
@@ -55,8 +55,8 @@ beforeEach(() => {
   calls.prefix.mockResolvedValue({ workItems: [], stepExecutions: { rows: [] }, toolActions: { rows: [] }, sessionSteps: [], workspace: null });
   calls.frames.mockResolvedValue({ rows: [frameRow(1), frameRow(2), frameRow(3)], total: 3 });
   // Raised after the second frame, so its jump target is that frame.
-  calls.waits.mockResolvedValue([{ waitId, kind: 'retry-or-skip', openedAt: '2026-09-20T10:02:30.000Z',
-    closedAt: at(4), closureKind: 'answer', answerOptionId: 'abort' }]);
+  calls.waits.mockResolvedValue({ rows: [{ waitId, kind: 'retry-or-skip', openedAt: '2026-09-20T10:02:30.000Z',
+    closedAt: at(4), closureKind: 'answer', answerOptionId: 'abort', framesThrough: 2, landing: null }], total: 1 });
 });
 
 describe('Replay opened at an answered Escalation', () => {

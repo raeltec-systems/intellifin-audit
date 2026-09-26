@@ -1,3 +1,18 @@
+## 2026-09-26 — Decision-history review reads a total and its rows together (Story 10.10 continuation)
+
+A bounded history's count and rows must share a statement snapshot while another decision
+commits. Use a window count in the row query, including a zero-limit request; do not count
+first and then read a newer list. The regression test commits a second fact after the first
+real SELECT resolves and checks that the returned count still describes its rows.
+
+Supporting Evidence IDs are accepted as case-insensitive UUID text but PostgreSQL returns
+lowercase UUIDs. Normalize the map lookup, not the immutable event. Sentences that name an
+instant leave a slot for the shared `Timestamp`, retaining exact `datetime` and `title` with
+readable UTC text. Independent raise-writer negatives and absent/duplicate/mismatched Abort
+events pin the existing read contract; invalid option duplicates are already refused by the
+real raise command. Sheet 2B, omitted-history access and a request-aware introduction remain
+owner decisions, and this continuation remains WIP pending the database/browser gates.
+
 ## 2026-09-26 — A decision a Run recorded is a Timeline entry, read by identity (Story 10.10)
 
 Story 10.10 meets legacy 4.8 AC 4, 5.6 AC 3 and 5.4 AC 3: an answered or aborted Escalation and
@@ -53,6 +68,88 @@ event is rewritten. Contracts: `durable-escalation-v1.md` (35c–35f), `run-paus
   controller lease) and typed a forged event type as `string`; only the root `pnpm typecheck`
   refused both. Run it before committing a test file, not only after.
 
+## 2026-09-26 — Preserve the database's Replay landing ordinal (Story 10.9 continuation)
+
+`readEscalations` compares stored timestamps at database precision. The default Replay prefix
+must use its `framesThrough` ordinal for every landing, not recompute the in-prefix case with
+`Date.parse`: distinct stored instants can collapse into one millisecond and select a capture
+that happened after the question. Two red-green regressions cover an intervening wait and a
+wait before the first capture within the same rendered millisecond.
+
+A clicked record's optional frame denominator cannot be calculated from a bounded session
+prefix. Withhold that denominator when the full record total is unknown; retain the exact
+session counter. An inspection page has no jump buttons and does not enter that clicked state.
+The bounded-history P-4 fixture uses retry-or-skip decisions; P-4 refuses candidate matching.
+
+## 2026-09-26 — A bounded Replay view says what it covers, and the count beside a frame is exact (Story 10.9)
+
+Story 10.9 closes legacy 5.8's limitation (2): Replay's default view read its waits, its
+Observation-registration events and its Exceptions in pages of `REPLAY_PAGE_SIZE` (500) and
+said nothing when a page was full. No migration, no event type, no raised limit (the owner did
+not approve raising one). Contract: `replay-v1.md`, "A bounded jump list says what it covers".
+
+- **A count beside a frame is computed per frame in SQL, never summed from a bounded page.**
+  The view summed the first 500 registration events in the browser, so past them the count
+  stopped short while its sentence read as a total. `readFrames` now answers each frame's
+  count through `observationTotals`, the ONE fragment `readInspectionReplay` also uses, so one
+  frame cannot have two counts. Sixth appearance of "a limit belongs to the cardinality of the
+  read".
+- **A bounded list carries its exact total and says what it shows, ABOVE the list, in the
+  owner's words** (`REPLAY_BOUND_WORDS`). `readEscalations` and `readReplayExceptions` answer
+  `{ rows, total }`; `shown` is counted from the targets the list renders, never taken from a
+  read, so the sentence always describes the list under it. A pause is neither listed nor
+  counted: it is not a jump target.
+- **"The first N" must be true of the Run, so each list is read in RAISE order.** Exceptions
+  were read by `exception_id`, a derived UUIDv8 (a hash), so the 500 shown were an arbitrary
+  500. One registration raises its whole batch at one instant (a P-4 page raises every
+  parameter's Exception at once), so within an instant they are read by record, byte-wise
+  (`COLLATE "C"`), and the jump list keeps each read's order where targets tie on a frame.
+  An order no reader can see is no order: by id, a P-4 page's Exceptions were listed in none.
+- **An Escalation's landing frame is found over EVERY frame the Run registered.** Resolved over
+  the 500 frames read, an Escalation raised after them landed on the last frame read, a screen
+  the question was not about. The read returns how many frames precede its frame and the
+  inspection page (`?workItem=&cursor=`) that holds it; the row says the frame is not among
+  those shown and links that page.
+- **The rest is reached through the path that already exists.** "record review" in the
+  owner's sentence links the Evidence tab, where a record's inspector offers **Replay this
+  inspection**. No new route and no new read.
+- **Reading the screenshots found what every test passed over.** The default view's counter
+  said `Frame 500 of 500` over a Run of 520 frames, the bound presented as the session while
+  its inspection pages said `of 520`; it counts among every retained frame now. The
+  Exceptions of a P-4 page were listed in no order (above). The bound sentences, as three
+  paragraphs in an `ls-stack`, were spaced like three items of the card; they are one note,
+  a sentence to a line. And a row with no frame sat off the buttons' text edge in another
+  size; it shares their edge, size and row height now. A test asserts what it was told to;
+  only a reader looking at the page asks whether the page is true.
+
+Three mechanical notes:
+
+- **`jsonb_to_recordset` matches keys to its column list by exact name, and a key that does not
+  match is NULL, not an error.** The integration fixture's camelCase `stepExecutionId`
+  inserted NULLs until the keys were `step_execution_id`.
+- **`ORDER BY sequence` names the OUTPUT column when the select list has one called
+  `sequence`.** The test oracle selected `sequence::text AS sequence` and so ordered
+  1, 10, 100, ...; qualify it (`ORDER BY audit_events.sequence`).
+- **The over-the-bound browser fixture is its own spec file** (`replay-bounded-history.spec.ts`),
+  because Story 10.6's branch edits `replay.spec.ts`. It seeds one sealed, terminal Run in ONE
+  transaction, with its frame objects in storage BEFORE the commit: the worker's integrity
+  sweep reads a sealed package's artifacts, and a missing object is a permanent finding.
+
+## 2026-09-26 — Review continuation keeps exact reads exact (Story 10.6)
+
+- Adapter Evidence readers accept at most 64 IDs. Batch distinct IDs at the caller; an
+  exact read must not silently drop the 65th artifact. A later batch failure keeps the
+  existing unreadable result for the whole read.
+- A pause while revisiting an acquired adapter reference holds the next unfinished unit.
+  Preserve cancellation checks at their original boundaries. If no unit remains, leave
+  the pause request for the next stage or terminal transition.
+- A metadata link beyond a bounded overview carries an exact selector. Resolve it only
+  after Run authorization, through the Run-bound reader, and deduplicate its anchor.
+- Keep record keys such as `E-000102` in the existing `ls-nowrap` span; Chromium breaks at
+  their hyphens. `completeRun` seals the result but does not itself move the Run state.
+- Handover sheet 1 is approved. Sheet-2 pause changes A1–A5 and the optional event payload
+  fields remain pending; a successful test is not owner approval.
+
 ## 2026-09-26 — A fact the records do not link is linked on new events, and read by identity (Story 10.6)
 
 Story 10.6 meets five compiler-1 visibility legs the closure register found on the retained
@@ -84,6 +181,20 @@ identity and says what an older record does not hold. Contracts: `run-pause-v1.m
   decision is not linked; a pause whose event named no step says its step was not recorded;
   a hold the banner cannot read says so. Nothing pairs a wait with a record, or a resume with
   an attempt, by time.
+- **A pause fixture sits where a stage really holds one.** The sign-in and adapter stages
+  pause only BETWEEN units; only the Work Item stage supersedes an attempt in flight, and it
+  gives the attempt back, so the restarted attempt carries the SAME number and only its Step
+  Execution tells the two apart. The first browser journey superseded a sign-in attempt and
+  restarted it as attempt 2 — a shape no Run produces — and passed. `pause-resume.spec.ts`
+  now holds the first pause before the sign-in and the second mid-attempt at the page's
+  inspection (a P-4 Work Item, subject key NULL).
+- **A human-selected match exists only in a P-1 Run.** The P-4 page path refuses a
+  choose-candidate decision (`human-decision-refused`); only P-1's name search offers two
+  accounts. The first `human-match.spec.ts` fixture recorded a human match in a P-4 Run and
+  passed. It is a P-1 Run now — LoanCore from the catalogue, one Work Item per record, the
+  leavers binding's own mask on `full_name` — and it asserts no surface beside the decision
+  note shows a masked name (proven by removing the mask: the Exceptions list and the record
+  review then fail).
 - **A selection a read cannot answer whole is refused, never cut.**
   `MATCH_DECISION_SELECTOR_LIMIT` is sized from the callers' own page limits; a dropped entry
   would render a human match as a platform one.

@@ -2,7 +2,6 @@ import Link from 'next/link';
 
 import type { RunEscalationAnswerEntry } from '@intellifin/infrastructure';
 
-import { readableStamp } from '../design/time';
 import type { EscalationAnswersView } from './decision-read';
 import {
   ESCALATION_ANSWER_WORDS,
@@ -80,7 +79,7 @@ function EscalationAnswerEntry({ entry, name, actorNames, runId, replayable }: {
     <li className="ls-escalation-answers__entry" data-wait-id={entry.waitId} data-answer={entry.answer.kind}>
       <h3 id={headingId}>{escalationAnswerTitle(entry.kind)}</h3>
       <p className="ls-escalation-answers__line" id={answeredId}>
-        <NamedSentence sentence={answeredByWords(readableStamp(entry.answeredAt))} id={entry.answeredBy} names={actorNames} />
+        <NamedSentence sentence={answeredByWords('{time}')} id={entry.answeredBy} names={actorNames} at={entry.answeredAt} />
       </p>
       <p className="ls-escalation-answers__line">
         {escalationAnswerWords(entry.kind, entry.answer)}

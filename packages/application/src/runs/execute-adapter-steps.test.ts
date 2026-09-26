@@ -866,6 +866,21 @@ describe('executeAdapterSteps', () => {
     expect(test.repository.gate).toHaveLength(firstGate);
   });
 
+  it('does not hold a pause at an acquired reference when every adapter unit already finished', async () => {
+    const test = harness({ plan: plan([reference, adapter]) });
+    await executeAdapterSteps(test.deps, JOB);
+    const attempts = test.repository.executions.length;
+    test.repository.checkpoint = { ...test.repository.checkpoint!, status: 'RETRY' };
+    test.repository.run = {
+      ...test.repository.run, state: 'RUNNING',
+      pauseRequest: { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-04T23:59:00.000Z' },
+    };
+    await executeAdapterSteps(test.deps, JOB);
+    expect(test.repository.pauseWaits).toEqual([]);
+    expect(test.repository.executions).toHaveLength(attempts);
+    expect(test.repository.checkpoint?.status).toBe('EXTRACTION_COMPLETE');
+  });
+
   it('fails the Run terminally when a frozen Reference Source artifact no longer matches its digest', async () => {
     const test = harness({ plan: plan([reference, adapter]) });
     await executeAdapterSteps(test.deps, JOB);
@@ -1387,6 +1402,48 @@ describe('executeAdapterSteps', () => {
     const paused = test.repository.events.find((entry) => entry.eventType === 'lifecycle.run-paused')!;
     expect(paused.payload).toMatchObject({ planStepId: items[1]!.stepId, heldWorkItemId: items[1]!.workItemId });
     expect(paused.payload).not.toHaveProperty('stepExecutionId');
+  });
+
+  it('holds a repeated pause after an acquired reference at the pending Work Item and links its resumed attempt', async () => {
+    const pauseRequest = { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-04T23:59:00.000Z' };
+    const test = harness({
+      plan: plan([reference, adapter]),
+      reference: async (entry) => {
+        test.wire.push({ location: entry.contract.allowed_origins[0]!, authorization: null });
+        test.repository.run = { ...test.repository.run, pauseRequest };
+        return { bytes: utf8Bytes(ROLE_MATRIX), mediaType: 'text/csv', location: entry.contract.allowed_origins[0]! };
+      },
+    });
+    await executeAdapterSteps(test.deps, JOB);
+    expect(test.repository.steps.get('session-2')?.state).toBe('ACQUIRED');
+    const item = [...test.repository.items.values()][0]!;
+    expect(item.state).toBe('PENDING');
+    expect(test.repository.run.state).toBe('PAUSED');
+
+    // Resume, then pause again before the stage starts more work. Its loop revisits the
+    // acquired reference to verify its bytes, but that reference starts no new attempt.
+    test.repository.run = { ...test.repository.run, state: 'RUNNING', pauseRequest };
+    await executeAdapterSteps(test.deps, JOB);
+    const pauses = test.repository.events.filter((entry) => entry.eventType === 'lifecycle.run-paused');
+    expect(pauses).toHaveLength(2);
+    const held = pauses[1]!.payload;
+    expect(held).toMatchObject({ planStepId: item.stepId, heldWorkItemId: item.workItemId });
+    expect(held).not.toHaveProperty('stepExecutionId');
+    expect(test.wire).toHaveLength(1);
+
+    // Feed the durable hold back through the repository port, then run the real stage.
+    const waitId = String(held['waitId']);
+    test.repository.pendingResume = {
+      waitId, planStepId: String(held['planStepId']), workItemId: String(held['heldWorkItemId']),
+    };
+    test.repository.run = { ...test.repository.run, state: 'RUNNING' };
+    await executeAdapterSteps(test.deps, JOB);
+    const starts = test.repository.events.filter((entry) => entry.payload['diagnostic'] === 'work-item-attempt-started');
+    expect(starts).toHaveLength(1);
+    expect(starts[0]!.payload).toMatchObject({ resumedWaitId: waitId, workItemId: item.workItemId });
+    expect(test.repository.executions.find((execution) => execution.stepExecutionId === starts[0]!.payload['stepExecutionId']))
+      .toMatchObject({ planStepId: item.stepId, workItemId: item.workItemId, state: 'SUCCEEDED' });
+    expect(test.repository.events.filter((entry) => entry.payload['diagnostic'] === 'reference-attempt-started')).toHaveLength(1);
   });
 
   it('writes the resume onto the Reference Source attempt it restarts, and onto no later unit', async () => {

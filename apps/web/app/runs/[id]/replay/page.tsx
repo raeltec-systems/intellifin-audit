@@ -16,7 +16,7 @@ import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
 import { captureSentence, runLifecycleWord, workItemLabel } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
 import { frameNarration, plannedStepCount, readAdapterLog, stepNarration } from '../../../../src/runs/live-view';
-import { REPLAY_GAP_WORDS, effectiveFrameWorkItemId, replayEscalationSelection, replayInitialSelection, replayJumpTargets, replayObservationsThrough, replayRequest, replaySelectionKey, replayViewerKey, resolveFrameWorkItems, type ReplayGapsView } from '../../../../src/runs/replay';
+import { REPLAY_GAP_WORDS, effectiveFrameWorkItemId, replayEscalationSelection, replayInitialSelection, replayJumpTargets, replayRequest, replaySelectionKey, replayViewerKey, resolveFrameWorkItems, type ReplayGapsView } from '../../../../src/runs/replay';
 import { recordNaming, recordWords } from '../../../../src/runs/record-words';
 import { toolActionNarration } from '../../../../src/runs/session-words';
 
@@ -150,6 +150,8 @@ export default async function RunReplayPage({
           plannedSteps={plannedStepCount(plan)}
           stageNote={null}
           jumpTargets={[]}
+          // One record's captures list no jump targets, so there is no list to bound.
+          jumpTotals={null}
           initialSelection={selected.kind === 'unavailable'
             ? { kind: 'unavailable', frameIndex: null }
             : { kind: 'inspection', frameIndex: views.length === 0 ? null : 0,
@@ -174,12 +176,16 @@ export default async function RunReplayPage({
   // frames this surface renders — up to `REPLAY_FRAME_LIMIT` of them — so a fifty-row
   // default silently dropped later Tool Actions, jump targets and Observation deltas from
   // a Run that had more than fifty. See `REPLAY_PAGE_SIZE`.
-  const [timeline, frames, waits, deltas, exceptions, plan, gapRead] = await Promise.all([
+  //
+  // A bound is still a bound (Story 10.9). The Escalations and the Exceptions are read with
+  // their EXACT totals, which the jump list states whenever it names fewer; each frame
+  // carries its exact Observation count, counted in SQL over the whole registration
+  // history, because a page of registration events undercounted every later frame.
+  const [timeline, frames, escalations, exceptions, plan, gapRead] = await Promise.all([
     detail.readTimeline(run.runId, REPLAY_PAGE_SIZE),
     detail.readFrames(run.runId),
-    detail.readWaits(run.runId, REPLAY_PAGE_SIZE),
-    detail.readObservationDeltas(run.runId, REPLAY_PAGE_SIZE),
-    detail.readExceptions(run.runId, REPLAY_PAGE_SIZE),
+    detail.readEscalations(run.runId, REPLAY_PAGE_SIZE),
+    detail.readReplayExceptions(run.runId, REPLAY_PAGE_SIZE),
     new DrizzleFrozenExecutionReader(runtime.db).readFrozenExecution(run.versionId, run.procedureId),
     // The actions that left no frame (Story 10.6, legacy 5.2). Read with the predicate the
     // terminal transition used for `failure.frame-missing`, so this surface and the Result
@@ -253,7 +259,7 @@ export default async function RunReplayPage({
         captureSuppression: action.captureSuppression,
         startedAt: action.startedAt,
       },
-      observations: replayObservationsThrough(deltas, frame),
+      observations: frame.observations,
     };
   });
 
@@ -266,7 +272,7 @@ export default async function RunReplayPage({
       workItemId: row.workItemId,
       populationRecordKey: subjectLabel(row.populationRecordKey) ?? row.populationRecordKey,
     })),
-    waits,
+    waits: escalations.rows,
   });
   // A Timeline entry's "Open in Replay" names its Escalation; it opens at that jump target,
   // resolved against this Run's own targets and said in words when it cannot (Story 10.10).
@@ -309,6 +315,7 @@ export default async function RunReplayPage({
         plannedSteps={plannedStepCount(plan)}
         stageNote={REPLAY_COPY.noFrames}
         jumpTargets={targets}
+        jumpTotals={{ escalations: escalations.total, exceptions: exceptions.total }}
         initialSelection={initialSelection}
         instructions={(plan?.inputs.instructions ?? []).map((instruction) => ({
           system: targetName(instruction.registrationId) ?? instruction.registrationId,

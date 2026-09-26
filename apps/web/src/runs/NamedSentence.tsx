@@ -1,18 +1,25 @@
+import { Fragment } from 'react';
+
+import { Timestamp } from '../design/Timestamp';
 import { ActorName } from './ActorName';
-import { aroundName } from './decision-words';
 
 /**
  * A sentence with a `{name}` slot, the slot filled by `ActorName` — the one way a surface
  * prints a person — and the rest of the sentence exactly as the words module holds it
- * (Story 10.10). A sentence with no slot, or no person to put in it, is said as it is.
+ * (Story 10.10). A time slot uses the shared exact Timestamp; unresolved slots stay literal.
  */
-export function NamedSentence({ sentence, id, names }: {
+export function NamedSentence({ sentence, id, names, at }: {
   readonly sentence: string;
   /** The person the slot names; `null` when the record names nobody. */
   readonly id: string | null;
   readonly names: ReadonlyMap<string, string>;
+  /** Exact stored instant for a sentence that leaves a `{time}` slot. */
+  readonly at?: string | null;
 }): React.JSX.Element {
-  const parts = aroundName(sentence);
-  if (parts === null || id === null) return <>{sentence}</>;
-  return <>{parts[0]}<ActorName id={id} names={names} />{parts[1]}</>;
+  return <>{sentence.split(/(\{name\}|\{time\})/u).map((part, index) => (
+    <Fragment key={index}>
+      {part === '{name}' && id !== null ? <ActorName id={id} names={names} />
+        : part === '{time}' && at != null ? <Timestamp value={at} /> : part}
+    </Fragment>
+  ))}</>;
 }

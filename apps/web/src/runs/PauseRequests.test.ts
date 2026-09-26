@@ -38,7 +38,7 @@ const OUTRUN: RunPauseRequestEntry = {
   eventId: '019823ab-0000-7000-8000-0000000000b1',
   mode: 'immediate',
   requestedBy: AUDITOR,
-  requestedAt: '2026-09-26T09:20:00.000Z',
+  requestedAt: '2026-09-26T09:20:00.456Z',
   supersededAt: '2026-09-26T09:25:00.000Z',
   outcome: 'run-ended',
   inspection: null,
@@ -66,7 +66,7 @@ describe('a pause request the Run never honoured, in "Pauses and resumes"', () =
     const html = render({ total: 0, entries: [] }, { total: 1, entries: [OUTRUN] });
     expect(html).toContain(PAUSE_WORDS.heading);
     expect(html).toContain(`<h3>${PAUSE_REQUEST_WORDS.title}</h3>`);
-    expect(html).toContain(`Requested by Daniel Okonjo at ${readableStamp(OUTRUN.requestedAt!)}.`);
+    expect(html).toContain(`Requested by Daniel Okonjo at <time dateTime="${OUTRUN.requestedAt!}" title="${OUTRUN.requestedAt!}">${readableStamp(OUTRUN.requestedAt!)}</time>.`);
     expect(html).toContain(PAUSE_REQUEST_WORDS.runEnded);
     expect(html).toContain('data-pause-request="immediate"');
     expect(html).not.toContain(AUDITOR);

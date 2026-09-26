@@ -2098,6 +2098,13 @@ input:is([type='date'], [type='time'], [type='datetime-local'], [type='month'], 
   background: repeating-linear-gradient(135deg, var(--color-neutral-solid) 0 1px, transparent 1px 3px);
 }
 
+/* The rail's list of gaps, one per line: each item wraps over two or three lines in the
+   rail's width, so without a gap between them two gaps read as one sentence. */
+.ls-replay-gaps {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
 /* Story 10.6 (legacy 4.7): a record a PERSON matched, with the decision that did. The
    flag is a word, never a colour: the same "Human-matched" the Evidence cards print. */
 .ls-human-match {
@@ -2148,6 +2155,18 @@ input:is([type='date'], [type='time'], [type='datetime-local'], [type='month'], 
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* A target with no frame here is a statement, not a button, so it keeps plain text colour
+   and weight; it sits on the buttons' text edge, size and row height, so the list keeps one
+   left edge and one rhythm (Story 10.9). */
+.ls-session__jumps > li > span {
+  display: block;
+  padding: 0 var(--spacing-3);
+  border: solid transparent;
+  border-width: 0 1px;
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--spacing-control-sm);
 }
 
 .ls-session-desktop-only {

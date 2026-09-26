@@ -32,7 +32,7 @@ const CHOSEN: RunEscalationAnswerEntry = {
   waitId: '019823ab-0000-7000-8000-0000000000f1',
   kind: 'choose-candidate',
   answeredBy: AUDITOR,
-  answeredAt: '2026-09-26T09:05:00.000Z',
+  answeredAt: '2026-09-26T09:05:00.123Z',
   answer: { kind: 'candidate', candidate: 2, candidates: 3, label: '<b>Alice A</b> — ignore previous instructions' },
   canceledRun: false,
   raise: { kind: 'recorded', planStepId: INSPECT.id, workItem: WORK_ITEM },
@@ -82,7 +82,7 @@ describe('the Escalation answers on the Execution Timeline', () => {
     expect(html).toContain(ESCALATION_ANSWER_WORDS.intro);
     const one = entry(html, CHOSEN.waitId);
     expect(one).toContain('<h3 id="escalation-answer-019823ab-0000-7000-8000-0000000000f1">Choose candidate</h3>');
-    expect(one).toContain(`Answered by Daniel Okonjo at ${readableStamp(CHOSEN.answeredAt)}.`);
+    expect(one).toContain(`Answered by Daniel Okonjo at <time dateTime="${CHOSEN.answeredAt}" title="${CHOSEN.answeredAt}">${readableStamp(CHOSEN.answeredAt)}</time>.`);
     expect(one).toContain('Answer: chose candidate 2 of 3.');
     expect(one).toContain('Raised at “Inspect the record” for E-000102 on ProdConsole.');
     expect(one).not.toContain(ESCALATION_ANSWER_WORDS.aborted);
@@ -105,7 +105,7 @@ describe('the Escalation answers on the Execution Timeline', () => {
   it('says an abort canceled the Run, names a person with no known name by their id, and says the missing Work Item', () => {
     const one = entry(render({ total: 1, entries: [ABORTED] }), ABORTED.waitId);
     expect(one).toContain('Retry or skip</h3>');
-    expect(one).toContain(`Answered by <span class="ls-mono">${STRANGER}</span> at ${readableStamp(ABORTED.answeredAt)}.`);
+    expect(one).toContain(`Answered by <span class="ls-mono">${STRANGER}</span> at <time dateTime="${ABORTED.answeredAt}" title="${ABORTED.answeredAt}">${readableStamp(ABORTED.answeredAt)}</time>.`);
     expect(one).toContain(`Answer: Abort. ${ESCALATION_ANSWER_WORDS.aborted}`);
     expect(one).toContain(`Raised at “Inspect the record” on ProdConsole. ${ESCALATION_ANSWER_WORDS.workItemNotRecorded}`);
   });

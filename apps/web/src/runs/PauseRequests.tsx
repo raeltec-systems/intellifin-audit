@@ -1,6 +1,5 @@
 import type { RunPauseRequestEntry } from '@intellifin/infrastructure';
 
-import { readableStamp } from '../design/time';
 import { PAUSE_REQUEST_WORDS, pauseRequestSentences, pauseRequestedByWords } from './decision-words';
 import { NamedSentence } from './NamedSentence';
 import type { PauseStepNamer } from './pause-words';
@@ -22,13 +21,13 @@ export function PauseRequestEntry({ entry, name, actorNames }: {
 }): React.JSX.Element {
   const requested = pauseRequestedByWords(
     entry.requestedBy,
-    entry.requestedAt === null ? null : readableStamp(entry.requestedAt),
+    entry.requestedAt === null ? null : '{time}',
   );
   return (
     <li className="ls-pause-history__entry" data-pause-request={entry.mode} data-event-id={entry.eventId}>
       <h3>{PAUSE_REQUEST_WORDS.title}</h3>
       <p className="ls-pause-history__line">
-        <NamedSentence sentence={requested} id={entry.requestedBy} names={actorNames} />
+        <NamedSentence sentence={requested} id={entry.requestedBy} names={actorNames} at={entry.requestedAt} />
       </p>
       <p className="ls-pause-history__line">{pauseRequestSentences(entry, name).join(' ')}</p>
     </li>

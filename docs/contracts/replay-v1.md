@@ -8,8 +8,8 @@ jump lands, and what a keystroke does. The asset set itself is
 
 The presentation logic is `apps/web/src/runs/replay.ts`, the component is
 `apps/web/src/runs/ReplayViewer.tsx`, the page is `apps/web/app/runs/[id]/replay/page.tsx`,
-and the reads are `readInspectionReplay`, `readFrames`, `readWaits` and `readObservationDeltas` on
-`DrizzleRunDetailRepository`.
+and the reads are `readInspectionReplay`, `readFrames`, `readEscalations`, `readReplayExceptions` and
+`readReplayGaps` on `DrizzleRunDetailRepository`.
 
 ## Replay reaches NOTHING outside this platform
 
@@ -72,12 +72,21 @@ Step's Work Item when present, otherwise the action's Work Item, matching narrat
 jump targeting. A selected page never calls itself the first N frames of the whole Run.
 
 The default view continues to show the earliest 500 frames with the exact retained total.
+Its counter, like an inspection page's, places a frame among EVERY frame the Run retained:
+the earliest 500 are the session's first 500, so the last of them is `Frame 500 of 520`,
+never `Frame 500 of 500`, which would present the bound as the session (Story 10.9).
 Work Item and Exception targets without a frame in that prefix offer **Open inspection
 Replay** when their Work Item identity is known; the prefix does not infer whether a later
-capture exists. Multi-system records retain separate links per inspection target.
+capture exists. Multi-system records retain separate links per inspection target. An
+Escalation whose landing frame lies past that prefix offers the same link, to the inspection
+page that HOLDS its frame (Story 10.9, below).
 
 Playing advances one frame every `FRAME_INTERVAL_MS` and STOPS at the last: a loop would
 make a finished session look like one still going.
+
+The optional clicked-record frame position is withheld when the default prefix is bounded:
+that prefix does not establish the record's complete frame total. The exact global frame
+counter remains visible.
 
 ## A Run that has not finished has no Replay
 
@@ -98,6 +107,7 @@ terminal one. It rendered nothing at all on a terminal Run until this surface ex
 | Work Item | its FIRST frame — jumping to a Work Item means starting at it |
 | Exception | the first frame of the Work Item it was raised against |
 | Escalation | the LAST frame captured at or before the wait was opened |
+| Escalation whose frame lies past the frames read | **none** in this view; the row says the frame is not among those shown and links the inspection page that holds it |
 | any of them, with no frame | **none**, and the row says so instead of offering a pill |
 
 An Escalation asks about a page, and the page it asks about is the last one captured before
@@ -110,8 +120,12 @@ and Escalations; a pause is a wait that asks nothing, the distinction generation
 in the database and `run-pause-v1.md` states.
 
 The list is ordered by the frame each target lands on, so it reads the way the session ran,
-with unreachable targets last; ties break on kind then id, so the order is deterministic
-rather than whatever the reads returned.
+with unreachable targets last; ties break on kind, then on the order the target's own read
+returned: Work Items in the Timeline's order, Exceptions and Escalations in the order they
+were raised. Each of those reads fixes its order, so the list is deterministic. The tie used
+to break on the id, which is no order a reader can see (an Exception's id is a hash): a P-4
+page raises its Exceptions against one frame, and they were listed in no order at all
+(Story 10.9).
 
 ## The Observation count beside a frame
 
@@ -121,14 +135,19 @@ a reader sees beside a frame is true of the moment that frame was taken. A paylo
 this build does not recognize is read as ABSENT rather than coerced: a chain row is
 immutable, and a fabricated count would be a fact nobody recorded.
 
-Selected-inspection pages compute this total in SQL over the complete registration-event
-history, including events at the action start and excluding later events. JSON strings
-are not numeric deltas. Only the requested frame page and its context are serialized;
-large frame and event histories are counted/ranked in the database. A single grouped
-registration-event scan and materialized cumulative total serve all selected page timestamps;
-there is no separate base-history sum for each frame. The default session
-view retains its existing bounded timeline/delta reads; it does not gain an unbounded
-history payload through inspection selection.
+Both views compute this total in SQL over the complete registration-event history,
+including events at the action start and excluding later events: `observationTotals` in
+`run-detail-repository.ts` is the ONE fragment, and `readFrames` and `readInspectionReplay`
+both use it, so the default view and an inspection page cannot give one frame two counts.
+JSON strings are not numeric deltas. Only the requested frames and their counts are
+serialized; large frame and event histories are counted/ranked in the database. A single
+grouped registration-event scan and materialized cumulative total serve every timestamp;
+there is no separate base-history sum for each frame. The default view used to sum a
+bounded page of 500 registration events in the browser, so after the 500th event its count
+stopped short of the truth while the sentence beside it read as a total (Story 10.9). The
+count is now EXACT, so the existing sentence "{count} had been registered when this screen
+was captured." stays true and no bound sentence is needed for it. `replayObservationsThrough`
+in `replay.ts` remains the reference rule the SQL is tested against.
 
 ## One session viewer, in two modes
 
@@ -202,6 +221,56 @@ Either sentence for a link that opened no frame points at the "Jump to" list ("C
 recorded target below.") only when that list holds a target WITH a frame: in a Replay whose
 targets all lack one, the pointer would send the reader to a list of absences. The sentences
 are proposed wording (`ESCALATION_REPLAY_WORDS` in `apps/web/src/runs/decision-words.ts`).
+
+## A bounded jump list says what it covers, and the rest stays reachable (Story 10.9)
+
+The default view reads its jump targets with the same bound as its frames
+(`REPLAY_PAGE_SIZE`, 500), and each read answers an EXACT total beside its bounded page, the
+pattern `readFrames` already had:
+
+- **`readEscalations`** reads the Run's Escalations, NEVER a pause (a pause is not a jump
+  target, above), in the order they were raised, with the exact total. For each one it also
+  reads, over EVERY frame the Run registered, how many frames precede its landing frame
+  (`framesThrough`) and, when that frame lies past the frames read, the Work Item that owns it
+  and the inspection page that holds it (`landing`: the Work Item and a cursor, the multiple
+  of `REPLAY_INSPECTION_PAGE_SIZE` below the frame's position in that inspection). The
+  landing rule is the one in the table above, with the same frame order and the same
+  ownership rule as the inspection pages. Within the default prefix the surface uses this
+  exact ordinal too: it does not repeat the timestamp comparison at JavaScript millisecond
+  precision, which can choose a capture made after the wait.
+- **`readReplayExceptions`** reads the Run's Exceptions in the order they were raised, with
+  the exact total, so "the first N" is a statement about the Run and not about whatever order
+  the rows were stored in. One registration raises its whole batch at one instant (a P-4 page
+  raises all its parameters' Exceptions at once), so within an instant they are read by
+  record, byte-wise (`COLLATE "C"`) so the order does not move with the database's collation,
+  and only then by id.
+
+When a total is larger than what the list shows, the list says so, above the list, in the
+owner's words (approved 2026-09-26, `REPLAY_BOUND_WORDS` in `replay.ts`):
+
+- "Showing the first {shown} of {total} Escalations."
+- "Showing the first {shown} of {total} Exceptions."
+- "To see one of the rest, open its record in the record review and choose Replay." — with
+  "record review" a link to the Run's Evidence tab, where a record's inspector offers
+  **Replay this inspection** (`?workItem=`), which opens that inspection's own frames.
+
+`{shown}` counts the targets the list really shows and `{total}` is the exact total; both are
+exact numbers. Under the bound neither sentence renders and the list is unchanged. The
+sentences are ONE note, a sentence to a line, directly under the heading and before the
+list, so a reader knows the list is partial before reading it and does not take each
+sentence for an item of the card. An Escalation the list shows whose frame lies past the frames read says so, as a target
+with no frame here, and links the inspection page that holds its frame
+(`… · not among the 500 frames shown · Open inspection Replay`); one whose frame belongs to no
+inspection says only that it is not among the frames shown. A row with no frame is text, not
+a button, and sits on the buttons' text edge, size and row height, so the list keeps one left
+edge. A selected-inspection page has no
+jump bound sentences: it is not the whole session. `REPLAY_PAGE_SIZE` and
+`REPLAY_FRAME_LIMIT` are unchanged (the owner did not approve raising them).
+
+`tests/integration/replay-bounded-history.test.ts` proves the totals, the order, the landing
+and the exact counts past every bound on PostgreSQL; `tests/e2e/replay-bounded-history.spec.ts`
+proves the presentation and both ways to the rest in a browser over a fixture that exceeds
+every bound, with WCAG 2.1 AA.
 
 ## The keyboard
 

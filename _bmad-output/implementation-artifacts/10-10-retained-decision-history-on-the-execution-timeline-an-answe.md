@@ -2,11 +2,13 @@
 title: 'Retained decision history on the Execution Timeline: an answered Escalation and a superseded pause are inspectable entries'
 type: 'fix'
 created: '2026-09-25'
-status: 'in-progress'
+status: 'blocked'
 review_loop_iteration: 0
 implementation_authorised: true
 implementation_authorisation: 'Owner, 2026-09-26: "go, new branches OK" (implement 10.6 to 10.10 on new branches); wording approved 2026-09-26 ("approve all")'
 baseline_revision: 'e8728b0c874b9f4e8981f07fbc6b707e819f372b'
+followup_review_recommended: true
+deferred: []
 context:
   - '_bmad-output/implementation-artifacts/legacy-review-closure-register.md'
   - '_bmad-output/planning-artifacts/epics.md'
@@ -115,3 +117,75 @@ A sentence this list does not hold is still Ask First.
 - tests: integration (the read on PostgreSQL 18), unit (words and branches), browser (each entry, WCAG 2.1 AA)
 
 **Acceptance Criteria:** as `epics.md`, Story 10.10.
+
+
+## Review Triage Log
+
+### 2026-09-26 — Continuation review pass
+
+- intent_gap: 3 (medium 3): omitted-history access, late Replay target continuation, and
+  pause-section introduction for requests that never took effect remain unresolved.
+- bad_spec: 0
+- patch: 5 (medium 3, low 2)
+- defer: 0
+- reject: 3
+- addressed_findings:
+  - `[medium]` `[patch]` Read each exact total and bounded history from one statement snapshot.
+  - `[medium]` `[patch]` Normalize case-insensitive Evidence UUID lookup without rewriting events.
+  - `[medium]` `[patch]` Preserve the exact decision instant through the shared Timestamp component.
+  - `[low]` `[patch]` Test each raise-writer condition independently.
+  - `[low]` `[patch]` Test missing, duplicate and inconsistent Abort event attribution independently.
+
+Patched score: 11; follow-up review recommended. The nonfinite-limit suggestion has no
+external caller supplying such a value; the two malformed-writer/option theories are
+rejected on the producer evidence below. Pending owner decisions are blocking conditions,
+not deferred pre-existing defects.
+
+The four review passes are complete. The continuation remains work in progress; the
+frozen intent, original baseline and approved wording above are unchanged.
+
+| Finding | Disposition and evidence |
+|---|---|
+| Separate counts and lists can observe different committed states | Fixed. Each bounded list selects its total with `count(*) over()` in the same statement, including the zero-limit read. Added PostgreSQL tests that commit a second answer/supersession after the first statement has read its snapshot. |
+| Uppercase supporting Evidence UUID does not find its Work Item in the JavaScript map | Fixed. `raiseEscalation` accepts case-insensitive UUID text, while PostgreSQL returns lowercase UUIDs. Normalize the lookup key, without rewriting the event. Added a real-command uppercase Evidence case. |
+| Decision times lose the exact stored instant | Fixed. Answer and request sentences render the shared `Timestamp` with readable UTC text and exact `datetime`/`title`, preserving the approved sentences. Render tests assert both. |
+| Raise writer fixture changes several fields together | Fixed verification. Added independent actor-type, actor-ID, source and outcome cases; each must produce `not-recorded`. |
+| Cancellation attribution only tested against genuine Abort events | Fixed verification. Added missing/duplicate event and independent actor-type, actor-ID, answer-option and state mismatch cases. The Abort answer remains visible, but cancellation is not attributed to it. |
+| Unsupported source/outcome on a purported answer event | Not accepted as a reachable production defect. The sole `answerEscalation` writer emits `web`/`success` in the same transaction as the closed wait; no alternate production writer was found. This continuation pins the existing identity/actor/option/state contract, and does not invent a new audit-event acceptance policy from tampered rows. |
+| Duplicate candidate option IDs produce an ambiguous ordinal | Not accepted as a reachable production defect. `normalizeOptions` in `waits.ts` rejects duplicate candidate IDs before creation. No production path writing such a question was identified. Historical-event rewriting remains prohibited. |
+| Only the first 100 answers and 100 superseded requests can be read on the Timeline | Open product scope. The current bounds and proposed captions are explicit; they do not fulfill access to every omitted decision. A paging/control or alternate route needs an owner decision on hierarchy and wording. No approval is inferred. |
+| A Timeline link can name an Escalation outside Replay's bounded targets, or beyond its default frames | Open alongside the bounded-history decision and Story 10.9. The unavailable/no-frame behavior remains honest; no unapproved paging/link design is introduced here. |
+| Pause-section introduction omits requests the Run never honoured | Open wording decision. The current approved/proposed 10.6 introduction is retained. A new sentence is not approved by this review. |
+
+## Auto Run Result
+
+- Status: **blocked WIP**, not done. Sheet 2B (B1–B15) remains proposed and needs
+  owner confirmation. The 100-entry scope and the outstanding introduction/late-target
+  decisions remain explicit above.
+- Local exact runtime: Node 24.20.0 / pnpm 11.25.0. Root `pnpm typecheck` and
+  `pnpm boundaries` passed; full unit result is recorded after the run below.
+- The new PostgreSQL cases are typechecked but **not executed locally**: this environment
+  cannot start PostgreSQL as its sole permitted root UID and cannot switch user. Browser
+  downloads returned an HTML response instead of the browser archive, so browser and
+  screenshot gates remain pending. Prior handover results are not claimed for this patch.
+- Follow-up review is recommended after the final 10.6/10.9 merge and the capable-runner
+  integration/browser results. Keep the PR WIP; do not mark this story done.
+
+
+### Final composed local verification
+
+The branch incorporates published Story 10.6 `eedec7c890dc26f024b8f6350a636743f2b88113`
+and Story 10.9 `2367d7c8abb3e5516ad4461ac2ecc6df584a338e`, through merge commits without
+rewriting pushed history. The original baseline remains unchanged.
+
+The final combined source at `15c6b3c` passed Node 24.20.0 / pnpm 11.25.0 root
+`pnpm typecheck`, `pnpm boundaries` (828 modules) and `pnpm test` (305 files, 5,585 tests)
+in an isolated worktree. The later published-ancestry merge changed only Story 10.9's
+verification record; subsequent changes are documentation/tracking only. The two stale
+Replay test fixtures found after integration now use the bounded read shape, exact
+landing ordinal and jump totals. Their original behavior assertions remain intact.
+
+The isolated gate avoids workspace sync files inside temporary boundary mutation fixtures;
+no assertion was weakened or skipped. New database regressions remain unrun locally;
+the actual published candidate must pass PR CI. Visual acceptance and handover sheet 2B
+remain open. This candidate is not approved, ready to merge or deployed.

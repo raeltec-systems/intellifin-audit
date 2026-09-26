@@ -230,7 +230,113 @@ describe.skipIf(!url)('the decisions on the Execution Timeline, on PostgreSQL', 
     return row!.closed_at;
   }
 
+  /** Historical answer rows can lack a matching event; never rewrite an existing event. */
+  async function historicalAnswer(runId: string): Promise<string> {
+    const waitId = ids.next();
+    const at = next();
+    await sql`INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,deadline,closed_at,closure_kind,answer_option_id,actor)
+      VALUES(${waitId},${runId},'retry-or-skip','[{"id":"abort","label":"Abort"}]'::jsonb,
+        ${at.toISOString()}::timestamptz,${new Date(at.getTime() + 240 * 60_000).toISOString()}::timestamptz,
+        ${at.toISOString()}::timestamptz,'answer','abort',${author})`;
+    return waitId;
+  }
+
+  /** Insert a concurrent commit after the first real SELECT has obtained its snapshot. */
+  function afterFirstSelect(commit: () => Promise<void>): Database {
+    let first = true;
+    const wrap = (builder: object): object => new Proxy(builder, {
+      get(target, key) {
+        if (key === 'then') return async (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => {
+          try {
+            const result: unknown = await target;
+            if (first) { first = false; await commit(); }
+            return resolve(result);
+          } catch (error) { return reject(error); }
+        };
+        const value: unknown = Reflect.get(target, key);
+        return typeof value === 'function' ? (...args: unknown[]) => {
+          const result: unknown = value.apply(target, args);
+          return result !== null && typeof result === 'object' ? wrap(result) : result;
+        } : value;
+      },
+    });
+    return new Proxy(db, {
+      get(target, key) {
+        if (key === 'select') return (...args: Parameters<Database['select']>) => wrap(target.select(...args));
+        return Reflect.get(target, key);
+      },
+    });
+  }
+
   describe('every Escalation a person answered', () => {
+    it('keeps the exact total and bounded answers on one snapshot when an answer commits during the read', async () => {
+      const runId = await startRun();
+      const first = await raise(runId, 'retry-or-skip');
+      await answer(runId, first, ESCALATION_OPTION_IDS.retry);
+      const second = await raise(runId, 'retry-or-skip');
+      const history = await readEscalationAnswers(afterFirstSelect(() => answer(runId, second, ESCALATION_OPTION_IDS.retry)), runId);
+      expect(history.total).toBe(1);
+      expect(history.entries.map((entry) => entry.waitId)).toEqual([first]);
+      expect((await readEscalationAnswers(db, runId)).total).toBe(2);
+    });
+
+    it('resolves uppercase Evidence UUIDs accepted by the raise command', async () => {
+      const runId = await startRun();
+      const capture = await captured(runId, 'E-000106');
+      const waitId = await raise(runId, 'retry-or-skip', { stepId: INSPECT, supportingEvidenceIds: [capture.evidenceId.toUpperCase()] });
+      await answer(runId, waitId, ESCALATION_OPTION_IDS.retry);
+      expect((await readEscalationAnswers(db, runId)).entries).toMatchObject([
+        { waitId, raise: { kind: 'recorded', workItem: { workItemId: capture.workItemId, subjectKey: 'E-000106' } } },
+      ]);
+    });
+
+    it('requires every field of the raise writer independently before establishing the step', async () => {
+      const runId = await startRun();
+      const writers = [
+        { actor: { type: 'agent', id: 'escalation-platform' }, source: 'platform', outcome: 'success' },
+        { actor: { type: 'system', id: 'other-platform-writer' }, source: 'platform', outcome: 'success' },
+        { actor: { type: 'system', id: 'escalation-platform' }, source: 'worker', outcome: 'success' },
+        { actor: { type: 'system', id: 'escalation-platform' }, source: 'platform', outcome: 'failure' },
+      ] as const;
+      for (const writer of writers) {
+        const waitId = await historicalAnswer(runId);
+        await db.transaction((tx) => createAuditEventWriter(tx, new SystemClock(), ids).append({
+          ...writer, eventType: 'execution.escalation-raised', aggregateId: runId,
+          correlationId: ids.next(), sessionId: session.sessionId, payload: { waitId, stepId: INSPECT },
+        }));
+      }
+      const history = await readEscalationAnswers(db, runId);
+      expect(history.entries).toHaveLength(writers.length);
+      expect(history.entries.map((entry) => entry.raise)).toEqual(writers.map(() => ({ kind: 'not-recorded' })));
+    });
+
+    it('requires one matching human answer event before attributing cancellation to an Abort', async () => {
+      const runId = await startRun();
+      const absent = await historicalAnswer(runId);
+      const scenarios = [
+        { actorType: 'system', actorId: author, answerOptionId: 'abort', state: 'CANCELED', copies: 1 },
+        { actorType: 'human', actorId: ids.next(), answerOptionId: 'abort', state: 'CANCELED', copies: 1 },
+        { actorType: 'human', actorId: author, answerOptionId: 'retry', state: 'CANCELED', copies: 1 },
+        { actorType: 'human', actorId: author, answerOptionId: 'abort', state: 'RUNNING', copies: 1 },
+        { actorType: 'human', actorId: author, answerOptionId: 'abort', state: 'CANCELED', copies: 2 },
+      ] as const;
+      for (const scenario of scenarios) {
+        const waitId = await historicalAnswer(runId);
+        for (let copy = 0; copy < scenario.copies; copy += 1) {
+          await db.transaction((tx) => createAuditEventWriter(tx, new SystemClock(), ids).append({
+            actor: { type: scenario.actorType, id: scenario.actorId }, source: 'web', outcome: 'success',
+            eventType: 'execution.escalation-answered', aggregateId: runId, correlationId: ids.next(), sessionId: session.sessionId,
+            payload: { waitId, answerOptionId: scenario.answerOptionId, state: scenario.state },
+          }));
+        }
+      }
+      const history = await readEscalationAnswers(db, runId);
+      expect(history.entries).toHaveLength(scenarios.length + 1);
+      expect(history.entries[0]?.waitId).toBe(absent);
+      expect(history.entries.map((entry) => entry.canceledRun)).toEqual(Array(scenarios.length + 1).fill(false));
+      expect(history.entries.every((entry) => entry.answer.kind === 'option' && entry.answer.optionId === 'abort')).toBe(true);
+    });
+
     it('reads the answer, who gave it and when, and the Work Item the raise’s own Evidence reaches', async () => {
       const runId = await startRun();
       const inspected = await captured(runId, 'E-000102');
@@ -361,6 +467,20 @@ describe.skipIf(!url)('the decisions on the Execution Timeline, on PostgreSQL', 
   });
 
   describe('every pause request the Run never honoured', () => {
+    it('keeps the pause-request total and rows on one snapshot while another supersession commits', async () => {
+      const runId = await startRun();
+      const append = () => db.transaction((tx) => createAuditEventWriter(tx, new SystemClock(), ids).append({
+        actor: { type: 'system', id: 'result-sealer' }, source: 'worker', outcome: 'failure',
+        eventType: 'lifecycle.pause-superseded', aggregateId: runId, correlationId: ids.next(), sessionId: session.sessionId,
+        payload: { requestedBy: author, requestedAt: new Date().toISOString() },
+      }));
+      const first = await append();
+      const history = await readPauseRequests(afterFirstSelect(async () => { await append(); }), runId);
+      expect(history.total).toBe(1);
+      expect(history.entries.map((entry) => entry.eventId)).toEqual([first.eventId]);
+      expect((await readPauseRequests(db, runId)).total).toBe(2);
+    });
+
     it('reads a request to pause at once that the Run outran, with who asked and when', async () => {
       const runId = await startRun();
       const paused = await pauseRun(

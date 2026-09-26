@@ -217,8 +217,8 @@ export type AdapterStepArtifact =
 
 /**
  * The two sentences an adapter log row says instead of a digest. `none` is the sentence
- * both viewers already said; `unavailable` is new and PROPOSED (Story 10.6's Ask First
- * rule on wording): it says what is known — the record could not be read — and what to
+ * both viewers already said; the owner approved `unavailable` on 2026-09-26 (handover
+ * sheet 1): it says what is known — the record could not be read — and what to
  * do, and claims neither that an artifact exists nor that none does.
  */
 export const ADAPTER_ARTIFACT_WORDS = {
@@ -297,12 +297,18 @@ export async function readAdapterLog(
   sessionSteps: readonly AdapterLogSessionStep[],
 ): Promise<readonly AdapterLogStep[]> {
   const steps = sessionSteps.filter((step) => step.action === 'extract-adapter');
-  const named = steps.flatMap((step) => (step.evidenceId === null ? [] : [step.evidenceId]));
+  const named = [...new Set(steps.flatMap((step) => (step.evidenceId === null ? [] : [step.evidenceId])))];
   let read: ReadonlyMap<string, AdapterEvidenceFact> | null = new Map();
   if (named.length > 0) {
     try {
-      const rows = await reader.readEvidenceItemsByIds(runId, named);
-      read = new Map(rows.map((row) => [row.evidenceId, { state: row.state, digest: row.digest }]));
+      const facts = new Map<string, AdapterEvidenceFact>();
+      // The repository accepts at most 64 distinct ids per read. Read the whole selection
+      // in bounded batches so later steps do not appear to have unreadable artifacts.
+      for (let offset = 0; offset < named.length; offset += 64) {
+        const rows = await reader.readEvidenceItemsByIds(runId, named.slice(offset, offset + 64));
+        for (const row of rows) facts.set(row.evidenceId, { state: row.state, digest: row.digest });
+      }
+      read = facts;
     } catch {
       read = null;
     }

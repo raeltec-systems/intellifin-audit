@@ -163,7 +163,10 @@ the table above passes a required `PauseHold` to `performPause`, and the event r
 A pause between units (the sign-in and adapter stages, between Work Items, after a settled
 inspection) has no `stepExecutionId`, and the surfaces say that no Step Execution was in
 flight. `PauseHold` is REQUIRED on `performPause`, so a boundary cannot forget it — the
-lesson of the one mid-item boundary that once passed no in-flight pair.
+lesson of the one mid-item boundary that once passed no in-flight pair. Only the Work Item
+stage supersedes an attempt in flight, and it gives the attempt back (above), so the attempt
+a resume restarts there carries the SAME attempt number as the one the pause superseded:
+they are two Step Executions, and the surfaces name each by its reference.
 
 **The resume is named by the attempt it starts.** A resume performs `PAUSED → RUNNING`
 before any attempt exists, so it cannot name one; the stage that later starts the held step

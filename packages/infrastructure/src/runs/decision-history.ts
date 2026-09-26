@@ -1,4 +1,4 @@
-import { and, asc, count, eq, inArray, ne, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 
 import { ESCALATION_OPTION_IDS } from '@intellifin/application';
 
@@ -296,11 +296,9 @@ export async function readEscalationAnswers(
   // An Escalation is any wait that is not a pause; `closure_kind = 'answer'` is closed by
   // a person, and generation 45 refuses that closure on a pause.
   const where = and(eq(runWait.runId, runId), ne(runWait.kind, 'pause'), eq(runWait.closureKind, 'answer'));
-  const [counted] = await db.select({ total: count() }).from(runWait).where(where);
-  const total = Number(counted?.total ?? 0);
-  if (total === 0 || bound === 0) return { total, entries: [] };
   const waits = await db
     .select({
+      total: sql<number>`count(*) over()`,
       waitId: runWait.waitId,
       kind: runWait.kind,
       options: runWait.options,
@@ -311,7 +309,10 @@ export async function readEscalationAnswers(
     .from(runWait)
     .where(where)
     .orderBy(asc(runWait.openedAt), asc(runWait.waitId))
-    .limit(bound);
+    .limit(Math.max(1, bound));
+  // Count and rows share one statement snapshot, including while another answer commits.
+  const total = Number(waits[0]?.total ?? 0);
+  if (total === 0 || bound === 0) return { total, entries: [] };
   const waitIds = waits.map((wait) => wait.waitId);
 
   // One after the other: a caller may pass a transaction, and one connection runs one
@@ -341,7 +342,7 @@ export async function readEscalationAnswers(
       // EVERY Evidence id the raise named must resolve, and all to one Work Item: an id
       // that resolves to nothing, or to a second Work Item, is a record that does not
       // establish which one the question was about.
-      const resolved = entry.evidenceIds.map((id) => owners.get(id));
+      const resolved = entry.evidenceIds.map((id) => owners.get(id.toLowerCase()));
       const distinct = new Set(resolved);
       const only = distinct.size === 1 ? [...distinct][0] : undefined;
       const item = typeof only === 'string' ? items.get(only) : undefined;
@@ -420,11 +421,9 @@ export async function readPauseRequests(
   if (!isUuidText(runId)) return { total: 0, entries: [] };
   const bound = Math.max(0, Math.min(Math.trunc(limit), PAUSE_REQUEST_LIMIT));
   const where = pauseRequestEvents(runId);
-  const [counted] = await db.select({ total: count() }).from(auditEvents).where(where);
-  const total = Number(counted?.total ?? 0);
-  if (total === 0 || bound === 0) return { total, entries: [] };
   const events = await db
     .select({
+      total: sql<number>`count(*) over()`,
       eventId: auditEvents.eventId,
       eventType: auditEvents.eventType,
       occurredAt: auditEvents.occurredAt,
@@ -433,7 +432,10 @@ export async function readPauseRequests(
     .from(auditEvents)
     .where(where)
     .orderBy(asc(auditEvents.sequence))
-    .limit(bound);
+    .limit(Math.max(1, bound));
+  // The total describes these rows, not an earlier snapshot before a supersession committed.
+  const total = Number(events[0]?.total ?? 0);
+  if (total === 0 || bound === 0) return { total, entries: [] };
 
   const commandIds = events
     .filter((event) => event.eventType === DEFERRED_PAUSE_SUPERSEDED_EVENT)

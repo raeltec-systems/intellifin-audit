@@ -1,5 +1,6 @@
 import type { RunFrameRow, RunReplayObservationDelta, RunReplayWait } from '@intellifin/infrastructure';
 
+import { fillTemplate } from '../design/copy';
 import { escalationKindWord } from '../design/plain-words';
 import { workItemLabel } from './labels';
 
@@ -43,6 +44,13 @@ export type ReplayJumpTarget = {
   readonly label: string;
   /** Exact inspection route when its capture is outside the prefix. */
   readonly workItemId?: string;
+  /**
+   * The inspection page that holds the frame, when it is not that record's first page
+   * (Story 10.9). An Escalation lands on the last frame captured at or before it was
+   * raised, which can sit anywhere in its record's captures; a Work Item and an Exception
+   * land on the record's first frame, which is always on the first page.
+   */
+  readonly inspectionCursor?: number;
 } & (
   | { readonly frameIndex: number; readonly absence: null }
   | { readonly frameIndex: null; readonly absence: ReplayFrameAbsence }
@@ -247,7 +255,12 @@ export function replayFrameAt(frames: readonly RunFrameRow[], instant: string): 
  *
  * Ordered by the frame each target lands on, so the list reads the way the session ran; a
  * target with no frame sorts last, because it is somewhere a reader cannot go. Ties break
- * on kind then id, so the order is deterministic rather than whatever the reads returned.
+ * on kind, then on the order the target's own read returned: Work Items in the Timeline's
+ * order, Exceptions and Escalations in the order they were raised. Every one of those reads
+ * fixes its order, so the list is deterministic. The tie used to break on the id, which is
+ * no order a reader can see -- an Exception's id is a hash -- so the many Exceptions a P-4
+ * page raises against one frame were listed in no order at all, and a bounded list's
+ * "first N" did not start at its top (Story 10.9).
  *
  * A PAUSE is not in it. EXPERIENCE.md's Replay row names Work Items, Exceptions and
  * Escalations, and a pause is a wait that asks nothing — the distinction generation 45
@@ -285,27 +298,48 @@ export function replayJumpTargets(input: {
   }
   for (const wait of input.waits) {
     if (wait.kind === 'pause') continue;
+    // The stored kind is a KEY, and this row renders its label in a monospace span --
+    // which presents whatever it is given as an identifier. `choose-candidate` is not a
+    // question an auditor asked, and the plain-words pass removed exactly this from the
+    // authoring screens; Replay reintroduced it in a new place.
+    const label = escalationKindWord(wait.kind);
+    // The frame an Escalation lands on is decided over EVERY frame the Run holds
+    // (`framesThrough`, Story 10.9). When it lies past the frames this page read, landing on
+    // the last frame read would show a screen the question was not about -- which is what
+    // happened before. It is NOT READ here, and its record's inspection page holds it.
+    if (wait.framesThrough > input.frames.length) {
+      targets.push({
+        kind: 'escalation',
+        id: wait.waitId,
+        label,
+        ...(wait.landing === null
+          ? {}
+          : { workItemId: wait.landing.workItemId, inspectionCursor: wait.landing.cursor }),
+        frameIndex: null,
+        absence: 'not-read',
+      });
+      continue;
+    }
     targets.push({
       kind: 'escalation',
       id: wait.waitId,
-      // The stored kind is a KEY, and this row renders its label in a monospace span --
-      // which presents whatever it is given as an identifier. `choose-candidate` is not a
-      // question an auditor asked, and the plain-words pass removed exactly this from the
-      // authoring screens; Replay reintroduced it in a new place.
-      label: escalationKindWord(wait.kind),
-      // Decided whatever the bound: the frames read are the earliest, so none preceding the
-      // instant among them means none preceding it at all.
-      ...landing(replayFrameAt(input.frames, wait.openedAt), 'none-before'),
+      label,
+      // The database compares full-precision stored instants. Date.parse would collapse
+      // distinct captures and the wait into one millisecond and could pick a later screen.
+      // This view is the chronological prefix, so the exact ordinal is its array index.
+      ...landing(wait.framesThrough === 0 ? null : wait.framesThrough - 1, 'none-before'),
     });
   }
   const rank = (target: ReplayJumpTarget): number => REPLAY_JUMP_KINDS.indexOf(target.kind);
+  // Pushed kind by kind in each read's own order, so a target's position here IS its read order.
+  const position = new Map(targets.map((target, index) => [target, index] as const));
   return targets.sort((left, right) => {
     if (left.frameIndex !== right.frameIndex) {
       if (left.frameIndex === null) return 1;
       if (right.frameIndex === null) return -1;
       return left.frameIndex - right.frameIndex;
     }
-    return rank(left) - rank(right) || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+    return rank(left) - rank(right) || position.get(left)! - position.get(right)!;
   });
 }
 
@@ -316,6 +350,12 @@ export function replayJumpTargets(input: {
  * ACTION start — the same instant the frames are ordered by, so the number a reader sees
  * beside a frame is true of the moment that frame was taken. An unreadable instant on
  * either side contributes nothing rather than being treated as zero or as everything.
+ *
+ * The REFERENCE statement of the rule, and no longer what the page renders (Story 10.9).
+ * Fed a bounded page of events it undercounted every frame past the page's last event,
+ * so the number beside a frame now comes from `readFrames`, counted in SQL over the WHOLE
+ * registration history; `tests/integration/replay-bounded-history.test.ts` holds that SQL
+ * to this function over every event the Run recorded.
  */
 export function replayObservationsThrough(
   deltas: readonly RunReplayObservationDelta[],
@@ -340,11 +380,49 @@ export function clampReplayIndex(index: number, frames: number): number {
 }
 
 /**
+ * What the jump list says when it is bounded (Story 10.9).
+ *
+ * The page reads the first `REPLAY_PAGE_SIZE` Escalations and Exceptions, each in the order
+ * it was raised. It used to stop there and say nothing, so a long Run's jump list read as
+ * every question it asked and every Exception it raised. The owner approved these words on
+ * 2026-09-26 ("approve all"); the story file records them, and `replay.test.ts` reads them
+ * back from it.
+ */
+export const REPLAY_BOUND_WORDS = {
+  escalations: 'Showing the first {shown} of {total} Escalations.',
+  exceptions: 'Showing the first {shown} of {total} Exceptions.',
+  /** How to reach one the list does not name: through its record's own inspection. */
+  rest: 'To see one of the rest, open its record in the record review and choose Replay.',
+  /** The words of `rest` that link to the record review. */
+  restLink: 'record review',
+} as const;
+
+/** The EXACT totals beside the bounded Escalation and Exception pages the jump list reads. */
+export interface ReplayJumpTotals {
+  /** Every Escalation the Run raised. A pause is a wait that asks nothing, so not one. */
+  readonly escalations: number;
+  readonly exceptions: number;
+}
+
+/**
+ * The bound sentence for one kind, or `null` when the list names every one the Run holds.
+ * `shown` is how many the list names and `total` how many the Run holds; both are exact,
+ * so neither is ever presented as the other.
+ */
+export function replayJumpBoundSentence(kind: 'escalation' | 'exception', shown: number, total: number): string | null {
+  if (total <= shown) return null;
+  return fillTemplate(kind === 'escalation' ? REPLAY_BOUND_WORDS.escalations : REPLAY_BOUND_WORDS.exceptions, {
+    shown: shown.toLocaleString('en-US'),
+    total: total.toLocaleString('en-US'),
+  });
+}
+
+/**
  * What Replay says about the gaps in a session (Story 10.6, legacy 5.2).
  *
  * Replay played the frames a Run registered and said nothing about the Tool Actions that
- * left none, so a session with a gap looked complete. Every sentence here is PROPOSED
- * wording (the story's Ask First rule): it is not in the UX artifacts yet. A suppressed
+ * left none, so a session with a gap looked complete. The owner approved these sentences
+ * on 2026-09-26 (handover sheet 1). A suppressed
  * capture is NOT here — it says the platform's existing `captureSentence`, because it is
  * the credential guarantee working and has its own words already.
  */

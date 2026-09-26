@@ -49,7 +49,11 @@ function frame(at: string, index: number): RunFrameRow {
 const FRAMES = [frame('2026-09-10T09:00:00.000Z', 1), frame('2026-09-10T09:01:00.000Z', 2), frame('2026-09-10T09:02:00.000Z', 3)];
 
 function wait(waitId: string, openedAt: string, kind: RunReplayWait['kind'] = 'retry-or-skip'): RunReplayWait {
-  return { waitId, kind, openedAt, closedAt: null, closureKind: null, answerOptionId: null };
+  return {
+    waitId, kind, openedAt, closedAt: null, closureKind: null, answerOptionId: null,
+    framesThrough: FRAMES.filter((frame) => frame.capturedAt !== null && Date.parse(frame.capturedAt) <= Date.parse(openedAt)).length,
+    landing: null,
+  };
 }
 
 const TARGETS = replayJumpTargets({
@@ -138,6 +142,7 @@ function render(
     plannedSteps: 4,
     stageNote: REPLAY_COPY.noFrames,
     jumpTargets: session.jumpTargets,
+    jumpTotals: null,
     initialSelection,
     instructions: [],
     adapterSteps: [],
