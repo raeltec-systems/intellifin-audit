@@ -2,9 +2,11 @@
 title: 'Retained decision history on the Execution Timeline: an answered Escalation and a superseded pause are inspectable entries'
 type: 'fix'
 created: '2026-09-25'
-status: 'ready-for-dev'
+status: 'in-progress'
 review_loop_iteration: 0
-implementation_authorised: false
+implementation_authorised: true
+implementation_authorisation: 'Owner, 2026-09-26: "go, new branches OK" (implement 10.6 to 10.10 on new branches); wording approved 2026-09-26 ("approve all")'
+baseline_revision: 'e8728b0c874b9f4e8981f07fbc6b707e819f372b'
 context:
   - '_bmad-output/implementation-artifacts/legacy-review-closure-register.md'
   - '_bmad-output/planning-artifacts/epics.md'
@@ -56,6 +58,47 @@ the time, and the related Work Item and Step where one exists. No full expanded 
 | Historical record | a decision whose Step cannot be established from durable records | The entry shows the decision and says the related work is not recorded | N/A |
 
 </frozen-after-approval>
+
+## Approved wording and layout (owner, 2026-09-26)
+
+The owner approved these sentences and this layout on 2026-09-26 ("approve all"). They answer
+this story's Ask First items for wording and for the Timeline's row hierarchy. Put each sentence
+in a words module and pin it with a test that reads it back. `{name}` comes through `ActorName`;
+`{step}` names a step the way Story 10.6's pause entries do (`apps/web/src/runs/pause-words.ts`),
+for example: "Inspect the record" for E-000102 on LoanCore.
+
+**Answered Escalations: a new section on the Execution Timeline tab, beside Story 10.6's "Pauses
+and resumes" section.**
+- Section heading: "Escalation answers"
+- Section intro: "Each Escalation a person answered: the answer, who gave it, and when."
+- Entry title: the kind, in the existing words (`ESCALATION_KIND_WORDS`): "Choose candidate",
+  "Unnamed value", "Retry or skip".
+- Who answered: "Answered by {name} at {time}."
+- The answer, when it is a candidate: "Answer: chose candidate {n} of {m}."
+- The answer, when it is a fixed option: "Answer: {option}." `{option}` is the platform's own
+  option words: "Retry", "Skip", "Abort", "Mark the record ambiguous", "Mark the record
+  Unevaluated and continue" (the labels of `FIXED_ESCALATION_OPTIONS` in
+  `packages/application/src/runs/waits.ts` and of the mark-ambiguous option in
+  `packages/application/src/runs/execute-agent-work-item.ts`).
+- An abort: "The Run was canceled by this answer."
+- Where it was raised: "Raised at {step}."
+- A historical record whose step is not recorded: "The step this Escalation was raised at was not
+  recorded."
+- Link: "Open in Replay"
+- The question and the candidate text that the Audit Agent wrote are never shown as the
+  platform's words. At most they show in the existing untrusted-content box (`UntrustedText`).
+
+**A pause the Run never reached: a new entry in "Pauses and resumes".**
+- Entry title: "Pause request"
+- Who asked: "Requested by {name} at {time}."
+- What happened: "The Run ended before the pause took effect, so its own outcome stands." (It
+  copies the existing cancellation sentence "The Run ended before the cancellation was performed,
+  so its own outcome stands.")
+- The same entry also covers a superseded "pause after this inspection" request
+  (`lifecycle.deferred-pause-superseded`, from the workspace).
+
+A sentence this list does not hold is still Ask First.
+
 
 ## Code Map
 
