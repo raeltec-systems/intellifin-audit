@@ -43,7 +43,7 @@ describe.skipIf(!url)('retained decision history on PostgreSQL 18', () => {
     for (const [i, waitId] of waits.entries()) {
       const answer = i === 1 ? 'abort' : 'retry';
       await sql`INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,deadline,closed_at,closure_kind,answer_option_id,actor)
-        VALUES(${waitId},${runId},'retry-or-skip',${sql.json([{ id: answer, label: 'Untrusted label' }])},now(),now()+interval '1 hour',now(),'answer',${answer},${author})`;
+        VALUES(${waitId},${runId},'retry-or-skip',${JSON.stringify([{ id: answer, label: 'Untrusted label' }])}::jsonb,now(),now()+interval '1 hour',now(),'answer',${answer},${author})`;
       await new PostgresAuditUnitOfWork(db).execute(async c => {
         await c.auditEvents.append({ actor: { type: 'system', id: 'escalation-platform' }, source: 'platform', outcome: 'success',
           eventType: 'execution.escalation-raised', aggregateId: runId, correlationId: ids.next(), sessionId: 'decisions',

@@ -132,3 +132,14 @@ Unrelated Timeline section selectors remain compatible with pause-history pagina
 Hosted PostgreSQL and browser results are still required before completion.
 
 CI base filter now includes `codex/story-10-9`; the original stacked PR did not trigger CI under the old main/Epic-5-only filter. No missing workflow was counted as a pass.
+
+### Hosted acceptance fixture repair
+
+The initial hosted 10.10 database run failed during setup of all three new decision-history
+integration tests; 784 other integration tests passed. The fixture passed an options array
+through `sql.json`, which reached the driver as an Array where encoded bytes/string were
+required. It now uses the established `JSON.stringify(...)::jsonb` parameter convention.
+The file contains no remaining `sql.json` calls. This is a fixture correction, not a passing
+acceptance result: the three tests must run successfully on the next hosted checkpoint.
+Decision pagination also now preserves `pauseBefore` and other sections' query parameters;
+its standalone regression and selector tests pass (10 tests), and full typecheck passes.

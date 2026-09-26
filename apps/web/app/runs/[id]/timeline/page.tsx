@@ -36,6 +36,14 @@ export default async function RunTimelinePage({
   const { cursor } = request;
   const timeline = await new DrizzleRunDetailRepository(runtime.db).readTimeline(run.runId, undefined, cursor, request.waitId);
   if (!timeline.decisions.selectionFound) notFound();
+  const decisionHref = (after: number | null): string => {
+    const parameters = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (key !== 'wait' && key !== 'decisionsAfter' && value !== undefined) {
+      for (const item of typeof value === 'string' ? [value] : value) parameters.append(key, item);
+    }
+    if (after !== null) parameters.set('decisionsAfter', String(after));
+    return `/runs/${run.runId}/timeline${parameters.size === 0 ? '' : `?${parameters.toString()}`}`;
+  };
   const names = await new DrizzleActorNameReader(runtime.db).namesFor(timeline.decisions.rows.map(row => row.actorId));
   const nothing =
     timeline.decisions.total === 0 &&
@@ -69,8 +77,8 @@ export default async function RunTimelinePage({
           <ExecutionTimeline timeline={timeline} runId={run.runId} names={names} runState={run.state} />
           {timeline.decisions.total === 0 ? null : <nav aria-label="Decision history">
             <span>{timeline.decisions.rows.length} of {timeline.decisions.total} · Decisions</span>
-            {cursor === 0 && query.wait === undefined ? null : <> · <Link href={`/runs/${run.runId}/timeline`}>First</Link></>}
-            {timeline.decisions.nextCursor === null ? null : <> · <Link href={`/runs/${run.runId}/timeline?decisionsAfter=${timeline.decisions.nextCursor}`}>Next</Link></>}
+            {cursor === 0 && query.wait === undefined ? null : <> · <Link href={decisionHref(null)}>First</Link></>}
+            {timeline.decisions.nextCursor === null ? null : <> · <Link href={decisionHref(timeline.decisions.nextCursor)}>Next</Link></>}
           </nav>}
         </section>
       )}
