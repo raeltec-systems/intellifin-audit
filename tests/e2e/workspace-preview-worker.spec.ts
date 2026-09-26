@@ -209,12 +209,15 @@ test.describe('composed compiled-worker near-live preview', () => {
       const firstSequence = pair[0]!.metadata.sequence;
       await expect.poll(async () => (await sample(page, runId))?.metadata.sequence).toBeGreaterThan(firstSequence);
 
+      await second.evaluate(() => { (window as unknown as { __offlinePreviewDocument: string }).__offlinePreviewDocument = 'retained'; });
       await secondContext.setOffline(true);
       await expect(image(second)).toHaveCount(0);
       await expect(stage(second)).toContainText(/Live preview (unavailable|out of date)/);
+      expect(await second.evaluate(() => (window as unknown as { __offlinePreviewDocument?: string }).__offlinePreviewDocument)).toBe('retained');
       await waitForFrame(page, runId);
       await secondContext.setOffline(false);
       await waitForFrame(second, runId);
+      expect(await second.evaluate(() => (window as unknown as { __offlinePreviewDocument?: string }).__offlinePreviewDocument)).toBe('retained');
       const sessions = await sql`SELECT id FROM auth_session`;
       const disposable = sessions.filter(row => !originalSessions.some(old => old.id === row.id));
       expect(disposable).toHaveLength(1);

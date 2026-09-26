@@ -2,9 +2,11 @@
 title: 'Live channel correction: notify every Run-chain append, and never lose the last refresh'
 type: 'fix'
 created: '2026-09-25'
-status: 'ready-for-dev'
+status: 'done'
+baseline_commit: '429e08cf703fee6c5320f17b5983948709fd5bdf'
 review_loop_iteration: 0
-implementation_authorised: false
+implementation_authorised: true
+authorisation: 'Owner continuation instruction and PR #54, 2026-09-26; supersedes preparation-only flag.'
 context:
   - '_bmad-output/implementation-artifacts/legacy-review-closure-register.md'
   - '_bmad-output/planning-artifacts/epics.md'
@@ -81,3 +83,117 @@ the final refresh. Notifications stay wake-ups; every surface still reads the st
 - tests: integration (rollback, reconnect, each omitted family), unit (`BellLive` burst), browser (bell and Overview after a burst, no reload)
 
 **Acceptance Criteria:** as `epics.md`, Story 10.7.
+
+## Continuation — 2026-09-26
+
+The owner explicitly authorised implementation in the handoff and continuation request; PR #54 also records authorisation on 26 September. The older preparation-only state is historical. Current remote branches and recent PRs were checked before taking over: no pushed Story 10.7 implementation was found. Claude scratch work is not recovered. Branch `codex/story-10-7-live-channel` starts at main `429e08cf703fee6c5320f17b5983948709fd5bdf`, with no dependency on unmerged Story 11.1. Preserve all frozen intent. Do not merge or deploy. Run targeted unit and PostgreSQL channel checks, typecheck/boundaries, and the required browser burst proof; record any actual environment limit honestly. Do not commit or push from the implementation subagent.
+
+## Implementation checkpoint — 2026-09-26
+
+- Moved the Run NOTIFY into the common audit append path, outside conversation
+  narration and before its size-cap return. Existing command-level notifications
+  remain compatible: PostgreSQL coalesces identical channel/payload notifications
+  within one transaction. No contract wording, migration, event type or UI row changed.
+- `BellLive` now uses the existing `useThrottledRefresh` trailing throttle, preserving
+  the Overview's shared subscription.
+- Added a fake-time BellLive burst regression; PostgreSQL regressions for seven
+  omitted type/source pairs, held commit, two open Run streams, list wake-ups, paged
+  reconnect and rollback/heartbeat; and a browser burst regression with real flag
+  commits and exact bell/Overview counts, checked without a reload.
+- Verified locally with Node 24.20.0 / pnpm 11.25.0: targeted unit tests **11 passed**;
+  `pnpm typecheck` passed (including root integration/browser TypeScript);
+  `pnpm boundaries` passed over **802 modules**.
+- **Still in progress:** PostgreSQL and browser regressions are written but have not
+  run locally. The managed environment rejected the user/group operations needed to
+  start the disposable PostgreSQL server. Hosted PostgreSQL/browser execution remains
+  required before these acceptance legs can be claimed.
+
+### Review corrections — 2026-09-26
+
+- Added the conversation-cap boundary regression: a valid immutable annotation at
+  sequence 1,000,000, followed by a narratable shared-writer append with no separate
+  command notification. The test checks the exact list envelope/raw wake-up and that
+  conversation metadata did not grow.
+- Held-transaction staging now propagates append rejection and always releases and
+  observes the transaction. Rollback proof explicitly requires a heartbeat and a
+  completed reconnect replay. The browser burst counter matches this fixture's Run.
+- PostgreSQL and browser acceptance remain pending hosted execution; these additional
+  assertions are not claimed as passed merely because they compile.
+
+### Hosted preview regression correction — 2026-09-26
+
+CI `36229159682`, preview job `108368875487`, failed the existing disconnected-viewer
+assertion: after setting the second context offline, the labelled preview region was
+absent instead of displaying unavailable/out-of-date. The preview fetch catch retains
+that region; the installed Next refresh implementation instead falls back to hard
+browser navigation on failed RSC data. Newly notified evidence reads can leave a
+scheduled page refresh at the disconnection boundary.
+
+The shared throttle now keeps the required read dirty while the browser explicitly
+reports offline, checks again when dispatching a timer, and flushes once on `online`.
+It removes its timer/listener on cleanup. No event-family filter, stream health rule,
+gate, timeout threshold or user-facing copy changed. Saved-frame URLs/keys remain stable
+and cacheable; preview polling itself appends no events, so no sustained read/refresh
+feedback loop was established by the code review.
+
+Two fake-time tests cover a pending read becoming offline and an event received already
+offline, including reconnect coalescing and cleanup. The bell/Overview browser proof
+now additionally forces a scheduled read across an offline interval and requires its
+final stored counts on return. The existing worker-preview proof retains all assertions
+and also checks document identity across disconnection/recovery. Targeted local unit
+checks pass **13 tests**; hosted browser/preview verification of this correction is
+still required. This guards dispatch while already offline, not a network failure that
+starts after a refresh request is in flight.
+
+Local verification after the offline-dispatch correction: `pnpm typecheck` passed for
+all packages and root tests; `pnpm boundaries` passed (802 modules); `git diff --check`
+was clean. No hosted preview/browser pass is implied by these local checks.
+
+### Browser fixture correction — 2026-09-26
+
+Hosted candidate `7fc33a9` passed 5,394 unit tests, 783 PostgreSQL integration tests
+(including nine channel cases), database/hydrated mutation checks, all 15 protected
+preview checks, design checks and containers. Full browser CI `36229646300` passed
+284 tests but failed the new burst fixture before opening the page: its first flag
+was correctly refused because the Run was QUEUED. No refresh assertion was reached.
+
+The fixture now seeds a RUNNING Run with held population and execution checkpoints
+in one transaction, matching the established flag journey. The command's state guard
+is unchanged. Flag assertions now report refusal reasons, and fixture cleanup removes
+real notifications, flags and held checkpoints before deleting the Run. A new hosted
+run must still prove the full browser journey; prior passing suites do not close it.
+
+### Hosted completion evidence — 2026-09-26
+
+Candidate `726de68c9545bb0251a7f1383d838f4d2f9b861e`, CI [36232776048](https://github.com/raeltec-systems/intellifin-audit/actions/runs/36232776048), passed all seven jobs: typecheck/boundaries/unit tests, PostgreSQL 18 integration and database mutation checks, hydrated agent mutations, protected preview/compiled-worker lifecycle, P0 design browser checks, container smoke checks, and the full accessibility/shell browser gate. Browser job [108378944022](https://github.com/raeltec-systems/intellifin-audit/actions/runs/36232776048/job/108378944022) reports **285 passed, 12 skipped** (31.7 minutes). Skipped cases are not counted as passes. The browser checkout log identifies synthetic merge `4ad9164` of this candidate into baseline `429e08cf703fee6c5320f17b5983948709fd5bdf`; the real burst/Overview regression at `live-timeline.spec.ts:154` passed.
+
+This hosted run supersedes the pending-execution notes above and proves the corrected burst/offline fixture through the browser gate. BMAD implementation status is done and sprint status is review; neither status asserts owner acceptance, merge permission or deployment approval. This documentation update changes no code.
+
+## Suggested Review Order
+
+**Transactional wake-ups**
+
+- Keep every Run-chain append visible through one transaction-bound notification.
+  [audit-events.ts:125](../../packages/infrastructure/src/db/audit-events.ts#L125)
+
+**Trailing reads**
+
+- Retain the final refresh across bursts and explicitly offline intervals.
+  [LiveBanner.tsx:57](../../apps/web/src/runs/LiveBanner.tsx#L57)
+
+- Reuse the shared throttle for the bell subscription.
+  [BellLive.tsx:1](../../apps/web/src/shell/BellLive.tsx#L1)
+
+**Regression evidence**
+
+- Prove formerly omitted event families, rollback, reconnect and conversation-cap behavior.
+  [run-timeline-channel.test.ts:223](../../tests/integration/run-timeline-channel.test.ts#L223)
+
+- Pin deferred refresh and reconnect coalescing with fake time.
+  [BellLive.test.ts:29](../../apps/web/src/shell/BellLive.test.ts#L29)
+
+- Verify real durable flags refresh both bell and Overview without reload.
+  [live-timeline.spec.ts:154](../../tests/e2e/live-timeline.spec.ts#L154)
+
+- Retain document identity when the protected preview disconnects and recovers.
+  [workspace-preview-worker.spec.ts:212](../../tests/e2e/workspace-preview-worker.spec.ts#L212)

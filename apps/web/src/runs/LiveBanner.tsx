@@ -64,13 +64,39 @@ export function useThrottledRefresh(): () => void {
   const router = useRouter();
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastRefreshAt = useRef(0);
-  useEffect(() => () => { if (pending.current !== null) clearTimeout(pending.current); }, []);
-  return useCallback(() => {
+  const dirty = useRef(false);
+  const refresh = useCallback(function requestRefresh(): void {
+    dirty.current = true;
+    // A failed RSC refresh can make Next hard-navigate, replacing an offline page
+    // with the browser's error document. Retain the required read until online.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     const due = lastRefreshAt.current + REFRESH_THROTTLE_MS - Date.now();
-    if (due <= 0) { lastRefreshAt.current = Date.now(); router.refresh(); return; }
+    if (due <= 0) {
+      if (pending.current !== null) clearTimeout(pending.current);
+      pending.current = null;
+      dirty.current = false;
+      lastRefreshAt.current = Date.now();
+      router.refresh();
+      return;
+    }
     if (pending.current !== null) return;
-    pending.current = setTimeout(() => { pending.current = null; lastRefreshAt.current = Date.now(); router.refresh(); }, due);
+    pending.current = setTimeout(() => {
+      pending.current = null;
+      // Recheck connectivity at dispatch, not just when the event arrived.
+      requestRefresh();
+    }, due);
   }, [router]);
+  useEffect(() => {
+    const onOnline = (): void => { if (dirty.current) refresh(); };
+    if (typeof window !== 'undefined') window.addEventListener('online', onOnline);
+    if (dirty.current) refresh();
+    return () => {
+      if (pending.current !== null) clearTimeout(pending.current);
+      pending.current = null;
+      if (typeof window !== 'undefined') window.removeEventListener('online', onOnline);
+    };
+  }, [refresh]);
+  return refresh;
 }
 
 /**

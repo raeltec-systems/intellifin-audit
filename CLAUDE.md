@@ -1,3 +1,38 @@
+## 2026-09-26 — Story 10.7 hosted completion checkpoint
+
+- Candidate `726de68c9545bb0251a7f1383d838f4d2f9b861e` passed all seven jobs in CI
+  `36232776048`. Full browser/WCAG job `108378944022`: 285 passed, 12 skipped.
+- The earlier QUEUED fixture and offline-preview failures are superseded by this
+  candidate's hosted proof. BMAD implementation is done; sprint remains review.
+  Owner acceptance, merge and deployment are separate decisions.
+
+## 2026-09-26 — Bell burst fixtures must be flaggable (Story 10.7)
+
+- The full browser gate refused the new test's first flag because its Run was QUEUED.
+  Flagging accepts RUNNING, PAUSED or AWAITING_AUDITOR only. Seed a RUNNING fixture
+  with held population/execution checkpoints in one transaction, as the flag journey
+  does; preserve the command guard and report refusal reasons in test assertions.
+- Delete the fixture's notification and flag rows before deleting its Run; the burst
+  creates real durable flags, not a mocked event stream.
+
+## 2026-09-26 — Run-chain wake-ups and the bell's trailing read (Story 10.7)
+
+- Hosted CI `36229159682` exposed a queued live refresh firing after a preview viewer
+  went offline: the preview region vanished instead of retaining its unavailable
+  state. Next's installed refresh path falls back to hard browser navigation when an
+  RSC fetch fails. The shared throttle now retains its dirty read while explicitly
+  offline, rechecks connectivity when its timer fires, and flushes once on `online`.
+  This does not treat network availability as a recovered stream or alter live gates.
+
+- `appendAuditEvent` owns the Run-chain NOTIFY regardless of whether conversation
+  narration exists or has reached its cap. Keep it inside the append transaction;
+  PostgreSQL discards it on rollback and coalesces identical notifications from
+  existing command-level callers in the same transaction.
+- `BellLive` uses `useThrottledRefresh`, the same trailing throttle as `LiveBanner`.
+  Dropping an event inside the one-second window loses the final server read. The
+  Overview relies on the bell's shared subscription, so a browser regression must
+  check both stored counts after a burst, with no document reload.
+
 ## 2026-09-25 — A single read of a moving preview sample is a race the broker refuses on purpose
 
 - **The preview route answers 503 for a read that meets a new sample, and that is the product
