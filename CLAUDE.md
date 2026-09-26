@@ -9,13 +9,31 @@
   and a remount takes the clock the last subscription to the same stream left
   (`createLiveClockHandOff`). Thresholds and `RUN_ENDING_EVENTS` are unchanged. Contract:
   `docs/contracts/live-view-v1.md`, "Only the stream brings a lost page back".
-- **`open` is not a frame.** The events route answers before it arms its LISTEN, and one
-  whose LISTEN fails sends `end`, closes and is reopened two seconds later, so an `open`
-  counted as a frame calls a stream that delivers nothing `live` every two seconds.
-  `streamOpened` only marks the stream as answered: a fresh page reads `live` at once, but
-  `stale`, `lost` and `ended` wait for a frame (the replay at once, or the first heartbeat
-  within ten seconds). `live-timeline.spec.ts`'s return-to-live wait grew to 30 s for that
-  heartbeat.
+- **`open` is not a frame, so the stream speaks first.** The events route answers before it
+  arms its LISTEN, and one whose LISTEN fails sends `end`, closes and is reopened two seconds
+  later, so an `open` counted as a frame calls a stream that delivers nothing `live` every two
+  seconds. `open` is therefore not listened for at all, and the CHANNEL sends one heartbeat as
+  soon as a stream is armed and caught up, before the first tick (both streams; none when the
+  LISTEN or the first read fails). The review found why that had to be the server's job: with
+  the first frame ten seconds away, every planned renewal gave ~22 s of silence on a healthy,
+  quiet Run (the lifetime ends just before a beat, then the 2 s retry, then 10 s), every page
+  move more than ~5 s after a beat went `stale`, and a page moved every few seconds never
+  heard a frame and went `lost`. **A client's silence rule and the server's cadence are one
+  system: test them together** — `tests/unit/live-channel-cadence.test.ts` drives the real
+  engine and the real subscription through an emulated `EventSource` that takes its retry
+  from the stream's own `retry:` frame.
+- **A remount hands on everything the clock said, `live` included** (`resumedLiveClock`
+  keeps `everConnected`), minus only the time no subscriber was listening. The hand-off is a
+  layout effect so the first paint is the inherited clock; the layout CLEANUP closes the
+  connection before it leaves the clock (`endLiveSubscription`), because the passive
+  cleanup runs after the next page has already taken it and a frame in between would land
+  on state nobody reads; and every repaint goes through `nextLiveTick`, because React skips a
+  setter handed the value it holds and two `Date.now()` in one millisecond are equal.
+- **A stream's first cursor is its page's own, never the larger of it and the last seen.**
+  `beginLiveSubscription` resets it when the stream changes. The page reads the chain head
+  BESIDE its content (`Promise.all`), so a head ahead of the content is possible, and
+  resuming from it would skip the one frame that says the Run ended. `[NAMED, NOT FIXED]` The
+  same race exists at first mount, which starts from that head.
 - **An effect body the unit suite must see lives outside the effect.** `followLiveStream`
   has no React and no DOM and is driven with a fake `EventSource`; a new cursor is a second
   call with the SAME state, which is exactly what the re-running effect does.
@@ -37,13 +55,38 @@
   BEFORE the action, which is the view that invites a second submission.
 - **The deployed harness matches the boundary's HEADING**, which heads the boundary on every
   path and which both banner sentences start with; `acceptance-sentences.test.ts` pins it
-  to the words module.
+  to the words module. An Evidence link also fails on a status of 400 or more, on the
+  not-found page's heading (a page that calls `notFound()` after streaming starts answers
+  200) and on `RunDenied`'s shape (heading "Run" over a danger banner).
+- **"Nothing changed" has one pattern, `NOTHING_CHANGED_CLAIM`** (`design/nothing-changed.ts`,
+  React-free so specs import it). Four retyped regexes each missed a different phrasing
+  ("Nothing changed.", "No changes were made.", "unchanged", …); `nothing-changed.test.ts`
+  lists every phrasing it must catch and every real unknown-outcome sentence it must not.
+- **The boundary's link is built from `usePathname()` + `useSearchParams()`**, which the
+  server renders too. A `window.location` store gave the no-JavaScript render a link without
+  the query, and every test rendered only that server snapshot. EXPERIENCE.md now has one row
+  for the route boundary (the five approved sentences) beside "Action failed", which stays
+  for refusals; `route-boundary-words.test.ts` pins all five to that row on disk.
+- **Wait for `data-client-ready` before touching a native `<details>`, and never count
+  `/__nextjs*` requests.** Clicking a disclosure before React attaches leaves an `open` the
+  server never rendered; React reports the hydration mismatch and `next dev`'s overlay POSTs
+  `/__nextjs_original-stack-frames` to symbolicate it. The full browser suite failed
+  `flag-run.spec.ts:185` on exactly that POST, counted as a resubmission (`1ee6a204`).
 - `[NAMED, NOT FIXED]` **The same class, on surfaces this story does not own.** The
   Administration controls' client catch branches (`RoleControl`, `UserForm`, `BindingForm`,
   `RegistrationForm`) and the administration actions' `UNAVAILABLE` still say "Nothing was
   changed." when a Server Action throws or its response is lost. And without JavaScript a
   flag's result page is the answer to a POST, so the browser's own Reload offers to
-  resubmit it; the boundary's link does not.
+  resubmit it; the boundary's link does not. **A Builder Submit renders the not-found page
+  ("… Nothing was changed.") in its own action response**: any `revalidatePath` makes Next
+  re-render the CURRENT page (`skipPageRendering` in its action handler), and the Builder
+  calls `notFound()` for a version that is no longer a Draft, before `VersionActions` pushes
+  to the version page. Found by reading, not reproduced.
+- `[NAMED, NOT FIXED]` **A full document load starts a fresh clock.** The browser's Reload,
+  the boundary's "Reload this page" and the `ended` sentence's "Refresh to continue" all load
+  a new document, which reads `connecting`, then `stale` — neither a gate reason — so while
+  the stream is still down its live controls stay enabled until that page has itself counted
+  60 s. Deferred by the review as a follow-up; the command still refuses a stale action.
 
 ## 2026-09-25 — A single read of a moving preview sample is a race the broker refuses on purpose
 
@@ -578,7 +621,9 @@ what produces the proof, so a check that cannot fail is a proof that is not one:
 Evidence-link check looked for `could not be read` and `no longer available` — phrases NO
 page in this product renders. The evidence inspector states every one of its thirteen
 `EvidenceSnapshotReadFailure` cases under one banner title, `Snapshot cell unavailable`, and
-the route boundary has EXPERIENCE.md's own `Couldn't load this page. Nothing was changed.`
+`[SUPERSEDED 2026-09-26 — see the Story 10.8 note at the top: the boundary no longer says it,
+and the harness matches its heading]` the route boundary has EXPERIENCE.md's own `Couldn't load
+this page. Nothing was changed.`
 So a link showing the inspector's own failure banner was reported as OPENED. **A sentence a
 checker looks for is pinned against nothing unless it is read back out of the page that
 renders it** — `copy.test.ts`'s discipline, which had never been applied to the harness.
@@ -1136,7 +1181,9 @@ Four mechanical notes:
   the adapter sweep selects, so the held claim is reopened in the same transaction and
   closed again after — see "2026-09-15 — Replay fixtures with a running worker" at the end
   of this file.
-- **Editing a file Next watches while a Playwright test is inside its silence window remounts the
+- `[FIXED 2026-09-26 — see the Story 10.8 note at the top: a re-run and a remount no longer
+  reset the clock; "no apps/web edit during a browser run" still stands]` **Editing a file Next
+  watches while a Playwright test is inside its silence window remounts the
   page.** `useLiveTimeline` resets `lastMessageAt` on every effect run (line 72), so Fast Refresh
   made the status cycle `connecting → stale → connecting` and never reach `lost`. The failure
   read as the 5.7 edge finding about reconnects resetting the clock; it was my edit. Same run,
@@ -1494,8 +1541,8 @@ that could not fail for the reason they existed, which is the shape this file ke
   export with `{ ...actual, useActionState }`; the rest of react stays the real module, so
   `react-dom/server` renders normally.
 
-**`[NAMED, NOT FIXED]` A lost Server Action response tells the auditor "Nothing was
-changed".** A flag form's action IS the Server Action — which is what makes it the one
+**`[FIXED 2026-09-26 — see the Story 10.8 note at the top]` A lost Server Action response tells
+the auditor "Nothing was changed".** A flag form's action IS the Server Action — which is what makes it the one
 control here that works without JavaScript, and what stops the component catching a dropped
 RSC response. The error reaches the route boundary, which renders EXPERIENCE.md's own
 "Couldn't load this page. Nothing was changed." over a flag that committed and notified. The
@@ -1698,7 +1745,10 @@ deterministic order across both kinds.
 
 Three mechanical lessons, and the first is the one that cost the most:
 
-- **A test whose fixture the server never sees cannot assert what the server does.**
+- `[SUPERSEDED 2026-09-26 — see the Story 10.8 note at the top: `lastSeqRef` is now
+  `LiveStreamState.lastSeq`, seeded at mount and by `beginLiveSubscription`; the behaviour
+  explained here is unchanged]` **A test whose fixture the server never sees cannot assert what
+  the server does.**
   `live-drop.spec.ts` intercepted the events route with SYNTHETIC sequences and asserted the
   page resumed at them. CI failed it twice and this machine passed it every time. The second
   CI failure said why in one line — ten reconnects, every cursor `0`, never `42` — and the
