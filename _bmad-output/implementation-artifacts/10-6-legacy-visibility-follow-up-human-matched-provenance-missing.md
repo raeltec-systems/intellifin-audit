@@ -144,3 +144,77 @@ first listed here as proposed scope.
   (`EscalationPanel.tsx:443`) has no `tabIndex`. Add `tabIndex={-1}`, as the shell's own target has
   (`AppShell.tsx:98`–`:100`), and a browser test that presses Enter on "Go to open Escalation" and
   asserts that focus is inside `#open-escalation`.
+
+## Record draft (not yet applied, 2026-09-26)
+
+Written by the build agent before the screenshot review; `4f6aacd5` and `d2f461a8` came after it.
+Open at the 2026-09-26 pause: `pnpm typecheck` and `pnpm test` after `d2f461a8` (then reword its
+"WIP:" message), the screenshots again, the CLAUDE.md notes, and this record.
+
+
+## Record of implementation (2026-09-26)
+
+Branch `claude/10-6-legacy-visibility`, from `429e08cf`, not pushed. No migration, no new
+audit event type, no new schema column and no change to the Result publication shape
+(`git diff --stat 429e08cf -- packages/infrastructure/drizzle` is empty). No historical event
+is rewritten; every link is an exact identity, never a time.
+
+- **5.6, skip link.** The browser test came first (`ebea63d8`; on the old code it failed
+  because focus was not in the panel after Enter). Then `tabIndex={-1}` on `#open-escalation`
+  (`67d71fb4`). Enter on "Go to open Escalation" now puts focus in the panel, and each Tab stop
+  from there to the first answer is inside the panel.
+- **5.3, Live View adapter rows** (`0ea6b47a`, `26d4a5db`). Each row reads its Evidence
+  EXACTLY by the id the step names (`readAdapterLog`, shared with Replay), and says one of
+  three things: the digest and a link to the Evidence card; "No artifact registered."; or
+  that the record could not be read.
+- **5.2, Replay gaps** (`2425c154`, browser `d8734c1f`). One predicate for a missing frame
+  (`replay-gaps.ts`), used by the terminal transition's `readMissingFrames` and by Replay's
+  `readReplayGaps`, so the Result and Replay cannot disagree. Each gap is marked where it sits
+  on the scrubber and listed in words. A suppressed capture uses `captureSentence` and is
+  never counted as missing. "Playback is incomplete: N frame(s) missing." shows only when
+  N > 0, with the exact count. A failed protected read keeps the existing unavailable state
+  and retries only that frame (`selected-replay.spec.ts`).
+- **4.7, human-matched** (`97df4e46`, `aa627d8e`, browser `731ddedd` and `2a42b1d4`, read
+  guards `d8734c1f`). A new registration of a human-selected match names its answered
+  choose-candidate wait in the existing `execution.observations-registered` event
+  (`humanMatchDecisions`), and registration refuses a human-selected match without one. The
+  Result, the record review queue and inspector, and the Exceptions list show "Human-matched"
+  with the person who chose, the candidate chosen, the time, and a reference to the answered
+  Escalation. A match registered before this build, or one whose link does not establish one
+  decision exactly, still shows the flag and says the decision is not linked. A platform match
+  shows no flag. The browser journey is a P-1 Run, the only Template whose Runs match a record
+  by a person's choice, with the leavers binding's mask on `full_name`.
+- **5.4, pause and resume** (`b96d7eb3`, `81eb84c4`, browser `91e5f51a`). Every new pause
+  event names the plan step where it holds the Run (`planStepId`, and `heldWorkItemId` at a
+  Work Item) and, when an attempt was in flight, the attempt it superseded
+  (`stepExecutionId`, `attempt`). The first attempt a stage starts at the held step after a
+  resume names that resume (`resumedWaitId`) on its own start event. The Execution Timeline
+  lists every pause, with where it held the Run and which attempt its resume started; the
+  Paused banner says where the current pause holds the Run. An older pause says its step was
+  not recorded. A pause between units names the step and says no Step Execution was in
+  flight. A superseded Work Item attempt is given back, so the attempt its resume restarts
+  carries the same number; the two Step Executions are told apart by their references.
+- Contracts and the decision log: `e8728b0c`, and the notes in `91e5f51a` and `2a42b1d4`.
+
+**Verification.** Typecheck, boundaries, the unit suite and the integration suite pass at
+the story's final code (`GATES_LINE`). The full browser suite passed at `d8734c1f` (291
+passed, 12 opt-in skips, none failed); the two journeys rewritten after it
+(`pause-resume.spec.ts`, `human-match.spec.ts`) pass on their own. Every new guard has a
+mutation that a named test kills (the report lists each). One mutant is equivalent: on Live
+View, a failed Evidence read turned into an empty map still says "could not be read",
+because a missing row already reads as unavailable.
+
+**Proposed wording, needs owner confirmation** (the story's Ask First rule; each sentence
+lives in one module and the tests read it back): `ADAPTER_ARTIFACT_WORDS.unavailable`
+(`live-view.ts`); `REPLAY_GAP_WORDS`, `replayIncompleteSentence`, `replayGapPosition`
+(`replay.ts`); `MATCH_DECISION_WORDS` and its sentence functions (`match-words.ts`); every
+sentence in `pause-words.ts`.
+
+**Decision to confirm.** The Ask First list names a new audit event TYPE, a column and a
+migration; none was added. New payload KEYS were added to existing event types
+(`humanMatchDecisions`; `planStepId`, `heldWorkItemId`, `stepExecutionId`, `attempt` on
+`lifecycle.run-paused`; `resumedWaitId` on the attempt-start events). The owner may count a
+new payload key as an audit-schema change.
+
+**Still open.** Legacy 4.7 and 5.2 close only with Story 14-11a's export criteria, or an
+owner scope amendment.
