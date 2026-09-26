@@ -1,3 +1,7 @@
+import { MASKED_VALUE } from '../design/copy';
+import { matchOriginWord } from './labels';
+import { HumanMatch } from './HumanMatch';
+import type { HumanMatchedRecordRow } from '@intellifin/infrastructure';
 import { OUTCOME_ROWS, type TemplateId, type RunResultPublication } from '@intellifin/domain';
 import type { RunResultRow, RunStopFacts } from '@intellifin/infrastructure';
 
@@ -642,4 +646,24 @@ export function ExecutionFailurePanel({
       {sealedAt === null ? null : <p className="ls-caption">Concluded {utcStamp(sealedAt)}.</p>}
     </section>
   );
+}
+
+/** Adjacent provenance is read from registrations, never added to the sealed publication. */
+export function HumanMatchedRecords({ runId, records, total, masked, systemName }: {
+  readonly runId: string; readonly records: readonly HumanMatchedRecordRow[];
+  readonly total: number; readonly masked: boolean;
+  readonly systemName: (id: string) => string | null;
+}): React.JSX.Element | null {
+  if (total === 0) return null;
+  return <section className="ls-card ls-stack" aria-labelledby="human-matched-records">
+    <h2 id="human-matched-records">{matchOriginWord('human-matched')} · {countNoun(total, 'record')}</h2>
+    <ul className="ls-plain-list">{records.map(record => <li key={record.sourceOrdinal}>
+      <a href={`/runs/${runId}/evidence?selected=${record.sourceOrdinal}`}>{masked ? MASKED_VALUE : record.populationRecordKey}</a>
+      {record.observations.map(observation => <div key={observation.observationId}>
+        <strong>{systemName(observation.targetSystem) ?? observation.targetSystem}</strong>
+        <HumanMatch runId={runId} matchOrigin={observation.matchOrigin} decision={observation.matchingDecision} />
+      </div>)}
+    </li>)}</ul>
+    {total > records.length ? <p>{countNoun(total - records.length, 'further record')} not listed here; <a href={`/runs/${runId}/evidence`}>{EXCEPTION_WORDS.openEvidence}</a></p> : null}
+  </section>;
 }

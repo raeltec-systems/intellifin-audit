@@ -26,6 +26,7 @@ import {
 } from '@intellifin/application';
 import {
   createDb,
+  DrizzleRunDetailRepository,
   createSqlClient,
   CryptoUuidV7Generator,
   PostgresAgentWorkRepository,
@@ -161,6 +162,70 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
   });
 
   const repository = () => new PostgresRecordReviewRepository(db, () => now);
+
+  it.each([
+    { matching: 'historical' as const, sensitive: true },
+    { matching: 'linked' as const, sensitive: true },
+    { matching: 'linked' as const, sensitive: false },
+  ])('reads human match provenance by exact registration link: $matching, sensitive=$sensitive', async ({ matching, sensitive }) => {
+    const fixture = await seedMaskedRun(matching, sensitive);
+    try {
+      const matches = await new DrizzleRunDetailRepository(db).readHumanMatchedObservations(fixture.runId);
+      expect(matches.total).toBe(1); expect(matches.rows[0]?.matchOrigin).toBe('human-matched');
+      if (matching === 'linked') expect(matches.rows[0]?.matchingDecision).toMatchObject({ answerOptionId: 'candidate-2',
+        answerLabel: sensitive ? null : 'Candidate 2', answerMasked: sensitive, actorId: seeded.actorId });
+      else expect(matches.rows[0]?.matchingDecision).toBeNull();
+      const queue = await repository().readPage({ runId: fixture.runId, actorId: seeded.actorId, pageSize: 25 });
+      expect(queue.status).toBe('ready');
+      if (queue.status === 'ready') expect(queue.rows.flatMap(row => row.targets).find(target => target.observationId === matches.rows[0]?.observationId)).toMatchObject({ matchOrigin: 'human-matched', matchingDecision: matches.rows[0]?.matchingDecision });
+      const direct = await new DrizzleRunDetailRepository(db).readObservationsByIds(fixture.runId, [matches.rows[0]!.observationId]);
+      expect(direct[0]?.matchingDecision).toEqual(matches.rows[0]?.matchingDecision);
+      if (matching === 'linked') {
+        const stored = await sql`SELECT r.row::text AS row FROM run_review_snapshot_row r
+          JOIN run_review_snapshot s ON s.snapshot_id=r.snapshot_id WHERE s.run_id=${fixture.runId}`;
+        expect(stored.length).toBeGreaterThan(0);
+        if (sensitive) expect(JSON.stringify(stored)).not.toContain('Candidate 2');
+        else expect(JSON.stringify(stored)).toContain('Candidate 2');
+      }
+      expect((await new DrizzleRunDetailRepository(db).readObservationsByIds(seeded.otherRunId, [matches.rows[0]!.observationId]))).toEqual([]);
+    } finally { await fixture.cleanup(); }
+  });
+
+  it.each(['foreign-wait', 'wrong-digest', 'contradictory-links', 'duplicate-links', 'timeout', 'withdrawn', 'open', 'resume'] as const)(
+    'refuses invalid human match provenance through detail and queue: %s', async invalid => {
+      const fixture = await seedMaskedRun('linked', true, invalid);
+      try {
+        const [registration] = await sql<{ payload: { matchingDecisions: { observationId: string; digest: string; waitId: string }[] } }[]>`
+          SELECT payload FROM audit_events WHERE aggregate_id=${fixture.runId} AND event_type='execution.observations-registered'`;
+        const link = registration!.payload.matchingDecisions[0]!;
+        const detail = new DrizzleRunDetailRepository(db);
+        const matches = await detail.readHumanMatchedObservations(fixture.runId);
+        expect(matches.total).toBe(1);
+        expect(matches.rows[0]).toMatchObject({ observationId: link.observationId, matchOrigin: 'human-matched', matchingDecision: null });
+        expect((await detail.readObservationsByIds(fixture.runId, [link.observationId]))[0]).toMatchObject({ matchingDecision: null });
+        const queue = await repository().readPage({ runId: fixture.runId, actorId: seeded.actorId, pageSize: 25 });
+        expect(queue.status).toBe('ready');
+        if (queue.status !== 'ready') throw new Error('Expected review queue');
+        expect(queue.rows.flatMap(row => row.targets).find(target => target.observationId === link.observationId))
+          .toMatchObject({ matchOrigin: 'human-matched', matchingDecision: null });
+      } finally {
+        // A deliberately foreign wait must still be removed before the fixture Run.
+        await sql`DELETE FROM run_wait WHERE wait_id::text IN (
+          SELECT link->>'waitId' FROM audit_events e CROSS JOIN LATERAL jsonb_array_elements(e.payload->'matchingDecisions') link
+          WHERE e.aggregate_id=${fixture.runId} AND e.event_type='execution.observations-registered')`;
+        await fixture.cleanup();
+      }
+    },
+  );
+
+  it('counts one human-matched source record while retaining both target decisions', async () => {
+    const result = await new DrizzleRunDetailRepository(db).readHumanMatchedRecords(seeded.runId);
+    expect(result.total).toBe(1);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({ sourceOrdinal: 1, populationRecordKey: 'Param-0001' });
+    expect(result.rows[0]!.observations).toHaveLength(2);
+    expect(new Set(result.rows[0]!.observations.map(row => row.targetSystem))).toEqual(new Set([seeded.primaryTarget.registrationId, seeded.secondaryTarget.registrationId]));
+  });
 
   it('pages all 1,000 source rows in source order with exact full counts', async () => {
     const first = await repository().readPage({ runId: seeded.runId, actorId: seeded.actorId, pageSize: 25 });
@@ -1105,7 +1170,8 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
       const key = values.parameter as string;
       const badEvidence = kind === 'secondary' && ordinal === 3;
       const evidenceId = badEvidence ? missingEvidenceId : kind === 'primary' ? primaryEvidenceId : secondaryEvidenceId;
-      const record = observation({ runId, target, workItemId, stepExecutionId, key, ordinal, evidenceId });
+      const captured = observation({ runId, target, workItemId, stepExecutionId, key, ordinal, evidenceId });
+      const record = ordinal === 1 ? { ...captured, matchOrigin: 'human-matched' as const } : captured;
       registered.push({ record, digest: observationDigest(record), coverage: 'COVERED', corroboration: 'MATCHED', observedAtSource: record.observedAt });
       for (const check of CHECKS) checks.push({ observationId: record.observationId, check, outcome: badEvidence && check === 'required-evidence' ? 'FAIL' : 'PASS', diagnostic: badEvidence && check === 'required-evidence' ? 'missing linked Evidence' : null });
       const pending = kind === 'secondary' && ordinal === 2;
@@ -1201,7 +1267,7 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
    * captured status sensitive. Row 1 is inspected, with a non-sensitive `account_id` and a
    * sensitive `status` among its captured attributes; row 2 is not inspected.
    */
-  async function seedMaskedRun(): Promise<{ runId: string; cleanup(): Promise<void> }> {
+  async function seedMaskedRun(matching: 'platform' | 'historical' | 'linked' = 'platform', sensitive = true, invalid?: 'foreign-wait' | 'wrong-digest' | 'contradictory-links' | 'duplicate-links' | 'timeout' | 'withdrawn' | 'open' | 'resume'): Promise<{ runId: string; cleanup(): Promise<void> }> {
     const procedureId = ids.next();
     const versionId = ids.next();
     const runId = ids.next();
@@ -1212,7 +1278,7 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
       kind: 'versioned-file' as const,
       location: 'https://synthetic.invalid/masked-baseline.csv',
       declaredSchema: ['parameter', 'observed_value', 'approved_value', 'observation_time', 'status', 'account_id'],
-      sensitiveFields: ['parameter', 'approved_value', 'status'],
+      sensitiveFields: sensitive ? ['parameter', 'approved_value', 'status'] : [],
       declaredCountMechanism: 'cover-sheet' as const,
     };
     const inputs = {
@@ -1227,23 +1293,27 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
     const plan = version.compiledPlan!;
     const target = plan.inputs.targets[0]!;
     const cleanup = async () => {
-      await sql`DELETE FROM run_review_snapshot WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_observation_check WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_observation_evaluation WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_observation_absence WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_observation WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_evidence_capture WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_tool_action WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_step_execution WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_work_item WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_evidence WHERE run_id=${runId}`;
-      await sql`DELETE FROM population_row WHERE run_id=${runId}`;
-      await sql`DELETE FROM population_snapshot WHERE run_id=${runId}`;
-      await sql`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
-      await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
-      await sql`DELETE FROM audit_run WHERE run_id=${runId}`;
-      await sql`DELETE FROM procedure_version WHERE procedure_id=${procedureId}`;
-      await sql`DELETE FROM procedure WHERE procedure_id=${procedureId}`;
+      await sql.begin(async cleanupSql => {
+      await cleanupSql`SELECT run_id FROM audit_run WHERE run_id=${runId} FOR UPDATE`;
+      await cleanupSql`DELETE FROM run_wait WHERE run_id=${runId}`;
+      await cleanupSql`DELETE FROM run_review_snapshot WHERE run_id=${runId}`;
+      await cleanupSql`DELETE FROM run_observation_check WHERE run_id=${runId}`;
+      await cleanupSql`DELETE FROM run_observation_evaluation WHERE run_id=${runId}`;
+      await cleanupSql`DELETE FROM run_observation_absence WHERE run_id=${runId}`;
+      await cleanupSql`DELETE FROM run_observation WHERE run_id=${runId}`;
+      await cleanupSql`DELETE FROM run_evidence_capture WHERE run_id=${runId}`;
+      await cleanupSql`DELETE FROM run_tool_action WHERE run_id=${runId}`;
+      await cleanupSql`DELETE FROM run_step_execution WHERE run_id=${runId}`;
+      await cleanupSql`DELETE FROM run_work_item WHERE run_id=${runId}`;
+      await cleanupSql`DELETE FROM run_evidence WHERE run_id=${runId}`;
+      await cleanupSql`DELETE FROM population_row WHERE run_id=${runId}`;
+      await cleanupSql`DELETE FROM population_snapshot WHERE run_id=${runId}`;
+      await cleanupSql`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
+      await cleanupSql`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
+      await cleanupSql`DELETE FROM audit_run WHERE run_id=${runId}`;
+      await cleanupSql`DELETE FROM procedure_version WHERE procedure_id=${procedureId}`;
+      await cleanupSql`DELETE FROM procedure WHERE procedure_id=${procedureId}`;
+      });
     };
     try {
       await insertRun(runId, procedureId, versionId, seeded.actorId, '2026-09-19T12:00:00.000Z', '2026-08-01', '2026-08-31');
@@ -1279,12 +1349,25 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
       const captured = observation({ runId, target, workItemId, stepExecutionId, key: 'Secret-0001', ordinal: 1, evidenceId });
       const record: ObservationRecord = {
         ...captured,
+        matchOrigin: matching === 'platform' ? 'platform' : 'human-matched',
         attributes: [
           ...captured.attributes,
           attribute('account_id', 'ACC-1', evidenceId, '$.parameters[1].account_id'),
           attribute('status', 'SECRET-STATUS', evidenceId, '$.parameters[1].status'),
         ],
       };
+      const matchingWaitId = ids.next();
+      const closure = invalid === 'open' ? null : invalid === 'resume' ? 'resume' : invalid === 'timeout' || invalid === 'withdrawn' ? invalid : 'answer';
+      const option = closure === 'answer' ? 'candidate-2' : closure === 'resume' ? 'resume' : null;
+      if (matching === 'linked') await sql`INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,opened_by,deadline,closed_at,closure_kind,answer_option_id,actor)
+        VALUES(${matchingWaitId},${invalid === 'foreign-wait' ? seeded.otherRunId : runId},${invalid === 'resume' ? 'pause' : 'choose-candidate'},
+          ${JSON.stringify(invalid === 'resume' ? [{ id: 'resume', label: 'Resume' }] : [{ id: 'candidate-2', label: 'Candidate 2' }])}::jsonb,
+          '2026-09-05T09:00:00Z',${invalid === 'resume' ? seeded.actorId : null},'2026-09-05T13:00:00Z',
+          ${closure === null ? null : '2026-09-05T09:30:00Z'},${closure},${option},
+          ${closure === null ? null : closure === 'timeout' ? 'wait-wake' : closure === 'withdrawn' ? 'run-terminal' : seeded.actorId})`;
+      const link = { observationId: record.observationId, digest: observationDigest(record), waitId: matchingWaitId };
+      const wrong = { ...link, digest: 'not-the-registered-observation-digest' };
+      const matchingDecisions = invalid === 'wrong-digest' ? [wrong] : invalid === 'contradictory-links' ? [link, wrong] : invalid === 'duplicate-links' ? [link, link] : [link];
       await new PostgresAgentWorkRepository(db).transaction(runId, async context => {
         await context.saveEvidence(evidence({ evidenceId, runId, target, objectKey: `record-review/${runId}/masked`, at }));
         await context.saveWorkItem({ workItemId, subjectKey: null, stepId, ordinal: 1, registrationId: target.registrationId, displayName: target.displayName, state: 'OBSERVED', attempts: 1, cycles: 0, diagnostic: null, evidenceId, observations: 1 });
@@ -1292,6 +1375,9 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
         await context.saveToolAction(toolAction);
         await context.saveCapture({ evidenceId, toolActionId: toolAction.toolActionId, sourceLocation: toolAction.destination });
         await context.saveObservations([{ record, digest: observationDigest(record), coverage: 'COVERED', corroboration: 'MATCHED', observedAtSource: record.observedAt }]);
+        if (matching === 'linked') await context.auditEvents.append({ actor: { type: 'system', id: 'observation-registrar' },
+          eventType: 'execution.observations-registered', source: 'worker', outcome: 'success', aggregateId: runId,
+          correlationId: runId, sessionId: 'test', payload: { matchingDecisions } });
         await context.saveObservationChecks(CHECKS.map(check => ({ observationId: record.observationId, check, outcome: 'PASS', diagnostic: null })));
         await context.saveObservationEvaluations([{ observationId: record.observationId, coverage: 'COVERED', corroboration: 'MATCHED', evaluation: {
           conditionId: 'C1', origin: 'RULE', value: 'COMPLIANT', confirmation: null, confidence: null, rationale: null, diagnostic: null, evidenceIds: [evidenceId],

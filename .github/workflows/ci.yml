@@ -56,7 +56,7 @@ jobs:
   database:
     name: Migrations and integration tests (PostgreSQL 18)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     services:
       # The same image the deployed environment runs, presenting the same self-signed
       # certificate. `sslmode=require` below makes CI connect over TLS exactly as the
@@ -122,6 +122,33 @@ jobs:
 
       - name: Integration tests
         run: pnpm test:integration
+
+      # Story 10.6 guard mutations are isolated from the engineering checkout. The
+      # verifier requires a disposable database, clean detached worktree, real failing
+      # assertions and restoration in finally. This gate gets an explicit 15-minute budget.
+      - name: Prove legacy visibility guards on PostgreSQL 18
+        timeout-minutes: 15
+        run: |
+          visibility_tree="${RUNNER_TEMP}/legacy-visibility-worktree"
+          git worktree add --detach "$visibility_tree" HEAD
+          pnpm --dir "$visibility_tree" install --frozen-lockfile
+          (
+            cd "$visibility_tree"
+            node scripts/verify-pause-linkage-mutations.mjs "${RUNNER_TEMP}/legacy-visibility-mutations.json"
+          )
+
+      - name: Publish legacy visibility mutation observations
+        if: always()
+        run: node scripts/report-agent-mutations.mjs "${RUNNER_TEMP}/legacy-visibility-mutations.json"
+
+      - name: Retain legacy visibility mutation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-visibility-mutations
+          path: ${{ runner.temp }}/legacy-visibility-mutations.json
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Retain record review query plan
         if: always()

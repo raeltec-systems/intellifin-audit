@@ -277,6 +277,7 @@ interface Store {
   result: StoredRunResult | null;
   /** Every pause wait the stage opened, so a test can assert exactly one (Story 5.4). */
   pauseWaits: RunWait[];
+  pendingResumeWaitId: string | null;
 }
 
 function store(plan: ExecutablePlan | null, overrides: Partial<Store> = {}): Store {
@@ -295,6 +296,7 @@ function store(plan: ExecutablePlan | null, overrides: Partial<Store> = {}): Sto
     seal: null,
     result: null,
     pauseWaits: [],
+    pendingResumeWaitId: null,
     ...overrides,
   };
 }
@@ -313,6 +315,7 @@ class FakeContext implements AgentExecutionContext {
   /** Generation 47. This context never opens a wait, so there is never one to withdraw. */
   withdrawOpenWait = async (): Promise<null> => null;
   /** Real behaviour, not a stub: the pause tests assert the row and the cleared marker. */
+  readPendingResumeWait = async (): Promise<string | null> => this.state.events.some(event => event.payload.resumedFromWaitId === this.state.pendingResumeWaitId) ? null : this.state.pendingResumeWaitId;
   openPauseWait = async (wait: RunWait): Promise<void> => { this.state.pauseWaits.push(wait); };
   clearPauseRequest = async (): Promise<void> => {
     if (this.run) this.run = { ...this.run, pauseRequest: null };
@@ -967,6 +970,7 @@ describe('a person paused the Run (Story 5.4)', () => {
     expect(state.run?.state).toBe('PAUSED');
     expect(state.pauseWaits).toHaveLength(1);
     expect(state.pauseWaits[0]).toMatchObject({ kind: 'pause', openedBy: 'auditor' });
+    expect(state.events.find(event => event.eventType === 'lifecycle.run-paused')?.payload).toMatchObject({ planStepId: state.steps[0]!.stepId, attempt: null, stepExecutionId: null, inFlight: false });
     // The marker means "requested and NOT yet honoured", so the boundary that honours it
     // clears it — which is what makes a marker at a terminal transition mean superseded.
     expect(state.run?.pauseRequest).toBeNull();
@@ -1186,5 +1190,19 @@ describe('a database failure inside the phase', () => {
     expect(thrown).toBe(true);
     expect(state.checkpoint).toMatchObject({ status: 'RETRY' });
     expect(state.run?.state).toBe('RUNNING');
+  });
+});
+
+
+describe('resume provenance on sign-in producers', () => {
+  it.each(['sign-in', 'public-access'] as const)('binds only the first %s attempt to its pending resumed wait', async kind => {
+    const state = store(kind === 'sign-in' ? planFor('web') : publicPlan(), { pendingResumeWaitId: 'resumed-wait' });
+    const browser = new FakeBrowser({ fail: new BrowserActionError('unavailable'), failTimes: 1,
+      ...(kind === 'public-access' ? { result: { artifacts: [publicArtifact()] } } : {}) });
+    await executeAgentSteps(DEPS(state, browser), JOB);
+    const starts = state.events.filter(event => event.payload.diagnostic === `${kind}-attempt-started`);
+    expect(starts.length).toBeGreaterThan(1);
+    expect(starts.map(event => event.payload.resumedFromWaitId)).toEqual(['resumed-wait', ...starts.slice(1).map(() => null)]);
+    expect(starts[0]?.payload).toMatchObject({ stepId: state.executions[0]!.planStepId, stepExecutionId: state.executions[0]!.stepExecutionId, attempt: state.executions[0]!.attempt });
   });
 });

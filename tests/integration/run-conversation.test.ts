@@ -544,13 +544,13 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
       const boundary = () => db.transaction(tx => withRunExecutionContext(tx, runId, async context => {
         if (!context.run?.pauseRequest) throw new Error('Pause marker missing');
         await context.saveRunState('PAUSED');
-        await performPause(context, { run: context.run, request: context.run.pauseRequest, waitId: ids.next(), at: now.toISOString() });
+        await performPause(context, { run: context.run, request: context.run.pauseRequest, planStepId: 'fixture-step', attempt: null, waitId: ids.next(), at: now.toISOString() });
       }));
       // Exercise rollback through the actual shared worker context, not a fake receipt writer.
       await expect(db.transaction(tx => withRunExecutionContext(tx, runId, async context => {
         if (!context.run?.pauseRequest) throw new Error('Pause marker missing');
         await context.saveRunState('PAUSED');
-        await performPause(context, { run: context.run, request: context.run.pauseRequest, waitId: ids.next(), at: now.toISOString() });
+        await performPause(context, { run: context.run, request: context.run.pauseRequest, planStepId: 'fixture-step', attempt: null, waitId: ids.next(), at: now.toISOString() });
         throw new Error('rollback-worker-pause');
       }))).rejects.toThrow('rollback-worker-pause');
       expect((await transitions()).map(t => t.state)).toEqual(['received','interpreted','queued']);
@@ -1512,7 +1512,7 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
     await db.transaction(tx => withRunExecutionContext(tx, runId, async context => {
       if (!context.run?.pauseRequest) throw new Error('Pause marker missing');
       await context.saveRunState('PAUSED');
-      await performPause(context, { run: context.run, request: context.run.pauseRequest, waitId: ids.next(), at: new Date().toISOString() });
+      await performPause(context, { run: context.run, request: context.run.pauseRequest, planStepId: 'fixture-step', attempt: null, waitId: ids.next(), at: new Date().toISOString() });
     }));
     return runId;
   }

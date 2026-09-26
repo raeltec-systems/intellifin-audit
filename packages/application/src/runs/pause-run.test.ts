@@ -368,6 +368,7 @@ describe('performPause', () => {
     const request: RunPauseRequest = { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-10T08:59:00.000Z', commandId: COMMAND_ID };
     context.pauseRequest = request;
     const withPause = Object.assign(context, {
+      readPendingResumeWait: async () => null,
       openPauseWait: async (wait: RunWait) => { opened.push(wait); context.wait = wait; },
       clearPauseRequest: async () => { context.pauseRequest = null; },
     });
@@ -378,6 +379,8 @@ describe('performPause', () => {
       waitId: '01a06fd8-0000-7000-8000-0000000000c1',
       at: NOW.toISOString(),
       stepExecutionId: 'step-execution',
+      planStepId: 'inspect-step',
+      attempt: 2,
       workItemId: 'work-item',
     });
 
@@ -397,6 +400,8 @@ describe('performPause', () => {
       deadline: wait.deadline,
       commandId: COMMAND_ID,
       stepExecutionId: 'step-execution',
+      planStepId: 'inspect-step',
+      attempt: 2,
       workItemId: 'work-item',
     });
   });

@@ -2,9 +2,10 @@
 title: 'Legacy visibility follow-up: human-matched provenance, missing-frame indication and exact pause and resume linkage on the retained compiler-1 surfaces'
 type: 'fix'
 created: '2026-09-25'
-status: 'ready-for-dev'
+status: 'in-progress'
 review_loop_iteration: 0
-implementation_authorised: false
+implementation_authorised: true
+baseline_commit: 429e08cf703fee6c5320f17b5983948709fd5bdf
 context:
   - '_bmad-output/implementation-artifacts/legacy-review-closure-register.md'
   - '_bmad-output/planning-artifacts/epics.md'
@@ -142,3 +143,65 @@ first listed here as proposed scope.
   (`EscalationPanel.tsx:443`) has no `tabIndex`. Add `tabIndex={-1}`, as the shell's own target has
   (`AppShell.tsx:98`–`:100`), and a browser test that presses Enter on "Go to open Escalation" and
   asserts that focus is inside `#open-escalation`.
+
+## Implementation authorisation — 2026-09-26
+
+The owner authorised implementation of Stories 10.6–10.10, including parallel agents. This supersedes the preparation-only restriction; frozen Ask First requirements remain in force.
+
+## Implemented checkpoint — 2026-09-26
+
+Status remains **in-progress**, not accepted. No migration, new event type, Result publication amendment, historical event rewrite, or external rename.
+
+- [x] New human-match registrations retain the exact answered wait in the existing registration event, bound to the Observation id and digest. Reader requires a same-Run answered choose-candidate wait and an unambiguous link; names use the existing ActorName reader. Redelivery never backfills provenance.
+- [x] Result (adjacent provenance, unchanged sealed document), record queue, inspector and Exceptions show the existing Human-matched word and available exact answer, actor, time and wait identity. Platform matches show no flag.
+- [x] New pauses carry exact plan step, execution/attempt or explicit no in-flight execution. Existing start events carry the exact resumed wait; a resume reader requires one causal start event agreeing with the same Run's actual execution. Timeline and Paused banner render these structured stored facts with existing labels and `None` / `Not recorded`; no guessed current step.
+- [x] Live adapter rows resolve registered Evidence by exact id through the real page read, independently of the bounded Evidence overview. No-artifact and unreadable registered identity remain distinct.
+- [x] Keyboard skip-link test was written before adding `tabIndex={-1}`. It checks Enter focus and the next Tab's first panel control.
+- [x] Added bounded Replay capture-gap read with exact missing/suppressed counts and ordered Tool Action positions. Suppressed captures are excluded from missing count.
+- [x] Wire ordered Replay gaps, approved suppression wording, exact missing/suppressed counts and per-frame protected-read failures through the real page, including scoped inspection.
+- [ ] Finish accessible missing-position presentation, scrubber placeholders and incomplete/missing prose after the frozen wording decision. Data attributes are not an accessible acceptance claim.
+- [ ] Explicit unlinked decision / unavailable Evidence sentences and any replacement pause narrative remain subject to the frozen wording approval. The current human flag does not invent a decision, and an unreadable adapter identity does not say no artifact exists.
+- [ ] Hosted PostgreSQL 18, browser/WCAG and mutation acceptance; BMAD independent review and resolution. No completed-acceptance claim for unrun tests.
+
+### Verification actually run
+
+- Pause/worker targeted unit suites: 168 passed.
+- Initial Live Viewer + human-decision + real Live page suites: 54 passed.
+- Full unit run: 5,395 passed, 3 failed (all an accidental pause-facts insertion into CancellationBanners). Corrected that insertion; all six affected RerunLinks cases and 57 related/new targeted cases then passed (63/63).
+- Boundaries passed (809 modules); `git diff --check` passed.
+- Full workspace and root-tests TypeScript check passed after the full unit run. A concurrent earlier attempt saw the intentionally forbidden boundary-test fixture; no guard was weakened.
+- Meaningful local mutations: removing the human/platform flag guard, hard-coding the Live adapter digest to null, and suppressing the fresh matching-decision link were each killed by their respective targeted assertion suites; all three mutations restored.
+- Authored PostgreSQL cases: linked versus historical human matches, cross-Run refusal, queue projection, missing versus suppressed capture positions, repeated pause/resume, rollback and contradictory execution linkage. Not run locally: PostgreSQL unavailable in this managed environment.
+- Browser test authored, not run locally. Every changed surface still requires the no-allowlist WCAG 2.1 AA gate.
+
+### Remaining owner wording decision (concrete proposals, NOT approved)
+
+The UX artifacts and words modules contain no semantically equivalent approved sentences for these distinctions:
+
+1. “The matching decision is not linked to this Observation.”
+2. “Playback is incomplete: {count} frames are missing.” and “Frame missing.”
+3. “Evidence is unavailable.”
+
+Recommended: approve these concise sentences, store them once in the words module, pin tests by importing them, then finish the blocked render branches. Alternative: supply preferred wording with the same facts. Pause facts currently use existing structured field labels and `None` / `Not recorded`; if a narrative is required, proposed sentences are “Step was not recorded for this pause or resume.” and “No Step Execution was in flight.” No proposal here changes the frozen intent or constitutes approval.
+
+### Review order / continuation
+
+1. Application registration and human-decision producer, then human-match-provenance and record/detail reads.
+2. Pause boundary producers and pause-linkage's causal first-start read, then Timeline/PausedBanner.
+3. Exact adapter Evidence read and keyboard regression.
+4. Replay gap query and the explicit unactivated copy-dependent work above.
+5. Integration/browser proofs and mutation guards.
+
+Next: parent review of the accepted review patches, hosted acceptance, and the exact wording decision above. Keep this story separate from PR #54 and Stories 10.7–10.10.
+
+### Accepted review patches — 2026-09-26
+
+- Frozen binding masking now precedes immutable presentation snapshots and all four provenance surfaces. A sensitive primary or secondary lookup key, missing plan or missing sensitivity policy masks the candidate label; historical snapshots without an explicit safe marker also mask. Untrusted answer policy is visible.
+- Result counts distinct source-record identities and retains each target decision. Exact source ordinals resolve records beyond the first 500 rows. Provenance renders even if the sealed publication cannot decode; queue decisions identify their target.
+- Pause boundaries skip acquired/terminal work. Each adapter/sign-in/public-access producer is exercised with a real pending resume id and only the first start consumes it. Timeline exposes exact wait identity and paginates histories beyond 100 entries with `pauseBefore`, preserving unrelated query selectors.
+- PostgreSQL cases cover foreign Run waits, wrong digests, duplicate/contradictory links, non-answer closures through detail and queue, multiple target Observations for one record, and Run/Step/attempt contradictions. Fixtures insert contradictory historical facts directly; they do not rewrite audit events.
+- Browser/axe acceptance authored for four provenance surfaces, both sensitive lookup cases, exact record 503, unreadable publication, platform absence, acquired adapter metadata/digest states, and two real Pause/Acquire/Resume cycles with causally linked worker fixtures. Browser fixtures do not prove object-store acquisition; these browser and PostgreSQL cases remain unrun locally.
+- Latest complete unit run passed **5,418 tests in 298 files**. Full workspace/root TypeScript passed after application changes; final fixture-only root check and boundary check are recorded in the parent handoff.
+- CI now runs the disposable guarded mutation verifier after PostgreSQL integration tests and before the existing agent mutation check (15-minute step budget; job 35 minutes). It restores every mutation in `finally` and reports exact outcomes. The verifier contains 21 cases: 11 unit and 10 PostgreSQL. Local unit guard mutations were killed; PostgreSQL mutation outcomes require hosted CI.
+
+This is an implementation checkpoint, not completed Story acceptance. The remaining Replay work includes accessible missing-position/scrubber rendering as well as the proposed copy switch. No owner wording, architecture, merge or deployment approval is implied.

@@ -425,6 +425,8 @@ export interface PopulationRecord {
  */
 export interface RunPauseContext extends RunResultContext {
   openPauseWait(wait: RunWait): Promise<void>;
+  /** The latest resumed pause not yet consumed by an attempt, under the Run lock. */
+  readPendingResumeWait(): Promise<string | null>;
   /**
    * Clear the request marker, in the transaction that honours it.
    *

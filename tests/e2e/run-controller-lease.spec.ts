@@ -109,7 +109,7 @@ async function pauseSeededRun(runId: string, auditorId: string): Promise<string>
     const wait = await performPause(context as never, {
       run,
       request,
-      waitId: ids.next(),
+      planStepId: 'fixture-step', attempt: null, waitId: ids.next(),
       at: new Date().toISOString(),
     });
     return wait.waitId;

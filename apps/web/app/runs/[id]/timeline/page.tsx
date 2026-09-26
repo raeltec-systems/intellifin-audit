@@ -1,6 +1,7 @@
+import { PauseLinkageHistory } from '../../../../src/runs/PauseLinkage';
 import type { Metadata } from 'next';
 
-import { DrizzleRunDetailRepository } from '@intellifin/infrastructure';
+import { DrizzleRunDetailRepository, DrizzleActorNameReader, readRunPauseLinkage } from '@intellifin/infrastructure';
 
 import { getRuntime } from '../../../../src/bootstrap';
 import { EmptyState } from '../../../../src/design/EmptyState';
@@ -26,8 +27,10 @@ export const dynamic = 'force-dynamic';
  */
 export default async function RunTimelinePage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ id: string }>;
+  readonly searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<React.JSX.Element> {
   const { id } = await params;
   const access = await openRun(id);
@@ -36,6 +39,21 @@ export default async function RunTimelinePage({
 
   const runtime = await getRuntime();
   const timeline = await new DrizzleRunDetailRepository(runtime.db).readTimeline(run.runId);
+  const query = await searchParams ?? {};
+  const rawCursor = query.pauseBefore;
+  const parsedCursor = typeof rawCursor === 'string' && /^[1-9][0-9]*$/.test(rawCursor) ? Number(rawCursor) : null;
+  const pauseBefore = parsedCursor !== null && Number.isSafeInteger(parsedCursor) ? parsedCursor : null;
+  const pauses = await readRunPauseLinkage(runtime.db, run.runId, pauseBefore);
+  const pauseBaseHref = `/runs/${encodeURIComponent(run.runId)}/timeline`;
+  const pauseHref = (before: number | null): string => {
+    const parameters = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (key !== 'pauseBefore' && value !== undefined) {
+      for (const item of typeof value === 'string' ? [value] : value) parameters.append(key, item);
+    }
+    if (before !== null) parameters.set('pauseBefore', String(before));
+    return `${pauseBaseHref}${parameters.size === 0 ? '' : `?${parameters.toString()}`}#pause-resume-history`;
+  };
+  const pauseNames = await new DrizzleActorNameReader(runtime.db).namesFor(pauses.rows.map(entry => entry.actorId));
   const nothing =
     timeline.population === null &&
     timeline.execution === null &&
@@ -67,6 +85,7 @@ export default async function RunTimelinePage({
           <ExecutionTimeline timeline={timeline} runId={run.runId} />
         </section>
       )}
+      <PauseLinkageHistory entries={pauses.rows} total={pauses.total} names={pauseNames} firstHref={pauseBefore === null ? null : pauseHref(null)} nextHref={pauses.nextBeforeSequence === null ? null : pauseHref(pauses.nextBeforeSequence)} />
     </RunDetailFrame>
   );
 }

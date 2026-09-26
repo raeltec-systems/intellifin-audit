@@ -333,3 +333,23 @@ describe('record review queue and inspector', () => {
     expect(html).not.toContain('Replay this inspection');
   });
 });
+
+describe('human matching is visible without disclosing frozen-sensitive candidate labels', () => {
+  const maskedDecision = { waitId: 'matching-wait', answerOptionId: 'candidate-2', answerLabel: null, answerMasked: true,
+    actorId: 'auditor', actorName: 'Audit Person', decidedAt: '2026-09-26T12:00:00Z' };
+  const secret = 'PRIVATE SECONDARY NAME';
+  it('keeps every target decision attributable in the queue and guards old presentation snapshots', () => {
+    for (const decision of [maskedDecision, { ...maskedDecision, answerLabel: secret, answerMasked: undefined }]) {
+      const humanRow = { ...firstRow, targets: [{ ...target, matchOrigin: 'human-matched', matchingDecision: decision },
+        { ...target, targetId: 'second', targetName: 'Second System', matchOrigin: 'human-matched', matchingDecision: decision }] };
+      const html = renderToStaticMarkup(React.createElement(RecordReviewQueue, { runId: RUN_ID, navigation, page: { ...page, rows: [humanRow] } }));
+      expect(html).toContain('Human-matched'); expect(html).toContain('LoanCore'); expect(html).toContain('Second System');
+      expect(html).toContain('Audit Person'); expect(html).not.toContain(secret);
+    }
+  });
+  it('shows the matching decision in the selected record inspector without its masked answer', () => {
+    const html = renderToStaticMarkup(React.createElement(RecordReviewInspector, { runId: RUN_ID, selection,
+      observations: [{ ...observation, matchOrigin: 'human-matched', matchingDecision: maskedDecision }], evaluations: [], evidence: [], evaluationReview: null, navigation, page }));
+    expect(html).toContain('Human-matched'); expect(html).toContain('matching-wait'); expect(html).toContain('Audit Person'); expect(html).not.toContain(secret);
+  });
+});

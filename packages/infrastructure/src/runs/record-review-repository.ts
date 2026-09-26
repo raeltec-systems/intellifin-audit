@@ -1,8 +1,9 @@
+import { readHumanMatchDecisions } from './human-match-provenance.js';
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { and, asc, desc, eq, gt, sql } from 'drizzle-orm';
 import { POPULATION_CHECK_NAMES, adapterLookupColumn, adapterSearchKeys, classifyPlanTargets, authorizeActionRole, type ExecutablePlan, type JsonValue } from '@intellifin/domain';
-import { RECORD_REVIEW_FILTERS, type RecordReviewCounts, type RecordReviewFilter, type RecordReviewQuery,
+import { maskHumanMatchDecision, RECORD_REVIEW_FILTERS, type RecordReviewCounts, type RecordReviewFilter, type RecordReviewQuery,
   type RecordReviewResult, type RecordReviewRow, type RecordReviewSelectionResult, type RecordReviewTarget } from '@intellifin/application';
 import type { Database, Transaction } from '../db/client.js';
 import { runReviewSnapshot, runReviewSnapshotRow, populationRow } from '../db/schema.js';
@@ -20,7 +21,7 @@ type SelectionInput = { runId: string; actorId: string; sourceOrdinal: number; l
 type ReadySelection = Extract<RecordReviewSelectionResult, { status: 'ready' }>;
 type Flat = { ordinal: number; key: string | null; name: string | null; disposition: string; duplicate: boolean; target_id: string | null;
   target_name: string; observation_id: string | null; work_item_id: string | null; account: string | null;
-  captured_status: string | null; found: string | null; inspected: boolean; exception: boolean;
+  captured_status: string | null; match_origin: string | null; found: string | null; inspected: boolean; exception: boolean;
   pending: number; evidence_problem: boolean; evaluation_count: number; unevaluated: boolean };
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 
@@ -322,6 +323,7 @@ export class PostgresRecordReviewRepository {
    * The optional ordinal filter is AFTER duplicate counting over the whole population. */
   private async project(tx: Transaction, runId: string, plan: ExecutablePlan, ordinal?: number): Promise<RecordReviewRow[]> {
     const flat = await tx.execute<Flat>(recordReviewProjectionQuery(runId, plan, ordinal));
+    const decisions = await readHumanMatchDecisions(tx, runId, flat.filter(unit => unit.match_origin === 'human-matched' && unit.observation_id !== null).map(unit => unit.observation_id!));
     const rows = new Map<number, { sourceOrdinal: number; recordLabel: string; recordName: string | null; disposition: string; duplicateIdentity: boolean; missingIdentity: boolean; targets: RecordReviewTarget[] }>();
     for (const unit of flat) {
       let row = rows.get(unit.ordinal);
@@ -330,6 +332,7 @@ export class PostgresRecordReviewRepository {
         disposition: unit.disposition, duplicateIdentity: unit.duplicate, missingIdentity: !unit.key, targets: [] }; rows.set(unit.ordinal,row); }
       if (unit.target_id === null) continue; // Reference-only plans still retain every source row.
       row.targets.push({ targetId: unit.target_id, targetName: unit.target_name,
+        matchOrigin: unit.match_origin, matchingDecision: unit.observation_id === null ? null : maskHumanMatchDecision(decisions.get(unit.observation_id), plan),
         observationId: unit.observation_id, workItemId: unit.work_item_id,
         account: unit.account, capturedStatus: unit.captured_status, found: unit.found,
         inspected: unit.inspected, exception: unit.exception, pendingAssessments: unit.pending,
@@ -433,7 +436,7 @@ export function recordReviewProjectionQuery(runId: string, plan: ExecutablePlan,
         FROM run_observation_check WHERE run_id=${runId}::uuid GROUP BY observation_id
       ), units AS (
         SELECT s.*,t.id AS target_id,t.name AS target_name,t.ordinality,
-          o.observation_id,o.work_item_id,o.found,o.coverage,o.corroboration,
+          o.observation_id,o.work_item_id,o.match_origin,o.found,o.coverage,o.corroboration,
           (SELECT a->>'normalizedValue' FROM jsonb_array_elements(coalesce(o.attributes,'[]'::jsonb)) a
             WHERE ${permitted(['username', 'account_name', 'account_id'])} LIMIT 1) AS account,
           (SELECT a->>'normalizedValue' FROM jsonb_array_elements(coalesce(o.attributes,'[]'::jsonb)) a
@@ -458,7 +461,7 @@ export function recordReviewProjectionQuery(runId: string, plan: ExecutablePlan,
         LEFT JOIN checked c ON c.observation_id=o.observation_id
         ${ordinal === undefined ? sql`` : sql`WHERE s.ordinal=${ordinal}`}
       ) SELECT ordinal,key,name,disposition,duplicates>1 AND disposition='included' AS duplicate,
-        target_id,target_name,observation_id,work_item_id,account,captured_status,found,
+        target_id,target_name,observation_id,work_item_id,account,captured_status,match_origin,found,
         coalesce(disposition='included' AND coverage='COVERED' AND checks_complete AND NOT evidence_problem,false) AS inspected,
         exception,pending,evidence_problem,evaluation_count,unevaluated
       FROM units ORDER BY ordinal,ordinality`;

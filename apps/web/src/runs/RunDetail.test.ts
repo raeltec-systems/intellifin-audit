@@ -1350,3 +1350,11 @@ describe('the policy sentence, once per surface (UX-27)', () => {
   });
 });
 
+
+describe('Exception human matching provenance', () => {
+  it('keeps the flag and actor while refusing an unclassified historical candidate label', () => {
+    const html = exceptionCard({ observation: { ...observation(), matchOrigin: 'human-matched', matchingDecision: {
+      waitId: 'matching-wait', answerOptionId: 'candidate-2', answerLabel: 'PRIVATE SECONDARY NAME', actorId: 'auditor', decidedAt: '2026-09-26T12:00:00Z' } } });
+    expect(html).toContain('Human-matched'); expect(html).toContain('matching-wait'); expect(html).not.toContain('PRIVATE SECONDARY NAME');
+  });
+});

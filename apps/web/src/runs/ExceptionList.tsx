@@ -1,3 +1,4 @@
+import { HumanMatch } from './HumanMatch';
 import { groundedText, type ObservationAttribute, type TemplateId } from '@intellifin/domain';
 import type { RunEvaluationRow, RunExceptionRow, RunObservationRow } from '@intellifin/infrastructure';
 
@@ -95,6 +96,7 @@ export function ExceptionCard({
         </h3>
         <StatusBadge family="exception" state="Open" />
       </div>
+      <HumanMatch runId={runId} matchOrigin={observation?.matchOrigin} decision={observation?.matchingDecision} />
       {masked ? <p className="ls-caption">{MASKED_BY_BINDING}</p> : null}
       {/* The name or account the Target System itself showed for this record, where the
           Observation captured one. It is a value a Target System controls, so it is

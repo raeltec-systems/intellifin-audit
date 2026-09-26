@@ -103,6 +103,9 @@ export async function performPause(
     readonly at: string;
     /** The Step Execution this pause superseded, when a stage had one in flight. */
     readonly stepExecutionId?: string | null;
+    /** Frozen plan step at this exact boundary, including between-unit pauses. */
+    readonly planStepId: string;
+    readonly attempt: number | null;
     readonly workItemId?: string | null;
     /** Deferred steering names the settled logical unit in the applied event. */
     readonly pauseMode?: 'immediate' | 'after-inspection';
@@ -141,7 +144,10 @@ export async function performPause(
       ...(input.request.commandId !== undefined && input.request.commandId !== null
         ? { commandId: input.request.commandId }
         : {}),
-      ...(input.stepExecutionId ? { stepExecutionId: input.stepExecutionId } : {}),
+      planStepId: input.planStepId,
+      stepExecutionId: input.stepExecutionId ?? null,
+      attempt: input.attempt,
+      inFlight: input.stepExecutionId != null,
       ...(input.workItemId ? { workItemId: input.workItemId } : {}),
       pauseMode: input.pauseMode ?? 'immediate',
       ...(input.pauseMode === 'after-inspection' ? {
