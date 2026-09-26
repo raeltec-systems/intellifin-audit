@@ -28,7 +28,7 @@ import type { RunRecord } from '@intellifin/domain';
 import { PAUSE_COPY } from '../design/copy';
 import { shortReference } from '../design/references';
 import { PauseBanners } from './detail';
-import { PAUSE_WORDS, bannerHeldInFlightWords, type PauseHoldRead } from './pause-words';
+import { PAUSE_WORDS, bannerHeldBeforeWords, bannerHeldInFlightWords, type PauseHoldRead } from './pause-words';
 
 /**
  * The Paused banner's branch table (Story 5.4), which had no test at all.
@@ -85,7 +85,7 @@ const NAMES: ReadonlyMap<string, string> = new Map([
 /** Where the pause holds the Run, as `readPauseHold` answers for an attempt it interrupted. */
 const SUPERSEDED = '019823ab-0000-7000-8000-0000000000a1';
 const HELD_SENTENCE = bannerHeldInFlightWords('“Inspect the record” for E-000102 on LoanCore', 2);
-const HELD: PauseHoldRead = { kind: 'read', sentences: [HELD_SENTENCE], supersededStepExecutionId: SUPERSEDED };
+const HELD: PauseHoldRead = { kind: 'read', sentences: [HELD_SENTENCE], supersededStepExecutionId: SUPERSEDED, resume: 'restart', keys: [] };
 
 function render(
   state: RunRecord['state'],
@@ -190,6 +190,34 @@ describe('the Paused banner', () => {
       expect(html).toContain(PAUSE_WORDS.holdUnreadable);
       expect(html).toContain('Paused by Daniel Okonjo at');
     }
+  });
+
+  // Screenshot review, 2026-09-26: the banner's last line said "The agent restarts the
+  // current Step" directly under "No Step Execution was in flight." A pause between units
+  // STARTS the step it holds the Run before.
+  it('ends with what Resume does for the hold it read', () => {
+    const inFlight = render('PAUSED', PAUSE);
+    expect(inFlight).toContain(PAUSE_WORDS.resumeRestarts);
+    expect(inFlight).not.toContain(PAUSE_WORDS.resumeUnknown);
+
+    const before: PauseHoldRead = {
+      kind: 'read',
+      sentences: [bannerHeldBeforeWords('“Sign in to the Target System” on LoanCore'), PAUSE_WORDS.noStepInFlight],
+      supersededStepExecutionId: null,
+      resume: 'start',
+      keys: [],
+    };
+    const between = render('PAUSED', PAUSE, null, before);
+    expect(between).toContain(PAUSE_WORDS.noStepInFlight);
+    expect(between).toContain(PAUSE_WORDS.resumeStarts);
+    expect(between).not.toContain('restarts the current Step');
+
+    // Where the record does not say, the banner keeps the sentence it always had.
+    for (const hold of [{ kind: 'unreadable' }, { kind: 'none' }] as const) {
+      expect(render('PAUSED', PAUSE, null, hold)).toContain(PAUSE_WORDS.resumeUnknown);
+    }
+    const unknown: PauseHoldRead = { kind: 'read', sentences: [PAUSE_WORDS.holdsNotRecorded], supersededStepExecutionId: null, resume: 'unknown', keys: [] };
+    expect(render('PAUSED', PAUSE, null, unknown)).toContain(PAUSE_WORDS.resumeUnknown);
   });
 
   it('says nothing about a hold while the pause is only requested', () => {

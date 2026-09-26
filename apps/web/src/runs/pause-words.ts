@@ -1,5 +1,5 @@
 import type { ExecutablePlan } from '@intellifin/domain';
-import type { RunPauseClosure, RunPauseEntry, RunPauseWorkItem } from '@intellifin/infrastructure';
+import type { RunPauseEntry, RunPauseWorkItem } from '@intellifin/infrastructure';
 
 import { planActionWord } from './labels';
 import { recordNaming, recordWords } from './record-words';
@@ -19,8 +19,10 @@ import { recordNaming, recordWords } from './record-words';
  */
 export const PAUSE_WORDS = {
   heading: 'Pauses and resumes',
+  // Two claims, each true of every pause it names: a resume that followed a pause between
+  // units STARTS the held step, so "restarts" is said only of an interrupted attempt.
   intro:
-    'Each pause says where it held the Run, and each resume says which attempt it started. A resume restarts the held step as a new attempt; the attempt a pause interrupted is marked superseded.',
+    'Each pause says where it held the Run, and each resume says which attempt it started. When a pause interrupted an attempt, that attempt is marked superseded and the resume restarts the step as a new attempt.',
   noStepInFlight: 'No Step Execution was in flight.',
   /** A pause recorded before the Run named where it was held. */
   heldNotRecorded: 'The step this pause held the Run at was not recorded.',
@@ -34,6 +36,16 @@ export const PAUSE_WORDS = {
   restartNone: 'This resume has not started a new attempt of the held step.',
   stillPaused: 'The Run is still paused.',
   closureUnknown: 'How this pause ended could not be read.',
+  /**
+   * The Paused banner's last line: what Resume will do, as far as the pause's record
+   * establishes it. A pause that interrupted an attempt restarts that step; a pause between
+   * units starts the step it holds the Run before, so "restarts" would claim an attempt
+   * that never began, beside a sentence saying none was in flight.
+   */
+  resumeRestarts: 'Evidence already collected is preserved. Resume restarts that step from its first Tool Action as a new attempt.',
+  resumeStarts: 'Evidence already collected is preserved. Resume starts that step from its first Tool Action.',
+  /** Where the record does not say (an older pause, an unreadable hold): the sentence the banner always had. */
+  resumeUnknown: 'Evidence already collected is preserved. The agent restarts the current Step from its first Tool Action.',
 } as const;
 
 /** What a plan step is, read from the frozen plan: its action and its system's name. */
@@ -140,11 +152,20 @@ export function heldAfterInspectionWords(step: string, settled: string | null): 
     : `Held after the inspection of ${settled} finished, before ${step}.`;
 }
 
-/** The attempt a resume started, at the step the pause held. */
+/** The attempt a resume restarted, at the step whose attempt the pause interrupted. */
 export function restartedWords(step: string, attempt: number): string {
   return `It restarted ${step} as a new attempt (attempt ${attempt.toLocaleString('en-US')}).`;
 }
 
+/**
+ * The attempt a resume started, after a pause that held the Run BETWEEN units: nothing was
+ * interrupted, so the step is started, not restarted.
+ */
+export function startedWords(step: string, attempt: number): string {
+  return `It started ${step} (attempt ${attempt.toLocaleString('en-US')}).`;
+}
+
+/** A pause that ran out: the instant is the pause's DEADLINE, never the moment a wake closed it. */
 export function timedOutWords(time: string): string {
   return `This pause reached its deadline at ${time} without a resume.`;
 }
@@ -158,9 +179,13 @@ export function pausesShownWords(shown: number, total: number): string {
   return `Showing the first ${shown.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} pauses.`;
 }
 
-/** The Paused banner, in the present tense: the pause holding the Run now. */
+/**
+ * The Paused banner, in the present tense: the pause holding the Run now. The superseded
+ * attempt's reference follows this sentence, so it ends on that attempt; what Resume does
+ * is the banner's last line (`pauseBannerResumeWords`).
+ */
 export function bannerHeldInFlightWords(step: string, attempt: number): string {
-  return `The Run is held at ${step}. Attempt ${attempt.toLocaleString('en-US')} was superseded; Resume restarts that step as a new attempt.`;
+  return `The Run is held at ${step}, during attempt ${attempt.toLocaleString('en-US')}. That attempt was superseded.`;
 }
 
 export function bannerHeldBeforeWords(step: string): string {
@@ -216,16 +241,69 @@ export type PauseHoldRead =
       readonly sentences: readonly string[];
       /** The attempt the pause superseded, when one was in flight. */
       readonly supersededStepExecutionId: string | null;
+      /**
+       * What Resume will do, as far as the record establishes it: restart an interrupted
+       * attempt, start the step the Run is held before, or — for a pause that recorded no
+       * step — `unknown`.
+       */
+      readonly resume: 'restart' | 'start' | 'unknown';
+      /** The record keys the sentences name, which a surface keeps on one line. */
+      readonly keys: readonly string[];
     };
 
 /** The banner's hold, from the open pause's entry; a pause with no readable entry is unreadable. */
 export function pauseHoldRead(entry: Pick<RunPauseEntry, 'mode' | 'hold'> | null, name: PauseStepNamer): PauseHoldRead {
   if (entry === null) return { kind: 'unreadable' };
+  const { hold } = entry;
   return {
     kind: 'read',
     sentences: pauseHoldSentences(entry, name, 'present'),
-    supersededStepExecutionId: entry.hold.kind === 'recorded' ? entry.hold.superseded?.stepExecutionId ?? null : null,
+    supersededStepExecutionId: hold.kind === 'recorded' ? hold.superseded?.stepExecutionId ?? null : null,
+    resume: hold.kind !== 'recorded' ? 'unknown' : hold.superseded === null ? 'start' : 'restart',
+    keys: pauseSubjectKeys([{ hold, closure: { kind: 'open' } }]),
   };
+}
+
+/** The Paused banner's last line, for the hold it read. */
+export function pauseBannerResumeWords(hold: PauseHoldRead): string {
+  if (hold.kind !== 'read' || hold.resume === 'unknown') return PAUSE_WORDS.resumeUnknown;
+  return hold.resume === 'restart' ? PAUSE_WORDS.resumeRestarts : PAUSE_WORDS.resumeStarts;
+}
+
+/**
+ * A sentence split so each record key it names can be kept on one line. A key such as
+ * `E-000102` breaks after its hyphen like any hyphenated word, and a record key read as
+ * "E-" on one line and "000102" on the next is a key read wrongly; the text itself is
+ * unchanged, so copying it, searching it and hearing it are unaffected.
+ */
+export interface KeySegment {
+  readonly text: string;
+  readonly key: boolean;
+}
+
+export function keySegments(text: string, keys: readonly string[]): readonly KeySegment[] {
+  const present = [...new Set(keys)].filter((key) => key.length > 0 && text.includes(key));
+  if (present.length === 0) return [{ text, key: false }];
+  const segments: KeySegment[] = [];
+  let rest = text;
+  for (;;) {
+    let at = -1;
+    let found = '';
+    for (const key of present) {
+      const index = rest.indexOf(key);
+      // The earliest occurrence; at one position, the longer key, so no key is split.
+      if (index !== -1 && (at === -1 || index < at || (index === at && key.length > found.length))) {
+        at = index;
+        found = key;
+      }
+    }
+    if (at === -1) break;
+    if (at > 0) segments.push({ text: rest.slice(0, at), key: false });
+    segments.push({ text: found, key: true });
+    rest = rest.slice(at + found.length);
+  }
+  if (rest.length > 0) segments.push({ text: rest, key: false });
+  return segments;
 }
 
 /**
@@ -233,10 +311,11 @@ export function pauseHoldRead(entry: Pick<RunPauseEntry, 'mode' | 'hold'> | null
  * are rendered by the caller, which holds the name reader and the one time renderer.
  */
 export function pauseClosureSentences(
-  closure: RunPauseClosure,
+  entry: Pick<RunPauseEntry, 'hold' | 'closure' | 'deadline'>,
   name: PauseStepNamer,
   render: { readonly actor: (id: string | null) => string | null; readonly time: (iso: string) => string },
 ): readonly string[] {
+  const { closure } = entry;
   switch (closure.kind) {
     case 'open':
       return [PAUSE_WORDS.stillPaused];
@@ -245,12 +324,19 @@ export function pauseClosureSentences(
       const { restart } = closure;
       if (restart.kind === 'started') {
         const step = name.step(restart.attempt.planStepId, restart.attempt.workItem);
-        return [resumed, restartedWords(step, restart.attempt.attempt)];
+        // Only an attempt the pause interrupted is RESTARTED; after a pause between units
+        // the resume started the held step for the first time since the pause.
+        const interrupted = entry.hold.kind === 'recorded' && entry.hold.superseded !== null;
+        return [resumed, interrupted
+          ? restartedWords(step, restart.attempt.attempt)
+          : startedWords(step, restart.attempt.attempt)];
       }
       return [resumed, restart.kind === 'none' ? PAUSE_WORDS.restartNone : PAUSE_WORDS.restartNotRecorded];
     }
     case 'timed-out':
-      return [timedOutWords(render.time(closure.at))];
+      // The pause's own deadline: the wake that closes it can run later than that, and the
+      // sentence says when the deadline was reached.
+      return [timedOutWords(render.time(entry.deadline))];
     case 'withdrawn':
       return [withdrawnWords(render.time(closure.at))];
     default:

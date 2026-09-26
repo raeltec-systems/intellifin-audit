@@ -5,15 +5,34 @@ import { Reference } from '../design/Reference';
 import { readableStamp } from '../design/time';
 import {
   PAUSE_WORDS,
+  keySegments,
   pauseClosureSentences,
   pauseHoldSentences,
   pauseStepNamer,
+  pauseSubjectKeys,
   pauseTitleWords,
   pausedByWords,
   pausesShownWords,
   type PauseHoldRead,
   type PauseStepNamer,
 } from './pause-words';
+
+/**
+ * Sentences that name records, with each record key kept on one line (`keySegments`): a
+ * key such as `E-000102` would otherwise break after its hyphen. Only the rendering changes;
+ * the text is the sentence the words module built.
+ */
+function KeyedText({ sentences, keys }: {
+  readonly sentences: readonly string[];
+  readonly keys: readonly string[];
+}): React.JSX.Element {
+  return (
+    <>
+      {keySegments(sentences.join(' '), keys).map((segment, index) =>
+        segment.key ? <span key={index} className="ls-nowrap">{segment.text}</span> : segment.text)}
+    </>
+  );
+}
 
 /**
  * Every pause of a Run, on the Execution Timeline (Story 10.6, legacy 5.4): where each one
@@ -65,16 +84,17 @@ function PauseHistoryEntry({ ordinal, entry, name, actor }: {
   const started = entry.closure.kind === 'resumed' && entry.closure.restart.kind === 'started'
     ? entry.closure.restart.attempt
     : null;
+  const keys = pauseSubjectKeys([entry]);
   return (
     <li className="ls-pause-history__entry" data-wait-id={entry.waitId}>
       <h3>{pauseTitleWords(ordinal)}</h3>
       <p className="ls-pause-history__line">{pausedByWords(actor(entry.pausedBy), readableStamp(entry.pausedAt))}</p>
       <p className="ls-pause-history__line">
-        {pauseHoldSentences(entry, name, 'past').join(' ')}
+        <KeyedText sentences={pauseHoldSentences(entry, name, 'past')} keys={keys} />
         {superseded === null ? null : <> <Reference kind="Step Execution" value={superseded.stepExecutionId} /></>}
       </p>
       <p className="ls-pause-history__line">
-        {pauseClosureSentences(entry.closure, name, { actor, time: (iso) => readableStamp(iso) }).join(' ')}
+        <KeyedText sentences={pauseClosureSentences(entry, name, { actor, time: (iso) => readableStamp(iso) })} keys={keys} />
         {started === null ? null : <> <Reference kind="Step Execution" value={started.stepExecutionId} /></>}
       </p>
     </li>
@@ -92,7 +112,7 @@ export function PauseHoldNote({ hold }: { readonly hold: PauseHoldRead }): React
   if (hold.kind !== 'read') return <p className="ls-pause-history__line">{PAUSE_WORDS.holdUnreadable}</p>;
   return (
     <p className="ls-pause-history__line">
-      {hold.sentences.join(' ')}
+      <KeyedText sentences={hold.sentences} keys={hold.keys} />
       {hold.supersededStepExecutionId === null
         ? null
         : <> <Reference kind="Step Execution" value={hold.supersededStepExecutionId} /></>}

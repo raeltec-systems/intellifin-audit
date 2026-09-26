@@ -36,7 +36,7 @@ import { RunLifecycleActions } from './RunLifecycleActions';
 import { WaitCountdown } from './WaitCountdown';
 import { PauseHoldNote } from './PauseHistory';
 import { readPauseHold } from './pause-read';
-import type { PauseHoldRead } from './pause-words';
+import { pauseBannerResumeWords, type PauseHoldRead } from './pause-words';
 import { periodText, runLifecycleWord, utcStamp } from './labels';
 import { ActorName } from './ActorName';
 import { StopReasonBanner } from './StopReason';
@@ -532,7 +532,9 @@ export function PauseBanners({ run, pause, hold, readAt, names }: {
           expiredSentence={PAUSE_COPY.expired}
         />
         <PauseHoldNote hold={hold} />
-        <p>Evidence already collected is preserved. The agent restarts the current Step from its first Tool Action.</p>
+        {/* What Resume does, for the hold the banner read: "restarts the current Step"
+            beside "No Step Execution was in flight" would claim an attempt that never began. */}
+        <p>{pauseBannerResumeWords(hold)}</p>
       </Banner>
     );
   }

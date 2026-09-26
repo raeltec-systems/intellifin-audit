@@ -134,7 +134,7 @@ function ReplayGaps({ gaps }: { readonly gaps: ReplayGapsView | undefined }): Re
       <details className="ls-disclosure">
         <summary>{REPLAY_GAP_WORDS.listSummary}</summary>
         <div className="ls-disclosure__body ls-stack">
-          <ul className="ls-plain-list">
+          <ul className="ls-plain-list ls-replay-gaps">
             {gaps.rows.map((gap) => (
               <li key={gap.toolActionId} data-gap={gap.kind}>
                 {gap.mark} · {replayGapPosition(gap.framesBefore)} · {gap.narration}
