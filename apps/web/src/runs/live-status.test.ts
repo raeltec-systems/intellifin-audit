@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import { LIVE_GATE_REASONS, LIVE_LOST_MS, LIVE_SENTENCES, LIVE_STALE_MS, LIVE_STATUSES, RUN_ENDING_EVENTS, isRunEndingEvent, acceptsLiveSeq, liveGateReason, liveSentence, liveStatus, parseLiveCursor, silenceSeconds, subscribeViewport, type ViewportQueryList } from './live-status';
+import {
+  LIVE_WORDS,
+  createLiveClockHandOff,
+  heardFromStream,
+  liveClockStatus,
+  resumedLiveClock,
+  streamClosed,
+  waitingLiveClock,
+} from './live-status';
 
 describe('the live status machine', () => {
   const base = { ended: false, everConnected: true, lastMessageAt: 100_000 };
@@ -33,6 +42,102 @@ describe('the live status machine', () => {
     for (const status of LIVE_STATUSES) expect(LIVE_SENTENCES[status].length).toBeGreaterThan(10);
     expect(liveSentence('stale', 17)).toBe('No update for 17 seconds. The page may be behind the Run.');
     expect(liveSentence('lost', 90)).toBe('Connection to the Run lost. Reconnecting.');
+  });
+});
+
+describe('the silence clock moves only when the stream itself speaks (Story 10.8)', () => {
+  const T = 1_000_000;
+
+  it('starts connecting, and only a frame from the stream makes it live', () => {
+    expect(liveClockStatus(waitingLiveClock(T), T)).toBe('connecting');
+    expect(liveClockStatus(waitingLiveClock(T), T + LIVE_STALE_MS)).toBe('stale');
+    expect(liveClockStatus(heardFromStream(T), T)).toBe('live');
+  });
+
+  it('keeps a lost stream lost however long it stays silent, and brings it back on one frame', () => {
+    const lost = heardFromStream(T);
+    for (const later of [LIVE_LOST_MS, LIVE_LOST_MS * 5, LIVE_LOST_MS * 60]) {
+      expect(liveClockStatus(lost, T + later)).toBe('lost');
+      expect(liveGateReason(liveClockStatus(lost, T + later), false)).toBe('lost');
+    }
+    const back = heardFromStream(T + LIVE_LOST_MS * 5);
+    expect(liveClockStatus(back, T + LIVE_LOST_MS * 5)).toBe('live');
+    expect(liveGateReason(liveClockStatus(back, T + LIVE_LOST_MS * 5), false)).toBeNull();
+  });
+
+  it('ends a closed stream whatever the clock says, and only the stream reopens it', () => {
+    const closed = streamClosed(heardFromStream(T));
+    expect(liveClockStatus(closed, T)).toBe('ended');
+    expect(liveGateReason(liveClockStatus(closed, T + 1_000), false)).toBe('ended');
+    // Closing does not pretend to have heard anything: the instant it keeps is the last frame's.
+    expect(closed.lastFrameAt).toBe(T);
+    expect(liveClockStatus(heardFromStream(T + 2_000), T + 2_000)).toBe('live');
+  });
+});
+
+describe('a remount hands the clock on rather than starting it again (Story 10.8)', () => {
+  const T = 1_000_000;
+  const STREAM = '/api/runs/019823ab-0000-7000-8000-000000000001/events';
+
+  it('has nothing to hand on for a stream no subscription left, which is a fresh page', () => {
+    expect(createLiveClockHandOff().take(STREAM, T)).toBeNull();
+  });
+
+  it('keeps a lost stream lost, so the controls stay withdrawn on the new component', () => {
+    const handOff = createLiveClockHandOff();
+    handOff.leave(STREAM, heardFromStream(T), T + LIVE_LOST_MS + 5_000);
+    const taken = handOff.take(STREAM, T + LIVE_LOST_MS + 5_000);
+    expect(taken).not.toBeNull();
+    expect(liveClockStatus(taken!, T + LIVE_LOST_MS + 5_000)).toBe('lost');
+    expect(liveGateReason(liveClockStatus(taken!, T + LIVE_LOST_MS + 5_000), false)).toBe('lost');
+  });
+
+  it('keeps an ended stream ended and a stale one stale', () => {
+    const handOff = createLiveClockHandOff();
+    handOff.leave('ended', streamClosed(heardFromStream(T)), T + 1_000);
+    handOff.leave('stale', heardFromStream(T), T + LIVE_STALE_MS + 1_000);
+    expect(liveClockStatus(handOff.take('ended', T + 2_000)!, T + 2_000)).toBe('ended');
+    expect(liveClockStatus(handOff.take('stale', T + LIVE_STALE_MS + 1_000)!, T + LIVE_STALE_MS + 1_000)).toBe('stale');
+  });
+
+  it('never hands a healthy clock on as live: the new subscription has heard nothing yet', () => {
+    const handOff = createLiveClockHandOff();
+    handOff.leave(STREAM, heardFromStream(T), T + 2_000);
+    const taken = handOff.take(STREAM, T + 2_000)!;
+    expect(liveClockStatus(taken, T + 2_000)).toBe('connecting');
+    // And its silence keeps counting from the last frame, so it goes stale on time.
+    expect(liveClockStatus(taken, T + LIVE_STALE_MS)).toBe('stale');
+  });
+
+  it('does not count the time nobody was subscribed as silence', () => {
+    // Somebody left Live View while it was live and came back ten minutes later: nothing
+    // was listening in between, so nothing was silent. What was lost stays lost (above);
+    // what was fine does not come back as lost.
+    const handOff = createLiveClockHandOff();
+    handOff.leave(STREAM, heardFromStream(T), T + 3_000);
+    const back = T + 3_000 + 10 * LIVE_LOST_MS;
+    expect(liveClockStatus(handOff.take(STREAM, back)!, back)).toBe('connecting');
+    expect(resumedLiveClock(heardFromStream(T), T + 3_000, back).lastFrameAt).toBe(T + 10 * LIVE_LOST_MS);
+  });
+
+  it('hands a clock on once, keeps streams apart, and reads no inherited name as a clock', () => {
+    const handOff = createLiveClockHandOff();
+    handOff.leave(STREAM, heardFromStream(T), T + LIVE_LOST_MS);
+    expect(handOff.take('/api/runs/other/events', T + LIVE_LOST_MS)).toBeNull();
+    expect(handOff.take(STREAM, T + LIVE_LOST_MS)).not.toBeNull();
+    expect(handOff.take(STREAM, T + LIVE_LOST_MS)).toBeNull();
+    for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      expect(handOff.take(name, T)).toBeNull();
+    }
+  });
+});
+
+describe('the status words the banner announces', () => {
+  it('has one distinct word for every status', () => {
+    expect(Object.keys(LIVE_WORDS).sort()).toEqual([...LIVE_STATUSES].sort());
+    expect(new Set(Object.values(LIVE_WORDS)).size).toBe(LIVE_STATUSES.length);
+    expect(LIVE_WORDS.lost).toBe('Connection lost');
+    expect(LIVE_WORDS.live).toBe('Live');
   });
 });
 

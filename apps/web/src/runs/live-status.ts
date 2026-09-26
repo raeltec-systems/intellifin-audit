@@ -40,6 +40,116 @@ export function silenceSeconds(lastMessageAt: number, now: number): number {
   return Math.max(0, Math.floor((now - lastMessageAt) / 1000));
 }
 
+/**
+ * What a page has heard from one live stream, and the only thing that changes it
+ * (Story 10.8).
+ *
+ * `lastFrameAt` is the instant of the last frame the STREAM ITSELF delivered — a Timeline
+ * event, a heartbeat, or the stream answering when it opens — or, before any, the instant
+ * the page began waiting for one. Nothing the page does to itself moves it: a server
+ * re-read, a new cursor, a new subscription and a remount are all the page's own doing.
+ *
+ * That was the defect this shape removes. The subscription effect restarted the clock
+ * every time it ran, and a server re-read that moved the cursor re-ran it — so a re-read
+ * that landed during a drop (the shell's bell refreshing because ANOTHER Run ended) made
+ * the page say `live` for up to 15 seconds and reopened the controls for up to 60, while
+ * the stream it depends on was still down. A server read gives the page a snapshot; only
+ * the stream tells it what the Run is doing, and only the stream can say it is back.
+ */
+export interface LiveClock {
+  readonly lastFrameAt: number;
+  /** Whether the stream has answered this subscription at all. */
+  readonly everConnected: boolean;
+  /** The browser reported the stream CLOSED: it will not reconnect on its own. */
+  readonly ended: boolean;
+}
+
+/** The clock of a page that has just begun waiting for its stream. */
+export function waitingLiveClock(now: number): LiveClock {
+  return { lastFrameAt: now, everConnected: false, ended: false };
+}
+
+/**
+ * The stream itself said something. The ONE way back to `live`, and so the one way a
+ * gate closed for `lost` or `ended` opens again.
+ */
+export function heardFromStream(now: number): LiveClock {
+  return { lastFrameAt: now, everConnected: true, ended: false };
+}
+
+/** The browser closed the stream for good (a 401, a 404, a wrong media type). */
+export function streamClosed(clock: LiveClock): LiveClock {
+  return { ...clock, ended: true };
+}
+
+export function liveClockStatus(clock: LiveClock, now: number): LiveStatus {
+  return liveStatus({ ended: clock.ended, lastMessageAt: clock.lastFrameAt, everConnected: clock.everConnected, now });
+}
+
+/**
+ * A clock taken over by a NEW subscription to the same stream — a remount.
+ *
+ * The silence it had carries on, so a stream that was lost stays lost and one that had
+ * ended stays ended until the stream itself says something. Two things are adjusted, and
+ * neither is a recovery: the time in which nothing on the page was subscribed is not
+ * counted as silence, because nothing was listening for a frame then; and the new
+ * subscription has heard nothing yet, so a healthy clock reads `connecting` rather than
+ * claiming a connection it has not made.
+ */
+export function resumedLiveClock(clock: LiveClock, leftAt: number, now: number): LiveClock {
+  return {
+    lastFrameAt: clock.lastFrameAt + Math.max(0, now - leftAt),
+    everConnected: false,
+    ended: clock.ended,
+  };
+}
+
+/**
+ * Where a subscription leaves its clock for the next subscription to the same stream
+ * (Story 10.8).
+ *
+ * A remount is a new component with new state, so without this the clock it inherited
+ * would be the one thing a remount could reset — and resetting it is exactly what a
+ * re-read must never do. `leave` is called when a subscription ends; `take` hands what it
+ * left to the next one, resumed, and forgets it, so one clock is never resumed twice.
+ * Nothing left means there is nothing to inherit, which is a fresh page's own state.
+ *
+ * A `Map`, never a plain object: the key is a URL and an inherited property name must not
+ * read as a clock somebody left.
+ */
+export interface LiveClockHandOff {
+  leave(key: string, clock: LiveClock, at: number): void;
+  take(key: string, now: number): LiveClock | null;
+}
+
+export function createLiveClockHandOff(): LiveClockHandOff {
+  const left = new Map<string, { readonly clock: LiveClock; readonly at: number }>();
+  return {
+    leave(key, clock, at) {
+      left.set(key, { clock, at });
+    },
+    take(key, now) {
+      const entry = left.get(key);
+      if (entry === undefined) return null;
+      left.delete(key);
+      return resumedLiveClock(entry.clock, entry.at, now);
+    },
+  };
+}
+
+/**
+ * The status as ONE word, which is what the banner's polite live region announces (the
+ * counting sentence beside it is not announced). Beside the states for the reason the
+ * sentences below are, and so a browser spec can pin the word without importing React.
+ */
+export const LIVE_WORDS = {
+  connecting: 'Connecting',
+  live: 'Live',
+  stale: 'No update',
+  lost: 'Connection lost',
+  ended: 'Live update ended',
+} as const satisfies Record<LiveStatus, string>;
+
 export const LIVE_SENTENCES = {
   connecting: 'Connecting to the Run. The page updates on its own once connected.',
   live: 'Live. The page updates on its own as the Run progresses.',
