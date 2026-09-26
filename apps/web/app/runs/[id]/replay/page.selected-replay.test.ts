@@ -8,7 +8,7 @@ vi.mock('@intellifin/infrastructure', () => ({
   DrizzleRunDetailRepository: class {
     readInspectionReplay = calls.read; readTimeline = calls.prefix; readFrames = calls.frames;
     readWaits = async () => []; readObservationDeltas = async () => []; readExceptions = async () => ({ rows: [] });
-    readEvidenceItems = async () => [];
+    readEvidenceItems = async () => []; readEvidenceItemsByIds = async () => [];
   },
   DrizzleFrozenExecutionReader: class { readFrozenExecution = calls.plan; },
 }));

@@ -7,6 +7,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 import { REPLAY_COPY, UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
 import { ReplayViewer, type ReplayFrameView } from './ReplayViewer';
 import type { ReplayJumpTarget } from './replay';
+import { ADAPTER_ARTIFACT_WORDS } from './live-view';
 
 /**
  * The Replay surface as the server first paints it (Story 5.8, UX-DR26).
@@ -233,5 +234,28 @@ describe('the playback controls sit beside the screen (UX-29)', () => {
     const html = render();
     expect(html.split('Untrusted source content —').length - 1).toBe(2);
     expect(html.split(UNTRUSTED_CONTENT_SENTENCE).length - 1).toBe(1);
+  });
+});
+
+// Story 10.6 (legacy 5.3): Replay and Live View render the adapter log through ONE
+// component, so a repair can no longer land on one surface only — which is how Replay's
+// rows came to show their digests while Live View's said "No artifact registered."
+describe('the adapter log, shared with Live View', () => {
+  it('names the registered Evidence and says the other two situations in their own words', () => {
+    const evidenceId = '019823ab-0000-7000-8000-0000000000e1';
+    const html = render({
+      adapterSteps: [
+        { stepId: 'session-2', displayName: 'Extract · RoleMatrix', state: 'ACQUIRED', attempts: 1,
+          artifact: { kind: 'registered', evidenceId, digest: 'e'.repeat(64) } },
+        { stepId: 'session-3', displayName: 'Extract · AccessGate', state: 'FAILED', attempts: 3, artifact: { kind: 'none' } },
+        { stepId: 'session-4', displayName: 'Extract · CoreDirectory', state: 'ACQUIRED', attempts: 1,
+          artifact: { kind: 'unavailable' } },
+      ],
+    });
+    expect(html).toContain('id="replay-adapter-heading"');
+    expect(html).toContain('e'.repeat(64));
+    expect(html).toContain(`#evidence-${evidenceId}`);
+    expect(html).toContain(ADAPTER_ARTIFACT_WORDS.none);
+    expect(html).toContain(ADAPTER_ARTIFACT_WORDS.unavailable);
   });
 });

@@ -13,9 +13,9 @@ import { PageHeader } from '../../../../src/design/PageHeader';
 import { Reference } from '../../../../src/design/Reference';
 import { Timestamp } from '../../../../src/design/Timestamp';
 import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
-import { planActionWord, runLifecycleWord, workItemLabel } from '../../../../src/runs/labels';
+import { runLifecycleWord, workItemLabel } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
-import { frameNarration, plannedStepCount, stepNarration } from '../../../../src/runs/live-view';
+import { frameNarration, plannedStepCount, readAdapterLog, stepNarration } from '../../../../src/runs/live-view';
 import { effectiveFrameWorkItemId, replayInitialSelection, replayJumpTargets, replayObservationsThrough, replayRequest, replayViewerKey, resolveFrameWorkItems } from '../../../../src/runs/replay';
 import { recordNaming, recordWords } from '../../../../src/runs/record-words';
 
@@ -167,19 +167,21 @@ export default async function RunReplayPage({
   // frames this surface renders — up to `REPLAY_FRAME_LIMIT` of them — so a fifty-row
   // default silently dropped later Tool Actions, jump targets and Observation deltas from
   // a Run that had more than fifty. See `REPLAY_PAGE_SIZE`.
-  const [timeline, frames, waits, deltas, exceptions, plan, evidence] = await Promise.all([
+  const [timeline, frames, waits, deltas, exceptions, plan] = await Promise.all([
     detail.readTimeline(run.runId, REPLAY_PAGE_SIZE),
     detail.readFrames(run.runId),
     detail.readWaits(run.runId, REPLAY_PAGE_SIZE),
     detail.readObservationDeltas(run.runId, REPLAY_PAGE_SIZE),
     detail.readExceptions(run.runId, REPLAY_PAGE_SIZE),
     new DrizzleFrozenExecutionReader(runtime.db).readFrozenExecution(run.versionId, run.procedureId),
-    // The adapter log rows below promise "its integrity digest", and printed `null` for
-    // every one: "No artifact registered." over artifacts that ARE registered. The Evidence
-    // read this surface already has carries the digest per Evidence id.
-    detail.readEvidenceItems(run.runId),
   ]);
-  const digestByEvidence = new Map(evidence.map((item) => [item.evidenceId, item.digest]));
+  // The adapter log rows below promise "its integrity digest", and printed `null` for
+  // every one: "No artifact registered." over artifacts that ARE registered. They were
+  // then repaired from the Evidence OVERVIEW read, which is a bounded sample ordered by
+  // kind — so on a Run with more adapter extractions than one page, a Reference Source's
+  // artifact fell off the end and said the same thing again. The rows are read EXACTLY by
+  // the Evidence ids the steps name, through the function Live View uses (Story 10.6).
+  const adapterSteps = await readAdapterLog(detail, run.runId, timeline.sessionSteps);
   // ONE record label with the queue, the inspector and the Exception (UX-25). Every place
   // below that names a record — a pill, the rail, the frame's narration — says this.
   const naming = recordNaming(plan);
@@ -280,15 +282,7 @@ export default async function RunReplayPage({
           system: targetName(instruction.registrationId) ?? instruction.registrationId,
           text: instruction.text,
         }))}
-        adapterSteps={timeline.sessionSteps
-          .filter((step) => step.action === 'extract-adapter')
-          .map((step) => ({
-            stepId: step.stepId,
-            displayName: `${planActionWord(step.action)} · ${step.displayName}`,
-            state: step.state,
-            attempts: step.attempts,
-            digest: step.evidenceId === null ? null : (digestByEvidence.get(step.evidenceId) ?? null),
-          }))}
+        adapterSteps={adapterSteps}
       />
       <p className="ls-caption">Read at <Timestamp value={readAt} precision="minute" />.</p>
     </div>

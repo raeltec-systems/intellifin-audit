@@ -3,15 +3,14 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
-import { Digest } from '../design/Digest';
 import { TechnicalDetails } from '../design/TechnicalDetails';
 import { countNoun } from '../design/words';
 import { REPLAY_COPY } from '../design/copy';
-import { FrameSource, SessionChrome, SessionStage, type LiveViewerAdapterStep, type LiveViewerFrame } from './LiveViewer';
+import { AdapterStepLog, FrameSource, SessionChrome, SessionStage, type LiveViewerAdapterStep, type LiveViewerFrame } from './LiveViewer';
 import { UntrustedPolicy, UntrustedText } from './UntrustedText';
 import { clampReplayIndex, replayInspectionHref, type ReplayFrameAbsence, type ReplayInitialSelection, type ReplayJumpTarget, type ReplayWindow } from './replay';
 import { recordFramePosition, toolActionNarration } from './session-words';
-import { sessionStepWord, utcStamp } from './labels';
+import { utcStamp } from './labels';
 
 /** One frame and everything the platform already stored about the action that took it. */
 export interface ReplayFrameView extends LiveViewerFrame {
@@ -396,22 +395,7 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
         </section>
       )}
 
-      {props.adapterSteps.length === 0 ? null : (
-        <section aria-labelledby="replay-adapter-heading" className="ls-card ls-stack">
-          <h3 id="replay-adapter-heading">Systems read without a screen</h3>
-          <p>An Adapter reads without a workspace screen, so each step is a log row with its state and its integrity digest.</p>
-          <ul className="ls-session__log">
-            {props.adapterSteps.map((step) => (
-              <li key={step.stepId}>
-                <span>{step.displayName}</span>
-                <span>{sessionStepWord(step.state)} · {countNoun(step.attempts, 'attempt')}</span>
-                {step.digest === null ? <span>No artifact registered.</span> : <Digest value={step.digest} label="Adapter artifact digest" />}
-                <TechnicalDetails items={[{ label: 'Plan step identifier', value: step.stepId, mono: true }]} />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <AdapterStepLog runId={props.runId} steps={props.adapterSteps} headingId="replay-adapter-heading" />
     </section>
   );
 }

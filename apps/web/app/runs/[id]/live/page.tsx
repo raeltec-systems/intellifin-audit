@@ -26,7 +26,7 @@ import { readOpenEscalation } from '../../../../src/runs/escalation-read';
 import { CancellationBanners, OpenEscalationSection, PauseBanners } from '../../../../src/runs/detail';
 import { LiveViewer } from '../../../../src/runs/LiveViewer';
 import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
-import { planActionWord, runLifecycleWord, utcStamp } from '../../../../src/runs/labels';
+import { runLifecycleWord, utcStamp } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
 import { recordNaming, recordWords } from '../../../../src/runs/record-words';
 import {
@@ -35,6 +35,7 @@ import {
   liveViewChrome,
   plannedStepCount,
   plannedStepIds,
+  readAdapterLog,
   stepNarration,
 } from '../../../../src/runs/live-view';
 
@@ -88,6 +89,11 @@ export default async function RunLivePage({
   // the audit chain; printing one at a reader is the platform speaking its own language.
   const actorNames = await new DrizzleActorNameReader(runtime.db)
     .namesFor(flagRows.map((row) => row.flaggedBy));
+  // The adapter log, with the artifact each Session Step registered read EXACTLY by the
+  // Evidence ids the steps name (Story 10.6, legacy 5.3). This page passed `digest: null`
+  // for every row, so an acquired Reference Source said "No artifact registered." over
+  // the artifact it had registered. Replay reads the same rows through the same function.
+  const adapterSteps = await readAdapterLog(detail, run.runId, timeline.sessionSteps);
 
   const targetName = (registrationId: string | null): string | null =>
     registrationId === null
@@ -337,15 +343,7 @@ export default async function RunLivePage({
             system: targetName(instruction.registrationId) ?? instruction.registrationId,
             text: instruction.text,
           }))}
-          adapterSteps={timeline.sessionSteps
-            .filter((step) => step.action === 'extract-adapter')
-            .map((step) => ({
-              stepId: step.stepId,
-              displayName: `${planActionWord(step.action)} · ${step.displayName}`,
-              state: step.state,
-              attempts: step.attempts,
-              digest: null,
-            }))}
+          adapterSteps={adapterSteps}
         />
       </LiveGate>
       </SharedRunControl>

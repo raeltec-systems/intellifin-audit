@@ -10,7 +10,7 @@ import {
 } from '../design/copy';
 import { EndedBanner, LiveViewer, type LiveViewerProps } from './LiveViewer';
 import { UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
-import { LIVE_VIEW_STAGE } from './live-view';
+import { ADAPTER_ARTIFACT_WORDS, LIVE_VIEW_STAGE } from './live-view';
 import { NO_WORK_ITEM } from './session-words';
 
 /**
@@ -219,10 +219,12 @@ describe('the narration rail', () => {
   });
 
   it('lists an adapter Run’s Session Steps as log rows with their digests', () => {
+    const evidenceId = '019823ab-0000-7000-8000-0000000000e1';
     const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
       workspace: null,
       stageNote: LIVE_VIEW_STAGE.adapterOnly,
-      adapterSteps: [{ stepId: 'session-2', displayName: 'Extract · AccessGate', state: 'ACQUIRED', attempts: 1, digest: 'b'.repeat(64) }],
+      adapterSteps: [{ stepId: 'session-2', displayName: 'Extract · AccessGate', state: 'ACQUIRED', attempts: 1,
+        artifact: { kind: 'registered', evidenceId, digest: 'b'.repeat(64) } }],
     })));
     // The stored state is a WORD and the plan-step id is under Technical details: an
     // auditor reads `Acquired`, and `session-2` is a plan identifier (UX-28).
@@ -231,6 +233,33 @@ describe('the narration rail', () => {
     expect(html).toContain('Plan step identifier');
     expect(html).toContain('session-2');
     expect(html.slice(0, html.indexOf('Plan step identifier'))).not.toContain('session-2');
+    // Story 10.6 (legacy 5.3): the row names WHICH Evidence it registered — a short
+    // reference linked to its card, the full identifier under Technical details.
+    expect(html).toContain(`href="/runs/${RUN_ID}/evidence/technical#evidence-${evidenceId}"`);
+    expect(html).toContain('Evidence identifier');
+    expect(html).not.toContain(ADAPTER_ARTIFACT_WORDS.none);
+    expect(html).not.toContain(ADAPTER_ARTIFACT_WORDS.unavailable);
+  });
+
+  // Story 10.6, legacy 5.3 AC 2 (owner decision 2026-09-25): three situations, three
+  // renderings — never one sentence for all three. Each sentence is read back from the
+  // words module rather than retyped here.
+  it('says no artifact is registered, or that the record could not be read, and never both', () => {
+    const row = (artifact: LiveViewerProps['adapterSteps'][number]['artifact']) => renderToStaticMarkup(
+      React.createElement(LiveViewer, props({
+        workspace: null,
+        stageNote: LIVE_VIEW_STAGE.adapterOnly,
+        adapterSteps: [{ stepId: 'session-2', displayName: 'Extract · RoleMatrix', state: 'IN_PROGRESS', attempts: 1, artifact }],
+      })),
+    );
+    const none = row({ kind: 'none' });
+    expect(none).toContain(ADAPTER_ARTIFACT_WORDS.none);
+    expect(none).not.toContain(ADAPTER_ARTIFACT_WORDS.unavailable);
+    expect(none).not.toContain('Evidence identifier');
+    const unavailable = row({ kind: 'unavailable' });
+    expect(unavailable).toContain(ADAPTER_ARTIFACT_WORDS.unavailable);
+    expect(unavailable).not.toContain(ADAPTER_ARTIFACT_WORDS.none);
+    expect(unavailable).not.toMatch(/[0-9a-f]{64}/);
   });
 
   // UX-28: the chrome strip is read at a glance, and a thirty-six character workspace

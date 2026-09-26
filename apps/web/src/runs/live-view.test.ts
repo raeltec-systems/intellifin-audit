@@ -4,7 +4,9 @@ import { ACTIVE_RUN_STATES, RUN_STATES } from '@intellifin/domain';
 import type { RunFrameRow, RunStepExecutionRow } from '@intellifin/infrastructure';
 
 import {
+  ADAPTER_ARTIFACT_WORDS,
   LIVE_VIEW_CHROME,
+  adapterStepArtifact,
   chromeDotClass,
   currentStepExecution,
   frameNarration,
@@ -12,7 +14,10 @@ import {
   logicalStepProgress,
   plannedStepCount,
   plannedStepIds,
+  readAdapterLog,
   stepNarration,
+  type AdapterLogEvidenceReader,
+  type AdapterLogSessionStep,
 } from './live-view';
 
 const EXECUTION: RunStepExecutionRow = {
@@ -228,5 +233,87 @@ describe('the logical Step counter (UI cleanup 2026-09-22, UX-47)', () => {
     const progress = logicalStepProgress([execution('a', null), execution('b', null), execution('b', null)], null);
     expect(progress.started).toBe(2);
     expect(plannedStepCount(null)).toBeNull();
+  });
+});
+
+/**
+ * The adapter log's artifact, decided (Story 10.6, legacy 5.3 AC 2; owner decision
+ * 2026-09-25). Live View passed `digest: null` for every row, so an acquired step said
+ * "No artifact registered." over an artifact the Run had registered. Three situations, and
+ * never one sentence for all three.
+ */
+describe('the adapter log artifact (Story 10.6, legacy 5.3)', () => {
+  const EVIDENCE = '01990000-0000-7000-8000-0000000007e1';
+  const DIGEST = 'c'.repeat(64);
+  const step = (overrides: Partial<AdapterLogSessionStep> = {}): AdapterLogSessionStep => ({
+    stepId: 'session-2', action: 'extract-adapter', displayName: 'RoleMatrix', state: 'ACQUIRED', attempts: 1,
+    evidenceId: EVIDENCE, ...overrides,
+  });
+  /** A reader that records every call, so a test can say which ids were asked for. */
+  function reader(answer: () => Promise<readonly { evidenceId: string; state: string; digest: string | null }[]>) {
+    const calls: { runId: string; ids: readonly string[] }[] = [];
+    const port: AdapterLogEvidenceReader = {
+      readEvidenceItemsByIds: async (runId, ids) => { calls.push({ runId, ids }); return answer(); },
+    };
+    return { port, calls };
+  }
+
+  it('names the registered Evidence and its digest when the exact read returns it', () => {
+    const read = new Map([[EVIDENCE, { state: 'REGISTERED', digest: DIGEST }]]);
+    expect(adapterStepArtifact(EVIDENCE, read)).toEqual({ kind: 'registered', evidenceId: EVIDENCE, digest: DIGEST });
+  });
+
+  it('says no artifact is registered for a step that names none, whatever the read did', () => {
+    expect(adapterStepArtifact(null, new Map())).toEqual({ kind: 'none' });
+    // The read failing does not turn a step that names nothing into an unreadable one.
+    expect(adapterStepArtifact(null, null)).toEqual({ kind: 'none' });
+  });
+
+  it('says no artifact is registered for a reservation that was never registered', () => {
+    for (const state of ['RESERVED', 'ABANDONED']) {
+      expect(adapterStepArtifact(EVIDENCE, new Map([[EVIDENCE, { state, digest: null }]]))).toEqual({ kind: 'none' });
+    }
+  });
+
+  it('says the record could not be read, never that there is none, when the read failed or missed the row', () => {
+    expect(adapterStepArtifact(EVIDENCE, null)).toEqual({ kind: 'unavailable' });
+    // The step names an artifact the read did not return: an absence nobody observed.
+    expect(adapterStepArtifact(EVIDENCE, new Map())).toEqual({ kind: 'unavailable' });
+  });
+
+  it('keeps the three sentences distinct', () => {
+    expect(ADAPTER_ARTIFACT_WORDS.none).not.toBe(ADAPTER_ARTIFACT_WORDS.unavailable);
+    // The unavailable sentence claims neither that an artifact exists nor that none does.
+    expect(ADAPTER_ARTIFACT_WORDS.unavailable).not.toContain('No artifact');
+    expect(ADAPTER_ARTIFACT_WORDS.unavailable).toContain('could not be read');
+  });
+
+  it('reads EXACTLY the Evidence ids the adapter steps name, and only for adapter steps', async () => {
+    const other = '01990000-0000-7000-8000-0000000007e2';
+    const { port, calls } = reader(async () => [{ evidenceId: EVIDENCE, state: 'REGISTERED', digest: DIGEST }]);
+    const rows = await readAdapterLog(port, 'run-1', [
+      step(),
+      step({ stepId: 'session-1', action: 'sign-in', evidenceId: other }),
+      step({ stepId: 'session-3', displayName: 'AccessGate', state: 'IN_PROGRESS', evidenceId: null }),
+    ]);
+    expect(calls).toEqual([{ runId: 'run-1', ids: [EVIDENCE] }]);
+    expect(rows.map((row) => row.stepId)).toEqual(['session-2', 'session-3']);
+    expect(rows[0]!.artifact).toEqual({ kind: 'registered', evidenceId: EVIDENCE, digest: DIGEST });
+    expect(rows[1]!.artifact).toEqual({ kind: 'none' });
+    // The plan action as a word, then the system — the row the viewers already said.
+    expect(rows[0]!.displayName).toMatch(/ · RoleMatrix$/);
+  });
+
+  it('issues no read at all when no adapter step names an artifact', async () => {
+    const { port, calls } = reader(async () => { throw new Error('must not be called'); });
+    const rows = await readAdapterLog(port, 'run-1', [step({ evidenceId: null, state: 'PENDING' })]);
+    expect(calls).toEqual([]);
+    expect(rows[0]!.artifact).toEqual({ kind: 'none' });
+  });
+
+  it('turns a failed read into "could not be read" for every step that names an artifact', async () => {
+    const { port } = reader(async () => { throw new Error('connection reset'); });
+    const rows = await readAdapterLog(port, 'run-1', [step(), step({ stepId: 'session-3', evidenceId: null })]);
+    expect(rows.map((row) => row.artifact.kind)).toEqual(['unavailable', 'none']);
   });
 });
