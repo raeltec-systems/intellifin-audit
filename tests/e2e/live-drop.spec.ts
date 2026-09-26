@@ -1,3 +1,4 @@
+import { captureStoryState } from './story-visual-capture';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
@@ -243,6 +244,7 @@ test.describe('Live View when the stream drops', () => {
     const note = page.locator(`#${LIVE_GATE_NOTE_ID}`);
     await expect(note).toBeVisible();
     await expect(note).toHaveText(LIVE_GATE_REASONS.lost);
+    await captureStoryState(page, 'live-lost-controls');
     await expect(page.locator('#run-flag')).toHaveJSProperty('open', false);
 
     // Every live control, disabled and saying why. `aria-disabled`, never `disabled`, so
@@ -258,6 +260,7 @@ test.describe('Live View when the stream drops', () => {
     // reader reads, and each withdrawn button is described by it for a screen reader.
     await expect(page.locator('#run-flag-note-withdrawn')).toBeVisible();
     await expect(page.locator('#run-flag-note-withdrawn')).toHaveText(LIVE_GATE_REASONS.lost);
+    await captureStoryState(page, 'live-lost-flag', page.locator('#run-flag'));
     expect(await liveFacts(page)).toMatchObject(LOST_LIVE_VIEW);
 
     // A click on a withdrawn control does nothing at all — no dialog, no request.
@@ -423,12 +426,14 @@ test.describe('Live View when the stream drops', () => {
     await expect(page).toHaveTitle(/.+/);
     const detailScan = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
     expect(detailScan.violations.map((v) => ({ id: v.id, nodes: v.nodes.map((n) => n.target.join(' ')) }))).toEqual([]);
+    await captureStoryState(page, 'run-detail-lost');
 
     await page.getByRole('link', { name: 'Open Auditor Workspace', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/runs/${runId}/workspace$`));
     await expect(banner).toHaveAttribute('data-live-status', 'lost', { timeout: 5_000 });
     await expect(banner.locator('[aria-hidden="true"]')).toHaveText(LIVE_SENTENCES.lost);
     await expect(banner.locator('[aria-live]')).toHaveText(LIVE_WORDS.lost);
+    await captureStoryState(page, 'workspace-lost');
 
     // Each step back waits for its OWN address before the next: a second `goBack` issued
     // while the first soft navigation is still committing lands somewhere else.
@@ -456,6 +461,7 @@ test.describe('Live View when the stream drops', () => {
       note: null, noteShown: false, flagReasonShown: false, reasonShown: false,
     });
     expect(attemptsWhileDropping).toBeGreaterThan(0);
+    await captureStoryState(page, 'live-reconnected');
 
     // None of this changed the Run being watched.
     const [row] = await sql`SELECT state, cancel_requested_by FROM audit_run WHERE run_id=${runId}`;

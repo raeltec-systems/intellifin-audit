@@ -1,3 +1,4 @@
+import { captureStoryState } from './story-visual-capture';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
@@ -62,6 +63,7 @@ test.describe('the route boundary on a page with no Run', () => {
     // The one control is a plain link to this page's own address, query included.
     const reload = page.getByRole('link', { name: ROUTE_BOUNDARY_COPY.reload });
     await expect(reload).toHaveAttribute('href', address);
+    await captureStoryState(page, 'route-boundary-other');
 
     await expect(page).toHaveTitle(/.+/);
     const scan = await new AxeBuilder({ page }).withTags(TAGS).analyze();

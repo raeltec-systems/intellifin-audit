@@ -1,3 +1,4 @@
+import { captureStoryState } from './story-visual-capture';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
@@ -234,6 +235,7 @@ test.describe('flagging a Run from Live View', () => {
     await expect(page.getByText(NOTHING_CHANGED_CLAIM)).toHaveCount(0);
     // The one control names this page's own address, query included.
     await expect(page.getByRole('link', { name: ROUTE_BOUNDARY_COPY.reload })).toHaveAttribute('href', address);
+    await captureStoryState(page, 'route-boundary-run');
     // WCAG 2.1 AA on the boundary as the reader meets it.
     await expect(page).toHaveTitle(/.+/);
     const scan = await new AxeBuilder({ page }).withTags(TAGS).analyze();

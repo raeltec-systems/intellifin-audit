@@ -4662,3 +4662,7 @@ and `pnpm test` sequentially in a worktree; parallel invocation can inspect a de
 violation and report a false regression, or race another unit run's cleanup. Separate story
 worktrees remain independent. Confirm the runtime used by pnpm itself: a wrapper can pin a
 Node executable even when `node` on PATH reports the repository's required version.
+
+### Story 10 screenshot evidence from CI
+
+The opt-in `STORY_VISUAL_CAPTURE=1` helper records actual synthetic browser states at 1280×800 and also 1024×800 for Timeline/Replay. The separate visual workflow retains PNGs and page facts in a small artifact, without changing the existing test gates. A successful capture is evidence to inspect, never a visual approval. Preserve the viewport and scroll position around captures so the original interactions still run.
