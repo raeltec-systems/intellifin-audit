@@ -2,7 +2,7 @@
 title: 'Live channel correction: notify every Run-chain append, and never lose the last refresh'
 type: 'fix'
 created: '2026-09-25'
-status: 'review'
+status: 'in-review'
 review_loop_iteration: 0
 implementation_authorised: true
 implementation_authorisation: 'Owner, 2026-09-26: "go, new branches OK" (implement 10.6 to 10.10 on new branches)'
