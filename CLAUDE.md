@@ -1,3 +1,18 @@
+## 2026-09-26 — A server cursor and an open SSE transport do not establish stream health
+
+- Story 10.8 retains stream-health timestamps for the browser document, keyed by stream URL,
+  across cursor changes and React remounts. Server rendering never writes that cache; no event
+  payload is retained. Mounted consumers keep separate cursors and health snapshots. Terminal
+  Run knowledge is latched there too: a new gate over a cached active snapshot stays closed.
+  The global list channel never acquires a per-Run terminal latch.
+- Only a valid Timeline envelope or heartbeat resets silence. `EventSource.open` establishes
+  transport, not delivery. A duplicate replay envelope is a health signal but never calls the
+  page callback twice. Required envelope fields must be valid before health changes; future
+  event families remain permitted. The existing 15/60-second thresholds and Run-ending event
+  vocabulary remain intact. Signal revisions force a render even for frames in the same millisecond.
+- The generic route boundary still requires owner confirmation of its replacement wording.
+  Implementation authorization does not silently approve a sentence marked Ask First.
+
 ## 2026-09-25 — A single read of a moving preview sample is a race the broker refuses on purpose
 
 - **The preview route answers 503 for a read that meets a new sample, and that is the product

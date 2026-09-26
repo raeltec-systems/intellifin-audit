@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
 import { cancelRun, type CancelRunDependencies } from '@intellifin/application';
@@ -6,6 +7,7 @@ import {
   createSqlClient,
   CryptoUuidV7Generator,
   DrizzleRoleRepository,
+  PostgresAuditUnitOfWork,
   PostgresProceduresUnitOfWork,
   PostgresRunCancellationRepository,
   PostgresRunsUnitOfWork,
@@ -148,6 +150,130 @@ test.describe('Live View when the stream drops', () => {
     const [row] = await sql`SELECT state, cancel_requested_by FROM audit_run WHERE run_id=${runId}`;
     expect(row).toMatchObject({ state: 'RUNNING', cancel_requested_by: null });
     expect(attempts).toBeGreaterThan(0);
+  });
+
+  test('keeps a lost stream gated while another Run ends and the server cursor advances', async ({ page }) => {
+    test.setTimeout(180_000);
+    const runId = await seedRun();
+    const otherRun = await seedRun('PAUSED');
+    let recover = false;
+    let attempts = 0;
+    await page.route(`**/api/runs/${runId}/events*`, async route => {
+      attempts += 1;
+      if (!recover) { await route.abort(); return; }
+      await route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' },
+        body: 'event: heartbeat\ndata: {}\n\n' });
+    });
+    await page.goto(`/runs/${runId}/live`);
+    const status = page.locator('[data-live-status]');
+    await expect(status).toHaveAttribute('data-live-status', 'lost', { timeout: LIVE_LOST_MS + 30_000 });
+    await page.locator('#run-flag > summary').click();
+    // Observe every status mutation, not merely the final value after the re-read.
+    await status.evaluate(node => {
+      const observed: string[] = [];
+      Object.assign(window, { story108Status: observed, story108Document: 'same-document' });
+      new MutationObserver(records => {
+        for (const record of records) if (record.type === 'attributes') observed.push(node.getAttribute('data-live-status') ?? 'missing');
+      }).observe(node, { attributes: true, attributeFilter: ['data-live-status'] });
+    });
+    // This real append advances the server cursor, but this Run's stream is still blocked.
+    await new PostgresAuditUnitOfWork(createDb(sql)).execute(async context => {
+      await context.auditEvents.append({ actor: { type: 'system', id: 'live-drop-proof' },
+        eventType: 'security.denied', source: 'web', outcome: 'denied', aggregateId: runId,
+        sessionId: 'live-drop-proof', correlationId: ids.next(), payload: {} });
+    });
+    const attemptsBefore = attempts;
+    const read = page.waitForResponse(response => response.url().includes(`/runs/${runId}/live`)
+      && response.request().resourceType() !== 'document' && response.ok());
+    void read.catch(() => undefined);
+    const cancelled = await cancelRun(cancelDependencies(), {
+      session: { userId: author, sessionId: `live-drop-${author}` }, request: { runId: otherRun, reason: null },
+    });
+    expect(cancelled).toEqual({ ok: true, state: 'CANCELED', pending: false });
+    await read;
+    await expect.poll(() => attempts).toBeGreaterThan(attemptsBefore);
+    await expect(status).toHaveAttribute('data-live-status', 'lost');
+    await expect(page.getByText(LIVE_SENTENCES.lost)).toBeVisible();
+    for (const name of ['Pause', 'Cancel Run', FLAG_COPY.submit]) {
+      await expect(page.getByRole('button', { name, exact: true })).toHaveAttribute('aria-disabled', 'true');
+    }
+    expect(await page.evaluate(() => Reflect.get(window, 'story108Document'))).toBe('same-document');
+    expect(await page.evaluate(() => Reflect.get(window, 'story108Status'))).toEqual([]);
+    const scan = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(scan.violations).toEqual([]);
+    // Navigate through the application's links to remove and recreate the live gate.
+    // The document stays mounted, but this must be a different gate DOM node/subscription.
+    await status.evaluate(node => { Reflect.set(window, 'story108OldGate', node); });
+    const beforeRemount = attempts;
+    await page.getByRole('link', { name: 'Open Run Detail', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/runs/${runId}$`));
+    await page.getByRole('link', { name: 'Watch', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/runs/${runId}/live$`));
+    await expect.poll(() => attempts).toBeGreaterThan(beforeRemount);
+    expect(await status.evaluate(node => node === Reflect.get(window, 'story108OldGate'))).toBe(false);
+    expect(await page.evaluate(() => Reflect.get(window, 'story108Document'))).toBe('same-document');
+    await expect(status).toHaveAttribute('data-live-status', 'lost');
+    await expect(page.getByText(LIVE_SENTENCES.lost)).toBeVisible();
+    if (!await page.locator('#run-flag').evaluate(node => (node as HTMLDetailsElement).open)) {
+      await page.locator('#run-flag > summary').click();
+    }
+    for (const name of ['Pause', 'Cancel Run', FLAG_COPY.submit]) {
+      await expect(page.getByRole('button', { name, exact: true })).toHaveAttribute('aria-disabled', 'true');
+    }
+    // Opening a transport alone never recovers it; this response contains a heartbeat.
+    recover = true;
+    await expect(status).toHaveAttribute('data-live-status', 'live', { timeout: 20_000 });
+    for (const name of ['Pause', 'Cancel Run', FLAG_COPY.submit]) {
+      await expect(page.getByRole('button', { name, exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+    }
+  });
+
+  test('retains a terminal event across a real gate remount over an active server snapshot', async ({ page }) => {
+    test.setTimeout(90_000);
+    const runId = await seedRun();
+    let sendTerminal = false;
+    let sentTerminal = false;
+    let attempts = 0;
+    await page.route(`**/api/runs/${runId}/events*`, async route => {
+      attempts += 1;
+      const terminal = sendTerminal && !sentTerminal;
+      sentTerminal ||= terminal;
+      // Keep the server snapshot active to isolate the race: the stream has told the
+      // gate the Run ended, while the page it can re-read still carries its old state.
+      const body = terminal
+        ? `id: 1\nevent: timeline\ndata: ${JSON.stringify({ runId, seq: 1, eventType: 'lifecycle.result-sealed',
+          occurredAt: new Date().toISOString(), outcome: 'success', source: 'worker' })}\n\n`
+        : 'event: heartbeat\ndata: {}\n\n';
+      await route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body });
+    });
+    await page.goto(`/runs/${runId}/live`);
+    const status = page.locator('[data-live-status]');
+    await expect(status).toHaveAttribute('data-live-status', 'live');
+    sendTerminal = true;
+    await expect(page.getByText(LIVE_GATE_REASONS.runEnded).first()).toBeAttached({ timeout: 20_000 });
+    await status.evaluate(node => {
+      Reflect.set(window, 'story108OldGate', node);
+      Reflect.set(window, 'story108Document', 'same-document');
+    });
+    const beforeRemount = attempts;
+    await page.getByRole('link', { name: 'Open Run Detail', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/runs/${runId}$`));
+    await page.getByRole('link', { name: 'Watch', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/runs/${runId}/live$`));
+    await expect.poll(() => attempts).toBeGreaterThan(beforeRemount);
+    expect(await status.evaluate(node => node === Reflect.get(window, 'story108OldGate'))).toBe(false);
+    expect(await page.evaluate(() => Reflect.get(window, 'story108Document'))).toBe('same-document');
+    // The new stream receives only heartbeats. They recover health, never terminality.
+    await expect(status).toHaveAttribute('data-live-status', 'live');
+    await expect(page.getByText(LIVE_GATE_REASONS.runEnded).first()).toBeAttached();
+    if (!await page.locator('#run-flag').evaluate(node => (node as HTMLDetailsElement).open)) {
+      await page.locator('#run-flag > summary').click();
+    }
+    for (const name of ['Pause', 'Cancel Run', FLAG_COPY.submit]) {
+      await expect(page.getByRole('button', { name, exact: true })).toHaveAttribute('aria-disabled', 'true');
+    }
+    const [row] = await sql`SELECT state FROM audit_run WHERE run_id=${runId}`;
+    expect(row).toMatchObject({ state: 'RUNNING' });
   });
 
   test('dismisses a confirmation that was already open, and refuses its confirm in words', async ({ page }) => {

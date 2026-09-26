@@ -771,7 +771,7 @@ legacy_review_closure:
       covers: legacy 5.1 — NOTIFY for every Run-chain append with rollback and reconnect proof; BellLive trailing refresh; Overview shared-refresh proof
     10-8-lost-connection-and-lost-acknowledgement-a-server-refresh-is:
       prepared: '2026-09-25'
-      implementation_authorised: false
+      implementation_authorised: true
       covers: legacy 5.7 — silence clock and gate tied to the stream's own signals; legacy 5.5 — the route boundary states only what it knows
     10-9-replay-bounded-history-completeness-a-bounded-view-says-what:
       prepared: '2026-09-25'

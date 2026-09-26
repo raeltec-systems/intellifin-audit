@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { ACTION_GATE_OPEN, ActionGateProvider, useActionGate, type ActionGateState } from '../design/action-gate';
 import { EndedBanner } from './LiveViewer';
 import { LiveBannerView, useThrottledRefresh } from './LiveBanner';
-import { LIVE_GATE_REASONS, isRunEndingEvent, liveGateReason, subscribeViewport } from './live-status';
+import { LIVE_GATE_REASONS, liveGateReason, subscribeViewport } from './live-status';
 import { useLiveTimeline } from './useLiveTimeline';
 
 /**
@@ -157,17 +157,11 @@ function SubscribedGate({
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   const refresh = useThrottledRefresh();
-  // Latched, never cleared. A Run that has ended does not start again, and the next
-  // server read removes the controls anyway; what this closes is the second between the
-  // terminal event arriving and that read landing.
-  const [runEnded, setRunEnded] = useState(false);
-  const ended = useRef(false);
-  const live = useLiveTimeline(url, cursor, (event) => {
-    if (isRunEndingEvent(event.eventType) && !ended.current) { ended.current = true; setRunEnded(true); }
-    refresh();
-  });
+  // Terminal knowledge is retained with the per-Run stream across a remount, so a
+  // cached active server snapshot cannot reopen controls after the terminal event.
+  const live = useLiveTimeline(url, cursor, () => { refresh(); });
   const desktop = useDesktopViewport();
-  const reason = liveGateReason(live.status, runEnded, desktop);
+  const reason = liveGateReason(live.status, live.runEnded, desktop);
   return (
     <ActionGateProvider
       value={reason === null ? ACTION_GATE_OPEN : { disabledReason: LIVE_GATE_REASONS[reason] }}
