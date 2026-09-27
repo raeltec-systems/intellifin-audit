@@ -29,7 +29,7 @@ import { LiveViewer } from '../../../../src/runs/LiveViewer';
 import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
 import { runLifecycleWord, utcStamp } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
-import { recordNaming, recordWords } from '../../../../src/runs/record-words';
+import { recordKeyText, recordNaming, recordWords } from '../../../../src/runs/record-words';
 import {
   LIVE_VIEW_STAGE,
   frameNarration,
@@ -318,6 +318,7 @@ export default async function RunLivePage({
               ? null
               : {
                   narration: stepNarration(current, systemOf(current.workItemId), subjectOf(current.workItemId)),
+                  subjectKeyText: recordKeyText({ key: subjectKeyOf(current.workItemId) }, naming),
                   state: current.state,
                   attempt: current.attempt,
                   diagnostic: current.diagnostic,

@@ -28,6 +28,7 @@ function frameView(index: number, overrides: Partial<ReplayFrameView> = {}): Rep
     stepNarration: `Opening the record for E-00010${index} on LoanCore`,
     workItemId: `019823ab-0000-7000-8000-0000000000c${index}`,
     subjectKey: `E-00010${index}`,
+    subjectKeyText: `E-00010${index}`,
     sourceLocation: 'https://synthetic.invalid/loancore/records/1',
     digest: 'a'.repeat(64),
     capturedAt: `2026-09-10T09:0${index}:00.000Z`,
@@ -115,6 +116,30 @@ describe('Replay, as the server first paints it', () => {
     const view = frameView(1);
     const html = render({ frames: [view], framesTotal: 1 });
     expect(html).toContain(`alt="${view.stepNarration}"`);
+  });
+
+  // `subjectKey` is the record LABEL (key, then the person's name). Keeping the whole label
+  // on one line made a long unmasked name overflow the 239 px rail at 1024 px and gave the
+  // page a sideways scroll; only the KEY is kept together (`subjectKeyText`).
+  it('keeps the record key on one line in the rail narration and lets the name wrap', () => {
+    const label = 'E-000101 · Alexandra Montgomery-Whitfield';
+    const sentence = `Opening the record for ${label} on LoanCore`;
+    const html = render({
+      frames: [frameView(1, { subjectKey: label, subjectKeyText: 'E-000101', narration: sentence, stepNarration: sentence })],
+      framesTotal: 1,
+    });
+    const narration = /<p class="ls-session__narration">(.*?)<\/p>/.exec(html)?.[1];
+    expect(narration).toBe('Opening the record for <span class="ls-nowrap">E-000101</span> · Alexandra Montgomery-Whitfield on LoanCore');
+  });
+
+  it('keeps nothing together in the rail narration when the binding masks the key', () => {
+    const sentence = 'Opening the record for •••• on LoanCore';
+    const html = render({
+      frames: [frameView(1, { subjectKey: '••••', subjectKeyText: null, narration: sentence, stepNarration: sentence })],
+      framesTotal: 1,
+    });
+    const narration = /<p class="ls-session__narration">(.*?)<\/p>/.exec(html)?.[1];
+    expect(narration).toBe(sentence);
   });
 
   it('offers one scrubber pill per frame, with the current one marked', () => {

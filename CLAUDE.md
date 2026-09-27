@@ -9,7 +9,10 @@
 - A metadata link beyond a bounded overview carries an exact selector. Resolve it only
   after Run authorization, through the Run-bound reader, and deduplicate its anchor.
 - Keep record keys such as `E-000102` in the existing `ls-nowrap` span; Chromium breaks at
-  their hyphens. `completeRun` seals the result but does not itself move the Run state.
+  their hyphens. Keep the KEY only (`recordKeyText`), never the whole label: a long unmasked
+  name that cannot wrap pushes a 239 px rail past the page edge at 1024 px.
+- The caller makes a Run's terminal transition; `completeRun` then seals the Result, and moves
+  the Run state itself only for §E's COMPLETED → INCONCLUSIVE row (`complete-run.ts:202`).
 - Handover sheet 1 is approved. Sheet-2 pause changes A1–A5 and the optional event payload
   fields remain pending; a successful test is not owner approval.
 
