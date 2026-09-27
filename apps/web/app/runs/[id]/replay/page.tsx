@@ -17,7 +17,7 @@ import { captureSentence, runLifecycleWord, workItemLabel } from '../../../../sr
 import { StatusBadge } from '../../../../src/design/StatusBadge';
 import { frameNarration, plannedStepCount, readAdapterLog, stepNarration } from '../../../../src/runs/live-view';
 import { REPLAY_GAP_WORDS, effectiveFrameWorkItemId, replayInitialSelection, replayJumpTargets, replayRequest, replayViewerKey, resolveFrameWorkItems, type ReplayGapsView } from '../../../../src/runs/replay';
-import { recordNaming, recordWords } from '../../../../src/runs/record-words';
+import { recordKeyText, recordNaming, recordWords } from '../../../../src/runs/record-words';
 import { toolActionNarration } from '../../../../src/runs/session-words';
 
 export const metadata: Metadata = { title: 'Run · Replay · IntelliFin Audit' };
@@ -116,12 +116,13 @@ export default async function RunReplayPage({
       ? new Map<string, string>()
       : await readRecordNames(runtime.db, run.runId, plan, [owner.subjectKey]);
     const subject = owner?.subjectKey == null ? null : recordWords({ key: owner.subjectKey, name: names.get(owner.subjectKey) ?? null }, naming);
+    const subjectKeyText = owner === null ? null : recordKeyText({ key: owner.subjectKey }, naming);
     const label = owner === null ? null : workItemLabel({ ...owner, subjectKey: subject, displayName: system ?? owner.displayName });
     const views: readonly ReplayFrameView[] = selected.kind === 'unavailable' ? [] : selected.rows.map(row => {
       const narration = frameNarration(row.frame, row.step, system, subject);
       return {
         evidenceId: row.frame.evidenceId, narration, stepNarration: narration, workItemLabel: label,
-        workItemId: owner?.workItemId ?? null, subjectKey: subject,
+        workItemId: owner?.workItemId ?? null, subjectKey: subject, subjectKeyText,
         sourceLocation: row.frame.sourceLocation, digest: row.frame.digest, capturedAt: row.frame.capturedAt,
         action: { action: row.action.action, method: row.action.method, destination: row.action.destination,
           outcome: row.action.outcome, status: row.action.status, denial: row.action.denial,
@@ -220,8 +221,8 @@ export default async function RunReplayPage({
     const system = systemOf(workItemId);
     // The record, so the frame's `alt` and each scrubber pill's label can tell two Work
     // Items of the same Run apart. `system` is identical on both.
-    const subject = subjectLabel(timeline.workItems
-      .find((item) => item.workItemId === workItemId)?.subjectKey ?? null);
+    const ownerKey = timeline.workItems.find((item) => item.workItemId === workItemId)?.subjectKey ?? null;
+    const subject = subjectLabel(ownerKey);
     // The frame's `alt` and the rail's Step narration are the SAME string (UX-DR37): a
     // reader who cannot see the picture hears exactly what the picture is captioned with.
     const narration = frameNarration(frame, step, system, subject);
@@ -231,6 +232,7 @@ export default async function RunReplayPage({
       narration,
       workItemId,
       subjectKey: subject,
+      subjectKeyText: recordKeyText({ key: ownerKey }, naming),
       sourceLocation: frame.sourceLocation,
       digest: frame.digest,
       capturedAt: frame.capturedAt,

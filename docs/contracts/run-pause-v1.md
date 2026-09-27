@@ -156,7 +156,7 @@ the table above passes a required `PauseHold` to `performPause`, and the event r
 | Key | When | Meaning |
 | --- | --- | --- |
 | `planStepId` | always | The plan step the Run is held at: the one in flight, or the next one still to run. |
-| `heldWorkItemId` | the Work Item stage | The Work Item the Run is held at. |
+| `heldWorkItemId` | held at a Work Item: the agent Work Item stage, and the adapter stage before an adapter Work Item | The Work Item the Run is held at. |
 | `stepExecutionId`, `attempt` | an attempt was in flight | The attempt the pause superseded. |
 | `workItemId` | unchanged | Its existing meaning — the in-flight item, or a deferred pause's settled inspection — because the conversation receipts and the interaction receipt guard (generations 55 to 59) read it. |
 

@@ -41,6 +41,12 @@ export interface ReplayFrameView extends LiveViewerFrame {
   readonly workItemId: string | null;
   /** The record the Work Item inspected, or `null` when it inspected no population. */
   readonly subjectKey: string | null;
+  /**
+   * The record KEY inside `subjectKey`, kept on one line in the narration (`recordKeyText`).
+   * Not the label: a person's name in it must still wrap. `null` when the key is masked or
+   * there is none.
+   */
+  readonly subjectKeyText: string | null;
   readonly action: {
     readonly action: string;
     readonly method: string;
@@ -406,7 +412,7 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
             <h3 id="replay-step-heading">What the Agent was doing</h3>
             {frame === null ? <p>{selectionNote ?? (props.framesTotal > 0 ? 'Choose a recorded frame to see its inspection step.' : REPLAY_COPY.noFrames)}</p> : (
               <p className="ls-session__narration">
-                {keySegments(frame.stepNarration, frame.subjectKey === null ? [] : [frame.subjectKey]).map((part, index) =>
+                {keySegments(frame.stepNarration, frame.subjectKeyText === null ? [] : [frame.subjectKeyText]).map((part, index) =>
                   part.key ? <span key={index} className="ls-nowrap">{part.text}</span> : part.text)}
               </p>
             )}

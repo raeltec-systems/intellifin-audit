@@ -11,6 +11,7 @@ import { EvidenceKindBadge } from './MinorBadge';
 import { UntrustedPolicy, UntrustedText } from './UntrustedText';
 import { ADAPTER_ARTIFACT_WORDS, chromeDotClass, type AdapterLogStep, type AdapterStepArtifact, type LiveViewChrome } from './live-view';
 import { attemptContext, noWorkItemSentence } from './session-words';
+import { keySegments } from './pause-words';
 import { evidenceKindWord, sessionStepWord, utcStamp, workItemLabel, workItemWord, workspaceModeWord } from './labels';
 
 export interface LiveViewerFrame {
@@ -24,6 +25,11 @@ export interface LiveViewerFrame {
 
 export interface LiveViewerStep {
   readonly narration: string;
+  /**
+   * The record KEY the narration names, kept on one line (`recordKeyText`): Chromium breaks
+   * `E-000102` after its hyphen. `null` when the key is masked or the step has no record.
+   */
+  readonly subjectKeyText: string | null;
   readonly state: string;
   readonly attempt: number;
   readonly diagnostic: string | null;
@@ -277,7 +283,10 @@ export function LiveViewer(props: LiveViewerProps): React.JSX.Element {
               <p>No Step Execution has started yet.</p>
             ) : (
               <>
-                <p className="ls-session__narration">{props.step.narration}</p>
+                <p className="ls-session__narration">
+                  {keySegments(props.step.narration, props.step.subjectKeyText === null ? [] : [props.step.subjectKeyText])
+                    .map((part, index) => part.key ? <span key={index} className="ls-nowrap">{part.text}</span> : part.text)}
+                </p>
                 {/* `attempt 1` is said nowhere: every Step Execution has one, so printing
                     it makes a retry indistinguishable from an ordinary first pass. */}
                 {attempt === null ? null : <p className="ls-caption">This is {attempt}.</p>}
