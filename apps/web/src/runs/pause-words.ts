@@ -11,11 +11,14 @@ import { recordNaming, recordWords } from './record-words';
  * Free of React, because the components and the browser specs read the same sentences —
  * the `run-start-words.ts` rule: a sentence retyped in a test is pinned against nothing.
  *
- * The owner approved sheet 1 on 2026-09-26. Only the sheet-2 changes remain
- * `[PROPOSED, needs owner confirmation]`: `intro` (A1), `startedWords` (A2),
+ * The owner approved sheet 1 on 2026-09-26. Still `[PROPOSED, needs owner confirmation]`
+ * (wording sheet 2, version 2): `intro` (A1), `startedWords` (A2),
  * `bannerHeldInFlightWords` (A3), `resumeRestarts`/`resumeStarts`/`resumeUnknown` (A4),
- * and the unnamed-plan-step fallback in `stepWords` (A5). See the handover for the
- * exact sentences and the separate pending decision on optional audit-event fields.
+ * the unnamed-plan-step fallback in `stepWords` (A5), and five forms sheet 1 did not list:
+ * the name-less `pausedByWords` (A6) and `resumedByWords` (A7), the record-less
+ * `heldAfterInspectionWords` (A8), and both forms of `bannerHeldAfterInspectionWords`
+ * (A9, A10). See `owner-wording-sheet-2-v2-2026-09-27.md` for the exact sentences and the
+ * separate pending decision on optional audit-event fields.
  */
 export const PAUSE_WORDS = {
   heading: 'Pauses and resumes',
@@ -127,10 +130,12 @@ export function pauseTitleWords(ordinal: number): string {
   return `Pause ${ordinal.toLocaleString('en-US')}`;
 }
 
+/** `[PROPOSED, sheet 2 A6]` for the name-less form; the named form is sheet 1. */
 export function pausedByWords(actor: string | null, time: string): string {
   return actor === null ? `Paused at ${time}.` : `Paused by ${actor} at ${time}.`;
 }
 
+/** `[PROPOSED, sheet 2 A7]` for the name-less form; the named form is sheet 1. */
 export function resumedByWords(actor: string | null, time: string): string {
   return actor === null ? `Resumed at ${time}.` : `Resumed by ${actor} at ${time}.`;
 }
@@ -145,7 +150,10 @@ export function heldBeforeWords(step: string): string {
   return `Held before ${step}.`;
 }
 
-/** A pause after an inspection settled, before the next unit. `noStepInFlight` follows. */
+/**
+ * A pause after an inspection settled, before the next unit. `noStepInFlight` follows.
+ * `[PROPOSED, sheet 2 A8]` for the record-less form; the named form is sheet 1.
+ */
 export function heldAfterInspectionWords(step: string, settled: string | null): string {
   return settled === null
     ? `Held after an inspection finished, before ${step}.`
@@ -192,6 +200,7 @@ export function bannerHeldBeforeWords(step: string): string {
   return `The Run is held before ${step}.`;
 }
 
+/** `[PROPOSED, sheet 2 A9 and A10]`: sheet 1 has no Paused-banner form for this hold. */
 export function bannerHeldAfterInspectionWords(step: string, settled: string | null): string {
   return settled === null
     ? `The Run is held after an inspection finished, before ${step}.`
