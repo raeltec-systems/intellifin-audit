@@ -41,6 +41,7 @@ import {
 } from '@intellifin/infrastructure';
 
 import { MATCH_DECISION_WORDS, choseCandidateWords } from '../../apps/web/src/runs/match-words';
+import { EXCEPTION_WORDS } from '../../apps/web/src/runs/result-words';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { canonicalLoanCoreCompliance } from '../fixtures/canonical-loancore-compliance';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
@@ -422,6 +423,18 @@ test.describe('a human-selected match, traced to its decision (Story 10.6, legac
     await expect(list.locator('li').filter({ hasText: KEYS.platform })).toHaveCount(0);
     await expect(page.locator('.ls-human-match__flag')).toHaveCount(3);
     await captureStoryState(page, 'human-match-result', list);
+    await scan(page);
+
+    // The list's link opens the technical Evidence page AT that record's Observation, by an
+    // exact selector rather than an anchor into a bounded overview (10.6 review fix).
+    await list.locator('li').filter({ hasText: KEYS.linked })
+      .getByRole('link', { name: new RegExp(`^${EXCEPTION_WORDS.openEvidence}`) }).click();
+    await expect(page).toHaveURL(/\/evidence\/technical\?observation=/);
+    const observationId = new URL(page.url()).searchParams.get('observation');
+    expect(observationId).toMatch(/^[0-9a-f-]{36}$/);
+    const selected = page.locator(`#observation-${observationId}`);
+    await expect(selected).toBeVisible();
+    await captureStoryState(page, 'technical-observation-selected', selected);
     await scan(page);
   });
 
