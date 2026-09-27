@@ -5,7 +5,56 @@ created: '2026-09-25'
 status: 'blocked'
 review_loop_iteration: 0
 followup_review_recommended: true
-deferred: []
+deferred:
+  - summary: >-
+      Links past a bounded list still use an anchor into a bounded overview, so an item past the first 50 is missed.
+    evidence: |-
+      The continuation gave its two new links an exact selector (?observation= and ?evidence=); the older links on other surfaces did not get it. Pre-existing before this story (review of the continuation, 2026-09-27).
+    location: >-
+      apps/web/src/runs/ExceptionList.tsx:181; ResultSections.tsx:272; EscalationPanel.tsx:265, 367, 405; RunConversation.tsx:156; app/runs/[id]/evidence/technical/artifacts/page.tsx:308
+    severity: medium
+  - summary: >-
+      Pause and resume times on the Timeline are plain text, not time elements with a datetime.
+    evidence: |-
+      pauseClosureSentences and pauseHoldSentences return strings that KeyedText joins; Story 10.10's request list renders a time element for the same kind of instant.
+    location: >-
+      apps/web/src/runs/PauseHistory.tsx:97
+    severity: low
+  - summary: >-
+      The technical Evidence page can list one row more than its sentence says ("the first N are listed", plus the selected row).
+    evidence: |-
+      An exact ?observation= selector past the overview adds that row; the sentence counts only the overview. Saying so needs owner wording.
+    location: >-
+      apps/web/app/runs/[id]/evidence/technical/artifacts/page.tsx:291-295
+    severity: low
+  - summary: >-
+      On a redelivery, the agent Work Item stage can pause at a step that already finished, and the banner then says Resume starts that step.
+    evidence: |-
+      execute-agent-work-item.ts holds at the current step when nothing is left to run; AD-16 and the adapter rule (leave the request for the next stage) say otherwise. Pre-existing; reachable only on a redelivery.
+    location: >-
+      packages/application/src/runs/execute-agent-work-item.ts:363-368
+    severity: low
+  - summary: >-
+      The adapter stage's nextHold can name a FAILED Reference Source as the next unit that can still run.
+    evidence: |-
+      nextHold takes the first step that is not ACQUIRED, which includes FAILED (a crash case that existed before this story); the comment above performPause no longer describes the rule.
+    location: >-
+      packages/application/src/runs/execute-adapter-steps.ts:790-795
+    severity: low
+  - summary: >-
+      No browser capture shows a pause "after this inspection" (Paused banner A9 and A10, Timeline A8).
+    evidence: |-
+      A realistic fixture needs a multi-record agent Run (P-1) with a deferred pause the worker honours; the pause-resume fixture is a one-page P-4 Run. The sentence choice is pinned by pause-words.test.ts:114-120, and the words wait on sheet 2, version 2.
+    location: >-
+      tests/e2e/pause-resume.spec.ts
+    severity: low
+  - summary: >-
+      execute-adapter-steps.test.ts:869 would still pass if the null-hold path cleared the pause request, and it resets a sealed Run to RUNNING, a state production cannot reach.
+    evidence: |-
+      Found by mutation in the continuation review (2026-09-27). The FAILED and UNINSPECTED part of the item check has no test either.
+    location: >-
+      packages/application/src/runs/execute-adapter-steps.test.ts:869
+    severity: low
 implementation_authorised: true
 implementation_authorisation: 'Owner, 2026-09-26: "go, new branches OK" (implement 10.6 to 10.10 on new branches)'
 baseline_revision: '429e08cf703fee6c5320f17b5983948709fd5bdf'
@@ -199,10 +248,14 @@ The full browser suite previously passed at `d8734c1f` (291 passed, 12 opt-in sk
 Fresh continuation results and unresolved checks are recorded below; no placeholder is a pass.
 
 **Wording approvals.** Handover sheet 1 was approved on 2026-09-26. The match, Replay-gap,
-and adapter-unavailable modules now record that approval. Only sheet-2 A1–A5 remain proposed
-in `pause-words.ts`: the conditional intro, starts-versus-restarts sentence, interrupted-attempt
-banner, three Resume explanations and unnamed-plan-step fallback. The optional event-field
-decision below remains pending. No pending decision is silently approved by this continuation.
+and adapter-unavailable modules record that approval. Still proposed in `pause-words.ts`, on
+[wording sheet 2, version 2](owner-wording-sheet-2-v2-2026-09-27.md): A1–A5 as before, and
+A6–A10, five forms sheet 1 never listed (the name-less "Paused at {time}." and "Resumed at
+{time}.", the record-less after-inspection hold, and both Paused-banner after-inspection
+forms). The continuation had marked those five approved; the 2026-09-27 review corrected the
+mark. A11 (a sentence saying a pause does not use up an attempt) is proposed and not built.
+D1 (the optional event fields below) and D2 (gaps on the one-record Replay, the intent gap in
+the triage log) wait on the owner. No pending decision is silently approved.
 
 **Decision to confirm.** The Ask First list names a new audit event TYPE, a column and a
 migration; none was added. New payload KEYS were added to existing event types
@@ -257,6 +310,32 @@ The user's continuation instruction preserves the built checkpoint: it is not re
 or rebuilt because a wider reading of inspection Replay requires clarification. The
 independent correctness and verification patches above are retained for review.
 
+### 2026-09-27 — Review of the continuation
+
+Five reviewers read every commit the continuation pushed after the handover (`88c25e0`): the
+code and tests, the screenshot workflow and its test edits, the records, and CI. Findings for
+this story:
+
+- intent_gap: 0 (the Replay-gap scope question above is now owner decision D2 on sheet 2 v2)
+- bad_spec: 0
+- patch: 6 (medium 3, low 3)
+- defer: 7
+- reject: 1 (the 64-ID batching cannot be reached, because a Run has at most 32 references;
+  it stays as a defence)
+- addressed_findings:
+  - `[medium]` `[patch]` Replay kept the whole record LABEL on one line (`4846dcf2`), so a long
+    unmasked name overflowed the 239 px rail at 1024 px; keep only the key (`recordKeyText`) in
+    Replay and in Live View, which had no fix; the new tests fail on the old code.
+  - `[medium]` `[patch]` Five pause sentences that are in no sheet were marked approved; mark
+    them proposed (A6–A10) and put them on sheet 2, version 2.
+  - `[medium]` `[patch]` Pause history and human-match reads counted and then read rows in two
+    statements; read `count(*) over()` beside the rows, as decision-history does.
+  - `[low]` `[patch]` `CLAUDE.md` said `completeRun` never moves the Run state; correct it.
+  - `[low]` `[patch]` `blocked` is not a legal sprint status; record `in-progress` there.
+  - `[low]` `[patch]` The revoked-role browser test used an unscoped alert locator (a flake CI met
+    on #64); a browser test typed the pending A5 sentence by hand; the screenshot run lacked the
+    technical page's two exact-selector states and misnamed the Live View capture.
+
 ## Auto Run Result
 
 Status: blocked; this is a reviewed WIP checkpoint, not story completion.
@@ -289,6 +368,8 @@ Node 24.20.0 / pnpm 11.25.0, run sequentially after the review patches:
 were observed failing before their patches. Exact-selector tests exercise the real page
 function after mocked authorization, including denied access and deduplicated anchors.
 Browser/DB results for this new candidate remain pending CI; no screenshot claim is made.
+CI run [36250244475](https://github.com/raeltec-systems/intellifin-audit/actions/runs/36250244475)
+later passed all seven jobs on `75993e4`.
 
 ### Screenshot review — 2026-09-26
 
