@@ -179,10 +179,11 @@ positions — how many frames precede each gap, in the scrubber's own order. The
 a marker in the scrubber where each gap sits, says "Playback is incomplete: N frames are
 missing." whenever N > 0, and lists every gap in words. A record's selected-inspection page
 reads no gaps, because it is not the whole session and a count over it would describe
-something else. A frame whose protected read FAILS is unavailable rather than missing: it
-keeps its metadata and only that frame is retried, as above. The sentences are proposed
-wording (`REPLAY_GAP_WORDS`, `replayIncompleteSentence`, `replayGapPosition` in
-`apps/web/src/runs/replay.ts`).
+something else; whether it should show the record's own gaps is owner decision D2 on
+wording sheet 2, version 2. A frame whose protected read FAILS is unavailable rather than
+missing: it keeps its metadata and only that frame is retried, as above. The owner approved
+the sentences on 2026-09-26 (handover sheet 1): `REPLAY_GAP_WORDS`,
+`replayIncompleteSentence` and `replayGapPosition` in `apps/web/src/runs/replay.ts`.
 
 ## The keyboard
 
