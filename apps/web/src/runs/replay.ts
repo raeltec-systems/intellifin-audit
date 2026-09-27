@@ -193,6 +193,11 @@ export function replayFrameForWorkItem(
 /**
  * The last frame captured at or before an instant, or `null`.
  *
+ * NOT the page's landing rule (Story 10.9 continuation): an Escalation inside the frame
+ * prefix lands by the exact SQL ordinal `framesThrough`, because re-parsing millisecond
+ * instants could choose a later capture or invent an earlier one. Only this function's own
+ * tests call it; it states the rule the ordinal implements.
+ *
  * An Escalation asks about a page, and the page it asks about is the last one captured
  * before it was raised. A frame captured AFTER it belongs to whatever happened next, so
  * jumping there would show a reader a screen the question was not about. An unreadable

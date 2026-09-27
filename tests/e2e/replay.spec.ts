@@ -20,6 +20,7 @@ import {
 import { REPLAY_COPY } from '../../apps/web/src/design/copy';
 import { captureSentence } from '../../apps/web/src/runs/labels';
 import { REPLAY_GAP_WORDS, replayGapPosition, replayIncompleteSentence } from '../../apps/web/src/runs/replay';
+import { recordFramePosition } from '../../apps/web/src/runs/session-words';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { startSyntheticS3 } from '../fixtures/s3-server';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
@@ -476,6 +477,13 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
     // between the second and third frames, so it opens the SECOND.
     await page.getByRole('button', { name: `Escalation · ${seeded.waitLabel}` }).press('Enter');
     await expect(page.locator('.ls-session__frame')).toHaveAttribute('src', `/api/runs/${seeded.runId}/frames/${seeded.frames[1]}`);
+
+    // A Work Item jump says where the frame sits among that record's OWN frames, because this
+    // view holds every frame of the session. Above the bound it says nothing (Story 10.9;
+    // replay-bounded-history.spec.ts), and this is the case that keeps the sentence alive.
+    await page.getByRole('button', { name: 'Work Item · E-000106 · LoanCore' }).press('Enter');
+    await expect(page.locator('.ls-session__frame')).toHaveAttribute('src', `/api/runs/${seeded.runId}/frames/${seeded.frames[1]}`);
+    await expect(page.locator('.ls-session__record-position')).toHaveText(recordFramePosition('E-000106', 1, 2));
   });
 
   test('opens a requested inspection on its own stored frame and preserves it on reload', async ({ page, baseURL }) => {
