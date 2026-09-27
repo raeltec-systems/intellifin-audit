@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 
 import type { PendingResume } from '@intellifin/application';
 
@@ -323,10 +323,15 @@ export async function readPauseHistory(db: ReadHandle, runId: string, limit = PA
   if (!isUuidText(runId)) return { total: 0, entries: [] };
   const bound = Math.max(0, Math.min(Math.trunc(limit), PAUSE_HISTORY_LIMIT));
   const where = and(eq(runWait.runId, runId), eq(runWait.kind, 'pause'));
-  const [counted] = await db.select({ total: count() }).from(runWait).where(where);
-  const total = Number(counted?.total ?? 0);
+  // The total and the rows come from ONE statement, so they describe one snapshot: counted
+  // first and read second, a pause committed in between made the count equal the rows read,
+  // hid "Showing the first N" and dropped the newest pause (the decision-history rule).
+  // At least one row is read so a zero bound still learns the exact total.
+  const rows = await db.select({ ...WAIT_COLUMNS, total: sql<number>`count(*) over()` }).from(runWait).where(where)
+    .orderBy(asc(runWait.openedAt), asc(runWait.waitId)).limit(Math.max(1, bound));
+  const total = Number(rows[0]?.total ?? 0);
   if (total === 0 || bound === 0) return { total, entries: [] };
-  const waits = await db.select(WAIT_COLUMNS).from(runWait).where(where).orderBy(asc(runWait.openedAt), asc(runWait.waitId)).limit(bound);
+  const waits = rows.map(({ total: _total, ...wait }) => wait);
   return { total, entries: await entriesFor(db, runId, waits) };
 }
 

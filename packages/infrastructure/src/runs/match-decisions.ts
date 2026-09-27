@@ -1,4 +1,4 @@
-import { and, asc, count, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 
 import { ESCALATION_OPTION_IDS } from '@intellifin/application';
 
@@ -224,9 +224,12 @@ export async function readRunHumanMatches(
   if (!isUuidText(runId)) return { total: 0, rows: [] };
   const bound = Math.max(0, Math.min(Math.trunc(limit), HUMAN_MATCH_LIST_LIMIT));
   const where = and(eq(runObservation.runId, runId), eq(runObservation.matchOrigin, 'human-matched'));
-  const [counted] = await db.select({ total: count() }).from(runObservation).where(where);
-  const total = Number(counted?.total ?? 0);
+  // The total and the rows come from ONE statement, so they describe one snapshot (the
+  // decision-history rule). At least one row is read so a zero bound still learns the total.
+  const rows = await db.select({ ...HUMAN_COLUMNS, total: sql<number>`count(*) over()` }).from(runObservation).where(where)
+    .orderBy(...HUMAN_ORDER).limit(Math.max(1, bound));
+  const total = Number(rows[0]?.total ?? 0);
   if (total === 0 || bound === 0) return { total, rows: [] };
-  const human = await db.select(HUMAN_COLUMNS).from(runObservation).where(where).orderBy(...HUMAN_ORDER).limit(bound);
+  const human = rows.map(({ total: _total, ...row }) => row);
   return { total, rows: await withDecisions(db, runId, human) };
 }
