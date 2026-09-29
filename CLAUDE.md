@@ -73,10 +73,10 @@ identity and says what an older record does not hold. Contracts: `run-pause-v1.m
   and Replay, reading Evidence EXACTLY by the ids the steps name rather than the bounded
   overview (the fifth appearance of "a limit belongs to the cardinality of the read").
 - `[EXTENDED 2026-09-29: approved — sheet 1 on 2026-09-26, sheet 2 v2 on 2026-09-29]`
-  **Every new sentence is proposed wording** in a words module (`match-words.ts`,
+  **Every new sentence lives in a words module** (`match-words.ts`,
   `pause-words.ts`, `replay.ts`'s `REPLAY_GAP_WORDS`, `live-view.ts`'s
-  `ADAPTER_ARTIFACT_WORDS.unavailable`), read back by the unit and browser tests, and needs
-  owner confirmation. The export legs of 4.7 and 5.2 are Story 14-11a's.
+  `ADAPTER_ARTIFACT_WORDS.unavailable`), read back by the unit and browser tests; each was
+  proposed first and is now owner-approved. The export legs of 4.7 and 5.2 are Story 14-11a's.
 
 Two mechanical notes:
 

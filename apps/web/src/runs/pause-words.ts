@@ -1,5 +1,5 @@
 import type { ExecutablePlan } from '@intellifin/domain';
-import type { RunPauseEntry, RunPauseWorkItem } from '@intellifin/infrastructure';
+import type { RunPauseAttempt, RunPauseEntry, RunPauseWorkItem } from '@intellifin/infrastructure';
 
 import { planActionWord } from './labels';
 import { recordNaming, recordWords } from './record-words';
@@ -324,6 +324,14 @@ export function keySegments(text: string, keys: readonly string[]): readonly Key
   return segments;
 }
 
+/** Whether a resume's attempt is the superseded one given back: same step, same record, same number. */
+function sameAttemptGivenBack(superseded: RunPauseAttempt, restarted: RunPauseAttempt): boolean {
+  return restarted.attempt === superseded.attempt
+    && restarted.planStepId === superseded.planStepId
+    && (restarted.workItem?.workItemId ?? null) === (superseded.workItem?.workItemId ?? null)
+    && restarted.stepExecutionId !== superseded.stepExecutionId;
+}
+
 /**
  * How a pause ended, and — for a resume — which attempt it started. Actor names and times
  * are rendered by the caller, which holds the name reader and the one time renderer.
@@ -346,9 +354,11 @@ export function pauseClosureSentences(
         // the resume started the held step for the first time since the pause.
         const superseded = entry.hold.kind === 'recorded' ? entry.hold.superseded : null;
         if (superseded === null) return [resumed, startedWords(step, restart.attempt.attempt)];
-        // A11: only where the numbers really are the same. A restart that carries another
-        // number is not explained by the pause giving its attempt back, so nothing is said.
-        return restart.attempt.attempt === superseded.attempt
+        // A11: only where the resume really restarted the SAME step, on the same record, as a
+        // different Step Execution with the same number. A restart that carries another number,
+        // or names another step or record, is not explained by the pause giving its attempt
+        // back, so nothing is said (review 2026-09-29).
+        return sameAttemptGivenBack(superseded, restart.attempt)
           ? [resumed, restartedWords(step, restart.attempt.attempt), attemptKeptWords(restart.attempt.attempt)]
           : [resumed, restartedWords(step, restart.attempt.attempt)];
       }

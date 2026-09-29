@@ -224,6 +224,16 @@ describe('how a pause ended', () => {
       resumedByWords('person u1', 'at-2026-09-26T10:00:00.000Z'),
       restartedWords(NAMER.step(INSPECT.id, ITEM), 4),
     ]);
+    // The same number on ANOTHER step, another record, or the very Step Execution the pause
+    // superseded is not that attempt given back, so A11 would be false there (review 2026-09-29).
+    const restartAs = (attempt: Partial<{ stepExecutionId: string; planStepId: string; workItem: typeof ITEM | null }>): RunPauseClosure => ({
+      ...started,
+      restart: { kind: 'started', attempt: { stepExecutionId: 'se', planStepId: INSPECT.id, attempt: 3, workItem: ITEM, ...attempt } },
+    } as RunPauseClosure);
+    for (const attempt of [{ planStepId: 'another-step' }, { workItem: null }, { workItem: { ...ITEM, workItemId: 'another-item' } }, { stepExecutionId: 'sx' }]) {
+      const said = pauseClosureSentences(ended(inFlight, restartAs(attempt)), NAMER, render);
+      expect(said.join(' '), JSON.stringify(attempt)).not.toContain(attemptKeptWords(3));
+    }
     // A pause between units interrupted nothing, so no attempt was given back.
     const between = pauseClosureSentences(ended(recorded({ planStepId: INSPECT.id, workItem: ITEM }), started), NAMER, render);
     expect(between.join(' ')).not.toContain(attemptKeptWords(3));

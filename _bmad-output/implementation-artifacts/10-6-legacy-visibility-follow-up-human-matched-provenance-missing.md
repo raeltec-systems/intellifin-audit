@@ -2,10 +2,31 @@
 title: 'Legacy visibility follow-up: human-matched provenance, missing-frame indication and exact pause and resume linkage on the retained compiler-1 surfaces'
 type: 'fix'
 created: '2026-09-25'
-status: 'blocked'
+status: 'in-review'
 review_loop_iteration: 0
 followup_review_recommended: true
 deferred:
+  - summary: >-
+      On a record's Replay, the gap rows are the record's first 100 by time, whatever page is open, so a later page of a record with more than 100 gaps can show pills with no marker for a real gap.
+    evidence: |-
+      readRecordReplayGaps takes LIMIT 100 over the record's gaps; the inspection read pages 100 frames at a time. The exact counts stay right and the list caption says "Showing 100 of N". The whole-Run Replay has the same shape (100 gap rows over 500 frames), so a fix belongs to both views together (review 2026-09-29).
+    location: >-
+      packages/infrastructure/src/runs/run-detail-repository.ts (replayGaps); apps/web/app/runs/[id]/replay/page.tsx
+    severity: medium
+  - summary: >-
+      On a record's Replay, "after frame N" uses whole-session numbering; a gap before the record's first frame reads "after frame 4" beside a scrubber that starts at "Frame 5", and a gap on another page of the record is listed with no word saying so.
+    evidence: |-
+      replayGapPosition(gap.framesBefore) in the list and the marker label. It is true (the strip counter also counts the whole session) but a reader cannot see frame 4. Saying "before this record's first frame", "on another page of this record's frames" or scoping the banner "for this record" is new wording, reserved for the owner (review 2026-09-29).
+    location: >-
+      apps/web/src/runs/ReplayViewer.tsx:120,147
+    severity: low
+  - summary: >-
+      The record's frames and its gaps are two reads, not one snapshot, and a failing gap read takes the whole record view to the error boundary; neither has a test.
+    evidence: |-
+      page.tsx reads readInspectionReplay and readRecordReplayGaps in one Promise.all. Replay shows ended Runs, so the two reads cannot disagree in practice; the failure is loud, never an absence (review 2026-09-29).
+    location: >-
+      apps/web/app/runs/[id]/replay/page.tsx:102-111
+    severity: low
   - summary: >-
       Links past a bounded list still use an anchor into a bounded overview, so an item past the first 50 is missed.
     evidence: |-
@@ -44,7 +65,7 @@ deferred:
   - summary: >-
       No browser capture shows a pause "after this inspection" (Paused banner A9 and A10, Timeline A8).
     evidence: |-
-      A realistic fixture needs a multi-record agent Run (P-1) with a deferred pause the worker honours; the pause-resume fixture is a one-page P-4 Run. The sentence choice is pinned by pause-words.test.ts:114-120, and the words wait on sheet 2, version 2.
+      A realistic fixture needs a multi-record agent Run (P-1) with a deferred pause the worker honours; the pause-resume fixture is a one-page P-4 Run. The sentence choice is pinned by pause-words.test.ts:114-120, and the words are approved (sheet 2, version 2, approved 2026-09-29).
     location: >-
       tests/e2e/pause-resume.spec.ts
     severity: low
@@ -247,7 +268,7 @@ the GitHub API on 2026-09-26. These results establish the checkpoint, not subseq
 The full browser suite previously passed at `d8734c1f` (291 passed, 12 opt-in skips).
 Fresh continuation results and unresolved checks are recorded below; no placeholder is a pass.
 
-**Wording approvals.** Handover sheet 1 was approved on 2026-09-26. The match, Replay-gap,
+**Wording approvals.** `[SUPERSEDED 2026-09-29 by the owner decision in the next paragraph: everything below that is "proposed" or "waits on the owner" is now approved.]` Handover sheet 1 was approved on 2026-09-26. The match, Replay-gap,
 and adapter-unavailable modules record that approval. Still proposed in `pause-words.ts`, on
 [wording sheet 2, version 2](owner-wording-sheet-2-v2-2026-09-27.md): A1–A5 as before, and
 A6–A10, five forms sheet 1 never listed (the name-less "Paused at {time}." and "Resumed at
@@ -343,6 +364,32 @@ this story:
   - `[low]` `[patch]` The revoked-role browser test used an unscoped alert locator (a flake CI met
     on #64); a browser test typed the pending A5 sentence by hand; the screenshot run lacked the
     technical page's two exact-selector states and misnamed the Live View capture.
+
+### 2026-09-29 — Review of the owner-decision build (A11, D2 b)
+
+Four reviewers (correctness, tests, wording, edge cases and accessibility) read
+`4845031..a0997d1`. Patched:
+
+- `[medium]` A11 compared only the attempt NUMBER, so a resume that started another step or
+  record as attempt 1 would have said the pause gave its attempt back. `sameAttemptGivenBack`
+  now also requires the same plan step, the same Work Item and a different Step Execution.
+  Test: the same number on another step, another record, no record, and the superseded Step
+  Execution itself each leave A11 unsaid; the number-only mutation fails it.
+- `[medium]` Nothing pinned that the Replay page hands the gaps view its REAL page window.
+  `page.gaps.test.ts` now opens page two of a record (cursor 100, two frames, more pages)
+  and asserts each gap's marker position. Each of the three mutations the reviewer found
+  surviving (`cursor: 0`, `shown: 0`, `last: true`) now fails it.
+- `[medium]` Stale "proposed" / "waits on the owner" text in this spec, the handover and a
+  CLAUDE.md entry, now marked superseded or reworded.
+
+Deferred (in the frontmatter): the gap-row limit per record page (medium, the same shape as
+the whole-Run Replay); record-view gap numbering and scope words (low, needs owner wording);
+two reads and an untested failing gap read (low).
+
+Rejected: "does not use up an attempt" should say "does not count against the step's
+attempts" — A11 is the owner's approved sentence, and the Run-level Step Execution limit is a
+different count the sentence does not mention. `GapMarker`'s `role="img"` inside the scrubber
+group is acceptable as is.
 
 ## Auto Run Result
 

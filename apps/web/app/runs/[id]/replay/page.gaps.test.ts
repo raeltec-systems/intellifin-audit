@@ -108,6 +108,30 @@ describe('Replay’s gaps, through the page’s own read (Story 10.6, legacy 5.2
     expect(calls.gaps).not.toHaveBeenCalled();
   });
 
+  // Review 2026-09-29: the page must hand the view its REAL page window. On page two of a
+  // record (cursor 100, two frames shown, more pages after), a gap before the page and one at
+  // its end get no marker here, and the two inside it are placed on this page's pills.
+  it('places a record\u2019s gaps on the page actually shown, not on the first page', async () => {
+    const frame = (n: number) => ({ frame: { evidenceId: `frame-${n}`, toolActionId: `action-${n}`, stepExecutionId: `step-${n}`,
+      workItemId: WORK_ITEM, action: 'read-attribute', digest: 'a'.repeat(64), size: 10, mediaType: 'image/png',
+      sourceLocation: 'https://loancore.invalid/record', capturedAt: '2026-09-26T00:00:00Z', actionStartedAt: '2026-09-26T00:00:00Z' },
+    globalOrdinal: 200 + n, inspectionOrdinal: 100 + n, observations: 1,
+    step: { action: 'inspect-record', planStepId: 'plan-step', startedAt: '2026-09-26T00:00:00Z' },
+    action: { action: 'read-attribute', method: 'GET', startedAt: '2026-09-26T00:00:00Z' } });
+    calls.inspection.mockResolvedValue({ kind: 'inspection',
+      workItem: { workItemId: WORK_ITEM, subjectKey: 'E-000102', displayName: 'LoanCore', registrationId: 'loancore' },
+      workspace: null, rows: [frame(1), frame(2)], total: 300, framesTotal: 600, cursor: 100, previousCursor: 0, nextCursor: 102 });
+    const gap = (id: string, recordFramesBefore: number) => ({ toolActionId: id, kind: 'missing', action: 'open-record',
+      startedAt: '2026-09-26T00:00:05.000Z', stepExecutionId: 'step-x', workItemId: WORK_ITEM, targetSystem: 'loancore',
+      captureSuppression: null, framesBefore: 100 + recordFramesBefore, recordFramesBefore });
+    calls.recordGaps.mockResolvedValue({ missing: 4, suppressed: 0,
+      rows: [gap('before-page', 99), gap('page-start', 100), gap('between', 101), gap('page-end', 102)] });
+    const handed = await gapsHandedToTheViewer({ workItem: WORK_ITEM, cursor: '100' }) as { rows: { toolActionId: string; position: number | null }[] };
+    expect(Object.fromEntries(handed.rows.map(row => [row.toolActionId, row.position]))).toEqual({
+      'before-page': null, 'page-start': 0, between: 1, 'page-end': null,
+    });
+  });
+
   it('hands no gaps when the requested inspection cannot be resolved', async () => {
     calls.recordGaps.mockResolvedValue({ missing: 3, suppressed: 0, rows: [] });
     expect(await gapsHandedToTheViewer({ workItem: WORK_ITEM })).toBeNull();
