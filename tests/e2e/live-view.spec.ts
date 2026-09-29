@@ -415,10 +415,20 @@ test.describe('Live View', () => {
     await expect(withoutArtifact).toContainText(ADAPTER_ARTIFACT_WORDS.none);
     await expect(withoutArtifact).not.toContainText(ADAPTER_ARTIFACT_WORDS.unavailable);
     await expect(withoutArtifact.locator('text=/[0-9a-f]{64}/')).toHaveCount(0);
-    await captureStoryState(page, 'adapter-artifacts-technical', log);
+    await captureStoryState(page, 'adapter-artifacts-live', log);
 
     const scan = await new AxeBuilder({ page }).withTags(TAGS).analyze();
     expect(scan.violations, JSON.stringify(scan.violations, null, 2)).toEqual([]);
+
+    // The artifact link opens the technical Evidence page AT that Evidence, by an exact
+    // selector rather than an anchor into a bounded overview (10.6 review fix).
+    await acquired.locator(`a[href="/runs/${seeded.runId}/evidence/technical?evidence=${referenceEvidenceId}#evidence-${referenceEvidenceId}"]`).click();
+    const card = page.locator(`#evidence-${referenceEvidenceId}`);
+    await expect(card).toBeVisible();
+    await expect(card).toContainText(referenceDigest);
+    await captureStoryState(page, 'technical-evidence-selected', card);
+    const technical = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+    expect(technical.violations, JSON.stringify(technical.violations, null, 2)).toEqual([]);
   });
 
   // UI cleanup 2026-09-22, UX-48. The walkthrough measured the workspace screen BELOW the

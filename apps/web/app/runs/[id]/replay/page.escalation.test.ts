@@ -10,6 +10,8 @@ vi.mock('@intellifin/infrastructure', () => ({
     readEscalations = calls.waits; readReplayExceptions = async () => ({ rows: [], total: 0 });
     readEvidenceItems = async () => []; readEvidenceItemsByIds = async () => [];
     readReplayGaps = async () => ({ missing: 0, suppressed: 0, rows: [] });
+    // Story 10.6 D2 b: the one-record view reads its own gaps. None here.
+    readRecordReplayGaps = async () => ({ missing: 0, suppressed: 0, rows: [] });
   },
   DrizzleFrozenExecutionReader: class { readFrozenExecution = calls.plan; },
 }));

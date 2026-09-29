@@ -44,3 +44,23 @@ Each linked run retains `story-10-visual-evidence`: named PNGs and JSON page fac
 The capture helper is opt-in through `STORY_VISUAL_CAPTURE=1`; it restores the test's viewport and scroll position. Existing test assertions, retries and CI gates were not weakened. The dedicated workflow runs the actual existing browser journeys with disposable synthetic accounts and database.
 
 Local validation used Node 24.20.0 / pnpm 11.25.0: root typecheck passed for the capture additions; the combined post-fix source passed typecheck; Replay component tests passed (26 on 10.6, 37 on 10.9, 37 on 10.10). No main merge or deployment occurred. The transport-failure tests intentionally produce aborted request/route-boundary errors; these are not described as a clean-console run. Browser plugin was unavailable, so the repository's Playwright/Chromium workflow supplied the screenshots.
+
+## Additions after the review of the continuation (2026-09-27)
+
+- **New captures (10.6):** the technical Evidence page opened from Live View's adapter
+  artifact link (`?evidence=`, `technical-evidence-selected`) and from the Result's "Open this
+  record's evidence" link (`?observation=`, `technical-observation-selected`). Both show the
+  selected item at the top of the page. The capture that was called
+  `adapter-artifacts-technical` shows Live View's adapter log; it is now
+  `adapter-artifacts-live`.
+- **Record keys:** Replay and Live View now keep only the record KEY on one line (not the
+  whole label with the person's name). At 1024 px the narration moves `E-000105` whole to the
+  next line.
+- **Not captured, and why:** a pause "after this inspection" (Paused banner A9/A10 and the
+  Timeline A8). A realistic fixture needs a multi-record agent Run with a deferred pause the
+  worker honours; the pause fixture is a one-page P-4 Run. The sentence choice is pinned by
+  `pause-words.test.ts`, and the words (approved 2026-09-29) are on
+  [sheet 2, version 2](owner-wording-sheet-2-v2-2026-09-27.md).
+- **Seen, not caused by these stories:** on the technical Evidence page of a running Run, the
+  Run control row shows "Refresh control" and "Cancel Run", then "Pause" alone and offset on a
+  second line.

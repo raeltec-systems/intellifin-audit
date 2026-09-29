@@ -156,7 +156,7 @@ the table above passes a required `PauseHold` to `performPause`, and the event r
 | Key | When | Meaning |
 | --- | --- | --- |
 | `planStepId` | always | The plan step the Run is held at: the one in flight, or the next one still to run. |
-| `heldWorkItemId` | the Work Item stage | The Work Item the Run is held at. |
+| `heldWorkItemId` | held at a Work Item: the agent Work Item stage, and the adapter stage before an adapter Work Item | The Work Item the Run is held at. |
 | `stepExecutionId`, `attempt` | an attempt was in flight | The attempt the pause superseded. |
 | `workItemId` | unchanged | Its existing meaning — the in-flight item, or a deferred pause's settled inspection — because the conversation receipts and the interaction receipt guard (generations 55 to 59) read it. |
 
@@ -187,7 +187,11 @@ on the attempt's start event. An older pause is read for what it holds: one hono
 mid-attempt named its Step Execution, whose row gives the plan step and the attempt
 exactly; one that named nothing reads as `not-recorded`. The Execution Timeline lists the
 pauses ("Pauses and resumes"), and the Paused banner says where the pause holds the Run now.
-The sentences are proposed wording in `apps/web/src/runs/pause-words.ts`.
+The sentences are the owner-approved wording (sheet 1, 2026-09-26; sheet 2 version 2,
+2026-09-29) in `apps/web/src/runs/pause-words.ts`. A resume that restarts an interrupted
+attempt carries the superseded attempt's number, because a pause gives its attempt back; the
+Timeline says so after the restart sentence (sheet 2, A11: "A pause does not use up an
+attempt, so the new attempt is also attempt {n}."), only where the two numbers are equal.
 
 ## A pause request the Run never honoured, on the Timeline (Story 10.10)
 

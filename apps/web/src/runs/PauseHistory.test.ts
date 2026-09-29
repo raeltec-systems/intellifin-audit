@@ -11,6 +11,7 @@ import { readableStamp } from '../design/time';
 import { PauseHistorySection, PauseHoldNote } from './PauseHistory';
 import {
   PAUSE_WORDS,
+  attemptKeptWords,
   heldBeforeWords,
   heldInFlightWords,
   pauseStepNamer,
@@ -120,6 +121,8 @@ describe('the pause history on the Execution Timeline', () => {
       heldInFlightWords(inspect, 1),
       resumedByWords('Daniel Okonjo', readableStamp('2026-09-26T09:05:00.000Z')),
       restartedWords(inspect, 1),
+      // Sheet 2, A11: the restart carries the superseded attempt's number.
+      attemptKeptWords(1),
       pauseTitleWords(2),
       heldBeforeWords(signIn),
       PAUSE_WORDS.noStepInFlight,

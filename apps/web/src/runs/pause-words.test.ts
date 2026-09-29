@@ -8,6 +8,7 @@ import { MASKED_VALUE } from '../design/copy';
 import { planActionWord } from './labels';
 import {
   PAUSE_WORDS,
+  attemptKeptWords,
   bannerHeldAfterInspectionWords,
   bannerHeldBeforeWords,
   bannerHeldInFlightWords,
@@ -34,7 +35,7 @@ import {
  * Where a pause held the Run and which attempt its resume started, in words (Story 10.6,
  * legacy 5.4). Every expected sentence is built by the function the surface calls for THAT
  * branch, so a branch that answered with another arm's sentence fails here; the wording
- * itself is `[PROPOSED]` and lives in one place, `pause-words.ts`.
+ * itself is owner-approved (sheets 1 and 2) and lives in one place, `pause-words.ts`.
  */
 
 const derived = deriveExecutablePlan(executablePlanInputs());
@@ -202,7 +203,40 @@ describe('how a pause ended', () => {
     expect(pauseClosureSentences(ended(inFlight, started), NAMER, render)).toEqual([
       resumedByWords('person u1', 'at-2026-09-26T10:00:00.000Z'),
       restartedWords(NAMER.step(INSPECT.id, ITEM), 3),
+      // Sheet 2, A11: the restarted attempt has the superseded attempt's number (3 and 3).
+      attemptKeptWords(3),
     ]);
+  });
+
+  // Sheet 2, A11 (approved 2026-09-29). "During attempt 1. That attempt was superseded." and
+  // "…as a new attempt (attempt 1)." are both true, and read like a mistake alone.
+  it('says a pause does not use up an attempt, right after the restart, and only where the numbers match', () => {
+    expect(attemptKeptWords(1)).toBe('A pause does not use up an attempt, so the new attempt is also attempt 1.');
+    expect(attemptKeptWords(1200)).toBe('A pause does not use up an attempt, so the new attempt is also attempt 1,200.');
+    const sentences = pauseClosureSentences(ended(inFlight, started), NAMER, render);
+    expect(sentences.indexOf(attemptKeptWords(3))).toBe(sentences.indexOf(restartedWords(NAMER.step(INSPECT.id, ITEM), 3)) + 1);
+    // A restart with another number is not explained by the pause, so nothing is said.
+    const other: RunPauseClosure = {
+      ...started,
+      restart: { kind: 'started', attempt: { stepExecutionId: 'se', planStepId: INSPECT.id, attempt: 4, workItem: ITEM } },
+    } as RunPauseClosure;
+    expect(pauseClosureSentences(ended(inFlight, other), NAMER, render)).toEqual([
+      resumedByWords('person u1', 'at-2026-09-26T10:00:00.000Z'),
+      restartedWords(NAMER.step(INSPECT.id, ITEM), 4),
+    ]);
+    // The same number on ANOTHER step, another record, or the very Step Execution the pause
+    // superseded is not that attempt given back, so A11 would be false there (review 2026-09-29).
+    const restartAs = (attempt: Partial<{ stepExecutionId: string; planStepId: string; workItem: typeof ITEM | null }>): RunPauseClosure => ({
+      ...started,
+      restart: { kind: 'started', attempt: { stepExecutionId: 'se', planStepId: INSPECT.id, attempt: 3, workItem: ITEM, ...attempt } },
+    } as RunPauseClosure);
+    for (const attempt of [{ planStepId: 'another-step' }, { workItem: null }, { workItem: { ...ITEM, workItemId: 'another-item' } }, { stepExecutionId: 'sx' }]) {
+      const said = pauseClosureSentences(ended(inFlight, restartAs(attempt)), NAMER, render);
+      expect(said.join(' '), JSON.stringify(attempt)).not.toContain(attemptKeptWords(3));
+    }
+    // A pause between units interrupted nothing, so no attempt was given back.
+    const between = pauseClosureSentences(ended(recorded({ planStepId: INSPECT.id, workItem: ITEM }), started), NAMER, render);
+    expect(between.join(' ')).not.toContain(attemptKeptWords(3));
   });
 
   // Screenshot review, 2026-09-26: a pause held before the sign-in said its resume

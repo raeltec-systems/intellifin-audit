@@ -21,6 +21,7 @@ import { ESCALATION_ANSWER_WORDS, PAUSE_REQUEST_WORDS } from '../../apps/web/src
 import { planActionWord } from '../../apps/web/src/runs/labels';
 import {
   PAUSE_WORDS,
+  attemptKeptWords,
   bannerHeldBeforeWords,
   bannerHeldInFlightWords,
   heldBeforeWords,
@@ -29,6 +30,7 @@ import {
   pauseTitleWords,
   restartedWords,
   startedWords,
+  stepWords,
 } from '../../apps/web/src/runs/pause-words';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
@@ -541,6 +543,8 @@ test.describe('pausing and resuming a Run', () => {
     await page.goto(`/runs/${runId}/timeline`);
     await expect(second).toContainText(`Resumed by ${authorName} at`);
     await expect(second).toContainText(restartedWords(inspectStep, 1));
+    // Sheet 2, A11: the restarted attempt keeps the superseded attempt's number.
+    await expect(second).toContainText(attemptKeptWords(1));
     await expect(second.locator(`[title="${restarted}"]`)).toBeVisible();
     await expect(second).not.toContainText(PAUSE_WORDS.stillPaused);
     // The Run is no longer paused, so no banner says where a pause holds it.
@@ -621,11 +625,11 @@ test.describe('pausing and resuming a Run', () => {
     await honourPause(runId, { planStepId: legacyStep, workItemId: null, superseded: null });
     await page.reload();
     const banner = page.locator('.ls-banner', { hasText: `Paused by ${authorName}` });
-    await expect(banner).toContainText(`plan step “${legacyStep}”`);
+    await expect(banner).toContainText(stepWords(null, null, legacyStep));
     await captureStoryState(page, 'pause-unnamed-plan-step', banner);
     await page.goto(`/runs/${runId}/timeline`);
     const history = page.getByRole('region', { name: PAUSE_WORDS.heading });
-    await expect(history).toContainText(`plan step “${legacyStep}”`);
+    await expect(history).toContainText(stepWords(null, null, legacyStep));
     await captureStoryState(page, 'pause-timeline-unnamed-plan-step', history);
   });
 

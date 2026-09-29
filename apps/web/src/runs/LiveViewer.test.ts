@@ -165,7 +165,7 @@ describe('the narration rail', () => {
   it('never puts a retry inside the Step counter', () => {
     const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
       stepsStarted: 6, plannedSteps: 6, retries: 1,
-      step: { narration: 'Opening the record for E-000103 on LoanCore', state: 'RUNNING', attempt: 2, diagnostic: null },
+      step: { narration: 'Opening the record for E-000103 on LoanCore', subjectKeyText: 'E-000103', state: 'RUNNING', attempt: 2, diagnostic: null },
     })));
     expect(html).toContain('Step 6 of 6');
     expect(html).not.toContain('Step 7 of 6');
@@ -174,9 +174,31 @@ describe('the narration rail', () => {
 
   it('says nothing about an attempt that is the first one', () => {
     const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
-      step: { narration: 'Opening the record for E-000103 on LoanCore', state: 'RUNNING', attempt: 1, diagnostic: null },
+      step: { narration: 'Opening the record for E-000103 on LoanCore', subjectKeyText: 'E-000103', state: 'RUNNING', attempt: 1, diagnostic: null },
     })));
     expect(html).not.toContain('attempt 1');
+  });
+
+  // Chromium breaks a record key such as `E-000102` after its hyphen in the narrow rail.
+  // Only the KEY is kept together: the label also carries a person's name, and a long name
+  // that cannot wrap pushes the rail past the page edge at 1024 px.
+  it('keeps the record key on one line in the narration and lets the name wrap', () => {
+    const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
+      step: {
+        narration: 'Opening the record for E-000102 · Alexandra Montgomery-Whitfield on LoanCore',
+        subjectKeyText: 'E-000102', state: 'RUNNING', attempt: 1, diagnostic: null,
+      },
+    })));
+    const narration = /<p class="ls-session__narration">(.*?)<\/p>/.exec(html)?.[1];
+    expect(narration).toBe('Opening the record for <span class="ls-nowrap">E-000102</span> · Alexandra Montgomery-Whitfield on LoanCore');
+  });
+
+  it('keeps nothing together when the binding masks the key', () => {
+    const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
+      step: { narration: 'Opening the record for •••• on LoanCore', subjectKeyText: null, state: 'RUNNING', attempt: 1, diagnostic: null },
+    })));
+    const narration = /<p class="ls-session__narration">(.*?)<\/p>/.exec(html)?.[1];
+    expect(narration).toBe('Opening the record for •••• on LoanCore');
   });
 
   // Watch is where a person follows the Agent record by record. `displayName` is the
@@ -203,7 +225,7 @@ describe('the narration rail', () => {
 
   it('renders a Step Execution diagnostic as untrusted content', () => {
     const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
-      step: { narration: 'Search on LoanCore, plan step target-1-1, started 2026-09-09T06:12:00.000Z.', state: 'FAILED', attempt: 2, diagnostic: 'extraction-incomplete' },
+      step: { narration: 'Search on LoanCore, plan step target-1-1, started 2026-09-09T06:12:00.000Z.', subjectKeyText: null, state: 'FAILED', attempt: 2, diagnostic: 'extraction-incomplete' },
     })));
     expect(html).toContain('Untrusted source content');
     expect(html).toContain('extraction-incomplete');
@@ -305,7 +327,7 @@ describe('the stage and the rail (UX-27, UX-48)', () => {
   it('says the policy sentence once for the location and a diagnostic together', () => {
     const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
       frame: FRAME,
-      step: { narration: 'Opening the record for E-000105 on LoanCore', state: 'FAILED', attempt: 2, diagnostic: 'target said: close this' },
+      step: { narration: 'Opening the record for E-000105 on LoanCore', subjectKeyText: 'E-000105', state: 'FAILED', attempt: 2, diagnostic: 'target said: close this' },
     })));
     expect(html.split('Untrusted source content —').length - 1).toBe(2);
     expect(policyCount(html)).toBe(1);

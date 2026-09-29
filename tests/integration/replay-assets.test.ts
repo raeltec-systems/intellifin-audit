@@ -68,6 +68,7 @@ describe.skipIf(!url)('the Replay asset set on PostgreSQL', () => {
         await sql`DELETE FROM run_evidence_capture WHERE run_id=${runId}`;
         await sql`DELETE FROM run_tool_action WHERE run_id=${runId}`;
         await sql`DELETE FROM run_step_execution WHERE run_id=${runId}`;
+        await sql`DELETE FROM run_work_item WHERE run_id=${runId}`;
         await sql`DELETE FROM run_evidence WHERE run_id=${runId}`;
         await sql`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
         await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
@@ -113,13 +114,15 @@ describe.skipIf(!url)('the Replay asset set on PostgreSQL', () => {
       readonly kind?: 'screenshot' | 'structural-snapshot';
       /** When the action started. Given explicitly where a test's subject is session ORDER. */
       readonly at?: string;
+      /** The record the action inspected, on the action itself (the Step names none). */
+      readonly workItemId?: string;
     },
   ): Promise<string> {
     const toolActionId = ids.next();
     const at = options.at ?? new Date().toISOString();
     await sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,work_item_id,surface,target_system,
       action,method,destination,parameters,outcome,redirected,downloads,started_at,completed_at,capture,capture_suppression,denial)
-      VALUES(${toolActionId},${run.runId},${run.stepExecutionId},NULL,'agent','loancore','read-attribute','GET',
+      VALUES(${toolActionId},${run.runId},${run.stepExecutionId},${options.workItemId ?? null},'agent','loancore','read-attribute','GET',
       ${SOURCE},'[]'::jsonb,${options.outcome},false,0,${at},${at},${options.capture},
       ${options.capture === 'SUPPRESSED' ? 'credential-entry' : null},
       ${options.outcome === 'denied' ? 'action-not-permitted' : null})`;
@@ -260,6 +263,45 @@ describe.skipIf(!url)('the Replay asset set on PostgreSQL', () => {
     expect(gaps.rows.every((gap) => gap.stepExecutionId === run.stepExecutionId && gap.targetSystem === 'loancore')).toBe(true);
     // One predicate: Replay's count is the terminal transition's count.
     expect(gaps.missing).toBe((await missingFrames(run.runId)).total);
+  });
+
+  // Owner decision D2 b (2026-09-29): the one-record Replay states that record's own gaps.
+  // The scope is the frame read's Work Item rule, so another record's gap and a gap with no
+  // record are not this record's; each gap is placed among the record's own frames too.
+  it('reads one record’s own gaps, placed among that record’s frames, and no other record’s', async () => {
+    const run = await seedRun();
+    const [mine, other] = [ids.next(), ids.next()];
+    for (const [index, id] of [mine, other].entries()) {
+      await sql`INSERT INTO run_work_item(work_item_id,run_id,step_id,ordinal,registration_id,display_name,
+        subject_key,state,attempts,cycles,observations)
+        VALUES(${id},${run.runId},'target-1-1',${index + 1},'loancore','LoanCore',${['E-MINE', 'E-OTHER'][index]!},'OBSERVED',1,0,0)`;
+    }
+    await toolAction(run, { outcome: 'performed', capture: 'PERMITTED', frame: 'registered', at: at(1), workItemId: mine });
+    await toolAction(run, { outcome: 'performed', capture: 'PERMITTED', frame: 'registered', at: at(2), workItemId: other });
+    const lost = await toolAction(run, { outcome: 'performed', capture: 'PERMITTED', frame: null, at: at(3), workItemId: mine });
+    await toolAction(run, { outcome: 'performed', capture: 'PERMITTED', frame: null, at: at(4), workItemId: other });
+    const signIn = await toolAction(run, { outcome: 'performed', capture: 'SUPPRESSED', frame: null, at: at(5), workItemId: mine });
+    await toolAction(run, { outcome: 'performed', capture: 'PERMITTED', frame: 'registered', at: at(6), workItemId: mine });
+    // No record at all: the session's gap, never this record's.
+    await toolAction(run, { outcome: 'performed', capture: 'PERMITTED', frame: null, at: at(7) });
+
+    const detail = new DrizzleRunDetailRepository(db);
+    const record = await detail.readRecordReplayGaps(run.runId, mine);
+    expect(record.rows.map((gap) => [gap.toolActionId, gap.kind, gap.framesBefore, gap.recordFramesBefore])).toEqual([
+      // Two session frames before it (one of them the other record's), one of its own.
+      [lost, 'missing', 2, 1],
+      [signIn, 'suppressed', 2, 1],
+    ]);
+    expect(record.missing).toBe(1);
+    expect(record.suppressed).toBe(1);
+    expect(record.rows.every((gap) => gap.workItemId === mine)).toBe(true);
+    // The session read is unchanged: every gap, and no per-record numbering.
+    const session = await replayGaps(run.runId);
+    expect(session.missing).toBe(3);
+    expect(session.rows.every((gap) => gap.recordFramesBefore === undefined)).toBe(true);
+    // A record of another Run, or an identifier that is not one, reads nothing.
+    expect(await detail.readRecordReplayGaps(run.runId, ids.next())).toEqual({ missing: 0, suppressed: 0, rows: [] });
+    expect(await detail.readRecordReplayGaps(run.runId, 'not-a-record')).toEqual({ missing: 0, suppressed: 0, rows: [] });
   });
 
   it('answers no gap for a Run whose every performed action left its frame', async () => {

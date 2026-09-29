@@ -116,6 +116,7 @@ function view(index: number): ReplayFrameView {
     stepNarration: `Opening the record for E-000102 on LoanCore (${index})`,
     workItemId: WORK,
     subjectKey: 'E-000102',
+    subjectKeyText: 'E-000102',
     sourceLocation: 'https://synthetic.invalid/page',
     digest: 'a'.repeat(64),
     capturedAt: `2026-09-10T09:0${index}:00.000Z`,
