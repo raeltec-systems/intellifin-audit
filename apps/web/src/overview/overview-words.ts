@@ -231,6 +231,15 @@ export const RECENT_RUNS_HEADING = 'Recent Runs';
 export const OVERVIEW_STOPPED_LIMIT = 5;
 
 /**
+ * How many open Escalations and flags the Overview's attention list holds.
+ *
+ * The count beside the list is exact; this bounds only the rows named. It lives here rather
+ * than in the page because `bell-burst.spec.ts` must read the same bound: a flag past it is
+ * correctly not shown, and a test that computed its own number would drift from the page.
+ */
+export const OVERVIEW_OPEN_ITEM_LIMIT = 10;
+
+/**
  * What an Audit Manager is told about the half of their work this release does not have.
  *
  * Their landing leads with approvals and escalated Runs; the third item the plan names —

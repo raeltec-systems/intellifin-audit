@@ -120,6 +120,14 @@ const DYNAMIC_CLASSES = [
   '.ls-step__mark--todo',
   '.ls-step__mark--attention',
   '.ls-step__mark--reference',
+  // `ls-session__dot--${word}`, one per session strip word (`chromeDotClass`). A word whose
+  // dot had no rule would show the base grey dot beside it: RECONNECTING was added with
+  // Story 10.8, and a strip whose dot never changed would say less than its word.
+  '.ls-session__dot--live',
+  '.ls-session__dot--paused',
+  '.ls-session__dot--awaiting',
+  '.ls-session__dot--replay',
+  '.ls-session__dot--reconnecting',
   // `ls-scrubber-gap--${gap.kind}` on Replay's scrubber (Story 10.6, legacy 5.2). A gap
   // marker with no rule would be an invisible span, and a missing frame would look like no
   // gap at all — the defect the marker exists to remove.

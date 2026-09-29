@@ -6,7 +6,7 @@ import { ANSWER_ESCALATION_REFUSALS, answerEscalation, cancelRun, FLAG_REQUEST_M
 import { isExplicitPeriod } from '@intellifin/domain';
 import { CryptoUuidV7Generator, DrizzleRoleRepository, PostgresRunCancellationRepository, PostgresRunFlagRepository, PostgresRunsUnitOfWork, PostgresWaitRepository, SystemClock } from '@intellifin/infrastructure';
 import { getRuntime } from '../../src/bootstrap';
-import { ESCALATION_PANEL_COPY } from '../../src/design/copy';
+import { ESCALATION_PANEL_COPY, FLAG_COPY } from '../../src/design/copy';
 import { currentCorrelationId, requireServerAction } from '../../src/server-session';
 
 export type InitiateRunActionResult = { ok: true; runId: string } | { ok: false; reason: string; existingRunId?: string; unknownOutcome?: boolean };
@@ -142,7 +142,12 @@ export interface FlagRunActionResult {
   readonly unknownOutcome?: boolean;
 }
 
-const FLAG_UNKNOWN = 'The flag could not be confirmed. Reload the Run to see whether it was recorded.';
+/**
+ * Said when the flag command THREW. The flag may have committed (Story 10.8), so this says
+ * the outcome is unknown and never that nothing changed. The sentence is the control's own
+ * (`FLAG_COPY.unknown`), so the action and the surface cannot word it two ways.
+ */
+const FLAG_UNKNOWN = FLAG_COPY.unknown;
 
 /**
  * Flag a Run to the Audit Managers (Story 5.5).

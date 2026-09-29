@@ -7,6 +7,7 @@ import { StatusBadge } from '../design/StatusBadge';
 import { Timestamp } from '../design/Timestamp';
 import { readablePeriod } from '../design/time';
 import { runLifecycleWord } from './labels';
+import { LiveGateNote } from './LiveGateNote';
 import {
   NO_STEP_STARTED_SENTENCE,
   RECORD_COVERAGE_UNAVAILABLE,
@@ -48,7 +49,11 @@ export function WorkspaceHeader({ run }: { readonly run: WorkspaceHeaderRun }): 
           Period {readablePeriod(run.period)} · Started <Timestamp value={run.initiatedAt} precision="minute" />
         </>
       }
-    />
+    >
+      {/* Why the workspace's controls are withdrawn while the stream says they are, as on
+          Live View (Story 10.8 screenshot review). Nothing renders while they may be used. */}
+      <LiveGateNote />
+    </PageHeader>
   );
 }
 
