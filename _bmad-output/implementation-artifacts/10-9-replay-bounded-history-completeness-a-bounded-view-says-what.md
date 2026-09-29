@@ -309,3 +309,14 @@ viewport (`documentWidth` equals the width in every capture's facts).
   the gap list and the untrusted address box wrap inside the rail.
 - Seen, not caused by this story: on a P-4 Run the rail says "Record: ProdConsole" (named in
   the [shared screenshot review](screenshot-review-10-6-to-10-10-2026-09-26.md)).
+
+### PR CI on `249bc9a2` (2026-09-29)
+
+Run [36297168655](https://github.com/raeltec-systems/intellifin-audit/actions/runs/36297168655).
+Attempt 1 failed one browser case in `selected-replay.spec.ts`: its Replay page answered in
+7.5–10 s on that runner, where the 10.6 base answers in about 0.5 s, and the spec's wait ran
+out. It did not reproduce locally: the full browser suite on this head passed, and the same
+pages answered in 0.1–0.6 s on a full local database (slow-query log at 300 ms showed no slow
+statement). The inspection query is unchanged by this story. So the one permitted re-run was
+used: attempt 2 on the SAME commit passed all seven jobs. The cause of the slow runner is not
+known; if the case fails again it is treated as real and investigated, never re-run again.
