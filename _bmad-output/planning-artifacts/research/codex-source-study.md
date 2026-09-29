@@ -736,8 +736,8 @@ The appendix folder `codex-source-study-appendix/` holds the evidence base of th
 | `A11-zobba-baseline.md` | Zobba baseline | Document register, epic map, contract register and behavioural contracts to preserve, runtime-relevant decisions already taken, current implementation shape, open owner questions |
 | `A-reviewer-brief.md` | Method | The common brief every reviewer worked from: citation format, evidence classes, finding structure, prohibition on cargo runs and modifications |
 | `B1-execpolicy-probe.md` | Executed | The three synthetic rule files, the five `codex-execpolicy check` invocations and their JSON answers (2026-09-29T19:58Z) |
-| `B2-cargo-test-execpolicy-applypatch.log` | Executed | `cargo test -p codex-execpolicy -p codex-apply-patch` output, followed by the focused re-run of the two failing apply-patch unit tests |
-| `B3-cargo-build-core.log` | Executed | Timed `cargo build -j 2 -p codex-core`, incremental rebuild and first `cargo check`, with rlib counts and target-directory size |
+| `B2-cargo-test-execpolicy-applypatch.txt` | Executed | `cargo test -p codex-execpolicy -p codex-apply-patch` output, followed by the focused re-run of the two failing apply-patch unit tests |
+| `B3-cargo-build-core.txt` | Executed | Timed `cargo build -j 2 -p codex-core`, incremental rebuild and first `cargo check`, with rlib counts and target-directory size |
 | `B4-crates-io-snapshot.txt` | Registry | crates.io metadata for the candidate Rust libraries in §6.4 (2026-09-29T19:30Z) |
 | `B5-npm-snapshot.txt` | Registry | npm metadata for the TypeScript counterparts in §6.4 (2026-09-29T19:31Z) |
 
