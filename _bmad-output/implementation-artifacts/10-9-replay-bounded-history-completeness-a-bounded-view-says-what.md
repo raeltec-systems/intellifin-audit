@@ -320,3 +320,14 @@ pages answered in 0.1–0.6 s on a full local database (slow-query log at 300 ms
 statement). The inspection query is unchanged by this story. So the one permitted re-run was
 used: attempt 2 on the SAME commit passed all seven jobs. The cause of the slow runner is not
 known; if the case fails again it is treated as real and investigated, never re-run again.
+
+### 10.6's owner-decision build merged in (2026-09-29)
+
+`claude/10-6-legacy-visibility` at `6957116` (A11, D2 b and their review patches) merged into
+this branch. Two conflicts, both import lines: the Replay page (10.6's `replayGapsView` replaces
+the inline gap building this branch had; `replayObservationsThrough` stays removed here) and
+`replay.spec.ts` (both sides' imports kept). Local verification after the merge: build, typecheck
+(root tests included), `pnpm boundaries` (817 modules) and `pnpm test` (300 files, 5,541 tests)
+pass; integration `replay-assets`, `replay-bounded-history`, `selected-replay`, `pause-run`,
+`human-match-decisions` pass 54 of 54; browser `replay`, `replay-bounded-history`,
+`selected-replay`, `pause-resume` pass 19 of 19 (setup included).

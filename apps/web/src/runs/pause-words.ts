@@ -1,5 +1,5 @@
 import type { ExecutablePlan } from '@intellifin/domain';
-import type { RunPauseEntry, RunPauseWorkItem } from '@intellifin/infrastructure';
+import type { RunPauseAttempt, RunPauseEntry, RunPauseWorkItem } from '@intellifin/infrastructure';
 
 import { planActionWord } from './labels';
 import { recordNaming, recordWords } from './record-words';
@@ -11,14 +11,13 @@ import { recordNaming, recordWords } from './record-words';
  * Free of React, because the components and the browser specs read the same sentences —
  * the `run-start-words.ts` rule: a sentence retyped in a test is pinned against nothing.
  *
- * The owner approved sheet 1 on 2026-09-26. Still `[PROPOSED, needs owner confirmation]`
- * (wording sheet 2, version 2): `intro` (A1), `startedWords` (A2),
+ * Every sentence here is approved by the owner: sheet 1 on 2026-09-26, and wording sheet 2,
+ * version 2 on 2026-09-29 ("approve all"): `intro` (A1), `startedWords` (A2),
  * `bannerHeldInFlightWords` (A3), `resumeRestarts`/`resumeStarts`/`resumeUnknown` (A4),
- * the unnamed-plan-step fallback in `stepWords` (A5), and five forms sheet 1 did not list:
- * the name-less `pausedByWords` (A6) and `resumedByWords` (A7), the record-less
- * `heldAfterInspectionWords` (A8), and both forms of `bannerHeldAfterInspectionWords`
- * (A9, A10). See `owner-wording-sheet-2-v2-2026-09-27.md` for the exact sentences and the
- * separate pending decision on optional audit-event fields.
+ * the unnamed-plan-step fallback in `stepWords` (A5), the name-less `pausedByWords` (A6)
+ * and `resumedByWords` (A7), the record-less `heldAfterInspectionWords` (A8), both forms of
+ * `bannerHeldAfterInspectionWords` (A9, A10) and `attemptKeptWords` (A11). See
+ * `owner-wording-sheet-2-v2-2026-09-27.md`.
  */
 export const PAUSE_WORDS = {
   heading: 'Pauses and resumes',
@@ -130,12 +129,12 @@ export function pauseTitleWords(ordinal: number): string {
   return `Pause ${ordinal.toLocaleString('en-US')}`;
 }
 
-/** `[PROPOSED, sheet 2 A6]` for the name-less form; the named form is sheet 1. */
+/** Sheet 2, A6 for the name-less form; the named form is sheet 1. */
 export function pausedByWords(actor: string | null, time: string): string {
   return actor === null ? `Paused at ${time}.` : `Paused by ${actor} at ${time}.`;
 }
 
-/** `[PROPOSED, sheet 2 A7]` for the name-less form; the named form is sheet 1. */
+/** Sheet 2, A7 for the name-less form; the named form is sheet 1. */
 export function resumedByWords(actor: string | null, time: string): string {
   return actor === null ? `Resumed at ${time}.` : `Resumed by ${actor} at ${time}.`;
 }
@@ -152,7 +151,7 @@ export function heldBeforeWords(step: string): string {
 
 /**
  * A pause after an inspection settled, before the next unit. `noStepInFlight` follows.
- * `[PROPOSED, sheet 2 A8]` for the record-less form; the named form is sheet 1.
+ * Sheet 2, A8 for the record-less form; the named form is sheet 1.
  */
 export function heldAfterInspectionWords(step: string, settled: string | null): string {
   return settled === null
@@ -163,6 +162,16 @@ export function heldAfterInspectionWords(step: string, settled: string | null): 
 /** The attempt a resume restarted, at the step whose attempt the pause interrupted. */
 export function restartedWords(step: string, attempt: number): string {
   return `It restarted ${step} as a new attempt (attempt ${attempt.toLocaleString('en-US')}).`;
+}
+
+/**
+ * Sheet 2, A11 (approved 2026-09-29): said after `restartedWords`, when the restarted attempt
+ * carries the number of the attempt the pause superseded. A pause gives its attempt back,
+ * so "during attempt 1. That attempt was superseded." and "…as a new attempt (attempt 1)."
+ * are both true, and read like a mistake without this sentence.
+ */
+export function attemptKeptWords(attempt: number): string {
+  return `A pause does not use up an attempt, so the new attempt is also attempt ${attempt.toLocaleString('en-US')}.`;
 }
 
 /**
@@ -200,7 +209,7 @@ export function bannerHeldBeforeWords(step: string): string {
   return `The Run is held before ${step}.`;
 }
 
-/** `[PROPOSED, sheet 2 A9 and A10]`: sheet 1 has no Paused-banner form for this hold. */
+/** Sheet 2, A9 and A10: sheet 1 has no Paused-banner form for this hold. */
 export function bannerHeldAfterInspectionWords(step: string, settled: string | null): string {
   return settled === null
     ? `The Run is held after an inspection finished, before ${step}.`
@@ -315,6 +324,14 @@ export function keySegments(text: string, keys: readonly string[]): readonly Key
   return segments;
 }
 
+/** Whether a resume's attempt is the superseded one given back: same step, same record, same number. */
+function sameAttemptGivenBack(superseded: RunPauseAttempt, restarted: RunPauseAttempt): boolean {
+  return restarted.attempt === superseded.attempt
+    && restarted.planStepId === superseded.planStepId
+    && (restarted.workItem?.workItemId ?? null) === (superseded.workItem?.workItemId ?? null)
+    && restarted.stepExecutionId !== superseded.stepExecutionId;
+}
+
 /**
  * How a pause ended, and — for a resume — which attempt it started. Actor names and times
  * are rendered by the caller, which holds the name reader and the one time renderer.
@@ -335,10 +352,15 @@ export function pauseClosureSentences(
         const step = name.step(restart.attempt.planStepId, restart.attempt.workItem);
         // Only an attempt the pause interrupted is RESTARTED; after a pause between units
         // the resume started the held step for the first time since the pause.
-        const interrupted = entry.hold.kind === 'recorded' && entry.hold.superseded !== null;
-        return [resumed, interrupted
-          ? restartedWords(step, restart.attempt.attempt)
-          : startedWords(step, restart.attempt.attempt)];
+        const superseded = entry.hold.kind === 'recorded' ? entry.hold.superseded : null;
+        if (superseded === null) return [resumed, startedWords(step, restart.attempt.attempt)];
+        // A11: only where the resume really restarted the SAME step, on the same record, as a
+        // different Step Execution with the same number. A restart that carries another number,
+        // or names another step or record, is not explained by the pause giving its attempt
+        // back, so nothing is said (review 2026-09-29).
+        return sameAttemptGivenBack(superseded, restart.attempt)
+          ? [resumed, restartedWords(step, restart.attempt.attempt), attemptKeptWords(restart.attempt.attempt)]
+          : [resumed, restartedWords(step, restart.attempt.attempt)];
       }
       return [resumed, restart.kind === 'none' ? PAUSE_WORDS.restartNone : PAUSE_WORDS.restartNotRecorded];
     }

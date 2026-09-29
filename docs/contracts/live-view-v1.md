@@ -139,7 +139,7 @@ with more extractions than one page could push a step's artifact off), and each 
 artifact is a REQUIRED three-way union rendered by one `AdapterStepLog` component — a
 `registered` artifact shows its Evidence reference and digest, a step with `none` keeps "No
 artifact registered.", and an `unavailable` read says so in its own sentence
-(`ADAPTER_ARTIFACT_WORDS.unavailable`, proposed wording). Three situations, never one
+(`ADAPTER_ARTIFACT_WORDS.unavailable`, owner-approved on sheet 1, 2026-09-26). Three situations, never one
 sentence for all three.
 
 ## Narration is one sentence, used twice

@@ -13,10 +13,10 @@ import { PageHeader } from '../../../../src/design/PageHeader';
 import { Reference } from '../../../../src/design/Reference';
 import { Timestamp } from '../../../../src/design/Timestamp';
 import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
-import { captureSentence, runLifecycleWord, workItemLabel } from '../../../../src/runs/labels';
+import { runLifecycleWord, workItemLabel } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
 import { frameNarration, plannedStepCount, readAdapterLog, stepNarration } from '../../../../src/runs/live-view';
-import { REPLAY_GAP_WORDS, effectiveFrameWorkItemId, replayInitialSelection, replayJumpTargets, replayRequest, replayViewerKey, resolveFrameWorkItems, type ReplayGapsView } from '../../../../src/runs/replay';
+import { effectiveFrameWorkItemId, replayGapsView, replayInitialSelection, replayJumpTargets, replayRequest, replayViewerKey, resolveFrameWorkItems } from '../../../../src/runs/replay';
 import { recordKeyText, recordNaming, recordWords } from '../../../../src/runs/record-words';
 import { toolActionNarration } from '../../../../src/runs/session-words';
 
@@ -100,11 +100,15 @@ export default async function RunReplayPage({
   const detail = new DrizzleRunDetailRepository(runtime.db);
   const request = replayRequest(await searchParams, REPLAY_INSPECTION_PAGE_SIZE);
   if (request.kind !== 'prefix') {
-    const [selected, plan] = await Promise.all([
+    const [selected, plan, gapRead] = await Promise.all([
       request.kind === 'inspection'
         ? detail.readInspectionReplay(run.runId, request.workItemId, request.cursor)
         : Promise.resolve({ kind: 'unavailable' } as const),
       new DrizzleFrozenExecutionReader(runtime.db).readFrozenExecution(run.versionId, run.procedureId),
+      // THIS record's own gaps (owner decision D2 b, 2026-09-29): a missing frame of the
+      // record is stated here too, so the one-record view cannot look complete. Scoped by
+      // the same Work Item rule the frame read uses, never the whole session's gaps.
+      request.kind === 'inspection' ? detail.readRecordReplayGaps(run.runId, request.workItemId) : Promise.resolve(null),
     ]);
     const owner = selected.kind === 'inspection' ? selected.workItem : null;
     const system = owner === null ? null : plan?.inputs.targets
@@ -130,6 +134,15 @@ export default async function RunReplayPage({
         observations: row.observations, globalOrdinal: row.globalOrdinal,
       };
     });
+    // Only for an inspection this page resolved: an unavailable request names no record.
+    const gaps = selected.kind !== 'inspection' || gapRead === null ? undefined : replayGapsView(
+      gapRead,
+      (gap) => toolActionNarration(gap.action, {
+        subject,
+        system: plan?.inputs.targets.find(target => target.registrationId === gap.targetSystem)?.displayName ?? null,
+      }),
+      { kind: 'record', cursor: selected.cursor, shown: views.length, last: selected.nextCursor === null },
+    );
     return (
       <div className="ls-stack">
         {header}
@@ -162,6 +175,7 @@ export default async function RunReplayPage({
             text: instruction.text,
           }))}
           adapterSteps={[]}
+          {...(gaps === undefined ? {} : { gaps })}
         />
         <p className="ls-caption">Read at <Timestamp value={readAt} precision="minute" />.</p>
       </div>
@@ -275,20 +289,14 @@ export default async function RunReplayPage({
   // Each gap in words: a missing frame is marked missing, a suppressed capture says the
   // platform's own capture sentence and is never counted as missing. The action is narrated
   // the way a frame's action is, with the record and the system it was performed on.
-  const gaps: ReplayGapsView = {
-    missing: gapRead.missing,
-    suppressed: gapRead.suppressed,
-    rows: gapRead.rows.map((gap) => ({
-      toolActionId: gap.toolActionId,
-      kind: gap.kind,
-      mark: gap.kind === 'missing' ? REPLAY_GAP_WORDS.missing : captureSentence('SUPPRESSED', gap.captureSuppression),
-      narration: toolActionNarration(gap.action, {
-        subject: subjectLabel(timeline.workItems.find((item) => item.workItemId === gap.workItemId)?.subjectKey ?? null),
-        system: targetName(gap.targetSystem),
-      }),
-      framesBefore: gap.framesBefore,
-    })),
-  };
+  const gaps = replayGapsView(
+    gapRead,
+    (gap) => toolActionNarration(gap.action, {
+      subject: subjectLabel(timeline.workItems.find((item) => item.workItemId === gap.workItemId)?.subjectKey ?? null),
+      system: targetName(gap.targetSystem),
+    }),
+    { kind: 'session' },
+  );
 
   return (
     <div className="ls-stack">

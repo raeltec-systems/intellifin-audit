@@ -78,3 +78,15 @@ case, because the Run did not end.
 
 After your answer I build A11 (and D2 if you choose b), remove the "PROPOSED" marks, and finish
 Stories 10.6 and 10.10.
+
+---
+
+## Owner decision 2026-09-29: approve all; D1 yes; D2 b
+
+The owner approved this whole sheet as written: A1–A11, B1–B15, D1 = yes (the optional fields
+on existing audit events), D2 = b (the one-record Replay also shows that record's own gaps,
+with the approved "Gaps in this playback" words). No row was changed.
+
+What follows from it: A11 and D2 b are built on `claude/10-6-legacy-visibility`; the
+"PROPOSED" marks for the A rows (and for sheet 1) are removed there. B1–B15 live on
+`claude/10-10-retained-decision-history`, which removes its own marks.

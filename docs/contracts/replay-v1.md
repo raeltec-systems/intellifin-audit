@@ -197,9 +197,13 @@ the chain held `failure.frame-missing`. It now shows both kinds of gap, and keep
 positions — how many frames precede each gap, in the scrubber's own order. The viewer draws
 a marker in the scrubber where each gap sits, says "Playback is incomplete: N frames are
 missing." whenever N > 0, and lists every gap in words. A record's selected-inspection page
-reads no gaps, because it is not the whole session and a count over it would describe
-something else; whether it should show the record's own gaps is owner decision D2 on
-wording sheet 2, version 2. A frame whose protected read FAILS is unavailable rather than
+shows THAT record's own gaps (owner decision D2 b, 2026-09-29), never the session's:
+`readRecordReplayGaps` scopes the same query to the Work Item (Step Execution first, then
+the action, the rule every frame read uses), the counts are the record's exact counts, the
+words keep the session's frame numbering (the counter that page shows), and each marker sits
+among the record's own frames on the page shown — a gap between two pages is marked once, at
+the start of the later page, and every gap is still listed and counted. One builder,
+`replayGapsView`, words the gaps for both views. A frame whose protected read FAILS is unavailable rather than
 missing: it keeps its metadata and only that frame is retried, as above. The owner approved
 the sentences on 2026-09-26 (handover sheet 1): `REPLAY_GAP_WORDS`,
 `replayIncompleteSentence` and `replayGapPosition` in `apps/web/src/runs/replay.ts`.
