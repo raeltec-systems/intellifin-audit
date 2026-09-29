@@ -241,7 +241,8 @@ crumb is the defect UX-02 removed; the sidebar marks Runs), while the Administra
 keeps the shell's; the heading and the banner title both begin "This page could not be
 loaded", which are the owner's approved words; the session chrome says LIVE while the
 connection is lost, because EXPERIENCE.md's "Stream lost" row changes the banner and the
-controls and not the chrome; and on Run Detail the controls stay usable under the inherited
+controls and not the chrome (`[SUPERSEDED 2026-09-29]` by the owner: see "Owner decision —
+the strip word while the connection is lost" at the end of this file); and on Run Detail the controls stay usable under the inherited
 `lost` banner, because the gate is Live View's and the Workspace's (Story 5.7).
 
 **Verification.**
@@ -408,3 +409,33 @@ Result: every sentence read is true for its state, except one.
 
 Status stays `in-review` until the owner decides the strip word; the rest of the visual gate is
 met.
+
+### Owner decision — the strip word while the connection is lost (2026-09-29)
+
+Owner, 2026-09-29: **"RECONNECTING"**. While Live View's stream is `lost`, the session strip
+says `RECONNECTING` with a neutral dot, never `● LIVE`. This closes the one open item of the
+second screenshot pass.
+
+What was built, on this branch:
+
+- `sessionStripWord` in `apps/web/src/runs/live-view.ts` is the rule: `RECONNECTING` only while
+  the status is `lost`; never over `REPLAY`; never once the page has heard the Run end
+  (`runEnded`, the order `liveGateReason` uses); `stale` keeps the Run's word. It is outside
+  the closed `LIVE_VIEW_CHROME` vocabulary, which stays total over the Run states and pinned to
+  DESIGN.md's four words.
+- `SessionStateWord` (client) reads the connection from `SessionConnectionProvider`, which
+  only the subscribed `LiveGate` supplies. Replay and Run Detail get no connection and keep the
+  Run's word. The server render and first client render agree (the status starts
+  `connecting`).
+- `.ls-session__dot--reconnecting` uses `--color-neutral-solid`, not the red LIVE dot. The five
+  session dot modifiers are now in `stylesheet.test.ts`'s explicit list, because a class built
+  from a template escapes its scan.
+- The announced state sentence is unchanged; the banner's live region already says
+  `Connection lost`.
+- Contract: `docs/contracts/live-view-v1.md`, "While the page has lost the Run, the strip says
+  `RECONNECTING`".
+- Tests: `live-view.test.ts` (the rule over every chrome word and status, and the dot),
+  `SessionStateWord.test.ts` (SSR with and without the provider), and `live-drop.spec.ts`
+  reads the strip word in every sample of the lost state — through the server re-read and the
+  remount — and `LIVE` again after recovery.
+

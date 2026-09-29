@@ -47,6 +47,28 @@ Draft" rule — a state printed under a label reads as a fact, and that fact wou
 `live-view.test.ts` walks the whole `RUN_STATES` vocabulary, so a state added later fails
 here rather than rendering a word that is not true of it.
 
+### While the page has lost the Run, the strip says `RECONNECTING`
+
+Owner decision 2026-09-29 (Story 10.8). The four words above are a fact about the RUN,
+read by the server. While Live View's stream is `lost`, the page no longer knows that fact,
+so the strip says what the PAGE is doing: `RECONNECTING`, with its own neutral dot
+(`ls-session__dot--reconnecting`), never the red `LIVE` dot. `sessionStripWord` in
+`apps/web/src/runs/live-view.ts` is the rule:
+
+- only while the live status is `lost` — `stale` keeps the Run's word, because a quiet Run
+  goes stale routinely and the banner already says so;
+- never over `REPLAY`, which has no stream to lose;
+- never once the page has heard the Run END (`runEnded`), the order `liveGateReason` uses:
+  that page is about to re-read the Run and show `REPLAY`, not to reconnect;
+- only on a subscribed Live View. Replay and Run Detail give the strip no connection, so
+  they keep the Run's word.
+
+`RECONNECTING` is deliberately OUTSIDE `LIVE_VIEW_CHROME`: that vocabulary is total over the
+Run states and pinned to DESIGN.md's four session-viewer words. The announced state sentence
+is unchanged; the banner's own live region already announces `Connection lost`, and saying it
+twice would be two announcements of one fact. `live-drop.spec.ts` reads the word through the
+drop, a server re-read, a remount and the recovery.
+
 Colour is never the only carrier: the dot (`{components.session-viewer}`'s four) always sits
 beside its word, and the state also reaches a screen reader as a sentence in an
 `aria-live="polite"` region. The word is what is announced; the dot is `aria-hidden`.

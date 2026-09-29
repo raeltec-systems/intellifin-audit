@@ -17,6 +17,7 @@ import {
 
 import { FLAG_COPY } from '../../apps/web/src/design/copy';
 import { LIVE_GATE_NOTE_ID, LIVE_GATE_REASONS, LIVE_LOST_MS, LIVE_SENTENCES, LIVE_WORDS } from '../../apps/web/src/runs/live-status';
+import { LIVE_VIEW_RECONNECTING } from '../../apps/web/src/runs/live-view';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 
@@ -149,6 +150,9 @@ async function liveFacts(page: Page): Promise<Record<string, unknown>> {
     const flagReason = document.getElementById('run-flag-note-withdrawn');
     return {
       status: banner?.getAttribute('data-live-status') ?? null,
+      // The session strip's word, which says what the PAGE is doing while it cannot hear
+      // the Run (owner decision 2026-09-29), and the Run's word otherwise.
+      strip: document.querySelector('[data-session-word]')?.getAttribute('data-session-word') ?? null,
       // The WORD is what the polite region announces; the sentence beside it is not.
       word: banner?.querySelector('[aria-live]')?.textContent ?? null,
       sentence: banner?.querySelector('[aria-hidden="true"]')?.textContent ?? null,
@@ -189,6 +193,7 @@ async function openFlagPanel(page: Page): Promise<void> {
 /** A lost stream as Live View must state it: the word, the sentence, and every live control withdrawn with its reason. */
 const LOST_LIVE_VIEW = {
   status: 'lost',
+  strip: LIVE_VIEW_RECONNECTING,
   word: LIVE_WORDS.lost,
   sentence: LIVE_SENTENCES.lost,
   pause: 'true',
@@ -244,6 +249,12 @@ test.describe('Live View when the stream drops', () => {
     const note = page.locator(`#${LIVE_GATE_NOTE_ID}`);
     await expect(note).toBeVisible();
     await expect(note).toHaveText(LIVE_GATE_REASONS.lost);
+    // The strip says what the PAGE is doing, not the Run state it read before the drop
+    // (owner decision 2026-09-29): LIVE beside "Connection to the Run lost" said two things.
+    const word = page.locator('[data-session-word]');
+    await expect(word).toHaveAttribute('data-session-word', LIVE_VIEW_RECONNECTING);
+    await expect(word).toHaveText(LIVE_VIEW_RECONNECTING);
+    await expect(word.locator('.ls-session__dot--reconnecting')).toHaveCount(1);
     await captureStoryState(page, 'live-lost-controls');
     await expect(page.locator('#run-flag')).toHaveJSProperty('open', false);
 
@@ -457,7 +468,7 @@ test.describe('Live View when the stream drops', () => {
     }
     // Every control back, and the reason gone with the state it described.
     expect(await liveFacts(page)).toMatchObject({
-      status: 'live', pause: null, cancel: null, flag: null, pauseReason: null, cancelReason: null,
+      status: 'live', strip: 'LIVE', pause: null, cancel: null, flag: null, pauseReason: null, cancelReason: null,
       note: null, noteShown: false, flagReasonShown: false, reasonShown: false,
     });
     expect(attemptsWhileDropping).toBeGreaterThan(0);

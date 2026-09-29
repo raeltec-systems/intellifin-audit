@@ -1,6 +1,7 @@
 import type { ExecutablePlan } from '@intellifin/domain';
 import type { RunFrameRow, RunStepExecutionRow } from '@intellifin/infrastructure';
 
+import type { LiveStatus } from './live-status';
 import { planActionNarration, toolActionNarration, type NarrationSubject } from './session-words';
 
 /**
@@ -40,8 +41,44 @@ export function liveViewChrome(state: string): LiveViewChrome | null {
   }
 }
 
+/**
+ * The strip's word while this page cannot hear the Run (owner decision 2026-09-29, Story 10.8).
+ *
+ * The four chrome words are a fact about the RUN, read by the server when the page was
+ * rendered. While the page's stream is lost, that fact may no longer be true — a strip that
+ * kept saying `LIVE` beside a banner saying "Connection to the Run lost. Reconnecting." told
+ * the reader two different things. So, while the connection is lost, the strip says what the
+ * PAGE is doing instead of what the Run was doing.
+ *
+ * It is NOT a fifth Run-state word, and it is deliberately outside `LIVE_VIEW_CHROME`: that
+ * vocabulary is total over the Run states and pinned against DESIGN.md's four.
+ */
+export const LIVE_VIEW_RECONNECTING = 'RECONNECTING';
+export type SessionStripWord = LiveViewChrome | typeof LIVE_VIEW_RECONNECTING;
+
+/** What the page knows about its own live connection, or `null` outside a subscribed Live View. */
+export interface SessionConnection {
+  readonly status: LiveStatus;
+  /** A terminal event arrived. The page is about to re-read the Run, not to reconnect. */
+  readonly runEnded: boolean;
+}
+
+/**
+ * The word the strip shows: the Run's chrome word, or `RECONNECTING` while the connection is lost.
+ *
+ * `REPLAY` never changes, because a finished session has no stream to lose. A Run whose end
+ * the page has already heard is not "reconnecting" either — it is about to show `REPLAY`,
+ * which is the same order `liveGateReason` gives the two. `stale` does not change the word:
+ * a quiet Run goes stale routinely (UX-DR25), and the banner already says so.
+ */
+export function sessionStripWord(chrome: LiveViewChrome | null, connection: SessionConnection | null): SessionStripWord | null {
+  if (connection === null || chrome === 'REPLAY') return chrome;
+  if (connection.runEnded || connection.status !== 'lost') return chrome;
+  return LIVE_VIEW_RECONNECTING;
+}
+
 /** The dot's modifier class, so a reader never has colour alone: word and dot together. */
-export function chromeDotClass(chrome: LiveViewChrome): string {
+export function chromeDotClass(chrome: SessionStripWord): string {
   return `ls-session__dot ls-session__dot--${chrome.toLowerCase()}`;
 }
 

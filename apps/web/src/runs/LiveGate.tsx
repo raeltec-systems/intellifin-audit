@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ACTION_GATE_OPEN, ActionGateProvider, useActionGate, type ActionGateState } from '../design/action-gate';
 import { EndedBanner } from './LiveViewer';
 import { LiveBannerView, useThrottledRefresh } from './LiveBanner';
+import { SessionConnectionProvider } from './SessionStateWord';
 import { LIVE_GATE_REASONS, isRunEndingEvent, liveGateReason, subscribeViewport } from './live-status';
 import { useLiveTimeline } from './useLiveTimeline';
 
@@ -172,9 +173,11 @@ function SubscribedGate({
     <ActionGateProvider
       value={reason === null ? ACTION_GATE_OPEN : { disabledReason: LIVE_GATE_REASONS[reason] }}
     >
-      {header ?? null}
-      <LiveBannerView status={live.status} silence={live.silence} lastSeq={live.lastSeq} readAt={readAt} href={href} />
-      {children}
+      <SessionConnectionProvider value={{ status: live.status, runEnded }}>
+        {header ?? null}
+        <LiveBannerView status={live.status} silence={live.silence} lastSeq={live.lastSeq} readAt={readAt} href={href} />
+        {children}
+      </SessionConnectionProvider>
     </ActionGateProvider>
   );
 }

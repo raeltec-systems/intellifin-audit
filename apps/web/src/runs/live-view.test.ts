@@ -5,6 +5,7 @@ import type { RunFrameRow, RunStepExecutionRow } from '@intellifin/infrastructur
 
 import {
   LIVE_VIEW_CHROME,
+  LIVE_VIEW_RECONNECTING,
   chromeDotClass,
   currentStepExecution,
   frameNarration,
@@ -12,6 +13,7 @@ import {
   logicalStepProgress,
   plannedStepCount,
   plannedStepIds,
+  sessionStripWord,
   stepNarration,
 } from './live-view';
 
@@ -81,6 +83,30 @@ describe('the session viewer chrome', () => {
       'ls-session__dot ls-session__dot--awaiting',
       'ls-session__dot ls-session__dot--replay',
     ]);
+  });
+});
+
+describe('the strip word while the connection is lost (owner decision 2026-09-29)', () => {
+  it('says RECONNECTING, not the Run\'s word, only while the page has lost the Run', () => {
+    for (const chrome of ['LIVE', 'PAUSED', 'AWAITING', null] as const) {
+      expect(sessionStripWord(chrome, { status: 'lost', runEnded: false }), String(chrome)).toBe(LIVE_VIEW_RECONNECTING);
+      for (const status of ['connecting', 'live', 'stale', 'ended'] as const) {
+        expect(sessionStripWord(chrome, { status, runEnded: false }), `${String(chrome)} ${status}`).toBe(chrome);
+      }
+    }
+    expect(LIVE_VIEW_RECONNECTING).toBe('RECONNECTING');
+  });
+
+  it('never changes a Replay, a page that heard the Run end, or a surface with no stream', () => {
+    expect(sessionStripWord('REPLAY', { status: 'lost', runEnded: false })).toBe('REPLAY');
+    expect(sessionStripWord('LIVE', { status: 'lost', runEnded: true })).toBe('LIVE');
+    expect(sessionStripWord('LIVE', null)).toBe('LIVE');
+    expect(sessionStripWord(null, null)).toBeNull();
+  });
+
+  it('gives RECONNECTING its own dot, so it never borrows the red LIVE one', () => {
+    expect(chromeDotClass(LIVE_VIEW_RECONNECTING)).toBe('ls-session__dot ls-session__dot--reconnecting');
+    expect((LIVE_VIEW_CHROME as readonly string[]).includes(LIVE_VIEW_RECONNECTING)).toBe(false);
   });
 });
 

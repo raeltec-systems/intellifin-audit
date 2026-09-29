@@ -1946,6 +1946,12 @@ input:is([type='date'], [type='time'], [type='datetime-local'], [type='month'], 
   background: var(--color-teal-500);
 }
 
+/* While the page cannot hear the Run (Story 10.8). Not the red LIVE dot, which would
+   claim a live session; the neutral one, beside a word that says what is happening. */
+.ls-session__dot--reconnecting {
+  background: var(--color-neutral-solid);
+}
+
 .ls-session__dot--none {
   background: var(--color-navy-700);
 }

@@ -120,6 +120,14 @@ const DYNAMIC_CLASSES = [
   '.ls-step__mark--todo',
   '.ls-step__mark--attention',
   '.ls-step__mark--reference',
+  // `ls-session__dot--${word}`, one per session strip word (`chromeDotClass`). A word whose
+  // dot had no rule would show the base grey dot beside it: RECONNECTING was added with
+  // Story 10.8, and a strip whose dot never changed would say less than its word.
+  '.ls-session__dot--live',
+  '.ls-session__dot--paused',
+  '.ls-session__dot--awaiting',
+  '.ls-session__dot--replay',
+  '.ls-session__dot--reconnecting',
 ];
 
 function tsxSources(dir: string): { path: string; source: string }[] {
