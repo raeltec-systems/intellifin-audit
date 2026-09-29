@@ -2490,6 +2490,22 @@ So that "the panel becomes a Timeline entry" is a visible fact and not only an e
 
 **And** delivery slice: none — retained compiler-1 surfaces; NE reference none (owner decision 2026-09-25); design gate (D-5-6): none — existing Timeline tab, the row treatment of the 2026-09-01 UX spine; a new sentence is confirmed with the owner before it is built
 
+### Story 10.11: Replay continuation past the bound: every Escalation and every late landing is reachable on its own
+
+As an Auditor replaying a long Run,
+I want each Escalation and each late landing past Replay's bound to have a path of its own,
+So that the bounded default view is never where a retained decision stops being reachable.
+
+**Acceptance Criteria:**
+
+**Given** the owner's decision of 2026-09-27 on Story 10.9 (accept the bound as a known limit; this story covers the continuation) and a fixture with more than 500 Escalations, a late Escalation whose landing frame is past the 500-frame prefix and belongs to no Work Item, and a late Escalation whose landing frame belongs to a Work Item
+**When** the Auditor wants an Escalation after the 500th, the late Escalation with no Work Item, or the exact landing frame of a late Escalation
+**Then** each has a path of its own: a continuation of the Escalation list, and a landing that opens at the Escalation's own frame, not at the first frame of its page
+**And** no retained Escalation is reachable only by counting, and the bounded view keeps its approved sentences
+**And** Replay is not redesigned, proven by a browser test over the fixture with WCAG 2.1 AA
+
+**And** delivery slice: none — retained compiler-1 surfaces; NE reference none; design gate (D-5-6): a continuation page or route is a new design decision for the owner; any new sentence is confirmed with the owner before it is built; origin: Story 10.9 frozen matrix row 3 (owner decision 2026-09-27)
+
 ## Epic 11: Tenancy, scope and delegation
 
 every protected row is scoped and enforced from the first migration; background work runs under a bounded delegation; historical chains are bound to their tenant. Runs before any personal account is connected (owner decision 3). (Course correction 2026-09-24: Proposal 5 NE-1; contracts `tenancy-v1` (as amended by 4b §7: three role groups, invitation lifecycle, removal commands, last-administrator rule, revocation on dispatch and resume), `audit-event-envelope-v2`. **Requirements:** FR-53, FR-54, FR-83, FR-84, FR-80 (index rows), **FR-94, FR-95**. **ADs:** 8, 11, 22, 24.)
