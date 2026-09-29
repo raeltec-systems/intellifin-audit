@@ -235,6 +235,17 @@ Two mechanical notes:
   mocked too**, even when the new call returns early: `live/page.adapter-log.test.ts` now
   mocks `pause-read` (`readPauseHold`), which reads the database on a PAUSED Run.
 
+## 2026-09-29 — A 200 from the preview route can still carry no image
+
+- **A served read is not a served image.** When the sample moves between the broker's reply
+  and the proxy's re-read, `WorkspacePreviewProxy.read` keeps the metadata and withholds the
+  image (the `after.sequence` check in `workspace-preview-transport.ts`), and the route answers
+  200. `settledSample` took the first 200, so the SIGKILL test's `expect(oldSample.digest)
+  .toBeTruthy()` met `null`: CI on `477b6f7` (Story 10.10, which touches neither this spec nor
+  the preview code). A test that expects a public image re-reads until one is served
+  (`settledSample(page, runId, true)`); the private-mode reads keep the plain read, because
+  waiting for an image there would hide the suppression they prove.
+
 ## 2026-09-25 — A single read of a moving preview sample is a race the broker refuses on purpose
 
 - **The preview route answers 503 for a read that meets a new sample, and that is the product
