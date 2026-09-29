@@ -13,8 +13,10 @@
   name that cannot wrap pushes a 239 px rail past the page edge at 1024 px.
 - The caller makes a Run's terminal transition; `completeRun` then seals the Result, and moves
   the Run state itself only for §E's COMPLETED → INCONCLUSIVE row (`complete-run.ts:202`).
-- Handover sheet 1 is approved. Sheet 2, version 2 (A1–A11, B1–B15, decisions D1 and D2) is
-  pending; a successful test is not owner approval. Check every sentence a module shows
+- Handover sheet 1 is approved. `[EXTENDED 2026-09-29]` Sheet 2, version 2 (A1–A11, B1–B15,
+  D1 yes, D2 b) was approved by the owner on 2026-09-29; 10.6 removed its marks and built A11
+  and D2 b, and 10.10 removes its own marks for B1–B15. Before that it was pending; a
+  successful test is not owner approval. Check every sentence a module shows
   against the approved sheet before marking the module approved: five pause forms were in
   no sheet and were marked approved anyway (review of the continuation, 2026-09-27).
 
@@ -70,7 +72,8 @@ identity and says what an older record does not hold. Contracts: `run-pause-v1.m
   serves the terminal transition's count and Replay's gaps; `readAdapterLog` serves Live View
   and Replay, reading Evidence EXACTLY by the ids the steps name rather than the bounded
   overview (the fifth appearance of "a limit belongs to the cardinality of the read").
-- **Every new sentence is proposed wording** in a words module (`match-words.ts`,
+- `[EXTENDED 2026-09-29: approved — sheet 1 on 2026-09-26, sheet 2 v2 on 2026-09-29]`
+  **Every new sentence is proposed wording** in a words module (`match-words.ts`,
   `pause-words.ts`, `replay.ts`'s `REPLAY_GAP_WORDS`, `live-view.ts`'s
   `ADAPTER_ARTIFACT_WORDS.unavailable`), read back by the unit and browser tests, and needs
   owner confirmation. The export legs of 4.7 and 5.2 are Story 14-11a's.

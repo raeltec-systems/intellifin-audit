@@ -35,7 +35,7 @@ import {
  * Where a pause held the Run and which attempt its resume started, in words (Story 10.6,
  * legacy 5.4). Every expected sentence is built by the function the surface calls for THAT
  * branch, so a branch that answered with another arm's sentence fails here; the wording
- * itself is `[PROPOSED]` and lives in one place, `pause-words.ts`.
+ * itself is owner-approved (sheets 1 and 2) and lives in one place, `pause-words.ts`.
  */
 
 const derived = deriveExecutablePlan(executablePlanInputs());
