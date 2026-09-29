@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
-import type { RunFrameRow, RunReplayObservationDelta, RunReplayWait } from '@intellifin/infrastructure';
+import type { RunFrameRow, RunReplayGaps, RunReplayObservationDelta, RunReplayWait } from '@intellifin/infrastructure';
 
 import { ESCALATION_KIND_UNKNOWN } from '../design/plain-words';
+import { captureSentence } from './labels';
 
 import {
+  REPLAY_GAP_WORDS,
   REPLAY_JUMP_KINDS,
   clampReplayIndex,
+  replayGapPosition,
+  replayGapsAt,
+  replayGapsView,
+  replayIncompleteSentence,
   replayFrameAt,
   replayFrameForWorkItem,
   replayInitialSelection,
@@ -250,5 +256,92 @@ describe('the Replay position', () => {
 
   it('is nowhere at all when a Run captured no frames', () => {
     expect(clampReplayIndex(0, 0)).toBe(-1);
+  });
+});
+
+/**
+ * The gaps in a Replay, in words (Story 10.6, legacy 5.2). A session with a gap looked
+ * complete, because nothing said an action had left no frame.
+ */
+describe('the gaps in a playback (Story 10.6, legacy 5.2)', () => {
+  it('states the limitation with the EXACT count, singular and plural', () => {
+    expect(replayIncompleteSentence(1)).toBe('Playback is incomplete: 1 frame is missing.');
+    expect(replayIncompleteSentence(2)).toBe('Playback is incomplete: 2 frames are missing.');
+    expect(replayIncompleteSentence(12_345)).toBe('Playback is incomplete: 12,345 frames are missing.');
+  });
+
+  it('says where a gap sits in the scrubber’s own numbering', () => {
+    expect(replayGapPosition(0)).toBe('before the first frame');
+    expect(replayGapPosition(3)).toBe('after frame 3');
+    expect(replayGapPosition(1_200)).toBe('after frame 1,200');
+  });
+
+  it('puts each gap at exactly one scrubber position', () => {
+    const gaps = {
+      missing: 2,
+      suppressed: 1,
+      rows: [
+        { toolActionId: 'a', kind: 'suppressed' as const, mark: 'Capture suppressed', narration: 'Signing in', framesBefore: 0, position: 0 },
+        { toolActionId: 'b', kind: 'missing' as const, mark: REPLAY_GAP_WORDS.missing, narration: 'Opening a page', framesBefore: 2, position: 2 },
+        { toolActionId: 'c', kind: 'missing' as const, mark: REPLAY_GAP_WORDS.missing, narration: 'Reading a field', framesBefore: 2, position: 2 },
+      ],
+    };
+    expect(replayGapsAt(gaps, 0).map((gap) => gap.toolActionId)).toEqual(['a']);
+    expect(replayGapsAt(gaps, 1)).toEqual([]);
+    expect(replayGapsAt(gaps, 2).map((gap) => gap.toolActionId)).toEqual(['b', 'c']);
+    expect(replayGapsAt(undefined, 0)).toEqual([]);
+  });
+});
+
+// One builder for the whole-session and the one-record Replay (Story 10.6, legacy 5.2; the
+// one-record view by owner decision D2 b, 2026-09-29): the same words, the exact counts, and
+// a marker only where the gap sits among the frames the view shows.
+describe('the gaps a Replay view states', () => {
+  const gap = (id: string, overrides: Partial<RunReplayGaps['rows'][number]> = {}): RunReplayGaps['rows'][number] => ({
+    toolActionId: id, kind: 'missing', action: 'open-record', startedAt: '2026-09-29T00:00:00.000Z',
+    stepExecutionId: 'step', workItemId: 'record', targetSystem: 'loancore', captureSuppression: null,
+    framesBefore: 0, ...overrides,
+  });
+  const narrate = (row: RunReplayGaps['rows'][number]) => `narration of ${row.toolActionId}`;
+
+  it('words a missing frame and a suppressed capture as the whole-session Replay does, with the exact counts', () => {
+    const view = replayGapsView({ missing: 7, suppressed: 1, rows: [
+      gap('lost', { framesBefore: 3 }),
+      gap('sign-in', { kind: 'suppressed', captureSuppression: 'credential-entry', framesBefore: 0 }),
+    ] }, narrate, { kind: 'session' });
+    expect(view).toEqual({ missing: 7, suppressed: 1, rows: [
+      { toolActionId: 'lost', kind: 'missing', mark: REPLAY_GAP_WORDS.missing, narration: 'narration of lost', framesBefore: 3, position: 3 },
+      { toolActionId: 'sign-in', kind: 'suppressed', mark: captureSentence('SUPPRESSED', 'credential-entry'),
+        narration: 'narration of sign-in', framesBefore: 0, position: 0 },
+    ] });
+  });
+
+  it('marks a record’s gap among that record’s frames on its page, and nowhere else', () => {
+    const rows = [
+      gap('before-page', { framesBefore: 40, recordFramesBefore: 99 }), // after the previous page's last frame
+      gap('first', { framesBefore: 506, recordFramesBefore: 100 }), // before this page's first frame
+      gap('inside', { framesBefore: 560, recordFramesBefore: 150 }),
+      gap('at-end', { framesBefore: 700, recordFramesBefore: 200 }), // after this page's last frame
+      gap('unplaced', { framesBefore: 10 }), // a read with no record numbering is never guessed
+    ];
+    const page = (last: boolean) => replayGapsView({ missing: 5, suppressed: 0, rows }, narrate,
+      { kind: 'record', cursor: 100, shown: 100, last });
+    // A gap between two pages is marked once, at the start of the later page.
+    expect(page(false).rows.map((row) => [row.toolActionId, row.position])).toEqual([
+      ['before-page', null], ['first', 0], ['inside', 50], ['at-end', null], ['unplaced', null],
+    ]);
+    // After the last frame of the record, on its last page.
+    expect(page(true).rows.find((row) => row.toolActionId === 'at-end')!.position).toBe(100);
+    // The words keep the session's numbering, the counter's; only the marker is per page.
+    expect(page(false).rows.map((row) => row.framesBefore)).toEqual([40, 506, 560, 700, 10]);
+    // Every gap is still listed and counted, marked or not.
+    expect(page(false).missing).toBe(5);
+    expect(page(false).rows).toHaveLength(5);
+  });
+
+  it('marks a record with no retained frame at its only position', () => {
+    const view = replayGapsView({ missing: 1, suppressed: 0, rows: [gap('only', { framesBefore: 12, recordFramesBefore: 0 })] },
+      narrate, { kind: 'record', cursor: 0, shown: 0, last: true });
+    expect(replayGapsAt(view, 0).map((row) => row.toolActionId)).toEqual(['only']);
   });
 });

@@ -435,6 +435,30 @@ export interface RunPauseContext extends RunResultContext {
    * nothing needs the marker to survive the transition it describes.
    */
   clearPauseRequest(): Promise<void>;
+  /**
+   * The latest resume of this Run whose restarted attempt has not been recorded yet
+   * (Story 10.6, legacy 5.4), or `null`.
+   *
+   * A resume is a web command and the attempt it restarts is started later by a worker,
+   * so the link is written by the one party that knows it: the stage, in the transaction
+   * that starts the attempt, as `resumedWaitId` on the attempt's own event. This read is
+   * what tells the stage that a resume is still waiting for its attempt, and where the
+   * paused Run was held. It answers `null` for a resume whose pause recorded no held step
+   * (an older build's pause): the attempt it restarts cannot then be named exactly, and a
+   * link made anyway would be a guess. REQUIRED, like every port on this context, so no
+   * stage can start an attempt without asking.
+   */
+  readPendingResume(): Promise<PendingResume | null>;
+}
+
+/** A resume still waiting for the attempt it restarts, and where its pause held the Run. */
+export interface PendingResume {
+  /** The pause wait the resume closed: the identity the attempt's event names. */
+  readonly waitId: string;
+  /** The plan step the pause held the Run at, as the pause's own event recorded it. */
+  readonly planStepId: string;
+  /** The Work Item the pause held the Run at; `null` at a Run-level Session Step. */
+  readonly workItemId: string | null;
 }
 
 export interface AdapterExecutionContext

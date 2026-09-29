@@ -14,8 +14,10 @@ import type {
 
 import { EvidenceCard, GroundingInspector, evidenceCardProps } from './EvidenceCards';
 import { ExceptionCard } from './ExceptionList';
+import { NO_HUMAN_MATCHES, type HumanMatchIndex } from './HumanMatch';
+import { MATCH_DECISION_WORDS, choseCandidateWords, humanMatchesBoundedWords } from './match-words';
 import { GateChecklist } from './GateChecklist';
-import { CoverageSection, EvidencePackageSection, FindingsSection, PopulationReconciliation, SafeNextActionPanel, ScopeSection } from './ResultSections';
+import { CoverageSection, EvidencePackageSection, FindingsSection, HumanMatchesSection, PopulationReconciliation, SafeNextActionPanel, ScopeSection } from './ResultSections';
 import { UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
 import { ADAPTER_ACTIONS_UNRECORDED, CAPTURE_TIME_SOURCE } from '../design/copy';
 import { ExecutionTimeline } from './Timeline';
@@ -623,6 +625,7 @@ const exceptionCard = (props: Partial<Parameters<typeof ExceptionCard>[0]> = {})
       targetSystemName: 'LoanCore',
       runId: RUN_ID,
       masked: false,
+      humanMatches: NO_HUMAN_MATCHES,
       ...props,
     }),
   );
@@ -1312,6 +1315,7 @@ describe('the policy sentence, once per surface (UX-27)', () => {
   it('says it once above every named record on the Result, and names the system', () => {
     const publication = { ...result().publication!, exceptions: { total: 2, records: [record('E-001'), record('E-002')] } };
     const html = renderToStaticMarkup(React.createElement(FindingsSection, {
+      humanMatches: NO_HUMAN_MATCHES,
       publication,
       runId: RUN_ID,
       conditionText: () => C1_TEXT,
@@ -1327,6 +1331,7 @@ describe('the policy sentence, once per surface (UX-27)', () => {
 
   it('does not say it at all over a Result that names no source content', () => {
     const html = renderToStaticMarkup(React.createElement(FindingsSection, {
+      humanMatches: NO_HUMAN_MATCHES,
       publication: result().publication!, runId: RUN_ID, conditionText: () => null, templateId: 'P-1',
     }));
     expect(policyCount(html)).toBe(0);
@@ -1350,3 +1355,81 @@ describe('the policy sentence, once per surface (UX-27)', () => {
   });
 });
 
+// Story 10.6 (legacy 4.7): a record a PERSON matched is flagged, with the decision that did,
+// on the Exceptions list and on the Result; a platform match shows no flag. Every sentence
+// is read from `match-words.ts`, never retyped.
+describe('human-selected matches on the Result and the Exceptions list (Story 10.6, legacy 4.7)', () => {
+  const REGISTRATION = '019823ab-0000-7000-8000-0000000000aa';
+  const WAIT_ID = '019823ab-0000-7000-8000-0000000000e1';
+  const AUDITOR = '019823ab-0000-7000-8000-0000000000e2';
+  const flagCount = (html: string): number => html.split('class="ls-human-match__flag"').length - 1;
+  const decision = {
+    state: 'linked' as const, waitId: WAIT_ID, candidate: 1, candidates: 2,
+    candidateLabel: 'Dana Quinn (LoanCore account 17)', decidedBy: AUDITOR, decidedAt: '2026-09-06T09:01:00.000Z',
+  };
+  const index = (populationRecordKey: string, targetSystem: string, observationId = OBSERVATION_ID): HumanMatchIndex => ({
+    matches: [{ observationId, targetSystem, populationRecordKey, decision }],
+    names: new Map([[AUDITOR, 'Dana Reed']]),
+  });
+  const record = (key: string) => ({
+    populationRecordKey: key, targetSystem: REGISTRATION, value: 'EXCEPTION' as const,
+    conditionIds: ['C1'], diagnostics: [], fields: {},
+  });
+
+  it('shows the decision on an Exception raised on a record a person matched, and nothing on a platform match', () => {
+    const matched = exceptionCard({ humanMatches: index('E-001', 'accessgate') });
+    expect(flagCount(matched)).toBe(1);
+    expect(matched).toContain('Dana Reed');
+    expect(matched).toContain(choseCandidateWords(1, 2));
+    expect(matched).toContain(`Untrusted source content — ${MATCH_DECISION_WORDS.candidateField}.`);
+    expect(matched).toContain('Dana Quinn (LoanCore account 17)');
+    expect(flagCount(exceptionCard())).toBe(0);
+    // A match on ANOTHER Observation is not this Exception's.
+    expect(flagCount(exceptionCard({ humanMatches: index('E-001', 'accessgate', '019823ab-0000-7000-8000-0000000000b9') }))).toBe(0);
+  });
+
+  it('says the decision is not linked on an Exception whose link cannot be read exactly', () => {
+    const html = exceptionCard({ humanMatches: { matches: [{ ...index('E-001', 'accessgate').matches[0]!, decision: { state: 'not-linked' } }], names: new Map() } });
+    expect(flagCount(html)).toBe(1);
+    expect(html).toContain(MATCH_DECISION_WORDS.notLinked);
+  });
+
+  it('flags a record the Result names by the system and key it names it by', () => {
+    const publication = { ...result().publication!, exceptions: { total: 2, records: [record('E-001'), record('E-002')] } };
+    const html = renderToStaticMarkup(React.createElement(FindingsSection, {
+      humanMatches: index('E-002', REGISTRATION), publication, runId: RUN_ID, conditionText: () => C1_TEXT, templateId: 'P-1',
+      systemName: (id: string) => (id === REGISTRATION ? 'LoanCore' : null),
+    }));
+    expect(flagCount(html)).toBe(1);
+    const items = html.split('<li class="ls-finding');
+    expect(items.find((item) => item.includes('<strong>E-002</strong>'))).toContain(MATCH_DECISION_WORDS.flag);
+    expect(items.find((item) => item.includes('<strong>E-001</strong>'))).not.toContain(MATCH_DECISION_WORDS.flag);
+  });
+
+  it('lists every record a person matched on the Result, masked where the binding says, and nothing for none', () => {
+    const list = { ...index('E-003', REGISTRATION), total: 1 };
+    const html = renderToStaticMarkup(React.createElement(HumanMatchesSection, {
+      list, runId: RUN_ID, systemName: (id: string) => (id === REGISTRATION ? 'LoanCore' : null),
+    }));
+    expect(html).toContain(MATCH_DECISION_WORDS.sectionHeading);
+    expect(html).toContain(MATCH_DECISION_WORDS.sectionIntro);
+    expect(html).toContain('E-003');
+    expect(html).toContain('on LoanCore');
+    expect(html).toContain(`/runs/${RUN_ID}/evidence/technical?observation=${OBSERVATION_ID}#observation-${OBSERVATION_ID}`);
+    expect(flagCount(html)).toBe(1);
+    expect(html).not.toContain(humanMatchesBoundedWords(1, 1));
+    const masked = renderToStaticMarkup(React.createElement(HumanMatchesSection, {
+      list, runId: RUN_ID, naming: { keyMasked: true, nameMasked: false, nameColumn: null },
+    }));
+    expect(masked).not.toContain('E-003');
+    // A Run nobody matched by hand shows no section at all: no flag, no heading.
+    expect(renderToStaticMarkup(React.createElement(HumanMatchesSection, { list: { ...NO_HUMAN_MATCHES, total: 0 }, runId: RUN_ID }))).toBe('');
+  });
+
+  it('says when the Result’s list does not hold every record a person matched', () => {
+    const html = renderToStaticMarkup(React.createElement(HumanMatchesSection, {
+      list: { ...index('E-003', REGISTRATION), total: 250 }, runId: RUN_ID,
+    }));
+    expect(html).toContain(humanMatchesBoundedWords(1, 250));
+  });
+});

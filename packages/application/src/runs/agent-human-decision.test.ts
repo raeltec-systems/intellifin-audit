@@ -75,6 +75,23 @@ describe('closed human candidate decisions preserve platform grounding', () => {
     const input = fixture(nodes.map((node, index) => index === 6 ? { ...node, value: 'Different Person' } : node));
     expect(applyAgentHumanDecision(input)).toMatchObject({ ok: true, kind: 'register', workItemState: 'UNINSPECTED', item: { record: { found: 'ambiguous' } } });
   });
+  // Story 10.6 (legacy 4.7): the record a person matched carries WHICH decision matched it,
+  // so the registration event can link the two; a reading the platform made names none.
+  it('names the answered wait on a human-selected match, and on nothing else', () => {
+    const input = fixture();
+    const chosen = applyAgentHumanDecision(input);
+    if (!chosen.ok || chosen.kind !== 'register') throw new Error('Missing Observation');
+    expect(chosen.item.record.matchOrigin).toBe('human-matched');
+    expect(chosen.item.matchDecision).toEqual({ waitId: input.wait.waitId });
+    for (const unresolved of [
+      applyAgentHumanDecision({ ...input, wait: { ...input.wait, answerOptionId: 'mark-ambiguous' } }),
+      applyAgentHumanDecision(fixture(nodes.filter(node => node.label !== 'Employee ID'))),
+    ]) {
+      if (!unresolved.ok || unresolved.kind !== 'register') throw new Error('Missing Observation');
+      expect(unresolved.item.record.matchOrigin).toBe('platform');
+      expect(unresolved.item).not.toHaveProperty('matchDecision');
+    }
+  });
   it('mark ambiguous records ambiguity, never a false absent observation', () => {
     const input = fixture();
     expect(applyAgentHumanDecision({ ...input, wait: { ...input.wait, answerOptionId: 'mark-ambiguous' } })).toMatchObject({ ok: true, kind: 'register', workItemState: 'UNINSPECTED', item: { record: { found: 'ambiguous' }, absence: null } });

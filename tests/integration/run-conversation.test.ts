@@ -43,6 +43,12 @@ import { auditRun, authUser, populationRow, populationSnapshot, runEvidence, run
 import { ConversationContentCipher } from '../../packages/infrastructure/src/runs/conversation-content.js';
 import { PostgresRunConversationRepository } from '../../packages/infrastructure/src/runs/run-conversation-repository.js';
 
+/**
+ * Where the simulated worker boundary holds the Run (Story 10.6, legacy 5.4): before a
+ * Run-level Session Step (the fixture plan's `session-3`), with no attempt in flight.
+ */
+const BOUNDARY_HOLD = { planStepId: 'session-3', workItemId: null, superseded: null } as const;
+
 const url = process.env.DATABASE_URL;
 const BASE_NOW = new Date('2026-09-19T12:00:00.000Z');
 const OBSERVATION_CHECK_NAMES = [
@@ -544,13 +550,13 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
       const boundary = () => db.transaction(tx => withRunExecutionContext(tx, runId, async context => {
         if (!context.run?.pauseRequest) throw new Error('Pause marker missing');
         await context.saveRunState('PAUSED');
-        await performPause(context, { run: context.run, request: context.run.pauseRequest, waitId: ids.next(), at: now.toISOString() });
+        await performPause(context, { run: context.run, request: context.run.pauseRequest, waitId: ids.next(), at: now.toISOString(), hold: BOUNDARY_HOLD });
       }));
       // Exercise rollback through the actual shared worker context, not a fake receipt writer.
       await expect(db.transaction(tx => withRunExecutionContext(tx, runId, async context => {
         if (!context.run?.pauseRequest) throw new Error('Pause marker missing');
         await context.saveRunState('PAUSED');
-        await performPause(context, { run: context.run, request: context.run.pauseRequest, waitId: ids.next(), at: now.toISOString() });
+        await performPause(context, { run: context.run, request: context.run.pauseRequest, waitId: ids.next(), at: now.toISOString(), hold: BOUNDARY_HOLD });
         throw new Error('rollback-worker-pause');
       }))).rejects.toThrow('rollback-worker-pause');
       expect((await transitions()).map(t => t.state)).toEqual(['received','interpreted','queued']);
@@ -1512,7 +1518,7 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
     await db.transaction(tx => withRunExecutionContext(tx, runId, async context => {
       if (!context.run?.pauseRequest) throw new Error('Pause marker missing');
       await context.saveRunState('PAUSED');
-      await performPause(context, { run: context.run, request: context.run.pauseRequest, waitId: ids.next(), at: new Date().toISOString() });
+      await performPause(context, { run: context.run, request: context.run.pauseRequest, waitId: ids.next(), at: new Date().toISOString(), hold: BOUNDARY_HOLD });
     }));
     return runId;
   }

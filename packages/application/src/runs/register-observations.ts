@@ -104,7 +104,8 @@ export type ObservationRegistrationRefusal =
   | 'exception-shape'
   | 'digest-mismatch'
   | 'observation-integrity'
-  | 'identity-grounding-split';
+  | 'identity-grounding-split'
+  | 'match-decision';
 
 export class ObservationRegistrationError extends Error {
   override readonly name = 'ObservationRegistrationError';
@@ -142,7 +143,23 @@ export interface ObservationBatchItem {
   readonly absence: ObservationAbsenceProof | null;
   /** The declared search keys with THIS population record's normalized value for each. */
   readonly expectedQueryKeys: readonly ObservationQueryKey[];
+  /**
+   * The decision that matched this record, when a PERSON matched it (Story 10.6, legacy 4.7):
+   * the answered choose-candidate wait whose answer chose the candidate.
+   *
+   * Present exactly when `record.matchOrigin` is `human-matched`, and refused otherwise, so a
+   * human-selected match cannot be registered without naming the decision behind it and a
+   * platform match cannot claim one. It rides beside the record rather than inside it: the
+   * thirteen B.1 wire keys are what the Observation digest covers, and a new key there would
+   * move every digest. The link is written into the registration event, in the same
+   * transaction as the row, which is what lets a surface read it back exactly — never by
+   * matching a wait to a record by time.
+   */
+  readonly matchDecision?: { readonly waitId: string } | null;
 }
+
+/** A wait identity, as `run_wait.wait_id` holds it. */
+const WAIT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export interface ObservationBatch {
   /** Exact frozen requirements, mandatory for every agent capture producer. */
@@ -307,6 +324,14 @@ export async function registerObservations(
     // from one Structural Snapshot. Refuse before reading Evidence or calling a seam so
     // this is an atomic batch refusal with no observable registration side effect.
     if (hasIdentityGroundingSplit(record)) refuse('identity-grounding-split');
+    // Story 10.6 (legacy 4.7): a record a person matched names the decision that matched
+    // it, and a record the platform matched names none. Refused here, before any read, so a
+    // human-selected match can never be registered in a form no surface can trace.
+    const decision = item.matchDecision ?? null;
+    if ((record.matchOrigin === 'human-matched') !== (decision !== null) ||
+        (decision !== null && (typeof decision.waitId !== 'string' || !WAIT_ID.test(decision.waitId)))) {
+      refuse('match-decision');
+    }
   }
 
   // Agent proposals are optional so the existing adapter registration contract remains
@@ -787,6 +812,9 @@ export async function registerObservations(
     if (row.outcome === 'FAIL') failedChecks[row.check] = (failedChecks[row.check] ?? 0) + 1;
   }
   const batchDigest = observationBatchDigest(digests);
+  const humanMatches = fresh.flatMap((entry) => entry.record.matchOrigin === 'human-matched' && entry.item.matchDecision
+    ? [{ observationId: entry.record.observationId, waitId: entry.item.matchDecision.waitId }]
+    : []);
 
   const event = await context.auditEvents.append({
     actor: { type: 'system', id: 'observation-registrar' },
@@ -812,6 +840,11 @@ export async function registerObservations(
       // Bind adjacent provenance into the same immutable audit chain, without including
       // source query values or changing any Observation wire digest.
       ...(rows.some(row => row.absence !== undefined) ? { absenceDigests: rows.flatMap(row => row.absence === undefined ? [] : [{ observationId: row.record.observationId, digest: row.absence.digest }]) } : {}),
+      // Story 10.6 (legacy 4.7): which decision matched each human-matched record in this
+      // batch, by the answered wait's identity. Present only when the batch holds one, so
+      // every earlier event is unchanged; an earlier human-matched record therefore has no
+      // link, and the surfaces say so rather than guessing one by time.
+      ...(humanMatches.length > 0 ? { humanMatchDecisions: humanMatches } : {}),
       coverage,
       corroboration,
       failedChecks,

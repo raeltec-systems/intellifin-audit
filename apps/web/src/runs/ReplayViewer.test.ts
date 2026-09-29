@@ -6,7 +6,9 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 import { REPLAY_COPY, UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
 import { ReplayViewer, type ReplayFrameView } from './ReplayViewer';
-import type { ReplayJumpTarget } from './replay';
+import { REPLAY_GAP_WORDS, replayGapPosition, replayIncompleteSentence, type ReplayGapsView, type ReplayJumpTarget } from './replay';
+import { ADAPTER_ARTIFACT_WORDS } from './live-view';
+import { captureSentence } from './labels';
 
 /**
  * The Replay surface as the server first paints it (Story 5.8, UX-DR26).
@@ -26,6 +28,7 @@ function frameView(index: number, overrides: Partial<ReplayFrameView> = {}): Rep
     stepNarration: `Opening the record for E-00010${index} on LoanCore`,
     workItemId: `019823ab-0000-7000-8000-0000000000c${index}`,
     subjectKey: `E-00010${index}`,
+    subjectKeyText: `E-00010${index}`,
     sourceLocation: 'https://synthetic.invalid/loancore/records/1',
     digest: 'a'.repeat(64),
     capturedAt: `2026-09-10T09:0${index}:00.000Z`,
@@ -113,6 +116,30 @@ describe('Replay, as the server first paints it', () => {
     const view = frameView(1);
     const html = render({ frames: [view], framesTotal: 1 });
     expect(html).toContain(`alt="${view.stepNarration}"`);
+  });
+
+  // `subjectKey` is the record LABEL (key, then the person's name). Keeping the whole label
+  // on one line made a long unmasked name overflow the 239 px rail at 1024 px and gave the
+  // page a sideways scroll; only the KEY is kept together (`subjectKeyText`).
+  it('keeps the record key on one line in the rail narration and lets the name wrap', () => {
+    const label = 'E-000101 · Alexandra Montgomery-Whitfield';
+    const sentence = `Opening the record for ${label} on LoanCore`;
+    const html = render({
+      frames: [frameView(1, { subjectKey: label, subjectKeyText: 'E-000101', narration: sentence, stepNarration: sentence })],
+      framesTotal: 1,
+    });
+    const narration = /<p class="ls-session__narration">(.*?)<\/p>/.exec(html)?.[1];
+    expect(narration).toBe('Opening the record for <span class="ls-nowrap">E-000101</span> · Alexandra Montgomery-Whitfield on LoanCore');
+  });
+
+  it('keeps nothing together in the rail narration when the binding masks the key', () => {
+    const sentence = 'Opening the record for •••• on LoanCore';
+    const html = render({
+      frames: [frameView(1, { subjectKey: '••••', subjectKeyText: null, narration: sentence, stepNarration: sentence })],
+      framesTotal: 1,
+    });
+    const narration = /<p class="ls-session__narration">(.*?)<\/p>/.exec(html)?.[1];
+    expect(narration).toBe(sentence);
   });
 
   it('offers one scrubber pill per frame, with the current one marked', () => {
@@ -233,5 +260,130 @@ describe('the playback controls sit beside the screen (UX-29)', () => {
     const html = render();
     expect(html.split('Untrusted source content —').length - 1).toBe(2);
     expect(html.split(UNTRUSTED_CONTENT_SENTENCE).length - 1).toBe(1);
+  });
+});
+
+// Story 10.6 (legacy 5.3): Replay and Live View render the adapter log through ONE
+// component, so a repair can no longer land on one surface only — which is how Replay's
+// rows came to show their digests while Live View's said "No artifact registered."
+describe('the adapter log, shared with Live View', () => {
+  it('names the registered Evidence and says the other two situations in their own words', () => {
+    const evidenceId = '019823ab-0000-7000-8000-0000000000e1';
+    const html = render({
+      adapterSteps: [
+        { stepId: 'session-2', displayName: 'Extract · RoleMatrix', state: 'ACQUIRED', attempts: 1,
+          artifact: { kind: 'registered', evidenceId, digest: 'e'.repeat(64) } },
+        { stepId: 'session-3', displayName: 'Extract · AccessGate', state: 'FAILED', attempts: 3, artifact: { kind: 'none' } },
+        { stepId: 'session-4', displayName: 'Extract · CoreDirectory', state: 'ACQUIRED', attempts: 1,
+          artifact: { kind: 'unavailable' } },
+      ],
+    });
+    expect(html).toContain('id="replay-adapter-heading"');
+    expect(html).toContain('e'.repeat(64));
+    expect(html).toContain(`#evidence-${evidenceId}`);
+    expect(html).toContain(ADAPTER_ARTIFACT_WORDS.none);
+    expect(html).toContain(ADAPTER_ARTIFACT_WORDS.unavailable);
+  });
+});
+
+// Story 10.6 (legacy 5.2): a session with a gap looked complete. A missing frame is marked
+// where it sits and counted; a suppressed capture is marked in the platform's own capture
+// sentence and is NEVER counted as missing. Every sentence is read back from its module.
+describe('the gaps in a playback (Story 10.6, legacy 5.2)', () => {
+  const suppressedMark = captureSentence('SUPPRESSED', 'credential-entry');
+  const gaps: ReplayGapsView = {
+    missing: 1,
+    suppressed: 1,
+    rows: [
+      { toolActionId: 'gap-suppressed', kind: 'suppressed', mark: suppressedMark, narration: 'Signing in to LoanCore', framesBefore: 0, position: 0 },
+      { toolActionId: 'gap-missing', kind: 'missing', mark: REPLAY_GAP_WORDS.missing, narration: 'Opening the record for E-000102 on LoanCore', framesBefore: 2, position: 2 },
+    ],
+  };
+
+  it('states that playback is incomplete with the count of MISSING frames only', () => {
+    const html = render({ gaps });
+    expect(html).toContain(replayIncompleteSentence(1));
+    // Two gaps are listed, and only one is missing: the suppressed capture is not counted.
+    expect(html).not.toContain(replayIncompleteSentence(2));
+    expect(html).toContain(REPLAY_GAP_WORDS.heading);
+  });
+
+  it('marks each gap where it sits on the scrubber, as a named image and never a button', () => {
+    const html = render({ gaps });
+    const scrubber = html.match(/<div class="ls-session__scrubber"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? '';
+    // The suppressed capture sits before the first frame; the missing frame after frame 2.
+    const missing = `${REPLAY_GAP_WORDS.missing}, ${replayGapPosition(2)}: Opening the record for E-000102 on LoanCore`;
+    const suppressed = `${suppressedMark}, ${replayGapPosition(0)}: Signing in to LoanCore`;
+    expect(scrubber).toContain(`class="ls-scrubber-gap ls-scrubber-gap--missing" role="img" aria-label="${missing}"`);
+    expect(scrubber).toContain(`class="ls-scrubber-gap ls-scrubber-gap--suppressed" role="img" aria-label="${suppressed}"`);
+    // In session order: the suppressed marker, frame 1, frame 2, the missing marker, frame 3.
+    const order = [...scrubber.matchAll(/class="(ls-scrubber-gap ls-scrubber-gap--[a-z]+|ls-scrubber-pill[^"]*)"/g)]
+      .map((match) => (match[1]!.startsWith('ls-scrubber-gap') ? match[1]!.split('--')[1] : 'frame'));
+    expect(order).toEqual(['suppressed', 'frame', 'frame', 'missing', 'frame']);
+    expect(scrubber.match(/<button/g)).toHaveLength(3);
+  });
+
+  it('lists each gap in words, the suppressed one in the platform’s capture sentence', () => {
+    const html = render({ gaps });
+    expect(html).toContain(`${REPLAY_GAP_WORDS.missing} · ${replayGapPosition(2)} · Opening the record for E-000102 on LoanCore`);
+    expect(html).toContain(`${suppressedMark} · ${replayGapPosition(0)} · Signing in to LoanCore`);
+    expect(suppressedMark).toBe('Capture suppressed — a credential was presented on this request');
+  });
+
+  it('says nothing about gaps a Run did not have', () => {
+    for (const html of [render(), render({ gaps: { missing: 0, suppressed: 0, rows: [] } })]) {
+      expect(html).not.toContain(REPLAY_GAP_WORDS.heading);
+      expect(html).not.toContain('ls-scrubber-gap');
+      expect(html).not.toContain('Playback is incomplete');
+    }
+  });
+
+  it('keeps suppressed captures out of the incomplete statement entirely', () => {
+    const html = render({ gaps: { missing: 0, suppressed: 1, rows: [gaps.rows[0]!] } });
+    expect(html).toContain(REPLAY_GAP_WORDS.heading);
+    expect(html).toContain(suppressedMark);
+    expect(html).not.toContain('Playback is incomplete');
+  });
+
+  // Owner decision D2 b (2026-09-29): the one-record Replay states that record's own gaps
+  // with the same approved words, so that view cannot look complete either.
+  it('states the record’s own gaps on the one-record view, marked among the record’s frames', () => {
+    const recordGaps: ReplayGapsView = {
+      missing: 1,
+      suppressed: 0,
+      rows: [
+        // Session numbering in the words (the counter says "Frame 506 of 610"); the marker
+        // sits after the first of the record's frames on this page.
+        { toolActionId: 'record-missing', kind: 'missing', mark: REPLAY_GAP_WORDS.missing,
+          narration: 'Opening the record for E-000102 on LoanCore', framesBefore: 506, position: 1 },
+        // On another page of the same record: listed and counted, never marked here.
+        { toolActionId: 'record-elsewhere', kind: 'missing', mark: REPLAY_GAP_WORDS.missing,
+          narration: 'Reading a field for E-000102 on LoanCore', framesBefore: 700, position: null },
+      ],
+    };
+    const html = render({
+      frames: [frameView(1, { globalOrdinal: 506 }), frameView(2, { globalOrdinal: 507 })],
+      framesTotal: 610,
+      window: { kind: 'inspection', workItemId: 'record', label: 'E-000102', total: 2, cursor: 0, previousCursor: null, nextCursor: null },
+      initialSelection: { kind: 'inspection', frameIndex: 0,
+        target: { kind: 'work-item', id: 'record', label: 'E-000102', frameIndex: 0, absence: null } },
+      gaps: { ...recordGaps, missing: 2 },
+    });
+    expect(html).toContain('Selected inspection: E-000102');
+    expect(html).toContain(REPLAY_GAP_WORDS.heading);
+    expect(html).toContain(replayIncompleteSentence(2));
+    expect(html).toContain(`${REPLAY_GAP_WORDS.missing} · ${replayGapPosition(506)} · Opening the record for E-000102 on LoanCore`);
+    expect(html).toContain(`${REPLAY_GAP_WORDS.missing} · ${replayGapPosition(700)} · Reading a field for E-000102 on LoanCore`);
+    const scrubber = html.match(/<div class="ls-session__scrubber"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? '';
+    const order = [...scrubber.matchAll(/class="(ls-scrubber-gap ls-scrubber-gap--[a-z]+|ls-scrubber-pill[^"]*)"/g)]
+      .map((match) => (match[1]!.startsWith('ls-scrubber-gap') ? match[1]!.split('--')[1] : 'frame'));
+    // One marker, between the record's two frames; the other page's gap has none here.
+    expect(order).toEqual(['frame', 'missing', 'frame']);
+  });
+
+  it('says when the list of positions is bounded, against the exact totals', () => {
+    const html = render({ gaps: { missing: 150, suppressed: 3, rows: gaps.rows } });
+    expect(html).toContain(replayIncompleteSentence(150));
+    expect(html).toContain(REPLAY_GAP_WORDS.bounded.replace('{shown}', '2').replace('{total}', '153'));
   });
 });

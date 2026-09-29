@@ -32,6 +32,7 @@ import {
   type RunDeferredPauseRequest,
 } from '@intellifin/domain';
 import type { Database, Transaction } from '../db/client.js';
+import { frameMissingPredicate } from './replay-gaps.js';
 import {
   auditRun,
   populationRow,
@@ -40,8 +41,6 @@ import {
   runObservation,
   runObservationEvaluation,
   runToolAction,
-  runEvidence,
-  runEvidenceCapture,
   runEvaluationReview,
   runResult,
   runWait,
@@ -310,15 +309,9 @@ export function runResultContext(
      * time rather than an arbitrary set.
      */
     async readMissingFrames(): Promise<MissingFrames> {
-      const missing = sql`${runToolAction.runId}=${runId}
-        AND ${runToolAction.outcome}='performed'
-        AND ${runToolAction.capture}='PERMITTED'
-        AND NOT EXISTS (
-          SELECT 1 FROM ${runEvidenceCapture}
-          JOIN ${runEvidence} ON ${runEvidence.evidenceId}=${runEvidenceCapture.evidenceId}
-          WHERE ${runEvidenceCapture.toolActionId}=${runToolAction.toolActionId}
-            AND ${runEvidence.kind}='screenshot'
-            AND ${runEvidence.state}='REGISTERED')`;
+      // The ONE definition of a missing frame, shared with Replay's gap read so the two
+      // cannot disagree about which actions owe a frame (Story 10.6, legacy 5.2).
+      const missing = sql`${runToolAction.runId}=${runId} AND ${frameMissingPredicate('run_tool_action')}`;
       const counted = await tx
         .select({ total: sql<number>`count(*)::int` })
         .from(runToolAction)
