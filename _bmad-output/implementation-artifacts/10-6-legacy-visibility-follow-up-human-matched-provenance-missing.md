@@ -388,3 +388,24 @@ on `4846dcf2` passed 27 browser tests. The report identifies the Replay record-k
 fix and its post-fix captures, and distinguishes known presentation findings and uncaptured
 rare variants from passing checks. Proposed wording and owner decisions remain pending;
 this entry does not claim exhaustive all-state acceptance or finalize the story.
+
+### Local verification after the owner decision (2026-09-29)
+
+Node 24.20.0 / pnpm 11.25.0, PostgreSQL 18.6 at schema 61, Chromium headless shell, run one
+suite at a time. `pnpm -r typecheck`, root typecheck, `pnpm boundaries` (816 modules) and
+`pnpm test` (299 files, 5,514 tests) pass. Integration: `replay-assets.test.ts` (with the new
+one-record gaps case), `pause-run.test.ts` and `selected-replay.test.ts` pass 45 of 45 on an
+isolated `intellifin_test` database. Browser: `pause-resume.spec.ts`, `replay.spec.ts` and
+`selected-replay.spec.ts` pass 17 of 17; `replay.spec.ts` gained "shows one record its own
+gaps, and not the gaps of the rest of the session" (D2 b), which passes.
+
+Screenshots read as an auditor would:
+- Timeline, "Pauses and resumes", 1280×800: Pause 2 is held at "Inspect the record … during
+  attempt 1. That attempt was superseded.", and its resume says "…as a new attempt (attempt
+  1). A pause does not use up an attempt, so the new attempt is also attempt 1." (A11). The
+  two sentences no longer read like a mistake.
+- One-record Replay for E-000105, 1280×800 and 1024×800: "Gaps in this playback", "Playback
+  is incomplete: 1 frame is missing.", and "Missing frame · after frame 1 · Reading an
+  approved field", with one missing marker after the record's frame and no suppressed marker
+  (the suppressed sign-in belongs to no record). "after frame 1" matches the strip's "Frame 1
+  of 3", which counts the whole session. The other record's view shows no gaps section.

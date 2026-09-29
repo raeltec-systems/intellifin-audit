@@ -19,7 +19,7 @@ import {
 
 import { REPLAY_COPY } from '../../apps/web/src/design/copy';
 import { captureSentence } from '../../apps/web/src/runs/labels';
-import { REPLAY_GAP_WORDS, replayGapPosition, replayIncompleteSentence } from '../../apps/web/src/runs/replay';
+import { REPLAY_GAP_WORDS, replayGapPosition, replayIncompleteSentence, replayInspectionHref } from '../../apps/web/src/runs/replay';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { startSyntheticS3 } from '../fixtures/s3-server';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
@@ -432,6 +432,34 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
 
     const scan = await new AxeBuilder({ page }).withTags(TAGS).analyze();
     expect(scan.violations, JSON.stringify(scan.violations, null, 2)).toEqual([]);
+  });
+
+  // Story 10.6, owner decision D2 b (2026-09-29): the one-record (inspection) Replay also
+  // shows that record's OWN gaps, in the same words. The missing frame belongs to the first
+  // record; the suppressed sign-in belongs to no record, so this view must not show it.
+  test('shows one record its own gaps, and not the gaps of the rest of the session', async ({ page }) => {
+    test.setTimeout(120_000);
+    const seeded = await seedReplayRun({ gaps: true });
+    await page.goto(replayInspectionHref(seeded.runId, seeded.workItems[0]!));
+    await expect(page.getByRole('heading', { name: /^Selected inspection: / })).toBeVisible();
+
+    const gaps = page.getByRole('region', { name: REPLAY_GAP_WORDS.heading });
+    await expect(gaps).toBeVisible();
+    await expect(gaps.getByText(replayIncompleteSentence(1), { exact: true })).toBeVisible();
+    await expect(page.locator('.ls-scrubber-gap--missing')).toHaveCount(1);
+    await expect(page.locator('.ls-scrubber-gap--suppressed')).toHaveCount(0);
+    await gaps.getByText(REPLAY_GAP_WORDS.listSummary, { exact: true }).click();
+    await expect(gaps.locator('[data-gap="missing"]')).toContainText(`${REPLAY_GAP_WORDS.missing} · ${replayGapPosition(1)}`);
+    await expect(gaps.locator('[data-gap="suppressed"]')).toHaveCount(0);
+    await captureStoryState(page, 'replay-record-gaps', gaps);
+
+    const scan = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+    expect(scan.violations, JSON.stringify(scan.violations, null, 2)).toEqual([]);
+
+    // The other record left no gap of its own, so its view says nothing about gaps.
+    await page.goto(replayInspectionHref(seeded.runId, seeded.workItems[1]!));
+    await expect(page.getByRole('heading', { name: /^Selected inspection: / })).toBeVisible();
+    await expect(page.getByRole('region', { name: REPLAY_GAP_WORDS.heading })).toHaveCount(0);
   });
 
   test('steps, plays and jumps from the keyboard alone', async ({ page }) => {
