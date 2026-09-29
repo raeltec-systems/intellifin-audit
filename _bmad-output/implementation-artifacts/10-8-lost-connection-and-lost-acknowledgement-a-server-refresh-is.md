@@ -2,7 +2,7 @@
 title: 'Lost connection and lost acknowledgement: a server refresh is not stream recovery, and a rendering error claims only what it knows'
 type: 'fix'
 created: '2026-09-25'
-status: 'in-review'
+status: 'done'
 followup_review_recommended: true
 review_loop_iteration: 0
 implementation_authorised: true

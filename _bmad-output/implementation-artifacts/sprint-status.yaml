@@ -128,8 +128,7 @@ development_status:
     ready-for-dev
   10-7-live-channel-correction-notify-every-run-chain-append-and-ne: 
     ready-for-dev
-  10-8-lost-connection-and-lost-acknowledgement-a-server-refresh-is: 
-    review
+  10-8-lost-connection-and-lost-acknowledgement-a-server-refresh-is: done
   10-9-replay-bounded-history-completeness-a-bounded-view-says-what: 
     ready-for-dev
   10-10-retained-decision-history-on-the-execution-timeline-an-answe: 
