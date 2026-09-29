@@ -231,3 +231,11 @@ pause-section introduction that does not mention unhonoured requests, and a Time
 an Escalation outside Replay's bounded targets) are owner decisions that sheet 2 did not
 cover. They are listed for the owner and do not block this story's own acceptance criteria.
 
+
+Local verification after the merges (2026-09-29, Node 24.20.0, PostgreSQL 18.6 at schema 61,
+Chromium headless shell, one suite at a time): build, typecheck (root tests included),
+`pnpm boundaries` (828 modules) and `pnpm test` (305 files, 5,596 tests) pass. Integration
+`replay-assets`, `replay-bounded-history`, `selected-replay`, `pause-run`,
+`human-match-decisions`, `decision-history` and `run-waits` pass 73 of 73. Browser `replay`,
+`replay-bounded-history`, `selected-replay`, `pause-resume`, `decision-history` and
+`escalations` pass 24 of 24 (setup included).
