@@ -1,3 +1,13 @@
+## 2026-09-29 — A test that keeps the Resume dialog open still retries its opener
+
+- **`openResume` is the opener half of `resumeWithControl`.** Two tests in
+  `run-controller-lease.spec.ts` must keep the Resume dialog open, so they could not use
+  `resumeWithControl` and clicked the enabled opener ONCE. A control read can make it
+  `aria-disabled` between the locator match and the click, and the click is then refused by
+  design: CI on `1fa6333` (a docs-only commit) failed `:321` with no dialog. Both now call
+  `openResume` (`tests/e2e/run-control.ts`), which clicks again only while the dialog is
+  absent. The 2026-09-23 rule, applied to the two sites the class sweep did not reach.
+
 ## 2026-09-29 — A zero wait must still read once
 
 - **A polling loop that checks the elapsed time BEFORE its first read can read nothing.**

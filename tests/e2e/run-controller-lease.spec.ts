@@ -17,7 +17,7 @@ import {
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 import { heldRoutes } from './held-routes';
-import { acquireControl } from './run-control';
+import { acquireControl, openResume } from './run-control';
 
 /**
  * Controller control is a durable fence around Resume, exercised through two real
@@ -349,12 +349,9 @@ test.describe('durable Run controller lease', () => {
       await route.continue();
     });
     // Acquisition can trigger a live refresh between the controller message and
-    // activation. Resolve only the currently enabled opener; aria-disabled is
-    // intentionally focusable and a plain click on it is a no-op.
-    await page.getByRole('button', { name: 'Resume', exact: true })
-      .and(page.locator(':not([aria-disabled="true"])')).click();
-    const dialog = page.getByRole('dialog', { name: 'Resume this Run?', exact: true });
-    await expect(dialog).toBeVisible();
+    // activation, and a click on the opener while it is aria-disabled is refused, so
+    // `openResume` clicks the enabled opener again until the dialog shows.
+    const dialog = await openResume(page);
     try {
       await captured;
       await expect(dialog).toBeVisible();
@@ -464,11 +461,9 @@ test.describe('durable Run controller lease', () => {
     const controller = page.getByRole('region', { name: 'Run controller', exact: true });
     await acquireControl(controller);
     // Acquisition can trigger a live refresh between the controller message and
-    // activation. Resolve only the currently enabled opener; aria-disabled is
-    // intentionally focusable and a plain click on it is a no-op.
-    await page.getByRole('button', { name: 'Resume', exact: true })
-      .and(page.locator(':not([aria-disabled="true"])')).click();
-    await expect(page.getByRole('dialog', { name: 'Resume this Run?' })).toBeVisible();
+    // activation, and a click on the opener while it is aria-disabled is refused, so
+    // `openResume` clicks the enabled opener again until the dialog shows.
+    await openResume(page);
     let readCount = 0;
     let releaseOld!: () => void;
     let capturedOld!: () => void;

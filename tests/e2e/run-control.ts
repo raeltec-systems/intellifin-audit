@@ -25,6 +25,25 @@ export async function acquireControl(controller: Locator): Promise<void> {
 }
 
 /**
+ * Opens the Resume confirmation and leaves it open, on a page that already holds control.
+ *
+ * The opener is `aria-disabled` while a control read settles, and a click in that moment is
+ * refused by design, so the enabled opener is clicked again only while the dialog is still
+ * absent. CI met the refused click in `run-controller-lease.spec.ts` on `1fa6333`.
+ */
+export async function openResume(page: Page): Promise<Locator> {
+  const enabled = page.locator(':not([aria-disabled="true"])');
+  const dialog = page.getByRole('dialog', { name: 'Resume this Run?', exact: true });
+  await expect(async () => {
+    if (!(await dialog.isVisible())) {
+      await page.getByRole('button', { name: 'Resume', exact: true }).and(enabled).click({ timeout: 5_000 });
+    }
+    await expect(dialog).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  return dialog;
+}
+
+/**
  * Opens the Resume confirmation and confirms it, on a page that already holds control.
  *
  * Acquiring control starts a live refresh, and every renewal re-reads control again.
@@ -38,13 +57,7 @@ export async function acquireControl(controller: Locator): Promise<void> {
  */
 export async function resumeWithControl(page: Page): Promise<void> {
   const enabled = page.locator(':not([aria-disabled="true"])');
-  const dialog = page.getByRole('dialog', { name: 'Resume this Run?', exact: true });
-  await expect(async () => {
-    if (!(await dialog.isVisible())) {
-      await page.getByRole('button', { name: 'Resume', exact: true }).and(enabled).click({ timeout: 5_000 });
-    }
-    await expect(dialog).toBeVisible({ timeout: 2_000 });
-  }).toPass({ timeout: 30_000 });
+  const dialog = await openResume(page);
   await expect(async () => {
     if (await dialog.isVisible()) {
       await dialog.getByRole('button', { name: 'Resume Run', exact: true }).and(enabled).click({ timeout: 5_000 });
