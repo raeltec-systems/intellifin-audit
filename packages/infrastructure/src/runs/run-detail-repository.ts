@@ -127,6 +127,12 @@ export interface RunReplayGap {
    * (`started_at`, then the Tool Action id). The gap sits between that frame and the next.
    */
   readonly framesBefore: number;
+  /**
+   * How many of THIS record's frames come before the action, in the same order — set only
+   * by the one-record read (`readRecordReplayGaps`), where it places the gap among the
+   * record's own frames (Story 10.6, owner decision D2 b, 2026-09-29).
+   */
+  readonly recordFramesBefore?: number;
 }
 
 export interface RunReplayGaps {
@@ -640,6 +646,25 @@ export class DrizzleRunDetailRepository {
    */
   async readReplayGaps(runId: string, limit = REPLAY_GAP_LIMIT): Promise<RunReplayGaps> {
     if (!isUuidText(runId)) return { missing: 0, suppressed: 0, rows: [] };
+    return this.replayGaps(runId, limit, null);
+  }
+
+  /**
+   * The gaps of ONE record's inspection, for the one-record Replay (Story 10.6, owner
+   * decision D2 b, 2026-09-29).
+   *
+   * The same query as `readReplayGaps`, scoped to the Tool Actions whose Work Item —
+   * through the Step Execution first, then the action, the rule every frame read uses — is
+   * `workItemId`. The counts are that record's exact counts; `framesBefore` stays in the
+   * whole session's numbering (the counter the one-record view shows), and
+   * `recordFramesBefore` places each gap among the record's own frames.
+   */
+  async readRecordReplayGaps(runId: string, workItemId: string, limit = REPLAY_GAP_LIMIT): Promise<RunReplayGaps> {
+    if (!isUuidText(runId) || !isUuidText(workItemId)) return { missing: 0, suppressed: 0, rows: [] };
+    return this.replayGaps(runId, limit, workItemId);
+  }
+
+  private async replayGaps(runId: string, limit: number, workItemId: string | null): Promise<RunReplayGaps> {
     const bound = Math.max(0, Math.min(Math.trunc(limit), REPLAY_GAP_LIMIT));
     const result = await this.db.execute<{
       missing: number;
@@ -647,7 +672,7 @@ export class DrizzleRunDetailRepository {
       rows: readonly {
         tool_action_id: string; kind: 'missing' | 'suppressed'; action: string; started_at: string;
         step_execution_id: string; work_item_id: string | null; target_system: string;
-        capture_suppression: string | null; frames_before: number;
+        capture_suppression: string | null; frames_before: number; record_frames_before: number | null;
       }[] | null;
     }>(sql`
       WITH gaps AS MATERIALIZED (
@@ -659,8 +684,9 @@ export class DrizzleRunDetailRepository {
         LEFT JOIN run_step_execution s ON s.step_execution_id = a.step_execution_id AND s.run_id = ${runId}::uuid
         WHERE a.run_id = ${runId}::uuid
           AND (${frameMissingPredicate('a')} OR ${captureSuppressedPredicate('a')})
+          ${workItemId === null ? sql`` : sql`AND coalesce(s.work_item_id, a.work_item_id) = ${workItemId}::uuid`}
       ), frames AS MATERIALIZED (
-        SELECT fa.started_at, fa.tool_action_id
+        SELECT fa.started_at, fa.tool_action_id, coalesce(fs.work_item_id, fa.work_item_id) AS work_item_id
         FROM run_evidence fe
         JOIN run_evidence_capture fc ON fc.evidence_id = fe.evidence_id AND fc.run_id = ${runId}::uuid
         JOIN run_tool_action fa ON fa.tool_action_id = fc.tool_action_id AND fa.run_id = ${runId}::uuid
@@ -671,7 +697,10 @@ export class DrizzleRunDetailRepository {
       ), page AS (
         SELECT g.*,
           (SELECT count(*) FROM frames f
-            WHERE (f.started_at, f.tool_action_id) < (g.started_at, g.tool_action_id))::int AS frames_before
+            WHERE (f.started_at, f.tool_action_id) < (g.started_at, g.tool_action_id))::int AS frames_before,
+          ${workItemId === null ? sql`NULL::int` : sql`(SELECT count(*) FROM frames f
+            WHERE f.work_item_id = g.work_item_id
+              AND (f.started_at, f.tool_action_id) < (g.started_at, g.tool_action_id))::int`} AS record_frames_before
         FROM gaps g
         ORDER BY g.started_at, g.tool_action_id
         LIMIT ${bound}
@@ -683,7 +712,8 @@ export class DrizzleRunDetailRepository {
             'tool_action_id', p.tool_action_id, 'kind', p.kind, 'action', p.action,
             'started_at', p.started_at, 'step_execution_id', p.step_execution_id,
             'work_item_id', p.work_item_id, 'target_system', p.target_system,
-            'capture_suppression', p.capture_suppression, 'frames_before', p.frames_before)
+            'capture_suppression', p.capture_suppression, 'frames_before', p.frames_before,
+            'record_frames_before', p.record_frames_before)
           ORDER BY p.started_at, p.tool_action_id) FROM page p) AS rows`);
     const row = result[0];
     if (row === undefined) return { missing: 0, suppressed: 0, rows: [] };
@@ -700,6 +730,8 @@ export class DrizzleRunDetailRepository {
         targetSystem: gap.target_system,
         captureSuppression: gap.capture_suppression,
         framesBefore: Number(gap.frames_before),
+        ...(gap.record_frames_before === null || gap.record_frames_before === undefined
+          ? {} : { recordFramesBefore: Number(gap.record_frames_before) }),
       })),
     };
   }

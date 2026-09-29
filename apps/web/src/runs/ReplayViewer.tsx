@@ -79,8 +79,8 @@ export interface ReplayViewerProps {
   readonly window?: ReplayWindow;
   /**
    * The Tool Actions that left no frame, and where each sits (Story 10.6, legacy 5.2): a
-   * missing frame and a suppressed capture, told apart. Absent on an inspection page, whose
-   * frames are one record's captures rather than the whole session.
+   * missing frame and a suppressed capture, told apart. On an inspection page they are that
+   * record's own gaps (owner decision D2 b, 2026-09-29), built by the same `replayGapsView`.
    */
   readonly gaps?: ReplayGapsView;
 }

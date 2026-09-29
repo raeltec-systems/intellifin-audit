@@ -295,8 +295,8 @@ describe('the gaps in a playback (Story 10.6, legacy 5.2)', () => {
     missing: 1,
     suppressed: 1,
     rows: [
-      { toolActionId: 'gap-suppressed', kind: 'suppressed', mark: suppressedMark, narration: 'Signing in to LoanCore', framesBefore: 0 },
-      { toolActionId: 'gap-missing', kind: 'missing', mark: REPLAY_GAP_WORDS.missing, narration: 'Opening the record for E-000102 on LoanCore', framesBefore: 2 },
+      { toolActionId: 'gap-suppressed', kind: 'suppressed', mark: suppressedMark, narration: 'Signing in to LoanCore', framesBefore: 0, position: 0 },
+      { toolActionId: 'gap-missing', kind: 'missing', mark: REPLAY_GAP_WORDS.missing, narration: 'Opening the record for E-000102 on LoanCore', framesBefore: 2, position: 2 },
     ],
   };
 
@@ -343,6 +343,42 @@ describe('the gaps in a playback (Story 10.6, legacy 5.2)', () => {
     expect(html).toContain(REPLAY_GAP_WORDS.heading);
     expect(html).toContain(suppressedMark);
     expect(html).not.toContain('Playback is incomplete');
+  });
+
+  // Owner decision D2 b (2026-09-29): the one-record Replay states that record's own gaps
+  // with the same approved words, so that view cannot look complete either.
+  it('states the record’s own gaps on the one-record view, marked among the record’s frames', () => {
+    const recordGaps: ReplayGapsView = {
+      missing: 1,
+      suppressed: 0,
+      rows: [
+        // Session numbering in the words (the counter says "Frame 506 of 610"); the marker
+        // sits after the first of the record's frames on this page.
+        { toolActionId: 'record-missing', kind: 'missing', mark: REPLAY_GAP_WORDS.missing,
+          narration: 'Opening the record for E-000102 on LoanCore', framesBefore: 506, position: 1 },
+        // On another page of the same record: listed and counted, never marked here.
+        { toolActionId: 'record-elsewhere', kind: 'missing', mark: REPLAY_GAP_WORDS.missing,
+          narration: 'Reading a field for E-000102 on LoanCore', framesBefore: 700, position: null },
+      ],
+    };
+    const html = render({
+      frames: [frameView(1, { globalOrdinal: 506 }), frameView(2, { globalOrdinal: 507 })],
+      framesTotal: 610,
+      window: { kind: 'inspection', workItemId: 'record', label: 'E-000102', total: 2, cursor: 0, previousCursor: null, nextCursor: null },
+      initialSelection: { kind: 'inspection', frameIndex: 0,
+        target: { kind: 'work-item', id: 'record', label: 'E-000102', frameIndex: 0, absence: null } },
+      gaps: { ...recordGaps, missing: 2 },
+    });
+    expect(html).toContain('Selected inspection: E-000102');
+    expect(html).toContain(REPLAY_GAP_WORDS.heading);
+    expect(html).toContain(replayIncompleteSentence(2));
+    expect(html).toContain(`${REPLAY_GAP_WORDS.missing} · ${replayGapPosition(506)} · Opening the record for E-000102 on LoanCore`);
+    expect(html).toContain(`${REPLAY_GAP_WORDS.missing} · ${replayGapPosition(700)} · Reading a field for E-000102 on LoanCore`);
+    const scrubber = html.match(/<div class="ls-session__scrubber"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? '';
+    const order = [...scrubber.matchAll(/class="(ls-scrubber-gap ls-scrubber-gap--[a-z]+|ls-scrubber-pill[^"]*)"/g)]
+      .map((match) => (match[1]!.startsWith('ls-scrubber-gap') ? match[1]!.split('--')[1] : 'frame'));
+    // One marker, between the record's two frames; the other page's gap has none here.
+    expect(order).toEqual(['frame', 'missing', 'frame']);
   });
 
   it('says when the list of positions is bounded, against the exact totals', () => {

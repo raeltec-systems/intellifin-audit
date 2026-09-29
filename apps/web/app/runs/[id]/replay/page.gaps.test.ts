@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * frame. The browser proof is `tests/e2e/replay.spec.ts`.
  */
 
-const calls = vi.hoisted(() => ({ openRun: vi.fn(), gaps: vi.fn(), timeline: vi.fn(), plan: vi.fn() }));
+const calls = vi.hoisted(() => ({ openRun: vi.fn(), gaps: vi.fn(), recordGaps: vi.fn(), inspection: vi.fn(), timeline: vi.fn(), plan: vi.fn() }));
 vi.mock('@intellifin/infrastructure', () => ({
   REPLAY_INSPECTION_PAGE_SIZE: 100, REPLAY_PAGE_SIZE: 500, readRecordNames: async () => new Map(),
   DrizzleRunDetailRepository: class {
@@ -20,7 +20,8 @@ vi.mock('@intellifin/infrastructure', () => ({
     readWaits = async () => []; readObservationDeltas = async () => []; readExceptions = async () => ({ rows: [] });
     readEvidenceItems = async () => []; readEvidenceItemsByIds = async () => [];
     readReplayGaps = calls.gaps;
-    readInspectionReplay = async () => ({ kind: 'unavailable' });
+    readRecordReplayGaps = calls.recordGaps;
+    readInspectionReplay = calls.inspection;
   },
   DrizzleFrozenExecutionReader: class { readFrozenExecution = calls.plan; },
 }));
@@ -47,6 +48,8 @@ async function gapsHandedToTheViewer(query: Record<string, string> = {}): Promis
 
 beforeEach(() => {
   vi.clearAllMocks();
+  calls.inspection.mockResolvedValue({ kind: 'unavailable' });
+  calls.recordGaps.mockResolvedValue({ missing: 0, suppressed: 0, rows: [] });
   calls.openRun.mockResolvedValue({ allowed: true, readAt: new Date('2026-09-26T00:00:00Z'),
     run: { runId: RUN_ID, state: 'COMPLETED', procedureName: 'Replay gaps', versionId: 'version', procedureId: 'procedure' } });
   calls.plan.mockResolvedValue({ sessionSteps: [], targetSystems: [], inputs: { instructions: [],
@@ -75,15 +78,38 @@ describe('Replay’s gaps, through the page’s own read (Story 10.6, legacy 5.2
       suppressed: 1,
       rows: [
         { toolActionId: 'sign-in', kind: 'suppressed', mark: captureSentence('SUPPRESSED', 'credential-entry'),
-          narration: 'Opening a page on LoanCore', framesBefore: 0 },
+          narration: 'Opening a page on LoanCore', framesBefore: 0, position: 0 },
         { toolActionId: 'lost', kind: 'missing', mark: REPLAY_GAP_WORDS.missing,
-          narration: 'Opening the record for E-000102 on LoanCore', framesBefore: 2 },
+          narration: 'Opening the record for E-000102 on LoanCore', framesBefore: 2, position: 2 },
       ],
     });
     expect(calls.gaps).toHaveBeenCalledWith(RUN_ID);
   });
 
-  it('reads no gaps for one record’s inspection page, which is not the whole session', async () => {
+  // Owner decision D2 b (2026-09-29) replaced "reads no gaps for one record's inspection
+  // page": the one-record view now states THAT record's own gaps, never the session's.
+  it('hands the one-record view that record’s own gaps, read for that record and not the session', async () => {
+    calls.inspection.mockResolvedValue({ kind: 'inspection',
+      workItem: { workItemId: WORK_ITEM, subjectKey: 'E-000102', displayName: 'LoanCore', registrationId: 'loancore' },
+      workspace: null, rows: [], total: 0, framesTotal: 4, cursor: 0, previousCursor: null, nextCursor: null });
+    calls.recordGaps.mockResolvedValue({ missing: 1, suppressed: 0, rows: [
+      { toolActionId: 'lost', kind: 'missing', action: 'open-record', startedAt: '2026-09-26T00:00:05.000Z',
+        stepExecutionId: 'step-2', workItemId: WORK_ITEM, targetSystem: 'loancore', captureSuppression: null,
+        framesBefore: 2, recordFramesBefore: 0 },
+    ] });
+    expect(await gapsHandedToTheViewer({ workItem: WORK_ITEM })).toEqual({
+      missing: 1,
+      suppressed: 0,
+      rows: [{ toolActionId: 'lost', kind: 'missing', mark: REPLAY_GAP_WORDS.missing,
+        narration: 'Opening the record for E-000102 on LoanCore', framesBefore: 2, position: 0 }],
+    });
+    // Scoped to the requested record, through its own read; the session's gaps are not read.
+    expect(calls.recordGaps).toHaveBeenCalledWith(RUN_ID, WORK_ITEM);
+    expect(calls.gaps).not.toHaveBeenCalled();
+  });
+
+  it('hands no gaps when the requested inspection cannot be resolved', async () => {
+    calls.recordGaps.mockResolvedValue({ missing: 3, suppressed: 0, rows: [] });
     expect(await gapsHandedToTheViewer({ workItem: WORK_ITEM })).toBeNull();
     expect(calls.gaps).not.toHaveBeenCalled();
   });

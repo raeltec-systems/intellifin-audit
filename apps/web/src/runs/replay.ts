@@ -1,7 +1,7 @@
-import type { RunFrameRow, RunReplayObservationDelta, RunReplayWait } from '@intellifin/infrastructure';
+import type { RunFrameRow, RunReplayGaps, RunReplayObservationDelta, RunReplayWait } from '@intellifin/infrastructure';
 
 import { escalationKindWord } from '../design/plain-words';
-import { workItemLabel } from './labels';
+import { captureSentence, workItemLabel } from './labels';
 
 /**
  * Replay's presentation logic (Story 5.8, FR-30, UX-DR26, addendum §F).
@@ -342,8 +342,14 @@ export interface ReplayGapView {
   readonly mark: string;
   /** What the action was, in audit words — never the stored identifier. */
   readonly narration: string;
-  /** How many frames come before it in the scrubber's order. */
+  /** How many frames come before it in the whole session's order (the counter's numbering). */
   readonly framesBefore: number;
+  /**
+   * Where the marker sits on THIS view's scrubber: after `position` of its pills, or `null`
+   * when the gap is not among the frames this view shows (another page of one record's
+   * frames). A gap with no marker is still listed and still counted.
+   */
+  readonly position: number | null;
 }
 
 export interface ReplayGapsView {
@@ -361,5 +367,50 @@ export interface ReplayGapsView {
  */
 export function replayGapsAt(gaps: ReplayGapsView | undefined, position: number): readonly ReplayGapView[] {
   if (gaps === undefined) return [];
-  return gaps.rows.filter((gap) => gap.framesBefore === position);
+  return gaps.rows.filter((gap) => gap.position === position);
+}
+
+/**
+ * Which frames a Replay view shows, for placing its gaps: the whole session (from its first
+ * frame), or one page of one record's frames — `cursor` of that record's frames come before
+ * the page, `shown` are on it, and `last` says whether any come after it.
+ */
+export type ReplayGapScope =
+  | { readonly kind: 'session' }
+  | { readonly kind: 'record'; readonly cursor: number; readonly shown: number; readonly last: boolean };
+
+/**
+ * The gaps a Replay view states, in words, from the read that found them (Story 10.6,
+ * legacy 5.2; the one-record view by owner decision D2 b, 2026-09-29).
+ *
+ * ONE builder for both views, so the whole-session Replay and the one-record Replay mark and
+ * word a gap the same way: a missing frame says `REPLAY_GAP_WORDS.missing`, a suppressed
+ * capture the platform's own `captureSentence`. The counts are the read's exact counts. On a
+ * record's page a marker sits among the record's own frames (`recordFramesBefore`); a gap at
+ * the page's end is marked only on the last page, so a gap between two pages is marked once,
+ * at the start of the later one.
+ */
+export function replayGapsView(
+  read: RunReplayGaps,
+  narrate: (gap: RunReplayGaps['rows'][number]) => string,
+  scope: ReplayGapScope,
+): ReplayGapsView {
+  const position = (gap: RunReplayGaps['rows'][number]): number | null => {
+    if (scope.kind === 'session') return gap.framesBefore;
+    if (gap.recordFramesBefore === undefined) return null;
+    const at = gap.recordFramesBefore - scope.cursor;
+    return at >= 0 && (at < scope.shown || (at === scope.shown && scope.last)) ? at : null;
+  };
+  return {
+    missing: read.missing,
+    suppressed: read.suppressed,
+    rows: read.rows.map((gap) => ({
+      toolActionId: gap.toolActionId,
+      kind: gap.kind,
+      mark: gap.kind === 'missing' ? REPLAY_GAP_WORDS.missing : captureSentence('SUPPRESSED', gap.captureSuppression),
+      narration: narrate(gap),
+      framesBefore: gap.framesBefore,
+      position: position(gap),
+    })),
+  };
 }

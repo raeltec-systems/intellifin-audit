@@ -10,6 +10,7 @@ vi.mock('@intellifin/infrastructure', () => ({
     readWaits = async () => []; readObservationDeltas = async () => []; readExceptions = async () => ({ rows: [] });
     readEvidenceItems = async () => []; readEvidenceItemsByIds = async () => [];
     readReplayGaps = async () => ({ missing: 0, suppressed: 0, rows: [] });
+    readRecordReplayGaps = async () => ({ missing: 0, suppressed: 0, rows: [] });
   },
   DrizzleFrozenExecutionReader: class { readFrozenExecution = calls.plan; },
 }));
