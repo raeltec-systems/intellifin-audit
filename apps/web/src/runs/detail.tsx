@@ -31,7 +31,7 @@ import { requireServerAction } from '../server-session';
 import { EscalationOutcomeHost } from './EscalationOutcome';
 import { EscalationPanel, type EscalationWorkspacePresentation } from './EscalationPanel';
 import { readOpenEscalation, type OpenEscalationRead } from './escalation-read';
-import { LiveBanner } from './LiveBanner';
+import { SurfaceLiveBanner } from './SurfaceLiveBanner';
 import { RunLifecycleActions } from './RunLifecycleActions';
 import { WaitCountdown } from './WaitCountdown';
 import { periodText, runLifecycleWord, utcStamp } from './labels';
@@ -296,7 +296,7 @@ export async function RunDetailFrame({
       />
       {liveCursor === null
         ? <RefreshBanner readAt={readAt} href={here} />
-        : <LiveBanner url={`/api/runs/${run.runId}/events`} cursor={liveCursor} readAt={readAt.toISOString()} href={here} />}
+        : <SurfaceLiveBanner url={`/api/runs/${run.runId}/events`} cursor={liveCursor} readAt={readAt.toISOString()} href={here} />}
       <Tabs label="Run Detail" tabs={RUN_TABS.map((entry) => ({ href: runTabHref(run.runId, entry.slug), label: entry.label }))} current={here} />
       {stop === null ? null : <StopReasonBanner facts={stop} />}
       <CancellationBanners run={run} names={names} />
