@@ -377,3 +377,34 @@ on `e9c58dbb` passed 16 browser tests. The report identifies the Replay record-k
 fix and its post-fix captures, and distinguishes known presentation findings and uncaptured
 rare variants from passing checks. Proposed wording and owner decisions remain pending;
 this entry does not claim exhaustive all-state acceptance or finalize the story.
+
+### Screenshot review — 2026-09-29 (local, second pass)
+
+Captured on `e19225d3` plus opt-in capture points added in this commit, with
+`STORY_VISUAL_CAPTURE=1`, against a local PostgreSQL 18.6 (schema 61), Node 24.20.0 and
+Chromium 141 headless shell. The five journeys (`live-drop`, `flag-run`, `route-boundary`,
+`live-timeline`, `pause-resume`) passed 22 of 22. Thirteen 1280×800 screenshots were opened
+and read as an auditor would.
+
+New states captured in this pass (the CI capture had none of them): Run Detail stale
+("No update for 15 seconds. The page may be behind the Run."), Run Detail recovered ("Live.
+The page updates on its own as the Run progresses."), Run Detail with a pause requested, a
+paused Run with its countdown, and a Run awaiting an answer with Pause withdrawn and its
+reason. The capture points only run when `STORY_VISUAL_CAPTURE=1`; no assertion changed.
+
+Result: every sentence read is true for its state, except one.
+
+- **Open, needs owner wording:** on Live View with the connection lost, the session strip
+  still says "● LIVE" while the banner directly above says "Connection to the Run lost.
+  Reconnecting." The page contradicts itself in the state this story exists for. A fix needs
+  a new strip word (for example "RECONNECTING"), and new wording is reserved for the owner.
+  Not changed here.
+- Seen and not 10.8's: the Workspace's "Replay" and "Approved procedure" links are 4 px apart
+  (already recorded). The awaiting-answer fixture seeds no wait row, so that page correctly
+  says "The open Escalation could not be read" — a fixture fact, not a product defect. On the
+  awaiting page the withdrawn Pause sits before "Checking current Run control…", on the pause
+  page after it; a small ordering difference in the existing control row.
+- Not captured: the brief `connecting` state (it lasts well under a second in the journeys).
+
+Status stays `in-review` until the owner decides the strip word; the rest of the visual gate is
+met.
