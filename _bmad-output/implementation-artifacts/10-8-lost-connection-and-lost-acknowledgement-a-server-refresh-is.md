@@ -439,3 +439,11 @@ What was built, on this branch:
   reads the strip word in every sample of the lost state — through the server re-read and the
   remount — and `LIVE` again after recovery.
 
+
+Verification (local, 2026-09-29, Node 24.20.0, PostgreSQL 18.6 schema 61, Chromium headless
+shell): `pnpm -r typecheck`, root `tsc -p tsconfig.root-tests.json`, `pnpm boundaries` (814
+modules) and `pnpm test` (302 files, 5,522 tests) pass. `live-drop.spec.ts`, `live-view.spec.ts`
+and `replay.spec.ts` pass 23 of 23. The 1280×800 capture of the lost state was read: the strip
+says "● RECONNECTING" with a grey dot, directly under the banner "Connection to the Run lost.
+Reconnecting.", and the header note says why the controls are withdrawn. The strip and the
+banner now say one thing. With this, the visual gate of the second pass is met.
