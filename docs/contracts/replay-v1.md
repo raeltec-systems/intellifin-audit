@@ -225,7 +225,8 @@ link starts at its own frame while a re-read of the same selection keeps the rea
 Either sentence for a link that opened no frame points at the "Jump to" list ("Choose a
 recorded target below.") only when that list holds a target WITH a frame: in a Replay whose
 targets all lack one, the pointer would send the reader to a list of absences. The sentences
-are proposed wording (`ESCALATION_REPLAY_WORDS` in `apps/web/src/runs/decision-words.ts`).
+are owner-approved (sheet 2, B12–B15, 2026-09-29; `ESCALATION_REPLAY_WORDS` in
+`apps/web/src/runs/decision-words.ts`).
 
 ## A bounded jump list says what it covers, and the rest stays reachable (Story 10.9)
 

@@ -94,6 +94,16 @@ describe('a pause request the Run never honoured, in "Pauses and resumes"', () =
     expect(html).not.toContain(PAUSE_REQUEST_WORDS.runEnded);
   });
 
+  // Review 2026-09-29: a request's step and record are named from the REQUESTS' own reads,
+  // never the pauses'. With no plan for the pauses, the request still names its step.
+  it('names a request from the plan the requests were read with, not the pauses\u2019', () => {
+    const html = renderToStaticMarkup(React.createElement(PauseHistorySection, {
+      history: { total: 0, entries: [] }, plan: null, recordNames: new Map(), actorNames: NAMES,
+      requests: { requests: { total: 1, entries: [REPLACED] }, plan: PLAN, recordNames: new Map(), actorNames: NAMES },
+    }));
+    expect(html).toContain('It asked to pause after “Inspect the record” for E-000102 on ProdConsole.');
+  });
+
   it('says what the record does not hold rather than leaving a blank', () => {
     const html = render({ total: 0, entries: [] }, { total: 1, entries: [{ ...OUTRUN, requestedBy: null, requestedAt: null }] });
     expect(html).toContain(PAUSE_REQUEST_WORDS.requesterNotRecorded);

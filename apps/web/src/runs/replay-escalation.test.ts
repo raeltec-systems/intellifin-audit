@@ -16,6 +16,7 @@ import {
   replaySelectionKey,
   replayViewerKey,
   type ReplayInitialSelection,
+  type ReplayWindow,
 } from './replay';
 
 /**
@@ -128,7 +129,7 @@ function view(index: number): ReplayFrameView {
 
 function render(
   initialSelection: ReplayInitialSelection,
-  session: { readonly frames: readonly ReplayFrameView[]; readonly jumpTargets: typeof TARGETS } = {
+  session: { readonly frames: readonly ReplayFrameView[]; readonly jumpTargets: typeof TARGETS; readonly window?: ReplayWindow } = {
     frames: [view(1), view(2), view(3)],
     jumpTargets: TARGETS,
   },
@@ -145,6 +146,7 @@ function render(
     jumpTargets: session.jumpTargets,
     jumpTotals: null,
     initialSelection,
+    ...(session.window === undefined ? {} : { window: session.window }),
     instructions: [],
     adapterSteps: [],
   }));
@@ -172,6 +174,17 @@ describe('what Replay says when an answered Escalation opened it', () => {
     expect(html).toContain('No selected frame');
     expect(html).not.toContain('/frames/');
     expect(html).not.toContain('The requested inspection is not available');
+  });
+
+  // Review 2026-09-29: a one-record (windowed) Replay shows no "Jump to" list, so the
+  // pointer to it would send the reader to a list that is not on the page.
+  it('never points at the "Jump to" list on a one-record Replay, which does not show one', () => {
+    const window: ReplayWindow = { kind: 'inspection', workItemId: WORK, label: 'E-000102 · LoanCore',
+      total: 3, cursor: 0, previousCursor: null, nextCursor: null };
+    const html = render({ kind: 'escalation-unavailable', frameIndex: null }, { frames: [view(1), view(2), view(3)], jumpTargets: TARGETS, window });
+    expect(TARGETS.some((target) => target.frameIndex !== null)).toBe(true);
+    expect(html).toContain(ESCALATION_REPLAY_WORDS.unavailable);
+    expect(html).not.toContain(ESCALATION_REPLAY_WORDS.chooseTarget);
   });
 
   it('points at the "Jump to" list only when that list holds a recorded target to choose', () => {

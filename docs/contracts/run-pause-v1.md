@@ -217,8 +217,8 @@ A reason this build does not name, a requester or a time the record does not hol
 inspection that does not resolve are each said in words rather than guessed or paired by
 time. The read answers an exact total and a bounded list of `PAUSE_REQUEST_LIMIT`, in chain
 order. The owner approved "Pause request", "Requested by {name} at {time}." and "The Run ended
-before the pause took effect, so its own outcome stands." on 2026-09-26; the other sentences
-are proposed wording in `apps/web/src/runs/decision-words.ts`.
+before the pause took effect, so its own outcome stands." on 2026-09-26, and the other
+sentences on 2026-09-29 (sheet 2, B4–B11); all are in `apps/web/src/runs/decision-words.ts`.
 
 ## The windows
 

@@ -8,7 +8,35 @@ implementation_authorised: true
 implementation_authorisation: 'Owner, 2026-09-26: "go, new branches OK" (implement 10.6 to 10.10 on new branches); wording approved 2026-09-26 ("approve all")'
 baseline_revision: 'e8728b0c874b9f4e8981f07fbc6b707e819f372b'
 followup_review_recommended: true
-deferred: []
+deferred:
+  - summary: >-
+      A Replay link that names an Escalation AND a record or cursor (?escalation= with ?workItem= or ?cursor=) opens the record view and says nothing about the Escalation.
+    evidence: |-
+      replayRequest routes any link with workItem or cursor to the one-record branch, which never reads escalation. No Timeline link produces the combination; saying so, or giving the Escalation precedence, needs owner wording (review 2026-09-29).
+    location: >-
+      apps/web/app/runs/[id]/replay/page.tsx:107; apps/web/src/runs/replay.ts:71-86
+    severity: low
+  - summary: >-
+      "Open in Replay" for an Escalation past the frames Replay reads says it is not among the frames shown, and does not link to the record page that holds its frame, although the landing is known.
+    evidence: |-
+      replayJumpTargets carries workItemId and inspectionCursor for a not-read target. A link to replayInspectionHref(runId, workItemId, cursor) needs owner wording; open alongside the bounded-history decision (review 2026-09-29, and the triage log above).
+    location: >-
+      apps/web/src/runs/ReplayViewer.tsx (escalationNote)
+    severity: low
+  - summary: >-
+      The Timeline names an Escalation's record from its raise's Evidence; Replay opens at the last frame at or before the raise, which can be another record's screen.
+    evidence: |-
+      Neither surface names a record falsely, but they can disagree. Prefer the frame of the Timeline's Work Item, or state the rule in replay-v1.md (review 2026-09-29).
+    location: >-
+      packages/infrastructure/src/runs/run-detail-repository.ts (readEscalations framesThrough)
+    severity: low
+  - summary: >-
+      When the pause-request list is cut, "Showing the first N of M pause requests" does not say first by which order: requests are capped by chain order and shown by request time beside the separately capped pauses.
+    evidence: |-
+      pauseHistoryRows merges two capped lists. "first recorded" or a cap by requested time needs owner wording (review 2026-09-29).
+    location: >-
+      apps/web/src/runs/decision-words.ts (pauseHistoryRows); packages/infrastructure/src/runs/decision-history.ts (readPauseRequests)
+    severity: low
 context:
   - '_bmad-output/implementation-artifacts/legacy-review-closure-register.md'
   - '_bmad-output/planning-artifacts/epics.md'
@@ -153,9 +181,40 @@ frozen intent, original baseline and approved wording above are unchanged.
 | Cancellation attribution only tested against genuine Abort events | Fixed verification. Added missing/duplicate event and independent actor-type, actor-ID, answer-option and state mismatch cases. The Abort answer remains visible, but cancellation is not attributed to it. |
 | Unsupported source/outcome on a purported answer event | Not accepted as a reachable production defect. The sole `answerEscalation` writer emits `web`/`success` in the same transaction as the closed wait; no alternate production writer was found. This continuation pins the existing identity/actor/option/state contract, and does not invent a new audit-event acceptance policy from tampered rows. |
 | Duplicate candidate option IDs produce an ambiguous ordinal | Not accepted as a reachable production defect. `normalizeOptions` in `waits.ts` rejects duplicate candidate IDs before creation. No production path writing such a question was identified. Historical-event rewriting remains prohibited. |
-| Only the first 100 answers and 100 superseded requests can be read on the Timeline | Open product scope. The current bounds and proposed captions are explicit; they do not fulfill access to every omitted decision. A paging/control or alternate route needs an owner decision on hierarchy and wording. No approval is inferred. |
+| Only the first 100 answers and 100 superseded requests can be read on the Timeline | Open product scope. The current bounds and captions (approved 2026-09-29, B3 and B11) are explicit; they do not fulfill access to every omitted decision. A paging/control or alternate route needs an owner decision on hierarchy and wording. No approval is inferred. |
 | A Timeline link can name an Escalation outside Replay's bounded targets, or beyond its default frames | Open alongside the bounded-history decision and Story 10.9. The unavailable/no-frame behavior remains honest; no unapproved paging/link design is introduced here. |
-| Pause-section introduction omits requests the Run never honoured | Open wording decision. The current approved/proposed 10.6 introduction is retained. A new sentence is not approved by this review. |
+| Pause-section introduction omits requests the Run never honoured | Open wording decision. The approved 10.6 introduction (sheet 2, A1) is retained. A new sentence is not approved by this review. |
+
+### 2026-09-29 — Review after the owner decision and the merges
+
+Four reviewers (correctness, tests, wording, edge cases and accessibility) read the story's
+code against `origin/claude/10-9-replay-bounded-history`. No high or medium defect in the code.
+Patched:
+
+- `[low]` Both decision-history reads compared the Run id as text against
+  `audit_events.aggregate_id`, so an uppercase id found the waits and none of their events —
+  a failed read shown as an absence. The id is lowercased after its uuid check; the
+  integration test asserts an uppercase id reads exactly what the lowercase one does, and both
+  assertions fail without the fix.
+- `[low]` The answer total counted rows the list could drop (null `closed_at` or `actor`),
+  which could make the bounded caption claim a hidden row. Generation 45 already forbids those
+  rows; the counted `where` now says so too, so the total and the rows are one set.
+- `[low]` Two test survivors: the "Choose a recorded target below." pointer on a one-record
+  (windowed) Replay, which shows no "Jump to" list, and pause requests named from the pauses'
+  plan instead of their own. A test for each; each fails against its mutation.
+- `[medium]` Contracts, CLAUDE.md, this record and the handover still called B1–B15
+  "proposed"; now approved or marked superseded. `sprint-status.yaml` says `review`, as this
+  file does.
+
+Deferred (frontmatter): an Escalation link combined with a record or cursor; a link to the
+record page of an Escalation past the frames read; Timeline and Replay choosing an
+Escalation's record by different rules; the "first" in the pause-request caption. All four
+need owner wording or a product rule.
+
+Not changed, with the reason: an answer entry on an active Run has no link and no sentence
+(the contract says an active Run has no Replay; a sentence would be new wording); an
+unnamed answerer shows the id, the shared `ActorName` fallback the pause entries use; the
+repeated absence note in Replay's panes is the screenshot review's known presentation item.
 
 ## Auto Run Result
 
@@ -188,7 +247,7 @@ landing ordinal and jump totals. Their original behavior assertions remain intac
 
 The isolated gate avoids workspace sync files inside temporary boundary mutation fixtures;
 no assertion was weakened or skipped. New database regressions remain unrun locally;
-the actual published candidate must pass PR CI. Visual acceptance and handover sheet 2B
+the actual published candidate must pass PR CI. `[SUPERSEDED 2026-09-29: sheet 2B approved]` Visual acceptance and handover sheet 2B
 remain open. This candidate is not approved, ready to merge or deployed.
 
 
@@ -207,7 +266,7 @@ The [shared screenshot review](screenshot-review-10-6-to-10-10-2026-09-26.md) re
 Capture run [36249860278](https://github.com/raeltec-systems/intellifin-audit/actions/runs/36249860278)
 on `8760976e` passed 30 browser tests. The report identifies the Replay record-key wrapping
 fix and its post-fix captures, and distinguishes known presentation findings and uncaptured
-rare variants from passing checks. Proposed wording and owner decisions remain pending;
+rare variants from passing checks. `[SUPERSEDED 2026-09-29: the wording is approved]` Proposed wording and owner decisions remain pending;
 this entry does not claim exhaustive all-state acceptance or finalize the story.
 
 ### Owner decision 2026-09-29, and the merges that followed

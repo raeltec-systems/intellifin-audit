@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, ne, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm';
 
 import { ESCALATION_OPTION_IDS } from '@intellifin/application';
 
@@ -288,14 +288,23 @@ async function workItems(db: ReadHandle, runId: string, ids: Iterable<string>): 
  */
 export async function readEscalationAnswers(
   db: ReadHandle,
-  runId: string,
+  rawRunId: string,
   limit = ESCALATION_ANSWER_LIMIT,
 ): Promise<RunEscalationAnswerHistory> {
-  if (!isUuidText(runId)) return { total: 0, entries: [] };
+  if (!isUuidText(rawRunId)) return { total: 0, entries: [] };
+  // `audit_events.aggregate_id` is TEXT, so an uppercase id would find the waits (uuid
+  // columns) and none of their events: a read that failed shown as an absence (review
+  // 2026-09-29). PostgreSQL writes uuids lowercase, so compare in that form.
+  const runId = rawRunId.toLowerCase();
   const bound = Math.max(0, Math.min(Math.trunc(limit), ESCALATION_ANSWER_LIMIT));
   // An Escalation is any wait that is not a pause; `closure_kind = 'answer'` is closed by
   // a person, and generation 45 refuses that closure on a pause.
-  const where = and(eq(runWait.runId, runId), ne(runWait.kind, 'pause'), eq(runWait.closureKind, 'answer'));
+  // `closed_at` and `actor` are required too, IN THE COUNT: generation 45 already makes both
+  // non-null for an answer, and saying so here keeps the total and the rows one set, so the
+  // bounded caption can never claim a row is hidden that the list only dropped (review
+  // 2026-09-29).
+  const where = and(eq(runWait.runId, runId), ne(runWait.kind, 'pause'), eq(runWait.closureKind, 'answer'),
+    isNotNull(runWait.closedAt), isNotNull(runWait.actor));
   const waits = await db
     .select({
       total: sql<number>`count(*) over()`,
@@ -415,10 +424,14 @@ function pauseRequestEvents(runId: string) {
  */
 export async function readPauseRequests(
   db: ReadHandle,
-  runId: string,
+  rawRunId: string,
   limit = PAUSE_REQUEST_LIMIT,
 ): Promise<RunPauseRequestHistory> {
-  if (!isUuidText(runId)) return { total: 0, entries: [] };
+  if (!isUuidText(rawRunId)) return { total: 0, entries: [] };
+  // `audit_events.aggregate_id` is TEXT, so an uppercase id would find the waits (uuid
+  // columns) and none of their events: a read that failed shown as an absence (review
+  // 2026-09-29). PostgreSQL writes uuids lowercase, so compare in that form.
+  const runId = rawRunId.toLowerCase();
   const bound = Math.max(0, Math.min(Math.trunc(limit), PAUSE_REQUEST_LIMIT));
   const where = pauseRequestEvents(runId);
   const events = await db

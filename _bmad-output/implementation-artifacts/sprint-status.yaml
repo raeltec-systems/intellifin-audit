@@ -132,7 +132,7 @@ development_status:
     ready-for-dev
   10-9-replay-bounded-history-completeness-a-bounded-view-says-what: done
   10-10-retained-decision-history-on-the-execution-timeline-an-answe: 
-    in-progress
+    review
   10-11-replay-continuation-past-the-bound-every-escalation-and-ever:
     backlog
   epic-10-retrospective: optional

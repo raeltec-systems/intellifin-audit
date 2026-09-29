@@ -218,8 +218,8 @@ timeout, and can be closed exactly once.
     and inspector, and the Exceptions list all show the flag ("Human-matched", the word the
     Evidence cards already print) with the decision; a platform match shows none. The
     selection is refused above `MATCH_DECISION_SELECTOR_LIMIT` rather than cut, because a
-    dropped entry would show a human match as a platform one. The sentences are proposed
-    wording in `apps/web/src/runs/match-words.ts`.
+    dropped entry would show a human match as a platform one. The sentences are
+    owner-approved (sheet 1, 2026-09-26) and live in `apps/web/src/runs/match-words.ts`.
 
 ## The answered Escalations on the Execution Timeline (Story 10.10)
 
@@ -257,8 +257,8 @@ rewritten: the entry reads the wait row and the two events already written with 
     ended (`/runs/<id>/replay?escalation=<waitId>`, resolved as `replay-v1.md` states). An
     active Run has no Replay, so its entries offer no link. The owner approved the
     section's words on 2026-09-26; the sentences for the cases the approved list does not
-    cover (a Work Item not recorded, an unreadable answer, a bounded list) are proposed
-    wording. All of them are in `apps/web/src/runs/decision-words.ts`.
+    cover (a Work Item not recorded, an unreadable answer, a bounded list) were approved on
+    2026-09-29 (sheet 2, B1–B3). All of them are in `apps/web/src/runs/decision-words.ts`.
 
 ## Untrusted question text
 

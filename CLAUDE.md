@@ -7,6 +7,9 @@ and main-only push behavior stay unchanged. Never infer verification from a succ
 
 ## 2026-09-26 — Decision-history review reads a total and its rows together (Story 10.10 continuation)
 
+`[EXTENDED 2026-09-29]` Sheet 2B is decided (approved in full); omitted-history access and a
+request-aware introduction are still owner decisions, listed in the 10.10 record.
+
 A bounded history's count and rows must share a statement snapshot while another decision
 commits. Use a window count in the row query, including a zero-limit request; do not count
 first and then read a newer list. The regression test commits a second fact after the first
@@ -47,7 +50,8 @@ event is rewritten. Contracts: `durable-escalation-v1.md` (35c–35f), `run-paus
 - **"Every Evidence id" needs a MIXED case.** `every` → `some` survived the first round, because
   each fixture's Evidence either all resolved or none did. The test that kills it names one
   captured and one uncaptured artifact on one raise.
-- **An approved sentence can be false in a case its list did not foresee.** "The Run ended
+- `[EXTENDED 2026-09-29: every sentence this note calls proposed was approved — sheet 2, B1–B15]`
+  **An approved sentence can be false in a case its list did not foresee.** "The Run ended
   before the pause took effect, so its own outcome stands." is right for a request the Run
   outran; a "pause after this inspection" request retired by a request to pause at once saw no
   Run end, so it says a PROPOSED sentence that a pause at once replaced it, and a reason this

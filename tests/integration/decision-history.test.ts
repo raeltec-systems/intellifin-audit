@@ -398,6 +398,9 @@ describe.skipIf(!url)('the decisions on the Execution Timeline, on PostgreSQL', 
       expect(await readEscalationAnswers(db, runId, 0)).toEqual({ total: 6, entries: [] });
       expect((await readEscalationAnswers(db, runId, ESCALATION_ANSWER_LIMIT + 50)).entries).toHaveLength(6);
       expect(await readEscalationAnswers(db, 'not-a-run')).toEqual({ total: 0, entries: [] });
+      // Review 2026-09-29: the events' aggregate id is text, so an uppercase Run id must still
+      // find them, and read exactly what the lowercase id reads.
+      expect(await readEscalationAnswers(db, runId.toUpperCase())).toEqual(await readEscalationAnswers(db, runId));
     });
 
     it('says an Abort canceled the Run from the answer’s own event, and reads nothing of another Run', async () => {
@@ -514,6 +517,7 @@ describe.skipIf(!url)('the decisions on the Execution Timeline, on PostgreSQL', 
       // The Escalation the Run ended on timed out; nobody answered it.
       expect(await readEscalationAnswers(db, runId)).toEqual({ total: 0, entries: [] });
       expect(await readPauseRequests(db, 'not-a-run')).toEqual({ total: 0, entries: [] });
+      expect(await readPauseRequests(db, runId.toUpperCase())).toEqual(await readPauseRequests(db, runId));
       expect((await readPauseRequests(db, runId, 0)).entries).toEqual([]);
       expect((await readPauseRequests(db, runId, PAUSE_REQUEST_LIMIT + 1)).entries).toHaveLength(1);
     });
