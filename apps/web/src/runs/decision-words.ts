@@ -21,9 +21,9 @@ import type { PauseStepNamer } from './pause-words';
  * A `{name}` slot is left in a template for the surface to fill with `ActorName`, and a
  * `{step}` is named the way the pause entries name one (`pause-words.ts`).
  *
- * The owner approved the wording marked APPROVED on 2026-09-26 ("approve all"). Every
- * other sentence here is `[PROPOSED, needs owner confirmation]`: the story's rule is that a
- * sentence its approved list does not hold is still Ask First.
+ * Every sentence here is owner-approved: those marked APPROVED on 2026-09-26 (sheet 1,
+ * "approve all"), and those marked `sheet 2, Bn` on 2026-09-29 (wording sheet 2, version 2,
+ * "approve all on sheet 2"). A new sentence is still Ask First.
  */
 export const ESCALATION_ANSWER_WORDS = {
   /** APPROVED. The section heading, beside "Pauses and resumes". */
@@ -45,13 +45,13 @@ export const ESCALATION_ANSWER_WORDS = {
   /** APPROVED. The link to the Escalation's jump target on Replay. */
   openInReplay: 'Open in Replay',
   /**
-   * PROPOSED. The raise names its step, and its own Evidence does not establish one Work
+   * Sheet 2, B1. The raise names its step, and its own Evidence does not establish one Work
    * Item at that step: the step is said, and so is the missing record.
    */
   workItemNotRecorded: 'The Work Item this Escalation was raised for was not recorded.',
-  /** PROPOSED. A row whose answer is not one of the options it offered. */
+  /** Sheet 2, B2. A row whose answer is not one of the options it offered. */
   answerUnreadable: 'The answer this Escalation received could not be read.',
-  /** PROPOSED. The bounded list's own caption, when it does not hold every answer. */
+  /** Sheet 2, B3. The bounded list's own caption, when it does not hold every answer. */
   shown: 'Showing the first {shown} of {total} Escalation answers.',
   /** The candidate's own text, which the Audit Agent wrote: the existing inert label. */
   candidateField: MATCH_DECISION_WORDS.candidateField,
@@ -65,23 +65,23 @@ export const PAUSE_REQUEST_WORDS = {
   /** APPROVED. It copies the cancellation's own sentence for a request the Run outran. */
   runEnded: 'The Run ended before the pause took effect, so its own outcome stands.',
   /**
-   * PROPOSED. A "pause after this inspection" request retired by a request to pause at
+   * Sheet 2, B4. A "pause after this inspection" request retired by a request to pause at
    * once: the Run did not end, so the approved sentence would be false here.
    */
   replaced: 'A request to pause the Run at once replaced it before it took effect.',
-  /** PROPOSED. A superseded request whose recorded reason this build does not name. */
+  /** Sheet 2, B5. A superseded request whose recorded reason this build does not name. */
   outcomeUnknown: 'Why this pause request did not take effect could not be read.',
-  /** PROPOSED. The inspection a "pause after this inspection" request was to follow. */
+  /** Sheet 2, B6. The inspection a "pause after this inspection" request was to follow. */
   afterInspection: 'It asked to pause after {step}.',
-  /** PROPOSED. That inspection, when its marker row does not resolve in this Run. */
+  /** Sheet 2, B7. That inspection, when its marker row does not resolve in this Run. */
   inspectionNotRecorded: 'The inspection it asked to pause after was not recorded.',
-  /** PROPOSED. The record names who asked and not when. */
+  /** Sheet 2, B8. The record names who asked and not when. */
   requestedByUntimed: 'Requested by {name}. When it was requested was not recorded.',
-  /** PROPOSED. The record names when and not who. */
+  /** Sheet 2, B9. The record names when and not who. */
   requestedAtUnnamed: 'Requested at {time}. Who requested it was not recorded.',
-  /** PROPOSED. The record names neither. */
+  /** Sheet 2, B10. The record names neither. */
   requesterNotRecorded: 'Who requested this pause, and when, was not recorded.',
-  /** PROPOSED. The bounded list's own caption, when it does not hold every request. */
+  /** Sheet 2, B11. The bounded list's own caption, when it does not hold every request. */
   shown: 'Showing the first {shown} of {total} pause requests.',
 } as const;
 
@@ -91,14 +91,14 @@ export const PAUSE_REQUEST_WORDS = {
  * `{absence}` the resolver's own reason a target has no frame.
  */
 export const ESCALATION_REPLAY_WORDS = {
-  /** PROPOSED. The Escalation's jump target opened on a frame. */
+  /** Sheet 2, B12. The Escalation's jump target opened on a frame. */
   opened: 'Opened at the Escalation “{kind}”.',
-  /** PROPOSED. The Escalation is a jump target with no frame to open. */
+  /** Sheet 2, B13. The Escalation is a jump target with no frame to open. */
   noFrame: 'Opened for the Escalation “{kind}”: {absence}.',
-  /** PROPOSED. The link names an Escalation this Replay view cannot resolve. */
+  /** Sheet 2, B14. The link names an Escalation this Replay view cannot resolve. */
   unavailable: 'The Escalation this link names is not available in this Replay view.',
   /**
-   * PROPOSED (the inspection link's own words on the same page). Said after `noFrame` or
+   * Sheet 2, B15 (the inspection link's own words on the same page). Said after `noFrame` or
    * `unavailable` only when the "Jump to" list below holds a target with a frame: in a
    * Replay where no target has one, it would send the reader to a list of absences.
    */

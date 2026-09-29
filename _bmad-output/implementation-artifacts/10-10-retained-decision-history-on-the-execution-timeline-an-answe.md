@@ -2,7 +2,7 @@
 title: 'Retained decision history on the Execution Timeline: an answered Escalation and a superseded pause are inspectable entries'
 type: 'fix'
 created: '2026-09-25'
-status: 'blocked'
+status: 'in-review'
 review_loop_iteration: 0
 implementation_authorised: true
 implementation_authorisation: 'Owner, 2026-09-26: "go, new branches OK" (implement 10.6 to 10.10 on new branches); wording approved 2026-09-26 ("approve all")'
@@ -159,7 +159,8 @@ frozen intent, original baseline and approved wording above are unchanged.
 
 ## Auto Run Result
 
-- Status: **blocked WIP**, not done. Sheet 2B (B1–B15) remains proposed and needs
+- `[SUPERSEDED 2026-09-29: sheet 2B approved; see "Owner decision 2026-09-29" below]`
+  Status: **blocked WIP**, not done. Sheet 2B (B1–B15) remains proposed and needs
   owner confirmation. The 100-entry scope and the outstanding introduction/late-target
   decisions remain explicit above.
 - Local exact runtime: Node 24.20.0 / pnpm 11.25.0. Root `pnpm typecheck` and
@@ -208,3 +209,25 @@ on `8760976e` passed 30 browser tests. The report identifies the Replay record-k
 fix and its post-fix captures, and distinguishes known presentation findings and uncaptured
 rare variants from passing checks. Proposed wording and owner decisions remain pending;
 this entry does not claim exhaustive all-state acceptance or finalize the story.
+
+### Owner decision 2026-09-29, and the merges that followed
+
+The owner approved all of
+[wording sheet 2, version 2](owner-wording-sheet-2-v2-2026-09-27.md) on 2026-09-29, part B
+included: B1–B15 as written. Every sentence in `decision-words.ts` is now marked with its
+approval (sheet 1 APPROVED, or `Sheet 2, Bn`); the text is unchanged, and each was checked
+against the sheet character for character (B13's `{why there is no frame}` is the code's
+`{absence}` slot). No "PROPOSED" mark is left under `apps/` or `docs/`.
+
+Then, per the handover: `claude/10-6-legacy-visibility` at `6957116` (A11, D2 b, review
+patches) merged in, then `claude/10-9-replay-bounded-history` at `27743be`. Conflicts: the
+Replay page's imports (both sides kept), the shared screenshot review (10.6's version is a
+superset), and `sprint-status.yaml` (10.10 `in-progress`; 10.9's new 10-11 entry kept). Two
+fixtures gained what 10.6 added: `subjectKeyText` on a frame view, and a no-gaps
+`readRecordReplayGaps` on the Replay page mock (the "page mock lists exports" rule).
+
+The three open items in the triage log above (the 100-entry bound on the Timeline lists, the
+pause-section introduction that does not mention unhonoured requests, and a Timeline link to
+an Escalation outside Replay's bounded targets) are owner decisions that sheet 2 did not
+cover. They are listed for the owner and do not block this story's own acceptance criteria.
+
