@@ -197,6 +197,68 @@ timeout, and can be closed exactly once.
 35. **A decision is only consumed when the Observation transaction commits.** The
     checkpoint's `waitId`/`pendingWait` are cleared inside the same `guarded` transaction
     that calls `registerObservations`.
+35a. **A record a person matched carries the answer that matched it (Story 10.6, legacy
+    4.7).** `applyAgentHumanDecision` sets `matchDecision: { waitId }` on the batch item it
+    builds from an answered `choose-candidate` wait, and `registerObservations` writes the
+    link into the batch's existing `execution.observations-registered` event as a
+    conditional `humanMatchDecisions` key — `[{observationId, waitId}]`, present only when
+    the batch holds a human-selected match, so every other event is byte for byte what it
+    was. It refuses (`match-decision`) a `human-matched` record without a decision, a
+    `platform` record with one, and a malformed wait id, before any read, so the batch rolls
+    back whole. No event type, column or migration was added, and the thirteen-key
+    Observation digest is unchanged.
+35b. **The surfaces read that link exactly, and nothing else.** `readHumanMatches` follows the
+    registration event's link to this Run's wait row and answers `linked` only when ONE wait
+    is named and it is a `choose-candidate` wait closed by an ANSWER that chose a candidate
+    (not a platform option) with an actor and a time: the chosen candidate's position among
+    those offered, its label (agent-generated, rendered inert), who answered and when. Any
+    other human-matched record — registered before the link existed, or with a link that
+    does not establish an answered choice — is `not-linked`, and the surface says the
+    decision is not linked. Nothing is paired by time. The Result, the record review queue
+    and inspector, and the Exceptions list all show the flag ("Human-matched", the word the
+    Evidence cards already print) with the decision; a platform match shows none. The
+    selection is refused above `MATCH_DECISION_SELECTOR_LIMIT` rather than cut, because a
+    dropped entry would show a human match as a platform one. The sentences are
+    owner-approved (sheet 1, 2026-09-26) and live in `apps/web/src/runs/match-words.ts`.
+
+## The answered Escalations on the Execution Timeline (Story 10.10)
+
+An event in the audit chain is not a history entry a reader can see (owner, 2026-09-25).
+Every Escalation a person answered is therefore an entry on the Execution Timeline tab
+(legacy 4.8 AC 4, 5.6 AC 3). No event type, column or migration was added, and no event is
+rewritten: the entry reads the wait row and the two events already written with it.
+
+35c. **The section lists answers, and only answers.** `readEscalationAnswers`
+    (`packages/infrastructure/src/runs/decision-history.ts`) reads this Run's waits that are
+    not pauses and were closed by an `answer`: an exact total and a bounded list of
+    `ESCALATION_ANSWER_LIMIT`, in the order the waits were opened. A timed-out or withdrawn
+    wait is not an answer and is not listed. The section is "Escalation answers", beside
+    "Pauses and resumes", and a Run nobody answered an Escalation on renders no section.
+35d. **An entry states what the row and its events hold, and nothing else.** The kind
+    (`ESCALATION_KIND_WORDS`); who answered and when (the wait's `actor` and `closed_at`,
+    the person named through `ActorName`); and the answer. A candidate answer is said by
+    its position among the candidates the question offered ("chose candidate 2 of 3"), and
+    a platform option in the platform's own words, looked up by its id and never taken from
+    the label the row stored. An answer id the row did not offer is said to be unreadable.
+    The candidate label is agent-generated, so it shows only inside `UntrustedText`, and
+    the question text is not shown at all. "The Run was canceled by this answer." is read
+    from the answer's own `execution.escalation-answered` event (the answering person,
+    `answerOptionId: abort`, `state: CANCELED`), never from the Run's present state.
+35e. **Where it was raised is read by identity, never by time.** The wait's ONE
+    `execution.escalation-raised` event, written by `escalation-platform` from the
+    platform, names the plan step. The Work Item is established only when EVERY supporting
+    Evidence id that event named was captured (`run_evidence_capture` → `run_tool_action`
+    → `run_step_execution`, the Step Execution's Work Item first — the Replay rule — every
+    join bound to the Run) by ONE Work Item of this Run at that same plan step. A wait with
+    other than one raise event, or a raise that named no step, says "The step this
+    Escalation was raised at was not recorded."; a step whose Work Item is not established
+    names the step and says the Work Item was not recorded.
+35f. **Each entry links to Replay at the Escalation's own jump target** once the Run has
+    ended (`/runs/<id>/replay?escalation=<waitId>`, resolved as `replay-v1.md` states). An
+    active Run has no Replay, so its entries offer no link. The owner approved the
+    section's words on 2026-09-26; the sentences for the cases the approved list does not
+    cover (a Work Item not recorded, an unreadable answer, a bounded list) were approved on
+    2026-09-29 (sheet 2, B1–B3). All of them are in `apps/web/src/runs/decision-words.ts`.
 
 ## Untrusted question text
 

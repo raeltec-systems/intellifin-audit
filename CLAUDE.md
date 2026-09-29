@@ -92,6 +92,421 @@ breaking its rule in the document; run it on demand, it is not a CI gate.
   same data directory. `-k /tmp` keeps the socket where the running server has it, and `-l`
   keeps a log.
 
+## 2026-09-26 — Stacked story PRs need an admitted CI base
+
+Stories 10.9 and 10.10 keep the handover's `claude/10-6-legacy-visibility` PR base.
+The CI pull-request branch filter must include that exact base or a published candidate
+receives no run. Adding the base changes admission only; jobs, assertions, permissions
+and main-only push behavior stay unchanged. Never infer verification from a successful push.
+
+## 2026-09-26 — Decision-history review reads a total and its rows together (Story 10.10 continuation)
+
+`[EXTENDED 2026-09-29]` Sheet 2B is decided (approved in full); omitted-history access and a
+request-aware introduction are still owner decisions, listed in the 10.10 record.
+
+A bounded history's count and rows must share a statement snapshot while another decision
+commits. Use a window count in the row query, including a zero-limit request; do not count
+first and then read a newer list. The regression test commits a second fact after the first
+real SELECT resolves and checks that the returned count still describes its rows.
+
+Supporting Evidence IDs are accepted as case-insensitive UUID text but PostgreSQL returns
+lowercase UUIDs. Normalize the map lookup, not the immutable event. Sentences that name an
+instant leave a slot for the shared `Timestamp`, retaining exact `datetime` and `title` with
+readable UTC text. Independent raise-writer negatives and absent/duplicate/mismatched Abort
+events pin the existing read contract; invalid option duplicates are already refused by the
+real raise command. Sheet 2B, omitted-history access and a request-aware introduction remain
+owner decisions, and this continuation remains WIP pending the database/browser gates.
+
+## 2026-09-26 — A decision a Run recorded is a Timeline entry, read by identity (Story 10.10)
+
+Story 10.10 meets legacy 4.8 AC 4, 5.6 AC 3 and 5.4 AC 3: an answered or aborted Escalation and
+a pause request the Run never honoured were events in the audit chain and nothing a reader could
+see. The Execution Timeline now lists them — "Escalation answers" beside "Pauses and resumes",
+and a "Pause request" entry inside it. No event type, column or migration was added, and no
+event is rewritten. Contracts: `durable-escalation-v1.md` (35c–35f), `run-pause-v1.md`,
+`replay-v1.md`.
+
+- **Every fact is read by identity, never by time.** A wait's ONE `execution.escalation-raised`
+  and ONE `execution.escalation-answered` event are found by `payload->>'waitId'`; a wait with
+  more than one establishes nothing. The Work Item is established only when EVERY supporting
+  Evidence id the raise named resolves through `run_evidence_capture` → `run_tool_action` →
+  `run_step_execution` (the Step Execution's Work Item first), every join bound to the Run, to
+  ONE Work Item at the raise's own plan step; otherwise the entry names the step and says the
+  Work Item was not recorded. "The Run was canceled by this answer." comes from the answer's own
+  event, never from the Run's present state.
+- **Each event is read only from the writer that appends it** — the raise from
+  `escalation-platform`/platform/success, `lifecycle.pause-superseded` from
+  `result-sealer`/worker/failure, `lifecycle.deferred-pause-superseded` from
+  `deferred-pause-coordinator`/web or worker/failure. **A forged-writer test changes ONE field
+  per case**: a fixture that differs in every field is refused by whichever check survives, so
+  it proves one check exists and not which. The first version did that, and the mutation that
+  dropped one writer check survived it.
+- **"Every Evidence id" needs a MIXED case.** `every` → `some` survived the first round, because
+  each fixture's Evidence either all resolved or none did. The test that kills it names one
+  captured and one uncaptured artifact on one raise.
+- `[EXTENDED 2026-09-29: every sentence this note calls proposed was approved — sheet 2, B1–B15]`
+  **An approved sentence can be false in a case its list did not foresee.** "The Run ended
+  before the pause took effect, so its own outcome stands." is right for a request the Run
+  outran; a "pause after this inspection" request retired by a request to pause at once saw no
+  Run end, so it says a PROPOSED sentence that a pause at once replaced it, and a reason this
+  build does not name says it could not be read. Every proposed sentence is in
+  `apps/web/src/runs/decision-words.ts` and needs owner confirmation.
+- **The owner's approved layout fixes the entry order** — title, who answered, the answer (and
+  the abort), where it was raised, "Open in Replay". It is not chronological like a pause entry,
+  and that is the approval, not an inconsistency to repair.
+- **Reading the screenshots found a false sentence no test could.** A Run with no frames, opened
+  from "Open in Replay", said "…no frame was captured before it was raised. Choose a recorded
+  target below." over a "Jump to" list of absences. The pointer is now said only when that list
+  holds a target with a frame (`escalationReplayAbsenceWords`), proven by mutation both ways.
+- **Replay writes a selection note in up to four places when no frame is selected** (the status
+  line, the stage, "What the Agent was doing", "Observations") — the inspection link's pattern.
+  A browser assertion on it targets the status line, `.ls-session > p[role="status"]`; a
+  `getByText` meets Playwright's strict mode there.
+- **The reads live in `decision-history.ts`, not in `run-detail-repository.ts`** as the Code Map
+  said, so Story 10.9's parallel edits to that file cannot conflict. `capture-run-binding`
+  survives mutation by design: the Run-bound `workItems()` read is a second lock on that door.
+- **A cropped screenshot is not a measurement.** In one crop the two section headings looked
+  different sizes; `getComputedStyle` read 16px/600 for both, and all seven entries of the two
+  lists had the same gap, padding, border, left edge and width. Measure before changing CSS.
+- **Vitest does not check types.** The integration file passed 6/6 three times while it gave
+  `pauseRun` a `requireControllerLease` dependency it does not have (a pause takes no
+  controller lease) and typed a forged event type as `string`; only the root `pnpm typecheck`
+  refused both. Run it before committing a test file, not only after.
+
+## 2026-09-26 — Preserve the database's Replay landing ordinal (Story 10.9 continuation)
+
+`readEscalations` compares stored timestamps at database precision. The default Replay prefix
+must use its `framesThrough` ordinal for every landing, not recompute the in-prefix case with
+`Date.parse`: distinct stored instants can collapse into one millisecond and select a capture
+that happened after the question. Two red-green regressions cover an intervening wait and a
+wait before the first capture within the same rendered millisecond.
+
+A clicked record's optional frame denominator cannot be calculated from a bounded session
+prefix. Withhold that denominator when the full record total is unknown; retain the exact
+session counter. An inspection page has no jump buttons and does not enter that clicked state.
+The bounded-history P-4 fixture uses retry-or-skip decisions; P-4 refuses candidate matching.
+
+## 2026-09-26 — A bounded Replay view says what it covers, and the count beside a frame is exact (Story 10.9)
+
+Story 10.9 closes legacy 5.8's limitation (2): Replay's default view read its waits, its
+Observation-registration events and its Exceptions in pages of `REPLAY_PAGE_SIZE` (500) and
+said nothing when a page was full. No migration, no event type, no raised limit (the owner did
+not approve raising one). Contract: `replay-v1.md`, "A bounded jump list says what it covers".
+
+- **A count beside a frame is computed per frame in SQL, never summed from a bounded page.**
+  The view summed the first 500 registration events in the browser, so past them the count
+  stopped short while its sentence read as a total. `readFrames` now answers each frame's
+  count through `observationTotals`, the ONE fragment `readInspectionReplay` also uses, so one
+  frame cannot have two counts. Sixth appearance of "a limit belongs to the cardinality of the
+  read".
+- **A bounded list carries its exact total and says what it shows, ABOVE the list, in the
+  owner's words** (`REPLAY_BOUND_WORDS`). `readEscalations` and `readReplayExceptions` answer
+  `{ rows, total }`; `shown` is counted from the targets the list renders, never taken from a
+  read, so the sentence always describes the list under it. A pause is neither listed nor
+  counted: it is not a jump target.
+- **"The first N" must be true of the Run, so each list is read in RAISE order.** Exceptions
+  were read by `exception_id`, a derived UUIDv8 (a hash), so the 500 shown were an arbitrary
+  500. One registration raises its whole batch at one instant (a P-4 page raises every
+  parameter's Exception at once), so within an instant they are read by record, byte-wise
+  (`COLLATE "C"`), and the jump list keeps each read's order where targets tie on a frame.
+  An order no reader can see is no order: by id, a P-4 page's Exceptions were listed in none.
+- **An Escalation's landing frame is found over EVERY frame the Run registered.** Resolved over
+  the 500 frames read, an Escalation raised after them landed on the last frame read, a screen
+  the question was not about. The read returns how many frames precede its frame and the
+  inspection page (`?workItem=&cursor=`) that holds it; the row says the frame is not among
+  those shown and links that page.
+- **The rest is reached through the path that already exists.** "record review" in the
+  owner's sentence links the Evidence tab, where a record's inspector offers **Replay this
+  inspection**. No new route and no new read.
+- **Reading the screenshots found what every test passed over.** The default view's counter
+  said `Frame 500 of 500` over a Run of 520 frames, the bound presented as the session while
+  its inspection pages said `of 520`; it counts among every retained frame now. The
+  Exceptions of a P-4 page were listed in no order (above). The bound sentences, as three
+  paragraphs in an `ls-stack`, were spaced like three items of the card; they are one note,
+  a sentence to a line. And a row with no frame sat off the buttons' text edge in another
+  size; it shares their edge, size and row height now. A test asserts what it was told to;
+  only a reader looking at the page asks whether the page is true.
+
+Three mechanical notes:
+
+- **`jsonb_to_recordset` matches keys to its column list by exact name, and a key that does not
+  match is NULL, not an error.** The integration fixture's camelCase `stepExecutionId`
+  inserted NULLs until the keys were `step_execution_id`.
+- **`ORDER BY sequence` names the OUTPUT column when the select list has one called
+  `sequence`.** The test oracle selected `sequence::text AS sequence` and so ordered
+  1, 10, 100, ...; qualify it (`ORDER BY audit_events.sequence`).
+- **The over-the-bound browser fixture is its own spec file** (`replay-bounded-history.spec.ts`),
+  because Story 10.6's branch edits `replay.spec.ts`. It seeds one sealed, terminal Run in ONE
+  transaction, with its frame objects in storage BEFORE the commit: the worker's integrity
+  sweep reads a sealed package's artifacts, and a missing object is a permanent finding.
+
+## 2026-09-26 — Only the stream brings a lost Live View back, and the route boundary claims only what it knows (Story 10.8)
+
+- **A server re-read is not stream recovery.** `useLiveTimeline`'s `[url, cursor]` effect
+  restarted the silence clock whenever it ran, and a re-read that moves the cursor re-runs
+  it, so `BellLive` refreshing a page because ANOTHER Run ended showed `live` for 15 s and
+  reopened every live control for 60 s while the stream was down. `LiveClock`
+  (`live-status.ts`) now moves only on a frame the stream sends (a Timeline event or a
+  heartbeat); `followLiveStream` (`live-stream.ts`) opens a connection without touching it;
+  and a remount takes the clock the last subscription to the same stream left
+  (`createLiveClockHandOff`). Thresholds and `RUN_ENDING_EVENTS` are unchanged. Contract:
+  `docs/contracts/live-view-v1.md`, "Only the stream brings a lost page back".
+- **`open` is not a frame, so the stream speaks first.** The events route answers before it
+  arms its LISTEN, and one whose LISTEN fails sends `end`, closes and is reopened two seconds
+  later, so an `open` counted as a frame calls a stream that delivers nothing `live` every two
+  seconds. `open` is therefore not listened for at all, and the CHANNEL sends one heartbeat as
+  soon as a stream is armed and caught up, before the first tick (both streams; none when the
+  LISTEN or the first read fails). The review found why that had to be the server's job: with
+  the first frame ten seconds away, every planned renewal gave ~22 s of silence on a healthy,
+  quiet Run (the lifetime ends just before a beat, then the 2 s retry, then 10 s), every page
+  move more than ~5 s after a beat went `stale`, and a page moved every few seconds never
+  heard a frame and went `lost`. **A client's silence rule and the server's cadence are one
+  system: test them together** — `tests/unit/live-channel-cadence.test.ts` drives the real
+  engine and the real subscription through an emulated `EventSource` that takes its retry
+  from the stream's own `retry:` frame.
+- **A remount hands on everything the clock said, `live` included** (`resumedLiveClock`
+  keeps `everConnected`), minus only the time no subscriber was listening. The hand-off is a
+  layout effect so the first paint is the inherited clock; the layout CLEANUP closes the
+  connection before it leaves the clock (`endLiveSubscription`), because the passive
+  cleanup runs after the next page has already taken it and a frame in between would land
+  on state nobody reads; and every repaint goes through `nextLiveTick`, because React skips a
+  setter handed the value it holds and two `Date.now()` in one millisecond are equal.
+- **A stream's first cursor is its page's own, never the larger of it and the last seen.**
+  `beginLiveSubscription` resets it when the stream changes. The page reads the chain head
+  BESIDE its content (`Promise.all`), so a head ahead of the content is possible, and
+  resuming from it would skip the one frame that says the Run ended. `[NAMED, NOT FIXED]` The
+  same race exists at first mount, which starts from that head.
+- **An effect body the unit suite must see lives outside the effect.** `followLiveStream`
+  has no React and no DOM and is driven with a fake `EventSource`; a new cursor is a second
+  call with the SAME state, which is exactly what the re-running effect does.
+- **"Throughout" means more than one read.** Mutation put the clock reset back and the
+  browser test failed on its THIRD sample, not its first: the status re-renders on a
+  one-second tick, so one read right after the re-read passes against the defect.
+  `expectThroughout` reads every fact in one page read, eight times over four seconds.
+- **A test that a re-read does NOT reset something must first prove the re-read
+  re-subscribed.** `live-drop.spec.ts` counts `EventSource` constructions per URL through an
+  init script and requires a new one before it asserts anything; without that precondition
+  it would pass against the defect whenever the cursor happened not to move.
+- **The route boundary cannot tell a page that failed to build from a Server Action whose
+  acknowledgement was lost, so it never says nothing was changed.** After a committed flag
+  "Couldn't load this page. Nothing was changed." was false. Its words are in
+  `apps/web/src/design/route-boundary-words.ts` (approved by the owner on 2026-09-26; the
+  Run sentence is the owner's candidate, pinned against epics.md Story 10.8 on disk), and its
+  one control is a plain `<a href>` to the page: a GET that works without script and never
+  resubmits. Never `reset()` there: it re-renders the router cache, the page as it was
+  BEFORE the action, which is the view that invites a second submission.
+- **The deployed harness matches the boundary's HEADING**, which heads the boundary on every
+  path and which both banner sentences start with; `acceptance-sentences.test.ts` pins it
+  to the words module. An Evidence link also fails on a status of 400 or more, on the
+  not-found page's heading (a page that calls `notFound()` after streaming starts answers
+  200) and on `RunDenied`'s shape (heading "Run" over a danger banner).
+- **"Nothing changed" has one pattern, `NOTHING_CHANGED_CLAIM`** (`design/nothing-changed.ts`,
+  React-free so specs import it). Four retyped regexes each missed a different phrasing
+  ("Nothing changed.", "No changes were made.", "unchanged", …); `nothing-changed.test.ts`
+  lists every phrasing it must catch and every real unknown-outcome sentence it must not.
+- **The boundary's link is built from `usePathname()` + `useSearchParams()`**, which the
+  server renders too. A `window.location` store gave the no-JavaScript render a link without
+  the query, and every test rendered only that server snapshot. EXPERIENCE.md now has one row
+  for the route boundary (the five approved sentences) beside "Action failed", which stays
+  for refusals; `route-boundary-words.test.ts` pins all five to that row on disk.
+- **Wait for `data-client-ready` before touching a native `<details>`, and never count
+  `/__nextjs*` requests.** Clicking a disclosure before React attaches leaves an `open` the
+  server never rendered; React reports the hydration mismatch and `next dev`'s overlay POSTs
+  `/__nextjs_original-stack-frames` to symbolicate it. The full browser suite failed
+  `flag-run.spec.ts:185` on exactly that POST, counted as a resubmission (`1ee6a204`).
+- **Screenshots read as a reader would found four things no test could.** A withdrawn
+  control's reason was only its visually hidden description, so a `lost` Live View showed
+  greyed Pause and Cancel and said why nowhere unless the flag disclosure was opened:
+  `LiveGateNote` now states the stream's reason in the header of Live View and the Workspace.
+  Every link drawn as a button was underlined (`.ls-button` sets `text-decoration: none`).
+  The flag opener had no size class and sat shorter than its neighbours. And Run Detail's
+  toolbar laid Pause out in a centred column: a rule that sets `display: flex` on an
+  `.ls-stack` keeps the stack's `flex-direction: column` unless it says `row`. Two harness
+  rules came with them: `toBeVisible` passes a 1px clipped element, so "a sighted reader sees
+  it" is asserted as a painted size outside `.ls-visually-hidden`; and a second `goBack`
+  waits for the first one's address.
+- `[NAMED, NOT FIXED]` **The same class, on surfaces this story does not own.** The
+  Administration controls' client catch branches (`RoleControl`, `UserForm`, `BindingForm`,
+  `RegistrationForm`) and the administration actions' `UNAVAILABLE` still say "Nothing was
+  changed." when a Server Action throws or its response is lost. And without JavaScript a
+  flag's result page is the answer to a POST, so the browser's own Reload offers to
+  resubmit it; the boundary's link does not. **A Builder Submit renders the not-found page
+  ("… Nothing was changed.") in its own action response**: any `revalidatePath` makes Next
+  re-render the CURRENT page (`skipPageRendering` in its action handler), and the Builder
+  calls `notFound()` for a version that is no longer a Draft, before `VersionActions` pushes
+  to the version page. Found by reading, not reproduced.
+- `[NAMED, NOT FIXED]` **A full document load starts a fresh clock.** The browser's Reload,
+  the boundary's "Reload this page" and the `ended` sentence's "Refresh to continue" all load
+  a new document, which reads `connecting`, then `stale` — neither a gate reason — so while
+  the stream is still down its live controls stay enabled until that page has itself counted
+  60 s. Deferred by the review as a follow-up; the command still refuses a stale action.
+
+## 2026-09-26 — Review continuation keeps exact reads exact (Story 10.6)
+
+- Adapter Evidence readers accept at most 64 IDs. Batch distinct IDs at the caller; an
+  exact read must not silently drop the 65th artifact. A later batch failure keeps the
+  existing unreadable result for the whole read.
+- A pause while revisiting an acquired adapter reference holds the next unfinished unit.
+  Preserve cancellation checks at their original boundaries. If no unit remains, leave
+  the pause request for the next stage or terminal transition.
+- A metadata link beyond a bounded overview carries an exact selector. Resolve it only
+  after Run authorization, through the Run-bound reader, and deduplicate its anchor.
+- Keep record keys such as `E-000102` in the existing `ls-nowrap` span; Chromium breaks at
+  their hyphens. Keep the KEY only (`recordKeyText`), never the whole label: a long unmasked
+  name that cannot wrap pushes a 239 px rail past the page edge at 1024 px.
+- The caller makes a Run's terminal transition; `completeRun` then seals the Result, and moves
+  the Run state itself only for §E's COMPLETED → INCONCLUSIVE row (`complete-run.ts:202`).
+- Handover sheet 1 is approved. `[EXTENDED 2026-09-29]` Sheet 2, version 2 (A1–A11, B1–B15,
+  D1 yes, D2 b) was approved by the owner on 2026-09-29; 10.6 removed its marks and built A11
+  and D2 b, and 10.10 removes its own marks for B1–B15. Before that it was pending; a
+  successful test is not owner approval. Check every sentence a module shows
+  against the approved sheet before marking the module approved: five pause forms were in
+  no sheet and were marked approved anyway (review of the continuation, 2026-09-27).
+
+## 2026-09-26 — A fact the records do not link is linked on new events, and read by identity (Story 10.6)
+
+Story 10.6 meets five compiler-1 visibility legs the closure register found on the retained
+surfaces (4.7, 5.2, 5.3, 5.4, 5.6); 4.7 and 5.2 stay open until Story 14-11a's export legs.
+No event type, column or migration was added; each missing link rides on a key of
+an event that already exists, written on NEW events only, and every surface reads it by
+identity and says what an older record does not hold. Contracts: `run-pause-v1.md`,
+`durable-escalation-v1.md` (35a, 35b), `observation-registration-v1.md`, `replay-v1.md`,
+`replay-asset-set-v1.md`, `live-view-v1.md`.
+
+- **A conditional payload key is the no-migration way to add a link, and it must be absent,
+  not empty, when it does not apply.** `humanMatchDecisions` on
+  `execution.observations-registered` (4.7) and `planStepId`/`heldWorkItemId` on
+  `lifecycle.run-paused` (5.4) follow the `absenceDigests` precedent: an event without the
+  case is byte for byte what it was, and the Observation digest does not move. The existing
+  `workItemId` key on a pause keeps its meaning, because the interaction receipt guard
+  (generations 55 to 59) compares it.
+- **A resume cannot name the attempt it starts, because none exists yet; the attempt names
+  the resume.** The stage that starts the held step writes `resumedWaitId` on the attempt's
+  own start event. `RunPauseContext.readPendingResume` is REQUIRED, which is what found every
+  stage context; `resumeLinker` reads it once per stage invocation and links only the FIRST
+  attempt at the held plan step (and Work Item). A per-attempt read would scan the chain once
+  per attempt.
+- **`PauseHold` is REQUIRED on `performPause` and `hold` is REQUIRED on `PauseBanners`.** An
+  optional parameter that changes what a record says is one a call site can forget — the
+  lesson of the mid-item boundary that once passed no in-flight pair.
+- **"Not linked" and "not recorded" are said, never shown as a blank.** A human-matched record
+  whose link does not establish an answered candidate choice keeps its flag and says the
+  decision is not linked; a pause whose event named no step says its step was not recorded;
+  a hold the banner cannot read says so. Nothing pairs a wait with a record, or a resume with
+  an attempt, by time.
+- **A pause fixture sits where a stage really holds one.** The sign-in and adapter stages
+  pause only BETWEEN units; only the Work Item stage supersedes an attempt in flight, and it
+  gives the attempt back, so the restarted attempt carries the SAME number and only its Step
+  Execution tells the two apart. The first browser journey superseded a sign-in attempt and
+  restarted it as attempt 2 — a shape no Run produces — and passed. `pause-resume.spec.ts`
+  now holds the first pause before the sign-in and the second mid-attempt at the page's
+  inspection (a P-4 Work Item, subject key NULL).
+- **A human-selected match exists only in a P-1 Run.** The P-4 page path refuses a
+  choose-candidate decision (`human-decision-refused`); only P-1's name search offers two
+  accounts. The first `human-match.spec.ts` fixture recorded a human match in a P-4 Run and
+  passed. It is a P-1 Run now — LoanCore from the catalogue, one Work Item per record, the
+  leavers binding's own mask on `full_name` — and it asserts no surface beside the decision
+  note shows a masked name (proven by removing the mask: the Exceptions list and the record
+  review then fail).
+- **A selection a read cannot answer whole is refused, never cut.**
+  `MATCH_DECISION_SELECTOR_LIMIT` is sized from the callers' own page limits; a dropped entry
+  would render a human match as a platform one.
+- **One predicate per fact, shared by the writer and the surface.** `frameMissingPredicate`
+  serves the terminal transition's count and Replay's gaps; `readAdapterLog` serves Live View
+  and Replay, reading Evidence EXACTLY by the ids the steps name rather than the bounded
+  overview (the fifth appearance of "a limit belongs to the cardinality of the read").
+- `[EXTENDED 2026-09-29: approved — sheet 1 on 2026-09-26, sheet 2 v2 on 2026-09-29]`
+  **Every new sentence lives in a words module** (`match-words.ts`,
+  `pause-words.ts`, `replay.ts`'s `REPLAY_GAP_WORDS`, `live-view.ts`'s
+  `ADAPTER_ARTIFACT_WORDS.unavailable`), read back by the unit and browser tests; each was
+  proposed first and is now owner-approved. The export legs of 4.7 and 5.2 are Story 14-11a's.
+
+Two mechanical notes:
+
+- **`node_modules/.bin/tsc` is a shell shim, not JavaScript.** `node --max-old-space-size=…
+  node_modules/.bin/tsc` fails with `SyntaxError: Invalid or unexpected token` before
+  checking anything; run `NODE_OPTIONS=--max-old-space-size=2048 pnpm exec tsc …` instead.
+- **A page test whose `vi.mock` factory lists a module's exports needs the page's NEW import
+  mocked too**, even when the new call returns early: `live/page.adapter-log.test.ts` now
+  mocks `pause-read` (`readPauseHold`), which reads the database on a PAUSED Run.
+
+## 2026-09-29 — A 200 from the preview route can still carry no image
+
+- **A served read is not a served image.** When the sample moves between the broker's reply
+  and the proxy's re-read, `WorkspacePreviewProxy.read` keeps the metadata and withholds the
+  image (the `after.sequence` check in `workspace-preview-transport.ts`), and the route answers
+  200. `settledSample` took the first 200, so the SIGKILL test's `expect(oldSample.digest)
+  .toBeTruthy()` met `null`: CI on `477b6f7` (Story 10.10, which touches neither this spec nor
+  the preview code). A test that expects a public image re-reads until one is served
+  (`settledSample(page, runId, true)`); the private-mode reads keep the plain read, because
+  waiting for an image there would hide the suppression they prove.
+
+## 2026-09-26 — Every append to a Run's chain wakes the channel, and a burst keeps its last re-read (Story 10.7)
+
+- **The wake-up belongs to the append, not to its writers.** `appendAuditEvent` issues
+  `pg_notify('run_timeline', {runId, sequence})` for every append whose aggregate is a Run, in
+  the appending transaction and before anything below it can return early. Three families had
+  none (`evidence-access.*`, `notification.*-delivery`, the evaluation review's
+  `security.denied`), and the conversation narration's own notify sat after an early return
+  (a conversation at 1,000,000 messages). The writers' `notifyTimeline` ports stay: PostgreSQL
+  folds identical payloads of one transaction into one. No migration, trigger or event type.
+- **So the payload is spelled exactly as the writers spell it, `JSON.stringify({ runId,
+  sequence })`, key order included.** Another spelling is a second, unfolded notification, and
+  the list stream (one frame per wake-up, no cursor) forwards the event twice. Proven by
+  mutation: swapping the two keys fails the list-stream case with `[2, 2, 3, 4]`. The spelling
+  is pinned at EVERY site, not only the ones a test drives: `run-timeline-channel.test.ts`
+  walks the package and requires each `pg_notify('run_timeline', …)` to stringify an object
+  literal whose keys are `runId` then `sequence`, and names each offender by file and line.
+- **Only a Run's chain wakes it.** A Procedure's chain, or a UUID-shaped aggregate that names
+  no Run, must not: the list stream reads the row a notification names and would forward it as
+  a Run's event. Mutation: dropping the `if (run)` guard fails the any-writer case.
+- **A Run surface does not re-read on the reads of its own evidence.** Once every append woke
+  the channel, the Evidence inspector's own grant read (two `evidence-access.*` events on the
+  Run's own chain per render) woke the inspector again, and on an active Run it re-read itself
+  about once a second: two permanent chain events and one worker grant job each time.
+  `refreshesSurface` (`apps/web/src/runs/refresh-events.ts`) skips `evidence-access.*`,
+  `notification.*` and `security.denied`, which no Run surface renders. It is an exclusion
+  list, so a family added later still re-reads. Run Detail and the Runs list mount it through
+  `SurfaceLiveBanner` (a server component cannot pass a function to a client one); `LiveGate`
+  asks it before `refresh()` and keeps the Run-ending latch unconditional; and
+  `refresh-events.test.ts` refuses any other direct `<LiveBanner` mount. `BellLive` keeps its
+  own filter. The stream still carries every family; only the re-read skips three.
+  `surface-refresh.spec.ts` proves both paths with the real worker's grants: the inspector is
+  re-read once for a Run event and then holds at four `evidence-access.*` events past a
+  heartbeat (without the filter: 28), and Live View loads its frame with no re-read (without
+  the filter: 2). Its trigger is a `failure.retry` append, not a flag: the bell re-reads on a
+  flag too, so a flag's re-read count would depend on timing.
+- **Prove a WAKE-UP, not a heartbeat or a replay.** Open the per-Run stream one event behind
+  the head, wait for that replayed frame, keep the heartbeat a minute away and the delivery
+  deadline far below it. Count raw wake-ups on a second LISTEN and flush with a probe NOTIFY
+  (they arrive in commit order). A rolled-back append is a unit of work that throws AFTER its
+  work, under a 50 ms heartbeat, so a row committed with no wake-up would still be found. To
+  commit into the window between LISTEN and replay, hook the `listen` promise
+  (`countedSql(onListening)` in `run-timeline-channel.test.ts`).
+- **A throttle may delay the final re-read; it may never drop it.** `BellLive` was
+  leading-edge only, so a second qualifying event inside one second of the last re-read was
+  dropped and the bell and the Overview ended a burst one change short. It composes
+  `useThrottledRefresh` (trailing) now, the throttle Run Detail, the Runs list and Live View
+  already use. That is one rule, not one budget: the bell and a page's own banner are two
+  instances of it, each with its own one-second window. The Overview opens no stream of its
+  own, so the bell's re-read is its only live refresh, and it fires only on the bell's own
+  events (an Escalation raised, answered or timed out, a Run flagged, a Run ending). Recent
+  Runs, the versions awaiting approval and the Drafts stay as read until the reader navigates
+  or the next of those events arrives.
+- **A browser burst test freezes the page's clock** (`page.clock.setFixedTime`). With a real
+  clock a slow `next dev` round trip stretches the gap past the one-second window, and the
+  leading-edge throttle passes by accident; timers still run, so a trailing re-read still
+  fires. The list stream has no replay, so wait for its first HEARTBEAT (sent only once its
+  LISTEN is armed) before committing anything the page must see. Proven by mutation: the old
+  `BellLive` fails `bell-burst.spec.ts` with the bell still at "1 unread".
+- **Compare a flaky test at two commits in BOTH orders.** `agent-isolation.test.ts` failed 3 of
+  16 loaded runs at this story's head and 0 of 16 at the baseline `429e08c` while the baseline
+  always ran first in each pair; with the order swapped the baseline failed the same case at
+  the same line (1 of 16). All four failures were the second run of a pair, none of the 32
+  first runs failed it, and it passed 4 of 4 at both commits with no added load. The test's
+  module graph holds no file the story changed. A pair run in one fixed order confounds the
+  commit with the position, and read alone it would have named a regression that is not one.
+
 ## 2026-09-25 — A single read of a moving preview sample is a race the broker refuses on purpose
 
 - **The preview route answers 503 for a read that meets a new sample, and that is the product
@@ -626,7 +1041,9 @@ what produces the proof, so a check that cannot fail is a proof that is not one:
 Evidence-link check looked for `could not be read` and `no longer available` — phrases NO
 page in this product renders. The evidence inspector states every one of its thirteen
 `EvidenceSnapshotReadFailure` cases under one banner title, `Snapshot cell unavailable`, and
-the route boundary has EXPERIENCE.md's own `Couldn't load this page. Nothing was changed.`
+`[SUPERSEDED 2026-09-26 — see the Story 10.8 note at the top: the boundary no longer says it,
+and the harness matches its heading]` the route boundary has EXPERIENCE.md's own `Couldn't load
+this page. Nothing was changed.`
 So a link showing the inspector's own failure banner was reported as OPENED. **A sentence a
 checker looks for is pinned against nothing unless it is read back out of the page that
 renders it** — `copy.test.ts`'s discipline, which had never been applied to the harness.
@@ -1184,7 +1601,9 @@ Four mechanical notes:
   the adapter sweep selects, so the held claim is reopened in the same transaction and
   closed again after — see "2026-09-15 — Replay fixtures with a running worker" at the end
   of this file.
-- **Editing a file Next watches while a Playwright test is inside its silence window remounts the
+- `[FIXED 2026-09-26 — see the Story 10.8 note at the top: a re-run and a remount no longer
+  reset the clock; "no apps/web edit during a browser run" still stands]` **Editing a file Next
+  watches while a Playwright test is inside its silence window remounts the
   page.** `useLiveTimeline` resets `lastMessageAt` on every effect run (line 72), so Fast Refresh
   made the status cycle `connecting → stale → connecting` and never reach `lost`. The failure
   read as the 5.7 edge finding about reconnects resetting the clock; it was my edit. Same run,
@@ -1542,8 +1961,8 @@ that could not fail for the reason they existed, which is the shape this file ke
   export with `{ ...actual, useActionState }`; the rest of react stays the real module, so
   `react-dom/server` renders normally.
 
-**`[NAMED, NOT FIXED]` A lost Server Action response tells the auditor "Nothing was
-changed".** A flag form's action IS the Server Action — which is what makes it the one
+**`[FIXED 2026-09-26 — see the Story 10.8 note at the top]` A lost Server Action response tells
+the auditor "Nothing was changed".** A flag form's action IS the Server Action — which is what makes it the one
 control here that works without JavaScript, and what stops the component catching a dropped
 RSC response. The error reaches the route boundary, which renders EXPERIENCE.md's own
 "Couldn't load this page. Nothing was changed." over a flag that committed and notified. The
@@ -1746,7 +2165,10 @@ deterministic order across both kinds.
 
 Three mechanical lessons, and the first is the one that cost the most:
 
-- **A test whose fixture the server never sees cannot assert what the server does.**
+- `[SUPERSEDED 2026-09-26 — see the Story 10.8 note at the top: `lastSeqRef` is now
+  `LiveStreamState.lastSeq`, seeded at mount and by `beginLiveSubscription`; the behaviour
+  explained here is unchanged]` **A test whose fixture the server never sees cannot assert what
+  the server does.**
   `live-drop.spec.ts` intercepted the events route with SYNTHETIC sequences and asserted the
   page resumed at them. CI failed it twice and this machine passed it every time. The second
   CI failure said why in one line — ten reconnects, every cursor `0`, never `42` — and the
@@ -4641,3 +5063,20 @@ resolve the enabled opener and assert its dialog before testing later heartbeat 
 Never infer that an asynchronously rendered Acquire control is absent from an immediate
 `count()` after reload. Keep retained renewal events and their Run deletion in one
 Run-first cleanup transaction, including closed/open wait rows.
+
+## 2026-09-26 — Boundary mutation tests require sequential verification
+
+`tests/unit/boundaries.test.ts` plants `__boundary_violation__/violation.ts` files in the
+working tree while it proves each dependency rule. Run `pnpm typecheck`, `pnpm boundaries`
+and `pnpm test` sequentially in a worktree; parallel invocation can inspect a deliberate
+violation and report a false regression, or race another unit run's cleanup. Separate story
+worktrees remain independent. Confirm the runtime used by pnpm itself: a wrapper can pin a
+Node executable even when `node` on PATH reports the repository's required version.
+
+### Story 10 screenshot evidence from CI
+
+The opt-in `STORY_VISUAL_CAPTURE=1` helper records actual synthetic browser states at 1280×800 and also 1024×800 for Timeline/Replay. The separate visual workflow retains PNGs and page facts in a small artifact, without changing the existing test gates. A successful capture is evidence to inspect, never a visual approval. Preserve the viewport and scroll position around captures so the original interactions still run.
+
+### Replay narration preserves record keys at 1024 pixels
+
+The Story 10 visual captures showed Chromium wrapping `E-000102` after the hyphen in Replay’s bold narration rail. Use the existing `keySegments` and `ls-nowrap` rendering for the frame’s exact subject key; leave the narration text and image alt unchanged. A passing browser assertion does not detect this typography defect: inspect the 1024×800 capture.

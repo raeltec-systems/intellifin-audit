@@ -142,6 +142,84 @@ boundary inside it, so the request simply takes effect at the stage after it. `o
 is EXTENDED onto the three stage contexts rather than injected, so a composition root cannot
 leave it out.
 
+## Where a pause holds the Run, and which attempt a resume starts (Story 10.6)
+
+Every pause and every resume names its exact plan step and Step Execution attempt from
+durable records, read by identity and never paired by time. No event type, column or
+migration was added: the facts ride on keys of the events that already exist, and they are
+written on NEW events only. A historical event stays as written, and a surface says what it
+does not record.
+
+**The pause event (`lifecycle.run-paused`) says where it held the Run.** Every boundary in
+the table above passes a required `PauseHold` to `performPause`, and the event records it:
+
+| Key | When | Meaning |
+| --- | --- | --- |
+| `planStepId` | always | The plan step the Run is held at: the one in flight, or the next one still to run. |
+| `heldWorkItemId` | held at a Work Item: the agent Work Item stage, and the adapter stage before an adapter Work Item | The Work Item the Run is held at. |
+| `stepExecutionId`, `attempt` | an attempt was in flight | The attempt the pause superseded. |
+| `workItemId` | unchanged | Its existing meaning — the in-flight item, or a deferred pause's settled inspection — because the conversation receipts and the interaction receipt guard (generations 55 to 59) read it. |
+
+A pause between units (the sign-in and adapter stages, between Work Items, after a settled
+inspection) has no `stepExecutionId`, and the surfaces say that no Step Execution was in
+flight. `PauseHold` is REQUIRED on `performPause`, so a boundary cannot forget it — the
+lesson of the one mid-item boundary that once passed no in-flight pair. Only the Work Item
+stage supersedes an attempt in flight, and it gives the attempt back (above), so the attempt
+a resume restarts there carries the SAME attempt number as the one the pause superseded:
+they are two Step Executions, and the surfaces name each by its reference.
+
+**The resume is named by the attempt it starts.** A resume performs `PAUSED → RUNNING`
+before any attempt exists, so it cannot name one; the stage that later starts the held step
+writes `resumedWaitId` on that attempt's own start event (`work-item-attempt-started`,
+`reference-attempt-started`, `sign-in-attempt-started`, `public-access-attempt-started`).
+`RunPauseContext.readPendingResume` is REQUIRED on every stage context: it answers the Run's
+LATEST pause wait when it was closed by a resume, its event recorded a `planStepId`, and no
+event already names it. `resumeLinker` reads it once per invocation and links only the FIRST
+attempt at the held plan step — and at the held Work Item, when the pause named one. A resume
+of a pause that recorded no held step is never linked, because nothing says which attempt it
+restarted.
+
+**The reads follow those identities.** `readPauseHistory` (every pause of a Run, in the order
+they happened: an exact total and a bounded list of `PAUSE_HISTORY_LIMIT`) and
+`readPauseEntry` (one pause, for the Paused banner) join the wait row to its event by wait
+id, the event to its Step Execution by id, and a resume to its attempt by the `resumedWaitId`
+on the attempt's start event. An older pause is read for what it holds: one honoured
+mid-attempt named its Step Execution, whose row gives the plan step and the attempt
+exactly; one that named nothing reads as `not-recorded`. The Execution Timeline lists the
+pauses ("Pauses and resumes"), and the Paused banner says where the pause holds the Run now.
+The sentences are the owner-approved wording (sheet 1, 2026-09-26; sheet 2 version 2,
+2026-09-29) in `apps/web/src/runs/pause-words.ts`. A resume that restarts an interrupted
+attempt carries the superseded attempt's number, because a pause gives its attempt back; the
+Timeline says so after the restart sentence (sheet 2, A11: "A pause does not use up an
+attempt, so the new attempt is also attempt {n}."), only where the two numbers are equal.
+
+## A pause request the Run never honoured, on the Timeline (Story 10.10)
+
+An event in the audit chain is not a history entry a reader can see (owner, 2026-09-25), so a
+superseded pause request is an entry titled "Pause request" in "Pauses and resumes" (legacy
+5.4 AC 3). It is placed among the pauses by the instant its own record holds — a pause by
+when it held the Run, a request by when it was asked for, or, when its record holds no
+request time, by when it was recorded as superseded. That orders rows; nothing pairs a
+request with a pause, and each pause keeps its ordinal. No event type, column or migration
+was added, and no event is rewritten.
+
+`readPauseRequests` (`packages/infrastructure/src/runs/decision-history.ts`) reads the two
+events that record a request as superseded, each only from the writer that appends it — the
+filter the interaction receipts already apply, so an event dressed as one from any other
+writer is not read:
+
+| Event | Writer | What the entry says |
+| --- | --- | --- |
+| `lifecycle.pause-superseded` | `result-sealer`, `worker`, `failure` | Who asked and when (the event's `requestedBy` and `requestedAt`), and that the Run ended before the pause took effect. |
+| `lifecycle.deferred-pause-superseded` | `deferred-pause-coordinator`, `web` or `worker`, `failure` | Who asked (`requestedBy`); when (the `run_deferred_pause` row the event's `commandId` names); the inspection it asked to pause after (that row's Work Item, in this Run, at its plan step); and why: `cancellation` and `run-finalized` say the Run ended first, `immediate-pause` says a request to pause at once replaced it. |
+
+A reason this build does not name, a requester or a time the record does not hold, and an
+inspection that does not resolve are each said in words rather than guessed or paired by
+time. The read answers an exact total and a bounded list of `PAUSE_REQUEST_LIMIT`, in chain
+order. The owner approved "Pause request", "Requested by {name} at {time}." and "The Run ended
+before the pause took effect, so its own outcome stands." on 2026-09-26, and the other
+sentences on 2026-09-29 (sheet 2, B4–B11); all are in `apps/web/src/runs/decision-words.ts`.
+
 ## The windows
 
 | Wait kind | Window | Timeout outcome |

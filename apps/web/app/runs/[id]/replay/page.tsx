@@ -13,11 +13,12 @@ import { PageHeader } from '../../../../src/design/PageHeader';
 import { Reference } from '../../../../src/design/Reference';
 import { Timestamp } from '../../../../src/design/Timestamp';
 import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
-import { planActionWord, runLifecycleWord, workItemLabel } from '../../../../src/runs/labels';
+import { runLifecycleWord, workItemLabel } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
-import { frameNarration, plannedStepCount, stepNarration } from '../../../../src/runs/live-view';
-import { effectiveFrameWorkItemId, replayInitialSelection, replayJumpTargets, replayObservationsThrough, replayRequest, replayViewerKey, resolveFrameWorkItems } from '../../../../src/runs/replay';
-import { recordNaming, recordWords } from '../../../../src/runs/record-words';
+import { frameNarration, plannedStepCount, readAdapterLog, stepNarration } from '../../../../src/runs/live-view';
+import { effectiveFrameWorkItemId, replayEscalationSelection, replayGapsView, replayInitialSelection, replayJumpTargets, replayRequest, replaySelectionKey, replayViewerKey, resolveFrameWorkItems } from '../../../../src/runs/replay';
+import { recordKeyText, recordNaming, recordWords } from '../../../../src/runs/record-words';
+import { toolActionNarration } from '../../../../src/runs/session-words';
 
 export const metadata: Metadata = { title: 'Run · Replay · IntelliFin Audit' };
 export const dynamic = 'force-dynamic';
@@ -44,7 +45,12 @@ export default async function RunReplayPage({
   searchParams,
 }: {
   readonly params: Promise<{ id: string }>;
-  readonly searchParams: Promise<{ readonly workItem?: string | string[]; readonly cursor?: string | string[] }>;
+  readonly searchParams: Promise<{
+    readonly workItem?: string | string[];
+    readonly cursor?: string | string[];
+    /** An Escalation a Timeline entry opened this Replay at (Story 10.10). */
+    readonly escalation?: string | string[];
+  }>;
 }): Promise<React.JSX.Element> {
   const { id } = await params;
   const access = await openRun(id);
@@ -97,13 +103,18 @@ export default async function RunReplayPage({
 
   const runtime = await getRuntime();
   const detail = new DrizzleRunDetailRepository(runtime.db);
-  const request = replayRequest(await searchParams, REPLAY_INSPECTION_PAGE_SIZE);
+  const query = await searchParams;
+  const request = replayRequest(query, REPLAY_INSPECTION_PAGE_SIZE);
   if (request.kind !== 'prefix') {
-    const [selected, plan] = await Promise.all([
+    const [selected, plan, gapRead] = await Promise.all([
       request.kind === 'inspection'
         ? detail.readInspectionReplay(run.runId, request.workItemId, request.cursor)
         : Promise.resolve({ kind: 'unavailable' } as const),
       new DrizzleFrozenExecutionReader(runtime.db).readFrozenExecution(run.versionId, run.procedureId),
+      // THIS record's own gaps (owner decision D2 b, 2026-09-29): a missing frame of the
+      // record is stated here too, so the one-record view cannot look complete. Scoped by
+      // the same Work Item rule the frame read uses, never the whole session's gaps.
+      request.kind === 'inspection' ? detail.readRecordReplayGaps(run.runId, request.workItemId) : Promise.resolve(null),
     ]);
     const owner = selected.kind === 'inspection' ? selected.workItem : null;
     const system = owner === null ? null : plan?.inputs.targets
@@ -115,12 +126,13 @@ export default async function RunReplayPage({
       ? new Map<string, string>()
       : await readRecordNames(runtime.db, run.runId, plan, [owner.subjectKey]);
     const subject = owner?.subjectKey == null ? null : recordWords({ key: owner.subjectKey, name: names.get(owner.subjectKey) ?? null }, naming);
+    const subjectKeyText = owner === null ? null : recordKeyText({ key: owner.subjectKey }, naming);
     const label = owner === null ? null : workItemLabel({ ...owner, subjectKey: subject, displayName: system ?? owner.displayName });
     const views: readonly ReplayFrameView[] = selected.kind === 'unavailable' ? [] : selected.rows.map(row => {
       const narration = frameNarration(row.frame, row.step, system, subject);
       return {
         evidenceId: row.frame.evidenceId, narration, stepNarration: narration, workItemLabel: label,
-        workItemId: owner?.workItemId ?? null, subjectKey: subject,
+        workItemId: owner?.workItemId ?? null, subjectKey: subject, subjectKeyText,
         sourceLocation: row.frame.sourceLocation, digest: row.frame.digest, capturedAt: row.frame.capturedAt,
         action: { action: row.action.action, method: row.action.method, destination: row.action.destination,
           outcome: row.action.outcome, status: row.action.status, denial: row.action.denial,
@@ -128,6 +140,15 @@ export default async function RunReplayPage({
         observations: row.observations, globalOrdinal: row.globalOrdinal,
       };
     });
+    // Only for an inspection this page resolved: an unavailable request names no record.
+    const gaps = selected.kind !== 'inspection' || gapRead === null ? undefined : replayGapsView(
+      gapRead,
+      (gap) => toolActionNarration(gap.action, {
+        subject,
+        system: plan?.inputs.targets.find(target => target.registrationId === gap.targetSystem)?.displayName ?? null,
+      }),
+      { kind: 'record', cursor: selected.cursor, shown: views.length, last: selected.nextCursor === null },
+    );
     return (
       <div className="ls-stack">
         {header}
@@ -143,6 +164,8 @@ export default async function RunReplayPage({
           plannedSteps={plannedStepCount(plan)}
           stageNote={null}
           jumpTargets={[]}
+          // One record's captures list no jump targets, so there is no list to bound.
+          jumpTotals={null}
           initialSelection={selected.kind === 'unavailable'
             ? { kind: 'unavailable', frameIndex: null }
             : { kind: 'inspection', frameIndex: views.length === 0 ? null : 0,
@@ -158,6 +181,7 @@ export default async function RunReplayPage({
             text: instruction.text,
           }))}
           adapterSteps={[]}
+          {...(gaps === undefined ? {} : { gaps })}
         />
         <p className="ls-caption">Read at <Timestamp value={readAt} precision="minute" />.</p>
       </div>
@@ -167,19 +191,29 @@ export default async function RunReplayPage({
   // frames this surface renders — up to `REPLAY_FRAME_LIMIT` of them — so a fifty-row
   // default silently dropped later Tool Actions, jump targets and Observation deltas from
   // a Run that had more than fifty. See `REPLAY_PAGE_SIZE`.
-  const [timeline, frames, waits, deltas, exceptions, plan, evidence] = await Promise.all([
+  //
+  // A bound is still a bound (Story 10.9). The Escalations and the Exceptions are read with
+  // their EXACT totals, which the jump list states whenever it names fewer; each frame
+  // carries its exact Observation count, counted in SQL over the whole registration
+  // history, because a page of registration events undercounted every later frame.
+  const [timeline, frames, escalations, exceptions, plan, gapRead] = await Promise.all([
     detail.readTimeline(run.runId, REPLAY_PAGE_SIZE),
     detail.readFrames(run.runId),
-    detail.readWaits(run.runId, REPLAY_PAGE_SIZE),
-    detail.readObservationDeltas(run.runId, REPLAY_PAGE_SIZE),
-    detail.readExceptions(run.runId, REPLAY_PAGE_SIZE),
+    detail.readEscalations(run.runId, REPLAY_PAGE_SIZE),
+    detail.readReplayExceptions(run.runId, REPLAY_PAGE_SIZE),
     new DrizzleFrozenExecutionReader(runtime.db).readFrozenExecution(run.versionId, run.procedureId),
-    // The adapter log rows below promise "its integrity digest", and printed `null` for
-    // every one: "No artifact registered." over artifacts that ARE registered. The Evidence
-    // read this surface already has carries the digest per Evidence id.
-    detail.readEvidenceItems(run.runId),
+    // The actions that left no frame (Story 10.6, legacy 5.2). Read with the predicate the
+    // terminal transition used for `failure.frame-missing`, so this surface and the Result
+    // cannot disagree about how many frames are missing.
+    detail.readReplayGaps(run.runId),
   ]);
-  const digestByEvidence = new Map(evidence.map((item) => [item.evidenceId, item.digest]));
+  // The adapter log rows below promise "its integrity digest", and printed `null` for
+  // every one: "No artifact registered." over artifacts that ARE registered. They were
+  // then repaired from the Evidence OVERVIEW read, which is a bounded sample ordered by
+  // kind — so on a Run with more adapter extractions than one page, a Reference Source's
+  // artifact fell off the end and said the same thing again. The rows are read EXACTLY by
+  // the Evidence ids the steps name, through the function Live View uses (Story 10.6).
+  const adapterSteps = await readAdapterLog(detail, run.runId, timeline.sessionSteps);
   // ONE record label with the queue, the inspector and the Exception (UX-25). Every place
   // below that names a record — a pill, the rail, the frame's narration — says this.
   const naming = recordNaming(plan);
@@ -207,8 +241,8 @@ export default async function RunReplayPage({
     const system = systemOf(workItemId);
     // The record, so the frame's `alt` and each scrubber pill's label can tell two Work
     // Items of the same Run apart. `system` is identical on both.
-    const subject = subjectLabel(timeline.workItems
-      .find((item) => item.workItemId === workItemId)?.subjectKey ?? null);
+    const ownerKey = timeline.workItems.find((item) => item.workItemId === workItemId)?.subjectKey ?? null;
+    const subject = subjectLabel(ownerKey);
     // The frame's `alt` and the rail's Step narration are the SAME string (UX-DR37): a
     // reader who cannot see the picture hears exactly what the picture is captioned with.
     const narration = frameNarration(frame, step, system, subject);
@@ -218,6 +252,7 @@ export default async function RunReplayPage({
       narration,
       workItemId,
       subjectKey: subject,
+      subjectKeyText: recordKeyText({ key: ownerKey }, naming),
       sourceLocation: frame.sourceLocation,
       digest: frame.digest,
       capturedAt: frame.capturedAt,
@@ -240,7 +275,7 @@ export default async function RunReplayPage({
         captureSuppression: action.captureSuppression,
         startedAt: action.startedAt,
       },
-      observations: replayObservationsThrough(deltas, frame),
+      observations: frame.observations,
     };
   });
 
@@ -253,15 +288,30 @@ export default async function RunReplayPage({
       workItemId: row.workItemId,
       populationRecordKey: subjectLabel(row.populationRecordKey) ?? row.populationRecordKey,
     })),
-    waits,
+    waits: escalations.rows,
   });
-  const initialSelection = replayInitialSelection(undefined, targets, views.length);
+  // A Timeline entry's "Open in Replay" names its Escalation; it opens at that jump target,
+  // resolved against this Run's own targets and said in words when it cannot (Story 10.10).
+  const initialSelection = replayEscalationSelection(query.escalation, targets)
+    ?? replayInitialSelection(undefined, targets, views.length);
+
+  // Each gap in words: a missing frame is marked missing, a suppressed capture says the
+  // platform's own capture sentence and is never counted as missing. The action is narrated
+  // the way a frame's action is, with the record and the system it was performed on.
+  const gaps = replayGapsView(
+    gapRead,
+    (gap) => toolActionNarration(gap.action, {
+      subject: subjectLabel(timeline.workItems.find((item) => item.workItemId === gap.workItemId)?.subjectKey ?? null),
+      system: targetName(gap.targetSystem),
+    }),
+    { kind: 'session' },
+  );
 
   return (
     <div className="ls-stack">
       {header}
       <ReplayViewer
-        key={replayViewerKey(run.runId, request)}
+        key={replaySelectionKey(run.runId, request, initialSelection)}
         runId={run.runId}
         runState={run.state}
         stateSentence={`Session REPLAY. This Run ended: ${run.state}.`}
@@ -275,20 +325,14 @@ export default async function RunReplayPage({
         plannedSteps={plannedStepCount(plan)}
         stageNote={REPLAY_COPY.noFrames}
         jumpTargets={targets}
+        jumpTotals={{ escalations: escalations.total, exceptions: exceptions.total }}
         initialSelection={initialSelection}
         instructions={(plan?.inputs.instructions ?? []).map((instruction) => ({
           system: targetName(instruction.registrationId) ?? instruction.registrationId,
           text: instruction.text,
         }))}
-        adapterSteps={timeline.sessionSteps
-          .filter((step) => step.action === 'extract-adapter')
-          .map((step) => ({
-            stepId: step.stepId,
-            displayName: `${planActionWord(step.action)} · ${step.displayName}`,
-            state: step.state,
-            attempts: step.attempts,
-            digest: step.evidenceId === null ? null : (digestByEvidence.get(step.evidenceId) ?? null),
-          }))}
+        adapterSteps={adapterSteps}
+        gaps={gaps}
       />
       <p className="ls-caption">Read at <Timestamp value={readAt} precision="minute" />.</p>
     </div>

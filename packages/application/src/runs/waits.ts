@@ -78,6 +78,20 @@ export const FIXED_ESCALATION_OPTIONS: Readonly<{
   ],
 };
 
+/**
+ * The platform's own last option on a choose-candidate question: it names no candidate.
+ *
+ * The worker appends it after the candidates it offers, and the Timeline's Escalation
+ * answers (Story 10.10) say an answer that chose it in these words — one spelling, so the
+ * option a person was offered and the answer the history reports cannot drift apart. A
+ * stored row's label is never read for it, exactly as `FIXED_ESCALATION_OPTIONS` is the
+ * only source of the other platform labels.
+ */
+export const MARK_AMBIGUOUS_OPTION: EscalationOption = {
+  id: ESCALATION_OPTION_IDS.markAmbiguous,
+  label: 'Mark the record ambiguous',
+};
+
 /** A Run carries a revision for all human-in-the-loop compare-and-set commands. */
 export type VersionedRun = RunRecord & { readonly revision: number };
 

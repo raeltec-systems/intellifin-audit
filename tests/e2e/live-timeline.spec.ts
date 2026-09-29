@@ -17,6 +17,7 @@ import {
 import { LIVE_SENTENCES } from '../../apps/web/src/runs/live-status';
 import { activeRunVersion } from '../fixtures/active-run-version.js';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
+import { captureStoryState } from './story-visual-capture';
 
 /**
  * The live Timeline channel in a real browser (Story 5.1, AD-17, UX-DR25, NFR7).
@@ -132,10 +133,12 @@ test.describe('the live Timeline channel', () => {
     await expect(status).toHaveAttribute('data-live-status', 'stale', { timeout: 25_000 });
     await expect(page.getByText(/No update for \d+ seconds\./)).toBeVisible();
     await expect(page.locator('.ls-banner--warning [data-live-status]')).toHaveCount(1);
+    await captureStoryState(page, 'run-detail-stale');
     // The stream returns: the browser's own retry connects and the page is live again.
     await page.unroute('**/api/runs/*/events*');
     await expect(status).toHaveAttribute('data-live-status', 'live', { timeout: 15_000 });
     await expect(page.getByText(LIVE_SENTENCES.live)).toBeVisible();
+    await captureStoryState(page, 'run-detail-recovered');
     await cancelRun(cancelDependencies(), { session: session(), request: { runId, reason: null } });
   });
 

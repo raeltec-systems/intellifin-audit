@@ -103,9 +103,17 @@ async function sample(page: Page, runId: string) {
 // broker then refuses the read (404 or 409 → 503) rather than answer with two epochs mixed.
 // That refusal is the product's fail-closed rule, so a test that expects a sample re-reads
 // until one is served. A test that expects NO sample keeps its single, unretried read.
-async function settledSample(page: Page, runId: string) {
+// A 200 can still carry no image: when the sample moves between the broker's reply and the
+// proxy's re-read, `WorkspacePreviewProxy.read` keeps the metadata and withholds the image
+// (workspace-preview-transport.ts, the `after.sequence` check). A test that expects a PUBLIC
+// image therefore re-reads until one is served (`withImage`); a test that expects none keeps
+// the plain read, because waiting for an image there would hide the suppression it proves.
+async function settledSample(page: Page, runId: string, withImage = false) {
   let result: Awaited<ReturnType<typeof sample>> = null;
-  await expect.poll(async () => { result = await sample(page, runId); return result !== null; }, { timeout: 10_000 }).toBe(true);
+  await expect.poll(async () => {
+    result = await sample(page, runId);
+    return result !== null && (!withImage || result.digest !== null);
+  }, { timeout: 10_000 }).toBe(true);
   return result!;
 }
 async function waitForFrame(page: Page, runId: string, timeout = 10_000) {
@@ -272,7 +280,7 @@ test.describe('composed compiled-worker near-live preview', () => {
       expect(startedRuns.has(runId)).toBe(false); startedRuns.add(runId);
     await privateProof(page, runId);
     const before = await metadata(runId);
-    const oldSample = await settledSample(page, runId);
+    const oldSample = await settledSample(page, runId, true);
     expect(oldSample.digest).toBeTruthy();
     const pid = worker.pid;
     await shutdown('SIGKILL');

@@ -4,7 +4,7 @@ import { Suspense } from 'react';
 import { DrizzleActorNameReader, DrizzleRunListRepository, DrizzleRunStopReader } from '@intellifin/infrastructure';
 
 import { getRuntime } from '../../src/bootstrap';
-import { LiveBanner } from '../../src/runs/LiveBanner';
+import { SurfaceLiveBanner } from '../../src/runs/SurfaceLiveBanner';
 import { RunsPagination, RunsTable, RunsTableSkeleton } from '../../src/runs/RunsTable';
 import { isStoppedState } from '../../src/runs/stop-reason';
 import { Banner } from '../../src/design/Banner';
@@ -67,7 +67,7 @@ async function RunsList({ after }: { readonly after: string | null }): Promise<R
   ]);
   return (
     <>
-      <LiveBanner url="/api/runs/events" cursor={null} readAt={readAt.toISOString()} href={after === null ? '/runs' : `/runs?after=${after}`} />
+      <SurfaceLiveBanner url="/api/runs/events" cursor={null} readAt={readAt.toISOString()} href={after === null ? '/runs' : `/runs?after=${after}`} />
       <RunsTable rows={page.rows} readAt={readAt} stops={stops} names={names} />
       <RunsPagination next={page.next} firstHref="/runs" onFirstPage={after === null} />
     </>

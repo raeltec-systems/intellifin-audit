@@ -2,9 +2,83 @@
 title: 'Legacy visibility follow-up: human-matched provenance, missing-frame indication and exact pause and resume linkage on the retained compiler-1 surfaces'
 type: 'fix'
 created: '2026-09-25'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
-implementation_authorised: false
+followup_review_recommended: true
+deferred:
+  - summary: >-
+      On a record's Replay, the gap rows are the record's first 100 by time, whatever page is open, so a later page of a record with more than 100 gaps can show pills with no marker for a real gap.
+    evidence: |-
+      readRecordReplayGaps takes LIMIT 100 over the record's gaps; the inspection read pages 100 frames at a time. The exact counts stay right and the list caption says "Showing 100 of N". The whole-Run Replay has the same shape (100 gap rows over 500 frames), so a fix belongs to both views together (review 2026-09-29).
+    location: >-
+      packages/infrastructure/src/runs/run-detail-repository.ts (replayGaps); apps/web/app/runs/[id]/replay/page.tsx
+    severity: medium
+  - summary: >-
+      On a record's Replay, "after frame N" uses whole-session numbering; a gap before the record's first frame reads "after frame 4" beside a scrubber that starts at "Frame 5", and a gap on another page of the record is listed with no word saying so.
+    evidence: |-
+      replayGapPosition(gap.framesBefore) in the list and the marker label. It is true (the strip counter also counts the whole session) but a reader cannot see frame 4. Saying "before this record's first frame", "on another page of this record's frames" or scoping the banner "for this record" is new wording, reserved for the owner (review 2026-09-29).
+    location: >-
+      apps/web/src/runs/ReplayViewer.tsx:120,147
+    severity: low
+  - summary: >-
+      The record's frames and its gaps are two reads, not one snapshot, and a failing gap read takes the whole record view to the error boundary; neither has a test.
+    evidence: |-
+      page.tsx reads readInspectionReplay and readRecordReplayGaps in one Promise.all. Replay shows ended Runs, so the two reads cannot disagree in practice; the failure is loud, never an absence (review 2026-09-29).
+    location: >-
+      apps/web/app/runs/[id]/replay/page.tsx:102-111
+    severity: low
+  - summary: >-
+      Links past a bounded list still use an anchor into a bounded overview, so an item past the first 50 is missed.
+    evidence: |-
+      The continuation gave its two new links an exact selector (?observation= and ?evidence=); the older links on other surfaces did not get it. Pre-existing before this story (review of the continuation, 2026-09-27).
+    location: >-
+      apps/web/src/runs/ExceptionList.tsx:181; ResultSections.tsx:272; EscalationPanel.tsx:265, 367, 405; RunConversation.tsx:156; app/runs/[id]/evidence/technical/artifacts/page.tsx:308
+    severity: medium
+  - summary: >-
+      Pause and resume times on the Timeline are plain text, not time elements with a datetime.
+    evidence: |-
+      pauseClosureSentences and pauseHoldSentences return strings that KeyedText joins; Story 10.10's request list renders a time element for the same kind of instant.
+    location: >-
+      apps/web/src/runs/PauseHistory.tsx:97
+    severity: low
+  - summary: >-
+      The technical Evidence page can list one row more than its sentence says ("the first N are listed", plus the selected row).
+    evidence: |-
+      An exact ?observation= selector past the overview adds that row; the sentence counts only the overview. Saying so needs owner wording.
+    location: >-
+      apps/web/app/runs/[id]/evidence/technical/artifacts/page.tsx:291-295
+    severity: low
+  - summary: >-
+      On a redelivery, the agent Work Item stage can pause at a step that already finished, and the banner then says Resume starts that step.
+    evidence: |-
+      execute-agent-work-item.ts holds at the current step when nothing is left to run; AD-16 and the adapter rule (leave the request for the next stage) say otherwise. Pre-existing; reachable only on a redelivery.
+    location: >-
+      packages/application/src/runs/execute-agent-work-item.ts:363-368
+    severity: low
+  - summary: >-
+      The adapter stage's nextHold can name a FAILED Reference Source as the next unit that can still run.
+    evidence: |-
+      nextHold takes the first step that is not ACQUIRED, which includes FAILED (a crash case that existed before this story); the comment above performPause no longer describes the rule.
+    location: >-
+      packages/application/src/runs/execute-adapter-steps.ts:790-795
+    severity: low
+  - summary: >-
+      No browser capture shows a pause "after this inspection" (Paused banner A9 and A10, Timeline A8).
+    evidence: |-
+      A realistic fixture needs a multi-record agent Run (P-1) with a deferred pause the worker honours; the pause-resume fixture is a one-page P-4 Run. The sentence choice is pinned by pause-words.test.ts:114-120, and the words are approved (sheet 2, version 2, approved 2026-09-29).
+    location: >-
+      tests/e2e/pause-resume.spec.ts
+    severity: low
+  - summary: >-
+      execute-adapter-steps.test.ts:869 would still pass if the null-hold path cleared the pause request, and it resets a sealed Run to RUNNING, a state production cannot reach.
+    evidence: |-
+      Found by mutation in the continuation review (2026-09-27). The FAILED and UNINSPECTED part of the item check has no test either.
+    location: >-
+      packages/application/src/runs/execute-adapter-steps.test.ts:869
+    severity: low
+implementation_authorised: true
+implementation_authorisation: 'Owner, 2026-09-26: "go, new branches OK" (implement 10.6 to 10.10 on new branches)'
+baseline_revision: '429e08cf703fee6c5320f17b5983948709fd5bdf'
 context:
   - '_bmad-output/implementation-artifacts/legacy-review-closure-register.md'
   - '_bmad-output/planning-artifacts/epics.md'
@@ -142,3 +216,243 @@ first listed here as proposed scope.
   (`EscalationPanel.tsx:443`) has no `tabIndex`. Add `tabIndex={-1}`, as the shell's own target has
   (`AppShell.tsx:98`–`:100`), and a browser test that presses Enter on "Go to open Escalation" and
   asserts that focus is inside `#open-escalation`.
+
+## Record of implementation (2026-09-26)
+
+Branch `claude/10-6-legacy-visibility`, from `429e08cf`; canonical PR #61. No migration, no new
+audit event type, no new schema column and no change to the Result publication shape
+(`git diff --stat 429e08cf -- packages/infrastructure/drizzle` is empty). No historical event
+is rewritten; every link is an exact identity, never a time.
+
+- **5.6, skip link.** The browser test came first (`ebea63d8`; on the old code it failed
+  because focus was not in the panel after Enter). Then `tabIndex={-1}` on `#open-escalation`
+  (`67d71fb4`). Enter on "Go to open Escalation" now puts focus in the panel, and each Tab stop
+  from there to the first answer is inside the panel.
+- **5.3, Live View adapter rows** (`0ea6b47a`, `26d4a5db`). Each row reads its Evidence
+  EXACTLY by the id the step names (`readAdapterLog`, shared with Replay), and says one of
+  three things: the digest and a link to the Evidence card; "No artifact registered."; or
+  that the record could not be read.
+- **5.2, Replay gaps** (`2425c154`, browser `d8734c1f`). One predicate for a missing frame
+  (`replay-gaps.ts`), used by the terminal transition's `readMissingFrames` and by Replay's
+  `readReplayGaps`, so the Result and Replay cannot disagree. Each gap is marked where it sits
+  on the scrubber and listed in words. A suppressed capture uses `captureSentence` and is
+  never counted as missing. "Playback is incomplete: N frame(s) missing." shows only when
+  N > 0, with the exact count. A failed protected read keeps the existing unavailable state
+  and retries only that frame (`selected-replay.spec.ts`).
+- **4.7, human-matched** (`97df4e46`, `aa627d8e`, browser `731ddedd` and `2a42b1d4`, read
+  guards `d8734c1f`). A new registration of a human-selected match names its answered
+  choose-candidate wait in the existing `execution.observations-registered` event
+  (`humanMatchDecisions`), and registration refuses a human-selected match without one. The
+  Result, the record review queue and inspector, and the Exceptions list show "Human-matched"
+  with the person who chose, the candidate chosen, the time, and a reference to the answered
+  Escalation. A match registered before this build, or one whose link does not establish one
+  decision exactly, still shows the flag and says the decision is not linked. A platform match
+  shows no flag. The browser journey is a P-1 Run, the only Template whose Runs match a record
+  by a person's choice, with the leavers binding's mask on `full_name`.
+- **5.4, pause and resume** (`b96d7eb3`, `81eb84c4`, browser `91e5f51a`). Every new pause
+  event names the plan step where it holds the Run (`planStepId`, and `heldWorkItemId` at a
+  Work Item) and, when an attempt was in flight, the attempt it superseded
+  (`stepExecutionId`, `attempt`). The first attempt a stage starts at the held step after a
+  resume names that resume (`resumedWaitId`) on its own start event. The Execution Timeline
+  lists every pause, with where it held the Run and which attempt its resume started; the
+  Paused banner says where the current pause holds the Run. An older pause says its step was
+  not recorded. A pause between units names the step and says no Step Execution was in
+  flight. A superseded Work Item attempt is given back, so the attempt its resume restarts
+  carries the same number; the two Step Executions are told apart by their references.
+- Contracts and the decision log: `e8728b0c`, and the notes in `91e5f51a` and `2a42b1d4`.
+
+**Checkpoint verification.** GitHub CI run [36242328920](https://github.com/raeltec-systems/intellifin-audit/actions/runs/36242328920)
+passed all seven jobs for the handover head `88c25e0`, including PostgreSQL 18 integration,
+Playwright/WCAG, container smoke and worker/preview mutation checks. This was checked through
+the GitHub API on 2026-09-26. These results establish the checkpoint, not subsequent review fixes.
+The full browser suite previously passed at `d8734c1f` (291 passed, 12 opt-in skips).
+Fresh continuation results and unresolved checks are recorded below; no placeholder is a pass.
+
+**Wording approvals.** `[SUPERSEDED 2026-09-29 by the owner decision in the next paragraph: everything below that is "proposed" or "waits on the owner" is now approved.]` Handover sheet 1 was approved on 2026-09-26. The match, Replay-gap,
+and adapter-unavailable modules record that approval. Still proposed in `pause-words.ts`, on
+[wording sheet 2, version 2](owner-wording-sheet-2-v2-2026-09-27.md): A1–A5 as before, and
+A6–A10, five forms sheet 1 never listed (the name-less "Paused at {time}." and "Resumed at
+{time}.", the record-less after-inspection hold, and both Paused-banner after-inspection
+forms). The continuation had marked those five approved; the 2026-09-27 review corrected the
+mark. A11 (a sentence saying a pause does not use up an attempt) is proposed and not built.
+D1 (the optional event fields below) and D2 (gaps on the one-record Replay, the intent gap in
+the triage log) wait on the owner. No pending decision is silently approved.
+
+**Owner decision 2026-09-29.** The owner approved all of
+[wording sheet 2, version 2](owner-wording-sheet-2-v2-2026-09-27.md): A1–A11 as written,
+B1–B15 as written, D1 = yes (the optional payload keys below count as approved), and D2 = b
+(the one-record Replay also shows that record's own gaps, with the approved "Gaps in this
+playback" words). A11 and D2 b are built on this branch, and the "PROPOSED" marks for the
+sheet-1 and sheet-2 sentences in `pause-words.ts` are removed; the sentences are unchanged.
+This supersedes "still proposed" in the paragraph above and "wait on the owner" for D1 and D2.
+
+**Decision to confirm.** The Ask First list names a new audit event TYPE, a column and a
+migration; none was added. New payload KEYS were added to existing event types
+(`humanMatchDecisions`; `planStepId`, `heldWorkItemId`, `stepExecutionId`, `attempt` on
+`lifecycle.run-paused`; `resumedWaitId` on the attempt-start events). The owner may count a
+new payload key as an audit-schema change.
+
+**Still open.** Legacy 4.7 and 5.2 close only with Story 14-11a's export criteria, or an
+owner scope amendment.
+
+
+## Review Triage Log
+
+### 2026-09-26 — Continuation review pass
+
+Four independent reviewers inspected the complete diff from the preserved baseline:
+blind, edge-case, verification-gap and intent-alignment. Findings were checked against
+actual producers and callers before triage.
+
+- intent_gap: 1 (medium 1): the frozen spec says Replay without a mode qualifier, while
+  selected-inspection Replay explicitly excludes gaps. The supplied checkpoint and its
+  tests implement whole-session gaps only. Owner scope confirmation remains open.
+- bad_spec: 0
+- patch: 7 (medium 4, low 3)
+- defer: 0
+- reject: 9
+- addressed_findings:
+  - `[medium]` `[patch]` A pause revisiting acquired adapter work named completed work;
+    select the next unfinished unit and prove the actual subsequent attempt links it.
+  - `[medium]` `[patch]` Exact adapter Evidence reads dropped IDs after 64; batch distinct
+    IDs and test both the 65th result and a later-batch failure.
+  - `[medium]` `[patch]` The new Result human-match link could miss its Observation outside
+    the technical overview; add an authorized Run-bound exact selector.
+  - `[medium]` `[patch]` The new adapter-artifact link could miss its Evidence outside that
+    overview; carry and resolve its exact selector, with no duplicate anchors.
+  - `[low]` `[patch]` Public-access resume linkage lacked regression proof; exercise the
+    public stage with a pending resume and assert its saved execution/wait identity.
+  - `[low]` `[patch]` Unreadable pause fallback was tested only with fabricated component
+    props; fail the real lookup and render its result through the paused banner.
+  - `[low]` `[patch]` The implementation record retained a draft and GATES_LINE placeholder;
+    fold the record and distinguish checked checkpoint CI from new candidate verification.
+
+The six malformed-provenance claims were rejected after tracing guarded production
+writers: the candidate-decision producer checks the wait/checkpoint/capture, registration
+is transactional, resumeStartedBy matches the held step/item, and performPause emits the
+in-flight pair together. No reachable writer produced the claimed inconsistent state.
+The approved bounded-history disclosure is retained; no new pagination is silently
+approved. Short references and their existing technical context are unchanged. These
+account for the remaining rejected suggestions.
+
+The user's continuation instruction preserves the built checkpoint: it is not reverted
+or rebuilt because a wider reading of inspection Replay requires clarification. The
+independent correctness and verification patches above are retained for review.
+
+### 2026-09-27 — Review of the continuation
+
+Five reviewers read every commit the continuation pushed after the handover (`88c25e0`): the
+code and tests, the screenshot workflow and its test edits, the records, and CI. Findings for
+this story:
+
+- intent_gap: 0 (the Replay-gap scope question above is now owner decision D2 on sheet 2 v2)
+- bad_spec: 0
+- patch: 6 (medium 3, low 3)
+- defer: 7
+- reject: 1 (the 64-ID batching cannot be reached, because a Run has at most 32 references;
+  it stays as a defence)
+- addressed_findings:
+  - `[medium]` `[patch]` Replay kept the whole record LABEL on one line (`4846dcf2`), so a long
+    unmasked name overflowed the 239 px rail at 1024 px; keep only the key (`recordKeyText`) in
+    Replay and in Live View, which had no fix; the new tests fail on the old code.
+  - `[medium]` `[patch]` Five pause sentences that are in no sheet were marked approved; mark
+    them proposed (A6–A10) and put them on sheet 2, version 2.
+  - `[medium]` `[patch]` Pause history and human-match reads counted and then read rows in two
+    statements; read `count(*) over()` beside the rows, as decision-history does.
+  - `[low]` `[patch]` `CLAUDE.md` said `completeRun` never moves the Run state; correct it.
+  - `[low]` `[patch]` `blocked` is not a legal sprint status; record `in-progress` there.
+  - `[low]` `[patch]` The revoked-role browser test used an unscoped alert locator (a flake CI met
+    on #64); a browser test typed the pending A5 sentence by hand; the screenshot run lacked the
+    technical page's two exact-selector states and misnamed the Live View capture.
+
+### 2026-09-29 — Review of the owner-decision build (A11, D2 b)
+
+Four reviewers (correctness, tests, wording, edge cases and accessibility) read
+`4845031..a0997d1`. Patched:
+
+- `[medium]` A11 compared only the attempt NUMBER, so a resume that started another step or
+  record as attempt 1 would have said the pause gave its attempt back. `sameAttemptGivenBack`
+  now also requires the same plan step, the same Work Item and a different Step Execution.
+  Test: the same number on another step, another record, no record, and the superseded Step
+  Execution itself each leave A11 unsaid; the number-only mutation fails it.
+- `[medium]` Nothing pinned that the Replay page hands the gaps view its REAL page window.
+  `page.gaps.test.ts` now opens page two of a record (cursor 100, two frames, more pages)
+  and asserts each gap's marker position. Each of the three mutations the reviewer found
+  surviving (`cursor: 0`, `shown: 0`, `last: true`) now fails it.
+- `[medium]` Stale "proposed" / "waits on the owner" text in this spec, the handover and a
+  CLAUDE.md entry, now marked superseded or reworded.
+
+Deferred (in the frontmatter): the gap-row limit per record page (medium, the same shape as
+the whole-Run Replay); record-view gap numbering and scope words (low, needs owner wording);
+two reads and an untested failing gap read (low).
+
+Rejected: "does not use up an attempt" should say "does not count against the step's
+attempts" — A11 is the owner's approved sentence, and the Run-level Step Execution limit is a
+different count the sentence does not mention. `GapMarker`'s `role="img"` inside the scrubber
+group is acceptable as is.
+
+## Auto Run Result
+
+Status: blocked; this is a reviewed WIP checkpoint, not story completion.
+
+Implemented continuation: corrected adapter pause targeting, batched exact Evidence reads,
+made the two new technical links address their exact metadata, added missing public-access
+and pause-read-failure regression coverage, and reconciled the record and approved wording
+markers. No new event type, migration, Result shape, or platform wording was added.
+
+Changed areas: adapter execution and tests; shared adapter log and tests; technical Evidence
+page and exact-selector tests; Result/Live View links and their assertions; public-access
+and paused-banner tests; shared decision notes and this record.
+
+Follow-up review recommended: true. Patched counts: high 0, medium 4, low 3; score 15.
+New runtime fixes require fresh CI on their published candidate. The incoming code head's
+all-green CI is recorded above and is not substituted for that check.
+
+Residual acceptance: handover sheet-2 A1–A5 and optional payload keys need owner confirmation;
+inspection Replay gap scope remains explicit; all changed-state screenshots at 1280×800 and
+1024-wide Timeline/Replay must be inspected before finalization. The local environment cannot
+start PostgreSQL as an unprivileged user and the Chromium download returns HTML, so fresh
+integration/browser verification is delegated to the existing PR CI, not claimed locally.
+
+
+### Continuation local verification
+
+Node 24.20.0 / pnpm 11.25.0, run sequentially after the review patches:
+`pnpm typecheck` passed; `pnpm boundaries` passed (816 modules); `pnpm test` passed
+299 files / 5,504 tests. The 65-ID batching and acquired-reference pause regressions
+were observed failing before their patches. Exact-selector tests exercise the real page
+function after mocked authorization, including denied access and deduplicated anchors.
+Browser/DB results for this new candidate remain pending CI; no screenshot claim is made.
+CI run [36250244475](https://github.com/raeltec-systems/intellifin-audit/actions/runs/36250244475)
+later passed all seven jobs on `75993e4`.
+
+### Screenshot review — 2026-09-26
+
+Inspected real Chromium captures at 1280×800 and, for Timeline/Replay, 1024×800.
+The [shared screenshot review](screenshot-review-10-6-to-10-10-2026-09-26.md) records exact states, evidence, findings and coverage limits.
+Capture run [36249693811](https://github.com/raeltec-systems/intellifin-audit/actions/runs/36249693811)
+on `4846dcf2` passed 27 browser tests. The report identifies the Replay record-key wrapping
+fix and its post-fix captures, and distinguishes known presentation findings and uncaptured
+rare variants from passing checks. Proposed wording and owner decisions remain pending;
+this entry does not claim exhaustive all-state acceptance or finalize the story.
+
+### Local verification after the owner decision (2026-09-29)
+
+Node 24.20.0 / pnpm 11.25.0, PostgreSQL 18.6 at schema 61, Chromium headless shell, run one
+suite at a time. `pnpm -r typecheck`, root typecheck, `pnpm boundaries` (816 modules) and
+`pnpm test` (299 files, 5,514 tests) pass. Integration: `replay-assets.test.ts` (with the new
+one-record gaps case), `pause-run.test.ts` and `selected-replay.test.ts` pass 45 of 45 on an
+isolated `intellifin_test` database. Browser: `pause-resume.spec.ts`, `replay.spec.ts` and
+`selected-replay.spec.ts` pass 17 of 17; `replay.spec.ts` gained "shows one record its own
+gaps, and not the gaps of the rest of the session" (D2 b), which passes.
+
+Screenshots read as an auditor would:
+- Timeline, "Pauses and resumes", 1280×800: Pause 2 is held at "Inspect the record … during
+  attempt 1. That attempt was superseded.", and its resume says "…as a new attempt (attempt
+  1). A pause does not use up an attempt, so the new attempt is also attempt 1." (A11). The
+  two sentences no longer read like a mistake.
+- One-record Replay for E-000105, 1280×800 and 1024×800: "Gaps in this playback", "Playback
+  is incomplete: 1 frame is missing.", and "Missing frame · after frame 1 · Reading an
+  approved field", with one missing marker after the record's frame and no suppressed marker
+  (the suppressed sign-in belongs to no record). "after frame 1" matches the strip's "Frame 1
+  of 3", which counts the whole session. The other record's view shows no gaps section.

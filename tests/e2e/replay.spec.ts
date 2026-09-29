@@ -1,3 +1,4 @@
+import { captureStoryState } from './story-visual-capture';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { spawn } from 'node:child_process';
@@ -17,6 +18,9 @@ import {
 } from '@intellifin/infrastructure';
 
 import { REPLAY_COPY } from '../../apps/web/src/design/copy';
+import { captureSentence } from '../../apps/web/src/runs/labels';
+import { REPLAY_GAP_WORDS, replayGapPosition, replayIncompleteSentence, replayInspectionHref } from '../../apps/web/src/runs/replay';
+import { recordFramePosition } from '../../apps/web/src/runs/session-words';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { startSyntheticS3 } from '../fixtures/s3-server';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
@@ -74,8 +78,12 @@ interface Replayed {
 /**
  * A terminal Run with three frames across two Work Items, one Exception and one answered
  * Escalation — one of everything the jump list names.
+ *
+ * With `gaps`, it also holds the two kinds of action that left no frame (Story 10.6, legacy
+ * 5.2): one performed with capture PERMITTED and no screenshot registered — a MISSING frame,
+ * after the first — and one credential-entry action with capture SUPPRESSED, after the last.
  */
-async function seedReplayRun(): Promise<Replayed> {
+async function seedReplayRun(options: { readonly gaps?: boolean } = {}): Promise<Replayed> {
   const runId = ids.next();
   const at = Date.now();
   const stamp = (offsetSeconds: number): string => new Date(at + offsetSeconds * 1_000).toISOString();
@@ -153,6 +161,25 @@ async function seedReplayRun(): Promise<Replayed> {
       ${DIGEST},${PNG.byteLength},'REGISTERED',false,${stamp(index * 10)},'agent','registration','evidence')`;
     await sql`INSERT INTO run_evidence_capture(evidence_id,run_id,tool_action_id,source_location)
       VALUES(${evidenceId},${runId},${toolActionId},${LOCATIONS[index]!})`;
+  }
+
+  if (options.gaps === true) {
+    // A frame owed and never saved: performed, capture PERMITTED, nothing registered.
+    const missingStep = ids.next();
+    await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at)
+      VALUES(${missingStep},${runId},'target-1-1',${workItems[0]!},'inspect-record','SUCCEEDED',2,${stamp(5)})`;
+    await sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,work_item_id,surface,target_system,
+      action,method,destination,parameters,outcome,status,redirected,downloads,started_at,completed_at,capture)
+      VALUES(${ids.next()},${runId},${missingStep},${workItems[0]!},'agent','loancore','read-attribute','GET',
+      ${LOCATIONS[0]!},'[]'::jsonb,'performed',200,false,0,${stamp(5)},${stamp(6)},'PERMITTED')`;
+    // A credential on the wire: the platform suppressed the capture, as it must.
+    const signInStep = ids.next();
+    await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at)
+      VALUES(${signInStep},${runId},'session-3',NULL,'sign-in','SUCCEEDED',1,${stamp(25)})`;
+    await sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,work_item_id,surface,target_system,
+      action,method,destination,parameters,outcome,status,redirected,downloads,started_at,completed_at,capture,capture_suppression)
+      VALUES(${ids.next()},${runId},${signInStep},NULL,'agent','loancore','navigate','POST',
+      'https://loancore.invalid/sign-in','[]'::jsonb,'performed',200,true,0,${stamp(25)},${stamp(26)},'SUPPRESSED','credential-entry')`;
   }
 
   // An Escalation, raised through the real command between the second and third frames,
@@ -370,6 +397,72 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
     expect(offOrigin).toEqual([]);
   });
 
+  // Story 10.6 (legacy 5.2): "Given a Run with a missing frame and a suppressed frame, when
+  // Replay is opened, then the missing frame is marked missing, the suppressed frame is
+  // marked suppressed and is not counted as missing, and Replay states that playback is
+  // incomplete with the count."
+  test('marks a missing frame and a suppressed capture where they sit, and says playback is incomplete', async ({ page }) => {
+    test.setTimeout(120_000);
+    const seeded = await seedReplayRun({ gaps: true });
+    await page.goto(`/runs/${seeded.runId}/replay`);
+    await expect(page.getByRole('heading', { name: /^Replay · / })).toBeVisible();
+    // The three registered frames are still the scrubber's frames; a gap is not a frame.
+    await expect(page.getByText('Frame 1 of 3')).toBeVisible();
+    await expect(page.locator('.ls-scrubber-pill')).toHaveCount(3);
+
+    const gaps = page.getByRole('region', { name: REPLAY_GAP_WORDS.heading });
+    await expect(gaps).toBeVisible();
+    // The limitation is stated, with the EXACT count — and the suppressed capture is not in it.
+    await expect(gaps.getByText(replayIncompleteSentence(1), { exact: true })).toBeVisible();
+    await expect(page.getByText(replayIncompleteSentence(2), { exact: true })).toHaveCount(0);
+
+    // Each gap sits on the scrubber where it happened, by shape and by name.
+    const suppressed = captureSentence('SUPPRESSED', 'credential-entry');
+    const missingMarker = page.locator('.ls-scrubber-gap--missing');
+    await expect(missingMarker).toHaveCount(1);
+    expect(await missingMarker.getAttribute('aria-label')).toContain(`${REPLAY_GAP_WORDS.missing}, ${replayGapPosition(1)}: `);
+    const suppressedMarker = page.locator('.ls-scrubber-gap--suppressed');
+    await expect(suppressedMarker).toHaveCount(1);
+    expect(await suppressedMarker.getAttribute('aria-label')).toContain(`${suppressed}, ${replayGapPosition(3)}: `);
+
+    // And in words, in the list the rail holds.
+    await gaps.getByText(REPLAY_GAP_WORDS.listSummary, { exact: true }).click();
+    await expect(gaps.locator('[data-gap="missing"]')).toContainText(`${REPLAY_GAP_WORDS.missing} · ${replayGapPosition(1)}`);
+    await expect(gaps.locator('[data-gap="suppressed"]')).toContainText(`${suppressed} · ${replayGapPosition(3)}`);
+    await captureStoryState(page, 'replay-missing-and-suppressed', gaps);
+
+    const scan = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+    expect(scan.violations, JSON.stringify(scan.violations, null, 2)).toEqual([]);
+  });
+
+  // Story 10.6, owner decision D2 b (2026-09-29): the one-record (inspection) Replay also
+  // shows that record's OWN gaps, in the same words. The missing frame belongs to the first
+  // record; the suppressed sign-in belongs to no record, so this view must not show it.
+  test('shows one record its own gaps, and not the gaps of the rest of the session', async ({ page }) => {
+    test.setTimeout(120_000);
+    const seeded = await seedReplayRun({ gaps: true });
+    await page.goto(replayInspectionHref(seeded.runId, seeded.workItems[0]!));
+    await expect(page.getByRole('heading', { name: /^Selected inspection: / })).toBeVisible();
+
+    const gaps = page.getByRole('region', { name: REPLAY_GAP_WORDS.heading });
+    await expect(gaps).toBeVisible();
+    await expect(gaps.getByText(replayIncompleteSentence(1), { exact: true })).toBeVisible();
+    await expect(page.locator('.ls-scrubber-gap--missing')).toHaveCount(1);
+    await expect(page.locator('.ls-scrubber-gap--suppressed')).toHaveCount(0);
+    await gaps.getByText(REPLAY_GAP_WORDS.listSummary, { exact: true }).click();
+    await expect(gaps.locator('[data-gap="missing"]')).toContainText(`${REPLAY_GAP_WORDS.missing} · ${replayGapPosition(1)}`);
+    await expect(gaps.locator('[data-gap="suppressed"]')).toHaveCount(0);
+    await captureStoryState(page, 'replay-record-gaps', gaps);
+
+    const scan = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+    expect(scan.violations, JSON.stringify(scan.violations, null, 2)).toEqual([]);
+
+    // The other record left no gap of its own, so its view says nothing about gaps.
+    await page.goto(replayInspectionHref(seeded.runId, seeded.workItems[1]!));
+    await expect(page.getByRole('heading', { name: /^Selected inspection: / })).toBeVisible();
+    await expect(page.getByRole('region', { name: REPLAY_GAP_WORDS.heading })).toHaveCount(0);
+  });
+
   test('steps, plays and jumps from the keyboard alone', async ({ page }) => {
     test.setTimeout(120_000);
     const seeded = await seedReplayRun();
@@ -412,6 +505,13 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
     // between the second and third frames, so it opens the SECOND.
     await page.getByRole('button', { name: `Escalation · ${seeded.waitLabel}` }).press('Enter');
     await expect(page.locator('.ls-session__frame')).toHaveAttribute('src', `/api/runs/${seeded.runId}/frames/${seeded.frames[1]}`);
+
+    // A Work Item jump says where the frame sits among that record's OWN frames, because this
+    // view holds every frame of the session. Above the bound it says nothing (Story 10.9;
+    // replay-bounded-history.spec.ts), and this is the case that keeps the sentence alive.
+    await page.getByRole('button', { name: 'Work Item · E-000106 · LoanCore' }).press('Enter');
+    await expect(page.locator('.ls-session__frame')).toHaveAttribute('src', `/api/runs/${seeded.runId}/frames/${seeded.frames[1]}`);
+    await expect(page.locator('.ls-session__record-position')).toHaveText(recordFramePosition('E-000106', 1, 2));
   });
 
   test('opens a requested inspection on its own stored frame and preserves it on reload', async ({ page, baseURL }) => {

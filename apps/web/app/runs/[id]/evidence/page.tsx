@@ -33,7 +33,9 @@ import {
   type RecordReviewNavigation,
   type SelectedEvaluationReviewRead,
 } from '../../../../src/runs/RecordReview';
+import { NO_HUMAN_MATCHES, type HumanMatchIndex } from '../../../../src/runs/HumanMatch';
 import { RunDenied, RunDetailFrame, openRun } from '../../../../src/runs/detail';
+import { readHumanMatchIndex } from '../../../../src/runs/human-match-read';
 import { recordNaming } from '../../../../src/runs/record-words';
 import { currentIdentity, requireServerAction } from '../../../../src/server-session';
 
@@ -73,6 +75,8 @@ interface SelectedRecordDetail {
   readonly evaluations: readonly RunEvaluationRow[];
   readonly evidence: readonly RunEvidenceItem[];
   readonly evaluationReview: SelectedEvaluationReviewRead | null;
+  /** Which of these Observations a person matched, read in the same snapshot (4.7). */
+  readonly humanMatches: HumanMatchIndex;
 }
 
 type SelectedRecordRead =
@@ -98,12 +102,15 @@ async function readSelectedRecord(
     const evaluations = await detail.readEvaluations(input.runId, observationIds);
     const evidenceIds = [...new Set(observations.flatMap((observation) => observation.evidenceIds))];
     const evidence = await detail.readEvidenceItemsByIds(input.runId, evidenceIds);
+    // Which of these Observations a PERSON matched, and the decision that did, read in the
+    // same repeatable read so it cannot describe a different snapshot of the record.
+    const humanMatches = await readHumanMatchIndex(tx, input.runId, { observationIds });
 
     // The page gate is a presentation decision. Re-read the role inside the same
     // repeatable read as the selected evaluations before exposing review metadata.
     const reviewRole = await new DrizzleRoleRepository(tx).findRole(input.actorId);
     if (!allowReview || !authorizeActionRole(reviewRole, 'evaluation.confirm').allowed) {
-      return { observations, evaluations, evidence, evaluationReview: null };
+      return { observations, evaluations, evidence, evaluationReview: null, humanMatches };
     }
 
     const [resultRow, reviewRevision, pending] = await Promise.all([
@@ -137,7 +144,7 @@ async function readSelectedRecord(
       commandStatuses,
       reviewerNames: Object.fromEntries(names),
     };
-    return { observations, evaluations, evidence, evaluationReview };
+    return { observations, evaluations, evidence, evaluationReview, humanMatches };
   });
 
   if (result.status !== 'ready') return result;
@@ -219,6 +226,13 @@ export default async function RunEvidencePage({
     redirect(recordReviewHref(run.runId, navigation, { cursor: pageResult.cursor }));
   }
   const listNavigation: RecordReviewNavigation = { ...navigation, cursor: pageResult.cursor };
+  // Which of this page's Observations a PERSON matched (Story 10.6, legacy 4.7), by the
+  // ids the queue rows carry — one page's worth, never the whole Run.
+  const queueMatches = await readHumanMatchIndex(runtime.db, run.runId, {
+    observationIds: pageResult.rows.flatMap((row) => row.targets
+      .map((target) => target.observationId)
+      .filter((observationId): observationId is string => observationId !== null)),
+  });
 
   // A reader who arrives without choosing a record meets the first finding rather than an
   // empty inspector (UX-22). Their links still carry only what THEY chose, so paging or
@@ -242,7 +256,14 @@ export default async function RunEvidencePage({
   return (
     <RunDetailFrame run={run} tab="evidence" readAt={readAt} compact>
       <div className="record-review__layout">
-        <RecordReviewQueue runId={run.runId} page={pageResult} navigation={listNavigation} naming={naming} selectedOrdinal={selectedOrdinal} />
+        <RecordReviewQueue
+          runId={run.runId}
+          page={pageResult}
+          navigation={listNavigation}
+          naming={naming}
+          selectedOrdinal={selectedOrdinal}
+          humanMatches={queueMatches}
+        />
         <RecordReviewInspector
           runId={run.runId}
           selection={selected?.status === 'ready' ? selected.selection : null}
@@ -254,6 +275,7 @@ export default async function RunEvidencePage({
           navigation={listNavigation}
           page={pageResult}
           naming={naming}
+          humanMatches={selected?.status === 'ready' ? selected.detail.humanMatches : NO_HUMAN_MATCHES}
         />
       </div>
     </RunDetailFrame>

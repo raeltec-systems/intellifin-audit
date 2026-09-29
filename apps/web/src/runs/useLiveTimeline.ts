@@ -1,18 +1,25 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-import { LIVE_STALE_MS, acceptsLiveSeq, liveStatus, silenceSeconds, type LiveStatus } from './live-status';
+import {
+  LIVE_STALE_MS,
+  createLiveClockHandOff,
+  liveClockStatus,
+  nextLiveTick,
+  silenceSeconds,
+  waitingLiveClock,
+  type LiveStatus,
+} from './live-status';
+import {
+  beginLiveSubscription,
+  endLiveSubscription,
+  followLiveStream,
+  type LiveStreamState,
+  type LiveTimelineEvent,
+} from './live-stream';
 
-/** One Timeline event as the channel carries it (`docs/contracts/live-timeline-channel-v1.md`). */
-export interface LiveTimelineEvent {
-  readonly runId: string;
-  readonly seq: number;
-  readonly eventType: string;
-  readonly occurredAt: string;
-  readonly outcome: string;
-  readonly source: string;
-}
+export type { LiveTimelineEvent } from './live-stream';
 
 export interface LiveTimeline {
   readonly status: LiveStatus;
@@ -22,37 +29,37 @@ export interface LiveTimeline {
   readonly silence: number;
 }
 
-function parseEvent(data: string): LiveTimelineEvent | null {
-  try {
-    const value: unknown = JSON.parse(data);
-    if (typeof value !== 'object' || value === null) return null;
-    const event = value as Record<string, unknown>;
-    if (typeof event['runId'] !== 'string' || typeof event['seq'] !== 'number' || typeof event['eventType'] !== 'string') return null;
-    return {
-      runId: event['runId'],
-      seq: event['seq'],
-      eventType: event['eventType'],
-      occurredAt: typeof event['occurredAt'] === 'string' ? event['occurredAt'] : '',
-      outcome: typeof event['outcome'] === 'string' ? event['outcome'] : '',
-      source: typeof event['source'] === 'string' ? event['source'] : '',
-    };
-  } catch {
-    return null;
-  }
-}
+/**
+ * Where a per-Run subscription leaves its clock for the next one to the same stream
+ * (Story 10.8), so a remount — a new component, with new state — cannot reset what the
+ * stream last said. Run Detail, Live View and the Auditor Workspace follow the same
+ * per-Run stream, so moving between them hands the clock on rather than starting again.
+ *
+ * It lives for the document: a full page load is a fresh read of the page and starts a
+ * fresh clock, as it always has. `[NAMED, NOT FIXED]` So after the browser's Reload, the
+ * route boundary's "Reload this page" or the `ended` sentence's "Refresh to continue" while
+ * the stream is still down, the new page reads `connecting` and then `stale` — neither a
+ * gate reason — and its live controls stay enabled until it has itself counted sixty
+ * seconds (`docs/contracts/live-view-v1.md`). It is touched only inside effects, never during render,
+ * because the SERVER renders this component for every request and a module-level store
+ * read there would be one user's stream health leaking into another's page.
+ *
+ * Per-Run streams only. The list stream has two subscribers on the Runs page — its banner
+ * and the shell's bell — and a clock shared between two connections would let one say
+ * the other is live; neither of them gates a control, so each keeps its own.
+ */
+const RUN_STREAM_CLOCKS = createLiveClockHandOff();
 
 /**
  * Subscribe to a live Timeline stream and report its health.
  *
- * `EventSource` does the reconnecting: after a drop or a planned `end` it reopens on
- * its own with `Last-Event-ID`, which the route takes as the cursor, so a per-Run
- * subscription never skips and never repeats — and this hook still refuses a `seq` it
- * has already seen, so a repeat could not reach the page either way. A `cursor` of
- * `null` is the list stream, which has no cursor.
- *
- * Status is recomputed once a second from the instant of the last frame (event or
- * heartbeat), so "stale after 15 seconds" and "lost after 60" are the same arithmetic
- * `live-status.ts` is tested with, not a second copy on the component.
+ * The subscription itself is `followLiveStream` (`live-stream.ts`); this hook owns only
+ * what needs React: the state a re-render reads, the one-second tick that turns an
+ * instant into "stale" and "lost", and the hand-off of the clock across a remount. Status
+ * is recomputed from the instant of the last frame the stream itself delivered, so "stale
+ * after 15 seconds" and "lost after 60" are the same arithmetic `live-status.ts` is tested
+ * with, not a second copy on the component — and nothing but the stream moves that
+ * instant: not a server re-read, not a new cursor, not a new connection, not a remount.
  */
 export function useLiveTimeline(
   url: string,
@@ -60,65 +67,62 @@ export function useLiveTimeline(
   onEvent: (event: LiveTimelineEvent) => void,
 ): LiveTimeline {
   const [now, setNow] = useState(() => Date.now());
-  const lastSeqRef = useRef(cursor ?? 0);
-  const lastMessageAtRef = useRef(Date.now());
-  const everConnectedRef = useRef(false);
-  const endedRef = useRef(false);
+  // Every repaint goes through `nextLiveTick`, which always moves forward: a setter handed
+  // the value it already holds is skipped by React, and two reads of the wall clock in one
+  // millisecond are equal.
+  const repaint = (): void => { setNow((previous) => nextLiveTick(previous, Date.now())); };
+  // One mutable state per subscription, the same object for the component's whole life:
+  // the effects below write to it and a re-render reads it.
+  const stream = useRef<LiveStreamState | null>(null);
+  if (stream.current === null) stream.current = { clock: waitingLiveClock(Date.now()), lastSeq: cursor ?? 0 };
+  const state = stream.current;
+  // The open connection, shared by both effects, so whichever ends first closes it.
+  const connection = useRef<(() => void) | null>(null);
+  const stopConnection = (): void => {
+    const stop = connection.current;
+    connection.current = null;
+    stop?.();
+  };
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
+  const handOffKey = cursor === null ? null : url;
+
+  // A LAYOUT effect, so a remount paints the clock it inherited rather than one frame of a
+  // fresh `connecting` with the controls open (`useLiveTimeline.test.ts` pins that). It
+  // runs before the subscription effect below, so a new connection starts from the
+  // inherited clock and from this page's cursor. Its cleanup runs before the subscription
+  // effect's does, so it is what closes the connection — before the clock is left, so a
+  // frame cannot arrive in between and land on state the next page never reads.
+  useLayoutEffect(() => {
+    if (handOffKey === null) return undefined;
+    beginLiveSubscription(state, RUN_STREAM_CLOCKS, handOffKey, cursor, Date.now());
+    repaint();
+    return () => { endLiveSubscription(state, RUN_STREAM_CLOCKS, handOffKey, stopConnection, Date.now()); };
+    // The cursor is read when the stream changes, not followed: a new cursor on the same
+    // stream is the subscription effect's business, and it keeps the last sequence seen.
+  }, [handOffKey, state]);
 
   useEffect(() => {
     if (typeof EventSource === 'undefined') return undefined;
-    lastMessageAtRef.current = Date.now();
-    const target = cursor === null ? url : `${url}?after=${lastSeqRef.current}`;
-    const source = new EventSource(target);
-    const touch = (): void => {
-      lastMessageAtRef.current = Date.now();
-      everConnectedRef.current = true;
-      endedRef.current = false;
-      setNow(Date.now());
-    };
-    const onTimeline = (message: MessageEvent<string>): void => {
-      const event = parseEvent(message.data);
-      if (event === null) return;
-      if (cursor !== null) {
-        // The one rule that makes a reconnect lossless AND duplicate-free, and it lives in
-        // `live-status.ts` so the property is tested without a browser.
-        if (!acceptsLiveSeq(lastSeqRef.current, event.seq)) return;
-        lastSeqRef.current = event.seq;
-      }
-      touch();
-      onEventRef.current(event);
-    };
-    const onHeartbeat = (): void => touch();
-    const onOpen = (): void => touch();
-    const onError = (): void => {
-      // CLOSED means the browser will not retry (a 401, a 404, a wrong media type);
-      // CONNECTING means it is retrying on its own and the silence clock decides.
-      if (source.readyState === EventSource.CLOSED) { endedRef.current = true; setNow(Date.now()); }
-    };
-    source.addEventListener('timeline', onTimeline as EventListener);
-    source.addEventListener('heartbeat', onHeartbeat);
-    source.addEventListener('open', onOpen);
-    source.addEventListener('error', onError);
-    const clock = setInterval(() => setNow(Date.now()), 1_000);
+    connection.current = followLiveStream({
+      url,
+      cursor,
+      state,
+      open: (target) => new EventSource(target),
+      now: () => Date.now(),
+      onChange: repaint,
+      onEvent: (event) => onEventRef.current(event),
+    });
+    const tick = setInterval(repaint, 1_000);
     return () => {
-      clearInterval(clock);
-      source.removeEventListener('timeline', onTimeline as EventListener);
-      source.removeEventListener('heartbeat', onHeartbeat);
-      source.removeEventListener('open', onOpen);
-      source.removeEventListener('error', onError);
-      source.close();
+      clearInterval(tick);
+      stopConnection();
     };
-  }, [url, cursor]);
+    // `state` is the same object for the component's life, so it never re-runs this; the
+    // cursor does, and a new cursor opens a new connection without touching the clock.
+  }, [url, cursor, state]);
 
-  const status = liveStatus({
-    ended: endedRef.current,
-    lastMessageAt: lastMessageAtRef.current,
-    everConnected: everConnectedRef.current,
-    now,
-  });
-  return { status, lastSeq: lastSeqRef.current, silence: silenceSeconds(lastMessageAtRef.current, now) };
+  return { status: liveClockStatus(state.clock, now), lastSeq: state.lastSeq, silence: silenceSeconds(state.clock.lastFrameAt, now) };
 }
 
 /** Exported for the banner's own test: the threshold it must not restate. */

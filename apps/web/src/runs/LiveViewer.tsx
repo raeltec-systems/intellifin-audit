@@ -2,14 +2,17 @@ import Link from 'next/link';
 
 import { Banner } from '../design/Banner';
 import { Digest } from '../design/Digest';
+import { Reference } from '../design/Reference';
 import { TechnicalDetails, type TechnicalItem } from '../design/TechnicalDetails';
 import { Timestamp } from '../design/Timestamp';
 import { countNoun } from '../design/words';
 import { CAPTURE_TIME_UNRECORDED, LIVE_VIEW_DESKTOP_ONLY_SENTENCE, SESSION_ISOLATION_NOTE } from '../design/copy';
 import { EvidenceKindBadge } from './MinorBadge';
 import { UntrustedPolicy, UntrustedText } from './UntrustedText';
-import { chromeDotClass, type LiveViewChrome } from './live-view';
+import { ADAPTER_ARTIFACT_WORDS, type AdapterLogStep, type AdapterStepArtifact, type LiveViewChrome } from './live-view';
+import { SessionStateWord } from './SessionStateWord';
 import { attemptContext, noWorkItemSentence } from './session-words';
+import { keySegments } from './pause-words';
 import { evidenceKindWord, sessionStepWord, utcStamp, workItemLabel, workItemWord, workspaceModeWord } from './labels';
 
 export interface LiveViewerFrame {
@@ -23,6 +26,11 @@ export interface LiveViewerFrame {
 
 export interface LiveViewerStep {
   readonly narration: string;
+  /**
+   * The record KEY the narration names, kept on one line (`recordKeyText`): Chromium breaks
+   * `E-000102` after its hyphen. `null` when the key is masked or the step has no record.
+   */
+  readonly subjectKeyText: string | null;
   readonly state: string;
   readonly attempt: number;
   readonly diagnostic: string | null;
@@ -42,13 +50,13 @@ export interface LiveViewerEvidence {
   readonly capturedAt: string | null;
 }
 
-export interface LiveViewerAdapterStep {
-  readonly stepId: string;
-  readonly displayName: string;
-  readonly state: string;
-  readonly attempts: number;
-  readonly digest: string | null;
-}
+/**
+ * One adapter log row. Its artifact is REQUIRED and says which of three things is true
+ * (Story 10.6, legacy 5.3): an optional digest let Live View pass `null` for every row, so
+ * each acquired step said "No artifact registered." over an artifact the Run had
+ * registered, and nothing failed to compile.
+ */
+export type LiveViewerAdapterStep = AdapterLogStep;
 
 export interface LiveViewerProps {
   readonly runId: string;
@@ -111,10 +119,7 @@ export function SessionChrome({ chrome, stateSentence, workspace, counter }: {
       {/* The state is announced; the dot and word are the same fact for everyone else,
           so they are hidden from the reader that already heard the sentence. */}
       <span className="ls-visually-hidden" aria-live="polite">{stateSentence}</span>
-      <span className="ls-session__state" aria-hidden="true">
-        <span className={chrome === null ? 'ls-session__dot ls-session__dot--none' : chromeDotClass(chrome)} />
-        {chrome ?? 'NO SESSION'}
-      </span>
+      <SessionStateWord chrome={chrome} />
       <span className="ls-session__workspace">
         {workspace === null ? 'No Agent Workspace' : workspaceModeWord(workspace.mode)}
       </span>
@@ -276,7 +281,10 @@ export function LiveViewer(props: LiveViewerProps): React.JSX.Element {
               <p>No Step Execution has started yet.</p>
             ) : (
               <>
-                <p className="ls-session__narration">{props.step.narration}</p>
+                <p className="ls-session__narration">
+                  {keySegments(props.step.narration, props.step.subjectKeyText === null ? [] : [props.step.subjectKeyText])
+                    .map((part, index) => part.key ? <span key={index} className="ls-nowrap">{part.text}</span> : part.text)}
+                </p>
                 {/* `attempt 1` is said nowhere: every Step Execution has one, so printing
                     it makes a retry indistinguishable from an ordinary first pass. */}
                 {attempt === null ? null : <p className="ls-caption">This is {attempt}.</p>}
@@ -354,22 +362,74 @@ export function LiveViewer(props: LiveViewerProps): React.JSX.Element {
         </section>
       )}
 
-      {props.adapterSteps.length === 0 ? null : (
-        <section aria-labelledby="live-adapter-heading" className="ls-card ls-stack">
-          <h3 id="live-adapter-heading">Systems read without a screen</h3>
-          <p>An Adapter reads without a workspace screen, so each step is a log row with its state and its integrity digest.</p>
-          <ul className="ls-session__log">
-            {props.adapterSteps.map((step) => (
-              <li key={step.stepId}>
-                <span>{step.displayName}</span>
-                <span>{sessionStepWord(step.state)} · {countNoun(step.attempts, 'attempt')}</span>
-                {step.digest === null ? <span>No artifact registered.</span> : <Digest value={step.digest} label="Adapter artifact digest" />}
-                <TechnicalDetails items={[{ label: 'Plan step identifier', value: step.stepId, mono: true }]} />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <AdapterStepLog runId={props.runId} steps={props.adapterSteps} headingId="live-adapter-heading" />
+    </section>
+  );
+}
+
+/**
+ * What one adapter log row says about its artifact: the Evidence and its digest, or one of
+ * two sentences — never one sentence for all three situations (Story 10.6, legacy 5.3).
+ *
+ * The Evidence is named the way the Result tab names the artifacts a Run froze: a short
+ * reference linked to its card, with the full identifier under Technical details.
+ */
+function AdapterArtifact({ runId, artifact }: {
+  readonly runId: string;
+  readonly artifact: AdapterStepArtifact;
+}): React.JSX.Element {
+  switch (artifact.kind) {
+    case 'registered':
+      return (
+        <>
+          <a href={`/runs/${runId}/evidence/technical?evidence=${encodeURIComponent(artifact.evidenceId)}#evidence-${encodeURIComponent(artifact.evidenceId)}`}>
+            <Reference kind="Evidence" value={artifact.evidenceId} />
+          </a>
+          <Digest value={artifact.digest} label="Adapter artifact digest" />
+        </>
+      );
+    case 'unavailable':
+      return <span>{ADAPTER_ARTIFACT_WORDS.unavailable}</span>;
+    case 'none':
+      return <span>{ADAPTER_ARTIFACT_WORDS.none}</span>;
+  }
+}
+
+/**
+ * The Session Steps an Adapter performed, as log rows (UX-DR25's adapter-only row).
+ *
+ * ONE component for Live View and Replay, the `SessionChrome` and `SessionStage`
+ * discipline: the two copies of this markup already disagreed once — Replay's rows were
+ * repaired to show their digests and Live View's were left passing `null` — and a single
+ * component is what stops the next repair landing on one surface only.
+ */
+export function AdapterStepLog({ runId, steps, headingId }: {
+  readonly runId: string;
+  readonly steps: readonly LiveViewerAdapterStep[];
+  readonly headingId: string;
+}): React.JSX.Element | null {
+  if (steps.length === 0) return null;
+  return (
+    <section aria-labelledby={headingId} className="ls-card ls-stack">
+      <h3 id={headingId}>Systems read without a screen</h3>
+      <p>An Adapter reads without a workspace screen, so each step is a log row with its state and its integrity digest.</p>
+      <ul className="ls-session__log">
+        {steps.map((step) => (
+          <li key={step.stepId}>
+            <span>{step.displayName}</span>
+            <span>{sessionStepWord(step.state)} · {countNoun(step.attempts, 'attempt')}</span>
+            <AdapterArtifact runId={runId} artifact={step.artifact} />
+            <TechnicalDetails
+              items={[
+                { label: 'Plan step identifier', value: step.stepId, mono: true },
+                ...(step.artifact.kind === 'registered'
+                  ? [{ label: 'Evidence identifier', value: step.artifact.evidenceId, mono: true }]
+                  : []),
+              ]}
+            />
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

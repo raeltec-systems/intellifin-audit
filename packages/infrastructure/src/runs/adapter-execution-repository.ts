@@ -68,6 +68,7 @@ import { DrizzleFrozenExecutionReader } from '../procedures/procedure-repository
 import { createAuditEventWriter, CryptoUuidV7Generator, SystemClock } from '../db/audit-events.js';
 import { isUuidText } from '../db/identifier.js';
 import { openPauseWaitRow } from './wait-rows.js';
+import { readPendingResume as readPendingResumeRow } from './pause-history.js';
 
 /**
  * Rows per statement.
@@ -513,6 +514,10 @@ export async function withRunExecutionContext<T>(
     },
     async clearPauseRequest() {
       await new DrizzleRunRepository(tx).clearPauseRequest(runId);
+    },
+    /** The resume still waiting for its attempt (Story 10.6, legacy 5.4), on this transaction. */
+    async readPendingResume() {
+      return readPendingResumeRow(tx, runId);
     },
     async saveStepExecution(execution: StepExecutionRecord) {
       const values = {
