@@ -163,7 +163,11 @@ export async function downloadWithGrant(
 
   const started = Date.now();
   let capability: EvidenceReadGrantCapability | null = null;
-  while (Date.now() - started <= maxWaitMs) {
+  // The grant is read at least ONCE, whatever the clock did: a `while` that checked the
+  // elapsed time first read nothing at all when a millisecond passed between `started` and
+  // the check, so a zero wait answered `grant-unavailable` for a grant that was there. CI met
+  // it on a slow runner (evidence-snapshot-reader.test.ts, 2026-09-29).
+  for (;;) {
     const at = instant(now());
     if (at === null) return failed('grant-unavailable');
     capability = await repository.readForActor({ grantId: input.grantId, actorId: input.actorId, now: at });

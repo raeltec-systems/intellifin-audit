@@ -1,3 +1,12 @@
+## 2026-09-29 — A zero wait must still read once
+
+- **A polling loop that checks the elapsed time BEFORE its first read can read nothing.**
+  `downloadWithGrant` with `maxGrantWaitMs: 0` skipped the grant read whenever a millisecond
+  passed between `started` and the `while` check, and answered `grant-unavailable` for a grant
+  that was there. CI met it on a slow runner (`evidence-snapshot-reader.test.ts`, on a commit
+  that changed only a memlog). The loop reads first and checks the clock after; the test moves
+  `Date.now` on every call, and fails against the old loop.
+
 ## 2026-09-25 — Every relation has a class, and a locking read is a grant (Story 11.1)
 
 `docs/contracts/tenancy-v1.md` classifies every relation of the migrated database into one of
