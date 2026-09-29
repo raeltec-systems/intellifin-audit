@@ -243,6 +243,14 @@ the Step Execution, the Target System, the schema version, the counts, the cover
 tally, the corroboration tally, the failing checks by name, `digests` (every registered
 Observation's digest, in registration order) and `batchDigest`.
 
+A batch that holds a record a person matched (`matchOrigin = 'human-matched'`) also carries
+`humanMatchDecisions`: one `{observationId, waitId}` per such record, naming the answered
+choose-candidate wait that matched it (Story 10.6, legacy 4.7). The key is absent from every
+other event, so an event without a human-selected match is exactly what it was, and the
+link is outside the Observation digest. A human-matched item without a decision, a platform
+item with one, or a malformed wait id is refused (`match-decision`) before any read; see
+`durable-escalation-v1.md` invariants 35a and 35b.
+
 The batch is bounded at `OBSERVATION_LIMITS.batch` — equal to `POPULATION_LIMITS.rows`,
 because one adapter Work Item produces at most one Observation per included population
 record. It is a refusal, not a truncation. The stated cost of carrying every digest is

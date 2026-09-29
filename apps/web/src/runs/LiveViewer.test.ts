@@ -10,7 +10,7 @@ import {
 } from '../design/copy';
 import { EndedBanner, LiveViewer, type LiveViewerProps } from './LiveViewer';
 import { UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
-import { LIVE_VIEW_STAGE } from './live-view';
+import { ADAPTER_ARTIFACT_WORDS, LIVE_VIEW_STAGE } from './live-view';
 import { NO_WORK_ITEM } from './session-words';
 
 /**
@@ -165,7 +165,7 @@ describe('the narration rail', () => {
   it('never puts a retry inside the Step counter', () => {
     const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
       stepsStarted: 6, plannedSteps: 6, retries: 1,
-      step: { narration: 'Opening the record for E-000103 on LoanCore', state: 'RUNNING', attempt: 2, diagnostic: null },
+      step: { narration: 'Opening the record for E-000103 on LoanCore', subjectKeyText: 'E-000103', state: 'RUNNING', attempt: 2, diagnostic: null },
     })));
     expect(html).toContain('Step 6 of 6');
     expect(html).not.toContain('Step 7 of 6');
@@ -174,9 +174,31 @@ describe('the narration rail', () => {
 
   it('says nothing about an attempt that is the first one', () => {
     const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
-      step: { narration: 'Opening the record for E-000103 on LoanCore', state: 'RUNNING', attempt: 1, diagnostic: null },
+      step: { narration: 'Opening the record for E-000103 on LoanCore', subjectKeyText: 'E-000103', state: 'RUNNING', attempt: 1, diagnostic: null },
     })));
     expect(html).not.toContain('attempt 1');
+  });
+
+  // Chromium breaks a record key such as `E-000102` after its hyphen in the narrow rail.
+  // Only the KEY is kept together: the label also carries a person's name, and a long name
+  // that cannot wrap pushes the rail past the page edge at 1024 px.
+  it('keeps the record key on one line in the narration and lets the name wrap', () => {
+    const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
+      step: {
+        narration: 'Opening the record for E-000102 · Alexandra Montgomery-Whitfield on LoanCore',
+        subjectKeyText: 'E-000102', state: 'RUNNING', attempt: 1, diagnostic: null,
+      },
+    })));
+    const narration = /<p class="ls-session__narration">(.*?)<\/p>/.exec(html)?.[1];
+    expect(narration).toBe('Opening the record for <span class="ls-nowrap">E-000102</span> · Alexandra Montgomery-Whitfield on LoanCore');
+  });
+
+  it('keeps nothing together when the binding masks the key', () => {
+    const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
+      step: { narration: 'Opening the record for •••• on LoanCore', subjectKeyText: null, state: 'RUNNING', attempt: 1, diagnostic: null },
+    })));
+    const narration = /<p class="ls-session__narration">(.*?)<\/p>/.exec(html)?.[1];
+    expect(narration).toBe('Opening the record for •••• on LoanCore');
   });
 
   // Watch is where a person follows the Agent record by record. `displayName` is the
@@ -203,7 +225,7 @@ describe('the narration rail', () => {
 
   it('renders a Step Execution diagnostic as untrusted content', () => {
     const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
-      step: { narration: 'Search on LoanCore, plan step target-1-1, started 2026-09-09T06:12:00.000Z.', state: 'FAILED', attempt: 2, diagnostic: 'extraction-incomplete' },
+      step: { narration: 'Search on LoanCore, plan step target-1-1, started 2026-09-09T06:12:00.000Z.', subjectKeyText: null, state: 'FAILED', attempt: 2, diagnostic: 'extraction-incomplete' },
     })));
     expect(html).toContain('Untrusted source content');
     expect(html).toContain('extraction-incomplete');
@@ -219,10 +241,12 @@ describe('the narration rail', () => {
   });
 
   it('lists an adapter Run’s Session Steps as log rows with their digests', () => {
+    const evidenceId = '019823ab-0000-7000-8000-0000000000e1';
     const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
       workspace: null,
       stageNote: LIVE_VIEW_STAGE.adapterOnly,
-      adapterSteps: [{ stepId: 'session-2', displayName: 'Extract · AccessGate', state: 'ACQUIRED', attempts: 1, digest: 'b'.repeat(64) }],
+      adapterSteps: [{ stepId: 'session-2', displayName: 'Extract · AccessGate', state: 'ACQUIRED', attempts: 1,
+        artifact: { kind: 'registered', evidenceId, digest: 'b'.repeat(64) } }],
     })));
     // The stored state is a WORD and the plan-step id is under Technical details: an
     // auditor reads `Acquired`, and `session-2` is a plan identifier (UX-28).
@@ -231,6 +255,33 @@ describe('the narration rail', () => {
     expect(html).toContain('Plan step identifier');
     expect(html).toContain('session-2');
     expect(html.slice(0, html.indexOf('Plan step identifier'))).not.toContain('session-2');
+    // Story 10.6 (legacy 5.3): the row names WHICH Evidence it registered — a short
+    // reference linked to its card, the full identifier under Technical details.
+    expect(html).toContain(`href="/runs/${RUN_ID}/evidence/technical?evidence=${evidenceId}#evidence-${evidenceId}"`);
+    expect(html).toContain('Evidence identifier');
+    expect(html).not.toContain(ADAPTER_ARTIFACT_WORDS.none);
+    expect(html).not.toContain(ADAPTER_ARTIFACT_WORDS.unavailable);
+  });
+
+  // Story 10.6, legacy 5.3 AC 2 (owner decision 2026-09-25): three situations, three
+  // renderings — never one sentence for all three. Each sentence is read back from the
+  // words module rather than retyped here.
+  it('says no artifact is registered, or that the record could not be read, and never both', () => {
+    const row = (artifact: LiveViewerProps['adapterSteps'][number]['artifact']) => renderToStaticMarkup(
+      React.createElement(LiveViewer, props({
+        workspace: null,
+        stageNote: LIVE_VIEW_STAGE.adapterOnly,
+        adapterSteps: [{ stepId: 'session-2', displayName: 'Extract · RoleMatrix', state: 'IN_PROGRESS', attempts: 1, artifact }],
+      })),
+    );
+    const none = row({ kind: 'none' });
+    expect(none).toContain(ADAPTER_ARTIFACT_WORDS.none);
+    expect(none).not.toContain(ADAPTER_ARTIFACT_WORDS.unavailable);
+    expect(none).not.toContain('Evidence identifier');
+    const unavailable = row({ kind: 'unavailable' });
+    expect(unavailable).toContain(ADAPTER_ARTIFACT_WORDS.unavailable);
+    expect(unavailable).not.toContain(ADAPTER_ARTIFACT_WORDS.none);
+    expect(unavailable).not.toMatch(/[0-9a-f]{64}/);
   });
 
   // UX-28: the chrome strip is read at a glance, and a thirty-six character workspace
@@ -276,7 +327,7 @@ describe('the stage and the rail (UX-27, UX-48)', () => {
   it('says the policy sentence once for the location and a diagnostic together', () => {
     const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
       frame: FRAME,
-      step: { narration: 'Opening the record for E-000105 on LoanCore', state: 'FAILED', attempt: 2, diagnostic: 'target said: close this' },
+      step: { narration: 'Opening the record for E-000105 on LoanCore', subjectKeyText: 'E-000105', state: 'FAILED', attempt: 2, diagnostic: 'target said: close this' },
     })));
     expect(html.split('Untrusted source content —').length - 1).toBe(2);
     expect(policyCount(html)).toBe(1);

@@ -20,6 +20,7 @@ import { observationAbsenceDigest } from '@intellifin/application';
 import { isObservationAbsenceProof, isObservationQueryKey, isRunResultPublication, workspaceReference } from '@intellifin/domain';
 import type { Database, Transaction } from '../db/client.js';
 import { isUuidText } from '../db/identifier.js';
+import { captureSuppressedPredicate, frameMissingPredicate } from './replay-gaps.js';
 import {
   auditEvents,
   populationExecution,
@@ -90,6 +91,58 @@ export const REPLAY_FRAME_LIMIT = 500;
  * rule this file already learned once, in the PR 23 second pass.
  */
 export const REPLAY_PAGE_SIZE = REPLAY_FRAME_LIMIT;
+
+/**
+ * How many gaps one Replay names by position (Story 10.6, legacy 5.2).
+ *
+ * The COUNTS beside the sample are exact, so "playback is incomplete: N frames are missing"
+ * is true of every Run however many it has; only the list of positions is bounded, and the
+ * surface says when it is.
+ */
+export const REPLAY_GAP_LIMIT = 100;
+
+/**
+ * One Tool Action that left no frame in a Run's Replay, and where it sits in the session
+ * (Story 10.6, legacy 5.2).
+ *
+ * `missing` owed a frame and left none (`failure.frame-missing`'s predicate, shared through
+ * `replay-gaps.ts`); `suppressed` had its capture withheld ON PURPOSE while a credential was
+ * on the wire, and is never counted as missing.
+ */
+export interface RunReplayGap {
+  readonly toolActionId: string;
+  readonly kind: 'missing' | 'suppressed';
+  /** The Tool Action, as stored: the surface narrates it in audit words. */
+  readonly action: string;
+  readonly startedAt: string;
+  readonly stepExecutionId: string;
+  /** Through the Step Execution first, then the action — the rule every frame read uses. */
+  readonly workItemId: string | null;
+  /** The registration the action was performed against, for the system's frozen name. */
+  readonly targetSystem: string;
+  /** Why a capture was suppressed; `null` on a missing frame. */
+  readonly captureSuppression: string | null;
+  /**
+   * How many of Replay's frames come BEFORE this action, in Replay's own order
+   * (`started_at`, then the Tool Action id). The gap sits between that frame and the next.
+   */
+  readonly framesBefore: number;
+  /**
+   * How many of THIS record's frames come before the action, in the same order — set only
+   * by the one-record read (`readRecordReplayGaps`), where it places the gap among the
+   * record's own frames (Story 10.6, owner decision D2 b, 2026-09-29).
+   */
+  readonly recordFramesBefore?: number;
+}
+
+export interface RunReplayGaps {
+  /** The EXACT number of missing frames: the count "playback is incomplete" states. */
+  readonly missing: number;
+  /** The exact number of suppressed captures, which are not missing. */
+  readonly suppressed: number;
+  /** Both kinds, in session order, at most `REPLAY_GAP_LIMIT`. */
+  readonly rows: readonly RunReplayGap[];
+}
 
 export interface RunResultRow {
   readonly version: number;
@@ -574,6 +627,113 @@ export class DrizzleRunDetailRepository {
     // unserveable row is one the scrubber does not offer instead of a pill that opens
     // nothing. `total` stays the exact count of bound registered screenshots either way.
     return { total, rows: rows.map(frameRow).filter((row): row is RunFrameRow => row !== null) };
+  }
+
+  /**
+   * The gaps in a Run's Replay: the Tool Actions that left no frame, with where each sits
+   * (Story 10.6, legacy 5.2).
+   *
+   * Replay played the frames a Run registered and said nothing about the actions that left
+   * none, so a session with a gap looked complete. A missing frame is read with the SAME
+   * predicate the terminal transition used to record `failure.frame-missing` and count
+   * `framesMissing`, so the surface and the Result cannot disagree; a suppressed capture is
+   * read beside it and kept apart, because withholding a frame while a credential is on the
+   * wire is the platform's guarantee working, not a gap in its record.
+   *
+   * `frames_before` is counted over the frame read's own join (registered screenshots bound
+   * to a Step Execution of this Run), ordered as `readFrames` orders, so a gap's position is
+   * in the same numbering the scrubber shows. The counts are exact; only the rows are bounded.
+   */
+  async readReplayGaps(runId: string, limit = REPLAY_GAP_LIMIT): Promise<RunReplayGaps> {
+    if (!isUuidText(runId)) return { missing: 0, suppressed: 0, rows: [] };
+    return this.replayGaps(runId, limit, null);
+  }
+
+  /**
+   * The gaps of ONE record's inspection, for the one-record Replay (Story 10.6, owner
+   * decision D2 b, 2026-09-29).
+   *
+   * The same query as `readReplayGaps`, scoped to the Tool Actions whose Work Item —
+   * through the Step Execution first, then the action, the rule every frame read uses — is
+   * `workItemId`. The counts are that record's exact counts; `framesBefore` stays in the
+   * whole session's numbering (the counter the one-record view shows), and
+   * `recordFramesBefore` places each gap among the record's own frames.
+   */
+  async readRecordReplayGaps(runId: string, workItemId: string, limit = REPLAY_GAP_LIMIT): Promise<RunReplayGaps> {
+    if (!isUuidText(runId) || !isUuidText(workItemId)) return { missing: 0, suppressed: 0, rows: [] };
+    return this.replayGaps(runId, limit, workItemId);
+  }
+
+  private async replayGaps(runId: string, limit: number, workItemId: string | null): Promise<RunReplayGaps> {
+    const bound = Math.max(0, Math.min(Math.trunc(limit), REPLAY_GAP_LIMIT));
+    const result = await this.db.execute<{
+      missing: number;
+      suppressed: number;
+      rows: readonly {
+        tool_action_id: string; kind: 'missing' | 'suppressed'; action: string; started_at: string;
+        step_execution_id: string; work_item_id: string | null; target_system: string;
+        capture_suppression: string | null; frames_before: number; record_frames_before: number | null;
+      }[] | null;
+    }>(sql`
+      WITH gaps AS MATERIALIZED (
+        SELECT a.tool_action_id, a.action, a.started_at, a.step_execution_id, a.target_system,
+          coalesce(s.work_item_id, a.work_item_id) AS work_item_id,
+          a.capture_suppression,
+          CASE WHEN a.capture = 'SUPPRESSED' THEN 'suppressed' ELSE 'missing' END AS kind
+        FROM run_tool_action a
+        LEFT JOIN run_step_execution s ON s.step_execution_id = a.step_execution_id AND s.run_id = ${runId}::uuid
+        WHERE a.run_id = ${runId}::uuid
+          AND (${frameMissingPredicate('a')} OR ${captureSuppressedPredicate('a')})
+          ${workItemId === null ? sql`` : sql`AND coalesce(s.work_item_id, a.work_item_id) = ${workItemId}::uuid`}
+      ), frames AS MATERIALIZED (
+        SELECT fa.started_at, fa.tool_action_id, coalesce(fs.work_item_id, fa.work_item_id) AS work_item_id
+        FROM run_evidence fe
+        JOIN run_evidence_capture fc ON fc.evidence_id = fe.evidence_id AND fc.run_id = ${runId}::uuid
+        JOIN run_tool_action fa ON fa.tool_action_id = fc.tool_action_id AND fa.run_id = ${runId}::uuid
+        JOIN run_step_execution fs ON fs.step_execution_id = fa.step_execution_id AND fs.run_id = ${runId}::uuid
+        LEFT JOIN run_work_item fw ON fw.work_item_id = coalesce(fs.work_item_id, fa.work_item_id) AND fw.run_id = ${runId}::uuid
+        WHERE fe.run_id = ${runId}::uuid AND fe.kind = 'screenshot' AND fe.state = 'REGISTERED'
+          AND (coalesce(fs.work_item_id, fa.work_item_id) IS NULL OR fw.work_item_id IS NOT NULL)
+      ), page AS (
+        SELECT g.*,
+          (SELECT count(*) FROM frames f
+            WHERE (f.started_at, f.tool_action_id) < (g.started_at, g.tool_action_id))::int AS frames_before,
+          ${workItemId === null ? sql`NULL::int` : sql`(SELECT count(*) FROM frames f
+            WHERE f.work_item_id = g.work_item_id
+              AND (f.started_at, f.tool_action_id) < (g.started_at, g.tool_action_id))::int`} AS record_frames_before
+        FROM gaps g
+        ORDER BY g.started_at, g.tool_action_id
+        LIMIT ${bound}
+      )
+      SELECT
+        (SELECT count(*) FROM gaps WHERE kind = 'missing')::int AS missing,
+        (SELECT count(*) FROM gaps WHERE kind = 'suppressed')::int AS suppressed,
+        (SELECT jsonb_agg(jsonb_build_object(
+            'tool_action_id', p.tool_action_id, 'kind', p.kind, 'action', p.action,
+            'started_at', p.started_at, 'step_execution_id', p.step_execution_id,
+            'work_item_id', p.work_item_id, 'target_system', p.target_system,
+            'capture_suppression', p.capture_suppression, 'frames_before', p.frames_before,
+            'record_frames_before', p.record_frames_before)
+          ORDER BY p.started_at, p.tool_action_id) FROM page p) AS rows`);
+    const row = result[0];
+    if (row === undefined) return { missing: 0, suppressed: 0, rows: [] };
+    return {
+      missing: Number(row.missing),
+      suppressed: Number(row.suppressed),
+      rows: (row.rows ?? []).map((gap): RunReplayGap => ({
+        toolActionId: gap.tool_action_id,
+        kind: gap.kind,
+        action: gap.action,
+        startedAt: new Date(gap.started_at).toISOString(),
+        stepExecutionId: gap.step_execution_id,
+        workItemId: gap.work_item_id,
+        targetSystem: gap.target_system,
+        captureSuppression: gap.capture_suppression,
+        framesBefore: Number(gap.frames_before),
+        ...(gap.record_frames_before === null || gap.record_frames_before === undefined
+          ? {} : { recordFramesBefore: Number(gap.record_frames_before) }),
+      })),
+    };
   }
 
   /**

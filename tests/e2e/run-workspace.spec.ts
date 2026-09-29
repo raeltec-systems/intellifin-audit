@@ -320,7 +320,9 @@ test.describe('Run Workspace through the authenticated application', () => {
     await fixture.revokeAuditor();
     try {
       await page.reload();
-      await expect(page.getByRole('alert')).toContainText('Your role does not permit this action.');
+      // Scoped to the page body: Next.js mounts its own route announcer (`role="alert"`) after
+      // hydration, and an unscoped locator then resolves to two elements (strict mode).
+      await expect(page.locator('main#content').getByRole('alert')).toContainText('Your role does not permit this action.');
       await expect(page.getByTestId('run-workspace-shell')).toHaveCount(0);
       await expect(page.getByRole('region', { name: 'Run conversation', exact: true })).toHaveCount(0);
       await expect(page.getByText(RUN_WORKSPACE_SUBMITTED_TEXT, { exact: true })).toHaveCount(0);

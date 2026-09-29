@@ -44,6 +44,7 @@ import {
   type ObservationEvaluationRow,
   type RunGatePopulationFacts,
   type PackageSeal,
+  type PendingResume,
   type PopulationCheckpoint,
   type PopulationRecord,
   type RegisteredObservation,
@@ -214,6 +215,9 @@ const RECORDS: readonly PopulationRecord[] = [
 /** An in-memory stand-in for `PostgresAdapterExecutionRepository`, with the same seams. */
 class FakeRepository implements AdapterExecutionRepository {
   pauseWaits: RunWait[] = [];
+  /** What `readPendingResume` answers, and how often the stage asked (Story 10.6). */
+  pendingResume: PendingResume | null = null;
+  pendingResumeReads = 0;
   run: RunRecord = { ...RUN };
   population: PopulationCheckpoint | null = {
     revision: 1, status: 'POPULATION_READY', attempts: 1,
@@ -407,6 +411,7 @@ class FakeRepository implements AdapterExecutionRepository {
       withdrawOpenWait: async (): Promise<null> => null,
       openPauseWait: async (wait: RunWait) => { repository.pauseWaits.push(wait); },
       clearPauseRequest: async () => { repository.run = { ...repository.run, pauseRequest: null }; },
+      readPendingResume: async () => { repository.pendingResumeReads += 1; return repository.pendingResume; },
       saveGateChecks: async (rows) => {
         if (repository.gate.length === 0) repository.gate = [...rows];
       },
@@ -859,6 +864,21 @@ describe('executeAdapterSteps', () => {
     expect(test.repository.checkpoint?.status).toBe('EXTRACTION_COMPLETE');
     // The Gate rows are written once. A Gate failure is never repaired by re-running it.
     expect(test.repository.gate).toHaveLength(firstGate);
+  });
+
+  it('does not hold a pause at an acquired reference when every adapter unit already finished', async () => {
+    const test = harness({ plan: plan([reference, adapter]) });
+    await executeAdapterSteps(test.deps, JOB);
+    const attempts = test.repository.executions.length;
+    test.repository.checkpoint = { ...test.repository.checkpoint!, status: 'RETRY' };
+    test.repository.run = {
+      ...test.repository.run, state: 'RUNNING',
+      pauseRequest: { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-04T23:59:00.000Z' },
+    };
+    await executeAdapterSteps(test.deps, JOB);
+    expect(test.repository.pauseWaits).toEqual([]);
+    expect(test.repository.executions).toHaveLength(attempts);
+    expect(test.repository.checkpoint?.status).toBe('EXTRACTION_COMPLETE');
   });
 
   it('fails the Run terminally when a frozen Reference Source artifact no longer matches its digest', async () => {
@@ -1338,6 +1358,118 @@ describe('executeAdapterSteps', () => {
     expect(test.repository.result).toMatchObject({ outcome: 'CANCELED', row: 'canceled', runState: 'CANCELED', gatePassed: false });
     const canceled = test.repository.events.find((entry) => entry.eventType === 'lifecycle.run-canceled')!;
     expect(canceled.payload).toMatchObject({ priorState: 'RUNNING', state: 'CANCELED', reason: 'Wrong period.', performedBy: 'worker' });
+  });
+
+  /**
+   * Where a pause holds an adapter Run, and which attempt its resume starts (Story 10.6,
+   * legacy 5.4). This stage's pause arm named nothing at all, and no test drove it.
+   */
+  it('holds a pause before the Reference Source, naming its Session Step and no attempt', async () => {
+    const test = harness({ plan: plan([reference, adapter]) });
+    test.repository.run = {
+      ...test.repository.run,
+      pauseRequest: { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-04T23:59:00.000Z' },
+    };
+    await executeAdapterSteps(test.deps, JOB);
+    expect(test.repository.run.state).toBe('PAUSED');
+    expect(test.repository.pauseWaits).toHaveLength(1);
+    expect(test.wire).toEqual([]);
+    const paused = test.repository.events.find((entry) => entry.eventType === 'lifecycle.run-paused')!;
+    // `session-2` is the Reference Source: `session-1` acquires the population.
+    expect(paused.payload).toMatchObject({ planStepId: 'session-2' });
+    for (const key of ['heldWorkItemId', 'stepExecutionId', 'attempt']) expect(paused.payload).not.toHaveProperty(key);
+  });
+
+  it('holds a pause before the next adapter Work Item, naming it', async () => {
+    const second = target('reg-api-2', 'api', 'https://synthetic.invalid/accessgate2/accounts');
+    const test = harness({
+      plan: plan([adapter, second]),
+      extract: async (entry) => {
+        test.wire.push({ location: entry.contract.allowed_origins[0]!, authorization: null });
+        // Asked for while the FIRST Work Item is mid-flight: it finishes, and the Run is
+        // held before the second.
+        test.repository.run = {
+          ...test.repository.run,
+          pauseRequest: { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-04T23:59:00.000Z' },
+        };
+        return { bytes: utf8Bytes(ACCOUNTS), mediaType: 'application/json', location: entry.contract.allowed_origins[0]! };
+      },
+    });
+    await executeAdapterSteps(test.deps, JOB);
+    expect(test.repository.run.state).toBe('PAUSED');
+    const items = [...test.repository.items.values()];
+    expect(items.map((item) => item.state)).toEqual(['OBSERVED', 'PENDING']);
+    const paused = test.repository.events.find((entry) => entry.eventType === 'lifecycle.run-paused')!;
+    expect(paused.payload).toMatchObject({ planStepId: items[1]!.stepId, heldWorkItemId: items[1]!.workItemId });
+    expect(paused.payload).not.toHaveProperty('stepExecutionId');
+  });
+
+  it('holds a repeated pause after an acquired reference at the pending Work Item and links its resumed attempt', async () => {
+    const pauseRequest = { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-04T23:59:00.000Z' };
+    const test = harness({
+      plan: plan([reference, adapter]),
+      reference: async (entry) => {
+        test.wire.push({ location: entry.contract.allowed_origins[0]!, authorization: null });
+        test.repository.run = { ...test.repository.run, pauseRequest };
+        return { bytes: utf8Bytes(ROLE_MATRIX), mediaType: 'text/csv', location: entry.contract.allowed_origins[0]! };
+      },
+    });
+    await executeAdapterSteps(test.deps, JOB);
+    expect(test.repository.steps.get('session-2')?.state).toBe('ACQUIRED');
+    const item = [...test.repository.items.values()][0]!;
+    expect(item.state).toBe('PENDING');
+    expect(test.repository.run.state).toBe('PAUSED');
+
+    // Resume, then pause again before the stage starts more work. Its loop revisits the
+    // acquired reference to verify its bytes, but that reference starts no new attempt.
+    test.repository.run = { ...test.repository.run, state: 'RUNNING', pauseRequest };
+    await executeAdapterSteps(test.deps, JOB);
+    const pauses = test.repository.events.filter((entry) => entry.eventType === 'lifecycle.run-paused');
+    expect(pauses).toHaveLength(2);
+    const held = pauses[1]!.payload;
+    expect(held).toMatchObject({ planStepId: item.stepId, heldWorkItemId: item.workItemId });
+    expect(held).not.toHaveProperty('stepExecutionId');
+    expect(test.wire).toHaveLength(1);
+
+    // Feed the durable hold back through the repository port, then run the real stage.
+    const waitId = String(held['waitId']);
+    test.repository.pendingResume = {
+      waitId, planStepId: String(held['planStepId']), workItemId: String(held['heldWorkItemId']),
+    };
+    test.repository.run = { ...test.repository.run, state: 'RUNNING' };
+    await executeAdapterSteps(test.deps, JOB);
+    const starts = test.repository.events.filter((entry) => entry.payload['diagnostic'] === 'work-item-attempt-started');
+    expect(starts).toHaveLength(1);
+    expect(starts[0]!.payload).toMatchObject({ resumedWaitId: waitId, workItemId: item.workItemId });
+    expect(test.repository.executions.find((execution) => execution.stepExecutionId === starts[0]!.payload['stepExecutionId']))
+      .toMatchObject({ planStepId: item.stepId, workItemId: item.workItemId, state: 'SUCCEEDED' });
+    expect(test.repository.events.filter((entry) => entry.payload['diagnostic'] === 'reference-attempt-started')).toHaveLength(1);
+  });
+
+  it('writes the resume onto the Reference Source attempt it restarts, and onto no later unit', async () => {
+    const test = harness({ plan: plan([reference, adapter]) });
+    const waitId = '01920000-0000-7000-8000-00000000ab01';
+    test.repository.pendingResume = { waitId, planStepId: 'session-2', workItemId: null };
+    await executeAdapterSteps(test.deps, JOB);
+    const starts = test.repository.events
+      .filter((entry) => entry.eventType === 'lifecycle.adapter-execution')
+      .filter((entry) => ['reference-attempt-started', 'work-item-attempt-started'].includes(String(entry.payload['diagnostic'])));
+    expect(starts.map((entry) => entry.payload['diagnostic'])).toEqual(['reference-attempt-started', 'work-item-attempt-started']);
+    expect(starts[0]!.payload).toMatchObject({ resumedWaitId: waitId });
+    expect(starts[1]!.payload).not.toHaveProperty('resumedWaitId');
+    expect(test.repository.pendingResumeReads).toBe(1);
+  });
+
+  it('writes the resume onto the adapter Work Item attempt at the held step', async () => {
+    const test = harness({ plan: plan([reference, adapter]) });
+    const waitId = '01920000-0000-7000-8000-00000000ab02';
+    test.repository.pendingResume = { waitId, planStepId: 'session-3', workItemId: null };
+    await executeAdapterSteps(test.deps, JOB);
+    const starts = test.repository.events
+      .filter((entry) => entry.eventType === 'lifecycle.adapter-execution')
+      .filter((entry) => ['reference-attempt-started', 'work-item-attempt-started'].includes(String(entry.payload['diagnostic'])));
+    expect(starts[0]!.payload).not.toHaveProperty('resumedWaitId');
+    expect(starts[1]!.payload).toMatchObject({ diagnostic: 'work-item-attempt-started', resumedWaitId: waitId });
   });
 
   it('lets the unit already running finish, and starts no further Target System work', async () => {

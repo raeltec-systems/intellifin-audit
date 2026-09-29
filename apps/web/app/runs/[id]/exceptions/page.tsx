@@ -7,6 +7,7 @@ import { EmptyState } from '../../../../src/design/EmptyState';
 import { RUN_TAB_EMPTY } from '../../../../src/design/copy';
 import { countNoun } from '../../../../src/design/words';
 import { ExceptionCard } from '../../../../src/runs/ExceptionList';
+import { readHumanMatchIndex } from '../../../../src/runs/human-match-read';
 import { UntrustedPolicy } from '../../../../src/runs/UntrustedText';
 import { RunDenied, RunDetailFrame, openRun } from '../../../../src/runs/detail';
 import { recordNaming } from '../../../../src/runs/record-words';
@@ -39,12 +40,15 @@ export default async function RunExceptionsPage({
     new DrizzleProcedureRepository(runtime.db).findVersion(run.versionId),
   ]);
   const observationIds = exceptions.rows.map((row) => row.observationId);
-  const [evaluations, observations] = await Promise.all([
+  const [evaluations, observations, humanMatches] = await Promise.all([
     detail.readEvaluations(run.runId, observationIds),
     // The Observations these findings were raised on, by id. The bounded Observation PAGE
     // is ordered by Target System and record key, so a finding past the fiftieth row would
     // have no captured value to show — an absence a reader takes for "nothing was wrong".
     detail.readObservationsByIds(run.runId, observationIds),
+    // Which of them a PERSON matched, and the decision that did (Story 10.6, legacy 4.7),
+    // read by the same ids — never by lining a wait up with a record by time.
+    readHumanMatchIndex(runtime.db, run.runId, { observationIds }),
   ]);
   const observationById = new Map(observations.map((row) => [row.observationId, row]));
 
@@ -106,6 +110,7 @@ export default async function RunExceptionsPage({
                 masked={masked}
                 recordName={names.get(exception.populationRecordKey) ?? null}
                 naming={naming}
+                humanMatches={humanMatches}
               />
             ))}
           </ul>

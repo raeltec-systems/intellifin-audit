@@ -71,7 +71,7 @@ import {
 import { runRunLevelGate, SECURITY_DENIED_EVENT } from './run-gate.js';
 import { completeRun } from './complete-run.js';
 import { performCancellation } from './cancel-run.js';
-import { performPause } from './pause-run.js';
+import { performPause, resumeLinker, type PauseHold } from './pause-run.js';
 import { DEFERRED_PAUSE_SUPERSEDED_EVENT } from './deferred-pause-run.js';
 
 /** The bounded worker input. It is deliberately the same shape as the population job. */
@@ -348,6 +348,23 @@ function terminalSecurityCause(diagnostic: string): 'action-denied' | 'scope-vio
 
 function isTerminalWorkItem(item: WorkItemRecord): boolean {
   return item.state === 'OBSERVED' || item.state === 'UNINSPECTED' || item.state === 'AMBIGUOUS' || item.state === 'FAILED';
+}
+
+/**
+ * Where a pause taken BETWEEN units holds the Run (Story 10.6, legacy 5.4): before the
+ * next Work Item still to run, in the order the stage runs them. No Step Execution is in
+ * flight there, so nothing is superseded.
+ *
+ * The item boundary runs before the terminal check, so the loop's own item can already be
+ * finished; naming it would say the Run is held before work that is done. When no Work
+ * Item is left to run, the pause holds the Run at the loop's position with no record to
+ * name, which is what is true of it.
+ */
+function heldBetweenUnits(workItems: readonly WorkItemRecord[], at: WorkItemRecord): PauseHold {
+  const next = [...workItems].sort((left, right) => left.ordinal - right.ordinal).find((item) => !isTerminalWorkItem(item));
+  return next === undefined
+    ? { planStepId: at.stepId, workItemId: null, superseded: null }
+    : { planStepId: next.stepId, workItemId: next.workItemId, superseded: null };
 }
 
 function checkpointLease(
@@ -685,6 +702,8 @@ export async function executeAgentWorkItem(
       await work(context);
       return true;
     });
+  // The attempt a resume restarts names that resume (Story 10.6, legacy 5.4).
+  const linkResume = resumeLinker();
 
   /**
    * Honour a cancellation or a pause at a Tool Action boundary (Stories 3.10 and 5.4).
@@ -704,8 +723,11 @@ export async function executeAgentWorkItem(
    * resume restarts the Work Item from its first Tool Action.
    */
   const lifecycleBoundary = async (
-    inFlight?: { readonly item: WorkItemRecord; readonly execution: StepExecutionRecord },
+    position: { readonly item: WorkItemRecord; readonly execution?: StepExecutionRecord },
   ): Promise<'continue' | 'stopped' | 'lost'> => {
+    // `execution` present means an attempt is in flight at this boundary; absent, the
+    // boundary sits between units, before `item`.
+    const inFlight = position.execution === undefined ? undefined : { item: position.item, execution: position.execution };
     let stopped = false;
     const committed = await guarded(async (context) => {
       const cancellation = context.run?.cancellation ?? null;
@@ -780,7 +802,15 @@ export async function executeAgentWorkItem(
         request: pause,
         waitId: dependencies.ids.next(),
         at,
-        stepExecutionId: inFlight?.execution.stepExecutionId ?? null,
+        // Where the Run is held (Story 10.6, legacy 5.4): the attempt in flight, which
+        // the resume restarts, or the next Work Item still to run.
+        hold: inFlight === undefined
+          ? heldBetweenUnits(context.workItems, position.item)
+          : {
+              planStepId: inFlight.item.stepId,
+              workItemId: inFlight.item.workItemId,
+              superseded: { stepExecutionId: inFlight.execution.stepExecutionId, attempt: inFlight.execution.attempt },
+            },
         workItemId: inFlight?.item.workItemId ?? null,
       });
     });
@@ -826,6 +856,9 @@ export async function executeAgentWorkItem(
         },
         waitId: dependencies.ids.next(),
         at,
+        // Held after the named inspection settled, before the next Work Item still to
+        // run (Story 10.6, legacy 5.4). `otherPending` above guarantees there is one.
+        hold: heldBetweenUnits(context.workItems.filter(candidate => candidate.workItemId !== marker.workItemId), settled),
         workItemId: marker.workItemId,
         pauseMode: 'after-inspection',
         subjectKey: marker.subjectKey,
@@ -1233,7 +1266,7 @@ export async function executeAgentWorkItem(
   try {
     await resolveFrozenCredentials();
     for (const item of items.sort((left, right) => left.ordinal - right.ordinal)) {
-      const itemBoundary = await lifecycleBoundary();
+      const itemBoundary = await lifecycleBoundary({ item });
       if (itemBoundary !== 'continue') return { retry: false };
       // Re-read the sticky latch before every next unit, including after a target that
       // settled during this very invocation. Checking only initially terminal items
@@ -1269,8 +1302,10 @@ export async function executeAgentWorkItem(
         await context.saveCheckpoint(checkpoint, 'RUNNING');
         await context.saveWorkItem({ ...item, state: 'IN_PROGRESS', diagnostic: null });
         await context.saveStepExecution(execution);
+        const resumedWaitId = await linkResume(context, { planStepId: execution.planStepId, workItemId: item.workItemId });
         await appendEvent(context, run, 'work-item-attempt-started', 'RUNNING', checkpoint, {
           workItemId: item.workItemId, stepExecutionId: execution.stepExecutionId, attempt: item.attempts,
+          ...(resumedWaitId === null ? {} : { resumedWaitId }),
         });
       });
       if (!started) return { retry: false };

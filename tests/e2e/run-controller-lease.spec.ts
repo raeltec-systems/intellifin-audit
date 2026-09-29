@@ -20,6 +20,12 @@ import { heldRoutes } from './held-routes';
 import { acquireControl } from './run-control';
 
 /**
+ * Where the simulated worker boundary holds the Run (Story 10.6, legacy 5.4): before a
+ * Run-level Session Step (the fixture plan's `session-3`), with no attempt in flight.
+ */
+const BOUNDARY_HOLD = { planStepId: 'session-3', workItemId: null, superseded: null } as const;
+
+/**
  * Controller control is a durable fence around Resume, exercised through two real
  * authenticated contexts. The stale request is held at the actual Next Server Action
  * boundary while the owner releases and reacquires the lease, then forwarded unchanged.
@@ -111,6 +117,7 @@ async function pauseSeededRun(runId: string, auditorId: string): Promise<string>
       request,
       waitId: ids.next(),
       at: new Date().toISOString(),
+      hold: BOUNDARY_HOLD,
     });
     return wait.waitId;
   });

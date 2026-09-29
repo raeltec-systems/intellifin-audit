@@ -4,6 +4,8 @@ import { GATE_CHECKS, POPULATION_CHECK_NAMES, RUN_STATES } from '@intellifin/dom
 import { UNEXECUTABLE_RUN_REASONS } from '@intellifin/application';
 import type { RunStopFacts } from '@intellifin/infrastructure';
 
+import { readableStamp } from '../design/time';
+
 import {
   ACCESS_WORDS,
   EXTRACTION_WORDS,
@@ -159,15 +161,18 @@ describe('the stage sentences', () => {
     // Codex (PR 39): a timed-out wait ends the Run INCONCLUSIVE with no terminal stage
     // checkpoint and no §H row, so the first version fell through to "nothing recorded why"
     // for the one stop whose record is the most explicit of all.
-    expect(
-      stopped('wait', 'pause-timeout', { timedOutWait: { kind: 'pause', deadline: '2026-09-16T07:30:00.000Z' } }),
-    ).toBe('The Run was paused and nobody resumed it before its deadline of 2026-09-16T07:30:00.000Z. No conclusion was issued.');
+    // The deadline is a readable instant, never a raw ISO string (screenshot review,
+    // 2026-09-26): the Timeline's pause history names the same deadline in words.
+    const paused = stopped('wait', 'pause-timeout', { timedOutWait: { kind: 'pause', deadline: '2026-09-16T07:30:00.000Z' } });
+    expect(paused).toBe('The Run was paused and nobody resumed it before its deadline of 16 Sep 2026, 07:30:00 UTC. No conclusion was issued.');
+    expect(paused).toBe(`The Run was paused and nobody resumed it before its deadline of ${readableStamp('2026-09-16T07:30:00.000Z')}. No conclusion was issued.`);
     const escalation = stopped('wait', 'escalation-timeout', {
       timedOutWait: { kind: 'choose-candidate', deadline: '2026-09-16T11:00:00.000Z' },
     });
     expect(escalation).toBe(
-      'The agent asked a question and nobody answered it before its deadline (Choose candidate) of 2026-09-16T11:00:00.000Z. No conclusion was issued.',
+      'The agent asked a question and nobody answered it before its deadline (Choose candidate) of 16 Sep 2026, 11:00:00 UTC. No conclusion was issued.',
     );
+    expect(escalation).not.toContain('T11:00');
     // The stored kind is never printed as its key.
     expect(escalation).not.toContain('choose-candidate');
     // A wait row this reader could not fully read still gets the sentence, without a date.

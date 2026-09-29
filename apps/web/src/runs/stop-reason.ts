@@ -14,6 +14,7 @@ import {
 import type { RunStopFacts, RunStopStage, WaitTimeoutDiagnostic } from '@intellifin/infrastructure';
 
 import { escalationKindWord } from '../design/plain-words';
+import { readableStamp } from '../design/time';
 
 /**
  * Why a Run stopped, in the auditor's words (owner correction, 2026-09-15).
@@ -266,7 +267,9 @@ function waitTimeoutSentence(facts: RunStopFacts, diagnostic: string): string {
     diagnostic === 'escalation-timeout' && wait !== null && wait.kind !== 'pause'
       ? ` (${escalationKindWord(wait.kind)})`
       : '';
-  const deadline = wait === null ? '' : ` of ${wait.deadline}`;
+  // A readable instant, as every other time on the Run surfaces is: the Timeline's pause
+  // history names this same deadline, and one page must not say it in two formats.
+  const deadline = wait === null ? '' : ` of ${readableStamp(wait.deadline)}`;
   return `${opening}${question}${deadline}. No conclusion was issued.`;
 }
 

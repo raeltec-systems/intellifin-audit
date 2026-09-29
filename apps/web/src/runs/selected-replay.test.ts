@@ -10,7 +10,7 @@ const runId = '019823ab-0000-7000-8000-000000000001';
 const workItemId = '019823ab-0000-7000-8000-000000000002';
 const evidenceId = '019823ab-0000-7000-8000-000000000003';
 const frame: ReplayFrameView = { evidenceId, globalOrdinal: 606, narration: 'Inspect E-LATE on LoanCore.',
-  stepNarration: 'Inspect E-LATE on LoanCore.', workItemLabel: 'E-LATE · LoanCore', workItemId, subjectKey: 'E-LATE',
+  stepNarration: 'Inspect E-LATE on LoanCore.', workItemLabel: 'E-LATE · LoanCore', workItemId, subjectKey: 'E-LATE', subjectKeyText: 'E-LATE',
   sourceLocation: 'https://loancore.invalid/accounts/E-LATE', digest: 'a'.repeat(64), capturedAt: '2026-09-20T10:00:00Z',
   action: { action: 'read-attribute', method: 'GET', destination: 'https://loancore.invalid/accounts/E-LATE',
     outcome: 'performed', status: 200, denial: null, capture: 'PERMITTED', captureSuppression: null,

@@ -19,6 +19,8 @@ import {
   RecordReviewQueue,
   type RecordReviewNavigation,
 } from './RecordReview';
+import { NO_HUMAN_MATCHES, type HumanMatchIndex } from './HumanMatch';
+import { MATCH_DECISION_WORDS, choseCandidateWords } from './match-words';
 import { NO_RECORD_NAMING, type RecordNaming } from './record-words';
 
 const RUN_ID = '019823ab-0000-7000-8000-000000000001';
@@ -164,7 +166,7 @@ describe('record review queue and inspector', () => {
   });
 
   it('renders exact list measures, as-of state, source-quality unknowns, and current changes', () => {
-    const html = renderToStaticMarkup(React.createElement(RecordReviewQueue, { runId: RUN_ID, page, navigation }));
+    const html = renderToStaticMarkup(React.createElement(RecordReviewQueue, { humanMatches: NO_HUMAN_MATCHES, runId: RUN_ID, page, navigation }));
     expect(html).toContain('Changes available');
     expect(html).toContain('Source checks');
     expect(html).toContain('Not known');
@@ -180,7 +182,7 @@ describe('record review queue and inspector', () => {
   // before the first record; they are behind ONE closed disclosure now, the counts are one
   // line of words, and a failed check keeps its own banner OUTSIDE the disclosure.
   it('opens on records: counts in one line, figures behind one closed disclosure', () => {
-    const html = renderToStaticMarkup(React.createElement(RecordReviewQueue, { runId: RUN_ID, page, navigation }));
+    const html = renderToStaticMarkup(React.createElement(RecordReviewQueue, { humanMatches: NO_HUMAN_MATCHES, runId: RUN_ID, page, navigation }));
     expect(html).toContain('2 included records · exceptions not yet known · 1 assessment waiting for review · 1 of 2 fully inspected');
     const details = html.match(/<details class="ls-disclosure record-review__population">[\s\S]*?<\/details>/)?.[0] ?? '';
     expect(details).toContain('<summary>Source and coverage details</summary>');
@@ -200,16 +202,16 @@ describe('record review queue and inspector', () => {
   });
 
   it('says which evidence checks a row passed instead of "No problem recorded" (UX-26)', () => {
-    const html = renderToStaticMarkup(React.createElement(RecordReviewQueue, { runId: RUN_ID, page, navigation }));
+    const html = renderToStaticMarkup(React.createElement(RecordReviewQueue, { humanMatches: NO_HUMAN_MATCHES, runId: RUN_ID, page, navigation }));
     expect(html).not.toContain('No problem recorded');
     expect(html).toContain('All checks passed');
-    const unchecked = renderToStaticMarkup(React.createElement(RecordReviewQueue, {
+    const unchecked = renderToStaticMarkup(React.createElement(RecordReviewQueue, { humanMatches: NO_HUMAN_MATCHES,
       runId: RUN_ID, navigation,
       page: { ...page, rows: [{ ...secondRow, targets: [{ ...secondRow.targets[0]!, inspected: false }] }] },
     }));
     expect(unchecked).toContain('Not checked yet');
     expect(unchecked).not.toContain('All checks passed');
-    const failed = renderToStaticMarkup(React.createElement(RecordReviewQueue, {
+    const failed = renderToStaticMarkup(React.createElement(RecordReviewQueue, { humanMatches: NO_HUMAN_MATCHES,
       runId: RUN_ID, navigation,
       page: { ...page, rows: [{ ...firstRow, targets: [{ ...target, evidenceProblem: true }] }] },
     }));
@@ -225,7 +227,7 @@ describe('record review queue and inspector', () => {
   });
 
   it('renders a changed selected record with escaped source data and exact protected links', () => {
-    const html = renderToStaticMarkup(React.createElement(RecordReviewInspector, {
+    const html = renderToStaticMarkup(React.createElement(RecordReviewInspector, { humanMatches: NO_HUMAN_MATCHES,
       runId: RUN_ID,
       selection,
       observations: [observation],
@@ -260,7 +262,7 @@ describe('record review queue and inspector', () => {
     ] } as RunObservationRow;
     // Production projects a target by its registration id, which is what an Evidence
     // item carries, so the inspector can say which system a capture came from.
-    const html = renderToStaticMarkup(React.createElement(RecordReviewInspector, {
+    const html = renderToStaticMarkup(React.createElement(RecordReviewInspector, { humanMatches: NO_HUMAN_MATCHES,
       runId: RUN_ID, selection, observations: [checked], evaluations: [],
       evidence: [{ ...evidence, registrationId: 'target-1' } as RunEvidenceItem],
       evaluationReview: null, navigation, page,
@@ -283,7 +285,7 @@ describe('record review queue and inspector', () => {
   });
 
   it('says a file was never verified when it was not registered', () => {
-    const html = renderToStaticMarkup(React.createElement(RecordReviewInspector, {
+    const html = renderToStaticMarkup(React.createElement(RecordReviewInspector, { humanMatches: NO_HUMAN_MATCHES,
       runId: RUN_ID, selection, observations: [observation], evaluations: [],
       evidence: [{ ...evidence, state: 'RESERVED', digest: null } as RunEvidenceItem],
       evaluationReview: null, navigation, page,
@@ -295,14 +297,14 @@ describe('record review queue and inspector', () => {
   // UX-25 and FR-41: one record label everywhere, masked where the frozen binding says so.
   it('labels the record by key and permitted name, and masks what the binding designates', () => {
     const naming: RecordNaming = { keyColumn: 'employee_id', nameColumn: 'full_name', keyMasked: false, nameMasked: false, sensitiveFields: [] };
-    const named = renderToStaticMarkup(React.createElement(RecordReviewQueue, {
+    const named = renderToStaticMarkup(React.createElement(RecordReviewQueue, { humanMatches: NO_HUMAN_MATCHES,
       runId: RUN_ID, navigation, naming,
       page: { ...page, rows: [{ ...firstRow, recordLabel: 'E-000103', recordName: 'Dana Leaver' }] },
     }));
     expect(named).toContain('<h3>E-000103 · Dana Leaver</h3>');
 
     const masking: RecordNaming = { ...naming, keyMasked: true, nameMasked: true, sensitiveFields: ['employee_id', 'full_name'] };
-    const masked = renderToStaticMarkup(React.createElement(RecordReviewInspector, {
+    const masked = renderToStaticMarkup(React.createElement(RecordReviewInspector, { humanMatches: NO_HUMAN_MATCHES,
       runId: RUN_ID, navigation, page, naming: masking,
       selection: { ...selection, row: { ...firstRow, recordLabel: 'E-000103', recordName: null },
         sourceValues: { employee_id: null, full_name: null, department: 'Operations' }, maskedFields: ['employee_id', 'full_name'] },
@@ -315,13 +317,13 @@ describe('record review queue and inspector', () => {
     expect(masked).toContain('full name: ••••');
     expect(masked).toContain('Operations');
 
-    const plain = renderToStaticMarkup(React.createElement(RecordReviewQueue, { runId: RUN_ID, page, navigation, naming: NO_RECORD_NAMING }));
+    const plain = renderToStaticMarkup(React.createElement(RecordReviewQueue, { humanMatches: NO_HUMAN_MATCHES, runId: RUN_ID, page, navigation, naming: NO_RECORD_NAMING }));
     expect(plain).toContain('<h3>Leaver 17</h3>');
   });
 
   it('offers each target inspection separately instead of choosing the first system silently', () => {
     const otherWork = '019823ab-0000-7000-8000-000000000005';
-    const html = renderToStaticMarkup(React.createElement(RecordReviewInspector, {
+    const html = renderToStaticMarkup(React.createElement(RecordReviewInspector, { humanMatches: NO_HUMAN_MATCHES,
       runId: RUN_ID,
       selection: { ...selection, row: { ...selection.row, targets: [target, { ...target, targetId: 'target-2', targetName: 'AccessGate', workItemId: otherWork }] } },
       observations: [], evaluations: [], evidence: [], navigation, page,
@@ -331,5 +333,79 @@ describe('record review queue and inspector', () => {
     expect(html).toContain(`/replay?workItem=${WORK_ITEM_ID}`);
     expect(html).toContain(`/replay?workItem=${otherWork}`);
     expect(html).not.toContain('Replay this inspection');
+  });
+});
+
+// Story 10.6 (legacy 4.7): a record a PERSON matched is flagged, with the decision that did,
+// on the queue row and in the inspector; a platform match shows no flag. Every sentence is
+// read from `match-words.ts`.
+describe('human-selected matches in the record review (Story 10.6, legacy 4.7)', () => {
+  const WAIT_ID = '019823ab-0000-7000-8000-0000000000b1';
+  const AUDITOR = '019823ab-0000-7000-8000-0000000000c1';
+  const linked: HumanMatchIndex = {
+    matches: [{
+      observationId: OBSERVATION_ID,
+      targetSystem: 'target-1',
+      populationRecordKey: 'Leaver 17',
+      decision: { state: 'linked', waitId: WAIT_ID, candidate: 2, candidates: 2,
+        candidateLabel: 'Leaver 17 — second account', decidedBy: AUDITOR, decidedAt: '2026-09-19T09:58:00.000Z' },
+    }],
+    names: new Map([[AUDITOR, 'Dana Reed']]),
+  };
+  const flagCount = (html: string): number => html.split('class="ls-human-match__flag"').length - 1;
+
+  it('flags only the queue row a person matched, and says who chose which candidate', () => {
+    const html = renderToStaticMarkup(React.createElement(RecordReviewQueue, { humanMatches: linked, runId: RUN_ID, page, navigation }));
+    expect(flagCount(html)).toBe(1);
+    const rows = html.split('<li class="record-review__row');
+    const first = rows.find((row) => row.includes('Leaver 17')) ?? '';
+    const second = rows.find((row) => row.includes('Leaver 18')) ?? '';
+    expect(first).toContain(MATCH_DECISION_WORDS.flag);
+    expect(first).toContain(choseCandidateWords(2, 2));
+    expect(first).toContain('Dana Reed');
+    // The platform-matched (here, not yet observed) row carries no flag at all.
+    expect(second).not.toContain(MATCH_DECISION_WORDS.flag);
+    // The queue row is compact: the candidate's own text is the inspector's to show.
+    expect(html).not.toContain('second account');
+    const none = renderToStaticMarkup(React.createElement(RecordReviewQueue, { humanMatches: NO_HUMAN_MATCHES, runId: RUN_ID, page, navigation }));
+    expect(flagCount(none)).toBe(0);
+  });
+
+  it('names the system on a row with more than one, so a reader knows where a person chose', () => {
+    const twoSystems = { ...firstRow, targets: [target, { ...target, targetId: 'target-2', targetName: 'AccessGate', observationId: '019823ab-0000-7000-8000-0000000000d1' }] };
+    const html = renderToStaticMarkup(React.createElement(RecordReviewQueue, {
+      humanMatches: linked, runId: RUN_ID, navigation, page: { ...page, rows: [twoSystems] },
+    }));
+    expect(html.replace(/<[^>]+>/g, '')).toContain(`LoanCore: ${MATCH_DECISION_WORDS.flag}`);
+    expect(flagCount(html)).toBe(1);
+  });
+
+  it('says the decision is not linked on the row when it cannot be read exactly', () => {
+    const html = renderToStaticMarkup(React.createElement(RecordReviewQueue, {
+      humanMatches: { matches: [{ ...linked.matches[0]!, decision: { state: 'not-linked' } }], names: new Map() },
+      runId: RUN_ID, page, navigation,
+    }));
+    expect(flagCount(html)).toBe(1);
+    expect(html).toContain(MATCH_DECISION_WORDS.notLinked);
+  });
+
+  it('shows the decision in the inspector beside what was captured, with the candidate’s own text inert', () => {
+    const html = renderToStaticMarkup(React.createElement(RecordReviewInspector, {
+      humanMatches: linked, runId: RUN_ID, selection, observations: [observation], evaluations: [], evidence: [],
+      evaluationReview: null, navigation, page,
+    }));
+    const captured = html.slice(html.indexOf('record-review-captured-heading'), html.indexOf('record-review-assessment-heading'));
+    expect(captured).toContain(MATCH_DECISION_WORDS.flag);
+    expect(captured).toContain(choseCandidateWords(2, 2));
+    expect(captured).toContain(`Untrusted source content — ${MATCH_DECISION_WORDS.candidateField}.`);
+    expect(captured).toContain('Leaver 17 — second account');
+    expect(captured).toContain(WAIT_ID);
+    // Still ONE policy sentence for the whole inspector (UX-27).
+    expect(html.match(/ls-untrusted-region__policy/g)?.length ?? 0).toBe(1);
+    const platform = renderToStaticMarkup(React.createElement(RecordReviewInspector, {
+      humanMatches: NO_HUMAN_MATCHES, runId: RUN_ID, selection, observations: [observation], evaluations: [], evidence: [],
+      evaluationReview: null, navigation, page,
+    }));
+    expect(platform).not.toContain(MATCH_DECISION_WORDS.flag);
   });
 });

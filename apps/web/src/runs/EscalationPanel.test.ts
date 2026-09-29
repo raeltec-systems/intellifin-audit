@@ -265,6 +265,16 @@ describe('what a screen reader is told about the countdown (Story 5.6)', () => {
     expect(renderPanel()).toContain(ESCALATION_PANEL_COPY.skipLink);
     expect(renderPanel()).not.toContain('Skip to open Escalation');
   });
+
+  it('makes the skip link target focusable, so activating the link moves focus INTO the panel (Story 10.6)', () => {
+    // Without `tabIndex={-1}` a fragment link scrolls and leaves focus on the link; the
+    // browser proof is `live-escalation.spec.ts`, which presses Enter and then Tab.
+    const html = renderPanel();
+    const link = html.match(/<a\b[^>]*\bhref="#open-escalation"[^>]*>/u)?.[0];
+    const target = html.match(/<section\b[^>]*\bid="open-escalation"[^>]*>/u)?.[0];
+    expect(link).toBeDefined();
+    expect(target).toMatch(/\btabindex="-1"/u);
+  });
 });
 
 describe('Run-detail Escalation read seam', () => {

@@ -1,7 +1,7 @@
-import type { RunFrameRow, RunReplayObservationDelta, RunReplayWait } from '@intellifin/infrastructure';
+import type { RunFrameRow, RunReplayGaps, RunReplayObservationDelta, RunReplayWait } from '@intellifin/infrastructure';
 
 import { escalationKindWord } from '../design/plain-words';
-import { workItemLabel } from './labels';
+import { captureSentence, workItemLabel } from './labels';
 
 /**
  * Replay's presentation logic (Story 5.8, FR-30, UX-DR26, addendum §F).
@@ -298,4 +298,119 @@ export function clampReplayIndex(index: number, frames: number): number {
   if (frames <= 0) return -1;
   if (!Number.isFinite(index)) return 0;
   return Math.max(0, Math.min(frames - 1, Math.trunc(index)));
+}
+
+/**
+ * What Replay says about the gaps in a session (Story 10.6, legacy 5.2).
+ *
+ * Replay played the frames a Run registered and said nothing about the Tool Actions that
+ * left none, so a session with a gap looked complete. The owner approved these sentences
+ * on 2026-09-26 (handover sheet 1). A suppressed
+ * capture is NOT here — it says the platform's existing `captureSentence`, because it is
+ * the credential guarantee working and has its own words already.
+ */
+export const REPLAY_GAP_WORDS = {
+  /** The rail section that lists where the gaps sit. */
+  heading: 'Gaps in this playback',
+  /** A position where a frame was owed and none was saved. */
+  missing: 'Missing frame',
+  /** The disclosure that holds the positions. */
+  listSummary: 'Where the gaps are',
+  bounded: 'Showing the first {shown} of {total} gaps.',
+} as const;
+
+/**
+ * The limitation, stated rather than implied: how many frames are missing and that the
+ * playback is incomplete. `missing` is the EXACT count, never the length of a bounded list.
+ */
+export function replayIncompleteSentence(missing: number): string {
+  return missing === 1
+    ? 'Playback is incomplete: 1 frame is missing.'
+    : `Playback is incomplete: ${missing.toLocaleString('en-US')} frames are missing.`;
+}
+
+/** Where a gap sits, in the scrubber's own numbering. */
+export function replayGapPosition(framesBefore: number): string {
+  return framesBefore <= 0 ? 'before the first frame' : `after frame ${framesBefore.toLocaleString('en-US')}`;
+}
+
+/** One gap, as the viewer renders it: already in words, with its position. */
+export interface ReplayGapView {
+  readonly toolActionId: string;
+  readonly kind: 'missing' | 'suppressed';
+  /** "Missing frame", or the platform's capture sentence for a suppressed capture. */
+  readonly mark: string;
+  /** What the action was, in audit words — never the stored identifier. */
+  readonly narration: string;
+  /** How many frames come before it in the whole session's order (the counter's numbering). */
+  readonly framesBefore: number;
+  /**
+   * Where the marker sits on THIS view's scrubber: after `position` of its pills, or `null`
+   * when the gap is not among the frames this view shows (another page of one record's
+   * frames). A gap with no marker is still listed and still counted.
+   */
+  readonly position: number | null;
+}
+
+export interface ReplayGapsView {
+  /** The exact number of missing frames. Suppressed captures are never counted here. */
+  readonly missing: number;
+  readonly suppressed: number;
+  readonly rows: readonly ReplayGapView[];
+}
+
+/**
+ * The gaps that sit at one scrubber position: after `position` frames, before the next.
+ *
+ * Only the positions the scrubber actually renders get a marker; a gap after a frame past
+ * the frame read's bound is still in the list and still counted, never dropped.
+ */
+export function replayGapsAt(gaps: ReplayGapsView | undefined, position: number): readonly ReplayGapView[] {
+  if (gaps === undefined) return [];
+  return gaps.rows.filter((gap) => gap.position === position);
+}
+
+/**
+ * Which frames a Replay view shows, for placing its gaps: the whole session (from its first
+ * frame), or one page of one record's frames — `cursor` of that record's frames come before
+ * the page, `shown` are on it, and `last` says whether any come after it.
+ */
+export type ReplayGapScope =
+  | { readonly kind: 'session' }
+  | { readonly kind: 'record'; readonly cursor: number; readonly shown: number; readonly last: boolean };
+
+/**
+ * The gaps a Replay view states, in words, from the read that found them (Story 10.6,
+ * legacy 5.2; the one-record view by owner decision D2 b, 2026-09-29).
+ *
+ * ONE builder for both views, so the whole-session Replay and the one-record Replay mark and
+ * word a gap the same way: a missing frame says `REPLAY_GAP_WORDS.missing`, a suppressed
+ * capture the platform's own `captureSentence`. The counts are the read's exact counts. On a
+ * record's page a marker sits among the record's own frames (`recordFramesBefore`); a gap at
+ * the page's end is marked only on the last page, so a gap between two pages is marked once,
+ * at the start of the later one.
+ */
+export function replayGapsView(
+  read: RunReplayGaps,
+  narrate: (gap: RunReplayGaps['rows'][number]) => string,
+  scope: ReplayGapScope,
+): ReplayGapsView {
+  const position = (gap: RunReplayGaps['rows'][number]): number | null => {
+    if (scope.kind === 'session') return gap.framesBefore;
+    if (gap.recordFramesBefore === undefined) return null;
+    const at = gap.recordFramesBefore - scope.cursor;
+    return at >= 0 && (at < scope.shown || (at === scope.shown && scope.last)) ? at : null;
+  };
+  return {
+    missing: read.missing,
+    suppressed: read.suppressed,
+    rows: read.rows.map((gap) => ({
+      toolActionId: gap.toolActionId,
+      kind: gap.kind,
+      mark: gap.kind === 'missing' ? REPLAY_GAP_WORDS.missing : captureSentence('SUPPRESSED', gap.captureSuppression),
+      narration: narrate(gap),
+      framesBefore: gap.framesBefore,
+      position: position(gap),
+    })),
+  };
 }

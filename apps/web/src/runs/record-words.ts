@@ -88,3 +88,18 @@ export function recordWords(
 ): string {
   return labelPartsWords(recordLabelParts(record, naming));
 }
+
+/**
+ * The key as the label prints it, for a surface that keeps it on one line (`keySegments`):
+ * Chromium breaks `E-000102` after its hyphen. Only the KEY, never the whole label — a
+ * person's name must still wrap, or a long one pushes a narrow rail past the page edge.
+ * `null` when there is nothing to keep together: no key, or one the binding masks (the
+ * value is never sent, and `MASKED_VALUE` has no hyphen).
+ */
+export function recordKeyText(
+  record: { readonly key: string | null },
+  naming: Pick<RecordNaming, 'keyMasked'>,
+): string | null {
+  if (naming.keyMasked || record.key === null || record.key.trim() === '') return null;
+  return record.key;
+}

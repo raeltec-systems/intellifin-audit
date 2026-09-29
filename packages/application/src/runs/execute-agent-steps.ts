@@ -41,7 +41,7 @@ import type { PopulationJob } from './acquire-population.js';
 import { NO_CREDENTIALS, guardedCredentials, type CredentialGuard } from './credential-guard.js';
 import { completeRun } from './complete-run.js';
 import { performCancellation } from './cancel-run.js';
-import { performPause } from './pause-run.js';
+import { performPause, resumeLinker, type PauseHold, type ResumeLinker } from './pause-run.js';
 import { SECURITY_DENIED_EVENT } from './run-gate.js';
 import { PROD_CONSOLE_LABELS } from './prodconsole-labels.js';
 
@@ -787,7 +787,7 @@ export async function executeAgentSteps(
    * superseded here. The checkpoint goes to `RETRY`, which is what the recovery sweep
    * re-claims once the resume puts the Run back to `RUNNING`.
    */
-  const canceledAtBoundary = async (): Promise<boolean> => {
+  const canceledAtBoundary = async (hold: PauseHold): Promise<boolean> => {
     let stopped = false;
     await guarded(async (context) => {
       const request = context.run?.cancellation ?? null;
@@ -811,10 +811,14 @@ export async function executeAgentSteps(
       const at = deps.clock.now().toISOString();
       const next = { ...checkpoint, status: 'RETRY' as const, leaseUntil: at, diagnostic: null };
       await context.saveCheckpoint(next, 'PAUSED');
-      await performPause(context, { run, request: pause, waitId: deps.ids.next(), at });
+      // `hold` is the sign-in this boundary sits before (Story 10.6, legacy 5.4).
+      await performPause(context, { run, request: pause, waitId: deps.ids.next(), at, hold });
     });
     return stopped;
   };
+
+  // The attempt a resume restarts names that resume (Story 10.6, legacy 5.4).
+  const linkResume = resumeLinker();
 
   const startStepExecution = (planStepId: string, attempt: number): StepExecutionRecord => ({
     // Counted here, where a Step Execution actually starts, so no branch can start one
@@ -834,7 +838,8 @@ export async function executeAgentSteps(
   for (const entry of targets) {
     const step = steps.find((row) => row.stepId === entry.stepId)!;
     if (step.state === 'ACQUIRED') continue;
-    if (await canceledAtBoundary()) return { retry: false, proceed: false };
+    // Held before this sign-in, a Run-level Session Step: no Work Item.
+    if (await canceledAtBoundary({ planStepId: entry.stepId, workItemId: null, superseded: null })) return { retry: false, proceed: false };
     if (step.state === 'FAILED') {
       await stopRun(
         (step.diagnostic ?? 'sign-in-unavailable') as AgentExecutionDiagnostic,
@@ -860,6 +865,7 @@ export async function executeAgentSteps(
       limitReached,
       startStepExecution,
       guard,
+      linkResume,
     });
     if (outcome === 'lost') return { retry: false, proceed: false };
     if (outcome === 'limit') {
@@ -915,6 +921,8 @@ interface SignInUnit {
   budget(): number;
   limitReached(): RunLimitCause | null;
   startStepExecution(planStepId: string, attempt: number): StepExecutionRecord;
+  /** The resume an attempt restarts, read once per invocation (Story 10.6, legacy 5.4). */
+  linkResume: ResumeLinker;
 }
 
 /**
@@ -948,11 +956,14 @@ async function runSignInStep(
       await context.saveCheckpoint(checkpoint, 'RUNNING');
       await context.saveSessionStep(step);
       await context.saveStepExecution(execution);
+      // The attempt a resume restarts names that resume (Story 10.6, legacy 5.4).
+      const resumedWaitId = await unit.linkResume(context, { planStepId: step.stepId, workItemId: null });
       await event(context, 'sign-in-attempt-started', 'RUNNING', checkpoint, {
         stepId: step.stepId,
         registrationId: step.registrationId,
         stepExecutionId: execution.stepExecutionId,
         attempt: step.attempts,
+        ...(resumedWaitId === null ? {} : { resumedWaitId }),
       });
     });
     if (!reserved) return 'lost';
@@ -1170,11 +1181,14 @@ async function runPublicAccessStep(
       await context.saveCheckpoint(checkpoint, 'RUNNING');
       await context.saveSessionStep(step);
       await context.saveStepExecution(execution);
+      // The attempt a resume restarts names that resume (Story 10.6, legacy 5.4).
+      const resumedWaitId = await unit.linkResume(context, { planStepId: step.stepId, workItemId: null });
       await event(context, 'public-access-attempt-started', 'RUNNING', checkpoint, {
         stepId: step.stepId,
         registrationId: step.registrationId,
         stepExecutionId: execution.stepExecutionId,
         attempt: step.attempts,
+        ...(resumedWaitId === null ? {} : { resumedWaitId }),
       });
     });
     if (!reserved) return 'lost';

@@ -6,7 +6,9 @@ import { getRuntime } from '../../../../src/bootstrap';
 import { EmptyState } from '../../../../src/design/EmptyState';
 import { RUN_TAB_EMPTY } from '../../../../src/design/copy';
 import { ExecutionTimeline } from '../../../../src/runs/Timeline';
+import { PauseHistorySection } from '../../../../src/runs/PauseHistory';
 import { RunDenied, RunDetailFrame, openRun } from '../../../../src/runs/detail';
+import { readPauseHistoryView } from '../../../../src/runs/pause-read';
 import { stepExecutionsSentence } from '../../../../src/runs/stage-words';
 
 export const metadata: Metadata = { title: 'Run · Execution Timeline · IntelliFin Audit' };
@@ -36,6 +38,9 @@ export default async function RunTimelinePage({
 
   const runtime = await getRuntime();
   const timeline = await new DrizzleRunDetailRepository(runtime.db).readTimeline(run.runId);
+  // Every pause, where it held the Run and which attempt its resume started (Story 10.6,
+  // legacy 5.4). Read by the identities the records carry, never paired by time.
+  const pauses = await readPauseHistoryView(runtime.db, run);
   const nothing =
     timeline.population === null &&
     timeline.execution === null &&
@@ -67,6 +72,7 @@ export default async function RunTimelinePage({
           <ExecutionTimeline timeline={timeline} runId={run.runId} />
         </section>
       )}
+      <PauseHistorySection {...pauses} />
     </RunDetailFrame>
   );
 }
