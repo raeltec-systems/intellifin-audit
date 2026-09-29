@@ -132,7 +132,7 @@ development_status:
   10-11-replay-continuation-past-the-bound-every-escalation-and-ever:
     backlog
   10-12-epic-10-owner-items-replay-gaps-escalation-links-and-bounded:
-    in-progress
+    review
   epic-10-retrospective: optional
 
   epic-11: backlog

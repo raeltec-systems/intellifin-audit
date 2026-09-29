@@ -2,7 +2,7 @@
 title: 'Epic 10 owner items: Replay gap marks and words, Escalation links, one record rule, bounded Timeline lists'
 type: 'fix'
 created: '2026-09-29'
-status: 'in-progress'
+status: 'review'
 review_loop_iteration: 0
 implementation_authorised: true
 implementation_authorisation: 'Owner, 2026-09-29: "B, and approve Fable''s words for 2 and 8" (all eight items as one follow-up story after the Epic 10 merge); "yes to both" (start it now)'
@@ -59,3 +59,14 @@ No other new sentence. Items 3 and 4 reuse sentences and links that already exis
 
 Every changed surface keeps WCAG 2.1 AA. No migration, no event type, no historical event
 rewritten.
+
+## Verification (2026-09-29, local, Node 24.20.0, PostgreSQL 18, combined branch `129d703`)
+
+- Typecheck, boundaries (846 modules) and unit tests (317 files, 5,755 tests): pass.
+- Integration suite: 61 files, 825 tests, pass.
+- Every new test was proven by mutation (break the fix, see it fail, restore): items 1–4 all
+  killed; item 5 killed 7 of 8 SQL mutations (the survivor is the "every element is a string"
+  check, a second lock a number can never pass); items 6–8 all killed.
+- Behaviour change to note: a stored pause request time that names no real day now reads as
+  not recorded (before, `Date.parse` rolled it over).
+- Not built, by the spec: Next/Previous paging (item 7), a continuation route (Story 10.11).

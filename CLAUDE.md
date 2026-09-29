@@ -1,3 +1,39 @@
+## 2026-09-29 — Story 10.12: one expression for an order, and the page shown gets its marks
+
+The eight Epic 10 owner items (`epic-10-follow-up-owner-items.md`), as one story. No
+migration, no event type; the only new words are the owner's for items 2 and 8.
+
+- **A list cut by one order and shown in another makes "the first N" false.** Pause requests
+  were capped by chain order and shown by request time. `readPauseRequests` now orders, cuts
+  and dates them by ONE SQL value, `coalesce(requested_at, occurred_at)` (ties in chain order),
+  and `pauseHistoryRows` keeps each list's read order and only merges the two: re-sorting by an
+  id or a millisecond instant can undo the microsecond order the SQL cut relied on.
+- **Reading an instant out of JSON text needs two checks in PostgreSQL 18:** an ISO-prefix
+  regex (`'now'` and `'yesterday'` are valid `timestamptz`) and
+  `pg_input_is_valid(x, 'timestamptz')` (an impossible date passes the regex and the cast then
+  throws). An impossible date now reads as not recorded, never rolled over as `Date.parse` does.
+- **A bounded LIST and the MARKS on the page shown are two reads.** Replay's gap list stays at
+  `REPLAY_GAP_LIMIT` with exact counts; the scrubber's marks come from `window`, every gap among
+  the frames shown (the default prefix, or the record page at its cursor), so a gap past the
+  first 100 is still marked on its page. Gaps are placed in ONE ordered pass over frames and
+  gaps (a running count), not a count of every frame per gap.
+- **Replay and the Timeline name an Escalation's record by one rule** (`replay-v1.md`, "Where
+  a jump lands"): when the raise's cited Evidence establishes one record the Timeline's way,
+  Replay lands on the latest frame those Tool Actions captured (`landedBy: 'cited-evidence'`);
+  otherwise the time rule. The "every element is a string" check survives mutation by design:
+  a number can never match an Evidence id, so it is a second lock on the same door.
+- **`pnpm test:integration -- <file>` runs the WHOLE suite**; the filter is not applied. One
+  file: `pnpm exec vitest run -c tests/integration/vitest.config.ts <file>`. Without
+  `PLAYWRIGHT_BROWSERS_PATH` about 75 browser-backed integration tests fail with
+  `WorkspaceProvisionError: unavailable`, which is the environment, not the code.
+- **`pnpm seed:identity` needs `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` and `SERVICE_NAME`**
+  as well as `DATABASE_URL`, `SEED_PASSWORD` and `--name`.
+- **A stopped `next dev` can leave `apps/web/.next/dev/types/routes.d.ts` half-written**, and
+  the root typecheck then fails with parse errors in that generated file. Remove
+  `apps/web/.next/dev/types` (git ignores it) and run it again.
+- **React escapes the apostrophe in "this record's" to `&#x27;`** in SSR markup; an SSR test
+  unescapes before comparing.
+
 ## 2026-09-26 — Stacked story PRs need an admitted CI base
 
 Stories 10.9 and 10.10 keep the handover's `claude/10-6-legacy-visibility` PR base.
