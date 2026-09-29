@@ -61,6 +61,7 @@ import { snapshotCorroboration } from './snapshot-corroboration.js';
 import {
   ESCALATION_OPTION_IDS,
   FIXED_ESCALATION_OPTIONS,
+  MARK_AMBIGUOUS_OPTION,
   type EscalationKind,
   type EscalationOption,
   type RaiseEscalationInput,
@@ -382,7 +383,7 @@ function optionForKind(kind: EscalationKind, candidates: AgentToolPlannerResult[
   if (kind !== 'choose-candidate') return FIXED_ESCALATION_OPTIONS[kind];
   return [
     ...candidates.map((candidate) => ({ id: candidate.id, label: candidate.label })),
-    { id: ESCALATION_OPTION_IDS.markAmbiguous, label: 'Mark the record ambiguous' },
+    MARK_AMBIGUOUS_OPTION,
   ];
 }
 

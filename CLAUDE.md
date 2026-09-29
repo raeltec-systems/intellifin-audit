@@ -5,6 +5,80 @@ The CI pull-request branch filter must include that exact base or a published ca
 receives no run. Adding the base changes admission only; jobs, assertions, permissions
 and main-only push behavior stay unchanged. Never infer verification from a successful push.
 
+## 2026-09-26 — Decision-history review reads a total and its rows together (Story 10.10 continuation)
+
+`[EXTENDED 2026-09-29]` Sheet 2B is decided (approved in full); omitted-history access and a
+request-aware introduction are still owner decisions, listed in the 10.10 record.
+
+A bounded history's count and rows must share a statement snapshot while another decision
+commits. Use a window count in the row query, including a zero-limit request; do not count
+first and then read a newer list. The regression test commits a second fact after the first
+real SELECT resolves and checks that the returned count still describes its rows.
+
+Supporting Evidence IDs are accepted as case-insensitive UUID text but PostgreSQL returns
+lowercase UUIDs. Normalize the map lookup, not the immutable event. Sentences that name an
+instant leave a slot for the shared `Timestamp`, retaining exact `datetime` and `title` with
+readable UTC text. Independent raise-writer negatives and absent/duplicate/mismatched Abort
+events pin the existing read contract; invalid option duplicates are already refused by the
+real raise command. Sheet 2B, omitted-history access and a request-aware introduction remain
+owner decisions, and this continuation remains WIP pending the database/browser gates.
+
+## 2026-09-26 — A decision a Run recorded is a Timeline entry, read by identity (Story 10.10)
+
+Story 10.10 meets legacy 4.8 AC 4, 5.6 AC 3 and 5.4 AC 3: an answered or aborted Escalation and
+a pause request the Run never honoured were events in the audit chain and nothing a reader could
+see. The Execution Timeline now lists them — "Escalation answers" beside "Pauses and resumes",
+and a "Pause request" entry inside it. No event type, column or migration was added, and no
+event is rewritten. Contracts: `durable-escalation-v1.md` (35c–35f), `run-pause-v1.md`,
+`replay-v1.md`.
+
+- **Every fact is read by identity, never by time.** A wait's ONE `execution.escalation-raised`
+  and ONE `execution.escalation-answered` event are found by `payload->>'waitId'`; a wait with
+  more than one establishes nothing. The Work Item is established only when EVERY supporting
+  Evidence id the raise named resolves through `run_evidence_capture` → `run_tool_action` →
+  `run_step_execution` (the Step Execution's Work Item first), every join bound to the Run, to
+  ONE Work Item at the raise's own plan step; otherwise the entry names the step and says the
+  Work Item was not recorded. "The Run was canceled by this answer." comes from the answer's own
+  event, never from the Run's present state.
+- **Each event is read only from the writer that appends it** — the raise from
+  `escalation-platform`/platform/success, `lifecycle.pause-superseded` from
+  `result-sealer`/worker/failure, `lifecycle.deferred-pause-superseded` from
+  `deferred-pause-coordinator`/web or worker/failure. **A forged-writer test changes ONE field
+  per case**: a fixture that differs in every field is refused by whichever check survives, so
+  it proves one check exists and not which. The first version did that, and the mutation that
+  dropped one writer check survived it.
+- **"Every Evidence id" needs a MIXED case.** `every` → `some` survived the first round, because
+  each fixture's Evidence either all resolved or none did. The test that kills it names one
+  captured and one uncaptured artifact on one raise.
+- `[EXTENDED 2026-09-29: every sentence this note calls proposed was approved — sheet 2, B1–B15]`
+  **An approved sentence can be false in a case its list did not foresee.** "The Run ended
+  before the pause took effect, so its own outcome stands." is right for a request the Run
+  outran; a "pause after this inspection" request retired by a request to pause at once saw no
+  Run end, so it says a PROPOSED sentence that a pause at once replaced it, and a reason this
+  build does not name says it could not be read. Every proposed sentence is in
+  `apps/web/src/runs/decision-words.ts` and needs owner confirmation.
+- **The owner's approved layout fixes the entry order** — title, who answered, the answer (and
+  the abort), where it was raised, "Open in Replay". It is not chronological like a pause entry,
+  and that is the approval, not an inconsistency to repair.
+- **Reading the screenshots found a false sentence no test could.** A Run with no frames, opened
+  from "Open in Replay", said "…no frame was captured before it was raised. Choose a recorded
+  target below." over a "Jump to" list of absences. The pointer is now said only when that list
+  holds a target with a frame (`escalationReplayAbsenceWords`), proven by mutation both ways.
+- **Replay writes a selection note in up to four places when no frame is selected** (the status
+  line, the stage, "What the Agent was doing", "Observations") — the inspection link's pattern.
+  A browser assertion on it targets the status line, `.ls-session > p[role="status"]`; a
+  `getByText` meets Playwright's strict mode there.
+- **The reads live in `decision-history.ts`, not in `run-detail-repository.ts`** as the Code Map
+  said, so Story 10.9's parallel edits to that file cannot conflict. `capture-run-binding`
+  survives mutation by design: the Run-bound `workItems()` read is a second lock on that door.
+- **A cropped screenshot is not a measurement.** In one crop the two section headings looked
+  different sizes; `getComputedStyle` read 16px/600 for both, and all seven entries of the two
+  lists had the same gap, padding, border, left edge and width. Measure before changing CSS.
+- **Vitest does not check types.** The integration file passed 6/6 three times while it gave
+  `pauseRun` a `requireControllerLease` dependency it does not have (a pause takes no
+  controller lease) and typed a forged event type as `string`; only the root `pnpm typecheck`
+  refused both. Run it before committing a test file, not only after.
+
 ## 2026-09-26 — Preserve the database's Replay landing ordinal (Story 10.9 continuation)
 
 `readEscalations` compares stored timestamps at database precision. The default Replay prefix
@@ -261,6 +335,17 @@ Two mechanical notes:
 - **A page test whose `vi.mock` factory lists a module's exports needs the page's NEW import
   mocked too**, even when the new call returns early: `live/page.adapter-log.test.ts` now
   mocks `pause-read` (`readPauseHold`), which reads the database on a PAUSED Run.
+
+## 2026-09-29 — A 200 from the preview route can still carry no image
+
+- **A served read is not a served image.** When the sample moves between the broker's reply
+  and the proxy's re-read, `WorkspacePreviewProxy.read` keeps the metadata and withholds the
+  image (the `after.sequence` check in `workspace-preview-transport.ts`), and the route answers
+  200. `settledSample` took the first 200, so the SIGKILL test's `expect(oldSample.digest)
+  .toBeTruthy()` met `null`: CI on `477b6f7` (Story 10.10, which touches neither this spec nor
+  the preview code). A test that expects a public image re-reads until one is served
+  (`settledSample(page, runId, true)`); the private-mode reads keep the plain read, because
+  waiting for an image there would hide the suppression they prove.
 
 ## 2026-09-26 — Every append to a Run's chain wakes the channel, and a burst keeps its last re-read (Story 10.7)
 

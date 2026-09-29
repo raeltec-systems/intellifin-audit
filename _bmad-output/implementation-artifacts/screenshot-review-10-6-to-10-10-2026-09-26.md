@@ -59,7 +59,7 @@ Local validation used Node 24.20.0 / pnpm 11.25.0: root typecheck passed for the
 - **Not captured, and why:** a pause "after this inspection" (Paused banner A9/A10 and the
   Timeline A8). A realistic fixture needs a multi-record agent Run with a deferred pause the
   worker honours; the pause fixture is a one-page P-4 Run. The sentence choice is pinned by
-  `pause-words.test.ts`, and the words wait on
+  `pause-words.test.ts`, and the words (approved 2026-09-29) are on
   [sheet 2, version 2](owner-wording-sheet-2-v2-2026-09-27.md).
 - **Seen here, fixed on the 10.8 branch:** on the technical Evidence page of a running Run, the
   Run control row shows "Refresh control" and "Cancel Run", then "Pause" alone and offset on a
