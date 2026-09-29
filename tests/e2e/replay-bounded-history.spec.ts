@@ -67,6 +67,8 @@ let stopWorker: (() => Promise<void>) | undefined;
 let workerLog = '';
 let author = '';
 const frames: { readonly evidenceId: string; readonly stepExecutionId: string; readonly toolActionId: string }[] = [];
+/** The first listed Escalation whose frame (501) lies past the 500 frames read. */
+let lateEscalation = '';
 
 async function scan(page: Page): Promise<void> {
   const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
@@ -113,6 +115,7 @@ async function seedBoundedRun(): Promise<void> {
     ...Array.from({ length: ESCALATIONS }, (_, index) => ({ wait_id: ids.next(), kind: 'retry-or-skip',
       opened_at: stamp((index + 11) * 10 + 5), opened_by: null, closure_kind: 'answer', answer_option_id: 'retry' })),
   ];
+  lateEscalation = waits[PAUSES + 490]!.wait_id;
 
   // Record n's Exception is raised at 20,000 - n seconds, so the first 500 RAISED are the
   // records 600 down to 101 and records 1..100 are the ones the list does not name.
@@ -446,6 +449,17 @@ test.describe('Replay past its default view’s bounds', () => {
     await captureStoryState(page, 'replay-inspection-page');
     await expect(page.getByText(REPLAY_COPY.observationsThrough.replace('{count}', '600 Observations'), { exact: true })).toBeVisible();
     await scan(page);
+
+    // Story 10.12, item 4: opened from a Timeline entry at that same Escalation, the note says
+    // its frame is not among those shown AND offers the page that holds it.
+    await page.goto(`/runs/${runId}/replay?escalation=${lateEscalation}`);
+    const escalationNote = page.locator('.ls-session > p[role="status"]');
+    await expect(escalationNote).toContainText(REPLAY_COPY.frameNotRead.replace('{shown}', String(SHOWN)));
+    await expect(escalationNote.getByRole('link', { name: 'Open inspection Replay', exact: true })).toHaveAttribute('href', inspection);
+    await scan(page);
+    await escalationNote.getByRole('link', { name: 'Open inspection Replay', exact: true }).click();
+    await expect(page).toHaveURL(`${origin}${inspection}`);
+    await showsFrame(SHOWN);
 
     // An Exception the list does not name is reached the way the sentence says: its
     // record, in the record review, then Replay.
