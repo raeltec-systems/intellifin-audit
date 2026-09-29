@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-01-2026 23:59
-last_updated: 09-27-2026 05:10
+last_updated: 09-27-2026 06:05
 project: Zobba
 project_key: NOKEY
 tracking_system: file-system
@@ -128,10 +128,11 @@ development_status:
   10-7-live-channel-correction-notify-every-run-chain-append-and-ne: 
     review
   10-8-lost-connection-and-lost-acknowledgement-a-server-refresh-is: done
-  10-9-replay-bounded-history-completeness-a-bounded-view-says-what: 
-    ready-for-dev
+  10-9-replay-bounded-history-completeness-a-bounded-view-says-what: done
   10-10-retained-decision-history-on-the-execution-timeline-an-answe: 
     ready-for-dev
+  10-11-replay-continuation-past-the-bound-every-escalation-and-ever:
+    backlog
   epic-10-retrospective: optional
 
   epic-11: backlog

@@ -17,7 +17,7 @@ const frame: ReplayFrameView = { evidenceId, globalOrdinal: 606, narration: 'Ins
     startedAt: '2026-09-20T10:00:00Z' }, observations: 512 };
 const props: React.ComponentProps<typeof ReplayViewer> = {
   runId, runState: 'COMPLETED', frames: [frame], framesTotal: 610, stateSentence: 'Session REPLAY. This Run ended: COMPLETED.',
-  workspace: null, plannedSteps: null, stageNote: null, jumpTargets: [], instructions: [], adapterSteps: [],
+  workspace: null, plannedSteps: null, stageNote: null, jumpTargets: [], jumpTotals: null, instructions: [], adapterSteps: [],
   window: { kind: 'inspection', workItemId, label: 'E-LATE · LoanCore', cursor: 100, total: 105,
     previousCursor: 0, nextCursor: null },
 };

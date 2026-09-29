@@ -61,6 +61,11 @@ Local validation used Node 24.20.0 / pnpm 11.25.0: root typecheck passed for the
   worker honours; the pause fixture is a one-page P-4 Run. The sentence choice is pinned by
   `pause-words.test.ts`, and the words wait on
   [sheet 2, version 2](owner-wording-sheet-2-v2-2026-09-27.md).
-- **Seen, not caused by these stories:** on the technical Evidence page of a running Run, the
+- **Seen here, fixed on the 10.8 branch:** on the technical Evidence page of a running Run, the
   Run control row shows "Refresh control" and "Cancel Run", then "Pause" alone and offset on a
-  second line.
+  second line. Story 10.8's `110c3baa` puts the Run toolbar on one row; this stack shows the old
+  layout until 10.8 merges in.
+- **Seen, not caused by these stories:** on a P-4 Run, the Replay rail says "Record:
+  ProdConsole". A page inspection has no record of its own, so the line names the Target System
+  under a "Record:" label (added by the UI cleanup, `29c29a2b`). A better label needs the owner's
+  words; it is not changed here.
