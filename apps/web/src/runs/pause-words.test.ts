@@ -8,6 +8,7 @@ import { MASKED_VALUE } from '../design/copy';
 import { planActionWord } from './labels';
 import {
   PAUSE_WORDS,
+  attemptKeptWords,
   bannerHeldAfterInspectionWords,
   bannerHeldBeforeWords,
   bannerHeldInFlightWords,
@@ -202,7 +203,30 @@ describe('how a pause ended', () => {
     expect(pauseClosureSentences(ended(inFlight, started), NAMER, render)).toEqual([
       resumedByWords('person u1', 'at-2026-09-26T10:00:00.000Z'),
       restartedWords(NAMER.step(INSPECT.id, ITEM), 3),
+      // Sheet 2, A11: the restarted attempt has the superseded attempt's number (3 and 3).
+      attemptKeptWords(3),
     ]);
+  });
+
+  // Sheet 2, A11 (approved 2026-09-29). "During attempt 1. That attempt was superseded." and
+  // "…as a new attempt (attempt 1)." are both true, and read like a mistake alone.
+  it('says a pause does not use up an attempt, right after the restart, and only where the numbers match', () => {
+    expect(attemptKeptWords(1)).toBe('A pause does not use up an attempt, so the new attempt is also attempt 1.');
+    expect(attemptKeptWords(1200)).toBe('A pause does not use up an attempt, so the new attempt is also attempt 1,200.');
+    const sentences = pauseClosureSentences(ended(inFlight, started), NAMER, render);
+    expect(sentences.indexOf(attemptKeptWords(3))).toBe(sentences.indexOf(restartedWords(NAMER.step(INSPECT.id, ITEM), 3)) + 1);
+    // A restart with another number is not explained by the pause, so nothing is said.
+    const other: RunPauseClosure = {
+      ...started,
+      restart: { kind: 'started', attempt: { stepExecutionId: 'se', planStepId: INSPECT.id, attempt: 4, workItem: ITEM } },
+    } as RunPauseClosure;
+    expect(pauseClosureSentences(ended(inFlight, other), NAMER, render)).toEqual([
+      resumedByWords('person u1', 'at-2026-09-26T10:00:00.000Z'),
+      restartedWords(NAMER.step(INSPECT.id, ITEM), 4),
+    ]);
+    // A pause between units interrupted nothing, so no attempt was given back.
+    const between = pauseClosureSentences(ended(recorded({ planStepId: INSPECT.id, workItem: ITEM }), started), NAMER, render);
+    expect(between.join(' ')).not.toContain(attemptKeptWords(3));
   });
 
   // Screenshot review, 2026-09-26: a pause held before the sign-in said its resume

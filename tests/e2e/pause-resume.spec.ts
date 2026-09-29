@@ -18,6 +18,7 @@ import { ESCALATION_PANEL_COPY, PAUSE_COPY } from '../../apps/web/src/design/cop
 import { planActionWord } from '../../apps/web/src/runs/labels';
 import {
   PAUSE_WORDS,
+  attemptKeptWords,
   bannerHeldBeforeWords,
   bannerHeldInFlightWords,
   heldBeforeWords,
@@ -539,6 +540,8 @@ test.describe('pausing and resuming a Run', () => {
     await page.goto(`/runs/${runId}/timeline`);
     await expect(second).toContainText(`Resumed by ${authorName} at`);
     await expect(second).toContainText(restartedWords(inspectStep, 1));
+    // Sheet 2, A11: the restarted attempt keeps the superseded attempt's number.
+    await expect(second).toContainText(attemptKeptWords(1));
     await expect(second.locator(`[title="${restarted}"]`)).toBeVisible();
     await expect(second).not.toContainText(PAUSE_WORDS.stillPaused);
     // The Run is no longer paused, so no banner says where a pause holds it.

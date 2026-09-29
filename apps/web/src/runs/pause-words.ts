@@ -166,6 +166,16 @@ export function restartedWords(step: string, attempt: number): string {
 }
 
 /**
+ * Sheet 2, A11 (approved 2026-09-29): said after `restartedWords`, when the restarted attempt
+ * carries the number of the attempt the pause superseded. A pause gives its attempt back,
+ * so "during attempt 1. That attempt was superseded." and "…as a new attempt (attempt 1)."
+ * are both true, and read like a mistake without this sentence.
+ */
+export function attemptKeptWords(attempt: number): string {
+  return `A pause does not use up an attempt, so the new attempt is also attempt ${attempt.toLocaleString('en-US')}.`;
+}
+
+/**
  * The attempt a resume started, after a pause that held the Run BETWEEN units: nothing was
  * interrupted, so the step is started, not restarted.
  */
@@ -335,10 +345,13 @@ export function pauseClosureSentences(
         const step = name.step(restart.attempt.planStepId, restart.attempt.workItem);
         // Only an attempt the pause interrupted is RESTARTED; after a pause between units
         // the resume started the held step for the first time since the pause.
-        const interrupted = entry.hold.kind === 'recorded' && entry.hold.superseded !== null;
-        return [resumed, interrupted
-          ? restartedWords(step, restart.attempt.attempt)
-          : startedWords(step, restart.attempt.attempt)];
+        const superseded = entry.hold.kind === 'recorded' ? entry.hold.superseded : null;
+        if (superseded === null) return [resumed, startedWords(step, restart.attempt.attempt)];
+        // A11: only where the numbers really are the same. A restart that carries another
+        // number is not explained by the pause giving its attempt back, so nothing is said.
+        return restart.attempt.attempt === superseded.attempt
+          ? [resumed, restartedWords(step, restart.attempt.attempt), attemptKeptWords(restart.attempt.attempt)]
+          : [resumed, restartedWords(step, restart.attempt.attempt)];
       }
       return [resumed, restart.kind === 'none' ? PAUSE_WORDS.restartNone : PAUSE_WORDS.restartNotRecorded];
     }
