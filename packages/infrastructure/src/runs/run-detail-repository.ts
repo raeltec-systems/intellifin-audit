@@ -146,6 +146,20 @@ export interface RunReplayGaps {
   readonly suppressed: number;
   /** Both kinds, in session order, at most `REPLAY_GAP_LIMIT`. */
   readonly rows: readonly RunReplayGap[];
+  /**
+   * EVERY gap that sits among the frames the view shows, in session order, whatever its place
+   * in `rows` (Story 10.12, item 1). `rows` is the list and stays bounded; these are the
+   * scrubber's markers. They were taken from `rows`, so on a view with more than
+   * `REPLAY_GAP_LIMIT` gaps a later page, or the later frames of the prefix, showed a real
+   * gap with no marker. The whole-session read's window is the frames of the default prefix
+   * (`framesBefore <= REPLAY_FRAME_LIMIT`); a record's is the inspection page at its cursor
+   * (`recordFramesBefore` from the cursor to the cursor plus `REPLAY_INSPECTION_PAGE_SIZE`,
+   * both ends included, so the view can apply its own edge rule).
+   *
+   * NOT bounded by a row limit, deliberately: every gap it returns is one the view draws,
+   * and a limit here would be the defect again. The Run's frozen execution limits bound it.
+   */
+  readonly window: readonly RunReplayGap[];
 }
 
 export interface RunResultRow {
@@ -502,8 +516,9 @@ export interface RunReplayWait {
   readonly closureKind: string | null;
   readonly answerOptionId: string | null;
   /**
-   * How many of the Run's frames were captured at or before this wait opened: the global
-   * position of the frame an Escalation's jump lands on, `0` when none was (Story 10.9).
+   * The global position of the frame an Escalation's jump lands on, `0` when there is none:
+   * the frame its raise's Evidence cites, or else how many of the Run's frames were captured
+   * at or before this wait opened (Story 10.9; `landedBy` says which).
    *
    * Counted in SQL over EVERY frame the Run holds, in Replay's own order. The page reads
    * only the first `REPLAY_FRAME_LIMIT` frames, so an Escalation raised after the last of
@@ -511,6 +526,14 @@ export interface RunReplayWait {
    * the page happened to have, which is a screen the question was not about.
    */
   readonly framesThrough: number;
+  /**
+   * Which rule chose that frame (Story 10.12, item 5; `replay-v1.md`, "Where a jump lands").
+   * `cited-evidence`: the raise named Evidence that establishes ONE record, by the rule the
+   * Timeline names the record with, and a frame was captured by the Tool Action that captured
+   * it — the latest such frame. `raised-at`: otherwise, the last frame captured at or before
+   * the wait opened.
+   */
+  readonly landedBy: 'cited-evidence' | 'raised-at';
   /**
    * Where that frame is among its own record's captures: the Work Item (Step first, the
    * rule every frame read uses) and the selected-inspection page (`cursor`) that holds it.
@@ -738,8 +761,8 @@ export class DrizzleRunDetailRepository {
    * in the same numbering the scrubber shows. The counts are exact; only the rows are bounded.
    */
   async readReplayGaps(runId: string, limit = REPLAY_GAP_LIMIT): Promise<RunReplayGaps> {
-    if (!isUuidText(runId)) return { missing: 0, suppressed: 0, rows: [] };
-    return this.replayGaps(runId, limit, null);
+    if (!isUuidText(runId)) return { missing: 0, suppressed: 0, rows: [], window: [] };
+    return this.replayGaps(runId, limit, { kind: 'session', through: REPLAY_FRAME_LIMIT });
   }
 
   /**
@@ -749,24 +772,38 @@ export class DrizzleRunDetailRepository {
    * The same query as `readReplayGaps`, scoped to the Tool Actions whose Work Item —
    * through the Step Execution first, then the action, the rule every frame read uses — is
    * `workItemId`. The counts are that record's exact counts; `framesBefore` stays in the
-   * whole session's numbering (the counter the one-record view shows), and
-   * `recordFramesBefore` places each gap among the record's own frames.
+   * whole session's numbering, and `recordFramesBefore` places each gap among the record's
+   * own frames. `cursor` is the inspection page the view shows (the `readInspectionReplay`
+   * cursor): its gaps are read as `window`, whatever their place in the bounded list.
    */
-  async readRecordReplayGaps(runId: string, workItemId: string, limit = REPLAY_GAP_LIMIT): Promise<RunReplayGaps> {
-    if (!isUuidText(runId) || !isUuidText(workItemId)) return { missing: 0, suppressed: 0, rows: [] };
-    return this.replayGaps(runId, limit, workItemId);
+  async readRecordReplayGaps(runId: string, workItemId: string, cursor = 0, limit = REPLAY_GAP_LIMIT): Promise<RunReplayGaps> {
+    if (!isUuidText(runId) || !isUuidText(workItemId) || !Number.isSafeInteger(cursor) || cursor < 0)
+      return { missing: 0, suppressed: 0, rows: [], window: [] };
+    return this.replayGaps(runId, limit, { kind: 'record', workItemId, cursor });
   }
 
-  private async replayGaps(runId: string, limit: number, workItemId: string | null): Promise<RunReplayGaps> {
+  private async replayGaps(
+    runId: string,
+    limit: number,
+    scope: { readonly kind: 'session'; readonly through: number } | { readonly kind: 'record'; readonly workItemId: string; readonly cursor: number },
+  ): Promise<RunReplayGaps> {
     const bound = Math.max(0, Math.min(Math.trunc(limit), REPLAY_GAP_LIMIT));
+    const workItemId = scope.kind === 'record' ? scope.workItemId : null;
+    type GapRow = {
+      tool_action_id: string; kind: 'missing' | 'suppressed'; action: string; started_at: string;
+      step_execution_id: string; work_item_id: string | null; target_system: string;
+      capture_suppression: string | null; frames_before: number; record_frames_before: number | null;
+    };
+    // The frames the view shows. A gap after the last of them is kept (`<=`): the scrubber
+    // marks one at its end, and a record page decides for itself whether it is its last.
+    const shown = scope.kind === 'session'
+      ? sql`p.frames_before <= ${scope.through}`
+      : sql`p.record_frames_before BETWEEN ${scope.cursor} AND ${scope.cursor + REPLAY_INSPECTION_PAGE_SIZE}`;
     const result = await this.db.execute<{
       missing: number;
       suppressed: number;
-      rows: readonly {
-        tool_action_id: string; kind: 'missing' | 'suppressed'; action: string; started_at: string;
-        step_execution_id: string; work_item_id: string | null; target_system: string;
-        capture_suppression: string | null; frames_before: number; record_frames_before: number | null;
-      }[] | null;
+      rows: readonly GapRow[] | null;
+      shown_rows: readonly GapRow[] | null;
     }>(sql`
       WITH gaps AS MATERIALIZED (
         SELECT a.tool_action_id, a.action, a.started_at, a.step_execution_id, a.target_system,
@@ -787,16 +824,29 @@ export class DrizzleRunDetailRepository {
         LEFT JOIN run_work_item fw ON fw.work_item_id = coalesce(fs.work_item_id, fa.work_item_id) AND fw.run_id = ${runId}::uuid
         WHERE fe.run_id = ${runId}::uuid AND fe.kind = 'screenshot' AND fe.state = 'REGISTERED'
           AND (coalesce(fs.work_item_id, fa.work_item_id) IS NULL OR fw.work_item_id IS NOT NULL)
-      ), page AS (
-        SELECT g.*,
-          (SELECT count(*) FROM frames f
-            WHERE (f.started_at, f.tool_action_id) < (g.started_at, g.tool_action_id))::int AS frames_before,
-          ${workItemId === null ? sql`NULL::int` : sql`(SELECT count(*) FROM frames f
-            WHERE f.work_item_id = g.work_item_id
-              AND (f.started_at, f.tool_action_id) < (g.started_at, g.tool_action_id))::int`} AS record_frames_before
+      ), placed AS MATERIALIZED (
+        -- ONE ordered pass over the frames and the gaps together, so a gap is placed without
+        -- counting every frame again for it: the running number of frames before each row.
+        -- A gap's action never left a frame, so no frame shares its (started_at, action); the
+        -- gap sorts first at a tie all the same, so "before" stays strictly before.
+        SELECT tool_action_id, is_gap,
+          (count(*) FILTER (WHERE is_gap = 0)
+            OVER (ORDER BY started_at, tool_action_id, is_gap DESC ROWS UNBOUNDED PRECEDING))::int AS frames_before,
+          (count(*) FILTER (WHERE is_gap = 0)
+            OVER (PARTITION BY work_item_id ORDER BY started_at, tool_action_id, is_gap DESC ROWS UNBOUNDED PRECEDING))::int
+            AS record_frames_before
+        FROM (
+          SELECT started_at, tool_action_id, work_item_id, 0 AS is_gap FROM frames
+          UNION ALL
+          SELECT started_at, tool_action_id, work_item_id, 1 AS is_gap FROM gaps
+        ) session
+      ), positioned AS MATERIALIZED (
+        SELECT g.*, pl.frames_before,
+          ${workItemId === null ? sql`NULL::int` : sql`pl.record_frames_before`} AS record_frames_before
         FROM gaps g
-        ORDER BY g.started_at, g.tool_action_id
-        LIMIT ${bound}
+        JOIN placed pl ON pl.tool_action_id = g.tool_action_id AND pl.is_gap = 1
+      ), listed AS (
+        SELECT * FROM positioned ORDER BY started_at, tool_action_id LIMIT ${bound}
       )
       SELECT
         (SELECT count(*) FROM gaps WHERE kind = 'missing')::int AS missing,
@@ -807,25 +857,34 @@ export class DrizzleRunDetailRepository {
             'work_item_id', p.work_item_id, 'target_system', p.target_system,
             'capture_suppression', p.capture_suppression, 'frames_before', p.frames_before,
             'record_frames_before', p.record_frames_before)
-          ORDER BY p.started_at, p.tool_action_id) FROM page p) AS rows`);
+          ORDER BY p.started_at, p.tool_action_id) FROM listed p) AS rows,
+        (SELECT jsonb_agg(jsonb_build_object(
+            'tool_action_id', p.tool_action_id, 'kind', p.kind, 'action', p.action,
+            'started_at', p.started_at, 'step_execution_id', p.step_execution_id,
+            'work_item_id', p.work_item_id, 'target_system', p.target_system,
+            'capture_suppression', p.capture_suppression, 'frames_before', p.frames_before,
+            'record_frames_before', p.record_frames_before)
+          ORDER BY p.started_at, p.tool_action_id) FROM positioned p WHERE ${shown}) AS shown_rows`);
     const row = result[0];
-    if (row === undefined) return { missing: 0, suppressed: 0, rows: [] };
+    if (row === undefined) return { missing: 0, suppressed: 0, rows: [], window: [] };
+    const toGap = (gap: GapRow): RunReplayGap => ({
+      toolActionId: gap.tool_action_id,
+      kind: gap.kind,
+      action: gap.action,
+      startedAt: new Date(gap.started_at).toISOString(),
+      stepExecutionId: gap.step_execution_id,
+      workItemId: gap.work_item_id,
+      targetSystem: gap.target_system,
+      captureSuppression: gap.capture_suppression,
+      framesBefore: Number(gap.frames_before),
+      ...(gap.record_frames_before === null || gap.record_frames_before === undefined
+        ? {} : { recordFramesBefore: Number(gap.record_frames_before) }),
+    });
     return {
       missing: Number(row.missing),
       suppressed: Number(row.suppressed),
-      rows: (row.rows ?? []).map((gap): RunReplayGap => ({
-        toolActionId: gap.tool_action_id,
-        kind: gap.kind,
-        action: gap.action,
-        startedAt: new Date(gap.started_at).toISOString(),
-        stepExecutionId: gap.step_execution_id,
-        workItemId: gap.work_item_id,
-        targetSystem: gap.target_system,
-        captureSuppression: gap.capture_suppression,
-        framesBefore: Number(gap.frames_before),
-        ...(gap.record_frames_before === null || gap.record_frames_before === undefined
-          ? {} : { recordFramesBefore: Number(gap.record_frames_before) }),
-      })),
+      rows: (row.rows ?? []).map(toGap),
+      window: (row.shown_rows ?? []).map(toGap),
     };
   }
 
@@ -917,11 +976,17 @@ export class DrizzleRunDetailRepository {
    * Escalation unlisted behind them. The kind is still carried and the surface still skips
    * a pause, so the rule has two locks.
    *
-   * The landing is one ordered pass over the frames and the waits together: at each wait,
+   * The landing follows ONE rule for an Escalation's record (Story 10.12, item 5): when the
+   * raise's supporting Evidence establishes one record by the rule the Execution Timeline
+   * names it with (`decision-history.ts`: every id resolves, through its capture binding, its
+   * Tool Action and that action's Step Execution, all bound to this Run, to ONE Work Item at
+   * the raise's plan step) and a frame was captured by those Tool Actions, it lands on the
+   * latest such frame — the screen the Timeline's record is established from. Otherwise the
+   * time rule: one ordered pass over the frames and the waits together, where at each wait
    * the running maximum frame ordinal is the number of frames captured at or before it (a
-   * frame at the SAME instant sorts first, so "at or before" includes it). It is decided
+   * frame at the SAME instant sorts first, so "at or before" includes it). Both are decided
    * over EVERY frame the Run holds, because the page reads only the first
-   * `REPLAY_FRAME_LIMIT`.
+   * `REPLAY_FRAME_LIMIT`, and both are exact database ordinals, never millisecond instants.
    */
   async readEscalations(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<Bounded<RunReplayWait>> {
     if (!isUuidText(runId)) return { rows: [], total: 0 };
@@ -931,11 +996,12 @@ export class DrizzleRunDetailRepository {
       rows: readonly {
         wait_id: string; kind: string; opened_at: string; closed_at: string | null;
         closure_kind: string | null; answer_option_id: string | null; frames_through: number;
+        landed_by: 'cited-evidence' | 'raised-at';
         landing_work_item_id: string | null; landing_inspection_ordinal: number | null;
       }[] | null;
     }>(sql`
       WITH frames AS MATERIALIZED (
-        SELECT fa.started_at,
+        SELECT fa.started_at, fa.tool_action_id,
           coalesce(fs.work_item_id, fa.work_item_id) AS work_item_id,
           row_number() OVER (ORDER BY fa.started_at, fa.tool_action_id, fe.evidence_id)::int AS ordinal
         FROM run_evidence fe
@@ -963,18 +1029,79 @@ export class DrizzleRunDetailRepository {
           UNION ALL
           SELECT opened_at, 1, NULL::int, wait_id FROM page
         ) session
+      ), raised AS MATERIALIZED (
+        -- The raise event of each wait on the page, read by the wait's identity. A wait with
+        -- other than ONE raise event establishes nothing, and the raise must be the one the
+        -- platform wrote (the writer is fixed), exactly as the Timeline reads it.
+        SELECT e.payload->>'waitId' AS wait_id, (array_agg(e.payload))[1] AS payload,
+          bool_and(e.actor_type = 'system' AND e.actor_id = 'escalation-platform'
+            AND e.source = 'platform' AND e.outcome = 'success') AS by_platform
+        FROM audit_events e
+        WHERE e.aggregate_id = ${runId} AND e.event_type = 'execution.escalation-raised'
+          AND e.payload->>'waitId' IN (SELECT wait_id::text FROM page)
+        GROUP BY e.payload->>'waitId'
+        HAVING count(*) = 1
+      ), cited AS MATERIALIZED (
+        -- The Evidence each raise named, with the plan step it named: only a non-empty list of
+        -- strings and a non-empty step, the Timeline's own reading of the payload.
+        SELECT r.wait_id, r.payload->>'stepId' AS step_id, lower(id.value #>> '{}') AS evidence_id
+        FROM raised r
+        CROSS JOIN LATERAL jsonb_array_elements(r.payload->'supportingEvidenceIds') AS id(value)
+        WHERE r.by_platform
+          AND jsonb_typeof(r.payload->'stepId') = 'string' AND length(r.payload->>'stepId') > 0
+          AND jsonb_typeof(r.payload->'supportingEvidenceIds') = 'array'
+          AND jsonb_array_length(r.payload->'supportingEvidenceIds') > 0
+          AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r.payload->'supportingEvidenceIds') AS other(value)
+            WHERE jsonb_typeof(other.value) <> 'string')
+      ), captured AS MATERIALIZED (
+        -- Each cited id through its capture binding to the Tool Action that captured it, and
+        -- on to its owner: the Step Execution's Work Item first, then the action's. Every join
+        -- is bound to this Run, so an id another Run captured resolves to nothing.
+        SELECT cc.evidence_id::text AS evidence_id, ca.tool_action_id,
+          coalesce(cs.work_item_id, ca.work_item_id) AS owner
+        FROM run_evidence_capture cc
+        JOIN run_tool_action ca ON ca.tool_action_id = cc.tool_action_id AND ca.run_id = cc.run_id
+        JOIN run_step_execution cs ON cs.step_execution_id = ca.step_execution_id AND cs.run_id = ca.run_id
+        WHERE cc.run_id = ${runId}::uuid AND cc.evidence_id::text IN (SELECT evidence_id FROM cited)
+      ), established AS MATERIALIZED (
+        -- The raise ESTABLISHES its record when EVERY id it named resolves, all to one Work
+        -- Item of this Run, at the plan step the raise named: the rule the Timeline names the
+        -- record by, so the two surfaces cannot name different records.
+        SELECT c.wait_id
+        FROM cited c
+        LEFT JOIN captured k ON k.evidence_id = c.evidence_id
+        GROUP BY c.wait_id, c.step_id
+        HAVING bool_and(k.owner IS NOT NULL) AND count(DISTINCT k.owner) = 1
+          AND EXISTS (SELECT 1 FROM run_work_item w WHERE w.run_id = ${runId}::uuid
+            AND w.work_item_id = (array_agg(k.owner))[1] AND w.step_id = c.step_id)
+      ), cited_frame AS (
+        -- Then Replay lands on the screen the raise cited: the latest frame captured by the
+        -- Tool Actions that captured that Evidence (the Evidence itself, when it is a frame).
+        SELECT c.wait_id, max(f.ordinal) AS ordinal
+        FROM established s
+        JOIN cited c ON c.wait_id = s.wait_id
+        JOIN captured k ON k.evidence_id = c.evidence_id
+        JOIN frames f ON f.tool_action_id = k.tool_action_id
+        GROUP BY c.wait_id
+      ), chosen AS (
+        -- Otherwise the time rule: the last frame captured at or before the wait opened.
+        SELECT l.wait_id, coalesce(cf.ordinal, l.frames_through) AS frames_through,
+          CASE WHEN cf.ordinal IS NULL THEN 'raised-at' ELSE 'cited-evidence' END AS landed_by
+        FROM landed l
+        LEFT JOIN cited_frame cf ON cf.wait_id = l.wait_id::text
+        WHERE l.is_wait = 1
       )
       SELECT
         (SELECT count(*) FROM run_wait WHERE run_id = ${runId}::uuid AND kind <> 'pause')::int AS total,
         (SELECT jsonb_agg(jsonb_build_object(
             'wait_id', p.wait_id, 'kind', p.kind, 'opened_at', p.opened_at, 'closed_at', p.closed_at,
             'closure_kind', p.closure_kind, 'answer_option_id', p.answer_option_id,
-            'frames_through', l.frames_through,
+            'frames_through', ch.frames_through, 'landed_by', ch.landed_by,
             'landing_work_item_id', o.work_item_id, 'landing_inspection_ordinal', o.inspection_ordinal)
           ORDER BY p.opened_at, p.wait_id)
          FROM page p
-         JOIN landed l ON l.wait_id = p.wait_id AND l.is_wait = 1
-         LEFT JOIN owned o ON o.ordinal = l.frames_through) AS rows`);
+         JOIN chosen ch ON ch.wait_id = p.wait_id
+         LEFT JOIN owned o ON o.ordinal = ch.frames_through) AS rows`);
     const read = result[0];
     if (read === undefined) return { rows: [], total: 0 };
     return {
@@ -987,6 +1114,7 @@ export class DrizzleRunDetailRepository {
         closureKind: row.closure_kind,
         answerOptionId: row.answer_option_id,
         framesThrough: Number(row.frames_through),
+        landedBy: row.landed_by === 'cited-evidence' ? 'cited-evidence' : 'raised-at',
         landing: row.landing_work_item_id === null || row.landing_inspection_ordinal === null
           ? null
           : {

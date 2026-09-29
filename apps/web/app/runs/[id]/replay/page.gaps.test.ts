@@ -49,7 +49,7 @@ async function gapsHandedToTheViewer(query: Record<string, string> = {}): Promis
 beforeEach(() => {
   vi.clearAllMocks();
   calls.inspection.mockResolvedValue({ kind: 'unavailable' });
-  calls.recordGaps.mockResolvedValue({ missing: 0, suppressed: 0, rows: [] });
+  calls.recordGaps.mockResolvedValue({ missing: 0, suppressed: 0, rows: [], window: [] });
   calls.openRun.mockResolvedValue({ allowed: true, readAt: new Date('2026-09-26T00:00:00Z'),
     run: { runId: RUN_ID, state: 'COMPLETED', procedureName: 'Replay gaps', versionId: 'version', procedureId: 'procedure' } });
   calls.plan.mockResolvedValue({ sessionSteps: [], targetSystems: [], inputs: { instructions: [],
@@ -58,30 +58,30 @@ beforeEach(() => {
     toolActions: { rows: [], total: 0 },
     workItems: [{ workItemId: WORK_ITEM, subjectKey: 'E-000102', displayName: 'LoanCore', registrationId: 'loancore',
       stepId: 'target-1', state: 'COMPLETED', attempts: 1, cycles: 1, observations: 1, diagnostic: null, evidenceId: null, ordinal: 1 }] });
-  calls.gaps.mockResolvedValue({
-    missing: 3,
-    suppressed: 1,
-    rows: [
-      { toolActionId: 'sign-in', kind: 'suppressed', action: 'navigate', startedAt: '2026-09-26T00:00:01.000Z',
-        stepExecutionId: 'step-1', workItemId: null, targetSystem: 'loancore', captureSuppression: 'credential-entry', framesBefore: 0 },
-      { toolActionId: 'lost', kind: 'missing', action: 'open-record', startedAt: '2026-09-26T00:00:05.000Z',
-        stepExecutionId: 'step-2', workItemId: WORK_ITEM, targetSystem: 'loancore', captureSuppression: null, framesBefore: 2 },
-    ],
-  });
+  const sessionGaps = [
+    { toolActionId: 'sign-in', kind: 'suppressed', action: 'navigate', startedAt: '2026-09-26T00:00:01.000Z',
+      stepExecutionId: 'step-1', workItemId: null, targetSystem: 'loancore', captureSuppression: 'credential-entry', framesBefore: 0 },
+    { toolActionId: 'lost', kind: 'missing', action: 'open-record', startedAt: '2026-09-26T00:00:05.000Z',
+      stepExecutionId: 'step-2', workItemId: WORK_ITEM, targetSystem: 'loancore', captureSuppression: null, framesBefore: 2 },
+  ];
+  calls.gaps.mockResolvedValue({ missing: 3, suppressed: 1, rows: sessionGaps, window: sessionGaps });
 });
 
 describe('Replay’s gaps, through the page’s own read (Story 10.6, legacy 5.2)', () => {
   it('hands the viewer the exact counts and each gap in words, a suppressed capture in its own sentence', async () => {
+    const words = [
+      { toolActionId: 'sign-in', kind: 'suppressed', mark: captureSentence('SUPPRESSED', 'credential-entry'),
+        narration: 'Opening a page on LoanCore', framesBefore: 0, position: 0 },
+      { toolActionId: 'lost', kind: 'missing', mark: REPLAY_GAP_WORDS.missing,
+        narration: 'Opening the record for E-000102 on LoanCore', framesBefore: 2, position: 2 },
+    ];
     expect(await gapsHandedToTheViewer()).toEqual({
+      scope: 'session',
       // The EXACT counts, never the length of the bounded list of positions.
       missing: 3,
       suppressed: 1,
-      rows: [
-        { toolActionId: 'sign-in', kind: 'suppressed', mark: captureSentence('SUPPRESSED', 'credential-entry'),
-          narration: 'Opening a page on LoanCore', framesBefore: 0, position: 0 },
-        { toolActionId: 'lost', kind: 'missing', mark: REPLAY_GAP_WORDS.missing,
-          narration: 'Opening the record for E-000102 on LoanCore', framesBefore: 2, position: 2 },
-      ],
+      rows: words,
+      markers: words,
     });
     expect(calls.gaps).toHaveBeenCalledWith(RUN_ID);
   });
@@ -92,19 +92,24 @@ describe('Replay’s gaps, through the page’s own read (Story 10.6, legacy 5.2
     calls.inspection.mockResolvedValue({ kind: 'inspection',
       workItem: { workItemId: WORK_ITEM, subjectKey: 'E-000102', displayName: 'LoanCore', registrationId: 'loancore' },
       workspace: null, rows: [], total: 0, framesTotal: 4, cursor: 0, previousCursor: null, nextCursor: null });
-    calls.recordGaps.mockResolvedValue({ missing: 1, suppressed: 0, rows: [
-      { toolActionId: 'lost', kind: 'missing', action: 'open-record', startedAt: '2026-09-26T00:00:05.000Z',
-        stepExecutionId: 'step-2', workItemId: WORK_ITEM, targetSystem: 'loancore', captureSuppression: null,
-        framesBefore: 2, recordFramesBefore: 0 },
-    ] });
+    const lost = [{ toolActionId: 'lost', kind: 'missing', action: 'open-record', startedAt: '2026-09-26T00:00:05.000Z',
+      stepExecutionId: 'step-2', workItemId: WORK_ITEM, targetSystem: 'loancore', captureSuppression: null,
+      framesBefore: 2, recordFramesBefore: 0 }];
+    calls.recordGaps.mockResolvedValue({ missing: 1, suppressed: 0, rows: lost, window: lost });
+    // Story 10.12, item 2: the position is among the record's own frames (0 of them before
+    // it), not the session's (2).
+    const words = [{ toolActionId: 'lost', kind: 'missing', mark: REPLAY_GAP_WORDS.missing,
+      narration: 'Opening the record for E-000102 on LoanCore', framesBefore: 0, position: 0 }];
     expect(await gapsHandedToTheViewer({ workItem: WORK_ITEM })).toEqual({
+      scope: 'record',
       missing: 1,
       suppressed: 0,
-      rows: [{ toolActionId: 'lost', kind: 'missing', mark: REPLAY_GAP_WORDS.missing,
-        narration: 'Opening the record for E-000102 on LoanCore', framesBefore: 2, position: 0 }],
+      rows: words,
+      markers: words,
     });
-    // Scoped to the requested record, through its own read; the session's gaps are not read.
-    expect(calls.recordGaps).toHaveBeenCalledWith(RUN_ID, WORK_ITEM);
+    // Scoped to the requested record and the page shown, through its own read; the session's
+    // gaps are not read.
+    expect(calls.recordGaps).toHaveBeenCalledWith(RUN_ID, WORK_ITEM, 0);
     expect(calls.gaps).not.toHaveBeenCalled();
   });
 
@@ -124,16 +129,21 @@ describe('Replay’s gaps, through the page’s own read (Story 10.6, legacy 5.2
     const gap = (id: string, recordFramesBefore: number) => ({ toolActionId: id, kind: 'missing', action: 'open-record',
       startedAt: '2026-09-26T00:00:05.000Z', stepExecutionId: 'step-x', workItemId: WORK_ITEM, targetSystem: 'loancore',
       captureSuppression: null, framesBefore: 100 + recordFramesBefore, recordFramesBefore });
-    calls.recordGaps.mockResolvedValue({ missing: 4, suppressed: 0,
-      rows: [gap('before-page', 99), gap('page-start', 100), gap('between', 101), gap('page-end', 102)] });
-    const handed = await gapsHandedToTheViewer({ workItem: WORK_ITEM, cursor: '100' }) as { rows: { toolActionId: string; position: number | null }[] };
+    const all = [gap('before-page', 99), gap('page-start', 100), gap('between', 101), gap('page-end', 102)];
+    calls.recordGaps.mockResolvedValue({ missing: 4, suppressed: 0, rows: all, window: all.slice(1) });
+    const handed = await gapsHandedToTheViewer({ workItem: WORK_ITEM, cursor: '100' }) as {
+      rows: { toolActionId: string; position: number | null }[]; markers: { toolActionId: string; position: number }[] };
     expect(Object.fromEntries(handed.rows.map(row => [row.toolActionId, row.position]))).toEqual({
       'before-page': null, 'page-start': 0, between: 1, 'page-end': null,
     });
+    // The marks come from the page's own window read, placed on its pills.
+    expect(handed.markers.map(row => [row.toolActionId, row.position])).toEqual([['page-start', 0], ['between', 1]]);
+    // The read is asked for THIS page's gaps (Story 10.12, item 1).
+    expect(calls.recordGaps).toHaveBeenCalledWith(RUN_ID, WORK_ITEM, 100);
   });
 
   it('hands no gaps when the requested inspection cannot be resolved', async () => {
-    calls.recordGaps.mockResolvedValue({ missing: 3, suppressed: 0, rows: [] });
+    calls.recordGaps.mockResolvedValue({ missing: 3, suppressed: 0, rows: [], window: [] });
     expect(await gapsHandedToTheViewer({ workItem: WORK_ITEM })).toBeNull();
     expect(calls.gaps).not.toHaveBeenCalled();
   });

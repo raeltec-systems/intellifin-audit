@@ -46,8 +46,9 @@ export type ReplayJumpTarget = {
   readonly workItemId?: string;
   /**
    * The inspection page that holds the frame, when it is not that record's first page
-   * (Story 10.9). An Escalation lands on the last frame captured at or before it was
-   * raised, which can sit anywhere in its record's captures; a Work Item and an Exception
+   * (Story 10.9). An Escalation lands on the frame its raise's Evidence cites, or else on
+   * the last frame captured at or before it was raised (Story 10.12), which can sit anywhere
+   * in its record's captures; a Work Item and an Exception
    * land on the record's first frame, which is always on the first page.
    */
   readonly inspectionCursor?: number;
@@ -230,7 +231,8 @@ export function replayFrameForWorkItem(
 }
 
 /**
- * The last frame captured at or before an instant, or `null`.
+ * The last frame captured at or before an instant, or `null`: an Escalation's TIME rule, used
+ * when its raise's Evidence does not establish its record (Story 10.12; `replay-v1.md`).
  *
  * NOT the page's landing rule (Story 10.9 continuation): an Escalation inside the frame
  * prefix lands by the exact SQL ordinal `framesThrough`, because re-parsing millisecond
@@ -442,6 +444,19 @@ export const REPLAY_GAP_WORDS = {
 } as const;
 
 /**
+ * What the ONE-RECORD Replay says about that record's gaps (Story 10.12, item 2). The owner
+ * approved these words on 2026-09-29, verbatim: the one-record view states the record's own
+ * gaps, and "the playback" there is this record's, so the heading and the banner say so, and a
+ * gap on another page of the record's frames says where it is. Positions on that view count
+ * among the record's own frames (`replayGapPosition` of `recordFramesBefore`).
+ */
+export const REPLAY_RECORD_GAP_WORDS = {
+  heading: "Gaps in this record's playback",
+  /** Said after a listed gap that is not among the frames on this page. */
+  otherPage: " · on another page of this record's frames",
+} as const;
+
+/**
  * The limitation, stated rather than implied: how many frames are missing and that the
  * playback is incomplete. `missing` is the EXACT count, never the length of a bounded list.
  */
@@ -449,6 +464,13 @@ export function replayIncompleteSentence(missing: number): string {
   return missing === 1
     ? 'Playback is incomplete: 1 frame is missing.'
     : `Playback is incomplete: ${missing.toLocaleString('en-US')} frames are missing.`;
+}
+
+/** The same limitation for ONE record's playback, in the owner's words (Story 10.12). */
+export function replayRecordIncompleteSentence(missing: number): string {
+  return missing === 1
+    ? 'Playback of this record is incomplete: 1 frame is missing.'
+    : `Playback of this record is incomplete: ${missing.toLocaleString('en-US')} frames are missing.`;
 }
 
 /** Where a gap sits, in the scrubber's own numbering. */
@@ -464,7 +486,11 @@ export interface ReplayGapView {
   readonly mark: string;
   /** What the action was, in audit words — never the stored identifier. */
   readonly narration: string;
-  /** How many frames come before it in the whole session's order (the counter's numbering). */
+  /**
+   * How many frames come before it in THIS VIEW's numbering: the whole session's frames on
+   * the whole-session Replay, this record's own frames on the one-record Replay (Story 10.12,
+   * item 2), so "after frame N" says where it is in what the view is about.
+   */
   readonly framesBefore: number;
   /**
    * Where the marker sits on THIS view's scrubber: after `position` of its pills, or `null`
@@ -475,10 +501,19 @@ export interface ReplayGapView {
 }
 
 export interface ReplayGapsView {
+  /** Which playback the gaps are of, so the view says the matching words. */
+  readonly scope: 'session' | 'record';
   /** The exact number of missing frames. Suppressed captures are never counted here. */
   readonly missing: number;
   readonly suppressed: number;
+  /** The LIST: the read's bounded rows, each with its position, `null` when off this view. */
   readonly rows: readonly ReplayGapView[];
+  /**
+   * The MARKERS: every gap that sits among the frames this view shows, whatever its place in
+   * the bounded list (Story 10.12, item 1). They used to be taken from `rows`, so past the
+   * first `REPLAY_GAP_LIMIT` gaps a real gap on the frames shown had no marker.
+   */
+  readonly markers: readonly ReplayGapView[];
 }
 
 /**
@@ -489,7 +524,7 @@ export interface ReplayGapsView {
  */
 export function replayGapsAt(gaps: ReplayGapsView | undefined, position: number): readonly ReplayGapView[] {
   if (gaps === undefined) return [];
-  return gaps.rows.filter((gap) => gap.position === position);
+  return gaps.markers.filter((gap) => gap.position === position);
 }
 
 /**
@@ -523,16 +558,21 @@ export function replayGapsView(
     const at = gap.recordFramesBefore - scope.cursor;
     return at >= 0 && (at < scope.shown || (at === scope.shown && scope.last)) ? at : null;
   };
+  const view = (gap: RunReplayGaps['rows'][number]): ReplayGapView => ({
+    toolActionId: gap.toolActionId,
+    kind: gap.kind,
+    mark: gap.kind === 'missing' ? REPLAY_GAP_WORDS.missing : captureSentence('SUPPRESSED', gap.captureSuppression),
+    narration: narrate(gap),
+    // The record's own numbering on its view. A record read always sets it; a row without it
+    // keeps the number the read gave rather than a guessed one.
+    framesBefore: scope.kind === 'record' ? gap.recordFramesBefore ?? gap.framesBefore : gap.framesBefore,
+    position: position(gap),
+  });
   return {
+    scope: scope.kind,
     missing: read.missing,
     suppressed: read.suppressed,
-    rows: read.rows.map((gap) => ({
-      toolActionId: gap.toolActionId,
-      kind: gap.kind,
-      mark: gap.kind === 'missing' ? REPLAY_GAP_WORDS.missing : captureSentence('SUPPRESSED', gap.captureSuppression),
-      narration: narrate(gap),
-      framesBefore: gap.framesBefore,
-      position: position(gap),
-    })),
+    rows: read.rows.map(view),
+    markers: read.window.map(view).filter((gap) => gap.position !== null),
   };
 }
