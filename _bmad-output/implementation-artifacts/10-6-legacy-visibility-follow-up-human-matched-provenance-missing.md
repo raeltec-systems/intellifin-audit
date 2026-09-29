@@ -257,6 +257,14 @@ mark. A11 (a sentence saying a pause does not use up an attempt) is proposed and
 D1 (the optional event fields below) and D2 (gaps on the one-record Replay, the intent gap in
 the triage log) wait on the owner. No pending decision is silently approved.
 
+**Owner decision 2026-09-29.** The owner approved all of
+[wording sheet 2, version 2](owner-wording-sheet-2-v2-2026-09-27.md): A1–A11 as written,
+B1–B15 as written, D1 = yes (the optional payload keys below count as approved), and D2 = b
+(the one-record Replay also shows that record's own gaps, with the approved "Gaps in this
+playback" words). A11 and D2 b are built on this branch, and the "PROPOSED" marks for the
+sheet-1 and sheet-2 sentences in `pause-words.ts` are removed; the sentences are unchanged.
+This supersedes "still proposed" in the paragraph above and "wait on the owner" for D1 and D2.
+
 **Decision to confirm.** The Ask First list names a new audit event TYPE, a column and a
 migration; none was added. New payload KEYS were added to existing event types
 (`humanMatchDecisions`; `planStepId`, `heldWorkItemId`, `stepExecutionId`, `attempt` on
