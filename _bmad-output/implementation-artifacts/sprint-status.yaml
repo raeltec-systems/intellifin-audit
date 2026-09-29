@@ -129,8 +129,7 @@ development_status:
     review
   10-8-lost-connection-and-lost-acknowledgement-a-server-refresh-is: done
   10-9-replay-bounded-history-completeness-a-bounded-view-says-what: done
-  10-10-retained-decision-history-on-the-execution-timeline-an-answe: 
-    review
+  10-10-retained-decision-history-on-the-execution-timeline-an-answe: done
   10-11-replay-continuation-past-the-bound-every-escalation-and-ever:
     backlog
   epic-10-retrospective: optional

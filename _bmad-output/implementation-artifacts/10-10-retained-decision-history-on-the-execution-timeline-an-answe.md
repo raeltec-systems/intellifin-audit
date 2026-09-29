@@ -2,7 +2,7 @@
 title: 'Retained decision history on the Execution Timeline: an answered Escalation and a superseded pause are inspectable entries'
 type: 'fix'
 created: '2026-09-25'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 implementation_authorised: true
 implementation_authorisation: 'Owner, 2026-09-26: "go, new branches OK" (implement 10.6 to 10.10 on new branches); wording approved 2026-09-26 ("approve all")'
