@@ -218,8 +218,8 @@ timeout, and can be closed exactly once.
     and inspector, and the Exceptions list all show the flag ("Human-matched", the word the
     Evidence cards already print) with the decision; a platform match shows none. The
     selection is refused above `MATCH_DECISION_SELECTOR_LIMIT` rather than cut, because a
-    dropped entry would show a human match as a platform one. The sentences are proposed
-    wording in `apps/web/src/runs/match-words.ts`.
+    dropped entry would show a human match as a platform one. The sentences are
+    owner-approved (sheet 1, 2026-09-26) and live in `apps/web/src/runs/match-words.ts`.
 
 ## Untrusted question text
 
