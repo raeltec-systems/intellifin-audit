@@ -4,7 +4,7 @@ import type { RunPauseEntry, RunPauseHistory } from '@intellifin/infrastructure'
 import { Reference } from '../design/Reference';
 import { readableStamp } from '../design/time';
 import type { PauseRequestsView } from './decision-read';
-import { pauseHistoryRows, pauseRequestsShownWords } from './decision-words';
+import { PAUSE_REQUEST_WORDS, pauseHistoryRows, pauseRequestsShownWords } from './decision-words';
 import { PauseRequestEntry } from './PauseRequests';
 import {
   PAUSE_WORDS,
@@ -74,7 +74,7 @@ export function PauseHistorySection({ history, plan, recordNames, actorNames, re
   return (
     <section className="ls-card ls-stack" aria-labelledby="pause-history-heading">
       <h2 id="pause-history-heading">{PAUSE_WORDS.heading}</h2>
-      <p>{PAUSE_WORDS.intro}</p>
+      <p>{PAUSE_WORDS.intro} {PAUSE_REQUEST_WORDS.intro}</p>
       {history.entries.length < history.total
         ? <p className="ls-caption">{pausesShownWords(history.entries.length, history.total)}</p>
         : null}
