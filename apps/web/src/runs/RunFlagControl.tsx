@@ -60,7 +60,9 @@ export function RunFlagControl({ runId, flaggable, flags }: RunFlagControlProps)
   // the form has answered — on the scripted path and on the plain POST's re-rendered page
   // alike — so a result is never hidden behind a closed opener.
   return <details id="run-flag" className="ls-flag-menu" open={state !== null ? true : undefined}>
-    <summary className="ls-button ls-button--secondary">{flagMenuLabel(flags.length)}</summary>
+    {/* The same size as the Pause and Cancel buttons beside it: without a size the opener
+        took its line height and sat shorter and higher than its neighbours. */}
+    <summary className="ls-button ls-button--secondary ls-button--sm">{flagMenuLabel(flags.length)}</summary>
     <section className="ls-card ls-stack ls-flag-menu__panel" aria-labelledby="run-flag-heading">
       <h2 id="run-flag-heading">{FLAG_COPY.heading}</h2>
       <p>{FLAG_COPY.explanation}</p>

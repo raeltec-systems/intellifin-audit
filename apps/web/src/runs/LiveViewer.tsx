@@ -9,7 +9,8 @@ import { countNoun } from '../design/words';
 import { CAPTURE_TIME_UNRECORDED, LIVE_VIEW_DESKTOP_ONLY_SENTENCE, SESSION_ISOLATION_NOTE } from '../design/copy';
 import { EvidenceKindBadge } from './MinorBadge';
 import { UntrustedPolicy, UntrustedText } from './UntrustedText';
-import { ADAPTER_ARTIFACT_WORDS, chromeDotClass, type AdapterLogStep, type AdapterStepArtifact, type LiveViewChrome } from './live-view';
+import { ADAPTER_ARTIFACT_WORDS, type AdapterLogStep, type AdapterStepArtifact, type LiveViewChrome } from './live-view';
+import { SessionStateWord } from './SessionStateWord';
 import { attemptContext, noWorkItemSentence } from './session-words';
 import { keySegments } from './pause-words';
 import { evidenceKindWord, sessionStepWord, utcStamp, workItemLabel, workItemWord, workspaceModeWord } from './labels';
@@ -118,10 +119,7 @@ export function SessionChrome({ chrome, stateSentence, workspace, counter }: {
       {/* The state is announced; the dot and word are the same fact for everyone else,
           so they are hidden from the reader that already heard the sentence. */}
       <span className="ls-visually-hidden" aria-live="polite">{stateSentence}</span>
-      <span className="ls-session__state" aria-hidden="true">
-        <span className={chrome === null ? 'ls-session__dot ls-session__dot--none' : chromeDotClass(chrome)} />
-        {chrome ?? 'NO SESSION'}
-      </span>
+      <SessionStateWord chrome={chrome} />
       <span className="ls-session__workspace">
         {workspace === null ? 'No Agent Workspace' : workspaceModeWord(workspace.mode)}
       </span>

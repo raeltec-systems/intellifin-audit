@@ -1,4 +1,3 @@
-import { captureStoryState } from './story-visual-capture';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
@@ -35,6 +34,7 @@ import {
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 import { acquireControl, expectRunEvents, resumeWithControl } from './run-control';
+import { captureStoryState } from './story-visual-capture';
 
 /**
  * Pausing and resuming a Run, in a real browser (Story 5.4, FR-25, AD-16, UX-DR25).
@@ -281,6 +281,7 @@ test.describe('pausing and resuming a Run', () => {
     await captureStoryState(page, 'pause-requested');
     await page.reload();
     await expect(page.getByText(`Pause requested by ${authorName}`, { exact: false })).toBeVisible();
+    await captureStoryState(page, 'run-detail-pause-requested');
 
     // The worker's next Tool Action boundary.
     const waitId = await honourPause(runId);
@@ -296,6 +297,7 @@ test.describe('pausing and resuming a Run', () => {
     await expect(page.getByRole('button', { name: 'Resume', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Pause', exact: true })).toHaveCount(0);
 
+    await captureStoryState(page, 'run-detail-paused');
     const paused = await new AxeBuilder({ page }).withTags(TAGS).analyze();
     expect(paused.violations).toEqual([]);
     await captureStoryState(page, 'pause-detail-legacy-hold');
@@ -643,6 +645,7 @@ test.describe('pausing and resuming a Run', () => {
     // forbids. The reason is also rendered visibly.
     await expect(pause).toHaveAttribute('aria-disabled', 'true');
     await expect(page.getByText(ESCALATION_PANEL_COPY.pauseUnavailable, { exact: false }).first()).toBeVisible();
+    await captureStoryState(page, 'run-detail-escalation-open');
 
     // Refused at the command as well, not only hidden on the surface.
     await pause.click({ force: true });

@@ -18,11 +18,23 @@ export const LIVE_STATUSES = ['connecting', 'live', 'stale', 'lost', 'ended'] as
 export type LiveStatus = (typeof LIVE_STATUSES)[number];
 
 export interface LiveStatusInputs {
-  /** The stream reported `end` and will not reconnect on its own. */
+  /**
+   * The browser reported the stream CLOSED: it will not reconnect on its own (a 401, a 404,
+   * a wrong media type). Not the channel's `end` frame, which is a planned renewal the
+   * browser reconnects after by itself.
+   */
   readonly ended: boolean;
-  /** The instant of the last frame seen (event or heartbeat), or the instant the page started waiting. */
+  /**
+   * The instant of the last frame the stream sent (a Timeline event or a heartbeat), or the
+   * instant the page began waiting for one. After a hand-off to a remounted component it is
+   * shifted forward by the time no subscription was listening, so the silence counted is
+   * the silence a page actually listened through.
+   */
   readonly lastMessageAt: number;
-  /** Whether any frame has been seen at all since this subscription began. */
+  /**
+   * Whether the stream has sent any frame since the page began following it, counting the
+   * subscriptions whose clock this one took over. A connection answering is not a frame.
+   */
   readonly everConnected: boolean;
   readonly now: number;
 }
@@ -39,6 +51,142 @@ export function liveStatus({ ended, lastMessageAt, everConnected, now }: LiveSta
 export function silenceSeconds(lastMessageAt: number, now: number): number {
   return Math.max(0, Math.floor((now - lastMessageAt) / 1000));
 }
+
+/**
+ * What a page has heard from one live stream, and the only thing that changes it
+ * (Story 10.8).
+ *
+ * `lastFrameAt` is the instant of the last frame the STREAM ITSELF delivered — a Timeline
+ * event or a heartbeat — or, before any, the instant the page began waiting for one.
+ * Nothing the page does to itself moves it: a server re-read, a new cursor, a new
+ * subscription and a remount are all the page's own doing. Neither does a connection
+ * opening: the route answers before it has armed its LISTEN or read the chain, so an
+ * answer says nothing about the stream. What the stream says instead is a heartbeat as
+ * soon as it is armed and caught up (`docs/contracts/live-timeline-channel-v1.md`), so a
+ * new connection is heard at once rather than a heartbeat interval later.
+ *
+ * That was the defect this shape removes. The subscription effect restarted the clock
+ * every time it ran, and a server re-read that moved the cursor re-ran it — so a re-read
+ * that landed during a drop (the shell's bell refreshing because ANOTHER Run ended) made
+ * the page say `live` for up to 15 seconds and reopened the controls for up to 60, while
+ * the stream it depends on was still down. A server read gives the page a snapshot; only
+ * the stream tells it what the Run is doing, and only the stream can say it is back.
+ */
+export interface LiveClock {
+  readonly lastFrameAt: number;
+  /** Whether the stream has sent a frame since the page began following it. */
+  readonly everConnected: boolean;
+  /** The browser reported the stream CLOSED: it will not reconnect on its own. */
+  readonly ended: boolean;
+}
+
+/** The clock of a page that has just begun waiting for its stream. */
+export function waitingLiveClock(now: number): LiveClock {
+  return { lastFrameAt: now, everConnected: false, ended: false };
+}
+
+/**
+ * The stream itself sent a frame: a Timeline event or a heartbeat. The ONE way back to
+ * `live` from `stale`, `lost` or `ended`, and so the one way a gate closed for `lost` or
+ * `ended` opens again — the recovery the channel contract names (a client that has seen
+ * no frame for 60 seconds has lost the stream).
+ */
+export function heardFromStream(now: number): LiveClock {
+  return { lastFrameAt: now, everConnected: true, ended: false };
+}
+
+/** The browser closed the stream for good (a 401, a 404, a wrong media type). */
+export function streamClosed(clock: LiveClock): LiveClock {
+  return { ...clock, ended: true };
+}
+
+export function liveClockStatus(clock: LiveClock, now: number): LiveStatus {
+  return liveStatus({ ended: clock.ended, lastMessageAt: clock.lastFrameAt, everConnected: clock.everConnected, now });
+}
+
+/**
+ * A clock taken over by a NEW subscription to the same stream — a remount.
+ *
+ * Everything it said carries on: a stream that was lost stays lost, one that had ended
+ * stays ended, one that was stale stays stale, and one that was live stays live, until the
+ * stream itself says something. The one adjustment is not a recovery: the time in which
+ * nothing on the page was subscribed is not counted as silence, because nothing was
+ * listening for a frame then — the count is the silence a page listened through.
+ *
+ * A live clock stays live rather than dropping back to `connecting` (Story 10.8 review): a
+ * page moved between Run pages is following the same stream, and the stream says so
+ * within moments, because every new connection hears a heartbeat as soon as the stream is
+ * armed. A page that flickered to `connecting` on every move would be saying something the
+ * stream never said.
+ */
+export function resumedLiveClock(clock: LiveClock, leftAt: number, now: number): LiveClock {
+  return {
+    lastFrameAt: clock.lastFrameAt + Math.max(0, now - leftAt),
+    everConnected: clock.everConnected,
+    ended: clock.ended,
+  };
+}
+
+/**
+ * The next value of a component's render clock: now, and always later than the last one
+ * (Story 10.8 review).
+ *
+ * React skips a re-render when a state setter is handed the value it already holds, and two
+ * reads of `Date.now()` inside one millisecond are equal — so a remount that took a lost
+ * clock in the same millisecond it first rendered could keep painting the fresh clock, with
+ * the controls open, until the next one-second tick. A value that always moves forward
+ * cannot be skipped. It runs at most a few milliseconds ahead of the wall clock, and only
+ * while frames arrive faster than one a millisecond.
+ */
+export function nextLiveTick(previous: number, now: number): number {
+  return Math.max(now, previous + 1);
+}
+
+/**
+ * Where a subscription leaves its clock for the next subscription to the same stream
+ * (Story 10.8).
+ *
+ * A remount is a new component with new state, so without this the clock it inherited
+ * would be the one thing a remount could reset — and resetting it is exactly what a
+ * re-read must never do. `leave` is called when a subscription ends; `take` hands what it
+ * left to the next one, resumed, and forgets it, so one clock is never resumed twice.
+ * Nothing left means there is nothing to inherit, which is a fresh page's own state.
+ *
+ * A `Map`, never a plain object: the key is a URL and an inherited property name must not
+ * read as a clock somebody left.
+ */
+export interface LiveClockHandOff {
+  leave(key: string, clock: LiveClock, at: number): void;
+  take(key: string, now: number): LiveClock | null;
+}
+
+export function createLiveClockHandOff(): LiveClockHandOff {
+  const left = new Map<string, { readonly clock: LiveClock; readonly at: number }>();
+  return {
+    leave(key, clock, at) {
+      left.set(key, { clock, at });
+    },
+    take(key, now) {
+      const entry = left.get(key);
+      if (entry === undefined) return null;
+      left.delete(key);
+      return resumedLiveClock(entry.clock, entry.at, now);
+    },
+  };
+}
+
+/**
+ * The status as ONE word, which is what the banner's polite live region announces (the
+ * counting sentence beside it is not announced). Beside the states for the reason the
+ * sentences below are, and so a browser spec can pin the word without importing React.
+ */
+export const LIVE_WORDS = {
+  connecting: 'Connecting',
+  live: 'Live',
+  stale: 'No update',
+  lost: 'Connection lost',
+  ended: 'Live update ended',
+} as const satisfies Record<LiveStatus, string>;
 
 export const LIVE_SENTENCES = {
   connecting: 'Connecting to the Run. The page updates on its own once connected.',
@@ -101,6 +249,14 @@ export const LIVE_GATE_REASONS = {
   lost: 'Controls are unavailable while the connection to this Run is lost.',
   ended: 'Controls are unavailable because this page is no longer updating on its own. Refresh to continue.',
 } as const;
+
+/**
+ * The id of the one VISIBLE statement of the gate's reason (`LiveGateNote`, Story 10.8
+ * screenshot review). Here rather than beside the component so a browser spec can find that
+ * node without importing React: each withdrawn control also carries the same sentence as a
+ * visually hidden description, so a text locator would match those too.
+ */
+export const LIVE_GATE_NOTE_ID = 'live-gate-note';
 
 export type LiveGateReason = keyof typeof LIVE_GATE_REASONS;
 
