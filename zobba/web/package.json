@@ -1,0 +1,27 @@
+{
+  "name": "@zobba/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "check": "node scripts/generate-api.mjs --check && tsc --noEmit && node --test tests/*.test.mjs",
+    "test:browser": "playwright test",
+    "build": "tsc --noEmit && vite build",
+    "api:generate": "node scripts/generate-api.mjs"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@types/node": "24.19.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3",
+    "vite": "8.3.1"
+  }
+}

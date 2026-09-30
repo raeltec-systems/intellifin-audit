@@ -1,0 +1,16 @@
+[package]
+name = "zobba-worker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+zobba-application.workspace = true
+zobba-infrastructure.workspace = true
+axum.workspace = true
+tokio.workspace = true
+serde.workspace = true
+
+[lints]
+workspace = true

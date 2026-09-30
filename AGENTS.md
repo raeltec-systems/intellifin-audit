@@ -76,6 +76,12 @@ Planning workspace and application monorepo for IntelliFin Audit, an audit-execu
 
 ## Codex adaptation of the shared working rules
 
+New Story 20.1 bootstrap commands live in [`zobba/README.md`](zobba/README.md).
+Enter `zobba/` for its independent Cargo/pnpm workspaces; the managed commands
+above still target historical Node code. API and worker startup only validate;
+only `zobba-cli migrate --runtime-role <role>` changes the fresh schema. Real
+bootstrap tests require explicitly configured, disposable `*_test` databases.
+
 `CLAUDE.md` is the shared decision log and the source for the repository's general
 working practices. Codex follows those practices subject to its active system,
 developer, and tool instructions. This section records the platform-specific

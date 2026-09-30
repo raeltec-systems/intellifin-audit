@@ -1,3 +1,37 @@
+## 2026-09-30 — Story 20.1 independent bootstrap boundary
+
+Use `zobba/` for the Rust1.98.1 and Node24.20.0/pnpm11.25.0 workspaces.
+Root pnpm commands and legacy CI remain historical. The new workflow is named
+`Zobba foundation`: naming it `CI` would trigger the legacy Release listener.
+Generate the owned OpenAPI through `zobba-cli openapi`; web checks compare both
+that document and generated TypeScript instead of trusting hand-edited types.
+
+Runtime and migration database credentials have separate names and roles.
+Runtime startup/readiness is read-only, bounded, and rejects owner/elevated roles,
+foreign schemas, incorrect metadata and mismatched migration checksums. Only the
+explicit CLI migrates. Story 20.1 supports empty or exact-current bootstrap;
+the next migration story must admit verified previous migration prefixes before
+applying its own changes. Bootstrap tests reset only dedicated `*_test` schemas.
+Process smoke interrupts its own TCP proxy to prove database-loss 503 responses
+without stopping the shared development server. Health establishes no audit work.
+
+The 20.1 review patch keeps preflight on qualified `pg_catalog` objects, checks
+inherited and SET ROLE authority (including column grants), and wraps the SQLx
+ledger, migration and grants in one transaction under a whole-session deadline.
+The migration target is checked both before writes and after grants. Inspect
+physical metadata tables before reading rows; return bounded comparisons instead
+of arbitrary metadata blobs. Integration resets first compare normalized complete
+test endpoints with every configured development binding, including mapped IPv6.
+Use a same-database test-admin binding only for unsafe-role/interruption fixtures;
+the normal CI migrator remains a non-superuser database owner.
+
+The source-boundary guard deliberately supports directly inspected configurations,
+not arbitrary JavaScript evaluation: inherited TypeScript resolver settings and
+composed/re-exported Vite configs need an explicit later boundary implementation.
+Run its concrete regression suite. Process smoke now requires the same processes
+to recover after proxy restoration; the owned browser regression checks the actual
+Unavailable label and preserves keyboard focus on recovery.
+
 ## 2026-09-30 — Accepted Zobba revision 3 and brownfield course correction
 
 The owner accepted revision 3 and requested active-document consolidation,

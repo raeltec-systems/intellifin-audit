@@ -4,6 +4,12 @@ Zobba is a continuing audit working environment: an engagement conversation coor
 
 **The accepted build baseline is design revision 3.** This repository is undergoing a brownfield course correction to an owned Rust backend and fresh schema. The existing TypeScript application remains historical implementation and a source of reusable work; the planning handoff does not claim the new runtime is built.
 
+The new [Zobba workspace](zobba/README.md) now supplies the Story 20.1 Rust API,
+worker and explicit PostgreSQL 18 bootstrap, plus the Pair React/Vite shell.
+Run its commands from `zobba/`; root pnpm commands continue to target the historical
+application. Bootstrap health proves service/schema readiness only. Identity,
+Tasks and audit execution are subsequent implementation work.
+
 - [Active product, architecture and experience contracts](_bmad-output/planning-artifacts/ACTIVE-BASELINE.md)
 - [Build sequence and implementation handoff](_bmad-output/planning-artifacts/zobba-build-plan-2026-09-30/README.md)
 - [First implementation batch](_bmad-output/planning-artifacts/zobba-build-plan-2026-09-30/FIRST-BATCH.md)

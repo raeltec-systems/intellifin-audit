@@ -1,0 +1,17 @@
+{
+  "name": "zobba-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": "24.20.0",
+    "pnpm": "11.25.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @zobba/web dev",
+    "check": "pnpm --filter @zobba/web check",
+    "test:browser": "pnpm --filter @zobba/web test:browser",
+    "build": "pnpm --filter @zobba/web build",
+    "api:generate": "pnpm --filter @zobba/web api:generate"
+  }
+}
