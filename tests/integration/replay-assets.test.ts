@@ -438,6 +438,9 @@ describe.skipIf(!url)('the Replay asset set on PostgreSQL', () => {
     let second = 40;
     const raise = async (options: {
       readonly cites: readonly (string | number)[] | undefined;
+      // A stored value that is not a list at all: a scalar or an object an older or damaged
+      // writer left. It must fall back to the time rule, never fail the whole read.
+      readonly citesValue?: string | Record<string, string>;
       readonly stepId?: string;
       readonly writer?: string;
       readonly raises?: number;
@@ -452,7 +455,8 @@ describe.skipIf(!url)('the Replay asset set on PostgreSQL', () => {
           actor: { type: 'system', id: options.writer ?? 'escalation-platform' }, eventType: 'execution.escalation-raised',
           source: 'platform', outcome: 'success', aggregateId: run.runId, correlationId: ids.next(), sessionId: 'replay-assets',
           payload: { waitId, runId: run.runId, kind: 'choose-candidate', stepId: options.stepId ?? 'target-1-1',
-            ...(options.cites === undefined ? {} : { supportingEvidenceIds: [...options.cites] }) },
+            ...(options.cites === undefined ? {} : { supportingEvidenceIds: [...options.cites] }),
+            ...(options.citesValue === undefined ? {} : { supportingEvidenceIds: options.citesValue }) },
         }));
       }
       return waitId;
@@ -468,6 +472,8 @@ describe.skipIf(!url)('the Replay asset set on PostgreSQL', () => {
     const noFrame = await raise({ cites: [framelessSnapshot] });
     const none = await raise({ cites: undefined });
     const notText = await raise({ cites: [snapshot, 7] });
+    const scalar = await raise({ cites: undefined, citesValue: snapshot });
+    const object = await raise({ cites: undefined, citesValue: { id: snapshot } });
 
     const read = await new DrizzleRunDetailRepository(db).readEscalations(run.runId, 100);
     const of = (waitId: string) => read.rows.find((row) => row.waitId === waitId)!;
@@ -478,7 +484,7 @@ describe.skipIf(!url)('the Replay asset set on PostgreSQL', () => {
     // Two of one record's frames cited: the later one.
     expect(of(citedBoth)).toMatchObject({ framesThrough: 2, landedBy: 'cited-evidence' });
     // Every other raise establishes no record, so the time rule: frame 3, E-NEXT's.
-    for (const [name, waitId] of Object.entries({ twoRecords, mixed, otherStep, forged, twice, noFrame, none, notText }))
+    for (const [name, waitId] of Object.entries({ twoRecords, mixed, otherStep, forged, twice, noFrame, none, notText, scalar, object }))
       expect(of(waitId), name).toMatchObject({ framesThrough: 3, landedBy: 'raised-at', landing: { workItemId: next, cursor: 0 } });
   });
 

@@ -1043,15 +1043,20 @@ export class DrizzleRunDetailRepository {
         HAVING count(*) = 1
       ), cited AS MATERIALIZED (
         -- The Evidence each raise named, with the plan step it named: only a non-empty list of
-        -- strings and a non-empty step, the Timeline's own reading of the payload.
+        -- strings and a non-empty step, the Timeline's own reading of the payload. A value that
+        -- is not an array is read as an EMPTY one BEFORE any array function sees it: the
+        -- planner may run a set-returning call before the WHERE that tests the type, and on a
+        -- scalar or an object that call throws. An empty list names nothing, so such a raise
+        -- falls back to the time rule instead of failing the whole Replay read.
         SELECT r.wait_id, r.payload->>'stepId' AS step_id, lower(id.value #>> '{}') AS evidence_id
         FROM raised r
-        CROSS JOIN LATERAL jsonb_array_elements(r.payload->'supportingEvidenceIds') AS id(value)
+        CROSS JOIN LATERAL (SELECT CASE WHEN jsonb_typeof(r.payload->'supportingEvidenceIds') = 'array'
+          THEN r.payload->'supportingEvidenceIds' ELSE '[]'::jsonb END AS ids) g
+        CROSS JOIN LATERAL jsonb_array_elements(g.ids) AS id(value)
         WHERE r.by_platform
           AND jsonb_typeof(r.payload->'stepId') = 'string' AND length(r.payload->>'stepId') > 0
-          AND jsonb_typeof(r.payload->'supportingEvidenceIds') = 'array'
-          AND jsonb_array_length(r.payload->'supportingEvidenceIds') > 0
-          AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r.payload->'supportingEvidenceIds') AS other(value)
+          AND jsonb_array_length(g.ids) > 0
+          AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(g.ids) AS other(value)
             WHERE jsonb_typeof(other.value) <> 'string')
       ), captured AS MATERIALIZED (
         -- Each cited id through its capture binding to the Tool Action that captured it, and
