@@ -96,7 +96,7 @@ status</a></li>
 <h1 id="zobba-the-audit-working-environment">Zobba: the audit working
 environment</h1>
 <p><strong>Consolidated product and architecture · 30 September 2026 ·
-Revision 2 · For owner review</strong></p>
+Revision 3 · For owner review</strong></p>
 <p>This is the lead Zobba design, consolidated against the alternate
 agent’s document at the user’s request. The clean Rust backend, fresh
 schema, continuing Task, real managed computer and standing Permissions
@@ -105,14 +105,24 @@ its infrastructure choices, approval ceremonies and delivery stages do
 not govern this design. This is product and architecture design, not an
 implementation plan or a claim that these capabilities are already
 built.</p>
+<p>Revision 3 incorporates the user’s four Dots screenshots and current
+public product research into the product and interaction contracts
+below. It refines revision 2’s emphasis on each Task’s conversation as
+the primary work surface: an engagement conversation can coordinate
+several Tasks. Existing implementation plans and reference screens need
+reconciliation with this design before reuse; they have not been
+silently updated or approved. The <a href="references/dots/Dots-UX-Lessons-for-Zobba.md">Dots research</a>
+records observations, sources and evidential limits.</p>
 <h2 id="the-recommendation">The recommendation</h2>
-<p>Build Zobba around a continuing <strong>Task inside an
-Engagement</strong>. The auditor sets an objective through conversation.
-Zobba gathers material, uses a real computer when needed, runs analysis,
-investigates relevant leads and develops work products. The auditor can
-inspect the basis, guide the work, take control and review the result.
-That working relationship continues across tab closures, questions, new
-evidence and recurring checks.</p>
+<p>Build Zobba as a continuing working relationship, with each
+<strong>Task inside an Engagement</strong>. The auditor sets objectives,
+changes priorities and follows several pieces of work through the same
+engagement conversation. Zobba gathers material, uses a real computer
+when needed, runs analysis, investigates relevant leads and develops
+work products. The auditor can inspect a particular Task, guide the
+work, take control and review the result. That working relationship
+continues across tab closures, questions, new evidence and recurring
+checks.</p>
 <p>Keep the Pair identity and the useful parts of the current
 conversation/workspace design. Build one Rust application backend and
 agent engine, with a fresh PostgreSQL schema. Retire compiler-1 and the
@@ -153,6 +163,13 @@ client, period, objectives, team, methodology, material, Permissions and
 audit record. A <strong>Task</strong> is a continuing objective within
 that engagement. A Task can produce several work products and can remain
 useful long after its first answer.</p>
+<p>The engagement conversation coordinates these responsibilities
+without requiring a new chat for each objective. Zobba creates or
+relates a Task when the request warrants it and returns a compact work
+card. People can open a Task’s dedicated history and give direct
+guidance, then return to the same coordinating conversation. Work is
+always attributed to its Task, accountable owner and scope. The stable
+Zobba identity does not confer access across clients.</p>
 <p>The visible nouns are deliberately few:</p>
 <table>
 <colgroup>
@@ -172,8 +189,8 @@ useful long after its first answer.</p>
 </tr>
 <tr class="even">
 <td>Task</td>
-<td>An objective, its conversation, work, decisions and outstanding
-questions.</td>
+<td>An objective with its own inspectable history, work, decisions and
+outstanding questions, reachable from the engagement conversation.</td>
 </tr>
 <tr class="odd">
 <td>Working brief</td>
@@ -205,7 +222,7 @@ execution creates its own linked Task and result.</td>
 <p>The computer is a resource used by a Task. It is not the Task’s
 memory, identity or evidence store. A browser closing must not erase a
 question, a decision or a working paper.</p>
-<figure><svg id="diagram01" width="100%" xmlns="http://www.w3.org/2000/svg" class="flowchart" style="max-width: 764px;" viewBox="4 4 764 534" role="graphics-document document" aria-roledescription="flowchart-v2"><style>#diagram01{font-family:Arial,sans-serif;font-size:16px;fill:#1C1B19;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#diagram01 .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#diagram01 .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#diagram01 .error-icon{fill:#FBFAF7;}#diagram01 .error-text{fill:#040508;stroke:#040508;}#diagram01 .edge-thickness-normal{stroke-width:1px;}#diagram01 .edge-thickness-thick{stroke-width:3.5px;}#diagram01 .edge-pattern-solid{stroke-dasharray:0;}#diagram01 .edge-thickness-invisible{stroke-width:0;fill:none;}#diagram01 .edge-pattern-dashed{stroke-dasharray:3;}#diagram01 .edge-pattern-dotted{stroke-dasharray:2;}#diagram01 .marker{fill:#716D64;stroke:#716D64;}#diagram01 .marker.cross{stroke:#716D64;}#diagram01 svg{font-family:Arial,sans-serif;font-size:16px;}#diagram01 p{margin:0;}#diagram01 .label{font-family:Arial,sans-serif;color:#1C1B19;}#diagram01 .cluster-label text{fill:#040508;}#diagram01 .cluster-label span{color:#040508;}#diagram01 .cluster-label span p{background-color:transparent;}#diagram01 .label text,#diagram01 span{fill:#1C1B19;color:#1C1B19;}#diagram01 .node rect,#diagram01 .node circle,#diagram01 .node ellipse,#diagram01 .node polygon,#diagram01 .node path{fill:#EEECFA;stroke:#4C3FB8;stroke-width:1px;}#diagram01 .rough-node .label text,#diagram01 .node .label text,#diagram01 .image-shape .label,#diagram01 .icon-shape .label{text-anchor:middle;}#diagram01 .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#diagram01 .rough-node .label,#diagram01 .node .label,#diagram01 .image-shape .label,#diagram01 .icon-shape .label{text-align:center;}#diagram01 .node.clickable{cursor:pointer;}#diagram01 .root .anchor path{fill:#716D64!important;stroke-width:0;stroke:#716D64;}#diagram01 .arrowheadPath{fill:#0b0b0b;}#diagram01 .edgePaths .path{stroke:#716D64;stroke-width:1px;}#diagram01 .flowchart-link{stroke:#716D64;fill:none;}#diagram01 .edgeLabel{background-color:#EFEDE8;text-align:center;}#diagram01 .edgeLabel p{background-color:#EFEDE8;}#diagram01 .edgeLabel rect{opacity:0.5;background-color:#EFEDE8;fill:#EFEDE8;}#diagram01 .labelBkg{background-color:rgba(239, 237, 232, 0.5);}#diagram01 .cluster rect{fill:#FBFAF7;stroke:hsl(45, 0%, 87.6470588235%);stroke-width:1px;}#diagram01 .cluster text{fill:#040508;}#diagram01 .cluster span{color:#040508;}#diagram01 .node .collapsed-indicator{fill:hsl(45, 0%, 87.6470588235%);stroke:none;opacity:0.6;}#diagram01 .node .collapsed-separator{stroke:hsl(45, 0%, 87.6470588235%);stroke-width:0.75px;}#diagram01 div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:Arial,sans-serif;font-size:12px;background:#FBFAF7;border:1px solid hsl(45, 0%, 87.6470588235%);border-radius:2px;pointer-events:none;z-index:100;}#diagram01 .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#1C1B19;}#diagram01 rect.text{fill:none;stroke-width:0;}#diagram01 .icon-shape,#diagram01 .image-shape{background-color:#EFEDE8;text-align:center;}#diagram01 .icon-shape p,#diagram01 .image-shape p{background-color:#EFEDE8;padding:2px;}#diagram01 .icon-shape .label rect,#diagram01 .image-shape .label rect{opacity:0.5;background-color:#EFEDE8;fill:#EFEDE8;}#diagram01 .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#diagram01 .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#diagram01 .node .neo-node{stroke:#4C3FB8;}#diagram01 [data-look="neo"].node rect,#diagram01 [data-look="neo"].cluster rect,#diagram01 [data-look="neo"].node polygon{stroke:url(#diagram01-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#diagram01 [data-look="neo"].swimlane.cluster rect{filter:none;}#diagram01 [data-look="neo"].node path{stroke:url(#diagram01-gradient);stroke-width:1px;}#diagram01 [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#diagram01 [data-look="neo"].node .neo-line path{stroke:#4C3FB8;filter:none;}#diagram01 [data-look="neo"].node circle{stroke:url(#diagram01-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#diagram01 [data-look="neo"].node circle .state-start{fill:#000000;}#diagram01 [data-look="neo"].icon-shape .icon{fill:url(#diagram01-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#diagram01 [data-look="neo"].icon-shape .icon-neo path{stroke:url(#diagram01-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#diagram01 :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="diagram01_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;" /></marker><marker id="diagram01_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;" /></marker><marker id="diagram01_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;" /></marker><marker id="diagram01_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></polygon></marker><marker id="diagram01_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="diagram01_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="diagram01_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="diagram01_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="diagram01_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;" /></marker><marker id="diagram01_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;" /></marker><marker id="diagram01_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;" /></marker><marker id="diagram01_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;" /></marker><g class="root"><g class="clusters"></g><g class="edges edgePaths"><path d="M164,397L176.92893218813452,397Q184,397 184,389.9289321881345L184,255.0710678118655Q184,248.00000000000003 191.07106781186548,248.00000000000003L200,248.00000000000003" id="diagram01-L_E_T_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 175.6717071533203 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_E_T_0" data-points="W3sieCI6MTY0LCJ5IjozOTd9LHsieCI6MTg0LCJ5IjozOTd9LHsieCI6MTg0LCJ5IjoyNDguMDAwMDAwMDAwMDAwMDN9LHsieCI6MjA0LCJ5IjoyNDguMDAwMDAwMDAwMDAwMDN9XQ==" data-look="neo" marker-end="url(#diagram01_flowchart-v2-pointEnd-margin)" /><path d="M164,404L200,404" id="diagram01-L_E_M_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 32 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_E_M_0" data-points="W3sieCI6MTY0LCJ5Ijo0MDR9LHsieCI6MjA0LCJ5Ijo0MDR9XQ==" data-look="neo" marker-end="url(#diagram01_flowchart-v2-pointEnd-margin)" /><path d="M356,230.66666666666669L368.9289321881345,230.66666666666669Q376,230.66666666666669 376,223.5955988548012L376,43.071067811865476Q376,36 383.0710678118655,36L412,36" id="diagram01-L_T_B_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 241.33840942382812 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_T_B_0" data-points="W3sieCI6MzU2LCJ5IjoyMzAuNjY2NjY2NjY2NjY2Njl9LHsieCI6Mzc2LCJ5IjoyMzAuNjY2NjY2NjY2NjY2Njl9LHsieCI6Mzc2LCJ5IjozNn0seyJ4Ijo0MTYsInkiOjM2fV0=" data-look="neo" marker-end="url(#diagram01_flowchart-v2-pointEnd-margin)" /><path d="M356,239.33333333333334L388.9289321881345,239.33333333333334Q396,239.33333333333334 396,232.26226552146787L396,143.07106781186548Q396,136 403.0710678118655,136L412,136" id="diagram01-L_T_S_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 150.0050506591797 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_T_S_0" data-points="W3sieCI6MzU2LCJ5IjoyMzkuMzMzMzMzMzMzMzMzMzR9LHsieCI6Mzk2LCJ5IjoyMzkuMzMzMzMzMzMzMzMzMzR9LHsieCI6Mzk2LCJ5IjoxMzZ9LHsieCI6NDE2LCJ5IjoxMzZ9XQ==" data-look="neo" marker-end="url(#diagram01_flowchart-v2-pointEnd-margin)" /><path d="M356,248.00000000000003L412,248.00000000000003" id="diagram01-L_T_W_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 52 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_T_W_0" data-points="W3sieCI6MzU2LCJ5IjoyNDguMDAwMDAwMDAwMDAwMDN9LHsieCI6NDE2LCJ5IjoyNDguMDAwMDAwMDAwMDAwMDN9XQ==" data-look="neo" marker-end="url(#diagram01_flowchart-v2-pointEnd-margin)" /><path d="M356,256.6666666666667L388.9289321881345,256.6666666666667Q396,256.6666666666667 396,263.73773447853216L396,352.9289321881345Q396,360 403.0710678118655,360L412,360" id="diagram01-L_T_C_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 150.00502014160156 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_T_C_0" data-points="W3sieCI6MzU2LCJ5IjoyNTYuNjY2NjY2NjY2NjY2N30seyJ4IjozOTYsInkiOjI1Ni42NjY2NjY2NjY2NjY3fSx7IngiOjM5NiwieSI6MzYwfSx7IngiOjQxNiwieSI6MzYwfV0=" data-look="neo" marker-end="url(#diagram01_flowchart-v2-pointEnd-margin)" /><path d="M356,265.33333333333337L368.9289321881345,265.33333333333337Q376,265.33333333333337 376,272.40440114519885L376,452.9289321881345Q376,460 383.0710678118655,460L412,460" id="diagram01-L_T_Q_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 241.33837890625 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_T_Q_0" data-points="W3sieCI6MzU2LCJ5IjoyNjUuMzMzMzMzMzMzMzMzMzd9LHsieCI6Mzc2LCJ5IjoyNjUuMzMzMzMzMzMzMzMzMzd9LHsieCI6Mzc2LCJ5Ijo0NjB9LHsieCI6NDE2LCJ5Ijo0NjB9XQ==" data-look="neo" marker-end="url(#diagram01_flowchart-v2-pointEnd-margin)" /><path d="M568,460L583.3333333333333,460Q588,460 588,464.6666666666667L588,464.6666666666667Q588,469.33333333333337 592.6666666666667,469.33333333333337L604,469.33333333333337" id="diagram01-L_Q_P_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 37.816890716552734 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_Q_P_0" data-points="W3sieCI6NTY4LCJ5Ijo0NjB9LHsieCI6NTg4LCJ5Ijo0NjB9LHsieCI6NTg4LCJ5Ijo0NjkuMzMzMzMzMzMzMzMzMzd9LHsieCI6NjA4LCJ5Ijo0NjkuMzMzMzMzMzMzMzMzMzd9XQ==" data-look="neo" marker-end="url(#diagram01_flowchart-v2-pointEnd-margin)" /><path d="M608,494.66666666666674L492,494.66666666666674L280,494.66666666666674L191.07106781186548,494.66666666666674Q184,494.66666666666674 184,487.59559885480127L184,418.0710678118655Q184,411 176.92893218813452,411L168,411" id="diagram01-L_P_E_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 514.33837890625 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_P_E_0" data-points="W3sieCI6NjA4LCJ5Ijo0OTQuNjY2NjY2NjY2NjY2NzR9LHsieCI6NDkyLCJ5Ijo0OTQuNjY2NjY2NjY2NjY2NzR9LHsieCI6MjgwLCJ5Ijo0OTQuNjY2NjY2NjY2NjY2NzR9LHsieCI6MTg0LCJ5Ijo0OTQuNjY2NjY2NjY2NjY2NzR9LHsieCI6MTg0LCJ5Ijo0MTF9LHsieCI6MTY0LCJ5Ijo0MTF9XQ==" data-look="neo" marker-end="url(#diagram01_flowchart-v2-pointEnd-margin)" /></g><g class="edgeLabels"></g><g class="nodes"><g class="node default" id="diagram01-flowchart-E-0" data-look="neo" transform="translate(88, 404)"><rect class="basic label-container" style x="-76" y="-24" width="152" height="48" /><g class="label" style transform="translate(-60, -12)"><rect /><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Engagement</p></span></div></foreignObject></g></g><g class="node default" id="diagram01-flowchart-T-1" data-look="neo" transform="translate(280, 248.00000000000003)"><rect class="basic label-container" style x="-76" y="-36" width="152" height="72" /><g class="label" style transform="translate(-60, -24)"><rect /><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Task and conversation</p></span></div></foreignObject></g></g><g class="node default" id="diagram01-flowchart-M-3" data-look="neo" transform="translate(280, 404)"><rect class="basic label-container" style x="-76" y="-36" width="152" height="72" /><g class="label" style transform="translate(-60, -24)"><rect /><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Methodology and Permissions</p></span></div></foreignObject></g></g><g class="node default" id="diagram01-flowchart-B-5" data-look="neo" transform="translate(492, 36)"><rect class="basic label-container" style x="-76" y="-24" width="152" height="48" /><g class="label" style transform="translate(-60, -12)"><rect /><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Working brief</p></span></div></foreignObject></g></g><g class="node default" id="diagram01-flowchart-S-7" data-look="neo" transform="translate(492, 136)"><rect class="basic label-container" style x="-76" y="-36" width="152" height="72" /><g class="label" style transform="translate(-60, -24)"><rect /><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Sources and evidence</p></span></div></foreignObject></g></g><g class="node default" id="diagram01-flowchart-W-9" data-look="neo" transform="translate(492, 248.00000000000003)"><rect class="basic label-container" style x="-76" y="-36" width="152" height="72" /><g class="label" style transform="translate(-60, -24)"><rect /><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Work products and review</p></span></div></foreignObject></g></g><g class="node default" id="diagram01-flowchart-C-11" data-look="neo" transform="translate(492, 360)"><rect class="basic label-container" style x="-76" y="-36" width="152" height="72" /><g class="label" style transform="translate(-60, -24)"><rect /><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Computer and analysis</p></span></div></foreignObject></g></g><g class="node default" id="diagram01-flowchart-Q-13" data-look="neo" transform="translate(492, 460)"><rect class="basic label-container" style x="-76" y="-24" width="152" height="48" /><g class="label" style transform="translate(-60, -12)"><rect /><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Check definition</p></span></div></foreignObject></g></g><g class="node default" id="diagram01-flowchart-P-15" data-look="neo" transform="translate(684, 482)"><rect class="basic label-container" style x="-76" y="-48" width="152" height="96" /><g class="label" style transform="translate(-60, -36)"><rect /><foreignObject width="120" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>New task for each period or trigger</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="diagram01-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><defs><filter id="diagram01-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><linearGradient id="diagram01-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#4C3FB8" stop-opacity="1"></stop><stop offset="100%" stop-color="hsl(42.8571428571, 0%, 82.3529411765%)" stop-opacity="1"></stop></linearGradient></svg><figcaption>Design diagram 1</figcaption></figure>
+<figure><svg id="diagram01" width="100%" xmlns="http://www.w3.org/2000/svg" class="flowchart" style="max-width: 956px;" viewBox="4 4 956 534" role="graphics-document document" aria-roledescription="flowchart-v2"><style>#diagram01{font-family:Arial,sans-serif;font-size:16px;fill:#1C1B19;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#diagram01 .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#diagram01 .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#diagram01 .error-icon{fill:#FBFAF7;}#diagram01 .error-text{fill:#040508;stroke:#040508;}#diagram01 .edge-thickness-normal{stroke-width:1px;}#diagram01 .edge-thickness-thick{stroke-width:3.5px;}#diagram01 .edge-pattern-solid{stroke-dasharray:0;}#diagram01 .edge-thickness-invisible{stroke-width:0;fill:none;}#diagram01 .edge-pattern-dashed{stroke-dasharray:3;}#diagram01 .edge-pattern-dotted{stroke-dasharray:2;}#diagram01 .marker{fill:#716D64;stroke:#716D64;}#diagram01 .marker.cross{stroke:#716D64;}#diagram01 svg{font-family:Arial,sans-serif;font-size:16px;}#diagram01 p{margin:0;}#diagram01 .label{font-family:Arial,sans-serif;color:#1C1B19;}#diagram01 .cluster-label text{fill:#040508;}#diagram01 .cluster-label span{color:#040508;}#diagram01 .cluster-label span p{background-color:transparent;}#diagram01 .label text,#diagram01 span{fill:#1C1B19;color:#1C1B19;}#diagram01 .node rect,#diagram01 .node circle,#diagram01 .node ellipse,#diagram01 .node polygon,#diagram01 .node path{fill:#EEECFA;stroke:#4C3FB8;stroke-width:1px;}#diagram01 .rough-node .label text,#diagram01 .node .label text,#diagram01 .image-shape .label,#diagram01 .icon-shape .label{text-anchor:middle;}#diagram01 .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#diagram01 .rough-node .label,#diagram01 .node .label,#diagram01 .image-shape .label,#diagram01 .icon-shape .label{text-align:center;}#diagram01 .node.clickable{cursor:pointer;}#diagram01 .root .anchor path{fill:#716D64!important;stroke-width:0;stroke:#716D64;}#diagram01 .arrowheadPath{fill:#0b0b0b;}#diagram01 .edgePaths .path{stroke:#716D64;stroke-width:1px;}#diagram01 .flowchart-link{stroke:#716D64;fill:none;}#diagram01 .edgeLabel{background-color:#EFEDE8;text-align:center;}#diagram01 .edgeLabel p{background-color:#EFEDE8;}#diagram01 .edgeLabel rect{opacity:0.5;background-color:#EFEDE8;fill:#EFEDE8;}#diagram01 .labelBkg{background-color:rgba(239, 237, 232, 0.5);}#diagram01 .cluster rect{fill:#FBFAF7;stroke:hsl(45, 0%, 87.6470588235%);stroke-width:1px;}#diagram01 .cluster text{fill:#040508;}#diagram01 .cluster span{color:#040508;}#diagram01 .node .collapsed-indicator{fill:hsl(45, 0%, 87.6470588235%);stroke:none;opacity:0.6;}#diagram01 .node .collapsed-separator{stroke:hsl(45, 0%, 87.6470588235%);stroke-width:0.75px;}#diagram01 div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:Arial,sans-serif;font-size:12px;background:#FBFAF7;border:1px solid hsl(45, 0%, 87.6470588235%);border-radius:2px;pointer-events:none;z-index:100;}#diagram01 .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#1C1B19;}#diagram01 rect.text{fill:none;stroke-width:0;}#diagram01 .icon-shape,#diagram01 .image-shape{background-color:#EFEDE8;text-align:center;}#diagram01 .icon-shape p,#diagram01 .image-shape p{background-color:#EFEDE8;padding:2px;}#diagram01 .icon-shape .label rect,#diagram01 .image-shape .label rect{opacity:0.5;background-color:#EFEDE8;fill:#EFEDE8;}#diagram01 .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#diagram01 .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#diagram01 .node .neo-node{stroke:#4C3FB8;}#diagram01 [data-look="neo"].node rect,#diagram01 [data-look="neo"].cluster rect,#diagram01 [data-look="neo"].node polygon{stroke:url(#diagram01-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#diagram01 [data-look="neo"].swimlane.cluster rect{filter:none;}#diagram01 [data-look="neo"].node path{stroke:url(#diagram01-gradient);stroke-width:1px;}#diagram01 [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#diagram01 [data-look="neo"].node .neo-line path{stroke:#4C3FB8;filter:none;}#diagram01 [data-look="neo"].node circle{stroke:url(#diagram01-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#diagram01 [data-look="neo"].node circle .state-start{fill:#000000;}#diagram01 [data-look="neo"].icon-shape .icon{fill:url(#diagram01-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#diagram01 [data-look="neo"].icon-shape .icon-neo path{stroke:url(#diagram01-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#diagram01 :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="diagram01_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;" /></marker><marker id="diagram01_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;" /></marker><marker id="diagram01_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;" /></marker><marker id="diagram01_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></polygon></marker><marker id="diagram01_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="diagram01_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="diagram01_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="diagram01_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="diagram01_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;" /></marker><marker id="diagram01_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;" /></marker><marker id="diagram01_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;" /></marker><marker id="diagram01_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;" /></marker><g class="root"><g class="clusters"></g><g class="edges edgePaths"><path d="M164,403L176.92893218813452,403Q184,403 184,395.9289321881345L184,255.0710678118655Q184,248.00000000000003 191.07106781186548,248.00000000000003L200,248.00000000000003" id="diagram01-L_E_V_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 181.6717071533203 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_E_V_0" data-points="W3sieCI6MTY0LCJ5Ijo0MDN9LHsieCI6MTg0LCJ5Ijo0MDN9LHsieCI6MTg0LCJ5IjoyNDguMDAwMDAwMDAwMDAwMDN9LHsieCI6MjA0LCJ5IjoyNDguMDAwMDAwMDAwMDAwMDN9XQ==" data-look="neo" marker-end="url(#diagram01_flowchart-v2-pointEnd-margin)" /><path d="M356,248.00000000000003L392,248.00000000000003" id="diagram01-L_V_T_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 32 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_V_T_0" data-points="W3sieCI6MzU2LCJ5IjoyNDguMDAwMDAwMDAwMDAwMDN9LHsieCI6Mzk2LCJ5IjoyNDguMDAwMDAwMDAwMDAwMDN9XQ==" data-look="neo" marker-end="url(#diagram01_flowchart-v2-pointEnd-margin)" /><path d="M164,410L200,410" id="diagram01-L_E_M_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 32 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_E_M_0" data-points="W3sieCI6MTY0LCJ5Ijo0MTB9LHsieCI6MjA0LCJ5Ijo0MTB9XQ==" data-look="neo" marker-end="url(#diagram01_flowchart-v2-pointEnd-margin)" /><path d="M548,230.66666666666669L560.9289321881345,230.66666666666669Q568,230.66666666666669 568,223.5955988548012L568,43.071067811865476Q568,36 575.0710678118655,36L604,36" id="diagram01-L_T_B_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 241.33840942382812 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_T_B_0" data-points="W3sieCI6NTQ4LCJ5IjoyMzAuNjY2NjY2NjY2NjY2Njl9LHsieCI6NTY4LCJ5IjoyMzAuNjY2NjY2NjY2NjY2Njl9LHsieCI6NTY4LCJ5IjozNn0seyJ4Ijo2MDgsInkiOjM2fV0=" data-look="neo" marker-end="url(#diagram01_flowchart-v2-pointEnd-margin)" /><path d="M548,239.33333333333334L580.9289321881345,239.33333333333334Q588,239.33333333333334 588,232.26226552146787L588,143.07106781186548Q588,136 595.0710678118655,136L604,136" id="diagram01-L_T_S_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 150.00506591796875 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_T_S_0" data-points="W3sieCI6NTQ4LCJ5IjoyMzkuMzMzMzMzMzMzMzMzMzR9LHsieCI6NTg4LCJ5IjoyMzkuMzMzMzMzMzMzMzMzMzR9LHsieCI6NTg4LCJ5IjoxMzZ9LHsieCI6NjA4LCJ5IjoxMzZ9XQ==" data-look="neo" marker-end="url(#diagram01_flowchart-v2-pointEnd-margin)" /><path d="M548,248.00000000000003L604,248.00000000000003" id="diagram01-L_T_W_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 52 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_T_W_0" data-points="W3sieCI6NTQ4LCJ5IjoyNDguMDAwMDAwMDAwMDAwMDN9LHsieCI6NjA4LCJ5IjoyNDguMDAwMDAwMDAwMDAwMDN9XQ==" data-look="neo" marker-end="url(#diagram01_flowchart-v2-pointEnd-margin)" /><path d="M548,256.6666666666667L580.9289321881345,256.6666666666667Q588,256.6666666666667 588,263.73773447853216L588,352.9289321881345Q588,360 595.0710678118655,360L604,360" id="diagram01-L_T_C_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 150.00503540039062 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_T_C_0" data-points="W3sieCI6NTQ4LCJ5IjoyNTYuNjY2NjY2NjY2NjY2N30seyJ4Ijo1ODgsInkiOjI1Ni42NjY2NjY2NjY2NjY3fSx7IngiOjU4OCwieSI6MzYwfSx7IngiOjYwOCwieSI6MzYwfV0=" data-look="neo" marker-end="url(#diagram01_flowchart-v2-pointEnd-margin)" /><path d="M548,265.33333333333337L560.9289321881345,265.33333333333337Q568,265.33333333333337 568,272.40440114519885L568,452.9289321881345Q568,460 575.0710678118655,460L604,460" id="diagram01-L_T_Q_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 241.33837890625 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_T_Q_0" data-points="W3sieCI6NTQ4LCJ5IjoyNjUuMzMzMzMzMzMzMzMzMzd9LHsieCI6NTY4LCJ5IjoyNjUuMzMzMzMzMzMzMzMzMzd9LHsieCI6NTY4LCJ5Ijo0NjB9LHsieCI6NjA4LCJ5Ijo0NjB9XQ==" data-look="neo" marker-end="url(#diagram01_flowchart-v2-pointEnd-margin)" /><path d="M760,460L775.3333333333333,460Q780,460 780,464.6666666666667L780,464.6666666666667Q780,469.33333333333337 784.6666666666667,469.33333333333337L796,469.33333333333337" id="diagram01-L_Q_P_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 37.816917419433594 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_Q_P_0" data-points="W3sieCI6NzYwLCJ5Ijo0NjB9LHsieCI6NzgwLCJ5Ijo0NjB9LHsieCI6NzgwLCJ5Ijo0NjkuMzMzMzMzMzMzMzMzMzd9LHsieCI6ODAwLCJ5Ijo0NjkuMzMzMzMzMzMzMzMzMzd9XQ==" data-look="neo" marker-end="url(#diagram01_flowchart-v2-pointEnd-margin)" /><path d="M800,494.66666666666674L684,494.66666666666674L472,494.66666666666674L280,494.66666666666674L191.07106781186548,494.66666666666674Q184,494.66666666666674 184,487.59559885480127L184,424.0710678118655Q184,417 176.92893218813452,417L168,417" id="diagram01-L_P_E_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 700.3385009765625 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_P_E_0" data-points="W3sieCI6ODAwLCJ5Ijo0OTQuNjY2NjY2NjY2NjY2NzR9LHsieCI6Njg0LCJ5Ijo0OTQuNjY2NjY2NjY2NjY2NzR9LHsieCI6NDcyLCJ5Ijo0OTQuNjY2NjY2NjY2NjY2NzR9LHsieCI6MjgwLCJ5Ijo0OTQuNjY2NjY2NjY2NjY2NzR9LHsieCI6MTg0LCJ5Ijo0OTQuNjY2NjY2NjY2NjY2NzR9LHsieCI6MTg0LCJ5Ijo0MTd9LHsieCI6MTY0LCJ5Ijo0MTd9XQ==" data-look="neo" marker-end="url(#diagram01_flowchart-v2-pointEnd-margin)" /></g><g class="edgeLabels"></g><g class="nodes"><g class="node default" id="diagram01-flowchart-E-0" data-look="neo" transform="translate(88, 410)"><rect class="basic label-container" style x="-76" y="-24" width="152" height="48" /><g class="label" style transform="translate(-60, -12)"><rect /><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Engagement</p></span></div></foreignObject></g></g><g class="node default" id="diagram01-flowchart-V-1" data-look="neo" transform="translate(280, 248.00000000000003)"><rect class="basic label-container" style x="-76" y="-48" width="152" height="96" /><g class="label" style transform="translate(-60, -36)"><rect /><foreignObject width="120" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Continuing engagement conversation</p></span></div></foreignObject></g></g><g class="node default" id="diagram01-flowchart-T-3" data-look="neo" transform="translate(472, 248.00000000000003)"><rect class="basic label-container" style x="-76" y="-36" width="152" height="72" /><g class="label" style transform="translate(-60, -24)"><rect /><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Tasks and their histories</p></span></div></foreignObject></g></g><g class="node default" id="diagram01-flowchart-M-5" data-look="neo" transform="translate(280, 410)"><rect class="basic label-container" style x="-76" y="-36" width="152" height="72" /><g class="label" style transform="translate(-60, -24)"><rect /><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Methodology and Permissions</p></span></div></foreignObject></g></g><g class="node default" id="diagram01-flowchart-B-7" data-look="neo" transform="translate(684, 36)"><rect class="basic label-container" style x="-76" y="-24" width="152" height="48" /><g class="label" style transform="translate(-60, -12)"><rect /><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Working brief</p></span></div></foreignObject></g></g><g class="node default" id="diagram01-flowchart-S-9" data-look="neo" transform="translate(684, 136)"><rect class="basic label-container" style x="-76" y="-36" width="152" height="72" /><g class="label" style transform="translate(-60, -24)"><rect /><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Sources and evidence</p></span></div></foreignObject></g></g><g class="node default" id="diagram01-flowchart-W-11" data-look="neo" transform="translate(684, 248.00000000000003)"><rect class="basic label-container" style x="-76" y="-36" width="152" height="72" /><g class="label" style transform="translate(-60, -24)"><rect /><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Work products and review</p></span></div></foreignObject></g></g><g class="node default" id="diagram01-flowchart-C-13" data-look="neo" transform="translate(684, 360)"><rect class="basic label-container" style x="-76" y="-36" width="152" height="72" /><g class="label" style transform="translate(-60, -24)"><rect /><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Computer and analysis</p></span></div></foreignObject></g></g><g class="node default" id="diagram01-flowchart-Q-15" data-look="neo" transform="translate(684, 460)"><rect class="basic label-container" style x="-76" y="-24" width="152" height="48" /><g class="label" style transform="translate(-60, -12)"><rect /><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Check definition</p></span></div></foreignObject></g></g><g class="node default" id="diagram01-flowchart-P-17" data-look="neo" transform="translate(876, 482)"><rect class="basic label-container" style x="-76" y="-48" width="152" height="96" /><g class="label" style transform="translate(-60, -36)"><rect /><foreignObject width="120" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>New task for each period or trigger</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="diagram01-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><defs><filter id="diagram01-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><linearGradient id="diagram01-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#4C3FB8" stop-opacity="1"></stop><stop offset="100%" stop-color="hsl(42.8571428571, 0%, 82.3529411765%)" stop-opacity="1"></stop></linearGradient></svg><figcaption>Design diagram 1</figcaption></figure>
 <p>A Task belongs to one engagement. Cross-client search may locate
 authorised items and show their client labels, but it must not silently
 combine their content into one task. Cross-engagement work within a
@@ -214,17 +231,23 @@ authorisation.</p>
 <h3 id="the-working-surface">1.2 The working surface</h3>
 <p>Use the accepted Pair layout as the foundation:</p>
 <ul>
-<li><strong>Navigation:</strong> New task, Search, Engagements,
-Scheduled checks and Recent tasks. Audit managers have Reviews.
-Connections and Settings remain secondary.</li>
-<li><strong>Conversation:</strong> the objective, useful explanations,
+<li><strong>Navigation:</strong> Engagements, Search, Scheduled work and
+Recent work, with a reachable New task action. Audit managers have
+Reviews. Connections and Settings remain secondary. Home shows
+authorised work summaries; selecting an engagement establishes the
+conversation’s client scope.</li>
+<li><strong>Conversation:</strong> the continuing engagement
+conversation, with objectives, work cards, useful explanations,
 questions, accepted guidance and links to work. The composer stays
-usable during execution.</li>
+usable while several Tasks execute. Opening a Task exposes its
+attributed history without losing the coordinating conversation.</li>
 <li><strong>Workspace:</strong> Computer, Data, Documents, Evidence and
 Changes, opened according to the work. A small activity view answers
 what happened and what needs attention.</li>
-<li><strong>Task header:</strong> engagement, readable task state,
-accountable owner, Permissions and model configuration.</li>
+<li><strong>Header:</strong> always show the engagement; when inspecting
+a Task, show its readable state, accountable owner, Permissions and
+model configuration. Commands and control buttons name the Task or
+computer they affect.</li>
 </ul>
 <p>Conversation is always recoverable. The workspace remembers what the
 person is inspecting. Keep Pin, Expand, Close and the “From [task]”
@@ -232,6 +255,21 @@ attribution. Selecting, pinning or editing an object suspends following;
 new content appears as an “Open” card in conversation. <strong>Follow
 Zobba</strong> explicitly resumes following. Elapsed time alone never
 decides that the person has finished inspecting something.</p>
+<p>A compact companion panel contains <strong>Active work, Needs you,
+Computers, Work products and Permissions</strong>. A sign-in or decision
+request remains reachable here after it scrolls out of the conversation.
+Opening a computer is inspection; Take over separately transfers input.
+Closing its panel restores the conversation without stopping the work.
+Show a current, authorised thumbnail only when observation is permitted;
+replace it with a privacy, stopped or reconnecting state when
+appropriate.</p>
+<p>On return, a <strong>Since your last visit</strong> digest names
+completed work, material changes, supported findings, outstanding
+decisions and limitations. Work products have a stable shelf with title,
+version, originating Task and actual review state. Conversation links
+open that same object. Use Draft, Ready for team review, Independently
+reviewed or Self-reviewed as applicable; a completed run is not evidence
+of a successful result or approval.</p>
 <p>The computer panel shows the actual browser or desktop, its account
 and environment, who controls it, and whether the view is current. It
 must never substitute a plausible reconstruction for a disconnected
@@ -286,6 +324,13 @@ may investigate an unexpected pattern within the task objective,
 Permissions and budget. Material expansion of scope is proposed in the
 Working brief. It does not require the auditor to author every execution
 step.</p>
+<p><strong>Keep talking.</strong> “Also investigate shared accounts” can
+establish linked work while the original Task continues. Zobba names the
+objective and any material scope expansion, then shows its work card in
+the same conversation. Questions and general discussion do not silently
+cancel assigned work. Ambiguous direction identifies the affected Task
+before application; the person need not navigate to a separate chat to
+answer a known question.</p>
 <p><strong>Explain and inspect.</strong> “Why is this an exception?”
 opens the relevant criterion, source records, calculation and limitation
 beside the conversation. A selected sentence or cell is included as
@@ -377,6 +422,32 @@ Check definition and appropriate review.</td>
 </tr>
 </tbody>
 </table>
+<h3 id="dots-as-an-interaction-reference">1.5 Dots as an interaction
+reference</h3>
+<p>Use Dots as a primary reference for the experience of delegating
+responsibility, continuing to converse while work runs, inspecting the
+actual computer, answering specific questions and finding outputs
+afterward. The user’s screenshots establish those visible surfaces;
+OpenAI’s public guides document parallel work, private sign-in and
+continuing responsibilities. These are product observations and
+documented behavior, not access to OpenAI’s internals or proof of its
+reliability, latency or operating costs.</p>
+<p>Zobba expresses this experience through audit work from the first
+complete Task: applicable methodology, necessary skills, authorised
+working knowledge, source coverage, defensible evaluation, cited work
+products and attributable review. Admin retains ordinary versioned Save;
+team and honest solo review retain their distinct labels. Preserve
+Pair’s visual identity and the clean Rust architecture. OpenAI’s
+announced specialist enterprise pilots reinforce the importance of this
+professional substance; they do not establish an audit method we can
+inherit.</p>
+<p>The reference journeys to design against are: multiple objectives in
+one conversation; private account/role handoff; a consequential
+criterion question while independent work continues; an action beyond
+standing Permissions; return after absence; and review of a supported
+output. The <a href="references/dots/Dots-UX-Lessons-for-Zobba.md">research memo</a>
+contains the source-backed comparison and a complete example
+journey.</p>
 <h2 id="interaction-control-and-collaboration">2. Interaction, control
 and collaboration</h2>
 <h3 id="task-state-should-say-what-matters">2.1 Task state should say
@@ -449,6 +520,14 @@ conclusion or human approval.</td>
 <p>A Task can be active while one branch waits. It can finish with
 limitations. It can be stopped while an email’s outcome is still
 unknown. These facts should not be forced into a single status enum.</p>
+<p>Separate conversation availability, Task activity, needs for human
+attention and computer connectivity. A busy model or desktop does not
+disable conversation admission. Progress messages report meaningful
+developments—coverage reached, a reproduced exception, a changed
+approach or a concrete dependency—and link their support when available.
+Group low-level activity behind inspection. A waiting request says what
+is blocked and what continues, for example: “Needs your sign-in;
+continuing the supplied-file reconciliation.”</p>
 <h3 id="watch-guide-pause-stop-and-take-over">2.2 Watch, guide, pause,
 stop and take over</h3>
 <table>
@@ -508,6 +587,13 @@ model stream. A slow provider call cannot prevent control acceptance. A
 disconnected browser is not a Stop command. If the control gateway
 cannot acknowledge a request, say so and fail closed at its lease
 boundary.</p>
+<p>Task-level Pause and Stop cover delegated execution under that Task.
+Other Tasks in the engagement continue unless explicitly included. Name
+that scope in the control and receipt. Stopping an occurrence does not
+cancel future Check runs; show whether the saved schedule is still
+enabled and provide a separate disable action. Do not adopt a generic
+assistant Pause whose effect leaves delegated work surprisingly
+active.</p>
 <h3 id="sign-in-and-computer-control">2.3 Sign-in and computer
 control</h3>
 <p>Computer control has its own states: <strong>Agent controlling, Human
@@ -527,6 +613,22 @@ then uses a fresh observation and a known account/application check. A
 cookie alone does not prove a successful or correct account login. If
 the identity or environment is uncertain, keep the computer unavailable
 for automated work.</p>
+<p>The contextual request names the verified application
+origin/environment, required account or role, and reason access is
+needed. Its receipts distinguish <strong>Waiting for sign-in → Details
+submitted / Handed back → Verifying access → Signed in as [verified
+role/account]</strong>, or Needs attention. <strong>Not now</strong>
+retains a durable wait and names any independent work that continues.
+Application-role changes require the same verification; logging in as a
+manager in the audited application is not Zobba audit sign-off.</p>
+<p>A private credential form may supplement protected takeover only for
+a qualified trusted integration that meets the same containment
+guarantees. It sends input directly to the designated session outside
+conversation and records no secret in a task receipt. Protected takeover
+remains the general path for arbitrary applications and MFA; do not
+promise generic website credential injection. Valid session reuse
+remains bounded by current Permissions and account verification, rather
+than treating every new Task as a fresh sign-in.</p>
 <p>Only the account owner or an explicitly permitted delegate can see
 and control protected sign-in. Other viewers receive a privacy cover.
 Purge queued frames and suspend task voice capture, DOM/accessibility
@@ -582,6 +684,56 @@ amount, system, test record or issued conclusion is shown for correction
 before that consequential action is authorised. Spoken “stop” uses the
 control path. Audio retention and permitted transcription destinations
 follow organisation policy; retaining raw audio is optional.</p>
+<p>Future calls and Slack/Teams contact methods reach the same
+authorised work. Ending a call does not end assigned work. Relevant
+context can carry across channels, but conversations are not
+automatically mirrored; disclosure is checked against the receiving
+audience. Connecting a contact method grants neither source access nor a
+monitoring schedule. These channels are extensions; they are not
+dependencies of the first complete web-based audit experience.</p>
+<h3 id="continuing-work-schedules-and-suggestions">2.6 Continuing work,
+schedules and suggestions</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Mode</th>
+<th>Product contract</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Assigned continuing work</td>
+<td>A Task pursues its objective and resumes when a recorded dependency
+is satisfied, within scope, current Permissions and budget. It need not
+be assigned a repeating schedule.</td>
+</tr>
+<tr class="even">
+<td>Scheduled or event-driven work</td>
+<td>Save the objective, timing/time zone or supported trigger, owner,
+notification conditions and result destination. Inspect, edit or disable
+it in Scheduled work. Ordinary reminders and evidence arrivals can
+create or resume Tasks; recurring assurance uses the reviewed Check
+contract in §4.4. Connecting an app alone creates no monitoring.</td>
+</tr>
+<tr class="odd">
+<td>Proactive discovery</td>
+<td>Optional research limited to explicitly allowed engagement sources
+and read capabilities. It can prepare an internal suggestion; it cannot
+itself send externally, mutate applications or control the computer.
+Following up uses the ordinary Task and Permissions mechanism. It is not
+required for the first complete Task.</td>
+</tr>
+</tbody>
+</table>
+<p>The person can say “tell me when there is a material exception or you
+need a decision.” Zobba confirms the saved rule where one is required
+and records its exact scope. Quiet operation is not proof of ongoing
+progress: Activity and the return digest distinguish working, waiting,
+scheduled, stopped and incomplete work.</p>
 <h2 id="permissions-methodology-and-knowledge">3. Permissions,
 methodology and knowledge</h2>
 <h3 id="three-operating-purposes">3.1 Three operating purposes</h3>
@@ -663,6 +815,15 @@ recipients, content and attachments, resource version, purpose and
 expiry. A material change requires a new decision. “Yes” in a
 conversation is useful only when it can be resolved to the current
 decision and reviewed content.</p>
+<p>Where a routine action is already covered, use standing Permissions
+without repeating a ceremony. Otherwise show the action’s material,
+destination, account/environment and effect. Offer <strong>Allow this
+action</strong> and, where permitted, <strong>Set a standing
+rule</strong> with scope, limits, duration and revocation. Avoid an
+unexplained domain-wide Always allow choice. A criterion question
+similarly names the conflicting source versions, explains the
+consequence and records the authorised answer; it cannot override
+required methodology or fabricate review.</p>
 <p>Methodology has typed standing:</p>
 <ul>
 <li><strong>Required controls:</strong> review requirements, prohibited
@@ -1477,57 +1638,63 @@ blanket network permission between every component.</p>
 current assignments.</td>
 </tr>
 <tr class="even">
+<td>Conversation coordination</td>
+<td>Engagement and Task conversation views, attributable messages,
+audience checks, work cards and message-to-command bindings; no separate
+execution authority.</td>
+</tr>
+<tr class="odd">
 <td>Task authority</td>
 <td>Task revisions, accepted commands, work cycles, decisions, owner
 leases, delegated tasks and termination.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>Agent runtime</td>
 <td>Context-to-model loop, proposed work, child execution, progress and
 bounded scheduling inside current authority.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>Permissions</td>
 <td>Purpose/account/resource classification, policy versions, action
 decisions and dispatch grants.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>Models and context</td>
 <td>Native adapters, capability selection, context manifests, compaction
 and processing-destination checks.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>Connections and tools</td>
 <td>Canonical tool descriptors, bound accounts, OAuth custody, connector
 requests and effect reconciliation.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>Workspaces</td>
 <td>Computer/session identities, profiles, input ownership, lifecycle
 and supervised analysis specifications.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>Evidence and work products</td>
 <td>Acquisition receipts, immutable objects, derivations, claims,
 versions, review, issue and corrections.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>Knowledge and methodology</td>
 <td>Admin-saved methodology versions, task bindings, validated skill
 catalog, scoped knowledge and invalidation.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>Audit evaluation</td>
 <td>Criterion contracts, population/coverage manifests, exact
 calculations, supported judgments, evaluation revisions and
 aggregation.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>Continuing work</td>
 <td>Check definitions, occurrences, evidence subscriptions, reminders,
 budgets and notifications.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>Delivery and operations</td>
 <td>Read projections, event cursors, telemetry, costs and administrative
 diagnostics.</td>
@@ -1560,60 +1727,68 @@ PostgreSQL transaction boundary where the operation permits it.</p>
 never grant access.</td>
 </tr>
 <tr class="even">
+<td>Conversation, message, task link, input request, delivery
+receipt</td>
+<td>An engagement conversation can reference several same-engagement
+Tasks. Preserve author/audience, source message and exact target
+command/decision; a view or read receipt does not mean guidance was
+applied.</td>
+</tr>
+<tr class="odd">
 <td>Task, work cycle, command, decision, task event</td>
 <td>Commands have client idempotency keys and accepted/applied receipts.
 One task revision order binds them.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>Operation, attempt, dispatch claim, receipt, reconciliation</td>
 <td>A provider call ID is metadata, not the business operation identity.
 One operation may have several attempts without implying several
 effects.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>Connection, capability, policy revision, delegation</td>
 <td>Bound to actual account/system, operating purpose, permitted
 action/resource and expiry.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>Workspace, generation, input lease, transfer receipt</td>
 <td>A durable workspace identity can outlive several machine instances;
 commands bind the current generation.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>Evidence object, acquisition, extraction, analysis, claim</td>
 <td>Source bytes and derived outputs remain independently
 attributable.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>Methodology version, skill version, task binding, knowledge
 revision</td>
 <td>The work records which requirements, techniques and scoped facts
 informed it; configuration changes never rewrite that history.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>Criterion version, population manifest, evaluation revision,
 disposition</td>
 <td>The result binds its subject, method, inputs, coverage, origin and
 evidence; a human change is a new attributable revision.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>Work product, version, review, issued manifest</td>
 <td>Approval applies to a version and its dependencies, not a mutable
 document title.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>Context fragment, manifest, checkpoint, memory</td>
 <td>Each derived item has source lineage, scope and validity.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>Check definition/version, occurrence, subscription, notification,
 recurring issue</td>
 <td>A definition pins its semantic method; duplicate triggers resolve to
 one occurrence, and repeated exceptions link to their continuing
 issue.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>Durable work, resource claim, budget reservation, outbox</td>
 <td>Wakeups and resource accounting are committed with the work they
 represent.</td>
@@ -1644,6 +1819,19 @@ acquires a time-bounded owner lease with a monotonically increasing
 epoch. It reconstructs the task and advances it through short
 transactions. A wakeup is permission to inspect pending work, not
 permission to replay the last external action.</p>
+<p>The engagement conversation is a coordination surface over these same
+commands. Persist each incoming message before interpretation; bind a
+proposed new Task, guidance, answer or control to explicit Task/decision
+identities. Validate scope, membership and authority at admission.
+Resolve material ambiguity before dispatch, and record separate
+accepted/applied outcomes for each target of a multi-Task instruction.
+Retries cannot duplicate Task creation or effects. Pure conversation
+need not create a Task. The coordinating context receives authorised
+summaries and selected references rather than every Task’s entire
+transcript; opening a Task never broadens the conversation audience.
+Reserve interactive response capacity independently from long-running
+task work, while keeping all requests inside the same Rust runtime and
+organisation budget.</p>
 <p>Urgent controls use a priority path within that same authority. Task
 Pause/Stop advances the task execution epoch and withholds new dispatch
 grants. A computer transfer advances that workspace’s input/observation
@@ -3103,26 +3291,33 @@ facts, accepts a correction and recovers it after interruption without
 crossing clients.</td>
 </tr>
 <tr class="odd">
+<td>Continuing conversation</td>
+<td>Attributed messages, engagement scope, Task links, durable input
+requests and command bindings. The auditor adds a second objective,
+answers a specific question and inspects an output while existing work
+continues; no client context or control target becomes ambiguous.</td>
+</tr>
+<tr class="even">
 <td>Real work and responsive control</td>
 <td>Standing Permissions, admitted tools, operation receipts, broker,
 managed computer and isolated analysis. The auditor can watch, privately
 sign in, take over and stop while useful work persists.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>Audit evaluation</td>
 <td>Criterion/basis versions, typed observations, population/sample
 manifests, exact methods/rubrics and limitation rules. Claims expose
 their test and evidence; missing input cannot become a pass or
 fabricated failure.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>Work products and human responsibility</td>
 <td>Stable content/claim versions, firm templates, evidence
 dependencies, eligible roles and team/solo mode. The same journey
 reaches review/issue with truthful attribution and successor
 corrections.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>Continuing assurance</td>
 <td>All of the above, plus reviewed Check contracts, current service
 delegation, logical-period identity, triggers, deadlines, budgets and
@@ -3213,12 +3408,14 @@ application rewrite is authorised by this design document itself.</p>
 <h2 id="evidence-scope-and-review-status">13. Evidence, scope and review
 status</h2>
 <p>The current direction brief and the latest user request control the
-design. Revision 2 retains the lead architecture and uses the alternate
-agent’s design as a completeness check. Report A supplies the main task
-ownership/recovery/context analysis; Report B and its appendix add
-policy-probe evidence, execution cases and reusable code/test
-candidates. Their proposed prototype comparisons, legacy-preservation
-assumptions and earlier deferrals were deliberately not adopted.</p>
+design. Revision 2 consolidated the alternate agent’s design as a
+completeness check; revision 3 integrates Dots interaction research
+while retaining that architecture and specialist audit model. Report A
+supplies the main task ownership/recovery/context analysis; Report B and
+its appendix add policy-probe evidence, execution cases and reusable
+code/test candidates. Their proposed prototype comparisons,
+legacy-preservation assumptions and earlier deferrals were deliberately
+not adopted.</p>
 <table>
 <colgroup>
 <col style="width: 50%" />
@@ -3275,6 +3472,14 @@ reviewed. Screens are design references, not proof that their controls
 are implemented.</td>
 </tr>
 <tr class="even">
+<td>Four user-supplied Dots screenshots and <a href="references/dots/README.md">current public research</a>, inspected
+30 September 2026</td>
+<td>Observed conversation/computer/sign-in/permission/output surfaces,
+plus documented continuing work and channels. The research separates
+visible UI, assistant claims, official descriptions and Zobba
+recommendations. No authenticated Dots test or backend inference.</td>
+</tr>
+<tr class="odd">
 <td>Official infrastructure documentation and <a href="costs/managed-computer-rates.json">frozen pricing
 evidence</a></td>
 <td>Confirms mechanisms, material limits and specific list-rate inputs.
@@ -3284,10 +3489,15 @@ is established.</td>
 </tr>
 </tbody>
 </table>
-<p>No separate dots screenshot was present among the supplied extracted
-files. Its experience was used from the brief’s description; the design
-does not claim to have visually inspected that missing image. This does
-not block the product or architecture recommendation.</p>
+<p>The four Dots screenshots subsequently supplied in conversation were
+visually inspected for this revision. They remain contextual evidence in
+that conversation and are not reproduced in the package with third-party
+account information. Redacted observations, bounded public extracts and
+source URLs are bundled under <a href="references/dots/README.md">references/dots</a>. The official
+announcement confirms the 29 September 2026 launch. Still images and
+launch documentation do not establish response latency, reliability,
+credential isolation or per-task cost; the package makes no such
+claim.</p>
 <p>Key engineering evidence:</p>
 <ul>
 <li>Codex complete-call handling and persistence: <a href="https://github.com/openai/codex/blob/8ffd91e42aa001b7e897bea812b02f89264f9fa0/codex-rs/core/src/stream_events_utils.rs#L315">stream_events_utils.rs</a>,
@@ -3338,6 +3548,14 @@ working knowledge</a>. These explain the consolidation; this integrated
 document governs where notes discuss alternatives. The supplied source
 documents remain unchanged. The three remaining business commitments are
 only those in §12.</p>
+<p>Revision 3’s supporting analysis is <a href="references/dots/Dots-UX-Lessons-for-Zobba.md">Dots UX lessons</a>,
+<a href="references/dots/screenshot-study.md">screenshot
+observations</a>, <a href="references/dots/public-official.md">official
+flows</a> and <a href="references/dots/public-secondary.md">launch
+reporting</a>. Its product refinements are integrated in §§1–3, their
+durable conversation/command relationships in §5, and their
+complete-task dependencies in §11. They introduce no additional
+unresolved business decision or implementation plan.</p>
 <p>The package was checked for consistency across product controls, task
 ownership, operation uncertainty, Permissions, input fencing, credential
 privacy and review. The cost calculator was independently checked and

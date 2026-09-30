@@ -1,0 +1,11 @@
+S12: selected official-source evidence
+Source: https://help.openai.com/en/articles/20001554-manage-dots-in-chatgpt-workspaces
+Retrieved: 2026-09-30
+
+Selected quotation:
+A dot’s cloud computer does not automatically inherit a member’s local VPN, browser sign-ins, or device policies.
+
+Research summary (not a quotation):
+Admin guide separates dots access, computer capabilities, password management, connected apps and messaging controls.
+
+This package contains a short relevant excerpt, not the complete public page. See the source URL and public-official.md for interpretation and limits.

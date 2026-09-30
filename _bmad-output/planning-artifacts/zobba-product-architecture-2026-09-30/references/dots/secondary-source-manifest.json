@@ -1,0 +1,46 @@
+[
+  {
+    "url": "https://9to5google.com/2026/09/29/openai-dots-agent/",
+    "publication_information": "Sep 29 2026, 10:55 am PT",
+    "retrieval_date": "2026-09-30",
+    "file": "secondary-9to5-excerpt.txt",
+    "bytes": 553,
+    "sha256": "31c68c8f6190f025c55df8d0861fe649b64a31d862afb606db57c72c30c5595b",
+    "scope": "Selected short quotation and attributed research summary"
+  },
+  {
+    "url": "https://www.wired.com/story/openai-dots-always-on-ai-agents-that-proactively-help/",
+    "publication_information": "Sep 29, 2026, 1:15 PM; timezone not established",
+    "retrieval_date": "2026-09-30",
+    "file": "secondary-wired-excerpt.txt",
+    "bytes": 643,
+    "sha256": "c3b65b7729a69126c8b75e9cf401dd230a97f81e3390f433ac0d2e2b0e5f0b3f",
+    "scope": "Selected short quotation and attributed research summary"
+  },
+  {
+    "url": "https://indianexpress.com/article/technology/artificial-intelligence/openai-dots-always-on-ai-agents-explained-10900652/",
+    "publication_information": "Updated Sep 30, 2026, 05:05 PM IST",
+    "retrieval_date": "2026-09-30",
+    "file": "secondary-indianexpress-excerpt.txt",
+    "bytes": 627,
+    "sha256": "d1ec22806f524c06fb183e5a59fddcf7948534af059f4ae447e6d1b34158f593",
+    "scope": "Selected short quotation and attributed research summary"
+  },
+  {
+    "url": "https://smartscope.blog/en/blog/openai-dots-user-guide-creation-steps-initial-setup-2026/",
+    "publication_information": "2026-09-30",
+    "retrieval_date": "2026-09-30",
+    "file": "secondary-smartscope-excerpt.txt",
+    "bytes": 538,
+    "sha256": "198138a11196ca920f171d1eee9995773c65a655d9e7b746c7b4ce814614f58a",
+    "scope": "Selected short quotation and attributed research summary"
+  },
+  {
+    "url": "https://hn.algolia.com/api/v1/items/49896604",
+    "retrieval_date": "2026-09-30",
+    "file": "secondary-hn-story-metadata.json",
+    "bytes": 343,
+    "sha256": "5e2cc0e711f844614985b4b01e915771f1f0da561606ab18aa2792f49812bbc0",
+    "scope": "Story metadata only; no comments or user discussion included."
+  }
+]

@@ -1,0 +1,12 @@
+Selected secondary-source evidence
+Source: https://smartscope.blog/en/blog/openai-dots-user-guide-creation-steps-initial-setup-2026/
+Published: 2026-09-30
+Retrieved: 2026-09-30
+
+Selected quotation:
+has not been verified on actual devices.
+
+Research summary (not a quotation):
+Desk-research guide used as a discovery aid to official setup/control pages, not independent observed UI. No raw HTML or search capture is included.
+
+This is a short relevant excerpt, not the complete article. See public-secondary.md for source-specific limits.

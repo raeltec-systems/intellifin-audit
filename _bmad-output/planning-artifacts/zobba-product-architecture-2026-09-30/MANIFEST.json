@@ -1,31 +1,31 @@
 {
   "created": "2026-09-30",
-  "design_revision": 2,
+  "design_revision": 3,
   "files": [
     {
       "path": "Owner-Summary.md",
-      "bytes": 5033,
-      "sha256": "e807049f9082587e727763007903339c84d348bd933c73059012177105842338"
+      "bytes": 5947,
+      "sha256": "8f434b6fe89897c7219d2d4068d2d3a84d9f93e513749b3c280674ad56fec465"
     },
     {
       "path": "README.md",
-      "bytes": 2981,
-      "sha256": "37b8f1480398f13d2a1d4c4f4156302699c49b4264ae0ac49701f833588a6fa9"
+      "bytes": 4026,
+      "sha256": "a837e6b6237e65e262351def29d64c7f1677e1faf6b351d3fcb81fa18a708843"
     },
     {
       "path": "Zobba-Design.html",
-      "bytes": 359733,
-      "sha256": "9f591b4289162459aabadd9bd692e4595196f02034c47521fa8d223b7fa07891"
+      "bytes": 373431,
+      "sha256": "04ec2a894a88c2f8f6c1c93d68238de9d73ca32fccbc4bb7319b3a32ea5b150b"
     },
     {
       "path": "Zobba-Design.pdf",
-      "bytes": 1180554,
-      "sha256": "07d46ec4c88a914b88f700a32e7a12761f0541dc714abdf545f8832e9476a057"
+      "bytes": 1217099,
+      "sha256": "a9c83b69e4b398cc65ee25086147d23e8bd1e63fcd2c90969fe18814fe0c9724"
     },
     {
       "path": "Zobba-Product-and-Architecture-Design.md",
-      "bytes": 136978,
-      "sha256": "ed796cad41f09b0ddd53204192b416428fa398b3d89f16285da89c396d11ffe7"
+      "bytes": 148808,
+      "sha256": "b7f3828ff8f9a04d279b1eab842b12a348dd60669275e1c6413125563c554b7e"
     },
     {
       "path": "costs/README.md",
@@ -89,13 +89,13 @@
     },
     {
       "path": "diagrams/01.mmd",
-      "bytes": 308,
-      "sha256": "a020d8c7a8886919d5f3087ad6e01a55be27f9098f804e1fefc3f23aa92609ea"
+      "bytes": 358,
+      "sha256": "1311e7017a22ecdd35a7806b06f2397856239c064283c1819099f267a4115d05"
     },
     {
       "path": "diagrams/01.svg",
-      "bytes": 20256,
-      "sha256": "4cd2708c40e95526cf4c69659b7ff0a6bce073bd172b0e7e2b25bf50bcaf093f"
+      "bytes": 21396,
+      "sha256": "94401eb3e91727f598707bfeedfd8e5d38c1677dc46be16a7c5b054b97168e7c"
     },
     {
       "path": "diagrams/02.mmd",
@@ -401,6 +401,141 @@
       "path": "references/codex-source-study.md",
       "bytes": 178915,
       "sha256": "9e920ef6b9b47d0af1727feaff05e4d17d53a781c7db9314abf24784b4f71786"
+    },
+    {
+      "path": "references/dots/Dots-UX-Lessons-for-Zobba.html",
+      "bytes": 26508,
+      "sha256": "739636817baf5041445b32fab812f4256571eaa10e0d7bf85e5e627c61aa5a21"
+    },
+    {
+      "path": "references/dots/Dots-UX-Lessons-for-Zobba.md",
+      "bytes": 19486,
+      "sha256": "ce99551fb6a2184d3d3902c8c13c9ac444a603b743df7c9dac3cb9a6b87a820e"
+    },
+    {
+      "path": "references/dots/Dots-UX-Lessons-for-Zobba.pdf",
+      "bytes": 144288,
+      "sha256": "5276bcacdd57d4af9128536a59dbdb82789c9fccfb70453520f201c1427a9c8a"
+    },
+    {
+      "path": "references/dots/README.md",
+      "bytes": 3200,
+      "sha256": "9bfbb6d681ce9df9839fc8a718a3cbb115e32c8c8a871a0d989f4a4b230934a3"
+    },
+    {
+      "path": "references/dots/chatgpt-dots.txt",
+      "bytes": 455,
+      "sha256": "6a3797393b19392b02091b6369d4b349c36f4aae3ef14703fe3bfa5496eeb280"
+    },
+    {
+      "path": "references/dots/chatgpt-release-dots-excerpt.txt",
+      "bytes": 575,
+      "sha256": "92fa2da59f540292bc364dd86452b8912fcf1cb4538c3f47c9a768c037dcdb1e"
+    },
+    {
+      "path": "references/dots/dots-feature.txt",
+      "bytes": 506,
+      "sha256": "7d16413b1791371507f3ae023746be923f948aef05f8673ab71d21f85180b6d4"
+    },
+    {
+      "path": "references/dots/dots-privacy.txt",
+      "bytes": 577,
+      "sha256": "4cf09ccfd9ec3b318956720410958e4bfd361d5a5af58bc28ecec8205e18f173"
+    },
+    {
+      "path": "references/dots/getting-started-dot.txt",
+      "bytes": 564,
+      "sha256": "741e6da8abee9da6e406186a2ac29305f2190b671dd57385e29c3859c86e3a10"
+    },
+    {
+      "path": "references/dots/introducing-dots.txt",
+      "bytes": 555,
+      "sha256": "bab6eb299984cb51be6afbde7e7467543af349e4f26aa38e27bc1988d315e508"
+    },
+    {
+      "path": "references/dots/learn-dots-channels.md",
+      "bytes": 550,
+      "sha256": "d1394dd7900fc6673ad337add4e663a9744e0ed78d976c729ff934b043925128"
+    },
+    {
+      "path": "references/dots/learn-dots-computers.md",
+      "bytes": 543,
+      "sha256": "e5539a7e40c4ce9cfe8226395409099bbc07f1b1c6e12ace95a02c37f9f07b8a"
+    },
+    {
+      "path": "references/dots/learn-dots-controls.md",
+      "bytes": 560,
+      "sha256": "6bbcfd3f6be164f4ff0c19523603d8435bae0faa5c59df149b8858a617625669"
+    },
+    {
+      "path": "references/dots/learn-dots-start.md",
+      "bytes": 526,
+      "sha256": "45571582176a683da9666bbd7f80c85268fd9265e32d52314e9f14ef86507068"
+    },
+    {
+      "path": "references/dots/learn-dots-tasks.md",
+      "bytes": 591,
+      "sha256": "6c010dcb2c221ec5a563921b97d3b24d25c2da95a0d7fcc4317ac3797d09876d"
+    },
+    {
+      "path": "references/dots/learn-dots.md",
+      "bytes": 554,
+      "sha256": "ad0ce882c407e5085bf311311d1af42fa15bd2d954eaba12ea73866d0bbcb066"
+    },
+    {
+      "path": "references/dots/manage-dots.txt",
+      "bytes": 594,
+      "sha256": "1c0b872fcaf1bacb790184e51bdb52942388410dc48ea5a982a40c3d8ac506d1"
+    },
+    {
+      "path": "references/dots/official-source-manifest.json",
+      "bytes": 6662,
+      "sha256": "133f083665a743799a251682bc33481eacc5015f60b90522ab5a8334587433c2"
+    },
+    {
+      "path": "references/dots/public-official.md",
+      "bytes": 17360,
+      "sha256": "88336520cb0f5e744867436384418ce1c92dcfd95ee5127f5f92589033bb8e81"
+    },
+    {
+      "path": "references/dots/public-secondary.md",
+      "bytes": 10447,
+      "sha256": "6a39ae21d34fe76dce3db49226ce91731970f1df08c4d345f2eac08c11d6078a"
+    },
+    {
+      "path": "references/dots/screenshot-study.md",
+      "bytes": 17620,
+      "sha256": "cd3be5c6fb1f6038989186aa01665595be88c8bdacc5eb26a0fa130a4faf6069"
+    },
+    {
+      "path": "references/dots/secondary-9to5-excerpt.txt",
+      "bytes": 553,
+      "sha256": "31c68c8f6190f025c55df8d0861fe649b64a31d862afb606db57c72c30c5595b"
+    },
+    {
+      "path": "references/dots/secondary-hn-story-metadata.json",
+      "bytes": 343,
+      "sha256": "5e2cc0e711f844614985b4b01e915771f1f0da561606ab18aa2792f49812bbc0"
+    },
+    {
+      "path": "references/dots/secondary-indianexpress-excerpt.txt",
+      "bytes": 627,
+      "sha256": "d1ec22806f524c06fb183e5a59fddcf7948534af059f4ae447e6d1b34158f593"
+    },
+    {
+      "path": "references/dots/secondary-smartscope-excerpt.txt",
+      "bytes": 538,
+      "sha256": "198138a11196ca920f171d1eee9995773c65a655d9e7b746c7b4ce814614f58a"
+    },
+    {
+      "path": "references/dots/secondary-source-manifest.json",
+      "bytes": 2042,
+      "sha256": "cb540da581650859b8bb3e3f0b03f085bcc00712b8112217c4e870b9c9cb1472"
+    },
+    {
+      "path": "references/dots/secondary-wired-excerpt.txt",
+      "bytes": 643,
+      "sha256": "c3b65b7729a69126c8b75e9cf401dd230a97f81e3390f433ac0d2e2b0e5f0b3f"
     },
     {
       "path": "references/poc/zobba-design-system/ASSET-MANIFEST.md",

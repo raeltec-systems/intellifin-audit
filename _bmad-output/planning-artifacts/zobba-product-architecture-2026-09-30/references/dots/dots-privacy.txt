@@ -1,0 +1,11 @@
+S11: selected official-source evidence
+Source: https://help.openai.com/en/articles/20001529-dots-privacy-security-and-safety-faqs
+Retrieved: 2026-09-30
+
+Selected quotation:
+This stops new access through that connection.
+
+Research summary (not a quotation):
+This quotation answers what happens when a service is disconnected. The FAQ separately explains retained context, supported private sign-in and action/approval limits.
+
+This package contains a short relevant excerpt, not the complete public page. See the source URL and public-official.md for interpretation and limits.

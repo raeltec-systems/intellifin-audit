@@ -1,0 +1,11 @@
+S2: selected official-source evidence
+Source: https://chatgpt.com/features/dots/
+Retrieved: 2026-09-30
+
+Selected quotation:
+Give it a responsibility to own
+
+Research summary (not a quotation):
+Product page demonstrates the intended ongoing-assistant relationship and use cases. Its examples are marketing illustrations, not independently tested results.
+
+This package contains a short relevant excerpt, not the complete public page. See the source URL and public-official.md for interpretation and limits.

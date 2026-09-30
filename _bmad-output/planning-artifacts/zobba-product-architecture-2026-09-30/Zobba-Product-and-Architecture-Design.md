@@ -1,12 +1,14 @@
 # Zobba: the audit working environment
 
-**Consolidated product and architecture · 30 September 2026 · Revision 2 · For owner review**
+**Consolidated product and architecture · 30 September 2026 · Revision 3 · For owner review**
 
 This is the lead Zobba design, consolidated against the alternate agent's document at the user's request. The clean Rust backend, fresh schema, continuing Task, real managed computer and standing Permissions remain the direction. The alternate document is a completeness source; its infrastructure choices, approval ceremonies and delivery stages do not govern this design. This is product and architecture design, not an implementation plan or a claim that these capabilities are already built.
 
+Revision 3 incorporates the user's four Dots screenshots and current public product research into the product and interaction contracts below. It refines revision 2's emphasis on each Task's conversation as the primary work surface: an engagement conversation can coordinate several Tasks. Existing implementation plans and reference screens need reconciliation with this design before reuse; they have not been silently updated or approved. The [Dots research](references/dots/Dots-UX-Lessons-for-Zobba.md) records observations, sources and evidential limits.
+
 ## The recommendation
 
-Build Zobba around a continuing **Task inside an Engagement**. The auditor sets an objective through conversation. Zobba gathers material, uses a real computer when needed, runs analysis, investigates relevant leads and develops work products. The auditor can inspect the basis, guide the work, take control and review the result. That working relationship continues across tab closures, questions, new evidence and recurring checks.
+Build Zobba as a continuing working relationship, with each **Task inside an Engagement**. The auditor sets objectives, changes priorities and follows several pieces of work through the same engagement conversation. Zobba gathers material, uses a real computer when needed, runs analysis, investigates relevant leads and develops work products. The auditor can inspect a particular Task, guide the work, take control and review the result. That working relationship continues across tab closures, questions, new evidence and recurring checks.
 
 Keep the Pair identity and the useful parts of the current conversation/workspace design. Build one Rust application backend and agent engine, with a fresh PostgreSQL schema. Retire compiler-1 and the procedure-first Builder. Preserve the current evidence, review and recovery behaviours that remain valuable, translating their tests into the new model rather than preserving their old tables and services.
 
@@ -29,12 +31,14 @@ The remaining business decisions are in §12. The architecture and ordinary engi
 
 An **Engagement** is the durable business context: client, period, objectives, team, methodology, material, Permissions and audit record. A **Task** is a continuing objective within that engagement. A Task can produce several work products and can remain useful long after its first answer.
 
+The engagement conversation coordinates these responsibilities without requiring a new chat for each objective. Zobba creates or relates a Task when the request warrants it and returns a compact work card. People can open a Task's dedicated history and give direct guidance, then return to the same coordinating conversation. Work is always attributed to its Task, accountable owner and scope. The stable Zobba identity does not confer access across clients.
+
 The visible nouns are deliberately few:
 
 | Product object | Meaning to the auditor |
 |---|---|
 | Engagement | The audit context and the people responsible for it. |
-| Task | An objective, its conversation, work, decisions and outstanding questions. |
+| Task | An objective with its own inspectable history, work, decisions and outstanding questions, reachable from the engagement conversation. |
 | Working brief | Zobba's current understanding of the objective, scope, approach and expected outputs. It evolves visibly. |
 | Sources | Connected locations and acquired material, including what is missing or has changed. |
 | Work products | Working papers, analyses, findings, reports, correspondence and other useful outputs. |
@@ -45,7 +49,8 @@ The computer is a resource used by a Task. It is not the Task's memory, identity
 
 ~~~mermaid
 flowchart LR
-  E[Engagement] --> T[Task and conversation]
+  E[Engagement] --> V[Continuing engagement conversation]
+  V --> T[Tasks and their histories]
   E --> M[Methodology and Permissions]
   T --> B[Working brief]
   T --> S[Sources and evidence]
@@ -62,12 +67,16 @@ A Task belongs to one engagement. Cross-client search may locate authorised item
 
 Use the accepted Pair layout as the foundation:
 
-- **Navigation:** New task, Search, Engagements, Scheduled checks and Recent tasks. Audit managers have Reviews. Connections and Settings remain secondary.
-- **Conversation:** the objective, useful explanations, questions, accepted guidance and links to work. The composer stays usable during execution.
+- **Navigation:** Engagements, Search, Scheduled work and Recent work, with a reachable New task action. Audit managers have Reviews. Connections and Settings remain secondary. Home shows authorised work summaries; selecting an engagement establishes the conversation's client scope.
+- **Conversation:** the continuing engagement conversation, with objectives, work cards, useful explanations, questions, accepted guidance and links to work. The composer stays usable while several Tasks execute. Opening a Task exposes its attributed history without losing the coordinating conversation.
 - **Workspace:** Computer, Data, Documents, Evidence and Changes, opened according to the work. A small activity view answers what happened and what needs attention.
-- **Task header:** engagement, readable task state, accountable owner, Permissions and model configuration.
+- **Header:** always show the engagement; when inspecting a Task, show its readable state, accountable owner, Permissions and model configuration. Commands and control buttons name the Task or computer they affect.
 
 Conversation is always recoverable. The workspace remembers what the person is inspecting. Keep Pin, Expand, Close and the “From [task]” attribution. Selecting, pinning or editing an object suspends following; new content appears as an “Open” card in conversation. **Follow Zobba** explicitly resumes following. Elapsed time alone never decides that the person has finished inspecting something.
+
+A compact companion panel contains **Active work, Needs you, Computers, Work products and Permissions**. A sign-in or decision request remains reachable here after it scrolls out of the conversation. Opening a computer is inspection; Take over separately transfers input. Closing its panel restores the conversation without stopping the work. Show a current, authorised thumbnail only when observation is permitted; replace it with a privacy, stopped or reconnecting state when appropriate.
+
+On return, a **Since your last visit** digest names completed work, material changes, supported findings, outstanding decisions and limitations. Work products have a stable shelf with title, version, originating Task and actual review state. Conversation links open that same object. Use Draft, Ready for team review, Independently reviewed or Self-reviewed as applicable; a completed run is not evidence of a successful result or approval.
 
 The computer panel shows the actual browser or desktop, its account and environment, who controls it, and whether the view is current. It must never substitute a plausible reconstruction for a disconnected session. Data and document views are first-class working surfaces, not screenshots of a desktop application when a native table or document is more useful.
 
@@ -86,6 +95,8 @@ On first use, New task can establish the client and engagement conversationally.
 **Establish the basis.** Zobba identifies the applicable policy and period, gathers the population, checks coverage and exposes conflicts. If two policies disagree, it presents the difference and asks which governs. It can continue an independent inventory while that decision is pending. Missing access is a sign-in or connection request, not a request to paste credentials.
 
 **Do the work.** Zobba selects the least fragile suitable route: direct API for acquisition, a browser or desktop for an application-only workflow, and a program for joining large datasets. It may investigate an unexpected pattern within the task objective, Permissions and budget. Material expansion of scope is proposed in the Working brief. It does not require the auditor to author every execution step.
+
+**Keep talking.** “Also investigate shared accounts” can establish linked work while the original Task continues. Zobba names the objective and any material scope expansion, then shows its work card in the same conversation. Questions and general discussion do not silently cancel assigned work. Ambiguous direction identifies the affected Task before application; the person need not navigate to a separate chat to answer a known question.
 
 **Explain and inspect.** “Why is this an exception?” opens the relevant criterion, source records, calculation and limitation beside the conversation. A selected sentence or cell is included as context when the auditor asks a question. The answer distinguishes recorded facts, analytical results and judgement. It can explain the basis without revealing private model reasoning.
 
@@ -106,6 +117,14 @@ On first use, New task can establish the client and engagement conversationally.
 | Investigation | Follow related transactions or events, compare sources and develop supported hypotheses. | Scope and budget stay visible; a hypothesis is not promoted to a finding without support. |
 | Working papers and reporting | Produce calculations, papers, findings, draft reports and export packages with inspectable support. | Humans own preparation, review and issuance. Model-assisted checking is not an independent audit sign-off. |
 | Follow-up and ongoing checks | Revisit open findings, wait for evidence, run a reviewed recurring method and compare results. | Changed criteria or material source/method changes require a revised Check definition and appropriate review. |
+
+### 1.5 Dots as an interaction reference
+
+Use Dots as a primary reference for the experience of delegating responsibility, continuing to converse while work runs, inspecting the actual computer, answering specific questions and finding outputs afterward. The user's screenshots establish those visible surfaces; OpenAI's public guides document parallel work, private sign-in and continuing responsibilities. These are product observations and documented behavior, not access to OpenAI's internals or proof of its reliability, latency or operating costs.
+
+Zobba expresses this experience through audit work from the first complete Task: applicable methodology, necessary skills, authorised working knowledge, source coverage, defensible evaluation, cited work products and attributable review. Admin retains ordinary versioned Save; team and honest solo review retain their distinct labels. Preserve Pair's visual identity and the clean Rust architecture. OpenAI's announced specialist enterprise pilots reinforce the importance of this professional substance; they do not establish an audit method we can inherit.
+
+The reference journeys to design against are: multiple objectives in one conversation; private account/role handoff; a consequential criterion question while independent work continues; an action beyond standing Permissions; return after absence; and review of a supported output. The [research memo](references/dots/Dots-UX-Lessons-for-Zobba.md) contains the source-backed comparison and a complete example journey.
 
 ## 2. Interaction, control and collaboration
 
@@ -128,6 +147,8 @@ The primary status is one readable phrase. Details disclose the underlying facts
 
 A Task can be active while one branch waits. It can finish with limitations. It can be stopped while an email's outcome is still unknown. These facts should not be forced into a single status enum.
 
+Separate conversation availability, Task activity, needs for human attention and computer connectivity. A busy model or desktop does not disable conversation admission. Progress messages report meaningful developments—coverage reached, a reproduced exception, a changed approach or a concrete dependency—and link their support when available. Group low-level activity behind inspection. A waiting request says what is blocked and what continues, for example: “Needs your sign-in; continuing the supplied-file reconciliation.”
+
 ### 2.2 Watch, guide, pause, stop and take over
 
 | Control | Product contract |
@@ -141,6 +162,8 @@ A Task can be active while one branch waits. It can finish with limitations. It 
 
 Pause and Stop operate through a control path independent of the model stream. A slow provider call cannot prevent control acceptance. A disconnected browser is not a Stop command. If the control gateway cannot acknowledge a request, say so and fail closed at its lease boundary.
 
+Task-level Pause and Stop cover delegated execution under that Task. Other Tasks in the engagement continue unless explicitly included. Name that scope in the control and receipt. Stopping an occurrence does not cancel future Check runs; show whether the saved schedule is still enabled and provide a separate disable action. Do not adopt a generic assistant Pause whose effect leaves delegated work surprisingly active.
+
 ### 2.3 Sign-in and computer control
 
 Computer control has its own states: **Agent controlling, Human controlling, Protected sign-in, Transferring control, Reconnecting, Stopped**. The UI names the human controller. A second person requests control rather than competing for the pointer.
@@ -148,6 +171,10 @@ Computer control has its own states: **Agent controlling, Human controlling, Pro
 Protected sign-in opens the real session. Passwords, MFA responses and recovery codes go into the application through a dedicated human input channel, never into conversation. During this interval, suspend agent observation, computer tool access, recording and extraction for that computer. Do not retain thumbnails or clipboard contents from the sign-in interval. The application and its operating system necessarily hold their own session material; the promise is containment from the model, task transcript and general analysis environment.
 
 The person completes MFA and confirms that sign-in is done. Zobba then uses a fresh observation and a known account/application check. A cookie alone does not prove a successful or correct account login. If the identity or environment is uncertain, keep the computer unavailable for automated work.
+
+The contextual request names the verified application origin/environment, required account or role, and reason access is needed. Its receipts distinguish **Waiting for sign-in → Details submitted / Handed back → Verifying access → Signed in as [verified role/account]**, or Needs attention. **Not now** retains a durable wait and names any independent work that continues. Application-role changes require the same verification; logging in as a manager in the audited application is not Zobba audit sign-off.
+
+A private credential form may supplement protected takeover only for a qualified trusted integration that meets the same containment guarantees. It sends input directly to the designated session outside conversation and records no secret in a task receipt. Protected takeover remains the general path for arbitrary applications and MFA; do not promise generic website credential injection. Valid session reuse remains bounded by current Permissions and account verification, rather than treating every new Task as a fresh sign-in.
 
 Only the account owner or an explicitly permitted delegate can see and control protected sign-in. Other viewers receive a privacy cover. Purge queued frames and suspend task voice capture, DOM/accessibility extraction, OCR and all observation paths for that computer. Losing the human control connection fences input and leaves that computer paused; it never silently hands control to the agent.
 
@@ -168,6 +195,18 @@ Helpers receive bounded subtasks with their own context, budget and scoped autho
 ### 2.5 Speech
 
 Speech is another input method to the same command system. Show the transcript and attach it to the task. The user may submit spoken guidance naturally; a transcription that could change a recipient, amount, system, test record or issued conclusion is shown for correction before that consequential action is authorised. Spoken “stop” uses the control path. Audio retention and permitted transcription destinations follow organisation policy; retaining raw audio is optional.
+
+Future calls and Slack/Teams contact methods reach the same authorised work. Ending a call does not end assigned work. Relevant context can carry across channels, but conversations are not automatically mirrored; disclosure is checked against the receiving audience. Connecting a contact method grants neither source access nor a monitoring schedule. These channels are extensions; they are not dependencies of the first complete web-based audit experience.
+
+### 2.6 Continuing work, schedules and suggestions
+
+| Mode | Product contract |
+|---|---|
+| Assigned continuing work | A Task pursues its objective and resumes when a recorded dependency is satisfied, within scope, current Permissions and budget. It need not be assigned a repeating schedule. |
+| Scheduled or event-driven work | Save the objective, timing/time zone or supported trigger, owner, notification conditions and result destination. Inspect, edit or disable it in Scheduled work. Ordinary reminders and evidence arrivals can create or resume Tasks; recurring assurance uses the reviewed Check contract in §4.4. Connecting an app alone creates no monitoring. |
+| Proactive discovery | Optional research limited to explicitly allowed engagement sources and read capabilities. It can prepare an internal suggestion; it cannot itself send externally, mutate applications or control the computer. Following up uses the ordinary Task and Permissions mechanism. It is not required for the first complete Task. |
+
+The person can say “tell me when there is a material exception or you need a decision.” Zobba confirms the saved rule where one is required and records its exact scope. Quiet operation is not proof of ongoing progress: Activity and the return digest distinguish working, waiting, scheduled, stopped and incomplete work.
 
 ## 3. Permissions, methodology and knowledge
 
@@ -194,6 +233,8 @@ Arbitrary browser/desktop actions cannot be made semantically read-only by a dom
 Effective authority is the intersection of current organisation limits, engagement scope, current membership, connection/account restrictions, the accepted Task's authority and any bounded delegation. Revocation narrows it immediately at the next enforcement boundary. A broader administrator policy does not silently enlarge an existing task; an explicit task authority change is required.
 
 A confirmation binds the actual operation: account, destination, recipients, content and attachments, resource version, purpose and expiry. A material change requires a new decision. “Yes” in a conversation is useful only when it can be resolved to the current decision and reviewed content.
+
+Where a routine action is already covered, use standing Permissions without repeating a ceremony. Otherwise show the action's material, destination, account/environment and effect. Offer **Allow this action** and, where permitted, **Set a standing rule** with scope, limits, duration and revocation. Avoid an unexplained domain-wide Always allow choice. A criterion question similarly names the conflicting source versions, explains the consequence and records the authorised answer; it cannot override required methodology or fabricate review.
 
 Methodology has typed standing:
 
@@ -424,6 +465,7 @@ Model/connector dispatch, computer access and object access have different scope
 | Module | Owns |
 |---|---|
 | Identity and scope | Server sessions, organisations, clients, engagement membership and current assignments. |
+| Conversation coordination | Engagement and Task conversation views, attributable messages, audience checks, work cards and message-to-command bindings; no separate execution authority. |
 | Task authority | Task revisions, accepted commands, work cycles, decisions, owner leases, delegated tasks and termination. |
 | Agent runtime | Context-to-model loop, proposed work, child execution, progress and bounded scheduling inside current authority. |
 | Permissions | Purpose/account/resource classification, policy versions, action decisions and dispatch grants. |
@@ -445,6 +487,7 @@ Use a fresh schema. Its main record groups are:
 | Records | Important relationship |
 |---|---|
 | Organisation, client, engagement, membership, assignment | Every client-bound record has explicit scope; IDs select records, never grant access. |
+| Conversation, message, task link, input request, delivery receipt | An engagement conversation can reference several same-engagement Tasks. Preserve author/audience, source message and exact target command/decision; a view or read receipt does not mean guidance was applied. |
 | Task, work cycle, command, decision, task event | Commands have client idempotency keys and accepted/applied receipts. One task revision order binds them. |
 | Operation, attempt, dispatch claim, receipt, reconciliation | A provider call ID is metadata, not the business operation identity. One operation may have several attempts without implying several effects. |
 | Connection, capability, policy revision, delegation | Bound to actual account/system, operating purpose, permitted action/resource and expiry. |
@@ -466,6 +509,8 @@ RLS provides a second scope barrier on tenant/client/engagement records. Applica
 “One task owner” means one domain authority and one valid execution coordinator, not an actor process that must be kept alive forever. The Rust Task module owns all transitions. API admission and workers invoke those same commands through PostgreSQL revision/epoch checks.
 
 The API transaction validates current identity, records a command and its durable acknowledgement, and adds a wakeup. The execution worker acquires a time-bounded owner lease with a monotonically increasing epoch. It reconstructs the task and advances it through short transactions. A wakeup is permission to inspect pending work, not permission to replay the last external action.
+
+The engagement conversation is a coordination surface over these same commands. Persist each incoming message before interpretation; bind a proposed new Task, guidance, answer or control to explicit Task/decision identities. Validate scope, membership and authority at admission. Resolve material ambiguity before dispatch, and record separate accepted/applied outcomes for each target of a multi-Task instruction. Retries cannot duplicate Task creation or effects. Pure conversation need not create a Task. The coordinating context receives authorised summaries and selected references rather than every Task's entire transcript; opening a Task never broadens the conversation audience. Reserve interactive response capacity independently from long-running task work, while keeping all requests inside the same Rust runtime and organisation budget.
 
 Urgent controls use a priority path within that same authority. Task Pause/Stop advances the task execution epoch and withholds new dispatch grants. A computer transfer advances that workspace's input/observation epochs; it does not freeze unrelated analysis. Guidance has a separate intent revision. These operations do not wait behind a model response. Executors and gateways observe revocation and return acknowledgements. A stale worker cannot commit a new proposal or consume a new dispatch claim under an old epoch.
 
@@ -960,6 +1005,7 @@ The arrows describe required capabilities, not delivery stages. At runtime, new 
 |---|---|
 | Methodology and skills | Admin Save/version/assignment, source interpretation, trusted skill manifests and task bindings. The brief names the applicable period/rules/template, and a relevant technique is actually used. |
 | Working knowledge | Scoped evidence lineage, exact decisions, authorised retrieval, freshness/conflict rules and compaction. The task uses relevant prior facts, accepts a correction and recovers it after interruption without crossing clients. |
+| Continuing conversation | Attributed messages, engagement scope, Task links, durable input requests and command bindings. The auditor adds a second objective, answers a specific question and inspects an output while existing work continues; no client context or control target becomes ambiguous. |
 | Real work and responsive control | Standing Permissions, admitted tools, operation receipts, broker, managed computer and isolated analysis. The auditor can watch, privately sign in, take over and stop while useful work persists. |
 | Audit evaluation | Criterion/basis versions, typed observations, population/sample manifests, exact methods/rubrics and limitation rules. Claims expose their test and evidence; missing input cannot become a pass or fabricated failure. |
 | Work products and human responsibility | Stable content/claim versions, firm templates, evidence dependencies, eligible roles and team/solo mode. The same journey reaches review/issue with truthful attribution and successor corrections. |
@@ -983,7 +1029,7 @@ Firm-specific criteria, sampling and review requirements are ordinary Admin conf
 
 ## 13. Evidence, scope and review status
 
-The current direction brief and the latest user request control the design. Revision 2 retains the lead architecture and uses the alternate agent's design as a completeness check. Report A supplies the main task ownership/recovery/context analysis; Report B and its appendix add policy-probe evidence, execution cases and reusable code/test candidates. Their proposed prototype comparisons, legacy-preservation assumptions and earlier deferrals were deliberately not adopted.
+The current direction brief and the latest user request control the design. Revision 2 consolidated the alternate agent's design as a completeness check; revision 3 integrates Dots interaction research while retaining that architecture and specialist audit model. Report A supplies the main task ownership/recovery/context analysis; Report B and its appendix add policy-probe evidence, execution cases and reusable code/test candidates. Their proposed prototype comparisons, legacy-preservation assumptions and earlier deferrals were deliberately not adopted.
 
 | Source | Use and evidential limit |
 |---|---|
@@ -994,9 +1040,10 @@ The current direction brief and the latest user request control the design. Revi
 | Codex at 8ffd91e42aa001b7e897bea812b02f89264f9fa0 | Selected source seams and small reuse candidates directly verified; LICENSE/NOTICE retained with the reference snapshot. |
 | intellifin-audit at 9c17d19e84d3df3e5da48a48ac494b8071696e9b | Clean checkout and remote HEAD verified. Current schema, compiler, gateway, evidence, UI, review, tests and deployment inspected for disposition. |
 | Supplied Pair design pack | Identity, tokens, eight reference screens and experience rules reviewed. Screens are design references, not proof that their controls are implemented. |
+| Four user-supplied Dots screenshots and [current public research](references/dots/README.md), inspected 30 September 2026 | Observed conversation/computer/sign-in/permission/output surfaces, plus documented continuing work and channels. The research separates visible UI, assistant claims, official descriptions and Zobba recommendations. No authenticated Dots test or backend inference. |
 | Official infrastructure documentation and [frozen pricing evidence](costs/managed-computer-rates.json) | Confirms mechanisms, material limits and specific list-rate inputs. Scenario quantities, readiness targets and shared allocations are design assumptions; no Zobba performance, compatibility or total service bill is established. |
 
-No separate dots screenshot was present among the supplied extracted files. Its experience was used from the brief's description; the design does not claim to have visually inspected that missing image. This does not block the product or architecture recommendation.
+The four Dots screenshots subsequently supplied in conversation were visually inspected for this revision. They remain contextual evidence in that conversation and are not reproduced in the package with third-party account information. Redacted observations, bounded public extracts and source URLs are bundled under [references/dots](references/dots/README.md). The official announcement confirms the 29 September 2026 launch. Still images and launch documentation do not establish response latency, reliability, credential isolation or per-task cost; the package makes no such claim.
 
 Key engineering evidence:
 
@@ -1016,5 +1063,7 @@ Key platform references checked for this design:
 Supporting inspection notes provide the detailed traceability behind the recommendation: [product experience](notes/product-experience.md), [source mechanisms and reuse](notes/source-patterns.md), [current-code disposition](notes/code-disposition.md) and [workspace infrastructure](notes/workspace-architecture.md). Where a research note describes an alternative or an earlier assumption, the integrated recommendation in this document is the proposed design.
 
 Revision 2's supporting analysis is [the completeness comparison](notes/consolidation-completeness.md), [audit evaluation and recurring methods](notes/audit-evaluation.md), and [methodology, skills and working knowledge](notes/methodology-and-knowledge.md). These explain the consolidation; this integrated document governs where notes discuss alternatives. The supplied source documents remain unchanged. The three remaining business commitments are only those in §12.
+
+Revision 3's supporting analysis is [Dots UX lessons](references/dots/Dots-UX-Lessons-for-Zobba.md), [screenshot observations](references/dots/screenshot-study.md), [official flows](references/dots/public-official.md) and [launch reporting](references/dots/public-secondary.md). Its product refinements are integrated in §§1–3, their durable conversation/command relationships in §5, and their complete-task dependencies in §11. They introduce no additional unresolved business decision or implementation plan.
 
 The package was checked for consistency across product controls, task ownership, operation uncertainty, Permissions, input fencing, credential privacy and review. The cost calculator was independently checked and reproduced; diagrams, links and rendered editions were verified. It does not represent a newly implemented or tested application runtime. No application implementation, live service, database or existing authoritative planning document was changed by this design work.

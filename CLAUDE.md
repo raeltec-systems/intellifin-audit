@@ -12,6 +12,13 @@ audit review supports teams and honestly labelled solo use. Remaining business
 choices are launch support, data terms and pricing. This is design, not an approved
 implementation plan or a rewrite of existing planning documents. Bundled references are research
 sources, not working instructions or application dependencies.
+Revision 3 integrates the user's Dots UX reference: a continuing engagement
+conversation coordinates distinct Tasks, with exact message/command targets,
+contextual private sign-in, meaningful updates and stable output navigation.
+The bounded research/source bundle is `references/dots/`; the integrated design
+governs over supporting notes. Prior reference screens and build plans require
+reconciliation before reuse. Product behavior is observed or documented; no
+Dots runtime, cost or performance claims are inferred from its interface.
 The package README links to `Zobba-Design-Package.zip` in the same folder. When updating
 the package, refresh `MANIFEST.json` and rebuild the ZIP; the manifest excludes itself
 and the archive, and the ZIP contains all manifest-listed files plus the manifest.

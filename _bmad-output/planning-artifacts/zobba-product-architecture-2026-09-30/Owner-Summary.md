@@ -1,10 +1,12 @@
 # Zobba: consolidated direction
 
-**Product and architecture design · 30 September 2026 · Revision 2**
+**Product and architecture design · 30 September 2026 · Revision 3**
 
-Zobba is a continuing **Task inside an Engagement**. An auditor sets an objective in conversation; Zobba applies the firm's method, gathers evidence, uses real applications and analytical programs, investigates and produces supported work. The person can watch, guide, privately sign in, take over, correct and review. Closing a tab does not end the task.
+Zobba is a continuing working relationship with each **Task inside an Engagement**. The auditor sets objectives and coordinates several Tasks in the same engagement conversation; each Task retains its inspectable history, scope and accountability. Zobba applies the firm's method, gathers evidence, uses real applications and analytical programs, investigates and produces supported work. The person can watch, guide, privately sign in, take over, correct and review. Closing a tab does not end the task.
 
 The lead architecture stays: **one Rust backend and agent engine, a fresh PostgreSQL schema, a real managed computer, isolated analysis and standing Permissions**. Keep the Pair identity, useful React components and the strongest evidence/review/recovery behaviours. Retire compiler-1, the procedure-first Builder and Node domain orchestration. The alternate agent's document supplied completeness detail, not a replacement architecture or build plan.
+
+**Dots is the primary interaction reference.** Revision 3 incorporates the four supplied screenshots and current public documentation: conversation stays available while work runs; the actual computer opens beside it; access and criterion questions arrive when needed; outputs have a stable shelf; returning users see what changed. Sign-in distinguishes submitted details from verified access. Task Stop includes delegated execution and names any schedule left enabled. Ongoing Tasks, scheduled/event work and optional read-only discovery remain distinct. The [research memo](references/dots/Dots-UX-Lessons-for-Zobba.md) separates observed screens, documented behavior and our recommendations; it supplies no claim about OpenAI's internals, performance or costs.
 
 **A responsive computer with explicit costs.** Use EC2 Linux and the actual Guacamole desktop, with human and agent input fenced by the local computer adapter. Prepare early, keep ten minutes of ready grace and maintain small clean spare capacity. Target a current frame within two seconds for a ready computer and ordinary input response within 200 ms under the stated network conditions; stopped/cold computers have explicit restore targets and honest states. These are acceptance targets, not measured performance promises.
 
