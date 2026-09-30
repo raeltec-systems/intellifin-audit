@@ -80,3 +80,22 @@ test('already expired logout is success while refusal and outage remain errors',
     context.mock.restoreAll();
   }
 });
+
+test('session identity cannot introduce an invalid actor binding or unbounded header', () => {
+  const session = { identity: { id: 'actor-a', display_name: 'Alex' }, csrf_token: 'opaque' };
+  for (const id of ['', 'actor/other', 'actor\n', 'a'.repeat(129)]) assert.throws(() => parseSession({ ...session, identity: { ...session.identity, id } }));
+  for (const display_name of ['', 'Alex\nAdmin', 'a'.repeat(201)]) assert.throws(() => parseSession({ ...session, identity: { ...session.identity, display_name } }));
+  for (const csrf_token of ['x\nInjected', 'x'.repeat(4097)]) assert.throws(() => parseSession({ ...session, csrf_token }));
+});
+
+test('JSON response bodies are bounded even without a truthful Content-Length', async context => {
+  const { MAX_JSON_BYTES, readJson } = await import('../src/auth.ts');
+  for (const header of [undefined, '1', String(MAX_JSON_BYTES + 1)]) {
+    let cancelled = false;
+    const stream = new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(MAX_JSON_BYTES + 1)); }, cancel() { cancelled = true; } });
+    context.mock.method(globalThis, 'fetch', async () => new Response(stream, { headers: header ? { 'Content-Length': header } : {} }));
+    await assert.rejects(readJson('/auth/session'), /response size/);
+    assert.equal(cancelled, true);
+    context.mock.restoreAll();
+  }
+});

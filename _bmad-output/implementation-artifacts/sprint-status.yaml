@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-30-2026 16:09
-last_updated: 09-30-2026 23:02
+last_updated: 10-01-2026 01:06
 project: Zobba
 project_key: NOKEY
 tracking_system: file-system
@@ -39,7 +39,7 @@ development_status:
   20-1-start-the-new-application-from-one-reproducible-workspace: done
   20-2-sign-in-to-an-explicitly-scoped-engagement: done
   20-3-accept-task-commands-once-and-recover-them-after-restart: done
-  20-4-keep-one-engagement-conversation-with-attributed-task-cards: backlog
+  20-4-keep-one-engagement-conversation-with-attributed-task-cards: done
   20-5-apply-standing-permissions-to-exact-recorded-operations: backlog
   20-6-administer-membership-without-granting-audit-authority: backlog
   20-7-deploy-a-recoverable-qualification-environment: backlog

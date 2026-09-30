@@ -96,6 +96,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/engagements/{engagement_id}/conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_conversation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/conversation/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_conversation_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/conversation/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_conversation_history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/engagements/{engagement_id}/task-commands": {
         parameters: {
             query?: never;
@@ -225,6 +273,73 @@ export interface components {
             status: components["schemas"]["ReceiptStatusResponse"];
             task_id: string;
         };
+        ConversationActivityResponse: {
+            /** @description Decimal Received or Applied cursor, no greater than the snapshot watermark. */
+            cursor: string;
+            task_id: string;
+        };
+        /** @enum {string} */
+        ConversationAudienceResponse: "engagement_members";
+        ConversationFeedResponse: {
+            audience: components["schemas"]["ConversationAudienceResponse"];
+            /** @description Invalidation facts; obtain a new consistent snapshot to replace current state. */
+            events: components["schemas"]["TaskEventResponse"][];
+            has_more: boolean;
+            /** @description Last returned cursor, or unchanged input. Never advances over omitted facts. */
+            next_cursor: string;
+            /**
+             * @description Gap, cursor ahead of server, or backlog exceeding 1000: refresh the snapshot.
+             *     Events is empty and next_cursor unchanged; do not infer progress from watermark.
+             */
+            resync_required: boolean;
+            scope: components["schemas"]["ConversationScopeResponse"];
+            watermark: string;
+        };
+        ConversationHistoryResponse: {
+            audience: components["schemas"]["ConversationAudienceResponse"];
+            before_cursor: string | null;
+            messages: components["schemas"]["ConversationMessageResponse"][];
+            scope: components["schemas"]["ConversationScopeResponse"];
+            /** @description Requested fixed through cursor, including Applied facts only through that cursor. */
+            watermark: string;
+        };
+        ConversationMessageResponse: {
+            /** @description Applied means retained plain text reached a work boundary, not model understanding. */
+            applied_cursor: string | null;
+            author_id: string;
+            /** @description Current public label of the retained author; role changes do not erase authorship. */
+            author_label: string;
+            command_id: string;
+            content: string | null;
+            /** @description Resulting cycle. Continue preserves its old addressed cycle separately below. */
+            cycle_id: string;
+            key: string;
+            kind: components["schemas"]["CommandKindRequest"];
+            received_cursor: string;
+            target_cycle_id: string | null;
+            target_task_id: string | null;
+            task_id: string;
+        };
+        ConversationScopeResponse: {
+            client_id: string;
+            engagement_id: string;
+            organisation_id: string;
+        };
+        ConversationSnapshotResponse: {
+            audience: components["schemas"]["ConversationAudienceResponse"];
+            /** @description Exclusive Received cursor for the preceding history page at this watermark. */
+            before_cursor: string | null;
+            latest_activity: null | components["schemas"]["ConversationActivityResponse"];
+            /** @description Latest 100 accepted commands in ascending Received order; not the complete history. */
+            messages: components["schemas"]["ConversationMessageResponse"][];
+            /** @description Continue through GET tasks?after_task_id; those pages are fresh current reads. */
+            next_task_cursor: string | null;
+            scope: components["schemas"]["ConversationScopeResponse"];
+            /** @description First 100 current Tasks ordered by ID; open any known ID independently. */
+            tasks: components["schemas"]["TaskResponse"][];
+            /** @description All included Task state and receipt facts come from the same statement as this cursor. */
+            watermark: string;
+        };
         EngagementResponse: {
             client_id: string;
             /** @description 1–200 Unicode scalars; no C0/C1 controls or leading/trailing Unicode White_Space. */
@@ -298,6 +413,8 @@ export interface components {
         TaskResponse: {
             /** @description Accountable human identity, distinct from worker ownership. */
             accountable_actor: string;
+            /** @description Current public label of the accountable human, independent of recent message pages. */
+            accountable_label: string;
             cessation: components["schemas"]["CessationResponse"];
             cycle_id: string;
             execution_epoch: string;
@@ -589,6 +706,209 @@ export interface operations {
             };
         };
     };
+    get_conversation: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header?: never;
+            path: {
+                engagement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One consistent current snapshot, bounded messages and Tasks with explicit page continuations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationSnapshotResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_conversation_events: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+                /** @description Last delivered decimal cursor or snapshot watermark */
+                after: string;
+            };
+            header?: never;
+            path: {
+                engagement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Finite ordered invalidation page; explicit resync for gaps or replay overflow */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationFeedResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_conversation_history: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+                /** @description Snapshot watermark bounding retained Received and Applied facts */
+                through: string;
+                /** @description Exclusive Received cursor; omitted returns latest page through watermark */
+                before?: string;
+                /** @description Optional exact Task history */
+                task_id?: string;
+            };
+            header?: never;
+            path: {
+                engagement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationHistoryResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Requested watermark is ahead of retained history; resnapshot */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     admit_task_command: {
         parameters: {
             query: {
@@ -600,6 +920,8 @@ export interface operations {
                 Origin: string;
                 /** @description Current session-bound token */
                 "X-CSRF-Token": string;
+                /** @description Optional additional refusal fence: expected current actor, never author authority */
+                "X-Expected-Actor"?: string | null;
             };
             path: {
                 engagement_id: string;
@@ -682,6 +1004,8 @@ export interface operations {
                 Origin: string;
                 /** @description Current session-bound token */
                 "X-CSRF-Token": string;
+                /** @description Optional additional refusal fence: expected current actor, never author authority */
+                "X-Expected-Actor"?: string | null;
             };
             path: {
                 engagement_id: string;

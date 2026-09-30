@@ -26,6 +26,7 @@ struct Browser {
     origin: String,
     token: String,
     csrf: String,
+    actor: String,
 }
 
 impl Browser {
@@ -42,6 +43,7 @@ impl Browser {
             .header("Cookie", format!("__Host-zobba-session={}", self.token))
             .header("Origin", &self.origin)
             .header("X-CSRF-Token", &self.csrf)
+            .header("X-Expected-Actor", &self.actor)
             .header("Content-Type", "application/json")
             .body(body)
             .send()
@@ -146,6 +148,19 @@ async fn request_count_deadline_and_cancellation(browser: &Browser, task_id: &st
         StatusCode::ACCEPTED,
     )
     .await;
+    assert_eq!(
+        document(
+            browser.command("task-controls", &guide).await,
+            StatusCode::ACCEPTED
+        )
+        .await,
+        original_guide,
+        "same-key control retry performs fresh reserved authorization without ordinary preflight"
+    );
+    for suffix in ["", "/history?through=0", "/events?after=0"] {
+        let separator = if suffix.contains('?') { '&' } else { '?' };
+        assert_eq!(browser.read(&format!("/engagements/engagement-a/conversation{suffix}{separator}organisation_id=org-a&client_id=client-a")).await.status(),StatusCode::TOO_MANY_REQUESTS,"conversation shares the eight ordinary permits, preserving the separate control lane");
+    }
 
     let mut control = Vec::new();
     for _ in 0..4 {
@@ -373,6 +388,149 @@ async fn event_cursor_pages(
     );
 }
 
+async fn conversation_http_pages(browser: &Browser, admin: &mut PgConnection, task_id: &str) {
+    let base = "/engagements/engagement-a/conversation";
+    let scope = "organisation_id=org-a&client_id=client-a";
+    let snapshot = document(
+        browser.read(&format!("{base}?{scope}")).await,
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(
+        snapshot["scope"],
+        json!({"organisation_id":"org-a","client_id":"client-a","engagement_id":"engagement-a"})
+    );
+    assert_eq!(snapshot["audience"], "engagement_members");
+    let through = snapshot["watermark"].as_str().unwrap();
+    assert_eq!(snapshot["messages"].as_array().unwrap().len(), 100);
+    assert!(snapshot["before_cursor"].is_string());
+    assert!(
+        snapshot["tasks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|task| task["accountable_label"] == "Alex")
+    );
+    let mut delivered = snapshot["messages"].as_array().unwrap().clone();
+    let mut before = snapshot["before_cursor"].as_str().map(str::to_owned);
+    while let Some(cursor) = before {
+        let history = document(
+            browser
+                .read(&format!(
+                    "{base}/history?{scope}&through={through}&before={cursor}"
+                ))
+                .await,
+            StatusCode::OK,
+        )
+        .await;
+        assert_eq!(history["watermark"], through);
+        assert_eq!(history["scope"], snapshot["scope"]);
+        assert_eq!(history["audience"], "engagement_members");
+        assert!(history["messages"].as_array().unwrap().len() <= 100);
+        delivered.extend(history["messages"].as_array().unwrap().iter().cloned());
+        before = history["before_cursor"].as_str().map(str::to_owned);
+    }
+    let expected: Vec<(String,String,String)> = sqlx::query_as("SELECT id,idempotency_key,received_cursor::text FROM public.task_commands WHERE engagement_id='engagement-a' ORDER BY task_commands.received_cursor")
+        .fetch_all(&mut *admin).await.unwrap();
+    assert_eq!(delivered.len(), expected.len());
+    delivered.sort_by_key(|message| {
+        message["received_cursor"]
+            .as_str()
+            .unwrap()
+            .parse::<u64>()
+            .unwrap()
+    });
+    for (message, (command, key, received)) in delivered.iter().zip(&expected) {
+        assert_eq!(message["command_id"], *command);
+        assert_eq!(message["key"], *key);
+        assert_eq!(message["received_cursor"], *received);
+        assert_eq!(message["author_id"], "identity-a");
+        assert_eq!(message["author_label"], "Alex");
+        assert!(message["applied_cursor"].is_null());
+        assert_eq!(
+            message.as_object().unwrap().len(),
+            12,
+            "only the owned message contract is disclosed"
+        );
+    }
+    assert_eq!(
+        delivered
+            .iter()
+            .filter(|message| message["key"] == "http-lost-committed-ack")
+            .count(),
+        1,
+        "lost acknowledgement remains one durable message"
+    );
+    let scoped = document(
+        browser
+            .read(&format!(
+                "{base}/history?{scope}&through={through}&task_id={task_id}"
+            ))
+            .await,
+        StatusCode::OK,
+    )
+    .await;
+    assert!(
+        scoped["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|message| message["task_id"] == task_id)
+    );
+    let mut cursor = "0".to_owned();
+    let mut events = Vec::new();
+    loop {
+        let page = document(
+            browser
+                .read(&format!("{base}/events?{scope}&after={cursor}"))
+                .await,
+            StatusCode::OK,
+        )
+        .await;
+        assert_eq!(page["resync_required"], false);
+        let batch = page["events"].as_array().unwrap();
+        assert!(batch.len() <= 100);
+        assert_eq!(
+            page["next_cursor"],
+            batch
+                .last()
+                .map_or(cursor.as_str(), |event| event["cursor"].as_str().unwrap())
+        );
+        events.extend(batch.iter().cloned());
+        cursor = page["next_cursor"].as_str().unwrap().to_owned();
+        if !page["has_more"].as_bool().unwrap() {
+            break;
+        }
+    }
+    assert_eq!(cursor, through);
+    assert_eq!(events.len(), expected.len());
+    let future = document(
+        browser
+            .read(&format!("{base}/events?{scope}&after=9223372036854775807"))
+            .await,
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(future["resync_required"], true);
+    assert_eq!(future["next_cursor"], "9223372036854775807");
+    assert!(future["events"].as_array().unwrap().is_empty());
+    for path in [
+        format!("{base}/history?{scope}&through=-1"),
+        format!("{base}/history?{scope}"),
+        format!("{base}/events?{scope}&after=9223372036854775808"),
+        format!("{base}/events?{scope}&after=1.5"),
+    ] {
+        assert_eq!(browser.read(&path).await.status(), StatusCode::BAD_REQUEST);
+    }
+    for path in [
+        format!("{base}?organisation_id=foreign&client_id=client-a"),
+        format!("{base}/history?organisation_id=foreign&client_id=client-a&through=0"),
+        format!("{base}/events?organisation_id=foreign&client_id=client-a&after=0"),
+    ] {
+        assert_eq!(browser.read(&path).await.status(), StatusCode::FORBIDDEN);
+    }
+}
+
 async fn fixture(config: &support::Configuration, admin: &mut PgConnection) {
     // The schema must be recreated by its migration owner, not the separate
     // superuser used below solely for guarded synthetic identities/memberships.
@@ -407,13 +565,13 @@ async fn fixture(config: &support::Configuration, admin: &mut PgConnection) {
             .await
             .unwrap();
     }
-    sqlx::query("INSERT INTO public.identities(id,issuer,subject,display_name) VALUES('identity-a',$1,'auditor-a','Alex'),('identity-admin',$1,'admin','Casey')")
+    sqlx::query("INSERT INTO public.identities(id,issuer,subject,display_name) VALUES('identity-a',$1,'auditor-a','Alex'),('identity-admin',$1,'admin','Casey'),('identity-peer',$1,'auditor-peer','Peer')")
         .bind(ISSUER).execute(&mut *tx).await.unwrap();
     tx.execute("INSERT INTO public.organisations(id,name) VALUES('org-a','Northstar');
         INSERT INTO public.clients(organisation_id,id,name) VALUES('org-a','client-a','Alder');
         INSERT INTO public.engagements(organisation_id,client_id,id,name) VALUES('org-a','client-a','engagement-a','Audit A');
-        INSERT INTO public.organisation_memberships(organisation_id,actor_id,roles) VALUES('org-a','identity-a',ARRAY['auditor']),('org-a','identity-admin',ARRAY['admin']);
-        INSERT INTO public.engagement_assignments(organisation_id,client_id,engagement_id,actor_id) VALUES('org-a','client-a','engagement-a','identity-a'),('org-a','client-a','engagement-a','identity-admin');")
+        INSERT INTO public.organisation_memberships(organisation_id,actor_id,roles) VALUES('org-a','identity-a',ARRAY['auditor']),('org-a','identity-admin',ARRAY['admin']),('org-a','identity-peer',ARRAY['auditor']);
+        INSERT INTO public.engagement_assignments(organisation_id,client_id,engagement_id,actor_id) VALUES('org-a','client-a','engagement-a','identity-a'),('org-a','client-a','engagement-a','identity-admin'),('org-a','client-a','engagement-a','identity-peer');")
         .await.unwrap();
     for table in tables {
         tx.execute(format!("ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY; ALTER TABLE public.{table} FORCE ROW LEVEL SECURITY").as_str()).await.unwrap();
@@ -458,6 +616,7 @@ async fn scoped_http_commands_reauthorize_retries_and_reserve_control_authentica
             .expect("load the actual local fixture environment for HTTP tests"),
         token,
         csrf: session.csrf_token,
+        actor: "identity-a".into(),
     };
     let create =
         json!({"key":"http-create","kind":"create","content":"Retained synthetic objective"});
@@ -471,6 +630,70 @@ async fn scoped_http_commands_reauthorize_retries_and_reserve_control_authentica
     assert_eq!(receipt.as_object().unwrap().len(), 5);
     let task_id = receipt["task_id"].as_str().unwrap();
     let cycle_id = receipt["cycle_id"].as_str().unwrap();
+    for actor in [
+        "identity-admin".to_owned(),
+        String::new(),
+        "bad actor".to_owned(),
+        "a".repeat(129),
+    ] {
+        let response=browser.client.post(format!("{}/engagements/engagement-a/task-commands?organisation_id=org-a&client_id=client-a",browser.address))
+            .header("Cookie",format!("__Host-zobba-session={}",browser.token)).header("Origin",&browser.origin).header("X-CSRF-Token",&browser.csrf).header("X-Expected-Actor",actor)
+            .header("Content-Type", "application/json").body(create.to_string()).send().await.unwrap();
+        assert_eq!(
+            document(response, StatusCode::FORBIDDEN).await["error"],
+            "access_denied",
+            "actor fence precedes even identical receipt recovery"
+        );
+    }
+    let duplicate = browser
+        .client
+        .post(format!(
+            "{}/engagements/engagement-a/task-commands?organisation_id=org-a&client_id=client-a",
+            browser.address
+        ))
+        .header("Cookie", format!("__Host-zobba-session={}", browser.token))
+        .header("Origin", &browser.origin)
+        .header("X-CSRF-Token", &browser.csrf)
+        .header("X-Expected-Actor", "identity-a")
+        .header("X-Expected-Actor", "identity-a")
+        .header("Content-Type", "application/json")
+        .body(create.to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(duplicate.status(), StatusCode::FORBIDDEN);
+    let peer_token = identities
+        .establish_session(ISSUER, "auditor-peer", "Peer", None)
+        .await
+        .unwrap();
+    let peer_session = identities.session(&peer_token).await.unwrap();
+    let changed_actor = browser
+        .client
+        .post(format!(
+            "{}/engagements/engagement-a/task-commands?organisation_id=org-a&client_id=client-a",
+            browser.address
+        ))
+        .header("Cookie", format!("__Host-zobba-session={peer_token}"))
+        .header("Origin", &browser.origin)
+        .header("X-CSRF-Token", peer_session.csrf_token)
+        .header("X-Expected-Actor", "identity-a")
+        .header("Content-Type", "application/json")
+        .body(create.to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        changed_actor.status(),
+        StatusCode::FORBIDDEN,
+        "a current authorized peer with valid CSRF cannot replay the previous actor's outbox"
+    );
+    let peer_commands: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM public.task_commands WHERE author_id='identity-peer'",
+    )
+    .fetch_one(&mut admin)
+    .await
+    .unwrap();
+    assert_eq!(peer_commands, 0);
 
     // Reverse raw JSON order and explicitly include null optional fields. The
     // repository compares parsed meaning, not an unstable serialization hash.
@@ -512,7 +735,7 @@ async fn scoped_http_commands_reauthorize_retries_and_reserve_control_authentica
     let waiting = browser
         .client
         .get(format!(
-            "{}/engagements/engagement-a/tasks?organisation_id=org-a&client_id=client-a",
+            "{}/engagements/engagement-a/conversation?organisation_id=org-a&client_id=client-a",
             browser.address
         ))
         .header("Cookie", format!("__Host-zobba-session={}", browser.token));
@@ -612,6 +835,7 @@ async fn scoped_http_commands_reauthorize_retries_and_reserve_control_authentica
         assert_eq!(browser.read(path).await.status(), StatusCode::FORBIDDEN);
     }
     event_cursor_pages(&browser, &mut admin, task_id, cycle_id).await;
+    conversation_http_pages(&browser, &mut admin, task_id).await;
     assert_eq!(browser.read("/engagements/engagement-a/task-events?organisation_id=org-a&client_id=client-a&after=9223372036854775808").await.status(), StatusCode::BAD_REQUEST);
 
     let admin_token = identities
@@ -625,6 +849,7 @@ async fn scoped_http_commands_reauthorize_retries_and_reserve_control_authentica
         origin: browser.origin.clone(),
         token: admin_token,
         csrf: admin_session.csrf_token,
+        actor: "identity-admin".into(),
     };
     assert_eq!(
         admin_browser
@@ -642,6 +867,10 @@ async fn scoped_http_commands_reauthorize_retries_and_reserve_control_authentica
         "duplicate receipts are freshly reauthorized"
     );
     assert_eq!(browser.read(&path).await.status(), StatusCode::FORBIDDEN);
+    for suffix in ["", "/history?through=0", "/events?after=0"] {
+        let separator = if suffix.contains('?') { '&' } else { '?' };
+        assert_eq!(browser.read(&format!("/engagements/engagement-a/conversation{suffix}{separator}organisation_id=org-a&client_id=client-a")).await.status(),StatusCode::FORBIDDEN,"projection reads reauthorize after a role change");
+    }
     stop.send(()).unwrap();
     server.await.unwrap();
 }

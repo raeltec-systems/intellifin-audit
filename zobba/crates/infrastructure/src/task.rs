@@ -59,6 +59,7 @@ fn snapshot(row: &PgRow) -> Result<TaskSnapshot, TaskError> {
         revision: get::<i64>(row, "revision")? as u64,
         execution_epoch: get::<i64>(row, "execution_epoch")? as u64,
         accountable_actor: get(row, "accountable_actor")?,
+        accountable_label: get(row, "accountable_label")?,
     })
 }
 async fn begin(pool: &PgPool, actor: &str, selected: &Scope) -> Result<Tx, TaskError> {
@@ -84,7 +85,7 @@ async fn lock(pool: &PgPool, actor: &str, selected: &Scope) -> Result<Tx, TaskEr
     Ok(tx)
 }
 async fn task(tx: &mut Tx, id: &str) -> Result<PgRow, TaskError> {
-    sqlx::query("SELECT *,owner_until>clock_timestamp() AS owner_live FROM public.tasks WHERE id=$1 FOR UPDATE")
+    sqlx::query("SELECT *,owner_until>clock_timestamp() AS owner_live,(SELECT left(display_name,200) FROM public.identities WHERE id=tasks.accountable_actor) AS accountable_label FROM public.tasks WHERE id=$1 FOR UPDATE")
         .bind(id).fetch_optional(&mut **tx).await.map_err(unavailable)?.ok_or(TaskError::Denied)
 }
 async fn cursor(tx: &mut Tx, s: &Scope) -> Result<i64, TaskError> {
@@ -258,7 +259,7 @@ impl TaskCommands for TaskRepository {
     }
     async fn get(&self, actor: &str, s: &Scope, id: &str) -> Result<TaskSnapshot, TaskError> {
         let mut tx = begin(&self.pool, actor, s).await?;
-        let row = sqlx::query("SELECT * FROM public.tasks WHERE id=$1")
+        let row = sqlx::query("SELECT *,(SELECT left(display_name,200) FROM public.identities WHERE id=tasks.accountable_actor) AS accountable_label FROM public.tasks WHERE id=$1")
             .bind(id)
             .fetch_optional(&mut *tx)
             .await
@@ -279,7 +280,7 @@ impl TaskCommands for TaskRepository {
         }
         let mut tx = begin(&self.pool, actor, s).await?;
         let mut rows = sqlx::query(
-            "SELECT * FROM public.tasks WHERE ($1::text IS NULL OR id>$1) ORDER BY id LIMIT 101",
+            "SELECT *,(SELECT left(display_name,200) FROM public.identities WHERE id=tasks.accountable_actor) AS accountable_label FROM public.tasks WHERE ($1::text IS NULL OR id>$1) ORDER BY id LIMIT 101",
         )
         .bind(after)
         .fetch_all(&mut *tx)

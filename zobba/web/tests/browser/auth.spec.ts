@@ -76,13 +76,14 @@ test('HTTPS OIDC login opens only assigned scope, supports keyboard and narrow l
   const open = page.getByRole('button', { name: /FY2026 audit/ });
   await open.focus(); await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { name: 'FY2026 audit', exact: true })).toBeFocused();
-  await expect(page.getByRole('heading', { name: 'Current scope' })).toBeVisible();
-  await expect(page.locator('dd')).toHaveText(['Northstar', 'Alder Manufacturing', 'FY2026 audit', 'Auditor']);
+  await expect(page.locator('.scope-panel > summary')).toBeVisible();
+  await page.locator('.scope-panel').evaluate((element) => { (element as HTMLDetailsElement).open = true; });
+  await expect(page.locator('.scope-panel dd')).toHaveText(['Northstar', 'Alder Manufacturing', 'FY2026 audit', 'Auditor']);
   await capture(page, info, 'engagement-scope-desktop.png');
   const refresh = page.getByRole('button', { name: 'Refresh access' });
   await refresh.focus();
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-  await expect(page.getByRole('heading', { name: 'Current scope' })).toBeVisible();
+  await expect(page.locator('.scope-panel > summary')).toBeVisible();
   await expect(refresh).toBeFocused();
   const denied = await page.context().request.get(`${runtime.url}/api/engagements/engagement-b?organisation_id=org-b&client_id=client-b`);
   expect(denied.status()).toBe(403);
@@ -94,7 +95,7 @@ test('HTTPS OIDC login opens only assigned scope, supports keyboard and narrow l
   await expect(page.getByText('Beacon Services', { exact: false })).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: /FY2026 audit/ }).click();
-  await expect(page.getByRole('heading', { name: 'Current scope' })).toBeVisible();
+  await expect(page.locator('.scope-panel > summary')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await capture(page, info, 'engagement-scope-mobile.png');
   await page.setViewportSize({ width: 320, height: 800 });
@@ -144,22 +145,22 @@ for (const account of ['admin-only', 'unassigned']) {
 test('manager with combined roles sees current audit authority', async ({ page }) => {
   await signIn(page, 'manager-a');
   await page.getByRole('button', { name: /FY2026 audit/ }).click();
-  await expect(page.locator('dd').last()).toHaveText(/Audit manager/);
-  await expect(page.locator('dd').last()).toHaveText(/Admin/);
+  await expect(page.locator('.scope-panel dd').last()).toHaveText(/Audit manager/);
+  await expect(page.locator('.scope-panel dd').last()).toHaveText(/Admin/);
 });
 
 test('role demotion, membership expiry and session expiry clear previously opened scope', async ({ page }) => {
   await signIn(page);
   await page.getByRole('button', { name: /FY2026 audit/ }).click();
-  await expect(page.getByRole('heading', { name: 'Current scope' })).toBeVisible();
+  await expect(page.locator('.scope-panel > summary')).toBeVisible();
   runtime.sql("UPDATE public.organisation_memberships SET roles=ARRAY['admin'] WHERE actor_id='actor-a';");
   await page.getByRole('button', { name: 'Refresh access' }).click();
   await expect(page.getByRole('heading', { name: 'No assigned engagements' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Current scope' })).toHaveCount(0);
+  await expect(page.locator('.scope-panel > summary')).toHaveCount(0);
   runtime.sql(restoreAuthority);
   await page.getByRole('button', { name: 'Refresh access' }).click();
   await page.getByRole('button', { name: /FY2026 audit/ }).click();
-  await expect(page.getByRole('heading', { name: 'Current scope' })).toBeVisible();
+  await expect(page.locator('.scope-panel > summary')).toBeVisible();
   runtime.sql("UPDATE public.organisation_memberships SET expires_at=1 WHERE actor_id='actor-a';");
   await page.getByRole('button', { name: 'All engagements' }).focus();
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
@@ -168,9 +169,12 @@ test('role demotion, membership expiry and session expiry clear previously opene
   runtime.sql(restoreAuthority);
   await page.getByRole('button', { name: 'Refresh access' }).click();
   await page.getByRole('button', { name: /FY2026 audit/ }).click();
-  await expect(page.getByRole('heading', { name: 'Current scope' })).toBeVisible();
+  await expect(page.locator('.scope-panel > summary')).toBeVisible();
   runtime.sql("UPDATE public.sessions SET expires_at=1 WHERE actor_id='actor-a';");
-  await page.getByRole('button', { name: 'Refresh access' }).click();
+  // Conversation polling can already withdraw the expired session and remove
+  // Refresh access. A focus refresh exercises the same current-authority read
+  // without requiring an obsolete protected control to survive the revocation.
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await expect(page.getByRole('heading', { name: 'Your work starts here' })).toBeFocused();
   await expect(page.getByText('Alder Manufacturing', { exact: false })).toHaveCount(0);
   expect((await page.context().cookies(runtime.url)).some((cookie) => cookie.name === '__Host-zobba-session')).toBe(false);
@@ -267,7 +271,7 @@ test('stale CSRF is a real logout refusal and retry refreshes it before signing 
 test('database loss clears protected content and retry restores verified access', async ({ page }, info) => {
   await signIn(page);
   await page.getByRole('button', { name: /FY2026 audit/ }).click();
-  await expect(page.getByRole('heading', { name: 'Current scope' })).toBeVisible();
+  await expect(page.locator('.scope-panel > summary')).toBeVisible();
   runtime.disconnectDatabase();
   try {
     await page.getByRole('button', { name: 'Refresh access' }).click();
@@ -276,7 +280,7 @@ test('database loss clears protected content and retry restores verified access'
     await capture(page, info, 'access-unavailable.png');
   } finally { runtime.restoreDatabase(); }
   await page.getByRole('button', { name: 'Try again' }).click();
-  await expect(page.getByRole('heading', { name: 'Current scope' })).toBeVisible();
+  await expect(page.locator('.scope-panel > summary')).toBeVisible();
 });
 
 async function captureCallback(page: Page, replacing = false): Promise<string> {
@@ -370,7 +374,8 @@ test('a different organisation receives its own assignment only', async ({ page 
   await expect(page.getByRole('button', { name: /Meridian.*Beacon Services.*FY2026 review/ })).toBeVisible();
   await expect(page.getByText('Alder Manufacturing', { exact: false })).toHaveCount(0);
   await page.getByRole('button', { name: /FY2026 review/ }).click();
-  await expect(page.locator('dd')).toHaveText(['Meridian', 'Beacon Services', 'FY2026 review', 'Auditor']);
+  await page.locator('.scope-panel').evaluate((element) => { (element as HTMLDetailsElement).open = true; });
+  await expect(page.locator('.scope-panel dd')).toHaveText(['Meridian', 'Beacon Services', 'FY2026 review', 'Auditor']);
 });
 
 test('more than 100 assignments paginate by full scope with fresh back navigation and direct opening', async ({ page }, info) => {
@@ -406,7 +411,8 @@ SELECT organisation_id,client_id,id,'actor-a' FROM public.engagements WHERE orga
     await expect(page.getByRole('button', { name: 'Next page', exact: true })).toHaveCount(0);
     const last = page.getByRole('button', { name: /Pagination B.*Assignment 060/ });
     await last.click();
-    await expect(page.locator('dd')).toHaveText(['Pagination B', 'Shared local client B', 'Assignment 060', 'Auditor']);
+    await page.locator('.scope-panel').evaluate((element) => { (element as HTMLDetailsElement).open = true; });
+  await expect(page.locator('.scope-panel dd')).toHaveText(['Pagination B', 'Shared local client B', 'Assignment 060', 'Auditor']);
     await page.getByRole('button', { name: 'All engagements' }).click();
     await expect(page.locator('.pagination')).toContainText('Page 3');
     runtime.sql("UPDATE public.engagements SET name='Updated assignment 001' WHERE organisation_id='org-pagination-a' AND id='engagement-001';");

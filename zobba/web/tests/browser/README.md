@@ -87,3 +87,65 @@ synthetic seeded records available for inspection.
 The reset runs inside `try/finally`: SQL restoration failure still closes Vite,
 the API, the IdP and the database proxy. The final browser regression deliberately
 fails SQL restoration and confirms that all four owned listeners are closed.
+
+## Continuing engagement conversation
+
+`conversation.spec.ts` and `conversation-races.spec.ts` use the same actual
+OIDC/API/PostgreSQL boundary. Every accepted message originates in the real command
+endpoint; interception only delays or loses a real response. The harness owns an
+optional real worker process. Test-only SIGSTOP/SIGCONT holds its coordinator so
+the browser can distinguish received Pause/Stop from subsequently observed
+cessation. SIGKILL after actual consumption exercises unresolved recovery; the
+replacement worker must not replay it. These signals never target developer
+processes, and no production fault flags were added.
+
+The conversation journeys cover two Tasks, guidance to A while inspecting B,
+applied guidance retained across API/worker interruption, lost committed ACK plus
+reload and exact-key retry, changed-meaning 409, explicit Resume/Continue, bounded
+100-message and 100-Task paging, two-tab recovery, actor/scope replacement,
+revocation, reserved control admission during held ordinary reads, stale callback
+withdrawal, unavailable storage, conflict dismissal and editable next drafts.
+Keyboard checks exercise Enter/Shift+Enter, pin/Follow, Escape/focus return and
+same-scope access refresh. Viewport screenshots at 1280, 390 and 320 pixels check
+that Send and named Task controls remain reachable without horizontal page
+overflow. The work-product shelf and foundation limitations remain explicit.
+
+To reproduce the first demonstration alone, after the preparation above:
+
+```sh
+ZOBBA_BROWSER_EXECUTABLE=/usr/bin/chromium \
+  pnpm --filter @zobba/web exec playwright test conversation.spec.ts
+```
+
+Keep the full suite as the final gate; its existing 23 identity/health scenarios
+remain active. The browser files reuse one disposable database sequentially
+and preserve fixture membership after each scenario. Conversation cases truncate
+only their guarded synthetic Task aggregates before each case. They do not reset
+the schema, reseed customer data, or change the developer database.
+
+The consolidated 20.4 review regressions additionally hold current authority and
+projection reads to prove that the entire protected surface hides while Task
+controls/disclosures retain their nodes and restore focus on successful recovery.
+They verify Follow against current activity while reading history, one-time exact
+send scrolling and stale-cycle refusal for independently inspected off-page Tasks.
+The storage regressions hold a real IndexedDB write transaction while competing
+tabs request admission near quota. They prove no persistence or POST before commit,
+six ordinary plus two reserved controls per binding, global reserved capacity,
+repeated Enter producing one key, and revalidation preserving the original handoff.
+The holder observes records inside a request callback, where the transaction is
+active. Additional cases abort an actual write and throw during post-commit
+notification. Negative controls bypass the quota check or the synchronous duplicate
+submission guard only in test-local served JavaScript; each must fail its normal
+assertion. No successful API response is fabricated. The old Web Lock mutant is
+historical evidence only: IndexedDB now provides atomicity.
+
+The unshipped local-storage preview is intentionally not imported or replayed. Its
+own-binding records cause a typed refusal and remain untouched. The disposable
+browser contexts start with clean recovery storage; never remove uncertain records
+from a real user's browser to make a fixture pass.
+
+Final Story 20.4 verification: all 46 retained/new browser cases passed with zero
+failures, skips or retries. The independent repair run passed 15 focused cases plus
+an additional real abort-after-request-success proof; the web check passed 71
+unit tests. Quiescent Pause/Stop metadata is retained by the final JSON reporter,
+with viewport captures and exact log paths in the implementation evidence report.

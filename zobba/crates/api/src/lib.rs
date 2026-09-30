@@ -1,5 +1,6 @@
 //! Owned HTTP interface. OpenAPI is generated from these handler and wire types.
 pub mod auth;
+pub mod conversation;
 pub mod engagements;
 pub mod tasks;
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
@@ -134,7 +135,10 @@ pub fn authenticated_router(database: RuntimeDatabase, identity: auth::AuthState
         tasks::control,
         tasks::list,
         tasks::get,
-        tasks::events
+        tasks::events,
+        conversation::snapshot,
+        conversation::history,
+        conversation::events
     ),
     components(schemas(
         HealthResponse,
@@ -155,7 +159,13 @@ pub fn authenticated_router(database: RuntimeDatabase, identity: auth::AuthState
         tasks::TaskResponse,
         tasks::TasksResponse,
         tasks::TaskEventResponse,
-        tasks::TaskEventsResponse
+        tasks::TaskEventsResponse,
+        conversation::ConversationScopeResponse,
+        conversation::ConversationAudienceResponse,
+        conversation::ConversationMessageResponse,
+        conversation::ConversationSnapshotResponse,
+        conversation::ConversationHistoryResponse,
+        conversation::ConversationFeedResponse
     ))
 )]
 pub struct ApiDocument;

@@ -40,12 +40,19 @@ pub async fn seed_local_configured(issuer: &str, database_url: &str) -> Result<(
     let mut connection = PgConnection::connect_with(&options)
         .await
         .map_err(|_| BootstrapError::DatabaseUnavailable)?;
-    // Validate the installed owned schema first; the seed never applies migrations.
-    crate::check_schema(&mut connection, false).await?;
     let mut tx = connection
         .begin()
         .await
         .map_err(|_| BootstrapError::DatabaseUnavailable)?;
+    // Catalog deparsing takes relation locks too. Serialize before the first
+    // schema read, otherwise two seed calls can deadlock a reader's catalog
+    // locks against the other's temporary, transaction-local RLS DDL.
+    sqlx::query("SELECT pg_advisory_xact_lock(20260930, 2002)")
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| BootstrapError::MigrationFailed)?;
+    // Validate before reading fixture metadata; seeding never migrates.
+    crate::check_schema(&mut tx, false).await?;
     // The singleton row serializes provisioning and retains the decision even if
     // every synthetic identity and membership is subsequently removed.
     let provisioned: Option<String> = sqlx::query_scalar(

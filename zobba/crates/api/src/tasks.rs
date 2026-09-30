@@ -49,6 +49,7 @@ pub(crate) fn router(database: &RuntimeDatabase, identity: AuthState) -> Router 
             repository: TaskRepository::new(control_pool),
             control: true,
         });
+    let conversation = crate::conversation::router(database.pool().clone(), identity.clone());
     let ordinary = Router::new()
         .route("/engagements/{engagement_id}/task-commands", post(admit))
         .route("/engagements/{engagement_id}/tasks", route_get(list))
@@ -64,7 +65,8 @@ pub(crate) fn router(database: &RuntimeDatabase, identity: AuthState) -> Router 
             identity,
             repository: TaskRepository::new(database.pool().clone()),
             control: false,
-        });
+        })
+        .merge(conversation);
     bounded(ordinary, 8).merge(bounded(controls, 4))
 }
 
@@ -88,7 +90,7 @@ fn bounded(router: Router, capacity: usize) -> Router {
         ))
 }
 
-fn failure(error: TaskError) -> Response {
+pub(crate) fn failure(error: TaskError) -> Response {
     let status = match error {
         TaskError::Invalid => StatusCode::BAD_REQUEST,
         TaskError::Denied => StatusCode::FORBIDDEN,
@@ -249,6 +251,9 @@ pub struct TaskResponse {
     pub execution_epoch: String,
     /// Accountable human identity, distinct from worker ownership.
     pub accountable_actor: String,
+    /// Current public label of the accountable human, independent of recent message pages.
+    #[schema(max_length = 200)]
+    pub accountable_label: String,
 }
 
 impl From<TaskSnapshot> for TaskResponse {
@@ -264,6 +269,7 @@ impl From<TaskSnapshot> for TaskResponse {
             revision: value.revision.to_string(),
             execution_epoch: value.execution_epoch.to_string(),
             accountable_actor: value.accountable_actor,
+            accountable_label: value.accountable_label,
         }
     }
 }
@@ -345,6 +351,7 @@ impl TaskScopeQuery {
         ("client_id"=String,Query,min_length=1,max_length=128,pattern="^[A-Za-z0-9_-]+$"),
         ("Origin"=String,Header,description="Exact configured HTTPS application origin"),
         ("X-CSRF-Token"=String,Header,description="Current session-bound token")
+        ,("X-Expected-Actor"=Option<String>,Header,description="Optional additional refusal fence: expected current actor, never author authority",min_length=1,max_length=128,pattern="^[A-Za-z0-9_-]+$")
     ),request_body=TaskCommandRequest,
     responses((status=202,description="Durable immutable Received receipt for Create, Resume or Continue; identical retry returns the original",body=CommandReceiptResponse),(status=400,body=ErrorResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=409,body=ErrorResponse),(status=429,body=ErrorResponse),(status=503,body=ErrorResponse)))]
 pub(crate) async fn admit(
@@ -364,6 +371,7 @@ pub(crate) async fn admit(
         ("client_id"=String,Query,min_length=1,max_length=128,pattern="^[A-Za-z0-9_-]+$"),
         ("Origin"=String,Header,description="Exact configured HTTPS application origin"),
         ("X-CSRF-Token"=String,Header,description="Current session-bound token")
+        ,("X-Expected-Actor"=Option<String>,Header,description="Optional additional refusal fence: expected current actor, never author authority",min_length=1,max_length=128,pattern="^[A-Za-z0-9_-]+$")
     ),request_body=TaskCommandRequest,
     responses((status=202,description="Reserved admission/authentication for Guide, Pause and Stop; Received is not proof of cessation",body=CommandReceiptResponse),(status=400,body=ErrorResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=409,body=ErrorResponse),(status=429,body=ErrorResponse),(status=503,body=ErrorResponse)))]
 pub(crate) async fn control(
@@ -387,6 +395,19 @@ async fn command(
         Ok(current) => current,
         Err(error) => return crate::auth::failure(error),
     };
+    // A persisted outbox belongs to one actor. The server session remains the
+    // sole author source; this optional backwards-compatible header only adds a
+    // refusal fence when a browser session changes between rendering and POST.
+    let mut expected = headers.get_all("x-expected-actor").iter();
+    if let Some(value) = expected.next()
+        && (expected.next().is_some()
+            || value
+                .to_str()
+                .ok()
+                .is_none_or(|actor| !valid_scope_id(actor) || actor != current.identity.id))
+    {
+        return failure(TaskError::Denied);
+    }
     if !state
         .identity
         .permits_mutation(&headers, &current.csrf_token)
@@ -520,7 +541,7 @@ pub(crate) struct EventsQuery {
     after: Option<String>,
 }
 
-fn cursor(value: Option<&str>) -> Result<u64, TaskError> {
+pub(crate) fn cursor(value: Option<&str>) -> Result<u64, TaskError> {
     let Some(value) = value else {
         return Ok(0);
     };

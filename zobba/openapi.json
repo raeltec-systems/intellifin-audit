@@ -422,6 +422,354 @@
         ]
       }
     },
+    "/engagements/{engagement_id}/conversation": {
+      "get": {
+        "tags": [
+          "conversation"
+        ],
+        "operationId": "get_conversation",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One consistent current snapshot, bounded messages and Tasks with explicit page continuations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationSnapshotResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/conversation/events": {
+      "get": {
+        "tags": [
+          "conversation"
+        ],
+        "operationId": "get_conversation_events",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Last delivered decimal cursor or snapshot watermark",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 19,
+              "pattern": "^[0-9]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Finite ordered invalidation page; explicit resync for gaps or replay overflow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationFeedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/conversation/history": {
+      "get": {
+        "tags": [
+          "conversation"
+        ],
+        "operationId": "get_conversation_history",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "through",
+            "in": "query",
+            "description": "Snapshot watermark bounding retained Received and Applied facts",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 19,
+              "pattern": "^[0-9]+$"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Exclusive Received cursor; omitted returns latest page through watermark",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 19,
+              "pattern": "^[0-9]+$"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "query",
+            "description": "Optional exact Task history",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationHistoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Requested watermark is ahead of retained history; resnapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
     "/engagements/{engagement_id}/task-commands": {
       "post": {
         "tags": [
@@ -478,6 +826,21 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Actor",
+            "in": "header",
+            "description": "Optional additional refusal fence: expected current actor, never author authority",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
             }
           }
         ],
@@ -626,6 +989,21 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Actor",
+            "in": "header",
+            "description": "Optional additional refusal fence: expected current actor, never author authority",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
             }
           }
         ],
@@ -1131,6 +1509,275 @@
           }
         }
       },
+      "ConversationActivityResponse": {
+        "type": "object",
+        "required": [
+          "cursor",
+          "task_id"
+        ],
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "description": "Decimal Received or Applied cursor, no greater than the snapshot watermark.",
+            "maxLength": 19,
+            "pattern": "^[1-9][0-9]{0,18}$"
+          },
+          "task_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          }
+        }
+      },
+      "ConversationAudienceResponse": {
+        "type": "string",
+        "enum": [
+          "engagement_members"
+        ]
+      },
+      "ConversationFeedResponse": {
+        "type": "object",
+        "required": [
+          "scope",
+          "audience",
+          "watermark",
+          "events",
+          "next_cursor",
+          "has_more",
+          "resync_required"
+        ],
+        "properties": {
+          "audience": {
+            "$ref": "#/components/schemas/ConversationAudienceResponse"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskEventResponse"
+            },
+            "description": "Invalidation facts; obtain a new consistent snapshot to replace current state.",
+            "maxItems": 100
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "type": "string",
+            "description": "Last returned cursor, or unchanged input. Never advances over omitted facts.",
+            "pattern": "^[0-9]+$"
+          },
+          "resync_required": {
+            "type": "boolean",
+            "description": "Gap, cursor ahead of server, or backlog exceeding 1000: refresh the snapshot.\nEvents is empty and next_cursor unchanged; do not infer progress from watermark."
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ConversationScopeResponse"
+          },
+          "watermark": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          }
+        }
+      },
+      "ConversationHistoryResponse": {
+        "type": "object",
+        "required": [
+          "scope",
+          "audience",
+          "watermark",
+          "messages",
+          "before_cursor"
+        ],
+        "properties": {
+          "audience": {
+            "$ref": "#/components/schemas/ConversationAudienceResponse"
+          },
+          "before_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConversationMessageResponse"
+            },
+            "maxItems": 100
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ConversationScopeResponse"
+          },
+          "watermark": {
+            "type": "string",
+            "description": "Requested fixed through cursor, including Applied facts only through that cursor.",
+            "pattern": "^[0-9]+$"
+          }
+        }
+      },
+      "ConversationMessageResponse": {
+        "type": "object",
+        "required": [
+          "command_id",
+          "key",
+          "author_id",
+          "author_label",
+          "kind",
+          "task_id",
+          "cycle_id",
+          "target_task_id",
+          "target_cycle_id",
+          "content",
+          "received_cursor",
+          "applied_cursor"
+        ],
+        "properties": {
+          "applied_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Applied means retained plain text reached a work boundary, not model understanding.",
+            "pattern": "^[0-9]+$"
+          },
+          "author_id": {
+            "type": "string"
+          },
+          "author_label": {
+            "type": "string",
+            "description": "Current public label of the retained author; role changes do not erase authorship.",
+            "maxLength": 200
+          },
+          "command_id": {
+            "type": "string"
+          },
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4000
+          },
+          "cycle_id": {
+            "type": "string",
+            "description": "Resulting cycle. Continue preserves its old addressed cycle separately below."
+          },
+          "key": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/CommandKindRequest"
+          },
+          "received_cursor": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "target_cycle_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_task_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "task_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ConversationScopeResponse": {
+        "type": "object",
+        "required": [
+          "organisation_id",
+          "client_id",
+          "engagement_id"
+        ],
+        "properties": {
+          "client_id": {
+            "type": "string"
+          },
+          "engagement_id": {
+            "type": "string"
+          },
+          "organisation_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ConversationSnapshotResponse": {
+        "type": "object",
+        "required": [
+          "scope",
+          "audience",
+          "watermark",
+          "latest_activity",
+          "messages",
+          "before_cursor",
+          "tasks",
+          "next_task_cursor"
+        ],
+        "properties": {
+          "audience": {
+            "$ref": "#/components/schemas/ConversationAudienceResponse"
+          },
+          "before_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Exclusive Received cursor for the preceding history page at this watermark.",
+            "pattern": "^[0-9]+$"
+          },
+          "latest_activity": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ConversationActivityResponse",
+                "description": "Latest current-scope Received or Applied fact, independent of message and Task pages."
+              }
+            ]
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConversationMessageResponse"
+            },
+            "description": "Latest 100 accepted commands in ascending Received order; not the complete history.",
+            "maxItems": 100
+          },
+          "next_task_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Continue through GET tasks?after_task_id; those pages are fresh current reads."
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ConversationScopeResponse"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskResponse"
+            },
+            "description": "First 100 current Tasks ordered by ID; open any known ID independently.",
+            "maxItems": 100
+          },
+          "watermark": {
+            "type": "string",
+            "description": "All included Task state and receipt facts come from the same statement as this cursor.",
+            "pattern": "^[0-9]+$"
+          }
+        }
+      },
       "EngagementResponse": {
         "type": "object",
         "required": [
@@ -1441,12 +2088,18 @@
           "intent_revision",
           "revision",
           "execution_epoch",
-          "accountable_actor"
+          "accountable_actor",
+          "accountable_label"
         ],
         "properties": {
           "accountable_actor": {
             "type": "string",
             "description": "Accountable human identity, distinct from worker ownership."
+          },
+          "accountable_label": {
+            "type": "string",
+            "description": "Current public label of the accountable human, independent of recent message pages.",
+            "maxLength": 200
           },
           "cessation": {
             "$ref": "#/components/schemas/CessationResponse"

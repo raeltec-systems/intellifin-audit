@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, readlinkSync } from 'node:fs';
+import { once } from 'node:events';
 import { request as httpsRequest } from 'node:https';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,6 +53,11 @@ export interface AuthRuntime {
   restoreDatabase: () => void;
   captureCallback: () => Promise<string>;
   restartApi: () => Promise<void>;
+  startWorker: (duration?: number) => Promise<void>;
+  stopWorker: () => Promise<void>;
+  freezeWorker: () => Promise<{ process_id: number; application_name: string; state: string; connections: number; unsettled_transactions: number; granted_locks: number; live_children: number }>;
+  thawWorker: () => void;
+  crashWorker: () => Promise<void>;
   scenario: (name: 'normal' | 'slow_discovery') => Promise<void>;
   close: () => Promise<void>;
 }
@@ -67,7 +73,7 @@ export async function startAuthRuntime(): Promise<AuthRuntime> {
   if (new Set([runtimeDatabase.pathname, migrationDatabase.pathname, adminDatabase.pathname]).size !== 1) {
     throw new Error('Browser database role bindings must target the same disposable database.');
   }
-  run('cargo', ['build', '--quiet', '--locked', '-p', 'zobba-api', '-p', 'zobba-cli'], process.env);
+  run('cargo', ['build', '--quiet', '--locked', '-p', 'zobba-api', '-p', 'zobba-cli', '-p', 'zobba-worker'], process.env);
   const metadata = JSON.parse(run('cargo', ['metadata', '--locked', '--no-deps', '--format-version', '1'], process.env));
   const fixtureDirectory = resolve(process.env.ZOBBA_FIXTURE_DIR ?? resolve(fixtureRoot, '.local'));
   run('node', [resolve(fixtureRoot, 'setup.mjs')], { ...process.env, ZOBBA_FIXTURE_DIR: fixtureDirectory });
@@ -88,12 +94,17 @@ export async function startAuthRuntime(): Promise<AuthRuntime> {
   const database = new DatabaseProxy(runtimeDatabase);
   let provider: ChildProcess | undefined;
   let api: ChildProcess | undefined;
+  let worker: ChildProcess | undefined;
+  let workerSequence = 0;
+  let workerApplicationName = '';
   let vite: ViteDevServer | undefined;
   let callbackCapture: ((url: string) => void) | null = null;
   const cleanup = async () => {
     try { await vite?.close(); } finally {
+      try { if (worker) { worker.kill('SIGCONT'); await stop(worker); } } finally {
       try { if (api) await stop(api); } finally {
         try { if (provider) await stop(provider); } finally { await database.close(); }
+      }
       }
     }
   };
@@ -180,6 +191,92 @@ export async function startAuthRuntime(): Promise<AuthRuntime> {
         return new Promise<string>((resolveCallback) => { callbackCapture = resolveCallback; });
       },
       async restartApi() { if (api) await stop(api); await startApi(); },
+      async startWorker(duration = 30_000) {
+        if (worker && worker.exitCode === null && worker.signalCode === null) throw new Error('Owned worker is already running.');
+        if (!Number.isInteger(duration) || duration < 10 || duration > 30_000) throw new Error('Invalid owned inert duration.');
+        const workerPort = await freePort();
+        // Identify only this owned worker's connections in freeze diagnostics.
+        // database_options preserves this supported URL application_name field.
+        workerApplicationName = `zobba_browser_worker_${appPort}_${++workerSequence}`;
+        const workerDatabase = new URL(databaseUrl);
+        workerDatabase.searchParams.set('application_name', workerApplicationName);
+        worker = spawn(resolve(metadata.target_directory, 'debug/zobba-worker'), [], {
+          cwd: root,
+          env: { ...environment, ZOBBA_RUNTIME_DATABASE_URL: workerDatabase.toString(), ZOBBA_WORKER_BIND: `127.0.0.1:${workerPort}`, ZOBBA_INERT_DURATION_MS: String(duration) },
+          stdio: 'ignore',
+        });
+        worker.on('error', () => {});
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          if (worker.exitCode !== null || worker.signalCode !== null) throw new Error('Owned worker refused startup.');
+          try { if ((await fetch(`http://127.0.0.1:${workerPort}/health/ready`, { signal: AbortSignal.timeout(1000) })).status === 200) return; }
+          catch { /* Fixed bounded readiness probe; never expose runtime credentials. */ }
+          await delay(100);
+        }
+        throw new Error('Owned worker did not become ready.');
+      },
+      async stopWorker() { if (worker) { worker.kill('SIGCONT'); await stop(worker); worker = undefined; } },
+      async freezeWorker() {
+        const owned = worker;
+        if (!owned?.pid || owned.exitCode !== null || owned.signalCode !== null) throw new Error('No owned worker to freeze.');
+        const pid = owned.pid;
+        const ownedExecutable = readlinkSync(`/proc/${pid}/exe`);
+        const applicationName = workerApplicationName;
+        const state = (processId: number) => {
+          const stat = readFileSync(`/proc/${processId}/stat`, 'utf8');
+          return stat.slice(stat.lastIndexOf(')') + 2).split(' ')[0]!;
+        };
+        // This qualified container omits /proc/<pid>/task/<tid>/children.
+        // Bind candidates by the actual parent PID before inspecting executable.
+        const liveChildren = () => readdirSync('/proc')
+          .filter(child => /^\d+$/.test(child)).filter(child => {
+            try {
+              const stat = readFileSync(`/proc/${child}/stat`, 'utf8');
+              const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+              if (Number(fields[1]) !== pid) return false;
+              const args = readFileSync(`/proc/${child}/cmdline`, 'utf8').split('\0');
+              return readlinkSync(`/proc/${child}/exe`) === ownedExecutable && args[1] === '--inert-child' && !['Z', 'X'].includes(state(Number(child)));
+            } catch { return false; /* This exact child may have exited during observation. */ }
+          }).length;
+        const until = Date.now() + 5000;
+        while (Date.now() < until) {
+          if (worker !== owned || owned.exitCode !== null || owned.signalCode !== null || !owned.kill('SIGSTOP')) throw new Error('Owned worker exited before freeze.');
+          let retained = false;
+          try {
+            // Signal delivery is asynchronous. Inspect transactions only after
+            // the exact owned coordinator is stopped and cannot start another.
+            while (!['T', 't'].includes(state(pid))) {
+              if (Date.now() >= until) throw new Error('Owned worker freeze deadline exceeded.');
+              await delay(10);
+            }
+            const result = spawnSync('psql', ['-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1'], {
+              cwd: root, encoding: 'utf8', timeout: 2000,
+              input: `WITH owned AS MATERIALIZED (SELECT pid,state,xact_start FROM pg_catalog.pg_stat_activity WHERE datname=current_database() AND backend_type='client backend' AND application_name='${applicationName}') SELECT json_build_object('connections',count(*),'unsettled_transactions',count(*) FILTER (WHERE state<>'idle' OR xact_start IS NOT NULL),'granted_locks',(SELECT count(*) FROM pg_catalog.pg_locks WHERE granted AND pid IN (SELECT pid FROM owned)))::text FROM owned;`,
+              env: { ...environment, PGHOST: adminDatabase.hostname, PGPORT: adminDatabase.port || '5432', PGUSER: decodeURIComponent(adminDatabase.username),
+                PGPASSWORD: decodeURIComponent(adminDatabase.password), PGDATABASE: decodeURIComponent(adminDatabase.pathname.slice(1)), PGCONNECT_TIMEOUT: '2', PGOPTIONS: '-c statement_timeout=1000' },
+            });
+            if (result.error || result.status !== 0) throw new Error('Owned worker freeze database observation failed.');
+            const observed = JSON.parse(result.stdout) as { connections: number; unsettled_transactions: number; granted_locks: number };
+            const children = liveChildren();
+            if (observed.connections > 0 && observed.unsettled_transactions === 0 && observed.granted_locks === 0 && children > 0) {
+              retained = true;
+              return { process_id: pid, application_name: applicationName, state: state(pid), ...observed, live_children: children };
+            }
+          } finally {
+            // SIGSTOP inside a transaction can itself block controls. Thaw that
+            // sample and retry; never lengthen the API deadline to hide it.
+            if (!retained) owned.kill('SIGCONT');
+          }
+          await delay(50);
+        }
+        throw new Error('Could not freeze the owned worker between transactions with live inert activity.');
+      },
+      thawWorker() { if (!worker?.kill('SIGCONT')) throw new Error('No owned worker to resume.'); },
+      async crashWorker() {
+        if (!worker || worker.exitCode !== null || worker.signalCode !== null) throw new Error('No live owned worker to interrupt.');
+        const exited = once(worker, 'exit');
+        worker.kill('SIGKILL');
+        await exited; worker = undefined;
+      },
       async scenario(name) {
         await new Promise<void>((resolveScenario, reject) => {
           const request = httpsRequest(`${issuer}/__admin/scenario`, { ca, method: 'POST', timeout: 2000,

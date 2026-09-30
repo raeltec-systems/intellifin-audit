@@ -1,3 +1,104 @@
+## 2026-09-30 — Story 20.4 conversation, delivery and recovery boundaries
+
+Final 20.4 gates: 81 Rust tests passed (one explicit helper exercised by its parent),
+71 web unit tests, 46 actual browser cases, 46 OIDC fixture tests and 47 Python
+guards; formatter, Clippy, builds, inward boundaries and process smoke passed.
+Independent final repair acceptance passed 71 web tests, 15 browser cases and an
+additional commit-abort proof. Both negative controls failed their intended invariant.
+Keep the saved evidence's actual failures and compatibility limits when reporting.
+
+Project conversation messages from the accepted Task command/receipt authority.
+Never accept a browser message independently. Snapshot state, messages and watermark
+share one PostgreSQL statement snapshot; Received/Applied history uses a fixed
+through cursor. All cursors remain decimal strings. Feed pages contain at most100
+contiguous events; a gap, future cursor or backlog over1,000 requires explicit
+resynchronisation. Finite browser polling holds no database connection for a viewer.
+Bound displayed history and Task pages separately, and refresh a later Task page
+from its own cursor after invalidation. Exact Task inspection cannot depend on the
+Task appearing in the current100 rows.
+
+The Create author is the accountable human. Read their public label independently
+of the latest conversation page; a later Guide author must never become the Task
+owner. Preserve current-reader membership checks while retaining historical authors.
+An inert result means Waiting, never audit-objective completion. Applied means plain
+working-brief direction reached a work boundary, not model understanding.
+
+Persist exact actor/composite scope/key/meaning before any transmission, separately
+from the next editable draft. One IndexedDB transaction atomically checks immutable
+meaning and scoped/global quota, then resolves only on strict-durability commit.
+The independent native-Web-Lock proof exposed renderer-local storage staleness:
+two tabs each wrote 5→6 before any reconciliation removed a row, admitting seven.
+Do not repair that with sleeps or a second authoritative cache. Cap recovery at
+8 records per actor/scope (two reserved Pause/Stop places) and 64 per origin (four
+reserved places). Read only the bounded own-binding index. BroadcastChannel signals
+carry a binding only, never replay, and must not throw after a committed handoff.
+Status updates must not resurrect another tab's reconciled row. Controller disposal
+closes its database and channel; temporary access revalidation retains uncertainty.
+Preserve old unshipped preview bytes and fail closed for an own-binding preview
+record; do not silently migrate or resend it. Legacy detection bounds key-name scans
+at 2,048 without reading another binding's payload. Reconcile only an exact
+author/key/target/cycle/content echo; a 409 refusal can be dismissed, while uncertain
+requests retain their recovery key. Never persist CSRF/session material. Bound JSON
+response bytes before parsing, not only the number of validated rows afterwards.
+
+When suspending the real worker to prove pending controls, SIGSTOP can catch a
+transaction holding the engagement row and manufacture a control503. The observed
+PostgreSQL statement timeout occurred in TaskRepository::lock, not admission.
+Give each owned test worker a unique application_name; after its process is stopped,
+verify those exact connections are idle with no transaction or granted lock and
+that its actual inert child is alive. Thaw/retry a nonquiescent sample within a
+bounded deadline. Preserve 202, pending and observed assertions and attach the
+quiescence evidence. Never extend production deadlines to hide a fixture-held lock.
+
+Every browser mutation sends an expected-actor refusal fence (`X-Expected-Actor`)
+in addition to current in-memory session CSRF. The server remains the author source.
+Guide/Pause/Stop retries rely on the reserved POST's fresh session, actor, CSRF and
+membership check before idempotency lookup; an ordinary GET preflight would undo
+the independent control lane. Other retries refresh session and exact scope before
+sending. Session replacement refuses rather than adopting a new actor's authority
+into an old outbox item. No automatic browser replay after reload or access change.
+
+Keep the same actor/scope workspace mounted and hidden during access revalidation,
+preserving the local draft, explicit target, selected/pinned inspection and focus.
+Actual failure clears protected projections; actor/scope changes remount the bound
+controller. Fence all late snapshot/history/control callbacks. Restore the actual
+retained focused node and textarea selection before falling back to a stable focus
+identifier or the new view heading. Opening or following a Task never retargets the
+composer. Fence duplicate Enter synchronously while asynchronous storage admission
+runs, and clear only the submitted unchanged draft generation after persistence.
+A generation change during awaited reservation cannot undo that handoff: retain and
+surface the saved request in the current same-bound controller without an obsolete
+POST. Observe only current-binding storage signals across tabs, never replay automatically.
+Keep exact durable echo evidence while its POST remains in flight; a later lost reply
+cannot downgrade a known receipt. Associate unresolved notices with their operation
+so dismissing one refusal clears only that notice.
+
+Hide the entire protected surface during access checks, including identity, scope,
+roles and the picker. Keep Task detail/control nodes mounted but hidden through the
+following same-scope projection load, then restore focus once usable; actual failures
+withdraw them. Exact inspection success and failure share selection, lifetime and
+projection fences. Validate a retained composer cycle against an exact inspected
+Task even when it is outside the current bounded page.
+
+Follow uses the snapshot's latest scoped Received/Applied activity independently of
+the displayed history page. A later Applied event can belong to an older omitted
+command. Keep this narrow activity metadata in the same SQL snapshot as its cursor.
+A send scroll belongs to its exact persisted key and is consumed once; later receipts
+or storage changes must preserve deliberate history navigation.
+
+
+Concurrent local seeds must acquire their fixed transaction advisory lock before
+first validating/deparsing the PostgreSQL catalog. Taking it after validation lets
+one seed hold catalog-related locks while another holds transaction-local RLS DDL
+locks, creating a lock-order deadlock. The lock serializes only explicit synthetic
+fixture setup; it grants no runtime authority and must not regrant revoked fixture
+memberships. Retain the actual concurrent-seed/no-regrant database regression.
+
+A successful conversation read clears only the transient read-failure notice.
+Unresolved storage failures, uncertain commands and explicit refusals retain their
+own notice through reconnect; a read succeeding is not evidence that a write was
+received or local recovery storage became usable.
+
 ## 2026-09-30 — Story 20.3 durable Task commands and factual recovery
 
 The original Received receipt is immutable. Applied guidance and observed child

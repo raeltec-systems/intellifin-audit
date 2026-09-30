@@ -1,4 +1,5 @@
 //! Application-owned ports. No SQL, HTTP or vendor error crosses them.
+pub mod conversation;
 pub mod identity;
 pub mod task;
 use std::{fmt, future::Future};

@@ -1,4 +1,5 @@
 //! Owned identity, scope and durable Task meanings; no delivery or vendor types.
+pub mod conversation;
 pub mod identity;
 pub mod task;
 

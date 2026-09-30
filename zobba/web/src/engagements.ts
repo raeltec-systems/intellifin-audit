@@ -7,13 +7,13 @@ export type EngagementPage = paths['/engagements']['get']['responses'][200]['con
 // Rust's Unicode White_Space edges differ from JavaScript trim (notably FEFF).
 const edgeWhitespace = /^[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]|[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]$/;
 
-function parseScope(value: unknown): Scope {
+export function parseScope(value: unknown): Scope {
   if (!value || typeof value !== 'object') throw new Error('Invalid engagement scope');
   const record = value as Record<string, unknown>;
   for (const key of ['organisation_id', 'client_id', 'engagement_id']) {
     if (typeof record[key] !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(record[key])) throw new Error('Invalid engagement scope');
   }
-  return value as Scope;
+  return { organisation_id: record.organisation_id as string, client_id: record.client_id as string, engagement_id: record.engagement_id as string };
 }
 
 export function parseEngagement(value: unknown): Engagement {
@@ -54,7 +54,7 @@ export async function readEngagements(signal: AbortSignal, after: Scope | null =
   return parseEngagementPage(await readJson(`/engagements${query}`, signal));
 }
 
-function sameScope(left: Scope, right: Scope): boolean {
+export function sameScope(left: Scope, right: Scope): boolean {
   return left.organisation_id === right.organisation_id && left.client_id === right.client_id &&
     left.engagement_id === right.engagement_id;
 }

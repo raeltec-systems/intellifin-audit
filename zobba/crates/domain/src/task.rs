@@ -197,6 +197,7 @@ pub struct TaskSnapshot {
     pub revision: u64,
     pub execution_epoch: u64,
     pub accountable_actor: String,
+    pub accountable_label: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

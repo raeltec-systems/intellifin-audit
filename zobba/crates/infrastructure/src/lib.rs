@@ -1,4 +1,5 @@
 //! PostgreSQL bootstrap adapter. Runtime validation never runs a migration.
+pub mod conversation;
 pub mod dispatcher;
 pub mod fixture;
 pub mod identity;

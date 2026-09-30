@@ -1,11 +1,12 @@
 # Zobba foundation
 
 This independent workspace builds the Rust API, worker, explicit migration CLI
-and Pair web interface through Story 20.3. Real OIDC sign-in creates opaque Rust
+and Pair web interface through Story 20.4. Real OIDC sign-in creates opaque Rust
 server sessions; current membership limits engagement selection to explicitly
 assigned work. Durable Task commands and an inert worker survive process restarts
 without inventing execution outcomes. Health reports the actual database state.
-Conversation UI, model/tool execution, audit conclusions, real computers and
+The engagement conversation retains attributed messages, factual Task cards and
+plain working briefs. Model/tool execution, audit conclusions, real computers and
 customer SSO qualification remain later capabilities.
 
 Run every command below from `zobba/`. The historical repository-root Node
@@ -263,6 +264,85 @@ the consumed attempt remains uncertain, never silently replayed. Process fault
 wrappers exist only in integration-test executables, with no production fault or
 authentication bypass. The normally ignored process-helper entry is explicitly
 executed by the reliability scenario as a child process.
+
+## Engagement conversation and recoverable input
+
+The browser uses one conversation per exact organisation/client/engagement tuple.
+Its audience is the engagement's current assigned members. Message authors remain
+attributed after role changes, and the Task's accountable human has a separate
+label. Reads project the authoritative command rows and immutable Received/Applied
+facts; there is no second message-admission engine or new migration in Story20.4.
+The accepted migration bytes and schema3 catalog contracts remain unchanged.
+
+| Path beneath `/engagements/{engagement_id}` | Bounded read contract |
+|---|---|
+| `GET /conversation` | One consistent snapshot: exact scope/audience, watermark, latest100 messages, first100 current Tasks and pagination cursors |
+| `GET /conversation/history?through=<watermark>&before=<cursor>` | Previous100 messages, ascending within each page; Applied facts are restricted to the fixed watermark |
+| `GET /conversation/events?after=<cursor>` | Up to100 ordered invalidation facts, unchanged input cursor on an empty/resync response, `has_more` and `resync_required` |
+
+All routes also require `organisation_id` and `client_id`. The snapshot and its
+watermark come from one PostgreSQL statement snapshot; it holds no writer lock and
+never waits for a viewer. History optionally filters by exact `task_id`. A future
+cursor, gap or backlog over1,000 events explicitly requires a new snapshot. Never
+advance an event cursor over omitted rows. Cursors remain decimal strings through
+SQL, JSON and browser validation, including values above JavaScript's safe integer
+range. The current Task projection is separate from the latest history page.
+
+The browser polls finite pages every two seconds with eight-second request
+limits and no overlapping poll loop. An event invalidates the snapshot; a bounded
+fresh snapshot replaces the live page. Historical pages retain their fixed
+watermark, and later Task pages refresh from their current page cursor. Each
+rendered page holds at most100 messages and100 Tasks; opening a known Task reads
+its exact ID independently. Earlier messages and Latest messages expose bounded
+history navigation. A failed or malformed read withdraws server projections and
+shows reconnecting state. JSON reads cap the decompressed body at4MiB.
+
+The composer explicitly chooses New Task or Guide plus an exact Task/cycle.
+Opening, pinning or following inspection never retargets input. Local draft edits
+are separate from saved requests. Before transmission, the browser stores exact
+actor, composite scope, key, kind, target/cycle and content in IndexedDB; a
+storage failure refuses sending. No session or CSRF token is stored. Reloading
+reads only that actor/scope's outbox and never automatically replays a request.
+An exact durable echo reconciles by author, key and full meaning. Otherwise
+Check original request resends the same immutable request to recover its receipt.
+A409 refusal can be dismissed; an uncertain request cannot be silently discarded.
+
+Recovery storage uses one IndexedDB authority. A strict-durability transaction
+atomically checks immutable meaning and quotas, then commits before transmission.
+It allows eight pending requests per actor/scope, with two places reserved for
+Pause/Stop; across the origin it allows 64, with four places reserved for Pause/Stop.
+Reads use a bounded actor/scope index; other binding payloads never enter the current
+view. Same-binding notifications trigger reads without replay. Failed notification
+cannot undo a durable handoff. Unavailable storage or a failed commit prevents
+transmission, and uncertain requests have no silent expiry. Controller disposal
+closes its connection after existing transactions finish.
+
+The earlier, unshipped local-storage preview is not a second recovery authority.
+Its bytes are preserved; an own-binding pending preview record prevents new sends
+until recovered. Detection scans at most 2,048 key names without reading other
+bindings' payloads. Synthetic fixture resets belong to the development harness.
+
+Every browser mutation sends `X-Expected-Actor` with the App-verified actor and
+session-bound CSRF. The header is a refusal fence, never an author or grant of
+authority; server sessions still derive the author. Initial commands use the
+current in-memory verified Session. Guide/Pause/Stop, including retries, freshly
+check session, actor, CSRF and current membership in the reserved admission lane
+before idempotency lookup. They do not wait on ordinary access GETs. Other retries
+first revalidate session and the exact engagement. A changed actor, stale session
+or revoked scope withdraws the view and never substitutes another actor's session
+into the saved operation.
+
+Same-scope access revalidation hides the protected surface while keeping its
+nodes, independent draft, selection and focus mounted. Success restores that
+view; failure, logout or actor/scope change withdraws it. Abort controllers and
+access/read generations prevent older callbacks from restoring withdrawn work.
+Sign-out intent remains independent of automatic focus/visibility/timer refresh.
+
+Received never means Applied. Applied means retained direction reached a working
+boundary; it asserts no model understanding. Waiting does not mean the audit
+objective completed. Pausing/Stopping remain pending until cessation is confirmed;
+reconciliation required remains unresolved. Resume uses the same cycle and Continue
+creates a new one. Work products remain honestly empty in this foundation.
 
 ## Start the processes
 

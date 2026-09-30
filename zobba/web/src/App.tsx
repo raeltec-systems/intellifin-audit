@@ -4,6 +4,8 @@ import type { Session } from './auth';
 import { readEngagement, readEngagements, roleLabel, scopeFromLocation, showScope } from './engagements';
 import type { Engagement, EngagementPage, Scope } from './engagements';
 import { HealthPage } from './HealthPage';
+import { ConversationWorkspace } from './ConversationWorkspace';
+import { sameScope } from './engagements';
 
 type View =
   | { kind: 'loading'; signingOut?: boolean }
@@ -20,6 +22,11 @@ function OpenArrow() {
 function PairWorkspace() {
   const [view, setView] = useState<View>({ kind: 'loading' });
   const [busy, setBusy] = useState(false);
+  const [projectionUsable, setProjectionUsable] = useState(false);
+  const projectionStatus = useCallback((usable: boolean) => setProjectionUsable(usable), []);
+  const currentView = useRef<View>({ kind: 'loading' });
+  currentView.current = view;
+  const focusSnapshot = useRef<{ element: HTMLElement; start: number | null; end: number | null } | null>(null);
   const request = useRef<AbortController | null>(null);
   // A user action outlives automatic reads and even an uncertain POST result.
   // Its independent controller is aborted only at unmount or its own deadline.
@@ -31,30 +38,48 @@ function PairWorkspace() {
   const restoreFocus = useRef<string | null>(null);
   const pendingFocus = useRef<string | null>(null);
 
+  const rememberFocus = useCallback(() => {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || active === document.body || !active.getClientRects().length) return;
+    restoreFocus.current = active.dataset.focus ?? null;
+    focusSnapshot.current = { element: active, start: active instanceof HTMLTextAreaElement ? active.selectionStart : null,
+      end: active instanceof HTMLTextAreaElement ? active.selectionEnd : null };
+  }, []);
+
   useLayoutEffect(() => {
-    if (view.kind === 'loading') return;
+    if (view.kind === 'loading' || busy || view.kind === 'ready' && view.selected && !projectionUsable) return;
+    const saved = focusSnapshot.current;
     const target = pendingFocus.current;
-    if (target) {
-      const control = target === 'workspace-heading' ? null
-        : document.querySelector<HTMLElement>(`[data-focus="${CSS.escape(target)}"]`);
-      (control ?? heading.current)?.focus();
+    if (target !== 'workspace-heading' && saved?.element.isConnected && saved.element.getClientRects().length) {
+      saved.element.focus({ preventScroll: true });
+      if (saved.element instanceof HTMLTextAreaElement && saved.start !== null && saved.end !== null) {
+        saved.element.setSelectionRange(saved.start, saved.end);
+      }
+    } else if (target || saved) {
+      const control = target && target !== 'workspace-heading'
+        ? document.querySelector<HTMLElement>(`[data-focus="${CSS.escape(target)}"]`) : null;
+      (control ?? heading.current)?.focus({ preventScroll: true });
     }
+    focusSnapshot.current = null;
     pendingFocus.current = null;
     restoreFocus.current = null;
-  }, [view]);
+  }, [view, busy, projectionUsable]);
 
   const refresh = useCallback(async (focus = false) => {
     if (logoutIntent.current) return;
-    const active = document.activeElement;
-    if (active instanceof HTMLElement && active.dataset.focus) restoreFocus.current = active.dataset.focus;
+    rememberFocus();
     pendingFocus.current = focus ? 'workspace-heading' : restoreFocus.current;
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
     const timeout = setTimeout(() => controller.abort(), 8000);
     setBusy(true);
-    // Revalidation never leaves previously disclosed client content on screen.
-    setView({ kind: 'loading' });
+    // Keep the same workspace mounted while a same-scope read is in flight.
+    // Its hook withdraws server projections and stops delivery; draft and focus survive.
+    const previous = currentView.current;
+    const retain = previous.kind === 'ready' && (!scope.current && !previous.selected ||
+      scope.current && previous.selected && sameScope(scope.current, previous.selected));
+    if (!retain) setView({ kind: 'loading' });
     try {
       const [session, initialPage] = await Promise.all([
         readSession(controller.signal), readEngagements(controller.signal, pageCursors.current.at(-1)),
@@ -98,7 +123,7 @@ function PairWorkspace() {
         setBusy(false);
       }
     }
-  }, []);
+  }, [rememberFocus]);
 
   useEffect(() => {
     void refresh();
@@ -106,10 +131,9 @@ function PairWorkspace() {
     const onVisibility = () => {
       if (logoutIntent.current) return;
       if (document.visibilityState === 'hidden') {
-        const active = document.activeElement;
-        if (active instanceof HTMLElement && active.dataset.focus) restoreFocus.current = active.dataset.focus;
+        rememberFocus();
         request.current?.abort(); request.current = null;
-        setView({ kind: 'loading' });
+        setBusy(true);
       } else { void refresh(); }
     };
     const onPageShow = (event: PageTransitionEvent) => { if (event.persisted) void refresh(); };
@@ -125,7 +149,7 @@ function PairWorkspace() {
       window.removeEventListener('pageshow', onPageShow);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [refresh]);
+  }, [refresh, rememberFocus]);
 
   async function signOut(session?: Session) {
     if (logoutRequest.current) return;
@@ -174,7 +198,7 @@ function PairWorkspace() {
   }
 
   const selected = view.kind === 'ready' ? view.selected : null;
-  return <div className="app-shell">
+  return <div className={`app-shell${selected ? ' engagement-shell' : ''}`}>
     <a className="skip-link" href="#workspace">Skip to workspace</a>
     <aside className="sidebar" aria-label="Workspace navigation">
       <img className="brand-lockup" src="/assets/zobba-lockup-color.svg" alt="Zobba" width="132" height="32" />
@@ -184,9 +208,9 @@ function PairWorkspace() {
     <div className="workspace">
       <header className="workspace-header">
         <span>{selected ? 'Engagement' : 'Workspace'}</span>
-        {view.kind === 'ready' ? <div className="identity"><span>{view.session.identity.display_name}</span><button className="quiet-button" data-focus="sign-out" type="button" onClick={() => void signOut(view.session)}>Sign out</button></div> : <span className="pair-label">Pair</span>}
+        {view.kind === 'ready' ? <div className="identity" hidden={busy}><span>{view.session.identity.display_name}</span><button className="quiet-button" data-focus="sign-out" type="button" onClick={() => void signOut(view.session)}>Sign out</button></div> : <span className="pair-label">Pair</span>}
       </header>
-      <main id="workspace" tabIndex={-1}>
+      <main id="workspace" className={selected ? 'engagement-main' : undefined} tabIndex={-1}>
         {view.kind === 'loading' ? <div className="intro" role="status"><p className="eyebrow">Zobba · Pair</p><h1>{view.signingOut ? 'Signing you out…' : 'Checking your access…'}</h1></div> : null}
         {view.kind === 'signed-out' ? <section className="intro sign-in">
           <img src="/assets/zobba-symbol-color.svg" alt="" width="44" height="44" />
@@ -204,22 +228,30 @@ function PairWorkspace() {
             onClick={() => void (view.action === 'logout' ? signOut() : refresh(true))}>
             {view.action === 'logout' ? 'Try signing out again' : 'Try again'}</button>
         </section> : null}
-        {view.kind === 'ready' ? <>
+        {view.kind === 'ready' && busy ? <div className="intro" role="status">Checking current access…</div> : null}
+        {view.kind === 'ready' ? <div className="protected-workspace" hidden={busy}>
           {view.message ? <p className="notice" role="status">{view.message}</p> : null}
           {view.selected ? <>
+            <div className="engagement-heading-row">
             <button className="back-button" data-focus="all-engagements" type="button" onClick={() => select(null)}>← All engagements</button>
             <div className="intro"><p className="eyebrow">{view.selected.organisation_name} / {view.selected.client_name}</p>
               <h1 ref={heading} data-focus="workspace-heading" tabIndex={-1}>{view.selected.engagement_name}</h1>
-              <p className="intro-copy">Your engagement is open.</p>
             </div>
-            <section className="scope-panel" aria-labelledby="scope-title">
+            <details className="scope-panel compact-scope">
+              <summary>Current scope</summary>
+              <div className="scope-popover">
               <h2 id="scope-title">Current scope</h2>
               <dl><div><dt>Organisation</dt><dd>{view.selected.organisation_name}</dd></div>
                 <div><dt>Client</dt><dd>{view.selected.client_name}</dd></div>
                 <div><dt>Engagement</dt><dd>{view.selected.engagement_name}</dd></div>
                 <div><dt>Your role</dt><dd>{view.selected.roles.map(roleLabel).join(' · ')}</dd></div></dl>
               <p className="scope-note">Access is checked against your current assignment.</p>
-            </section>
+              </div>
+            </details>
+            </div>
+            <ConversationWorkspace key={`${view.session.identity.id}/${view.selected.organisation_id}/${view.selected.client_id}/${view.selected.engagement_id}`}
+              engagement={view.selected} session={view.session} accessReady={!busy}
+              onAccessFailure={() => void refresh()} onProjectionUsable={projectionStatus} />
           </> : <>
             <div className="intro"><p className="eyebrow">Zobba · Pair</p><h1 ref={heading} data-focus="workspace-heading" tabIndex={-1}>Your engagements</h1>
               <p className="intro-copy">Choose the client work you want to open.</p></div>
@@ -239,7 +271,7 @@ function PairWorkspace() {
             </nav> : null}
           </>}
           <div className="access-footer"><span>Showing your current access</span><button type="button" className="quiet-button" data-focus="refresh-access" aria-disabled={busy} onClick={() => void refresh()}>Refresh access</button></div>
-        </> : null}
+        </div> : null}
       </main>
     </div>
   </div>;
