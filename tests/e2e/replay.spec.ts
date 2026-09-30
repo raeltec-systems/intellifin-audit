@@ -19,7 +19,8 @@ import {
 
 import { REPLAY_COPY } from '../../apps/web/src/design/copy';
 import { captureSentence } from '../../apps/web/src/runs/labels';
-import { REPLAY_GAP_WORDS, replayGapPosition, replayIncompleteSentence, replayInspectionHref } from '../../apps/web/src/runs/replay';
+import { REPLAY_RECORD_GAP_WORDS, REPLAY_GAP_WORDS, replayGapPosition, replayIncompleteSentence, replayInspectionHref, replayRecordIncompleteSentence } from '../../apps/web/src/runs/replay';
+import { ESCALATION_REPLAY_WORDS } from '../../apps/web/src/runs/decision-words';
 import { recordFramePosition } from '../../apps/web/src/runs/session-words';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { startSyntheticS3 } from '../fixtures/s3-server';
@@ -73,6 +74,8 @@ interface Replayed {
   readonly workItems: readonly string[];
   readonly recordKey: string;
   readonly waitLabel: string;
+  /** The answered Escalation's wait id. */
+  readonly waitId: string;
 }
 
 /**
@@ -245,7 +248,7 @@ async function seedReplayRun(options: { readonly gaps?: boolean } = {}): Promise
 
   // The stored kind is `choose-candidate`; what a reader must SEE is the question it
   // means. The spec pinned the key, so it pinned the plain-words defect as intended.
-  return { runId, frames, workItems, recordKey, waitLabel: 'Choose candidate' };
+  return { runId, frames, workItems, recordKey, waitLabel: 'Choose candidate', waitId: raised.wait.waitId };
 }
 
 test.beforeAll(async () => {
@@ -436,17 +439,20 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
   });
 
   // Story 10.6, owner decision D2 b (2026-09-29): the one-record (inspection) Replay also
-  // shows that record's OWN gaps, in the same words. The missing frame belongs to the first
-  // record; the suppressed sign-in belongs to no record, so this view must not show it.
+  // shows that record's OWN gaps. The missing frame belongs to the first record; the
+  // suppressed sign-in belongs to no record, so this view must not show it. Story 10.12,
+  // item 2: in the owner's words for ONE record, and never the session's.
   test('shows one record its own gaps, and not the gaps of the rest of the session', async ({ page }) => {
     test.setTimeout(120_000);
     const seeded = await seedReplayRun({ gaps: true });
     await page.goto(replayInspectionHref(seeded.runId, seeded.workItems[0]!));
     await expect(page.getByRole('heading', { name: /^Selected inspection: / })).toBeVisible();
 
-    const gaps = page.getByRole('region', { name: REPLAY_GAP_WORDS.heading });
+    const gaps = page.getByRole('region', { name: REPLAY_RECORD_GAP_WORDS.heading, exact: true });
     await expect(gaps).toBeVisible();
-    await expect(gaps.getByText(replayIncompleteSentence(1), { exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: REPLAY_GAP_WORDS.heading, exact: true })).toHaveCount(0);
+    await expect(gaps.getByText(replayRecordIncompleteSentence(1), { exact: true })).toBeVisible();
+    await expect(page.getByText(replayIncompleteSentence(1), { exact: true })).toHaveCount(0);
     await expect(page.locator('.ls-scrubber-gap--missing')).toHaveCount(1);
     await expect(page.locator('.ls-scrubber-gap--suppressed')).toHaveCount(0);
     await gaps.getByText(REPLAY_GAP_WORDS.listSummary, { exact: true }).click();
@@ -460,7 +466,27 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
     // The other record left no gap of its own, so its view says nothing about gaps.
     await page.goto(replayInspectionHref(seeded.runId, seeded.workItems[1]!));
     await expect(page.getByRole('heading', { name: /^Selected inspection: / })).toBeVisible();
+    await expect(page.getByRole('region', { name: REPLAY_RECORD_GAP_WORDS.heading })).toHaveCount(0);
     await expect(page.getByRole('region', { name: REPLAY_GAP_WORDS.heading })).toHaveCount(0);
+  });
+
+  // Story 10.12, item 3: a link that names an Escalation AND a record opens the record and
+  // says, in the existing approved sentence, that the Escalation is not available there.
+  test('opens the record for a link that also names an Escalation, and says the Escalation is not here', async ({ page }) => {
+    test.setTimeout(120_000);
+    const seeded = await seedReplayRun();
+    await page.goto(`${replayInspectionHref(seeded.runId, seeded.workItems[1]!)}&escalation=${seeded.waitId}`);
+    await expect(page.getByRole('heading', { name: /^Selected inspection: / })).toBeVisible();
+    // The status line the session viewer writes its selection note into.
+    await expect(page.locator('.ls-session > p[role="status"]')).toHaveText(ESCALATION_REPLAY_WORDS.unavailable);
+    // The record's own frame is shown all the same.
+    await expect(page.locator('.ls-session__frame')).toHaveAttribute('src', `/api/runs/${seeded.runId}/frames/${seeded.frames[1]!}`);
+    const scan = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+    expect(scan.violations, JSON.stringify(scan.violations, null, 2)).toEqual([]);
+    // Without the Escalation in the link, the record view says nothing about one.
+    await page.goto(replayInspectionHref(seeded.runId, seeded.workItems[1]!));
+    await expect(page.getByRole('heading', { name: /^Selected inspection: / })).toBeVisible();
+    await expect(page.getByText(ESCALATION_REPLAY_WORDS.unavailable)).toHaveCount(0);
   });
 
   test('steps, plays and jumps from the keyboard alone', async ({ page }) => {

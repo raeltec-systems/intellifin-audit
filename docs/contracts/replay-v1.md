@@ -106,14 +106,39 @@ terminal one. It rendered nothing at all on a terminal Run until this surface ex
 | --- | --- |
 | Work Item | its FIRST frame — jumping to a Work Item means starting at it |
 | Exception | the first frame of the Work Item it was raised against |
-| Escalation | the LAST frame captured at or before the wait was opened |
+| Escalation whose raise establishes its record | the frame captured with the Evidence the raise cites (below) |
+| Escalation otherwise | the LAST frame captured at or before the wait was opened |
 | Escalation whose frame lies past the frames read | **none** in this view; the row says the frame is not among those shown and links the inspection page that holds it |
 | any of them, with no frame | **none**, and the row says so instead of offering a pill |
 
-An Escalation asks about a page, and the page it asks about is the last one captured before
-it was raised; a frame captured after it belongs to whatever happened next. An unreadable
-instant resolves to nothing rather than to the first frame — guessing where a wait belongs
-is worse than saying nothing was found for it.
+**One rule for an Escalation's record (Story 10.12, item 5).** The Execution Timeline names
+an answered Escalation's record from its raise's Evidence (`decision-history.ts`), and Replay
+used to land by time alone, so the two could name different records: a record captured after
+the question's screen and before the raise took the landing. Now both follow the raise's
+Evidence when it establishes a record, by the Timeline's own rule:
+
+- the wait has exactly ONE `execution.escalation-raised` event, found by its wait id and
+  written by the platform (`escalation-platform`, source `platform`, outcome `success`);
+- that event names a plan step and a non-empty list of Evidence ids, every one a string;
+- EVERY id resolves, through its `run_evidence_capture` binding, the Tool Action that captured
+  it and that action's Step Execution (the Step Execution's Work Item first, then the
+  action's), every join bound to this Run, and all to ONE Work Item of this Run at the plan
+  step the raise named.
+
+Then the jump lands on the frame captured by those Tool Actions (the cited Evidence itself
+when it is a frame, the screenshot taken with it when it is a Structural Snapshot); when more
+than one such frame exists, the latest in session order. That is the screen the Timeline's
+record is established from. When the raise does not establish a record, or no frame was
+captured with its Evidence, the time rule applies: the last frame captured at or before the
+wait opened. Both are decided in SQL over EVERY frame the Run registered, as exact ordinals
+(`readEscalations` answers `framesThrough` and `landedBy`: `cited-evidence` or `raised-at`),
+never by re-parsing instants at millisecond precision. Nothing is paired by time when the
+Evidence establishes the record, and nothing is guessed when it does not.
+
+Under the time rule an Escalation asks about a page, and the page it asks about is the last
+one captured before it was raised; a frame captured after it belongs to whatever happened
+next. An unreadable instant resolves to nothing rather than to the first frame — guessing
+where a wait belongs is worse than saying nothing was found for it.
 
 **A pause is not a jump target.** EXPERIENCE.md's Replay row names Work Items, Exceptions
 and Escalations; a pause is a wait that asks nothing, the distinction generation 45 enforces
@@ -193,17 +218,31 @@ the chain held `failure.frame-missing`. It now shows both kinds of gap, and keep
   request") and NEVER counted as missing: suppression is the guarantee working, and
   reporting it as a gap would raise a finding against it.
 
-`readReplayGaps` answers the EXACT count of each kind and a bounded, ordered list of
-positions — how many frames precede each gap, in the scrubber's own order. The viewer draws
-a marker in the scrubber where each gap sits, says "Playback is incomplete: N frames are
-missing." whenever N > 0, and lists every gap in words. A record's selected-inspection page
-shows THAT record's own gaps (owner decision D2 b, 2026-09-29), never the session's:
-`readRecordReplayGaps` scopes the same query to the Work Item (Step Execution first, then
-the action, the rule every frame read uses), the counts are the record's exact counts, the
-words keep the session's frame numbering (the counter that page shows), and each marker sits
-among the record's own frames on the page shown — a gap between two pages is marked once, at
-the start of the later page, and every gap is still listed and counted. One builder,
-`replayGapsView`, words the gaps for both views. A frame whose protected read FAILS is unavailable rather than
+`readReplayGaps` answers the EXACT count of each kind, a bounded, ordered list of positions
+(the first `REPLAY_GAP_LIMIT`, 100, by time) — how many frames precede each gap, in the
+scrubber's own order — and, apart from that list, EVERY gap among the frames the view shows
+(`window`: the default prefix's first `REPLAY_FRAME_LIMIT` frames). The viewer draws a marker
+in the scrubber where each gap of the window sits, says "Playback is incomplete: N frames are
+missing." whenever N > 0, and lists the bounded rows in words. **The markers follow the
+frames shown, not the list** (Story 10.12, item 1): they were taken from the bounded list, so
+past its first 100 gaps a real gap on the frames shown had no marker. The window is not cut by
+a row limit, because every gap in it is one the scrubber draws; the placement is one ordered
+pass over the frames and the gaps together.
+
+A record's selected-inspection page shows THAT record's own gaps (owner decision D2 b,
+2026-09-29), never the session's: `readRecordReplayGaps` scopes the same query to the Work
+Item (Step Execution first, then the action, the rule every frame read uses) and to the page
+shown (its `cursor`), so its window is the gaps among that page's frames, whichever page is
+open. The counts are the record's exact counts, and each marker sits among the record's own
+frames on the page shown — a gap between two pages is marked once, at the start of the later
+page, and every gap is still listed and counted. That view says it in the owner's words for
+ONE record (approved 2026-09-29, Story 10.12 item 2; `REPLAY_RECORD_GAP_WORDS` and
+`replayRecordIncompleteSentence`): the heading "Gaps in this record's playback", the banner
+"Playback of this record is incomplete: N frames are missing." ("… 1 frame is missing."),
+and, after a listed gap that is not among the frames on this page, " · on another page of this
+record's frames". A position there ("before the first frame", "after frame N") counts among
+THIS RECORD's frames, never across the session. One builder, `replayGapsView`, words the gaps
+for both views. A frame whose protected read FAILS is unavailable rather than
 missing: it keeps its metadata and only that frame is retried, as above. The owner approved
 the sentences on 2026-09-26 (handover sheet 1): `REPLAY_GAP_WORDS`,
 `replayIncompleteSentence` and `replayGapPosition` in `apps/web/src/runs/replay.ts`.
@@ -219,7 +258,13 @@ raised) and says which Escalation it opened at. A target with no frame opens no 
 says why, in the resolver's words. An id that is malformed, repeated, a pause, a Work Item,
 another Run's or otherwise not one of this view's Escalation targets opens NO frame and says
 the Escalation is not available in this view; it never falls back to the first frame. A
-`workItem` in the same query still selects the inspection path. The viewer is keyed by the
+`workItem` or `cursor` in the same query still selects the inspection path: the record opens,
+and the view says, in the same approved sentence, "The Escalation this link names is not
+available in this Replay view." rather than nothing (Story 10.12, item 3); that view has no
+"Jump to" list, so the sentence carries no pointer to one. When the Escalation's frame lies
+past the frames read, the note says so in the resolver's words and also offers the "Jump to"
+list's own **Open inspection Replay** link to the record page that holds the frame, whenever
+that page is known (Story 10.12, item 4). The viewer is keyed by the
 selection as well as the request (`replaySelectionKey`), so following a second Escalation's
 link starts at its own frame while a re-read of the same selection keeps the reader's place.
 Either sentence for a link that opened no frame points at the "Jump to" list ("Choose a

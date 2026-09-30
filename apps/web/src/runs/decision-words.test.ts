@@ -80,6 +80,19 @@ describe('the approved words, read back out of the story', () => {
       .toBe('The Run ended before the cancellation was performed, so its own outcome stands.');
   });
 
+  // Story 10.12, item 8: the owner approved this sentence on 2026-09-29, verbatim. It is read
+  // back out of that story's own list of approved words, so a word changed here and not
+  // there fails.
+  it('holds the approved third sentence of the "Pauses and resumes" intro verbatim', () => {
+    const story = readFileSync(
+      resolve(__dirname, '../../../../_bmad-output/implementation-artifacts/10-12-epic-10-owner-items-replay-gaps-escalation-links-and-bounded.md'),
+      'utf8',
+    );
+    const approved = story.slice(story.indexOf('## Owner-approved words'), story.indexOf('## Acceptance Criteria')).replace(/\s+/gu, ' ');
+    expect(approved).toContain(`\`${PAUSE_REQUEST_WORDS.intro}\``);
+    expect(PAUSE_REQUEST_WORDS.intro).toBe('A pause request the Run never honoured is listed here too, with why it did not take effect.');
+  });
+
   it('says a candidate answer exactly as the human-match note says the same choice', () => {
     expect(escalationAnswerWords('choose-candidate', { kind: 'candidate', candidate: 2, candidates: 3, label: 'x' }))
       .toBe(`Answer: ${choseCandidateWords(2, 3)}.`);
@@ -275,6 +288,17 @@ describe('one list of pauses and requests, in the order they were asked for', ()
     expect(rows.map((row) => row.kind === 'pause' ? `pause ${row.ordinal}` : `request ${row.entry.eventId}`)).toEqual([
       'pause 1', `request ${early.eventId}`, 'pause 2', `request ${late.eventId}`,
     ]);
+  });
+
+  // Story 10.12, item 6: the read orders AND cuts the requests by when each was asked for,
+  // in microseconds, ties in chain order. Two requests in one rendered millisecond keep the
+  // order the read gave them, so the list's first N are the read's first N.
+  it('keeps the requests in the order their read gave them when their rendered instants tie', () => {
+    const at = '2026-09-26T09:00:00.000Z';
+    const earlier = { ...REQUEST, eventId: '019823ab-0000-7000-8000-0000000000bf', requestedAt: at };
+    const later = { ...REQUEST, eventId: '019823ab-0000-7000-8000-0000000000b1', requestedAt: at };
+    const rows = pauseHistoryRows([], [earlier, later]);
+    expect(rows.map((row) => row.kind === 'request' && row.entry.eventId)).toEqual([earlier.eventId, later.eventId]);
   });
 
   it('breaks a tie the same way every time, and puts an unreadable instant last', () => {

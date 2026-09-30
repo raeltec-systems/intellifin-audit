@@ -12,11 +12,13 @@ import { UntrustedPolicy, UntrustedText } from './UntrustedText';
 import {
   REPLAY_BOUND_WORDS,
   REPLAY_GAP_WORDS,
+  REPLAY_RECORD_GAP_WORDS,
   clampReplayIndex,
   replayGapPosition,
   replayGapsAt,
   replayIncompleteSentence,
   replayInspectionHref,
+  replayRecordIncompleteSentence,
   replayJumpBoundSentence,
   type ReplayFrameAbsence,
   type ReplayGapView,
@@ -93,6 +95,12 @@ export interface ReplayViewerProps {
    * record's own gaps (owner decision D2 b, 2026-09-29), built by the same `replayGapsView`.
    */
   readonly gaps?: ReplayGapsView;
+  /**
+   * The link that opened this view named an Escalation as well as a record or a page of one
+   * (`?escalation=` with `?workItem=` or `?cursor=`, Story 10.12 item 3). The record view
+   * opens, and says the Escalation is not available in it, rather than saying nothing.
+   */
+  readonly escalationNotOpened?: boolean;
 }
 
 /** How long one frame is held while Replay is playing. */
@@ -200,10 +208,13 @@ function JumpBounds({ runId, bounds }: { readonly runId: string; readonly bounds
 function ReplayGaps({ gaps }: { readonly gaps: ReplayGapsView | undefined }): React.JSX.Element | null {
   if (gaps === undefined || gaps.missing + gaps.suppressed === 0) return null;
   const listed = gaps.missing + gaps.suppressed;
+  // The one-record view's gaps are THAT record's, and its words say so (Story 10.12, item 2).
+  const record = gaps.scope === 'record';
   return (
     <section aria-labelledby="replay-gaps-heading" className="ls-stack">
-      <h3 id="replay-gaps-heading">{REPLAY_GAP_WORDS.heading}</h3>
-      {gaps.missing === 0 ? null : <Banner tone="warning" variant="line" title={replayIncompleteSentence(gaps.missing)} />}
+      <h3 id="replay-gaps-heading">{record ? REPLAY_RECORD_GAP_WORDS.heading : REPLAY_GAP_WORDS.heading}</h3>
+      {gaps.missing === 0 ? null : <Banner tone="warning" variant="line"
+        title={record ? replayRecordIncompleteSentence(gaps.missing) : replayIncompleteSentence(gaps.missing)} />}
       <details className="ls-disclosure">
         <summary>{REPLAY_GAP_WORDS.listSummary}</summary>
         <div className="ls-disclosure__body ls-stack">
@@ -211,6 +222,9 @@ function ReplayGaps({ gaps }: { readonly gaps: ReplayGapsView | undefined }): Re
             {gaps.rows.map((gap) => (
               <li key={gap.toolActionId} data-gap={gap.kind}>
                 {gap.mark} · {replayGapPosition(gap.framesBefore)} · {gap.narration}
+                {/* A record's gap that is not among the frames on this page: said, so the list
+                    and the scrubber agree about where it is. */}
+                {record && gap.position === null ? REPLAY_RECORD_GAP_WORDS.otherPage : null}
               </li>
             ))}
           </ul>
@@ -303,7 +317,7 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
     ? props.window !== undefined || props.frames.length > 0 ? 'No selected frame' : 'No frames'
     : `Frame ${(frame?.globalOrdinal ?? index + 1).toLocaleString('en-US')} of ${counterTotal.toLocaleString('en-US')}`;
   const selection = props.initialSelection;
-  const selectionNote = props.window?.kind === 'unavailable'
+  const viewNote = props.window?.kind === 'unavailable'
     ? 'The requested inspection is not available in this Replay view. Its identity or page could not be resolved.'
     : inspection !== null && props.frames.length === 0
       ? `No retained capture exists for this inspection: ${inspection.label}.`
@@ -318,6 +332,18 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
             // target it offers as a button: one with a frame to open.
             props.window === undefined && props.jumpTargets.some((target) => target.frameIndex !== null),
           );
+  // A record view opened by a link that also named an Escalation (item 3): the existing
+  // sentence, without the pointer to a "Jump to" list this view does not have.
+  const selectionNote = props.escalationNotOpened === true
+    ? [viewNote, escalationReplayAbsenceWords(ESCALATION_REPLAY_WORDS.unavailable, false)]
+      .filter((note): note is string => note !== null).join(' ')
+    : viewNote;
+  // An Escalation whose frame is not among the frames read: the inspection page that HOLDS
+  // it, the "Jump to" list's own link (Story 10.12, item 4).
+  const escalationPage = selection?.kind === 'escalation' && selection.target.absence === 'not-read' &&
+    selection.target.workItemId !== undefined
+    ? replayInspectionHref(props.runId, selection.target.workItemId, selection.target.inspectionCursor ?? 0)
+    : null;
 
   const jumpBounds = jumpBoundSentences(props.jumpTargets, props.jumpTotals);
 
@@ -359,7 +385,12 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
         </section>
       )}
       {props.window === undefined ? null : <p><Link href={`/runs/${props.runId}/replay`}>Open session Replay</Link></p>}
-      {selectionNote === null ? null : <p role="status">{selectionNote}</p>}
+      {selectionNote === null ? null : (
+        <p role="status">
+          {selectionNote}
+          {escalationPage === null ? null : <>{' '}<Link href={escalationPage}>Open inspection Replay</Link></>}
+        </p>
+      )}
 
       <p className="ls-session-desktop-only">{REPLAY_COPY.desktopOnly}</p>
 

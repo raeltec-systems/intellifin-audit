@@ -24,6 +24,10 @@ The owner's direction of 2026-09-24 re-centres the product as **Zobba**, a conve
 
 Standing constraints on every story: no implementation without explicit authorisation; "Do not hard-code the scenario into the harness."; personal-account testing never represents organisational proof; credentials outside model-visible content and no external content changes permissions; tenant, client and engagement scoping enforced from day one; historical evidence, signed content and retained identifiers preserved; tests move with their implementation stories and none is retired to make a planning document pass.
 
+## 0b. Story 10.12 added — 2026-09-29 (owner-approved)
+
+Story 10.12 is added to Epic 10 (owner decision of 2026-09-29, Option B: the eight Epic 10 owner items as one follow-up story after the Epic 10 merge). It adds no requirement and changes no FR, NFR or addendum rule: it closes gaps on the retained Replay and Execution Timeline surfaces. **Downstream artifacts that this revision changes, updated in the same change:** `sprint-status.yaml` (new `10-12-…` entry), the Story 10.12 spec (derived from this entry), and the contracts `replay-v1.md`, `durable-escalation-v1.md` (35g) and `run-pause-v1.md` (the rules the story writes down). **Artifacts to revalidate, not re-derive:** the Story 10.6, 10.9 and 10.10 records, whose named owner items this story closes; their acceptance criteria are unchanged. The PRD, the architecture spine and the UX handoff are not invalidated: the only new sentences are the owner-approved words for items 2 and 8.
+
 ## Overview
 
 This document provides the complete epic and story breakdown for IntelliFin Audit, decomposing the requirements from the PRD, UX Design if it exists, and Architecture requirements into implementable stories.
@@ -390,7 +394,22 @@ A PoC Administrator sees Target System connectivity, provider and runner health,
 
 The course-correction transition work of Proposal 7 (legacy review closure, tracking update, compatibility-tested rename, conditional Builder retirement, legacy harness coverage mapping).
 
-### Epic 11: Tenancy, scope and delegation
+#### Story 10.12: Epic 10 owner items: Replay gap marks and words, Escalation links, one record rule, bounded Timeline lists
+
+As an Auditor reading Replay and the Execution Timeline,
+I want the eight gaps the Epic 10 reviews left for the owner closed,
+So that every mark, link and count on those surfaces says what is true.
+
+**Acceptance Criteria:**
+
+**Given** the owner's decision of 2026-09-29 (Option B: all eight items as one follow-up story after the Epic 10 merge) and the owner-approved words for items 2 and 8
+**When** the Auditor opens a record's Replay, a Replay link that names an Escalation, or the Timeline's decision lists
+**Then** every gap on the open page is marked, the one-record view uses its approved gap words, an Escalation link with a record says the Escalation is not available there, an Escalation past the frames read links to its record page, Replay and the Timeline use one rule for an Escalation's record, "first" names a true order, the bound of 100 is a written contract, and the "Pauses and resumes" intro names unhonoured requests
+**And** no new sentence beyond the approved ones, no migration, no event rewritten, WCAG 2.1 AA on each changed surface
+
+**And** delivery slice: none — retained compiler-1 surfaces; NE reference none; design gate (D-5-6): none — words approved 2026-09-29; origin: `epic-10-follow-up-owner-items.md`
+
+## Epic 11: Tenancy, scope and delegation
 
 every protected row is scoped and enforced from the first migration; background work runs under a bounded delegation; historical chains are bound to their tenant. Runs before any personal account is connected (owner decision 3).
 

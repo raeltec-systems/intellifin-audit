@@ -9,9 +9,9 @@ vi.mock('@intellifin/infrastructure', () => ({
     readInspectionReplay = calls.read; readTimeline = calls.prefix; readFrames = calls.frames;
     readEscalations = calls.waits; readReplayExceptions = async () => ({ rows: [], total: 0 });
     readEvidenceItems = async () => []; readEvidenceItemsByIds = async () => [];
-    readReplayGaps = async () => ({ missing: 0, suppressed: 0, rows: [] });
+    readReplayGaps = async () => ({ missing: 0, suppressed: 0, rows: [], window: [] });
     // Story 10.6 D2 b: the one-record view reads its own gaps. None here.
-    readRecordReplayGaps = async () => ({ missing: 0, suppressed: 0, rows: [] });
+    readRecordReplayGaps = async () => ({ missing: 0, suppressed: 0, rows: [], window: [] });
   },
   DrizzleFrozenExecutionReader: class { readFrozenExecution = calls.plan; },
 }));
@@ -58,7 +58,7 @@ beforeEach(() => {
   calls.frames.mockResolvedValue({ rows: [frameRow(1), frameRow(2), frameRow(3)], total: 3 });
   // Raised after the second frame, so its jump target is that frame.
   calls.waits.mockResolvedValue({ rows: [{ waitId, kind: 'retry-or-skip', openedAt: '2026-09-20T10:02:30.000Z',
-    closedAt: at(4), closureKind: 'answer', answerOptionId: 'abort', framesThrough: 2, landing: null }], total: 1 });
+    closedAt: at(4), closureKind: 'answer', answerOptionId: 'abort', framesThrough: 2, landedBy: 'raised-at', landing: null }], total: 1 });
 });
 
 describe('Replay opened at an answered Escalation', () => {
@@ -91,6 +91,19 @@ describe('Replay opened at an answered Escalation', () => {
     calls.read.mockResolvedValue({ kind: 'unavailable' });
     await view({ workItem: '019823ab-0000-7000-8000-0000000000a1', escalation: waitId });
     expect(calls.read).toHaveBeenCalled();
+    expect(calls.prefix).not.toHaveBeenCalled();
+  });
+
+  // Story 10.12, item 3: a link that names an Escalation AND a record (or a page of one) opens
+  // the record, and tells the viewer the Escalation is not opened, so it says so.
+  it('tells the record view when its link also named an Escalation, and only then', async () => {
+    const workItem = '019823ab-0000-7000-8000-0000000000a1';
+    calls.read.mockResolvedValue({ kind: 'unavailable' });
+    expect(viewerProps(await view({ workItem, escalation: waitId }))?.['escalationNotOpened']).toBe(true);
+    expect(viewerProps(await view({ workItem, cursor: '100', escalation: waitId }))?.['escalationNotOpened']).toBe(true);
+    // A cursor with no record is an unavailable request, and the Escalation is still named.
+    expect(viewerProps(await view({ cursor: '100', escalation: waitId }))?.['escalationNotOpened']).toBe(true);
+    expect(viewerProps(await view({ workItem }))?.['escalationNotOpened']).toBe(false);
     expect(calls.prefix).not.toHaveBeenCalled();
   });
 

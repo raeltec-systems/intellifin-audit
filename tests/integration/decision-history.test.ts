@@ -484,6 +484,68 @@ describe.skipIf(!url)('the decisions on the Execution Timeline, on PostgreSQL', 
       expect((await readPauseRequests(db, runId)).total).toBe(2);
     });
 
+    // Story 10.12, item 6: "Showing the first N of M pause requests." is true only if the
+    // list is cut by the order it is shown in. The chain records these requests in one order
+    // and they were asked for in another; the read orders AND cuts by when each was asked
+    // for (or, with no request time, when it was recorded superseded), ties in chain order.
+    it('orders and cuts pause requests by when each was asked for, not by the order the chain recorded them', async () => {
+      const runId = await startRun();
+      const at = (minutes: number): Date => new Date(baseNow.getTime() + minutes * 60_000);
+      const append = (occurredAt: Date, payload: Record<string, unknown>) =>
+        db.transaction((tx) => createAuditEventWriter(tx, new FixedClock(occurredAt), ids).append({
+          actor: { type: 'system', id: 'result-sealer' }, source: 'worker', outcome: 'failure',
+          eventType: 'lifecycle.pause-superseded', aggregateId: runId, correlationId: ids.next(), sessionId: session.sessionId,
+          payload: { requestedBy: author, ...payload },
+        }));
+      // Chain order A, B, C, D, E. Request order: B (+0), C (+1, no request time: its record
+      // time), A (+2), then the two whose text is not an instant, each placed by its record
+      // time: E (+5) and D (+6).
+      const a = await append(at(30), { requestedAt: at(2).toISOString() });
+      const b = await append(at(31), { requestedAt: at(0).toISOString() });
+      const c = await append(at(1), {});
+      // PostgreSQL would read 'now' as an instant; it is not one the record stored.
+      const d = await append(at(6), { requestedAt: 'now' });
+      // Shaped like an instant, and no day of the calendar: never a failed read, never rolled over.
+      const e = await append(at(5), { requestedAt: '2026-02-30T00:00:00.000Z' });
+
+      const all = await readPauseRequests(db, runId);
+      expect(all.total).toBe(5);
+      expect(all.entries.map((entry) => entry.eventId)).toEqual([b.eventId, c.eventId, a.eventId, e.eventId, d.eventId]);
+      expect(all.entries.map((entry) => entry.requestedAt)).toEqual([at(0).toISOString(), null, at(2).toISOString(), null, null]);
+      // The cut takes the earliest by that order, and the total still counts every request.
+      const first = await readPauseRequests(db, runId, 2);
+      expect(first).toMatchObject({ total: 5 });
+      expect(first.entries.map((entry) => entry.eventId)).toEqual([b.eventId, c.eventId]);
+      expect(await readPauseRequests(db, runId, 0)).toEqual({ total: 5, entries: [] });
+    });
+
+    it('places a "pause after this inspection" request by its own marker\'s request time', async () => {
+      const deferred = await deferredFixture();
+      const [marker] = await sql<{ requested_at: string }[]>`
+        SELECT to_char(requested_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS requested_at FROM run_deferred_pause WHERE command_id=${deferred.commandId}`;
+      // Recorded on the chain FIRST, and asked for an hour after the inspection request.
+      const later = await db.transaction((tx) => createAuditEventWriter(tx, new SystemClock(), ids).append({
+        actor: { type: 'system', id: 'result-sealer' }, source: 'worker', outcome: 'failure',
+        eventType: 'lifecycle.pause-superseded', aggregateId: deferred.runId, correlationId: ids.next(), sessionId: session.sessionId,
+        payload: { requestedBy: author, requestedAt: new Date(Date.parse(marker!.requested_at) + 60 * 60_000).toISOString() },
+      }));
+      // A request to pause at once retires the latch: recorded SECOND.
+      expect(await pauseRun(
+        { roles: new DrizzleRoleRepository(db), unitOfWork: new PostgresRunsUnitOfWork(db), repository: new PostgresWaitRepository(db), ids, clock: new SystemClock() },
+        { session, request: { runId: deferred.runId } },
+      )).toMatchObject({ ok: true, pending: true });
+      const [sequences] = await sql<{ later: string; replaced: string }[]>`
+        SELECT max(sequence) FILTER (WHERE event_type='lifecycle.pause-superseded')::text AS later,
+               max(sequence) FILTER (WHERE event_type='lifecycle.deferred-pause-superseded')::text AS replaced
+        FROM audit_events WHERE aggregate_id=${deferred.runId}`;
+      expect(Number(sequences!.later)).toBeLessThan(Number(sequences!.replaced));
+
+      const first = await readPauseRequests(db, deferred.runId, 1);
+      expect(first.total).toBe(2);
+      expect(first.entries).toMatchObject([{ mode: 'after-inspection', requestedAt: marker!.requested_at, outcome: 'replaced' }]);
+      expect((await readPauseRequests(db, deferred.runId)).entries.map((entry) => entry.eventId)[1]).toBe(later.eventId);
+    });
+
     it('reads a request to pause at once that the Run outran, with who asked and when', async () => {
       const runId = await startRun();
       const paused = await pauseRun(
@@ -595,8 +657,8 @@ describe.skipIf(!url)('the decisions on the Execution Timeline, on PostgreSQL', 
         outcome: 'replaced',
         inspection: { planStepId: INSPECT, workItem: { workItemId: replaced.workItemId, subjectKey: null } },
       });
-      // Then the Run ends with the immediate request still outstanding: a second entry,
-      // in the order the chain recorded them.
+      // Then the Run ends with the immediate request still outstanding: a second entry, in
+      // the order they were asked for (Story 10.12), which is the chain's order here too.
       await endByTimeout(replaced.runId);
       requests = await readPauseRequests(db, replaced.runId);
       expect(requests.total).toBe(2);

@@ -72,6 +72,14 @@ describe('a pause request the Run never honoured, in "Pauses and resumes"', () =
     expect(html).not.toContain(AUDITOR);
   });
 
+  // Story 10.12, item 8: the intro's third sentence, after the two it already had.
+  it('says in its intro that a pause request the Run never honoured is listed here too', () => {
+    for (const html of [
+      render({ total: 0, entries: [] }, { total: 1, entries: [OUTRUN] }),
+      render({ total: 1, entries: [PAUSED] }, { total: 0, entries: [] }),
+    ]) expect(html).toContain(`<p>${PAUSE_WORDS.intro} ${PAUSE_REQUEST_WORDS.intro}</p>`);
+  });
+
   it('still renders nothing for a Run neither paused nor asked to pause', () => {
     expect(render({ total: 0, entries: [] }, { total: 0, entries: [] })).toBe('');
   });

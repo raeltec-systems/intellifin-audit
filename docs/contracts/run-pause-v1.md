@@ -215,8 +215,16 @@ writer is not read:
 
 A reason this build does not name, a requester or a time the record does not hold, and an
 inspection that does not resolve are each said in words rather than guessed or paired by
-time. The read answers an exact total and a bounded list of `PAUSE_REQUEST_LIMIT`, in chain
-order. The owner approved "Pause request", "Requested by {name} at {time}." and "The Run ended
+time. The read answers an exact total and a bounded list of `PAUSE_REQUEST_LIMIT` (100), in
+the order the requests were asked for and cut by that same order (Story 10.12): by
+`coalesce(requested at, recorded superseded at)`, ties in chain order, where "requested at" is
+the event's `requestedAt` for a request to pause at once and the marker row's `requested_at`
+for one after an inspection, and a text that is not an ISO instant (or names no calendar day)
+is no request time. So "Showing the first {shown} of {total} pause requests." names the order
+the list is shown in; the bound and both captions are stated in `durable-escalation-v1.md`
+(35g). The section's intro says the requests are there: its third sentence, "A pause request
+the Run never honoured is listed here too, with why it did not take effect.", was approved by
+the owner on 2026-09-29 (Story 10.12). The owner approved "Pause request", "Requested by {name} at {time}." and "The Run ended
 before the pause took effect, so its own outcome stands." on 2026-09-26, and the other
 sentences on 2026-09-29 (sheet 2, B4–B11); all are in `apps/web/src/runs/decision-words.ts`.
 

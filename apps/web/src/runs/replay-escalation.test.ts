@@ -53,7 +53,7 @@ function wait(waitId: string, openedAt: string, kind: RunReplayWait['kind'] = 'r
   return {
     waitId, kind, openedAt, closedAt: null, closureKind: null, answerOptionId: null,
     framesThrough: FRAMES.filter((frame) => frame.capturedAt !== null && Date.parse(frame.capturedAt) <= Date.parse(openedAt)).length,
-    landing: null,
+    landedBy: 'raised-at', landing: null,
   };
 }
 

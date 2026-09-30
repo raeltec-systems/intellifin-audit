@@ -6,9 +6,10 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 import { REPLAY_COPY, UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
 import { ReplayViewer, type ReplayFrameView } from './ReplayViewer';
-import { REPLAY_BOUND_WORDS, REPLAY_GAP_WORDS, replayGapPosition, replayIncompleteSentence, type ReplayGapsView, type ReplayJumpTarget } from './replay';
+import { REPLAY_BOUND_WORDS, REPLAY_GAP_WORDS, REPLAY_RECORD_GAP_WORDS, replayGapPosition, replayIncompleteSentence, replayRecordIncompleteSentence, type ReplayGapsView, type ReplayJumpTarget } from './replay';
 import { ADAPTER_ARTIFACT_WORDS } from './live-view';
 import { captureSentence } from './labels';
+import { ESCALATION_REPLAY_WORDS } from './decision-words';
 
 /**
  * The Replay surface as the server first paints it (Story 5.8, UX-DR26).
@@ -290,6 +291,51 @@ describe('a bounded jump list says what it covers (Story 10.9)', () => {
     expect(html.replaceAll('<!-- -->', '')).toContain(`${REPLAY_COPY.frameNotRead.replace('{shown}', '3')} · <a href="/runs/${RUN_ID}/replay?workItem=${WORK}&amp;cursor=500">Open inspection Replay</a>`);
   });
 
+  // Story 10.12, item 4: an Escalation link that opened the whole session at an Escalation
+  // whose frame is past the frames read says so AND links the page that holds its frame.
+  it('links the inspection page that holds an opened Escalation’s frame, beside the note', () => {
+    const target: ReplayJumpTarget = { kind: 'escalation', id: 'w-late', label: 'Choose candidate', workItemId: WORK,
+      inspectionCursor: 500, frameIndex: null, absence: 'not-read' };
+    const html = render({ framesTotal: 900, jumpTargets: [target], jumpTotals: { escalations: 1, exceptions: 0 },
+      initialSelection: { kind: 'escalation', target, frameIndex: null } });
+    const status = html.match(/<p role="status">([\s\S]*?)<\/p>/)?.[1]?.replaceAll('<!-- -->', '') ?? '';
+    expect(status).toContain(ESCALATION_REPLAY_WORDS.noFrame.replace('{kind}', 'Choose candidate')
+      .replace('{absence}', REPLAY_COPY.frameNotRead.replace('{shown}', '3')));
+    expect(status).toContain(`<a href="/runs/${RUN_ID}/replay?workItem=${WORK}&amp;cursor=500">Open inspection Replay</a>`);
+    // No page is known for one whose frame belongs to no record: the note alone.
+    const bare: ReplayJumpTarget = { kind: 'escalation', id: 'w-session', label: 'Choose candidate', frameIndex: null, absence: 'not-read' };
+    const alone = render({ framesTotal: 900, jumpTargets: [bare], jumpTotals: { escalations: 1, exceptions: 0 },
+      initialSelection: { kind: 'escalation', target: bare, frameIndex: null } });
+    expect(alone.match(/<p role="status">([\s\S]*?)<\/p>/)?.[1]).not.toContain('Open inspection Replay');
+    // Nor for one opened ON a frame.
+    const shown: ReplayJumpTarget = { kind: 'escalation', id: 'w-shown', label: 'Choose candidate', workItemId: WORK,
+      inspectionCursor: 0, frameIndex: 1, absence: null };
+    const opened = render({ jumpTargets: [shown], initialSelection: { kind: 'escalation', target: shown, frameIndex: 1 } });
+    expect(opened.match(/<p role="status">([\s\S]*?)<\/p>/)?.[1]).not.toContain('Open inspection Replay');
+  });
+
+  // Story 10.12, item 3: a record link that also named an Escalation says, in the existing
+  // sentence, that the Escalation is not available here; the record still opens.
+  it('says the Escalation is not available on a record view its link also named', () => {
+    const record = { kind: 'inspection' as const, workItemId: 'record', label: 'E-000102', total: 3, cursor: 0, previousCursor: null, nextCursor: null };
+    const selection = { kind: 'inspection' as const, frameIndex: 0,
+      target: { kind: 'work-item' as const, id: 'record', label: 'E-000102', frameIndex: 0, absence: null } };
+    const html = render({ window: record, initialSelection: selection, escalationNotOpened: true });
+    const status = html.match(/<p role="status">([\s\S]*?)<\/p>/)?.[1] ?? '';
+    // Exactly the approved sentence: no pointer to a "Jump to" list this view does not have.
+    expect(status).toBe(ESCALATION_REPLAY_WORDS.unavailable);
+    // The record opened at its first frame all the same.
+    expect(html).toContain('Selected inspection: E-000102');
+    expect(html).toContain('aria-current="true"');
+    // Without the Escalation in the link, nothing about it.
+    expect(render({ window: record, initialSelection: selection })).not.toContain(ESCALATION_REPLAY_WORDS.unavailable);
+    // An unresolvable record says both things.
+    const unresolved = render({ window: { kind: 'unavailable' }, initialSelection: { kind: 'unavailable', frameIndex: null }, frames: [], escalationNotOpened: true });
+    const both = unresolved.match(/<p role="status">([\s\S]*?)<\/p>/)?.[1] ?? '';
+    expect(both).toContain('The requested inspection is not available in this Replay view.');
+    expect(both).toContain(ESCALATION_REPLAY_WORDS.unavailable);
+  });
+
   it('keeps the first inspection page for a target whose frame is its record’s first', () => {
     const target: ReplayJumpTarget = { kind: 'exception', id: 'e-late', label: 'E-000901', workItemId: WORK,
       frameIndex: null, absence: 'not-read' };
@@ -386,14 +432,11 @@ describe('the adapter log, shared with Live View', () => {
 // sentence and is NEVER counted as missing. Every sentence is read back from its module.
 describe('the gaps in a playback (Story 10.6, legacy 5.2)', () => {
   const suppressedMark = captureSentence('SUPPRESSED', 'credential-entry');
-  const gaps: ReplayGapsView = {
-    missing: 1,
-    suppressed: 1,
-    rows: [
-      { toolActionId: 'gap-suppressed', kind: 'suppressed', mark: suppressedMark, narration: 'Signing in to LoanCore', framesBefore: 0, position: 0 },
-      { toolActionId: 'gap-missing', kind: 'missing', mark: REPLAY_GAP_WORDS.missing, narration: 'Opening the record for E-000102 on LoanCore', framesBefore: 2, position: 2 },
-    ],
-  };
+  const sessionRows: ReplayGapsView['rows'] = [
+    { toolActionId: 'gap-suppressed', kind: 'suppressed', mark: suppressedMark, narration: 'Signing in to LoanCore', framesBefore: 0, position: 0 },
+    { toolActionId: 'gap-missing', kind: 'missing', mark: REPLAY_GAP_WORDS.missing, narration: 'Opening the record for E-000102 on LoanCore', framesBefore: 2, position: 2 },
+  ];
+  const gaps: ReplayGapsView = { scope: 'session', missing: 1, suppressed: 1, rows: sessionRows, markers: sessionRows };
 
   it('states that playback is incomplete with the count of MISSING frames only', () => {
     const html = render({ gaps });
@@ -426,7 +469,7 @@ describe('the gaps in a playback (Story 10.6, legacy 5.2)', () => {
   });
 
   it('says nothing about gaps a Run did not have', () => {
-    for (const html of [render(), render({ gaps: { missing: 0, suppressed: 0, rows: [] } })]) {
+    for (const html of [render(), render({ gaps: { scope: 'session', missing: 0, suppressed: 0, rows: [], markers: [] } })]) {
       expect(html).not.toContain(REPLAY_GAP_WORDS.heading);
       expect(html).not.toContain('ls-scrubber-gap');
       expect(html).not.toContain('Playback is incomplete');
@@ -434,50 +477,60 @@ describe('the gaps in a playback (Story 10.6, legacy 5.2)', () => {
   });
 
   it('keeps suppressed captures out of the incomplete statement entirely', () => {
-    const html = render({ gaps: { missing: 0, suppressed: 1, rows: [gaps.rows[0]!] } });
+    const html = render({ gaps: { scope: 'session', missing: 0, suppressed: 1, rows: [gaps.rows[0]!], markers: [gaps.rows[0]!] } });
     expect(html).toContain(REPLAY_GAP_WORDS.heading);
     expect(html).toContain(suppressedMark);
     expect(html).not.toContain('Playback is incomplete');
   });
 
-  // Owner decision D2 b (2026-09-29): the one-record Replay states that record's own gaps
-  // with the same approved words, so that view cannot look complete either.
-  it('states the record’s own gaps on the one-record view, marked among the record’s frames', () => {
-    const recordGaps: ReplayGapsView = {
-      missing: 1,
-      suppressed: 0,
-      rows: [
-        // Session numbering in the words (the counter says "Frame 506 of 610"); the marker
-        // sits after the first of the record's frames on this page.
-        { toolActionId: 'record-missing', kind: 'missing', mark: REPLAY_GAP_WORDS.missing,
-          narration: 'Opening the record for E-000102 on LoanCore', framesBefore: 506, position: 1 },
-        // On another page of the same record: listed and counted, never marked here.
-        { toolActionId: 'record-elsewhere', kind: 'missing', mark: REPLAY_GAP_WORDS.missing,
-          narration: 'Reading a field for E-000102 on LoanCore', framesBefore: 700, position: null },
-      ],
-    };
+  // Owner decision D2 b (2026-09-29): the one-record Replay states that record's own gaps.
+  // Story 10.12, item 2: in the owner's approved words for ONE record, with each position among
+  // the record's own frames, and a listed gap on another page of the record said to be there.
+  it('states the record’s own gaps on the one-record view, in the record’s words and numbering', () => {
+    const here = { toolActionId: 'record-missing', kind: 'missing' as const, mark: REPLAY_GAP_WORDS.missing,
+      narration: 'Opening the record for E-000102 on LoanCore', framesBefore: 1, position: 1 };
+    // On another page of the same record: listed and counted, never marked here.
+    const elsewhere = { toolActionId: 'record-elsewhere', kind: 'missing' as const, mark: REPLAY_GAP_WORDS.missing,
+      narration: 'Reading a field for E-000102 on LoanCore', framesBefore: 150, position: null };
     const html = render({
       frames: [frameView(1, { globalOrdinal: 506 }), frameView(2, { globalOrdinal: 507 })],
       framesTotal: 610,
       window: { kind: 'inspection', workItemId: 'record', label: 'E-000102', total: 2, cursor: 0, previousCursor: null, nextCursor: null },
       initialSelection: { kind: 'inspection', frameIndex: 0,
         target: { kind: 'work-item', id: 'record', label: 'E-000102', frameIndex: 0, absence: null } },
-      gaps: { ...recordGaps, missing: 2 },
+      gaps: { scope: 'record', missing: 2, suppressed: 0, rows: [here, elsewhere], markers: [here] },
     });
-    expect(html).toContain('Selected inspection: E-000102');
-    expect(html).toContain(REPLAY_GAP_WORDS.heading);
-    expect(html).toContain(replayIncompleteSentence(2));
-    expect(html).toContain(`${REPLAY_GAP_WORDS.missing} · ${replayGapPosition(506)} · Opening the record for E-000102 on LoanCore`);
-    expect(html).toContain(`${REPLAY_GAP_WORDS.missing} · ${replayGapPosition(700)} · Reading a field for E-000102 on LoanCore`);
+    // React escapes the apostrophe the owner's words carry; read the text as a reader does.
+    const text = html.replaceAll('&#x27;', "'");
+    expect(text).toContain('Selected inspection: E-000102');
+    expect(text).toContain(`>${REPLAY_RECORD_GAP_WORDS.heading}</h3>`);
+    expect(text).not.toContain(`>${REPLAY_GAP_WORDS.heading}</h3>`);
+    expect(text).toContain(replayRecordIncompleteSentence(2));
+    expect(text).not.toContain(replayIncompleteSentence(2));
+    // On this page: no suffix. On another page: the owner's suffix, after the row.
+    expect(text).toContain(`${REPLAY_GAP_WORDS.missing} · ${replayGapPosition(1)} · Opening the record for E-000102 on LoanCore</li>`);
+    expect(text).toContain(`${REPLAY_GAP_WORDS.missing} · ${replayGapPosition(150)} · Reading a field for E-000102 on LoanCore${REPLAY_RECORD_GAP_WORDS.otherPage}</li>`);
     const scrubber = html.match(/<div class="ls-session__scrubber"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? '';
     const order = [...scrubber.matchAll(/class="(ls-scrubber-gap ls-scrubber-gap--[a-z]+|ls-scrubber-pill[^"]*)"/g)]
       .map((match) => (match[1]!.startsWith('ls-scrubber-gap') ? match[1]!.split('--')[1] : 'frame'));
     // One marker, between the record's two frames; the other page's gap has none here.
     expect(order).toEqual(['frame', 'missing', 'frame']);
+    // The marker says its place among the record's frames too.
+    expect(scrubber).toContain(`aria-label="${REPLAY_GAP_WORDS.missing}, ${replayGapPosition(1)}: Opening the record for E-000102 on LoanCore"`);
+  });
+
+  it('says the record’s incomplete sentence in the singular for one missing frame', () => {
+    const one = { toolActionId: 'record-one', kind: 'missing' as const, mark: REPLAY_GAP_WORDS.missing,
+      narration: 'Reading a field', framesBefore: 0, position: 0 };
+    const html = render({ gaps: { scope: 'record', missing: 1, suppressed: 0, rows: [one], markers: [one] } });
+    expect(html).toContain(replayRecordIncompleteSentence(1));
+    // The session's words never on a record's view, and the reverse.
+    expect(render({ gaps })).not.toContain('Playback of this record');
+    expect(render({ gaps }).replaceAll('&#x27;', "'")).not.toContain(REPLAY_RECORD_GAP_WORDS.otherPage);
   });
 
   it('says when the list of positions is bounded, against the exact totals', () => {
-    const html = render({ gaps: { missing: 150, suppressed: 3, rows: gaps.rows } });
+    const html = render({ gaps: { ...gaps, missing: 150, suppressed: 3 } });
     expect(html).toContain(replayIncompleteSentence(150));
     expect(html).toContain(REPLAY_GAP_WORDS.bounded.replace('{shown}', '2').replace('{total}', '153'));
   });
