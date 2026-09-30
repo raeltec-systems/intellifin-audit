@@ -4,8 +4,13 @@ The review package lives in
 [`_bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/`](./_bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/README.md).
 Start with `Owner-Summary.md`; the integrated design includes the product experience,
 recommended Rust architecture, code disposition and consequential owner decisions.
-It is a recommendation for review, not an approved implementation plan or a replacement
-for the current authoritative planning documents. Bundled references are research
+Revision 2 keeps the owner's confirmed lead direction: clean Rust/fresh schema,
+continuing Task, managed computer and standing Permissions. It adds costed computer
+readiness, typed audit evaluations/recurring methods and first-task methodology,
+skills and working knowledge. Admin configuration uses ordinary versioned Save;
+audit review supports teams and honestly labelled solo use. Remaining business
+choices are launch support, data terms and pricing. This is design, not an approved
+implementation plan or a rewrite of existing planning documents. Bundled references are research
 sources, not working instructions or application dependencies.
 The package README links to `Zobba-Design-Package.zip` in the same folder. When updating
 the package, refresh `MANIFEST.json` and rebuild the ZIP; the manifest excludes itself

@@ -1,0 +1,12 @@
+scenario,users,linux_machine_hours,windows_machine_hours,media_gb,regional_shared_desktop_allocation_usd,windows_organization_fixed_usd,direct_profile_use_usd,direct_profile_use_per_user_usd,costed_subtotal_usd,costed_subtotal_per_user_usd,additional_unpriced_allowance_usd,planning_envelope_before_models_usd
+Solo Linux active,1,70.0,0.0,9.9,259.31,0,12.49,12.49,271.79,271.79,300,571.79
+Solo Linux retained idle,1,0,0,0.0,258.91,0,4.16,4.16,263.07,263.07,300,563.07
+12 Linux active,12,1040.0,0.0,118.8,281.71,0,149.84,12.49,431.55,35.96,300,731.55
+12 Linux retained idle,12,0,0,0.0,258.91,0,49.92,4.16,308.83,25.74,300,608.83
+12 Linux always on,12,8760,0,118.8,259.31,0,910.16,75.85,1169.47,97.46,300,1469.47
+10 Linux + 2 Windows active,12,900.0,140.0,118.8,281.71,116.8,251.06,20.92,649.57,54.13,300,949.57
+Solo Windows active,1,0.0,70.0,9.9,259.31,116.8,63.1,63.1,439.2,439.2,300,739.2
+Solo Windows retained idle,1,0,0,0.0,258.91,116.8,35.16,35.16,410.87,410.87,300,710.87
+12 Windows active,12,0.0,840.0,118.8,259.31,116.8,757.16,63.1,1133.27,94.44,300,1433.27
+12 Windows retained idle,12,0,0,0.0,258.91,116.8,421.92,35.16,797.63,66.47,300,1097.63
+12 Windows always on,12,0,8760,118.8,259.31,116.8,3735.08,311.26,4111.19,342.6,300,4411.19

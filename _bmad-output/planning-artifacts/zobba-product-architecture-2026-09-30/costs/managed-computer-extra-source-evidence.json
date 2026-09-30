@@ -1,0 +1,329 @@
+{
+  "retrieval_date": "2026-09-30",
+  "pricing_offers": [
+    {
+      "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSDirectoryService/20260911124544/us-east-1/index.json",
+      "publicationDate": "2026-09-11T12:45:44Z",
+      "version": "20260911124544",
+      "products": {
+        "4JRCBXUEMA8C4MGV": {
+          "sku": "4JRCBXUEMA8C4MGV",
+          "productFamily": "AWS Directory Service",
+          "attributes": {
+            "servicecode": "AWSDirectoryService",
+            "location": "US East (N. Virginia)",
+            "locationType": "AWS Region",
+            "usagetype": "Std-MicrosoftAD-DC-Usage",
+            "operation": "Hourly",
+            "directorySize": "Standard",
+            "directoryType": "Microsoft AD",
+            "directoryTypeDescription": "AWS Directory Service for Microsoft Active Directory (Microsoft AD)",
+            "regionCode": "us-east-1",
+            "servicename": "AWS Directory Service"
+          }
+        }
+      },
+      "terms": {
+        "4JRCBXUEMA8C4MGV": {
+          "4JRCBXUEMA8C4MGV.JRTCKXETXF": {
+            "offerTermCode": "JRTCKXETXF",
+            "sku": "4JRCBXUEMA8C4MGV",
+            "effectiveDate": "2026-08-01T00:00:00Z",
+            "priceDimensions": {
+              "4JRCBXUEMA8C4MGV.JRTCKXETXF.6YS6EN2CT7": {
+                "rateCode": "4JRCBXUEMA8C4MGV.JRTCKXETXF.6YS6EN2CT7",
+                "description": "$0.060 per hour for Microsoft AD (Standard Edition) domain controllers in the US East (N. Virginia) region",
+                "beginRange": "0",
+                "endRange": "Inf",
+                "unit": "Hrs",
+                "pricePerUnit": {
+                  "USD": "0.0600000000"
+                },
+                "appliesTo": []
+              }
+            },
+            "termAttributes": {}
+          }
+        }
+      }
+    },
+    {
+      "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/20260928230416/us-east-1/index.json",
+      "publicationDate": "2026-09-28T23:04:16Z",
+      "version": "20260928230416",
+      "products": {
+        "WP9ANXZGBYYSGJEA": {
+          "sku": "WP9ANXZGBYYSGJEA",
+          "productFamily": "Storage",
+          "attributes": {
+            "servicecode": "AmazonS3",
+            "location": "US East (N. Virginia)",
+            "locationType": "AWS Region",
+            "availability": "99.99%",
+            "storageClass": "General Purpose",
+            "volumeType": "Standard",
+            "usagetype": "TimedStorage-ByteHrs",
+            "operation": "",
+            "durability": "99.999999999%",
+            "regionCode": "us-east-1",
+            "servicename": "Amazon Simple Storage Service"
+          }
+        },
+        "E9YHNFENF4XQBZR6": {
+          "sku": "E9YHNFENF4XQBZR6",
+          "productFamily": "API Request",
+          "attributes": {
+            "servicecode": "AmazonS3",
+            "location": "US East (N. Virginia)",
+            "locationType": "AWS Region",
+            "group": "S3-API-Tier1",
+            "groupDescription": "PUT/COPY/POST or LIST requests",
+            "usagetype": "Requests-Tier1",
+            "operation": "",
+            "regionCode": "us-east-1",
+            "servicename": "Amazon Simple Storage Service"
+          }
+        },
+        "ZWQ6Q48CRJXX4FXE": {
+          "sku": "ZWQ6Q48CRJXX4FXE",
+          "productFamily": "API Request",
+          "attributes": {
+            "servicecode": "AmazonS3",
+            "location": "US East (N. Virginia)",
+            "locationType": "AWS Region",
+            "group": "S3-API-Tier2",
+            "groupDescription": "GET and all other requests",
+            "usagetype": "Requests-Tier2",
+            "operation": "",
+            "regionCode": "us-east-1",
+            "servicename": "Amazon Simple Storage Service"
+          }
+        }
+      },
+      "terms": {
+        "WP9ANXZGBYYSGJEA": {
+          "WP9ANXZGBYYSGJEA.JRTCKXETXF": {
+            "offerTermCode": "JRTCKXETXF",
+            "sku": "WP9ANXZGBYYSGJEA",
+            "effectiveDate": "2026-09-01T00:00:00Z",
+            "priceDimensions": {
+              "WP9ANXZGBYYSGJEA.JRTCKXETXF.PGHJ3S3EYE": {
+                "rateCode": "WP9ANXZGBYYSGJEA.JRTCKXETXF.PGHJ3S3EYE",
+                "description": "$0.023 per GB - first 50 TB / month of storage used",
+                "beginRange": "0",
+                "endRange": "51200",
+                "unit": "GB-Mo",
+                "pricePerUnit": {
+                  "USD": "0.0230000000"
+                },
+                "appliesTo": []
+              },
+              "WP9ANXZGBYYSGJEA.JRTCKXETXF.D42MF2PVJS": {
+                "rateCode": "WP9ANXZGBYYSGJEA.JRTCKXETXF.D42MF2PVJS",
+                "description": "$0.022 per GB - next 450 TB / month of storage used",
+                "beginRange": "51200",
+                "endRange": "512000",
+                "unit": "GB-Mo",
+                "pricePerUnit": {
+                  "USD": "0.0220000000"
+                },
+                "appliesTo": []
+              },
+              "WP9ANXZGBYYSGJEA.JRTCKXETXF.PXJDJ3YRG3": {
+                "rateCode": "WP9ANXZGBYYSGJEA.JRTCKXETXF.PXJDJ3YRG3",
+                "description": "$0.021 per GB - storage used / month over 500 TB",
+                "beginRange": "512000",
+                "endRange": "Inf",
+                "unit": "GB-Mo",
+                "pricePerUnit": {
+                  "USD": "0.0210000000"
+                },
+                "appliesTo": []
+              }
+            },
+            "termAttributes": {}
+          }
+        },
+        "E9YHNFENF4XQBZR6": {
+          "E9YHNFENF4XQBZR6.JRTCKXETXF": {
+            "offerTermCode": "JRTCKXETXF",
+            "sku": "E9YHNFENF4XQBZR6",
+            "effectiveDate": "2026-09-01T00:00:00Z",
+            "priceDimensions": {
+              "E9YHNFENF4XQBZR6.JRTCKXETXF.6YS6EN2CT7": {
+                "rateCode": "E9YHNFENF4XQBZR6.JRTCKXETXF.6YS6EN2CT7",
+                "description": "$0.005 per 1,000 PUT, COPY, POST, or LIST requests",
+                "beginRange": "0",
+                "endRange": "Inf",
+                "unit": "Requests",
+                "pricePerUnit": {
+                  "USD": "0.0000050000"
+                },
+                "appliesTo": []
+              }
+            },
+            "termAttributes": {}
+          }
+        },
+        "ZWQ6Q48CRJXX4FXE": {
+          "ZWQ6Q48CRJXX4FXE.JRTCKXETXF": {
+            "offerTermCode": "JRTCKXETXF",
+            "sku": "ZWQ6Q48CRJXX4FXE",
+            "effectiveDate": "2026-09-01T00:00:00Z",
+            "priceDimensions": {
+              "ZWQ6Q48CRJXX4FXE.JRTCKXETXF.6YS6EN2CT7": {
+                "rateCode": "ZWQ6Q48CRJXX4FXE.JRTCKXETXF.6YS6EN2CT7",
+                "description": "$0.004 per 10,000 GET and all other requests",
+                "beginRange": "0",
+                "endRange": "Inf",
+                "unit": "Requests",
+                "pricePerUnit": {
+                  "USD": "0.0000004000"
+                },
+                "appliesTo": []
+              }
+            },
+            "termAttributes": {}
+          }
+        }
+      }
+    },
+    {
+      "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonVPC/20260917190528/us-east-1/index.json",
+      "publicationDate": "2026-09-17T19:05:28Z",
+      "version": "20260917190528",
+      "products": {
+        "EN2N5TATXE673A3B": {
+          "sku": "EN2N5TATXE673A3B",
+          "productFamily": "VpcEndpoint",
+          "attributes": {
+            "servicecode": "AmazonVPC",
+            "location": "US East (N. Virginia)",
+            "locationType": "AWS Region",
+            "endpointType": "PrivateLink",
+            "group": "VPCE:VpcEndpoint",
+            "groupDescription": "Hourly charge for VPC Endpoints",
+            "usagetype": "USE1-VpcEndpoint-Hours",
+            "operation": "VpcEndpoint",
+            "regionCode": "us-east-1",
+            "servicename": "Amazon Virtual Private Cloud"
+          }
+        },
+        "DQYYEZBCWSW5XS2R": {
+          "sku": "DQYYEZBCWSW5XS2R",
+          "productFamily": "VpcEndpoint",
+          "attributes": {
+            "servicecode": "AmazonVPC",
+            "location": "US East (N. Virginia)",
+            "locationType": "AWS Region",
+            "endpointType": "PrivateLink",
+            "group": "VPCE:VpcEndpoint",
+            "groupDescription": "Charge for per GB data processed by VPC Endpoints",
+            "usagetype": "USE1-VpcEndpoint-Bytes",
+            "operation": "VpcEndpoint",
+            "regionCode": "us-east-1",
+            "servicename": "Amazon Virtual Private Cloud"
+          }
+        }
+      },
+      "terms": {
+        "EN2N5TATXE673A3B": {
+          "EN2N5TATXE673A3B.JRTCKXETXF": {
+            "offerTermCode": "JRTCKXETXF",
+            "sku": "EN2N5TATXE673A3B",
+            "effectiveDate": "2026-09-01T00:00:00Z",
+            "priceDimensions": {
+              "EN2N5TATXE673A3B.JRTCKXETXF.6YS6EN2CT7": {
+                "rateCode": "EN2N5TATXE673A3B.JRTCKXETXF.6YS6EN2CT7",
+                "description": "$0.01 per VPC Endpoint Hour",
+                "beginRange": "0",
+                "endRange": "Inf",
+                "unit": "Hrs",
+                "pricePerUnit": {
+                  "USD": "0.0100000000"
+                },
+                "appliesTo": []
+              }
+            },
+            "termAttributes": {}
+          }
+        },
+        "DQYYEZBCWSW5XS2R": {
+          "DQYYEZBCWSW5XS2R.JRTCKXETXF": {
+            "offerTermCode": "JRTCKXETXF",
+            "sku": "DQYYEZBCWSW5XS2R",
+            "effectiveDate": "2026-09-01T00:00:00Z",
+            "priceDimensions": {
+              "DQYYEZBCWSW5XS2R.JRTCKXETXF.D7RZ6WCPVW": {
+                "rateCode": "DQYYEZBCWSW5XS2R.JRTCKXETXF.D7RZ6WCPVW",
+                "description": "$0.01 per GB for upto 1 PB monthly data processed by VPC Endpoints",
+                "beginRange": "0",
+                "endRange": "1048576",
+                "unit": "GB",
+                "pricePerUnit": {
+                  "USD": "0.0100000000"
+                },
+                "appliesTo": []
+              },
+              "DQYYEZBCWSW5XS2R.JRTCKXETXF.RBMR72YW69": {
+                "rateCode": "DQYYEZBCWSW5XS2R.JRTCKXETXF.RBMR72YW69",
+                "description": "$0.006 per GB for more than 1 PB and less than 5 PB monthly data processed by VPC Endpoints",
+                "beginRange": "1048576",
+                "endRange": "5242880",
+                "unit": "GB",
+                "pricePerUnit": {
+                  "USD": "0.0060000000"
+                },
+                "appliesTo": []
+              },
+              "DQYYEZBCWSW5XS2R.JRTCKXETXF.SW9U2ZKBYX": {
+                "rateCode": "DQYYEZBCWSW5XS2R.JRTCKXETXF.SW9U2ZKBYX",
+                "description": "$0.004 per GB for more than 5 PB monthly data processed by VPC Endpoints",
+                "beginRange": "5242880",
+                "endRange": "Inf",
+                "unit": "GB",
+                "pricePerUnit": {
+                  "USD": "0.0040000000"
+                },
+                "appliesTo": []
+              }
+            },
+            "termAttributes": {}
+          }
+        }
+      }
+    }
+  ],
+  "document_excerpts": [
+    {
+      "source_url": "https://aws.amazon.com/marketplace/pp/prodview-4riznyn4eqlbw",
+      "retrieval_date": "2026-09-30",
+      "html_sha256": "455a28cf2de818dbbcf7d947cdf4e4b032bd76acdc285fe2bfbe3139c6d1d28d",
+      "quote": "e costs. Usage costs (1) Info Dimension Cost/unit Per user / Per month $15.70 Vendor refund policy We do not currently support refunds, but you can cancel at any time. How can we make this page better? Tell us how we can improve this page, or report an issue with this product. Give us feedback Report a problem with this product or seller Legal Vendor terms and conditions Upon subscribing to this product, you must acknowledge and agree to the terms and conditions outlined in the vendor's End User License Agreement (EULA) . Content disclaimer Vendors are responsible for their product description"
+    },
+    {
+      "source_url": "https://aws.amazon.com/marketplace/pp/prodview-bh46d5p2hapns",
+      "retrieval_date": "2026-09-30",
+      "html_sha256": "ba8ef0db7789492437939eb6c833f1fdac4ad53298e2b7ebc081eb4173f46ca2",
+      "quote": "e costs. Usage costs (1) Info Dimension Cost/unit Per user / Per month $21.43 Vendor refund policy We do not currently support refunds, but you can cancel at any time. How can we make this page better? Tell us how we can improve this page, or report an issue with this product. Give us feedback Report a problem with this product or seller Legal Vendor terms and conditions Upon subscribing to this product, you must acknowledge and agree to the terms and conditions outlined in the vendor's End User License Agreement (EULA) . Content disclaimer Vendors are responsible for their product description"
+    },
+    {
+      "source_url": "https://aws.amazon.com/marketplace/pp/prodview-buamtl3v3xaes",
+      "retrieval_date": "2026-09-30",
+      "html_sha256": "c467f398d0d19e9bc275ab4f363b97e7f939601d08e25f9518ab7cf3c56fb17b",
+      "quote": "e costs. Usage costs (1) Info Dimension Cost/unit Per user / Per month $10.00 Vendor refund policy No Refund Policy How can we make this page better? Tell us how we can improve this page, or report an issue with this product. Give us feedback Report a problem with this product or seller Legal Vendor terms and conditions Upon subscribing to this product, you must acknowledge and agree to the terms and conditions outlined in the vendor's End User License Agreement (EULA) . Content disclaimer Vendors are responsible for their product descriptions and other product content. AWS does not warrant th"
+    },
+    {
+      "source_url": "https://fly.io/docs/reference/suspend-resume/",
+      "retrieval_date": "2026-09-30",
+      "html_sha256": "a7dd858e36dd04a1d1dd2d178ff3bfc428d00833b9ea992028a3afa425e96caf",
+      "quote": "p code or image. \u200b Limitations and considerations Suspend is not currently recommended for large machine memory sizes (> 2 GB) Suspending many machines at once is not recommended Some logs may be lost after resume Unlike stop, suspend does not reset the machine\u2019s rootfs On resume, the clock can lag a few seconds until NTP syncs Always design for both resume and cold start paths. \u200b Snapshot behavior with suspend Snapshots are tied to the exact code and state of the machine they were taken from. If you deploy new code, the old snapshot can\u2019t be resumed safely and will be discarded. Snapshots are"
+    },
+    {
+      "source_url": "https://github.com/selkies-project/selkies",
+      "retrieval_date": "2026-09-30",
+      "html_sha256": "0ab713007e6f284f2c5e9118d66eb8195e60ec1c3778ee46d7d68d49a314e386",
+      "quote": "and community contributors. It streams over plain WebSockets by default, with WebRTC available as an opt-in transport. Selkies is designed for researchers studying Agentic AI, Graphical AI, Robotics, Autonomous Driving, Drug Discovery technologies, SLURM supercomputer or HPC system administrators, Jupyter, Kubernetes, Docker\u00ae, Coder infrastructure administrators, and Linux cloud gaming enthusiasts. While designed for clustered or unprivileged containerized environments, Selkies can also be deployed in desktop computers, and any performance issue that would be problematic in cloud gaming platfo"
+    }
+  ]
+}

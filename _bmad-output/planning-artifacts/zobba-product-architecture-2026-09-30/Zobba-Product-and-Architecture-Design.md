@@ -1,8 +1,8 @@
 # Zobba: the audit working environment
 
-**Recommended product and architecture · 30 September 2026 · For owner review**
+**Consolidated product and architecture · 30 September 2026 · Revision 2 · For owner review**
 
-This is a design recommendation, not an implementation plan or a claim that these capabilities are already built. It follows the current direction brief and the user's request. The two Codex studies and older designs supply evidence and useful patterns; their earlier deferrals, language preferences and legacy-preservation proposals do not govern this design.
+This is the lead Zobba design, consolidated against the alternate agent's document at the user's request. The clean Rust backend, fresh schema, continuing Task, real managed computer and standing Permissions remain the direction. The alternate document is a completeness source; its infrastructure choices, approval ceremonies and delivery stages do not govern this design. This is product and architecture design, not an implementation plan or a claim that these capabilities are already built.
 
 ## The recommendation
 
@@ -21,7 +21,7 @@ The recommended system uses:
 
 The main cost is building a dependable working environment and its operating controls. Rust provides a coherent ownership model and useful correctness tools; it is not a promise of faster remote models or cheaper computers.
 
-The five consequential recommendations for owner review are in §12. Ordinary engineering choices are resolved below. The capability dependencies in §11 describe what must exist for the experience to work; they are not an epic backlog.
+The remaining business decisions are in §12. The architecture and ordinary engineering choices are resolved below. The capability dependencies in §11 put methodology, skills and working knowledge inside the first complete task experience; they are not an epic backlog.
 
 ## 1. Product model
 
@@ -71,6 +71,8 @@ Conversation is always recoverable. The workspace remembers what the person is i
 
 The computer panel shows the actual browser or desktop, its account and environment, who controls it, and whether the view is current. It must never substitute a plausible reconstruction for a disconnected session. Data and document views are first-class working surfaces, not screenshots of a desktop application when a native table or document is more useful.
 
+**How it ran** opens the applicable methodology and skill versions, working knowledge used, sources and analyses, requested/actual model and effort, Permissions basis, human intervention intervals and observed outcomes. It explains the basis of the work without exposing private model reasoning or forcing an auditor to read an execution log.
+
 On a narrow screen, use Conversation and Workspace tabs with persistent task state and a reachable Pause/Stop control. Keep decisions and evidence inspection fully usable. Computer control opens a full-screen view with explicit keyboard, pointer and zoom controls; warn when the target application needs a larger display. Do not imply that a dense desktop spreadsheet is comfortably editable on a phone.
 
 Keep Graphite, Linen, Canvas and Iris, the Pair mark, accessible input/focus tokens, and the restrained typographic changes view. Zobba's chrome surrounds firm-owned deliverables. The firm's reference scheme, typography, logos and required sections govern the exported work product.
@@ -79,7 +81,7 @@ Keep Graphite, Linen, Canvas and Iris, the Pair mark, accessible input/focus tok
 
 **Start with work.** From an engagement, the auditor says: “Review leaver access for this quarter. Use SharePoint and the access system. Investigate unusual cases and prepare our working paper.” Zobba uses the known engagement, methodology and connections. It begins useful discovery and shows a compact Working brief. It asks only when the answer changes scope, criteria, access or a consequential decision. An ambiguous engagement must be resolved before client material is disclosed or acquired.
 
-On first use, New task can establish the client and engagement conversationally. A clearly labelled neutral working-paper template is available when the firm has none. Authorised discovery and drafting can begin while methodology configuration is incomplete; missing mandatory criteria or review rules are resolved before a conclusion, approval or issuance that depends on them.
+On first use, New task can establish the client and engagement conversationally. The task binds the applicable saved methodology, allowed skills and relevant authorised working knowledge before substantive evaluation. A clearly labelled neutral working-paper template is available when the firm has none. Authorised discovery and drafting can begin while methodology configuration is incomplete; Zobba names the missing criteria or review rules and withholds only the conclusion or issuance that depends on them. It never presents a generic starter template as the firm's adopted methodology.
 
 **Establish the basis.** Zobba identifies the applicable policy and period, gathers the population, checks coverage and exposes conflicts. If two policies disagree, it presents the difference and asks which governs. It can continue an independent inventory while that decision is pending. Missing access is a sign-in or connection request, not a request to paste credentials.
 
@@ -155,7 +157,9 @@ For normal takeover, record the controller and interval. Respect the same applic
 
 The three roles remain **Auditor, Audit manager and Admin**. Auditors prepare work. Review, approval and issuance require an Audit manager role and the relevant engagement assignment. A person may hold more than one role; an independent practitioner can hold the audit roles needed for their declared solo methodology. Admin may configure methodology, users, connections, models and budgets; Admin alone confers no right to review or issue audit work.
 
-Team engagements default to an Audit manager reviewing work prepared by another person. For independent practitioners, support an explicit solo methodology that permits accountable self-review; label it as self-reviewed and never as independent review. A mandatory separation-of-duties rule cannot be removed by a conversational instruction. An authorised methodology change has its own attributable process and cannot rewrite prior approvals.
+Admin manages invitations, engagement assignments, role changes and account removal, with protection against removing the last active Admin. Removal terminates sessions and revokes current control/dispatch authority while preserving historical authorship. An Admin without the relevant engagement assignment cannot inspect client evidence merely by administering the platform.
+
+Team engagements default to an Audit manager reviewing work prepared by another person. For independent practitioners, support an explicit solo mode that permits accountable self-review under the engagement's methodology; label it as self-reviewed and never as independent review. The same person may hold Auditor and Audit manager roles. Admin alone grants no audit sign-off. Admin configures the mode and its rules through ordinary saved configuration; a conversational instruction cannot override the task's binding or rewrite prior approvals. The review controls and exported labels in §4.2 make both modes explicit.
 
 Several auditors can converse on a task and leave anchored review comments. Concurrent instructions are accepted in order; contradictory material direction becomes a named decision rather than “last message wins”. Work product edits use version checks, visible changes and conflict resolution.
 
@@ -193,7 +197,7 @@ A confirmation binds the actual operation: account, destination, recipients, con
 
 Methodology has typed standing:
 
-- **Required controls:** review requirements, prohibited uses, retention obligations and required audit procedures. Enforced by application code and signed/versioned configuration.
+- **Required controls:** review requirements, prohibited uses, retention obligations and required audit procedures. Enforced by application code and attributable, immutable configuration versions.
 - **Engagement decisions:** scoped choices of criterion, period, treatment or method, with accountable author and rationale.
 - **Skills:** optional techniques, templates and tool instructions, unless a named methodology requirement explicitly makes part of them mandatory.
 - **Preferences:** presentation and working style, adjustable by the auditor.
@@ -203,19 +207,42 @@ There is no single textual hierarchy that makes every skill instruction outrank 
 
 ### 3.3 Methodology becomes usable configuration
 
-Admin uploads the firm's methodology, templates, rating scales and review rules. Zobba proposes a structured package, citing where each proposed requirement came from. The appropriate owner validates ambiguous or conflicting requirements and publishes a version. Unpublished interpretation remains advice, not an enforced firm rule.
+**Admin edits, validates and saves methodology in Settings → Methodology and skills.** There is no default second approver or separate publication ceremony. An Audit manager may advise on substance; the product does not require that person to approve Admin's ordinary edits. Admin can also ask Zobba to interpret uploaded methodology. The result is an editable proposal with source passages, conflicts and uncertain interpretations; only the Admin's Save makes it configuration.
 
-Admin owns configuration publication. The firm's designated Audit manager resolves substantive audit-method questions and approves changes to mandatory review/issuance safeguards. These are assignments within the three roles, not a fourth “methodology owner” product role.
+A package contains applicable audit areas and periods, required/optional work, criteria and source authority, population/sampling conventions, evidence checks, rating vocabularies, templates and section mappings, review/issuance rules, and suitable skills. The Northstar/P-1–P-4 material is an opt-in example pack. A new firm uses its own pack or an explicitly labelled neutral starting package; demonstration criteria never become universal rules.
 
-A package contains phase definitions, required work and evidence checks, rating vocabularies, review/issuance rules, template mappings, suitable skills and source citations. Each task pins the relevant package versions and records later amendments. The product supports a methodology; it does not hard-code one employer, industry or four demonstration procedures as universal audit behaviour.
+Save validates schema, references and effective assignments, then atomically creates an immutable version, records author/time/diff/sources, updates the selected assignment and adds change notifications. Invalid settings leave the previous version effective. Undo saves a successor. No one edits a version already cited by audit work. Admin owns these settings within fixed product truths: decisions remain attributable; issued history is preserved; self-review cannot be called independent; configuration authority does not confer audit sign-off.
+
+The Save surface states its scope: **“New tasks in all engagements · effective now”** by default. Admin can select clients/engagements, a future effective date, or **“Also apply to active tasks”** within the same edit. Firm defaults and explicit scoped overrides resolve field by field; an incomplete override cannot erase inherited requirements. Configuration availability and a criterion's business effective period are separate: a policy entered today may govern an earlier period, and “latest saved” is not a policy-selection rule.
+
+| Change | Effect on work |
+|---|---|
+| New task | Bind the applicable method/template versions and audit period before substantive evaluation. Show their identity in the Working brief. |
+| Save for new tasks | Existing work keeps its recorded binding. Show an update notice where it changes that work, rather than a prompt for every typo. |
+| Apply to active tasks | Commit a binding-change command; at a safe boundary, compare requirements, rebuild context and recompute affected draft dependencies. Report the change. Ask only about a new material ambiguity, authority gap or budget need. |
+| Operation in flight | Preserve its original basis and actual outcome, then assess it against the new binding. Do not relabel old work or admit a stale proposal as though it used the new method. |
+| Work in review or already issued | Preserve its exact version. Create a successor or reconsideration item where the applicable change requires different work. A setting cannot fabricate or erase an approval. |
+| Current access restriction or recalled method/skill | Block affected new dispatch, disclosure and transitions at their enforcement boundary. Reconcile dispatched effects. Pinning never defeats revocation or lets a knowingly invalid method continue. |
+
+The system derives the impact of an edit: presentation, optional guidance, criteria/analysis, evidence or review requirements. Uncertain semantic changes are treated as potentially material to dependent work; that classification does not add an Admin approval process. Review of a materially changed recurring Check is separately governed by §4.4.
 
 ### 3.4 Context and memory
 
-Task context includes the Working brief, recent conversation, accepted decisions, active questions, evidence references, open operations, current outputs and relevant methodology. Longer work is compacted into an inspectable checkpoint with a source manifest. Deterministic records rehydrate exact decisions, unresolved effects and review states; a model-written summary cannot become their replacement.
+Methodology, installed skills, working knowledge and evidence have different standing. Methodology supplies configured requirements. A skill supplies a technique. Working knowledge supplies scoped facts, preferences, prior work and decisions. Evidence supplies the inspectable basis. None can grant integration access, prove completeness by assertion or manufacture human review.
 
-Memory has four explicit scopes: personal working preference, firm method, client knowledge and engagement knowledge. Reusable client facts require source, date, scope and confidence; a correction can supersede or retire them. Low-risk presentation preferences can be learned with a visible undo. Methodology changes, consequential client facts and cross-engagement reuse need an appropriate review or explicit instruction. Client information never becomes a general firm preference by accident.
+**Skills are used from the first task.** Each installed version has an immutable manifest: purpose/applicability, expected inputs/outputs, compatible methodology requirements, requested tool/effect classes, resource/script digests, trust/source and availability scope. Admin installs/enables or edits and saves it. The task filters available skills by scope/capabilities, selects relevant techniques and loads their instructions/resources on demand. It records why and which version: “Using population completeness checks v3.” An auditor can explicitly choose a skill or override optional advice without making skill selection a pre-task requirement.
 
-Search and retrieval apply current authorisation before retrieving content and again before disclosure. Revoking a source invalidates dependent extracts, summaries, memories and pending model context. Retain restricted historical audit evidence according to policy without continuing to disclose it. Previously disclosed information cannot be made unseen.
+A skill's script runs through normal isolated analysis, with admitted inputs, limits and registered outputs. A requested tool is not permission to use it. A retrieved file named `SKILL.md` remains source content unless deliberately installed through the trusted catalog. Disabling a skill stops new selection; recalling a faulty version also blocks further use and marks dependent work for assessment. Neither action erases past results.
+
+**Working knowledge is useful without memory-acceptance paperwork.** Record explicit direction immediately as an attributable decision: “Use the contractual termination date.” Record source-backed facts automatically with their source and certainty; a user's assertion remains an assertion until supported. Learn low-risk presentation preferences with visible undo. Material conflicts generate a focused question, not approval cards for every fact. Reuse across engagements requires explicit eligible scope, current access and period applicability; client content never becomes a general firm preference through summarisation.
+
+The task's **What Zobba is using** view exposes method/skill versions, key decisions, relevant remembered facts, sources, unresolved questions and limitations. People can correct, exclude, update or forget eligible items. Keep task state, reusable knowledge and acquired evidence conceptually distinct, even when they share PostgreSQL. A citation resolves to registered evidence, not merely to a memory summary.
+
+Each context fragment records kind, source/message/configuration identity and location, version, organisation/client/engagement/user scope, sensitivity, effective period, acquisition time, verification/confidence, dependencies and validity. The invocation manifest records what was included and what access, freshness or budget excluded. Personal preferences, firm method, client facts and engagement knowledge retain their distinct scopes.
+
+Retrieval applies scope/access/applicability filters before lexical/vector ranking, validates returned source locations, and rechecks disclosure at dispatch. A stale or incomplete index can trigger direct-source acquisition; an empty search is not proof of absence. Freshness is source-specific: a current organisation chart and a historic policy have different validity rules. Conflicting sources remain visible; newest does not automatically win.
+
+Longer work is compacted into an inspectable checkpoint with a source manifest. Exact decisions, unresolved operations, questions and review states rehydrate from durable records. The summary is derived context, not new authority. Corrections invalidate dependent claims and context. Revocation invalidates extracts, embeddings, previews, memories, summaries and pending disclosures; restricted historical evidence may remain under retention without being available to the current model/user. Protected sign-in material never enters working knowledge. These mechanisms support long first tasks and reconnect, not a later optional memory feature.
 
 ## 4. Work products, evidence and continuing assurance
 
@@ -246,19 +273,104 @@ An auditor's direct edit creates a version. A stale concurrent edit must be reba
 
 The workspace journey remains **claim → citation → preview → full evidence → back to claim**. Show readable source identity first. Keep the originating claim selected and restore keyboard focus on return. Every export includes the relevant limitations and human preparation/review information; interface overlays are not accidentally exported.
 
-### 4.3 From investigation to recurring Check
+Review, approval and issue are distinct recorded facts but need not be three ceremonies. By default an eligible manager uses **Review and approve** on the exact submitted version; **Issue** is a separate action with recipients and an export manifest. A firm can configure a separate approver where required. The independence check uses the human contributor set: a manager who materially prepared or changed that version cannot independently review it. Accepting responsibility for agent-prepared work makes the human its preparer; a second model never supplies independent human review.
 
-“Run this each month” proposes a Check definition. It includes objective, criterion, source bindings, period/time-zone rules, population or sampling method, analysis version, required evidence, expected outputs, Permissions, budget, review and notification rules. The auditor reviews one readable proposal and its source task.
+In Admin-configured solo mode, the eligible practitioner uses **Self-review and approve** and then **Issue**. The record and export name the preparer and say **“Self-reviewed by [name]; no independent review.”** An engagement requiring independent review cannot silently fall back to solo when a reviewer is unavailable. This supports solo work honestly without implying that self-review satisfies an external independence requirement.
 
-The preparer may propose and edit it. Activation records the designated Audit manager's approval of the exact definition and the applicable methodology checks; solo practice follows its explicit self-review rule. Creating a schedule or answering a chat question alone does not activate unattended authority.
+### 4.3 Concrete audit evaluation
 
-A Check freezes its **method and acceptance criteria**, not a brittle sequence of browser clicks. The engine may adapt retrieval/navigation within that method. If a source's semantics, criterion or material analytical method changes, it pauses the check or produces a clearly limited result and proposes a new definition. It must not silently redefine the assurance being provided.
+The task develops an inspectable **assessment basis**: the question, criterion and authoritative source, period, population/selection, required evidence, analytical method and reporting limits. It proposes this through conversation while useful discovery continues. Only material ambiguity or a consequential scope/method choice requires an answer. This is a versioned assessment mechanism beneath the continuing Task, not a procedure Builder or another execution compiler.
 
-Each scheduled occurrence has a stable identity and creates a new linked Task. Recommend no overlapping occurrence of the same Check by default. Use the firm's business time zone; record daylight-saving and missed-run treatment. Coalesce duplicate evidence notifications; use an explicit catch-up policy rather than replaying months of expensive missed work automatically.
+| Record | What it fixes |
+|---|---|
+| Criterion version | Readable assertion; exact authority/source/location; effective period and scope; applicability test; required typed facts; calculation or judgment rubric; missing/ambiguous-input treatment; rating/materiality and review rules. |
+| Assessment-basis version | Objective, criteria, period/as-of, source contracts, population/sample manifest, method/environment versions, limitations and attributable material choices. |
+| Fact observation | Subject, typed value or explicit unavailable/ambiguous state, source snapshot/locator, effective/observed/acquired times and extraction/transformation dependencies. |
+| Evaluation revision | Subject and criterion opportunity, basis and input versions, applicability, execution, verdict when valid, reason, assessor provenance and human disposition. Immutable revisions preserve corrections. |
+| Assessment-summary version | Exact evaluations included, coverage metrics and units, distinct affected subjects, limitations, aggregation rule, findings and review state. |
+| Finding and occurrence | Continuing issue identity, each period's supported observation, evidence, importance, responsibility, response and follow-up. |
 
-New evidence wakes an existing incomplete Task when the evidence request and task permit it. Evidence arriving after approval/issuance opens a revision or follow-up, with the earlier result preserved. A provider webhook is a hint: re-fetch the exact object and recheck access/version before using it.
+Facts use exact identifiers, Boolean/enum values, dates or time-zone-aware timestamps, decimals with unit/currency, and bounded relations. Preserve leading-zero IDs. Record conversion and matching rules; do not silently compare currencies or use acquisition date to select a policy that applied at transaction time.
 
-Notify the responsible person about a decision, blocked access, completed result, new material exception or budget limit. Routine tool chatter stays in the task. Email and push notifications contain a safe summary and an authenticated link; they should not leak evidence or client details into an unapproved destination.
+**Deterministic evaluation** uses small pure Rust predicates for exact comparisons, dates, sets and reconciliations, and isolated versioned programs for larger/custom analysis. Record input, program/environment digests, parameters and output. These functions do not drive applications or own Task state. **Judgment-assisted evaluation** uses an explicit rubric with supporting and contrary evidence, stores the actual model invocation and an attributed proposal/rationale, and follows the required human disposition. **Human judgment** records the accountable person's rationale and references. Composite evaluations name their deterministic and judgment components. Model confidence never proves source completeness or substitutes for review.
+
+The durable fields stay separate:
+
+| Field | Semantics |
+|---|---|
+| Applicability | Applicable, not applicable, or unknown. A supported exemption is not a pass. |
+| Evaluation execution | Not started, waiting, completed, failed or cancelled. A calculation error is an execution failure. |
+| Criterion verdict | Met, not met, undetermined, or absent when no valid assessment exists. Only applicable, supported evaluations can be met/not met. |
+| Origin | Deterministic, model proposal, human, or a referenced composite. Unevaluated is a result/state, never an origin. |
+| Human disposition | Unreviewed, accepted, replaced or needs reconsideration, attached to the exact revision. Approval/issuance remains a separate work-product lifecycle. |
+
+Reason codes distinguish unavailable source, incomplete population, ambiguous identity, conflicting policy, stale evidence, missing fact, unknown applicability and verified absence. People see a concrete explanation. A complete authoritative approval history containing no required approval can establish a failure. A timeout or a missing permission establishes unavailable evidence. A crashed evaluator produces no new valid verdict; its earlier result remains historical/stale. Known local exceptions remain supported even when the wider conclusion is inconclusive.
+
+**Coverage is recorded at the right grain.** A population manifest names the unit, period/query, source identity, acquired snapshots, pagination/end-of-stream proof, source-to-acquisition reconciliation, duplicates, selection and exclusions. “Retrieved 1,000 rows” alone does not prove a population of 1,000 subjects. Preserve mappings among received rows, resolved subjects, in-scope/excluded/scope-unknown subjects, selected subjects, applicable/not-applicable/unknown criterion opportunities, and evaluated/pending/failed opportunities. A partition must use one grain; failures across criteria cannot be summed and called exception records.
+
+Every reported metric has scope, unit, calculation and known/bounded/unknown denominator. Show counts and limitations before percentages. An unknown population count is not zero; a bounded preview is not the population; an incomplete acquired set supports claims about inspected records, not a population-wide rate. If the population is known but assessments are incomplete, report known exceptions as a lower bound with unresolved counts. A verified empty eligible population says **“No eligible items; operating effectiveness was not demonstrated”**, unless the methodology defines another explicit no-activity disposition.
+
+For a sample, preserve the population frame, purpose/unit, selection method, strata, size, seed or selected identities, substitutions/exclusions and justification. Statistical inference requires a validated pinned method and recorded assumptions/confidence/tolerance. A judgmental sample does not acquire statistical confidence merely because a model supplies a percentage.
+
+Aggregation follows the methodology but cannot discard these facts. An unqualified **“No exception found”** needs resolved applicable assessments and adequate coverage for the claimed scope. Supported failures produce exceptions; unresolved material evidence limits the wider conclusion. A method may report **“Exceptions found; overall assessment inconclusive”**. Completion, evidence quality, assessment and human approval remain independently visible.
+
+A person may accept a proposal, request work, correct facts/basis or replace professional judgment with reasons. The original proposal and facts remain. Corrected facts cause recalculation; changed interpretation causes a new criterion/basis or human assessment revision. An allowed waiver is a visible disposition with authority/rationale, not a rewritten arithmetic result. It cannot erase unavailable inputs or inflate coverage. Review binds the work-product version, summary, evaluations, basis and required evidence; material changes mark affected dependencies for reconsideration.
+
+### 4.4 From investigation to recurring Check
+
+“Run this each month” proposes one readable Check from the completed work. It freezes its **assurance method**, while navigation and bounded investigation remain adaptive. The Check uses the same Rust Task engine, operations, computer, evidence and review model.
+
+| Check contract | Bound content |
+|---|---|
+| Assertion and basis | Objective/scope, criteria and effective-policy selector, rating/aggregation rules, source Task and assessment basis. |
+| Source and population | Canonical provider/tenant/account/system/resource, period selector, schema/meaning/freshness/completeness rules, matching/duplicate rules, full-population or pinned sample method. |
+| Evaluation | Exact deterministic program/environment and rubric versions, required facts, admissible adaptive retrieval, qualified model-routing profile and uncertainty treatment. |
+| Outputs and review | Templates, coverage measures, finding identity, limitations, eligible team/solo reviewer and issuance rules. |
+| Authority and capacity | Narrow standing Permissions, revocable service delegation, accountable owner, action/purpose limits, budget and escalation destination. |
+| Continuation | IANA time zone, calendar period/as-of, schedule or source-event window, waiting deadline, overlap, catch-up and notification rules. |
+
+Draft edits save normally. Activation records review/approval of the exact assurance definition under the applicable team or labelled solo rule; review and activation can be one action. A schedule alone does not grant unattended authority. Each occurrence binds its Check version, period, actual source snapshots/account, current narrowed authority, method/routing versions and budget before work. Recheck authority at dispatch. Approved method pins preserve interpretation, not revoked access.
+
+The recurring result is an automated **draft assessment**, never a fabricated human sign-off. Permitted notifications and routine coordination proceed under standing Permissions. An operation marked Asks first creates a durable decision wait for the responsible person; no effect is dispatched and independent work can continue. A Check can investigate related exceptions inside its declared scope/budget. Exploratory leads outside the frozen assertion are labelled separately and proposed for follow-up.
+
+| Change | Treatment |
+|---|---|
+| Same-account token refresh, credential rotation, replacement computer, changed browser layout | Record operational rebinding, revalidate and continue within the same method. |
+| New period file selected by the approved rule, harmless extra column | Validate period/identity/coverage and the declared compatibility rule; bind the exact source version. |
+| Spelling, display metadata, compatible formatting/guidance that does not change criteria, selection, analysis/rubric, coverage or assurance; due time/reminder edits preserving period/scope/budget | Save an attributable maintenance revision. No repeated audit-method approval. Calling advice optional does not make its effect on the method immaterial. |
+| Criterion, source meaning or identity, material analysis/rubric, sample design, mandatory evidence/review rule, wider authority, processing destination or covered-window changes | Withhold affected work and propose a materially revised Check under its existing review rule. Admin's settings save itself remains ordinary configuration. |
+| New underlying policy, recalled method or unqualified model withdrawal | Detect whether it affects the period/assertion. A knowingly inapplicable definition cannot continue solely because it was previously approved. Explain the blocked dependency. |
+
+Pin a qualified model set/capability profile and record the actual model. A permitted substitution for navigation or validated extraction can be operational maintenance. A model/rubric change that materially changes judgment requires qualification and the Check's semantic revision. Do not freeze a withdrawn model indefinitely or silently change the assurance.
+
+**Occurrence identity belongs to the logical period.** Use `(check_id, logical_period_key)` for a calendar Check, with explicit UTC boundaries and local time-zone/period labels stored. Check and schedule versions are bindings, not duplicate-creation keys. A due-time edit preserves the occurrence. A material window change needs an explicit activation-period mapping; a rerun creates a linked execution/evaluation revision, not another automatic occurrence or send. Event checks deduplicate canonical source object/version and coalesce under their configured business window. Ad hoc tests are visibly separate and do not satisfy a scheduled period accidentally.
+
+Default to one active occurrence per Check, including evidence/decision waits. Waits release compute but keep the logical slot. Later due periods are recorded as delayed, not silently collapsed. The default waiting deadline is the next due time, or 24 hours for event-only Checks without a next due time: close the older assessment with known results and limitations, then admit the next. Expire its pending decisions and prohibit further dispatch against them. Late answers/evidence require a newly admitted scoped correction, not silent reopening. Already-dispatched uncertain effects continue reconciliation under their original receipts; closing an assessment does not resolve them, release conflicting resource claims or authorise a retry. A configured bounded overlap/deadline can differ.
+
+Monthly defaults cover the previous complete calendar month in the firm's time zone. A skipped daylight-saving time runs at the next valid local instant; a repeated time runs once at its first occurrence. Store the resolved instant and rule. Record every missed period after downtime. Automatically catch up only the latest within the configured lateness window; older periods remain Not run unless an existing bounded backfill rule or one explicit batch decision covers them. The batch states periods, historical/effective methods, source availability, budget and concurrency. Today's policy must not silently replace the historical one.
+
+Persistent issues are separate from their period observations. Identity uses scoped criterion lineage, canonical subject/system and issue kind; compare those fields before merging, rather than relying solely on a digest or fuzzy model match. Results show new, continuing, changed, resolved or reopened issues, with each occurrence's evidence retained. Not observed this period is not proof of remediation; closure needs follow-up evidence or an accountable disposition. This prevents repeat notifications from becoming duplicate findings.
+
+### 4.5 Evidence arrival and a worked assessment
+
+An evidence request has identity, owner, expected content/period, permitted locations, due/reminder rules and a sufficiency condition. Track **requested → received → checked → sufficient/partially sufficient → fulfilled** with the supporting facts; rejected/wrong-period material stays visible. A supplier's “done” message is not fulfillment. Webhooks are hints: reacquire the exact object, verify access/version, assess its content, then resume the linked waiting Task. A duplicate arrival does not cause another send or another occurrence. Evidence arriving after review/issue creates a successor or follow-up with reconsideration of affected claims.
+
+For example, the auditor asks: **“Review August supplier payments above ZMW 50,000 against our approval policy, investigate exceptions and prepare the working paper.”** The currency, threshold and criteria here are illustrative firm rules. Zobba binds the effective policy and two criteria: approval before release, and an approver authorised at that time. It uses API acquisition and analysis for the population, and the real browser to investigate supporting application records. Relevant method/skill/working-knowledge versions appear from the start.
+
+The source manifest reconciles 1,250 unique acquired payments: 50 outside August, 1,200 in-period, 200 at/below the threshold and **1,000 applicable payments**. Approval history is unavailable for 20 of those payments.
+
+| Criterion | Met | Not met | Undetermined | Applicable payments |
+|---|---:|---:|---:|---:|
+| Approval before release | 965 | 15 | 20 | 1,000 |
+| Authorised approver | 968 | 12 | 20 | 1,000 |
+
+Seven payments fail both tests: **27 failed criterion opportunities represent 20 distinct exception payments**. The same 20 payments are undetermined on both criteria; the remaining 960 meet both. The result says:
+
+> I found supported approval exceptions in 20 of 1,000 applicable payments. Seven had both issues. I could not assess 20 other payments because their approval history was unavailable; the remaining 960 met both tests. The exceptions are supported, but the overall assessment remains limited. The paper and missing-history request are ready for review.
+
+Selecting an exception opens the criterion, payment/approval times, effective role evidence, exact calculation and evaluation revision. Supplying valid delegated-authority evidence creates a new fact/basis and recomputes affected results, preserving the original. Team review uses a different eligible manager; solo review bears its explicit label. Promoting this work pins the assertion, method and source contracts; next month's browser navigation can differ. The next occurrence applies the same meaning to new evidence and carries continuing issues forward.
+
+Notifications name decisions, blocked access, completed results, material new exceptions or budget limits. Routine tool chatter stays in the Task. External notifications use permitted destinations, a safe summary and an authenticated link, with no unapproved disclosure of evidence or client details.
 
 ## 5. Target architecture
 
@@ -319,7 +431,8 @@ Model/connector dispatch, computer access and object access have different scope
 | Connections and tools | Canonical tool descriptors, bound accounts, OAuth custody, connector requests and effect reconciliation. |
 | Workspaces | Computer/session identities, profiles, input ownership, lifecycle and supervised analysis specifications. |
 | Evidence and work products | Acquisition receipts, immutable objects, derivations, claims, versions, review, issue and corrections. |
-| Knowledge and methodology | Versioned packages, approved requirements, skill catalog, scoped memory and invalidation. |
+| Knowledge and methodology | Admin-saved methodology versions, task bindings, validated skill catalog, scoped knowledge and invalidation. |
+| Audit evaluation | Criterion contracts, population/coverage manifests, exact calculations, supported judgments, evaluation revisions and aggregation. |
 | Continuing work | Check definitions, occurrences, evidence subscriptions, reminders, budgets and notifications. |
 | Delivery and operations | Read projections, event cursors, telemetry, costs and administrative diagnostics. |
 
@@ -337,9 +450,11 @@ Use a fresh schema. Its main record groups are:
 | Connection, capability, policy revision, delegation | Bound to actual account/system, operating purpose, permitted action/resource and expiry. |
 | Workspace, generation, input lease, transfer receipt | A durable workspace identity can outlive several machine instances; commands bind the current generation. |
 | Evidence object, acquisition, extraction, analysis, claim | Source bytes and derived outputs remain independently attributable. |
+| Methodology version, skill version, task binding, knowledge revision | The work records which requirements, techniques and scoped facts informed it; configuration changes never rewrite that history. |
+| Criterion version, population manifest, evaluation revision, disposition | The result binds its subject, method, inputs, coverage, origin and evidence; a human change is a new attributable revision. |
 | Work product, version, review, issued manifest | Approval applies to a version and its dependencies, not a mutable document title. |
 | Context fragment, manifest, checkpoint, memory | Each derived item has source lineage, scope and validity. |
-| Check definition/version, occurrence, subscription, notification | Duplicate triggers resolve to the same occurrence or versioned continuation. |
+| Check definition/version, occurrence, subscription, notification, recurring issue | A definition pins its semantic method; duplicate triggers resolve to one occurrence, and repeated exceptions link to their continuing issue. |
 | Durable work, resource claim, budget reservation, outbox | Wakeups and resource accounting are committed with the work they represent. |
 
 Use ordinary relational state plus an append-only event/receipt ledger. Full event sourcing would add replay and schema-evolution work without making external effects transactional. Keep database constraints for unique occurrence keys, command deduplication, valid version references and review transitions.
@@ -392,7 +507,7 @@ Provider continuation tokens are optional, short-lived optimisation. Bind them t
 
 ### 6.3 Context construction and invalidation
 
-Assemble context in this order: enforced task/operating constraints; applicable methodology; objective and accepted decisions; unresolved questions/operations; recent conversation; selected evidence and analyses; relevant skills/memory. This is a construction policy, not an instruction hierarchy that lets an optional skill overrule a person.
+Assemble context in this order: enforced task/operating constraints; the bound methodology and necessary skill contracts; objective and accepted decisions; unresolved questions/operations; recent conversation; relevant authorised working knowledge; selected evidence and analyses; optional supporting skills/preferences. Required method instructions and the provenance of a fact cannot be discarded merely to fit more conversation. This is a construction policy, not an instruction hierarchy that lets an optional skill overrule a person.
 
 Budget text, images, tool descriptions and output independently. Large files are registered and queried through references. Compaction records the covered event range, source versions, preserved decisions, uncertainty and omissions. Validate that all unresolved durable facts are represented. Refresh stale context before continuing.
 
@@ -421,6 +536,10 @@ Prefer direct APIs for stable, bulk operations and authoritative receipts. Use v
 
 Treat provider notifications as untrusted wakeups. Renew subscriptions, persist cursors, deduplicate delivery and periodically reconcile where notifications can be missed. OAuth refresh tokens stay in the broker's secret store. The model and general analysis job never receive them.
 
+Bind each OAuth attempt to its issuer/provider, initiating user/session, single-use state, PKCE challenge, allowed return destination, expected organisation/account and scopes. The broker exchanges and stores tokens, verifies the returned identity, and attaches the connection only to that identity. Token renewal is operational maintenance within the same binding; an account switch is a recorded rebind. HTTP success or a provider job ID may mean **accepted, still pending**. Only the adapter's declared receipt/status contract can establish a completed effect, and an unavailable source never becomes an authoritative empty result.
+
+Connections explicitly distinguish personal consent from firm-owned service/app consent. Admin controls which kinds and providers are allowed; the account owner completes personal consent, and an authorised firm representative completes organisation consent. A Check receives a narrow, revocable service delegation bound to its connection and purpose. Removing a member, withdrawing consent or disabling a connection invalidates dependent execution. A new owner or service account requires an attributable rebind and verification of source access; it never silently inherits the departed person's identity. Organisation account policy, enterprise consent and supported sign-in must be qualified in the first customer profile that needs them.
+
 ### 6.5 Delegation and concurrent work
 
 A parent creates child tasks with explicit objective, input snapshot, allowed tools, maximum budget and result contract. Delegated authority is an intersection, never a copy of all parent credentials. Results commit independently and join through durable receipts; presentation order must not delay saving a completed result.
@@ -433,15 +552,19 @@ One actual application session has one exclusive input lease across all tasks an
 
 ### 7.1 Concrete computer platform
 
-The baseline computer is a per-workspace EC2 instance running Ubuntu 24.04, a minimal desktop, Chromium, managed browser driver and supported file/document tools. It has an encrypted EBS working volume, no public inbound administration, tightly scoped egress and no access to application database credentials. The control plane provisions it from an approved, versioned image with verified build provenance and records its instance, image, workspace and generation.
+The baseline computer is a per-workspace EC2 instance running Ubuntu 24.04, a minimal desktop, Chromium, managed browser driver and supported file/document tools. Use **m6i.large, 2 vCPU/8 GiB** as the initial Linux capacity allocation and **m6i.xlarge, 4 vCPU/16 GiB** for Windows. These sizes require workload qualification; large analytical jobs belong in separate analysis. The VM is exclusively assigned to a workspace, using ordinary EC2 shared tenancy, not the differently priced Dedicated Host product. It has an encrypted EBS working volume, no public inbound administration, tightly scoped egress and no application database credentials. Provision from a verified, versioned image; record instance/image/workspace/generation before admitting it.
 
-Use the Apache Guacamole JavaScript client and guacd for authenticated browser access to VNC on Linux and RDP on Windows over secured WebSocket transport. Guacamole supplies display/input transport, not Zobba's business Permissions or exclusive-control guarantee. The Rust gateway admits a viewer/controller and gates all human input messages. Agent Playwright and desktop commands enter through the same workspace control authority; an open direct CDP or RDP route would invalidate the design.
+Use the Apache Guacamole JavaScript client and guacd for actual VNC/Linux and RDP/Windows display over authenticated WSS on port 443. The Rust gateway authorises attachments; a small trusted local computer adapter enforces the final input epoch. Route human key/pointer actions through the separate authorised input channel to that adapter, alongside agent Playwright/desktop actions. Reject raw key/pointer, clipboard and file-transfer opcodes on viewer tunnels while retaining the required display/synchronisation protocol. This prevents buffered RDP/VNC input from bypassing generation checks. Windows input runs in the selected interactive user session; it does not silently bypass UAC or control the secure desktop. Elevated applications require a qualified profile.
 
 Authorised viewers join the same underlying desktop connection. Starting a separate RDP desktop for each viewer would show the wrong environment. A Guacamole connection ID is not access authority; attachments require short-lived gateway capabilities and current scope. Keep guacd and machine ports private and verify host identities.
 
-This gives a concrete full-desktop baseline without depending on a hosted browser's proprietary session model or building a microVM platform. WebRTC can later improve a demonstrated media bottleneck without changing task or input-ownership contracts. It is not necessary to make the initial architecture coherent.
+Use private computers and same-AZ gateway/egress paths where possible. Controlled browser internet requests traverse a policy egress proxy/NAT; display delivery goes through the gateway/public ALB, not NAT. S3 uses a gateway endpoint where appropriate. Separate credentials, cloud identities and egress by function. Regional gateway replicas share capacity across customers but never authorise a cross-scope session. Scale on measured concurrent display/CPU/memory/queue load, not merely task count.
+
+This keeps the lead AWS architecture. The alternate's Fly/Firecracker proposal does not establish subsecond restoration of a signed-in desktop: current Fly documentation discourages suspend above 2 GB and requires handling cold starts. An owned-host cost crossover cannot be inferred from a per-tenant hour count. If Guacamole misses the response targets after normal tuning, a WebRTC media implementation can be evaluated behind these same authority/session contracts; transport does not change the product or create new authority.
 
 Default to one task computer with one scoped account set. A helper needing independent computer interaction receives a separate isolated workspace. Do not pool authenticated profiles across clients or engagements. Reuse compute only after destructive sanitisation or reprovisioning from a clean image.
+
+Expose vetted browser/desktop actions through the local adapter, not a general shell or unrestricted CDP endpoint to the model. Credential storage, browser profiles and machine administration stay behind trusted adapters. Model-authored programs run in the separate analysis environment with explicitly selected files.
 
 ### 7.2 Supported application profiles
 
@@ -449,10 +572,12 @@ Default to one task computer with one scoped account set. A helper needing indep
 |---|---|
 | Standard Linux/browser | Managed Chromium, web business applications, PDFs/images, CSV/Parquet, ordinary Office reading and templated exports. Qualify target sign-in and automation behaviour. |
 | Windows desktop | Windows Server 2022 on EC2 with RDP, approved application images and stronger startup/cost controls. Needed for qualified Windows-only applications and native Office scenarios. |
-| Native Office | Office LTSC 2024 through AWS License Manager user subscriptions, RDS SAL and AWS Managed Microsoft AD. This does not imply Microsoft 365 feature parity or unattended automation entitlement. |
+| Native Office | Office LTSC Standard 2024 through AWS License Manager named-user subscriptions, RDS SAL and AWS Managed Microsoft AD. Qualify Professional Plus for applications such as Access when needed. This does not imply Microsoft 365 feature parity or unattended automation entitlement. |
 | Customer-private connection | Later deployment profile using approved private network routes and the same broker/workspace contracts. Do not install ad hoc VPN clients inside task machines. |
 
 Windows is part of the target product, with an explicit application support list and commercial profile. Its licensing and directory footprint is materially larger than Linux. Validate the right to use a particular application unattended and its supported automation behaviour before enabling unsupervised work, including continuation after the auditor leaves as well as schedules. Interactive Office licensing alone is not proof that unattended Office automation is licensed or reliable.
+
+Give each organisation's Windows profile its own registered Managed AD in its own VPC, with scoped named-user bindings; do not share a technical Office user across a firm or a directory across unrelated firms. Reach the regional gateway/authorised application proxy through explicit private routes such as VPC peering. The proxy originates allowed outbound connections; peering does not provide transitive access to another VPC's NAT gateway. Account for charged cross-AZ traffic or any additional routing/endpoints. Pre-enrol and configure the licensed profile when the capability is enabled. AWS documents first domain-join/configuration as taking around 20 minutes; this preparation must not appear as a supposedly instant task handoff. Useful work on available sources can proceed during preparation. Restarting an enrolled computer and enrolling a new one are different readiness cases.
 
 Prefer local-browser OAuth for connectors. Remote application login needs a qualified MFA/device-trust method. Guacamole does not establish generic forwarding of local passkeys, hardware keys, password-manager extensions or enterprise device identity. Unsupported authentication is an access limitation to resolve with the customer, not a reason to collect passwords in chat.
 
@@ -466,9 +591,34 @@ A control transfer first stops accepting old-epoch input, releases held keys/but
 
 Live video is transient, separately authorised and bandwidth-bounded. Captured audit evidence is explicitly acquired and registered; a live frame is not automatically an evidential screenshot. Record useful replay intervals where policy allows, preserving gaps and excluding protected sign-in. Replay is a historical view, never a control surface.
 
+Prioritise readable text at a reference 1440×900 desktop, with adaptive resolution/update rate; aim for at least 15 displayed frames/second during ordinary scrolling/dragging under the reference network. Static work need not consume a constant video stream. Bound each viewer's buffered bytes and age. Do not drop arbitrary incremental Guacamole drawing commands; reduce delivery at a valid boundary or disconnect and resynchronise a slow viewer. Stop display encoding/delivery when nobody watches, while authorised agent work may continue. Model observations and evidence captures remain separate operations. A locally drawn cursor is not confirmation that the remote application accepted an action.
+
+**Response targets are acceptance criteria, not measured performance or a sales SLA.** The reference network has client-region RTT ≤80 ms, ≤1% loss, ≥10 Mbps down/2 Mbps up. Measure admission, local acknowledgement and browser paint with a representative browser, spreadsheet and PDF while model/analysis work and additional viewers are active.
+
+| Journey | Proposed p95 target and boundary |
+|---|---|
+| Attach to a running, ready computer | Current useful frame within 2 seconds; existing authentication, no application launch. |
+| Human input → visible remote response | Within 200 ms for ordinary UI actions in the reference network; remote application processing delays measured separately. |
+| Takeover → safely fenced, usable control | Within 1 second for cooperative cancellation. Failed quiescence remains visibly pending/paused, never an early success. |
+| Allocate a clean ready Linux spare | Usable desktop within 30 seconds, excluding third-party sign-in. Applies to a pool hit. |
+| Restart stopped, preconfigured Linux | Usable desktop within 90 seconds when capacity/health checks succeed; sign-in can still be required. |
+| Restart enrolled Windows | Usable desktop within 180 seconds; application initialisation recorded separately. |
+| Cold new Linux | Usable desktop within 180 seconds as a target to qualify; honest Preparing status. |
+| Fresh Windows/Office | Enablement preparation, not instant startup; current vendor guidance is around 20 minutes. |
+
+Also qualify RTT 150–250 ms, 3/1 Mbps and 1% loss: target ≤500 ms visible input response for ordinary actions, with lower display load and an explicit delayed-connection state. Measure frame freshness as well as frame rate. A degraded still-image preview is labelled and does not masquerade as responsive live control. Priority control admission and local lease expiry remain independent of overloaded media/model streams. Region choice must fit users and processing obligations; the US East cost example alone says nothing about their response time.
+
 ### 7.4 Suspend and recover honestly
 
-A task waiting for a person or evidence releases model, worker and analysis capacity. Save working files and tool checkpoints, then stop an idle computer according to policy. Retain its encrypted disk only for its permitted lifetime; credentials/session material remain inside its restricted workspace storage.
+A task waiting for a person or evidence releases model, worker and analysis capacity. Computer readiness has its own bounded policy:
+
+1. **Prepare when useful.** Once an application need is established, restore its computer while independent acquisition/analysis proceeds. Scheduled work can prepare before its due time. Preparation uses the existing budget and never performs a source write merely to warm a session.
+2. **Keep a short ready interval.** Default to ten minutes after relevant activity. Active viewing/control, transfers, admitted actions and unsaved work prevent an unsafe stop. A chat tab alone does not. Offer a bounded Keep ready interval charged to the displayed allowance; uncheckpointable work remains visible and subject to a budget/timeout decision rather than running forever silently.
+3. **Stop safely.** Save files/checkpoints, quiesce input, verify recoverability and stop the VM. The baseline retains disk, not RAM. No computer is stopped merely to meet an optimistic cost estimate while doing so would lose acknowledged work.
+4. **Pool only clean capacity.** Start with one credential-free Linux spare during 200 staffed hours/month for a regional fleet with at least six active Linux users, and no dedicated spare for a lone user. Refill after assignment. This is an initial budget, not a guaranteed hit rate: prioritise returning sessions and admit bursts fairly within firm concurrency limits, showing queue/preparation state. A spare starts new work; it does not claim to restore another machine's authenticated RAM.
+5. **Prepare Windows by named profile.** Predictively start the already enrolled customer's computer. Do not rely on anonymous Office licences or cross-firm authenticated profile reuse.
+
+Set recoverable idle profile retention to seven days initially, adjustable by Admin with explicit sign-out/delete controls and immediate authority revocation. Retained disks and credential-containing snapshots share that boundary. Repeatedly active profiles may last longer; audit evidence follows its separate, usually longer policy. The cost worksheet conservatively retains full-month volumes to show the upper idle-storage case. No reusable pool instance retains prior client data: destroy its volumes and reprovision a clean image before reassignment.
 
 Do not promise that stopping a machine preserves RAM, an unsaved document or a valid application login. Default to restarting from a saved disk/checkpoint and reconnecting or signing in again. A retained provider session or VM hibernation is an optimisation only when the selected profile supports it and its state can be checked.
 
@@ -490,13 +640,50 @@ Disable generic clipboard file transfer, SFTP and RDP drive redirection by defau
 
 ### 7.6 Operating cost
 
-Price the product around accountable users plus included usage and clear budgets. Do not promise unlimited persistent computers under a flat seat price.
+Use the supplied [cost worksheet](costs/README.md), editable assumptions, frozen rate metadata and standard-library Python calculator. **Reference: us-east-1, USD, 730-hour month, On-Demand shared tenancy, official rates retrieved 30 September 2026.** No discount, tax, support plan or per-tenant free egress allocation is assumed. Workload quantities are design assumptions, not measured customer usage. These are infrastructure costs, not customer prices.
 
-Monthly cost is the sum of application/database baseline, active computer hours by profile, retained disk/storage, analysis vCPU/memory duration, model input/output/cache usage, media/data transfer and named-user/application licensing. Add support and operational margin when setting prices.
+| Input | List rate used |
+|---|---:|
+| Linux m6i.large | $0.096/hour |
+| Windows m6i.xlarge, including Windows OS | $0.376/hour |
+| gp3 / stored incremental snapshots | $0.08 / $0.05 per GB-month |
+| Fargate Linux x86 | $0.04048/vCPU-hour + $0.004445/GiB-hour |
+| NAT | $0.045/gateway-hour + $0.045/processed GB |
+| ALB / public IPv4 | $0.0225/hour + $0.008/LCU-hour / $0.005/address-hour |
+| Internet outbound, selected first 10 TB tier | $0.09/GB, without allocating the account-wide free allowance |
+| S3 Standard / PUT / GET | $0.023/GB-month / $0.005 per 1,000 / $0.0004 per 1,000 |
+| Managed AD Standard, minimum two controllers | $0.06/controller-hour = $87.60/month minimum |
+| Office LTSC Standard / Professional Plus | $15.70 / $21.43 per named user-month |
+| RDS SAL | $10 per named user-month |
+| Private interface endpoint | $0.01/endpoint-AZ-hour + $0.01/GB in the selected tier |
 
-For illustration, 12 auditors using computers for 3 hours on 20 working days consume **720 computer-hours**, versus **8,640 hours** if all 12 machines run all day for a 30-day month. This is a usage calculation, not a price quote or proof that every workload can be suspended safely. Disk, licensing and shared-service charges can continue while compute is stopped.
+The 12-user scenario assumes 60 useful active hours per user-month, two sessions/day over 20 days, ten-minute grace per session, and ten minutes/day of preparation: **70 paid running hours/user**. Add one clean spare for 200 staffed hours. Linux therefore uses **1,040 VM-hours = 720 useful + 120 grace/preparation + 200 spare**, versus 8,760 hours always on.
 
-Show per-task/check budgets and organisation usage, with separate Windows allowances. Keep current provider/region price tables as configuration. Exact prices, concurrency and application entitlements must be confirmed commercially; the architecture should not depend on an invented vendor rate.
+Each user has 20 viewing hours/month at an assumed 1 Mbps, with 10% extra reviewer viewing; the team delivers 118.8 decimal GB of display traffic. That bitrate is a cost input, not a demonstrated quality level. Each active user adds 2 GB other outbound traffic, 5 GB NAT source traffic, 20 GB retained S3 objects including versions, 2,000 writes/20,000 reads, and two hours of 2-vCPU/4-GiB analysis including startup allowance. Linux disks/snapshot blocks are 40/10 GB; Windows 100/20 GB. These are retained-size assumptions, not full disks multiplied by snapshot count.
+
+The costed **regional desktop/network baseline is $258.91/month**: two gateway/guacd replicas at 2 vCPU/4 GiB, two small egress proxies, two NAT gateways, one ALB and four public IPv4 addresses. Their concurrency capacity must be measured. Add traffic charges; ALB capacity is budgeted conservatively from bytes plus non-byte headroom, not represented as its exact hourly max-dimension billing formula. Display traffic is not charged through NAT. Same-AZ routing is preferred; failover can add cross-AZ charges.
+
+| Scenario | Linux / Windows running hours | Scoped monthly subtotal | Per user |
+|---|---:|---:|---:|
+| 12 Linux users, active policy | 1,040 / 0 | **$431.55** | **$35.96** |
+| 12 Linux users, retained idle all month | 0 / 0 | $308.83 | $25.74 |
+| 12 Linux users, always on | 8,760 / 0 | $1,169.47 | $97.46 |
+| 10 Linux + 2 Windows, active | 900 / 140 | $649.57 | $54.13 |
+| 12 Windows users, active | 0 / 840 | $1,133.27 | $94.44 |
+| 12 Windows users, retained idle | 0 / 0 | $797.63 | $66.47 |
+| 12 Windows users, always on | 0 / 8,760 | $4,111.19 | $342.60 |
+| Entire regional deployment serving one Linux user | 70 / 0 | $271.79 | $271.79 |
+| Entire regional deployment serving one Windows user | 0 / 70 | $439.20 | $439.20 |
+
+The subtotal includes the specified computers, storage/requests, desktop/network baseline and traffic, analysis, plus Windows subscriptions/directory and endpoint allowances where applicable. **Each Windows row represents one organisation.** Each additional unrelated Windows firm adds its own minimum directory and **$29.20/month endpoint capacity allowance** (four endpoint-AZ units, subject to actual provisioning), plus named-user charges. Twelve users across twelve firms therefore incur twelve organisation floors, not the single floor in the 12-user row. Windows licensing is not stopped by stopping a VM; RDS subscription termination also has continuing CAL-related billing conditions. The licence rates cover interactive entitlements only; unattended rights and application support must be qualified separately.
+
+**A solo SaaS customer does not get a whole regional infrastructure bill.** Its direct Linux profile/use cost in this example is approximately **$12.49/user-month**, plus a fair share of shared baseline, clean spare/headroom, application services and model use. The direct Windows/Office figure is **$63.10/user-month**, plus its organisation's **$116.80 directory/endpoint floor** and regional allocation. The one-user-deployment rows charge the whole regional baseline once and also include a conservative $0.40 ALB headroom allowance; they show early low-occupancy economics or a dedicated deployment, not the price of every solo subscription. Allocate regional fixed cost once across actual reserved viewer capacity supported by the measured fleet, never hypothetical future customers; Windows organisation minima remain within that organisation's allocation.
+
+The workbook adds a separate **$300/month unpriced application/data/operations allowance**, making the 12-Linux planning envelope **$731.55/month before models**. This allowance is explicitly not a vendor quote or proof of sufficiency: separately size API/workers, PostgreSQL Multi-AZ/backups, identity, KMS/secrets, telemetry and image/build services before contracting. Model tokens/caches/images, paid connectors, extra retention/replay, cross-region/charged cross-AZ traffic, additional endpoints/IPs, tax, support, security operations and margin remain additional. Full service cost is **scoped subtotal + actual shared application allocation + actual model/provider usage + remaining operations/support**.
+
+The readiness policy costs the Linux team $11.52 for grace/preparation plus $22.40 for the staffed spare and its disk: **$33.92/month** above immediate stop/no spare. Always-on raises the scenario by **$737.92/month**. At the stated volumes, raising average display traffic from 1 to 5 Mbps adds about **$46.57/month** in egress/ALB bytes before extra encoding capacity. These sensitivities explain the policy; they do not establish its latency, hit rate or capacity.
+
+Meter actual paid computer time, model usage, analysis and storage, with visible task/Check and firm budgets. Platform-owned clean-spare time is overhead, not a hidden per-user charge. Budget exhaustion withholds new costly work, preserves checkpoints and tells the person what remains; Stop, sign-out and access to earned results remain available. Offer separately priced dedicated/always-ready capacity when a firm needs it. Price seats with bounded included usage and explicit Windows entitlement, using observed regional utilisation to replace these assumptions.
 
 ## 8. Normal work, recovery and operational guarantees
 
@@ -646,6 +833,16 @@ These define the intended design's correctness; they are not a request for anoth
 | Duplicate/missed schedule or evidence notification | One occurrence/continuation, explicit catch-up policy and revalidated authority. |
 | Session expiry, device-bound login and VM loss | Honest reconnect/sign-in/unsupported states; no claim of preserved unsaved state. |
 | Source population incomplete or absent | No invented zero count, false complete population or unsupported “no exception”. |
+| Deterministic versus judgment assessment | Exact decimal/date boundaries; rubric and contrary evidence retained; calculation failure distinct from control failure; no approval from model confidence. |
+| Multiple criteria, ambiguous matches, samples and verified zero activity | Reconciled grain-specific counts, distinct exception subjects, limited inference and an honest no-activity result. |
+| Admin edits methodology or a skill during work | One attributable Save, correct scope/effective binding, no invented second approver, safe-boundary rework and preserved issued versions. |
+| First complete task and long-task recovery | Applicable method and skill used, scoped knowledge retrieved, material conflict exposed, exact decisions preserved through compaction, and cited output reviewed under the correct team/solo rule. |
+| Schedule edit, new method and late evidence for one period | Same logical occurrence; new binding/evaluation revision where appropriate, with no duplicate send or finding. |
+| Personal connection owner leaves; firm consent is withdrawn | Dependent delegation blocks, accountable person notified, explicit rebind without impersonation or silent source substitution. |
+| Provider accepts asynchronously or returns partial/unverifiable output | Pending remains pending; completeness and effect certainty are not inferred from HTTP success. |
+| Computer readiness, takeover and regional load | Measured latency/availability and per-session cost against §7 targets, including reconnect, full warm pool, stopped computer, private sign-in and slow subscribers. |
+
+Audit-quality evaluation is separate from runtime correctness: use synthetic engagements with known populations, conflicting policies, omitted records, ambiguous joins, planted exceptions and unsupported allegations. Judge coverage, calculation accuracy, supported claims, correct uncertainty, useful investigation and reviewable output under a fixed method. Model/rubric versions run against these cases before qualification. They are acceptance obligations of this design, not claims of completed product tests or an additional language-selection study.
 
 ## 9. What to keep, adapt, rebuild and remove
 
@@ -707,7 +904,7 @@ This package is the proposed replacement design baseline. Keep earlier documents
 | Active document family | Required revision |
 |---|---|
 | PRD and addendum | Replace procedure-first value, fixed templates and deferrals with the complete engagement/task experience, audience, supported profiles, review and continuing assurance. |
-| Experience and design rules | Consolidate Pair, explicit Follow Zobba, real computer states, private sign-in, responsive guidance, purpose-scoped Permissions, three roles and work product review. Remove the fourth methodology-owner role, blanket ask-before-every-effect rule and incorrect unknown-send wording. |
+| Experience and design rules | Consolidate Pair, explicit Follow Zobba, real computer states, private sign-in, responsive guidance, standing Permissions, three roles, Admin Save and honest team/solo review. Remove the fourth methodology-owner role, ordinary-edit approval ceremonies, blanket ask-before-every-effect rule and incorrect unknown-send wording. |
 | SPEC, glossary and validation-preservation register | Define Task, work cycle, operation/attempt/receipt, computer generation, evidence, claim, work product version and Check. Preserve behaviours by meaning rather than old type names. |
 | Architecture spine | Replace dual-engine/TypeScript bridge choices with one Rust authority, fresh schema, scoped identity, managed execution, native providers and durable continuation. Retain useful invariants with revised ownership. |
 | Code-disposition/course-correction papers | Supersede compiler-1 compatibility, delayed Builder retirement, compiler-2 coexistence and retained old worker/queues. The current brief expressly removes those constraints. |
@@ -722,69 +919,82 @@ The replacement contract set should cover:
 4. Native model content/events, tool descriptors, budgets and provider continuity.
 5. Computer lifecycle, input/observation control, protected sign-in and file transfer.
 6. Isolated program execution and verified output registration.
-7. Source acquisition, coverage, evidence, derivations and claim support.
+7. Source acquisition, population/coverage, typed criteria, evaluation revisions, evidence, derivations and claim support.
 8. Work product editing, review, issuance, corrections and retention.
-9. Context lineage, compaction, memory and methodology standing.
-10. Checks, occurrences, subscriptions, notifications and missed-event recovery.
+9. Admin configuration, task/skill bindings, scoped working knowledge, context lineage, compaction and methodology standing.
+10. Recurring method contracts, logical-period occurrences, evidence requests, subscriptions, notifications and missed-event recovery.
 11. Scoped event delivery, replay, bounded consumers and reconnect.
 
 The old executable-plan/agent-execution/Gate contracts are replaced. Evidence and replay contracts contribute semantics but gain new ownership and general document/data support. Run request/pause/escalation contracts contribute durable receipts and waits, with computer input control added as a separate contract. Concrete source paths and the old-to-new contract mapping are preserved in [disposition evidence](notes/code-disposition.md).
 
 ## 11. Capability dependencies
 
-The product is the full working environment described above. The following is a dependency map for deriving implementation work later, not a reduced permanent scope or a proposed sprint sequence.
+The first complete experience is an auditor giving an objective, Zobba applying the relevant methodology/skills/knowledge, acquiring real authorised material, using its computer and analysis, accepting guidance and surviving interruption, and producing supported work for the appropriate review/issue path. Methodology is required to know what to test and how to report it; working knowledge is required to continue sensibly. Neither can be added after that experience is declared complete.
 
 ~~~mermaid
 flowchart TD
-  S[Identity, engagement scope and Permissions] --> T[Durable task authority and controls]
-  S --> E[Evidence and work product versions]
-  T --> M[Context, native models and tools]
-  T --> C[Computer lifecycle, sign-in and input gateway]
-  E --> A[Isolated analysis and document production]
-  M --> A
-  C --> W[Complete conversational working experience]
-  A --> W
-  E --> R[Review, issue and corrections]
-  W --> R
-  T --> P[Helpers and resource coordination]
-  M --> K[Long context, scoped memory and methodology]
-  R --> Q[Reviewed Checks and continuing assurance]
-  K --> Q
-  P --> Q
-  C --> X[Qualified Windows and private profiles]
+  S[Identity, scope, roles and standing Permissions] --> T[Durable Task, operations, controls and recovery]
+  S --> K[Admin methodology, templates and installed skills]
+  S --> E[Source identity, evidence registration and lineage]
+  T --> W[Working knowledge, decisions, retrieval and compaction]
+  E --> W
+  K --> M[Context manifests, native models and admitted tools]
+  W --> M
+  T --> M
+  M --> C[Real computer, protected control and isolated analysis]
+  C --> A[Audit evaluation, coverage and limitations]
+  E --> A
+  K --> A
+  A --> R[Cited work products, team or solo review and issue]
+  K --> R
+  R --> F[First complete conversational audit Task]
+  W --> F
+  C --> F
+  F --> Q[Reviewed method, triggers, periods and continuing assurance]
+  T --> Q
 ~~~
 
-“Useful” first requires accepting an objective, doing authorised work, showing the actual basis and saving a reviewable output through one durable Task. Computer sign-in/control, real analysis and recovery belong in that experience, rather than being postponed behind a permanently narrow chat demonstration.
+The arrows describe required capabilities, not delivery stages. At runtime, new acquired evidence updates working knowledge and informs the next cycle. Source registration therefore exists before acquisitions begin; it does not depend on completing a particular evidence collection first.
 
-Trustworthy unattended work depends on the same command, receipt, budget, permission and review foundations plus trigger delivery and reconciliation. Helpers depend on resource ownership and exact output-version rules. Memory depends on lineage and revocation. Native Windows functionality depends on the existing computer contract plus qualified applications, authentication and licensing. These dependencies let a later plan sequence delivery without changing the target product.
+| Capability needed in the complete task | Dependencies and visible proof |
+|---|---|
+| Methodology and skills | Admin Save/version/assignment, source interpretation, trusted skill manifests and task bindings. The brief names the applicable period/rules/template, and a relevant technique is actually used. |
+| Working knowledge | Scoped evidence lineage, exact decisions, authorised retrieval, freshness/conflict rules and compaction. The task uses relevant prior facts, accepts a correction and recovers it after interruption without crossing clients. |
+| Real work and responsive control | Standing Permissions, admitted tools, operation receipts, broker, managed computer and isolated analysis. The auditor can watch, privately sign in, take over and stop while useful work persists. |
+| Audit evaluation | Criterion/basis versions, typed observations, population/sample manifests, exact methods/rubrics and limitation rules. Claims expose their test and evidence; missing input cannot become a pass or fabricated failure. |
+| Work products and human responsibility | Stable content/claim versions, firm templates, evidence dependencies, eligible roles and team/solo mode. The same journey reaches review/issue with truthful attribution and successor corrections. |
+| Continuing assurance | All of the above, plus reviewed Check contracts, current service delegation, logical-period identity, triggers, deadlines, budgets and issue continuity. Next-period evidence uses the same meaning; material drift and incomplete coverage are explicit. |
 
-## 12. Consequential decisions for owner review
+The AP example in §4.5 is a complete-task acceptance journey: method and skill selection; relevant prior system knowledge; population acquisition and computer inspection; guidance and recovery; exact evaluations with unresolved inputs; paper and applicable review; recurring promotion; one later occurrence with late evidence and preserved prior results. A smaller file-only prototype may help engineering, but does not redefine this complete product boundary.
 
-These recommendations are used consistently throughout this design. They are proposed choices for review, not claims of prior owner approval.
+Helper tasks depend on scoped context, resource ownership and safe output merges. Native Windows depends on the computer contract plus qualified applications, authentication and licensing. Larger catalogs and more sophisticated retrieval can expand; applicable methodology, skills, working knowledge and honest review already belong in the first complete task. The build plan should be derived from these dependencies after design review.
 
-| Decision | Recommendation | Consequence and credible alternative |
+## 12. Remaining business decisions
+
+The clean Rust backend/fresh schema, continuing Task, real managed computer, standing Permissions, team and solo support, and Admin-owned configuration are settled direction. The design does not ask for those choices again. Three commercial commitments remain; engineering can use the stated assumptions until they are made concrete.
+
+| Business decision | Recommendation | What remains to specify |
 |---|---|---|
-| **How far to rebuild** | Adopt the fresh Rust backend/schema and retire compiler-1/Builder/Node orchestration. | Cleaner long-term ownership and no dual engine; useful behaviours must be re-established. Alternative: preserve legacy execution, with ongoing bridge and compatibility cost. Early-development status favours the clean restart. |
-| **What managed-computer product to sell** | Hosted AWS Linux/browser as standard; Windows/native applications as a qualified paid profile, with region selected to fit customers. | Supports the intended real-computer experience with explicit compatibility, licensing and cost. Alternative: customer-managed desktops first, which shifts setup burden to users and complicates support. |
-| **How much routine autonomy to permit** | Standing Permissions for routine reads, isolated analysis, designated test workflows and bounded audit coordination. Keep live audited-record mutation outside live inspection. | Zobba can do meaningful work without repeated ceremonies. External recipients/sharing and other consequential actions still need their actual grant. Alternative: per-effect confirmation, which weakens background work and the intended working relationship. |
-| **How to serve teams and independent auditors** | Independent review by default for teams; explicit solo methodology with eligible audit-role assignments and honestly labelled self-review. | Supports both audiences without false independent assurance. Alternative: require a second reviewer for every issued output, excluding some independent use. |
-| **How to fund continued work** | Seats with included usage, transparent limits and metered computer/model/analysis allowances; separate Windows entitlement. | Enables genuine background work and limits uncapped exposure. Alternative: flat unlimited usage, which is commercially risky for persistent computers and long-running agents. Exact rates follow a regional cost model, not this design. |
+| **Supported customer applications and service promise** | Sell the complete Linux/browser working experience as standard, including qualified firm connections; native Windows is a separately qualified paid profile in the same product. Publish app/account/authentication support and distinguish interactive from unattended support. | Name the initial customers' required applications and authentication methods, whether native Office/unattended Windows is a contractual launch requirement, and supported service hours/concurrency. This determines image qualification, tenant directory/licensing and warm capacity, not a second architecture. |
+| **Data location and retention contract** | Hosted multi-tenant SaaS with one primary region per organisation, explicit allowed model/connector destinations and firm-configured retention. Keep issued evidence/manifests under the agreed audit retention; give transient computers and optional replay much shorter lifetimes. | Select launch geography and allowed processing destinations against actual customer obligations, plus retention/deletion/legal-hold terms. US East prices in §7 are a reproducible reference, not a residency commitment; rerate the chosen region before contracting. |
+| **Price and included usage** | Seats with included model/analysis/computer usage, visible budgets and bounded overage; charge Windows entitlement separately. Standard hosted model billing is the default; optional firm-paid provider credentials use the same policy/custody. Platform spare capacity is Zobba's overhead, not a surprise customer usage charge. | Set price, allowance, overage ceiling and margin using the worksheet, expected deployment occupancy, model mix, support and actual pilot usage. Do not sell unlimited persistent desktops or treat marginal compute as total cost. |
 
-The requested Rust engine, Pair identity, three roles, conversational starting point and full working environment are already direction. They are not reopened here. Choosing these recommendations still leaves ordinary engineering choices resolved: one Rust backend, native adapters, PostgreSQL durable work, scoped object storage, managed identity, explicit input fencing and separate analysis isolation.
+Firm-specific criteria, sampling and review requirements are ordinary Admin configuration and engagement decisions within this product, not unresolved platform choices. No production system, purchase or application rewrite is authorised by this design document itself.
 
 ## 13. Evidence, scope and review status
 
-The current direction brief and the latest user request control the design. Report A supplies the main task ownership/recovery/context analysis; Report B and its appendix add policy-probe evidence, execution cases and reusable code/test candidates. Their proposed prototype comparisons, legacy-preservation assumptions and earlier deferrals were deliberately not adopted.
+The current direction brief and the latest user request control the design. Revision 2 retains the lead architecture and uses the alternate agent's design as a completeness check. Report A supplies the main task ownership/recovery/context analysis; Report B and its appendix add policy-probe evidence, execution cases and reusable code/test candidates. Their proposed prototype comparisons, legacy-preservation assumptions and earlier deferrals were deliberately not adopted.
 
 | Source | Use and evidential limit |
 |---|---|
 | Zobba_Product_and_Architecture_Direction.md, §§1–10 | Product target and scope. Treated as reference material adopted by the user's request, not as independent permission to implement, deploy or delete anything. |
+| [Alternate agent design](references/Alternate-Agent-Design-2026-09-30.md), especially §§1.3, 2.5, 2.7, 2.10–2.11 and 5 | Completeness source. Adopted useful source/evidence-request, connection ownership, skill/context and recurring-method detail; rejected its speculative suspend/cost claims, blanket confirmations, universal self-review ban, configuration approval ceremonies and late knowledge stage. |
 | Zobba-Codex-Source-Study-2026-09-29.md, especially §§4–8 | Primary engineering study. Observed source facts separated from its proposed Zobba architecture and unexecuted experiments. |
 | codex-source-study.md and appendix A01–A10/B1 | Supporting dispatch, context, provider, isolation and failure evidence. No inference that all inspected suites or hosted services were tested. |
 | Codex at 8ffd91e42aa001b7e897bea812b02f89264f9fa0 | Selected source seams and small reuse candidates directly verified; LICENSE/NOTICE retained with the reference snapshot. |
 | intellifin-audit at 9c17d19e84d3df3e5da48a48ac494b8071696e9b | Clean checkout and remote HEAD verified. Current schema, compiler, gateway, evidence, UI, review, tests and deployment inspected for disposition. |
 | Supplied Pair design pack | Identity, tokens, eight reference screens and experience rules reviewed. Screens are design references, not proof that their controls are implemented. |
-| Official infrastructure documentation below | Confirms platform mechanisms and material limits; does not establish Zobba performance, app compatibility, operating prices or completed security controls. |
+| Official infrastructure documentation and [frozen pricing evidence](costs/managed-computer-rates.json) | Confirms mechanisms, material limits and specific list-rate inputs. Scenario quantities, readiness targets and shared allocations are design assumptions; no Zobba performance, compatibility or total service bill is established. |
 
 No separate dots screenshot was present among the supplied extracted files. Its experience was used from the brief's description; the design does not claim to have visually inspected that missing image. This does not block the product or architecture recommendation.
 
@@ -801,7 +1011,10 @@ Key platform references checked for this design:
 - Apache Guacamole: [architecture](https://guacamole.apache.org/doc/gug/guacamole-architecture.html), [embedding](https://guacamole.apache.org/doc/gug/writing-you-own-guacamole-app.html), [protocol/session joining](https://guacamole.apache.org/doc/gug/guacamole-protocol.html), [transfer and recording controls](https://guacamole.apache.org/doc/gug/configuring-guacamole.html).
 - AWS: [EC2 stop/start](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Stop_Start.html), [Fargate security](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/fargate-security-considerations.html), [task IAM roles](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html), [Cognito federation](https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-identity-federation.html).
 - Windows/Office: [AWS user subscriptions](https://docs.aws.amazon.com/license-manager/latest/userguide/user-based-subscriptions.html), [setup prerequisites](https://docs.aws.amazon.com/license-manager/latest/userguide/user-based-subscriptions-getting-started.html), [Office LTSC 2024](https://learn.microsoft.com/en-us/office/ltsc/2024/overview), [unattended licensing](https://learn.microsoft.com/en-us/microsoft-365-apps/licensing-activation/overview-unattended), [unattended technical constraints](https://learn.microsoft.com/en-us/office/client-developer/integration/considerations-unattended-automation-office-microsoft-365-for-unattended-rpa).
+- Costing and responsiveness: [reproducible worksheet and scope](costs/README.md), [selected official rate evidence](costs/aws-evidence/aws-core-selected-evidence.json), [Office/licensing and additional rate evidence](costs/managed-computer-extra-source-evidence.json), [managed-computer design detail](costs/managed-computer.md). The official rate URLs and effective/retrieval dates are preserved with each input.
 
 Supporting inspection notes provide the detailed traceability behind the recommendation: [product experience](notes/product-experience.md), [source mechanisms and reuse](notes/source-patterns.md), [current-code disposition](notes/code-disposition.md) and [workspace infrastructure](notes/workspace-architecture.md). Where a research note describes an alternative or an earlier assumption, the integrated recommendation in this document is the proposed design.
 
-The package was checked for consistency across product controls, task ownership, operation uncertainty, Permissions, input fencing, credential privacy and review. It does not represent a newly implemented or tested runtime. No production architecture, live service, repository code or authoritative planning document was changed by this design work.
+Revision 2's supporting analysis is [the completeness comparison](notes/consolidation-completeness.md), [audit evaluation and recurring methods](notes/audit-evaluation.md), and [methodology, skills and working knowledge](notes/methodology-and-knowledge.md). These explain the consolidation; this integrated document governs where notes discuss alternatives. The supplied source documents remain unchanged. The three remaining business commitments are only those in §12.
+
+The package was checked for consistency across product controls, task ownership, operation uncertainty, Permissions, input fencing, credential privacy and review. The cost calculator was independently checked and reproduced; diagrams, links and rendered editions were verified. It does not represent a newly implemented or tested application runtime. No application implementation, live service, database or existing authoritative planning document was changed by this design work.
