@@ -57,6 +57,18 @@ The migrator owns schema objects. The runtime role must be a distinct, nonowner
 role without superuser, BYPASSRLS, role/database creation or schema creation
 privileges. Migration grants that role only usage and read access to bootstrap
 metadata. It does not grant domain writes or enable schema changes at startup.
+Admission and live readiness conservatively traverse membership edges with any
+INHERIT, SET or ADMIN option, including mixed paths and ADMIN self-regrant. Unsafe
+role attributes, dangerous predefined roles and direct table MAINTAIN grants are
+refused; harmless `pg_monitor` membership remains supported. This conservative
+closure can also refuse memberships whose combined options cannot immediately be
+used by a single session. Use separate monitoring identities for such ambiguous
+membership graphs.
+
+The exact bootstrap inventory also refuses public collations, operators, operator
+classes/families, conversions, text-search objects, extended statistics and all
+database event triggers. These objects are foreign even if the two bootstrap
+tables otherwise match. Migration preflight and runtime checks share this rule.
 
 Copy `.env.example` to ignored `.env` and replace the local placeholders. URL-encode
 special characters in passwords. Existing managed environments may already export

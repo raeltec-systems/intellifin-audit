@@ -14,6 +14,13 @@ loopback ports. It neither migrates nor changes database contents. The runtime
 child receives only its proxy runtime URL; inherited Zobba migration, admin and
 test database bindings are removed.
 
+The TCP proxy supports bracketed IPv6 URLs. An explicit URL port takes precedence;
+otherwise the proxy uses `PGPORT`, then 5432. Invalid effective ports fail with a
+fixed diagnostic before starting the proxy. `pnpm check` retains endpoint parsing
+and real IPv4/IPv6 loopback socket tests. To exercise full database loss/recovery
+routing, run this browser command with an IPv6 test URL, or a portless test URL
+and `PGPORT` set to the disposable server's port.
+
 The browser loads the real Vite shell through its API proxy, sees **Ready**, loses
 only its own database sockets, verifies HTTP 503 and visible **Unavailable**, then
 restores the sockets and uses keyboard **Check again** to recover **Ready**. It

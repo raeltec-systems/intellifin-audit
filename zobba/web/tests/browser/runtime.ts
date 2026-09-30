@@ -1,8 +1,9 @@
+import { DatabaseProxy } from './database-proxy.ts';
 import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { connect, createServer } from 'node:net';
-import type { Server, Socket } from 'node:net';
+import { createServer } from 'node:net';
+import type { Server } from 'node:net';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -36,55 +37,6 @@ async function freePort(): Promise<number> {
   const available = port(listener);
   await close(listener);
   return available;
-}
-
-/** Break only the test API's PostgreSQL connections, never the database itself. */
-class DatabaseProxy {
-  private readonly sockets = new Set<Socket>();
-  private enabled = true;
-  private readonly server: Server;
-
-  constructor(private readonly source: URL) {
-    this.server = createServer((client) => {
-      if (!this.enabled) { client.destroy(); return; }
-      const database = connect({ host: source.hostname, port: Number(source.port || 5432) });
-      this.sockets.add(client);
-      this.sockets.add(database);
-      const dispose = () => {
-        client.destroy();
-        database.destroy();
-        this.sockets.delete(client);
-        this.sockets.delete(database);
-      };
-      client.on('error', dispose);
-      database.on('error', dispose);
-      client.on('close', dispose);
-      database.on('close', dispose);
-      client.pipe(database);
-      database.pipe(client);
-    });
-  }
-
-  async start(): Promise<string> {
-    await listen(this.server);
-    const url = new URL(this.source);
-    url.hostname = '127.0.0.1';
-    url.port = String(port(this.server));
-    return url.toString();
-  }
-
-  disconnect(): void {
-    this.enabled = false;
-    for (const socket of this.sockets) socket.destroy();
-    this.sockets.clear();
-  }
-
-  restore(): void { this.enabled = true; }
-
-  async close(): Promise<void> {
-    this.disconnect();
-    await close(this.server);
-  }
 }
 
 function runtimeUrl(): URL {
