@@ -16,6 +16,11 @@ async fn main() -> ExitCode {
 async fn run() -> Result<(), BootstrapError> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.as_slice() {
+        [command] if command == "seed-local" => {
+            zobba_infrastructure::fixture::seed_local().await?;
+            eprintln!("cli: fixtures_ready");
+            Ok(())
+        }
         [command] if command == "openapi" => {
             let document = zobba_api::ApiDocument::openapi()
                 .to_pretty_json()

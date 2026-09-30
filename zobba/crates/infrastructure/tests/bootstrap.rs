@@ -20,6 +20,7 @@ async fn snapshot(conn: &mut PgConnection) -> Vec<String> {
         'columns',(SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(a) ORDER BY a.attnum) FROM pg_catalog.pg_attribute a WHERE a.attrelid=c.oid),
         'defaults',(SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(d) ORDER BY d.adnum) FROM pg_catalog.pg_attrdef d WHERE d.adrelid=c.oid),
         'constraints',(SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(k) ORDER BY k.conname) FROM pg_catalog.pg_constraint k WHERE k.conrelid=c.oid),
+        'triggers',(SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(t) ORDER BY t.tgname) FROM pg_catalog.pg_trigger t WHERE t.tgrelid=c.oid),
         'rules',(SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(r) ORDER BY r.rulename) FROM pg_catalog.pg_rewrite r WHERE r.ev_class=c.oid))::text
       FROM pg_catalog.pg_namespace n LEFT JOIN pg_catalog.pg_class c ON c.relnamespace=n.oid
       WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema' ORDER BY n.nspname,c.relname
@@ -97,7 +98,7 @@ async fn bootstrap_contract() {
     let database = RuntimeDatabase::connect(&runtime_url)
         .await
         .expect("nonowner runtime starts");
-    assert_eq!(database.check().await.unwrap().0, 1);
+    assert_eq!(database.check().await.unwrap().0, 2);
     refused_without_mutation(
         &mut admin,
         &migration_url,
@@ -109,6 +110,7 @@ async fn bootstrap_contract() {
     for mutation in [
         "CREATE TABLE public.forbidden(id integer)",
         "UPDATE public.zobba_bootstrap SET schema_version=1",
+        "UPDATE public.zobba_bootstrap SET local_fixture_issuer='https://fixture.invalid'",
         "DELETE FROM public._sqlx_migrations",
         "ALTER TABLE public.zobba_bootstrap ADD COLUMN forbidden text",
     ] {
@@ -131,11 +133,19 @@ async fn bootstrap_contract() {
     for mutation in [
         "UPDATE public._sqlx_migrations SET checksum='\\x00'::bytea",
         "UPDATE public._sqlx_migrations SET success=false",
-        "UPDATE public._sqlx_migrations SET version=999",
+        "UPDATE public._sqlx_migrations SET version=version+999",
         "DELETE FROM public._sqlx_migrations",
         "ALTER TABLE public.zobba_bootstrap ADD COLUMN alien text",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check",
         "CREATE INDEX unexpected_index ON public.zobba_bootstrap(product)",
+        "ALTER TABLE public.engagements NO FORCE ROW LEVEL SECURITY",
+        "ALTER POLICY scoped_engagement_update ON public.engagements USING (true) WITH CHECK (true)",
+        "ALTER TABLE public.sessions ADD COLUMN alien text",
+        "DROP INDEX public.sessions_expiry",
+        "DROP INDEX public.login_attempts_expiry",
+        "ALTER TABLE public.engagements DROP CONSTRAINT engagements_name_check",
+        "ALTER TABLE public.organisations DROP CONSTRAINT organisations_id_check",
+        "ALTER TABLE public.engagement_assignments DROP CONSTRAINT engagement_assignments_organisation_id_client_id_engagemen_fkey",
         "ALTER TABLE public.zobba_bootstrap ENABLE ROW LEVEL SECURITY",
         "CREATE TYPE public.alien_composite AS (value text)",
         "CREATE TYPE public.alien_range AS RANGE (subtype=integer)",
@@ -144,7 +154,7 @@ async fn bootstrap_contract() {
         "ALTER TABLE public.zobba_bootstrap ALTER COLUMN singleton SET DEFAULT false",
         "ALTER TABLE public._sqlx_migrations ALTER COLUMN installed_on SET DEFAULT '2000-01-01'::timestamptz",
         "CREATE RULE alien_rule AS ON DELETE TO public.zobba_bootstrap DO ALSO NOTHING",
-        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(2,1000) v",
+        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(3,1000) v",
         "UPDATE public._sqlx_migrations SET description=repeat('x',1048576),checksum=decode(repeat('ff',1048576),'hex')",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product='foreign'",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product=repeat('x',1048576)",
@@ -165,6 +175,8 @@ async fn bootstrap_contract() {
             .expect("restore synthetic fixture");
     }
 
+    internal_trigger_contract(&config, &mut admin).await;
+
     // Even a limited role with accidental metadata writes is an unsafe runtime.
     admin
         .execute(format!("GRANT UPDATE ON public.zobba_bootstrap TO \"{role}\"").as_str())
@@ -172,6 +184,7 @@ async fn bootstrap_contract() {
         .unwrap();
     refused_without_mutation(&mut admin, &runtime_url, BootstrapError::UnsafeRuntimeRole).await;
     reset(&config, &mut admin).await;
+    upgrade_contract(&config, &mut admin).await;
     no_foreign_code_runs(&config, &mut admin).await;
     authority_and_atomicity(&config, &mut admin).await;
     lock_and_blackhole(&config, &mut admin).await;
@@ -539,4 +552,88 @@ async fn lock_and_blackhole(config: &Configuration, conn: &mut PgConnection) {
     migrate(&config.migration, &role)
         .await
         .expect("retry after blackhole deadline");
+}
+
+async fn upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
+    let role = database_options(&config.runtime)
+        .unwrap()
+        .get_username()
+        .to_owned();
+    for corrupt in [false, true] {
+        reset(config, conn).await;
+        // Reproduce the actual published 20.1 migration and ledger; never rewrite it.
+        conn.execute("CREATE TABLE public._sqlx_migrations(version bigint PRIMARY KEY,description text NOT NULL,installed_on timestamptz NOT NULL DEFAULT now(),success boolean NOT NULL,checksum bytea NOT NULL,execution_time bigint NOT NULL)").await.unwrap();
+        conn.execute(include_str!("../../../migrations/0001_bootstrap.sql"))
+            .await
+            .unwrap();
+        let migrator = sqlx::migrate!("../../migrations");
+        let first = migrator.iter().next().unwrap();
+        sqlx::query("INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) VALUES($1,$2,true,$3,0)")
+            .bind(first.version).bind(first.description.as_ref()).bind(first.checksum.as_ref()).execute(&mut *conn).await.unwrap();
+        conn.execute(
+            format!("GRANT SELECT ON public._sqlx_migrations,public.zobba_bootstrap TO \"{role}\"")
+                .as_str(),
+        )
+        .await
+        .unwrap();
+        refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
+        if corrupt {
+            conn.execute("UPDATE public._sqlx_migrations SET checksum='\\x00'::bytea")
+                .await
+                .unwrap();
+            migration_refused_without_mutation(conn, config, &role, BootstrapError::SchemaMismatch)
+                .await;
+        } else {
+            let before: String = sqlx::query_scalar(
+                "SELECT installed_on::text FROM public._sqlx_migrations WHERE version=1",
+            )
+            .fetch_one(&mut *conn)
+            .await
+            .unwrap();
+            migrate(&config.migration, &role)
+                .await
+                .expect("verified 20.1 prefix upgrades");
+            let after: String = sqlx::query_scalar(
+                "SELECT installed_on::text FROM public._sqlx_migrations WHERE version=1",
+            )
+            .fetch_one(&mut *conn)
+            .await
+            .unwrap();
+            assert_eq!(before, after, "upgrade replayed historical migration");
+            let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
+            assert_eq!(database.check().await.unwrap().0, 2);
+            migrate(&config.migration, &role)
+                .await
+                .expect("upgrade repeat is safe");
+        }
+    }
+    reset(config, conn).await;
+}
+
+// FK trigger modes are catalog authority too: intact FK definitions are insufficient.
+async fn internal_trigger_contract(config: &Configuration, conn: &mut PgConnection) {
+    let mut privileged = PgConnection::connect(&config.admin).await.unwrap();
+    config.guard_connection(&mut privileged).await;
+    let role = database_options(&config.runtime)
+        .unwrap()
+        .get_username()
+        .to_owned();
+    for mutation in [
+        "ALTER TABLE public.engagements DISABLE TRIGGER ALL",
+        "ALTER TABLE public.clients DISABLE TRIGGER ALL",
+        "DO $$ DECLARE target name; BEGIN SELECT tgname INTO STRICT target FROM pg_catalog.pg_trigger WHERE tgrelid='public.engagements'::regclass AND tgisinternal ORDER BY tgname LIMIT 1; EXECUTE pg_catalog.format('ALTER TABLE public.engagements ENABLE REPLICA TRIGGER %I',target); END $$",
+        "DO $$ DECLARE target name; BEGIN SELECT tgname INTO STRICT target FROM pg_catalog.pg_trigger WHERE tgrelid='public.engagements'::regclass AND tgisinternal ORDER BY tgname LIMIT 1; EXECUTE pg_catalog.format('ALTER TABLE public.engagements ENABLE ALWAYS TRIGGER %I',target); END $$",
+    ] {
+        privileged
+            .execute(mutation)
+            .await
+            .expect("arrange altered internal FK trigger fixture");
+        refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
+        migration_refused_without_mutation(conn, config, &role, BootstrapError::SchemaMismatch)
+            .await;
+        reset(config, conn).await;
+        migrate(&config.migration, &role)
+            .await
+            .expect("ordinary internal FK triggers remain supported");
+    }
 }

@@ -1,3 +1,70 @@
+## 2026-09-30 — Story 20.2 identity and current scope
+
+The Rust `zobba/` workspace owns OIDC verification and opaque server sessions.
+Use maintained `openidconnect`4.0.1 with bounded trusted-endpoint HTTP; its default
+authorized-party/issued-at handling and JWKS refresh need our explicit checks.
+Provider roles/email are never application authority. Every protected request
+rechecks current session, membership and assignment; Admin alone grants no audit
+access. Shared SQLx transactions set actor and exact composite scope locally;
+tenant repositories never reacquire another pool connection inside that unit.
+
+`0002_identity_scope.sql` upgrades only a physically verified20.1 prefix. Exact
+catalog checks include forced RLS, policy expressions, scoped references and FK
+enforcement triggers. A present FK definition does not prove its triggers are
+enabled. Runtime has only narrow control-plane writes and scoped engagement-name
+updates; roles/assignments remain owner-configured until their later story.
+
+Local sign-in uses the separate actual HTTPS `oidc-provider` fixture:
+`pnpm fixture:setup`, source `fixtures/oidc/.local/env.sh`, explicitly migrate and
+`cargo run -p zobba-cli --locked -- seed-local`, then `pnpm fixture:start` alongside
+API/Vite. App `localhost` and IdP `127.0.0.1` must differ: cookies ignore ports.
+The external callback retains `/api/auth/callback`; Axum receives `/auth/callback`.
+Generated CA/keys/passwords stay ignored; Rust TLS verification always remains on.
+The fixture is local test infrastructure, never production authentication bypass
+or customer Cognito/SSO qualification.
+
+Run protocol tests with the actual fixture environment and process, database
+tests sequentially against guarded `*_test`, then smoke, then the owned browser
+suite (separate IdP9444). Browser expiry/revocation arrangements require the same
+disposable test-admin binding. Wrong callback state must not clear a valid session;
+only successful replacement rotates it or authenticated CSRF-protected POST logout
+ends it. Bound whole auth requests, including mutex/pool queues, and coalesce failed
+discovery. Background authority refresh clears failed protected views and restores
+keyboard focus without changing the selected composite scope.
+
+Logout intent and its AbortController are independent of automatic reads. Focus,
+visibility and timer refresh must not cancel it or reopen protected work. Retry
+may read fresh session CSRF only to retry logout; 401 means already signed out.
+If a focused control disappears, move focus to the committed view's heading.
+Unrelated callbacks preserve both established sessions and current login bindings;
+only a matching consumed attempt clears its transient binding.
+
+JWKS entries have a five-minute lifetime. Coalesce one refresh/retry for relevant
+unknown-key or signature mismatch, and fail closed if expired-cache refresh fails.
+Keep actual-provider same-kid replacement, retirement and valid padded response
+tests: malformed oversize JSON cannot prove a byte cap. The recently expired token
+must still have valid issued-at age/lifetime; the old-issued-at case is separate.
+
+Login admission atomically caps 1,000 unexpired attempts under an advisory lock;
+cleanup uses fixed cutoffs and indexed batches of 128 physical rows. Scope IDs are
+1–128 ASCII alphanumeric/underscore/hyphen; labels are 1–200 Unicode scalars without
+C0/C1 controls or edge Unicode White_Space. JavaScript trim differs from Rust
+Unicode whitespace, so use the explicit shared set. Chooser pages hold 50 current
+assignments and complete composite cursors; saved scopes open independently.
+The first local seed records its issuer in owner-controlled bootstrap metadata. Reruns
+must preserve removed or disabled authority, even after fixture records are deleted.
+
+Native Chromium form redirects require the fixture's `Referrer-Policy:
+same-origin` and `form-action` allowing its own and the exact configured app
+origin. `no-referrer` produced `Origin: null` on its password POST; a scripted
+helper manually setting Origin did not expose that browser behavior. Preserve
+the strict Origin/CSRF checks. Restore focus in a layout effect after the React
+view commits; an animation-frame callback can run before the view exists.
+Vite's built-in proxy error handler logs callback query strings and error stacks;
+the owned proxy sanitizer runs first and retains only a fixed diagnostic. Keep
+the actual proxy failure test with credential/query sentinels, and keep fixture
+setup errors fixed even when its private JSON file is corrupt.
+
 ## 2026-09-30 — Story 20.1 independent bootstrap boundary
 
 Use `zobba/` for the Rust1.98.1 and Node24.20.0/pnpm11.25.0 workspaces.

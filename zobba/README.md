@@ -1,9 +1,10 @@
 # Zobba foundation
 
 This independent workspace builds the Rust API, worker, explicit migration CLI
-and Pair web shell for Story 20.1. Health reports the actual database state.
-Authentication, engagement work, audit execution and real computers are later
-capabilities; this bootstrap does not claim them.
+and Pair web interface through Story 20.2. Real OIDC sign-in creates opaque Rust
+server sessions; current membership limits engagement selection to explicitly
+assigned work. Health reports the actual database state. Task execution, audit
+conclusions, real computers and customer SSO qualification remain later capabilities.
 
 Run every command below from `zobba/`. The historical repository-root Node
 application has its own workspace and database. Zobba does not import that
@@ -17,7 +18,8 @@ application, run its compiler or use its migrations.
 - PostgreSQL **18**, a dedicated development database and a second disposable
   database whose name ends in `_test`. Docker is optional.
 - Python **3.11+** for the dependency/process checks; no Python packages required.
-- A PostgreSQL admin client such as `psql` for initial role/database provisioning.
+- OpenSSL for the HTTPS identity fixture, and a PostgreSQL admin client such as
+  `psql` for initial role/database provisioning and browser fixtures.
   Runtime builds and smoke checks do not require `psql`.
 
 With Rustup, nvm and Corepack installed:
@@ -55,8 +57,10 @@ GRANT CONNECT ON DATABASE zobba_dev, zobba_local_test TO zobba_app;
 
 The migrator owns schema objects. The runtime role must be a distinct, nonowner
 role without superuser, BYPASSRLS, role/database creation or schema creation
-privileges. Migration grants that role only usage and read access to bootstrap
-metadata. It does not grant domain writes or enable schema changes at startup.
+privileges. Migration grants narrow identity/session operations, current assigned
+engagement reads and engagement-name updates protected by forced RLS. Runtime
+cannot change identity activation, roles or assignments. Schema changes never run
+at startup.
 
 Copy `.env.example` to ignored `.env` and replace the local placeholders. URL-encode
 special characters in passwords. Existing managed environments may already export
@@ -76,13 +80,97 @@ cargo run -p zobba-cli --locked -- migrate --runtime-role zobba_app
 ```
 
 This command reads `ZOBBA_MIGRATION_DATABASE_URL`; repeating it is safe against
-the same valid schema. Story 20.1 accepts an empty database or this exact bootstrap
-schema; it does not yet implement upgrade paths from prior schema versions or
-rolling release compatibility. Future schema stories must add their own validated
-migration paths. API and worker read only `ZOBBA_RUNTIME_DATABASE_URL` and
+the same valid schema. It accepts empty databases, an exactly verified Story 20.1
+prefix, or the exact Story 20.2 schema. Physical catalog checks precede metadata
+reads; migration checksums, changes and restricted grants are validated atomically.
+Foreign, altered and newer states refuse without mutation. API and worker read
+only `ZOBBA_RUNTIME_DATABASE_URL` and
 refuse an unmigrated, foreign, altered or incompatible schema. Do not provide
 migration credentials to deployed runtime processes. The generic legacy
 `DATABASE_URL` is never used by this workspace.
+
+## Local HTTPS sign-in and verification
+
+
+Set up the independent pinned `oidc-provider` fixture once, then source its
+private generated configuration in every shell starting the fixture, API or web:
+
+```sh
+pnpm fixture:setup
+. fixtures/oidc/.local/env.sh
+cargo run -p zobba-cli --locked -- seed-local
+pnpm fixture:start
+```
+
+Run migrations first and seed before the first synthetic sign-in. Then start the
+API and web as below in separate shells. The explicit `seed-local` command requires
+`ZOBBA_LOCAL_FIXTURES=1`, a loopback HTTPS issuer and a loopback migration database.
+The first successful seed records its issuer in owner-controlled bootstrap metadata.
+Repeating with that issuer preserves deleted, disabled and expired authority;
+it does not recreate missing memberships or assignments.
+A different issuer cannot rebind existing fixture identities. Seed runs as one
+owner transaction, restoring forced RLS before commit; runtime cannot perform it.
+
+Synthetic accounts `auditor-a` and `manager-a` (Audit manager plus Admin) reach
+Northstar / Alder Manufacturing / FY2026 audit; `auditor-b` reaches
+Meridian / Beacon Services / FY2026 review. `admin-only` and `unassigned` get no
+client work. The password is generated into ignored, permission-restricted
+`fixtures/oidc/.local/fixture.json`; do not copy it into logs or source control.
+See [fixture instructions](fixtures/oidc/README.md).
+
+The app uses HTTPS `localhost:5173`; the IdP uses HTTPS `127.0.0.1:9443`, keeping
+cookies on distinct hosts. Register exactly
+`https://localhost:5173/api/auth/callback`; Vite strips `/api` for Axum's
+`/auth/callback`. Trust the generated CA for manual browser use. Rust verifies
+TLS with the explicit fixture CA. Certificate-ignore is confined to the owned
+synthetic browser tests. Health remains available at `/status`, and API/worker
+health remains usable without OIDC configuration; sign-in then reports unavailable.
+
+Ordinary OIDC configuration supplies `ZOBBA_OIDC_ISSUER`, `ZOBBA_OIDC_CLIENT_ID`,
+`ZOBBA_OIDC_CLIENT_SECRET`, `ZOBBA_PUBLIC_ORIGIN` and
+`ZOBBA_OIDC_REDIRECT_URI`. `ZOBBA_OIDC_AUTHORIZATION_ORIGIN` can authorize a
+separate trusted hosted-login/token origin, as needed by Cognito; JWKS stays on
+the issuer origin. Never derive these URLs from request headers. Loopback identity
+and custom CA settings require deliberate fixture mode. No customer or production
+identity deployment has been qualified by this slice.
+
+Sessions expire after eight hours and use hashed random server tokens with
+`__Host-` Secure/HttpOnly/SameSite=Lax cookies. Provider tokens are discarded.
+Logout requires POST, the exact configured Origin and session-bound CSRF.
+Pending or failed sign-out stays separate from automatic access refresh; retry
+continues sign-out, and an already expired session counts as signed out.
+Each protected request checks current session/membership; forced RLS and composite
+references independently enforce scope. Auth requests have a 15-second overall
+deadline, with separate IdP HTTP byte/connect/total limits and discovery backoff.
+Verification keys expire from the cache after five minutes. Relevant unknown-key
+or signature failures get one coalesced refresh/retry; failed refresh cannot use
+an expired cache. Public login admission is capped atomically at 1,000 outstanding
+unexpired attempts. Capacity returns a fixed recoverable 429 response. Login and
+session expiry cleanup deletes at most 128 indexed rows per operation.
+
+The chooser fetches 50 freshly authorized assignments per page with a complete
+organisation/client/engagement cursor; a saved explicit scope opens independently
+of the current page. Scope IDs contain 1–128 ASCII letters, digits, underscores or
+hyphens. Labels contain 1–200 Unicode scalar values, no C0/C1 controls and no
+leading or trailing Unicode White_Space. The database, Rust, generated contract
+and browser share these bounds.
+
+`cargo test --workspace --locked` requires the actual fixture running and its
+generated environment sourced. The protocol suite exchanges actual codes and
+covers issuer/audience/signature/algorithm/key/authorized-party/time/nonce errors,
+PKCE, replay, key rotation and oversized/slow/redirected responses. The database
+suites exercise hashed state/session tokens, competing one-use login consumption,
+logout/expiry/fixation, current authority, scoped DML/joins/composite references,
+and commit/rollback/cancellation through one physical pooled connection. Missing
+prerequisites fail the tests; matrix rows are never silently skipped.
+
+Run `pnpm test:browser` after smoke and with `ZOBBA_TEST_ADMIN_DATABASE_URL` set
+for the same guarded disposable database. The auth harness owns a separate IdP on
+port 9444 and an HTTPS app on a free port, and proves login/chooser/denial,
+logout/CSRF and retry races, real replacement-session revocation, paginated scope,
+revocation/expiry and narrow keyboard use. It retains screenshot
+proof in `/tmp/zobba-browser-results`. Never run destructive database suites
+concurrently. `pnpm fixture:test` separately validates the independent fixture.
 
 ## Start the processes
 
@@ -103,7 +191,7 @@ pnpm dev
 
 The default API is `127.0.0.1:4310`; the worker is `127.0.0.1:4311`.
 `ZOBBA_API_BIND` and `ZOBBA_WORKER_BIND` override them. The web development server
-uses port **5173** and proxies its health requests to the API; set
+uses port **5173** and proxies API requests to the API; set
 `ZOBBA_API_PROXY_TARGET` if the API address changes. It displays unavailable state when the API
 or database cannot provide current readiness; it does not invent work.
 
@@ -112,7 +200,7 @@ Both Rust processes expose:
 | Request | Healthy response | Dependency failure |
 |---|---|---|
 | `GET /health/live` | 200, `status: "live"`, `schema_version: null` | Remains live while the process can serve |
-| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 1` | 503, `status: "unavailable"`, `schema_version: null` |
+| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 2` | 503, `status: "unavailable"`, `schema_version: null` |
 
 Each response also identifies `service: "api"` or `service: "worker"`. Readiness
 checks the supported schema through the restricted runtime connection. Startup
@@ -145,6 +233,9 @@ receive the admin or migration credentials.
 ```sh
 cargo fmt --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
+# Keep pnpm fixture:start running in another shell first; see HTTPS setup below.
+. fixtures/oidc/.local/env.sh
+pnpm fixture:test
 cargo test --workspace --locked
 cargo build --workspace --locked
 pnpm install --frozen-lockfile
@@ -188,7 +279,7 @@ cargo run -p zobba-cli --locked -- openapi
 ```
 
 `pnpm check` verifies that checked-in web types match this owned interface, and
-`pnpm build` builds only the Pair web shell. See [REUSE.md](REUSE.md) for selected
+`pnpm build` builds the Pair web interface. See [REUSE.md](REUSE.md) for selected
 Pair asset provenance and licences.
 
 The [owned browser regression](web/tests/browser/README.md) starts its own API,
@@ -196,7 +287,9 @@ Vite server and database proxy. It proves visible Ready → Unavailable → Read
 through actual socket loss and recovery, keyboard refresh focus and a narrow
 viewport. Install its browser with `pnpm --filter @zobba/web exec playwright
 install chromium`, or select an existing local Chromium with
-`ZOBBA_BROWSER_EXECUTABLE`. The harness never migrates or mutates database content.
+`ZOBBA_BROWSER_EXECUTABLE`. The health harness never migrates or mutates database
+content. The authentication harness uses explicit migrations/seeding and the same guarded disposable test
+database for synthetic expiry/revocation fixtures.
 
 The separate [Zobba foundation workflow](../.github/workflows/zobba.yml) runs these
 gates with disposable PostgreSQL 18.4 and the workspace's own lockfiles/cache.

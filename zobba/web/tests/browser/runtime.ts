@@ -8,11 +8,12 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createServer as createViteServer } from 'vite';
 import type { ViteDevServer } from 'vite';
+import { protectProxyErrors } from '../../proxy-errors';
 
 const root = fileURLToPath(new URL('../../..', import.meta.url));
 const web = resolve(root, 'web');
 
-function port(server: Server): number {
+export function port(server: Server): number {
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Expected a loopback TCP listener');
   return address.port;
@@ -30,7 +31,7 @@ async function close(server: Server): Promise<void> {
   });
 }
 
-async function freePort(): Promise<number> {
+export async function freePort(): Promise<number> {
   const listener = createServer();
   await listen(listener);
   const available = port(listener);
@@ -39,7 +40,7 @@ async function freePort(): Promise<number> {
 }
 
 /** Break only the test API's PostgreSQL connections, never the database itself. */
-class DatabaseProxy {
+export class DatabaseProxy {
   private readonly sockets = new Set<Socket>();
   private enabled = true;
   private readonly server: Server;
@@ -103,7 +104,7 @@ function runtimeUrl(): URL {
   return url;
 }
 
-async function stop(process: ChildProcess): Promise<void> {
+export async function stop(process: ChildProcess): Promise<void> {
   if (!process.pid || process.exitCode !== null || process.signalCode !== null) return;
   const exited = once(process, 'exit');
   process.kill('SIGTERM');
@@ -144,7 +145,8 @@ export async function startRuntime(): Promise<{
     const apiUrl = `http://127.0.0.1:${apiPort}`;
     // Runtime children get no migration/admin/test database bindings.
     const environment = Object.fromEntries(Object.entries(process.env)
-      .filter(([name]) => !/^ZOBBA_.*DATABASE_URL$/.test(name)));
+      .filter(([name]) => !/^ZOBBA_.*DATABASE_URL$/.test(name) &&
+        !/^ZOBBA_OIDC_/.test(name) && !['ZOBBA_PUBLIC_ORIGIN', 'ZOBBA_LOCAL_FIXTURES'].includes(name)));
     api = spawn(resolve(target, 'debug', 'zobba-api'), [], {
       cwd: root,
       env: { ...environment, ZOBBA_RUNTIME_DATABASE_URL: databaseUrl, ZOBBA_API_BIND: `127.0.0.1:${apiPort}` },
@@ -160,7 +162,7 @@ export async function startRuntime(): Promise<{
       try {
         const response = await fetch(`${apiUrl}/health/ready`, { signal: AbortSignal.timeout(1500) });
         const body = await response.json();
-        if (response.status === 200 && body.service === 'api' && body.status === 'ready' && body.schema_version === 1) {
+        if (response.status === 200 && body.service === 'api' && body.status === 'ready' && body.schema_version === 2) {
           serving = true;
           break;
         }
@@ -169,17 +171,28 @@ export async function startRuntime(): Promise<{
     }
     if (!serving) throw new Error('Test API did not become ready within its startup budget.');
 
-    vite = await createViteServer({
-      root: web,
-      configFile: resolve(web, 'vite.config.ts'),
-      logLevel: 'error',
-      server: {
-        host: '127.0.0.1',
-        port: 0,
-        strictPort: true,
-        proxy: { '/api': { target: apiUrl, rewrite: (path) => path.replace(/^\/api(?=\/)/, '') } },
-      },
-    });
+    // This diagnostic suite deliberately owns an HTTP server. Loading a sourced
+    // development fixture environment must not silently change its protocol.
+    const tlsKey = process.env.ZOBBA_LOCAL_TLS_KEY;
+    const tlsCert = process.env.ZOBBA_LOCAL_TLS_CERT;
+    delete process.env.ZOBBA_LOCAL_TLS_KEY;
+    delete process.env.ZOBBA_LOCAL_TLS_CERT;
+    try {
+      vite = await createViteServer({
+        root: web,
+        configFile: resolve(web, 'vite.config.ts'),
+        logLevel: 'error',
+        server: {
+          host: '127.0.0.1',
+          port: 0,
+          strictPort: true,
+          proxy: { '/api': { target: apiUrl, rewrite: (path) => path.replace(/^\/api(?=\/)/, ''), configure: protectProxyErrors } },
+        },
+      });
+    } finally {
+      if (tlsKey !== undefined) process.env.ZOBBA_LOCAL_TLS_KEY = tlsKey;
+      if (tlsCert !== undefined) process.env.ZOBBA_LOCAL_TLS_CERT = tlsCert;
+    }
     await vite.listen();
     if (!vite.httpServer) throw new Error('Vite did not expose its loopback server.');
     return {

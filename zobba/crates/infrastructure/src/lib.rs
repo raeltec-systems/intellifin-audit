@@ -1,4 +1,8 @@
 //! PostgreSQL bootstrap adapter. Runtime validation never runs a migration.
+pub mod fixture;
+pub mod identity;
+pub mod oidc;
+pub mod scope;
 use sqlx::{
     ConnectOptions, Connection, PgConnection, PgPool,
     postgres::{PgConnectOptions, PgPoolOptions},
@@ -94,8 +98,14 @@ async fn check_effective_role(
           WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema')
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace, reachable r
           WHERE n.nspname='public' AND (c.relowner=r.oid OR (c.relkind IN ('r','p') AND (
-            pg_catalog.has_table_privilege(r.oid,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
-            OR pg_catalog.has_any_column_privilege(r.oid,c.oid,'INSERT,UPDATE,REFERENCES')))))
+            pg_catalog.has_table_privilege(r.oid,c.oid,'TRUNCATE,REFERENCES,TRIGGER')
+            OR (c.relname NOT IN ('login_attempts','sessions') AND pg_catalog.has_table_privilege(r.oid,c.oid,'INSERT,DELETE'))
+            OR pg_catalog.has_table_privilege(r.oid,c.oid,'UPDATE')
+            OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped AND (
+              pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'REFERENCES')
+              OR (NOT (c.relname IN ('login_attempts','sessions') OR (c.relname='identities' AND a.attname IN ('id','issuer','subject','display_name'))) AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'INSERT'))
+              OR (NOT (c.relname IN ('identities','engagements') AND a.attname IN ('display_name','name')) AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'UPDATE'))
+            ))))))
     "#).bind(role).bind(current_session).fetch_one(conn).await.map_err(|_| BootstrapError::DatabaseUnavailable)?;
     if unsafe_role {
         Err(BootstrapError::UnsafeRuntimeRole)
@@ -112,6 +122,28 @@ async fn check_runtime_role(conn: &mut PgConnection) -> Result<(), BootstrapErro
     check_effective_role(conn, &role, true).await
 }
 
+async fn check_runtime_grants(conn: &mut PgConnection, role: &str) -> Result<(), BootstrapError> {
+    let complete: bool = sqlx::query_scalar(r#"
+      SELECT (SELECT pg_catalog.bool_and(pg_catalog.has_table_privilege($1,c.oid,'SELECT'))
+        FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r')
+        AND pg_catalog.has_table_privilege($1,'public.login_attempts','INSERT')
+        AND pg_catalog.has_table_privilege($1,'public.login_attempts','DELETE')
+        AND pg_catalog.has_table_privilege($1,'public.sessions','INSERT')
+        AND pg_catalog.has_table_privilege($1,'public.sessions','DELETE')
+        AND pg_catalog.has_column_privilege($1,'public.identities','id','INSERT')
+        AND pg_catalog.has_column_privilege($1,'public.identities','issuer','INSERT')
+        AND pg_catalog.has_column_privilege($1,'public.identities','subject','INSERT')
+        AND pg_catalog.has_column_privilege($1,'public.identities','display_name','INSERT')
+        AND pg_catalog.has_column_privilege($1,'public.identities','display_name','UPDATE')
+        AND pg_catalog.has_column_privilege($1,'public.engagements','name','UPDATE')
+    "#).bind(role).fetch_one(conn).await.map_err(|_| BootstrapError::UnsafeRuntimeRole)?;
+    if complete {
+        Ok(())
+    } else {
+        Err(BootstrapError::UnsafeRuntimeRole)
+    }
+}
+
 async fn inventory(conn: &mut PgConnection) -> Result<Vec<String>, BootstrapError> {
     let foreign: bool = sqlx::query_scalar(r#"
         SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname !~ '^pg_' AND nspname NOT IN ('public','information_schema'))
@@ -120,105 +152,84 @@ async fn inventory(conn: &mut PgConnection) -> Result<Vec<String>, BootstrapErro
         OR EXISTS (
           SELECT 1 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace
           WHERE n.nspname='public' AND t.oid NOT IN (
-            SELECT c.reltype FROM pg_catalog.pg_class c WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap')
+            SELECT c.reltype FROM pg_catalog.pg_class c WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap','identities','login_attempts','sessions','organisations','clients','engagements','organisation_memberships','engagement_assignments')
             UNION ALL SELECT rowtype.typarray FROM pg_catalog.pg_type rowtype JOIN pg_catalog.pg_class c ON c.reltype=rowtype.oid
-              WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap')
+              WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap','identities','login_attempts','sessions','organisations','clients','engagements','organisation_memberships','engagement_assignments')
           ))
     "#).fetch_one(&mut *conn).await.map_err(|_| BootstrapError::DatabaseUnavailable)?;
     if foreign {
         return Err(BootstrapError::SchemaMismatch);
     }
-    // Three rows suffice to reject anything other than the two owned tables.
-    sqlx::query_scalar("SELECT c.relname::text FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind <> 'i' ORDER BY c.relname LIMIT 3")
+    // Bound inventory independently of attacker-controlled catalog size.
+    sqlx::query_scalar("SELECT c.relname::text FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind <> 'i' ORDER BY c.relname LIMIT 11")
         .fetch_all(conn).await.map_err(|_| BootstrapError::DatabaseUnavailable)
 }
 
-async fn check_schema(conn: &mut PgConnection) -> Result<(), BootstrapError> {
-    if inventory(conn).await? != ["_sqlx_migrations", "zobba_bootstrap"] {
-        return Err(BootstrapError::SchemaMismatch);
-    }
-    // Validate physical structure before touching possibly foreign row values.
-    type ColumnSignature = (String, String, String, bool, Option<String>, String, String);
-    let columns: Vec<ColumnSignature> = sqlx::query_as(r#"
-        SELECT c.relname::text,a.attname::text,pg_catalog.format_type(a.atttypid,a.atttypmod),a.attnotnull,
-          pg_catalog.left(pg_catalog.pg_get_expr(d.adbin,d.adrelid),128),a.attidentity::text,a.attgenerated::text
-        FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid
-        JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
-        LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
-        WHERE n.nspname='public' AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped
-        ORDER BY c.relname,a.attnum LIMIT 10
-    "#).fetch_all(&mut *conn).await.map_err(|_| BootstrapError::SchemaMismatch)?;
-    let expected = [
-        ("_sqlx_migrations", "version", "bigint", None),
-        ("_sqlx_migrations", "description", "text", None),
-        (
+/// The checked-in catalog signatures were captured from the owned migrations on
+/// PostgreSQL 18, and include physical columns, checks/FKs, indexes and RLS policies.
+/// Catalogs are inspected before any table values; no foreign view/function runs.
+async fn check_schema(
+    conn: &mut PgConnection,
+    allow_previous: bool,
+) -> Result<i64, BootstrapError> {
+    let tables = inventory(conn).await?;
+    let version = if tables == ["_sqlx_migrations", "zobba_bootstrap"] {
+        1
+    } else if tables
+        == [
             "_sqlx_migrations",
-            "installed_on",
-            "timestamp with time zone",
-            Some("now()"),
-        ),
-        ("_sqlx_migrations", "success", "boolean", None),
-        ("_sqlx_migrations", "checksum", "bytea", None),
-        ("_sqlx_migrations", "execution_time", "bigint", None),
-        ("zobba_bootstrap", "singleton", "boolean", Some("true")),
-        ("zobba_bootstrap", "product", "text", None),
-        ("zobba_bootstrap", "schema_version", "bigint", None),
-    ];
-    if columns.len() != expected.len()
-        || columns.iter().zip(expected).any(
-            |((table, column, kind, required, default, identity, generated), (et, ec, ek, ed))| {
-                table != et
-                    || column != ec
-                    || kind != ek
-                    || !required
-                    || default.as_deref() != ed
-                    || !identity.is_empty()
-                    || !generated.is_empty()
-            },
-        )
+            "clients",
+            "engagement_assignments",
+            "engagements",
+            "identities",
+            "login_attempts",
+            "organisation_memberships",
+            "organisations",
+            "sessions",
+            "zobba_bootstrap",
+        ]
     {
+        2
+    } else {
         return Err(BootstrapError::SchemaMismatch);
-    }
-    let constraints: Vec<(String,String)> = sqlx::query_as(r#"
-        SELECT c.relname::text,pg_catalog.left(pg_catalog.pg_get_constraintdef(k.oid),512)
-        FROM pg_catalog.pg_constraint k JOIN pg_catalog.pg_class c ON c.oid=k.conrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
-        WHERE n.nspname='public' AND k.contype <> 'n' ORDER BY c.relname,pg_catalog.pg_get_constraintdef(k.oid) LIMIT 6
-    "#).fetch_all(&mut *conn).await.map_err(|_| BootstrapError::SchemaMismatch)?;
-    let expected_constraints = [
-        ("_sqlx_migrations", "PRIMARY KEY (version)"),
-        ("zobba_bootstrap", "CHECK ((product = 'zobba'::text))"),
-        ("zobba_bootstrap", "CHECK ((schema_version = 1))"),
-        ("zobba_bootstrap", "CHECK (singleton)"),
-        ("zobba_bootstrap", "PRIMARY KEY (singleton)"),
-    ];
-    if constraints.len() != expected_constraints.len()
-        || constraints
-            .iter()
-            .zip(expected_constraints)
-            .any(|((table, definition), (et, ed))| table != et || definition != ed)
-    {
-        return Err(BootstrapError::SchemaMismatch);
-    }
+    };
     let altered_objects: bool = sqlx::query_scalar(r#"
-        SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND NOT t.tgisinternal)
+        SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND (NOT t.tgisinternal OR t.tgenabled <> 'O'))
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_rewrite r JOIN pg_catalog.pg_class c ON c.oid=r.ev_class JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public')
-        OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND (c.relpersistence <> 'p' OR c.relrowsecurity OR c.relforcerowsecurity))
-        OR (SELECT pg_catalog.count(*) <> 2 FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid=i.indrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public')
     "#).fetch_one(&mut *conn).await.map_err(|_| BootstrapError::SchemaMismatch)?;
     if altered_objects {
         return Err(BootstrapError::SchemaMismatch);
     }
-    // Return fixed-width booleans, never arbitrary metadata text/blob contents.
-    // LIMIT stops a forged oversized ledger/marker from allocating unbounded rows.
-    let expected = MIGRATOR
-        .iter()
-        .next()
-        .ok_or(BootstrapError::SchemaMismatch)?;
-    let rows: Vec<(i64,bool,bool,bool)> = sqlx::query_as("SELECT version,description=$1,success,checksum=$2 FROM public._sqlx_migrations ORDER BY version LIMIT 2")
-        .bind(expected.description.as_ref()).bind(expected.checksum.as_ref())
-        .fetch_all(&mut *conn).await.map_err(|_| BootstrapError::SchemaMismatch)?;
-    if rows != [(expected.version, true, true, true)] || MIGRATOR.iter().count() != 1 {
+    let signature: Vec<String> = sqlx::query_scalar(include_str!("catalog-signature.sql"))
+        .fetch_all(&mut *conn)
+        .await
+        .map_err(|_| BootstrapError::SchemaMismatch)?;
+    let expected = if version == 1 {
+        include_str!("schema-v1.catalog")
+    } else {
+        include_str!("schema-v2.catalog")
+    };
+    if !signature.iter().map(String::as_str).eq(expected.lines()) {
         return Err(BootstrapError::SchemaMismatch);
+    }
+    // Compare bounded booleans, never allocate untrusted metadata strings/blobs.
+    let versions: Vec<i64> =
+        sqlx::query_scalar("SELECT version FROM public._sqlx_migrations ORDER BY version LIMIT 3")
+            .fetch_all(&mut *conn)
+            .await
+            .map_err(|_| BootstrapError::SchemaMismatch)?;
+    if versions != (1..=version).collect::<Vec<_>>()
+        || (!allow_previous && version != i64::from(SCHEMA_VERSION.0))
+    {
+        return Err(BootstrapError::SchemaMismatch);
+    }
+    for migration in MIGRATOR.iter().take(version as usize) {
+        let verified: bool = sqlx::query_scalar("SELECT description=$1 AND success AND checksum=$2 FROM public._sqlx_migrations WHERE version=$3")
+            .bind(migration.description.as_ref()).bind(migration.checksum.as_ref()).bind(migration.version)
+            .fetch_one(&mut *conn).await.map_err(|_| BootstrapError::SchemaMismatch)?;
+        if !verified {
+            return Err(BootstrapError::SchemaMismatch);
+        }
     }
     let marker: Vec<(bool, bool, i64)> = sqlx::query_as(
         "SELECT singleton,product='zobba',schema_version FROM public.zobba_bootstrap LIMIT 2",
@@ -226,10 +237,10 @@ async fn check_schema(conn: &mut PgConnection) -> Result<(), BootstrapError> {
     .fetch_all(conn)
     .await
     .map_err(|_| BootstrapError::SchemaMismatch)?;
-    if marker != [(true, true, i64::from(SCHEMA_VERSION.0))] {
+    if marker != [(true, true, version)] {
         return Err(BootstrapError::SchemaMismatch);
     }
-    Ok(())
+    Ok(version)
 }
 
 #[derive(Clone)]
@@ -238,6 +249,10 @@ pub struct RuntimeDatabase {
 }
 
 impl RuntimeDatabase {
+    pub fn pool(&self) -> &PgPool {
+        &self.pool
+    }
+
     pub async fn connect(url: &str) -> Result<Self, BootstrapError> {
         let pool = PgPoolOptions::new()
             .max_connections(4)
@@ -269,7 +284,12 @@ impl SchemaHealth for RuntimeDatabase {
                 .map_err(|_| BootstrapError::DatabaseUnavailable)?;
             check_postgres(&mut tx).await?;
             check_runtime_role(&mut tx).await?;
-            check_schema(&mut tx).await?;
+            check_schema(&mut tx, false).await?;
+            let role: String = sqlx::query_scalar("SELECT current_user::text")
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|_| BootstrapError::DatabaseUnavailable)?;
+            check_runtime_grants(&mut tx, &role).await?;
             tx.commit()
                 .await
                 .map_err(|_| BootstrapError::DatabaseUnavailable)?;
@@ -314,7 +334,7 @@ pub async fn migrate(url: &str, runtime_role: &str) -> Result<(), BootstrapError
 async fn migrate_locked(conn: &mut PgConnection, runtime_role: &str) -> Result<(), BootstrapError> {
     check_effective_role(conn, runtime_role, false).await?;
     if !inventory(conn).await?.is_empty() {
-        check_schema(conn).await?;
+        check_schema(conn, true).await?;
     }
     // SQLx creates its ledger before its per-migration transaction. An enclosing
     // transaction makes ledger, bootstrap, grants and validation one atomic unit.
@@ -341,12 +361,16 @@ async fn migrate_locked(conn: &mut PgConnection, runtime_role: &str) -> Result<(
     let grants = format!(
         "REVOKE CREATE ON SCHEMA public FROM PUBLIC; REVOKE ALL ON public._sqlx_migrations FROM PUBLIC; GRANT USAGE ON SCHEMA public TO \"{runtime_role}\"; GRANT SELECT ON public.zobba_bootstrap,public._sqlx_migrations TO \"{runtime_role}\";"
     );
+    let grants = format!(
+        "{grants} GRANT SELECT ON public.identities,public.login_attempts,public.sessions,public.organisations,public.clients,public.engagements,public.organisation_memberships,public.engagement_assignments TO \"{runtime_role}\"; GRANT INSERT(id,issuer,subject,display_name),UPDATE(display_name) ON public.identities TO \"{runtime_role}\"; GRANT INSERT,DELETE ON public.login_attempts,public.sessions TO \"{runtime_role}\"; GRANT UPDATE(name) ON public.engagements TO \"{runtime_role}\";"
+    );
     sqlx::raw_sql(&grants)
         .execute(&mut *tx)
         .await
         .map_err(|_| BootstrapError::MigrationFailed)?;
     check_effective_role(&mut tx, runtime_role, false).await?;
-    check_schema(&mut tx).await?;
+    check_schema(&mut tx, false).await?;
+    check_runtime_grants(&mut tx, runtime_role).await?;
     tx.commit()
         .await
         .map_err(|_| BootstrapError::MigrationFailed)

@@ -1,7 +1,7 @@
 # Selected source reuse
 
-Story 20.1 reuses only the accepted Pair identity and token assets listed below.
-The application shell and health checks are new implementation; no prototype logic,
+Stories 20.1–20.2 reuse only the accepted Pair identity and token assets listed below.
+The application shell, identity flow and health checks are new implementation; no prototype logic,
 legacy application packages, schema, fixtures, or backend code enter this workspace.
 
 ## Exact source
@@ -52,3 +52,9 @@ IBM Plex Mono is not bundled or fetched by this shell.
   real health updates render, retry works, and desktop/narrow layouts remain readable.
 - Prototype interaction checks and mock Tasks/computer views are not inherited
   as claims about this application.
+- Story 20.2 checks these unchanged assets in real HTTPS login, the assigned
+  engagement chooser, selected scope, denial/logout and narrow keyboard states.
+  Its maintained `openidconnect` 4.0.1 and `oauth2` 5.0 verifier dependencies are
+  locked in Cargo; the independent `oidc-provider` 9.12.2 fixture is locked in
+  pnpm. Fixture Node code is test infrastructure, with no legacy domain imports
+  and no application authentication bypass.

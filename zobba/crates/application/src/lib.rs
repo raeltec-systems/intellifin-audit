@@ -1,4 +1,5 @@
 //! Application-owned bootstrap port. No SQL, HTTP or vendor error crosses it.
+pub mod identity;
 use std::{fmt, future::Future};
 use zobba_domain::SchemaVersion;
 

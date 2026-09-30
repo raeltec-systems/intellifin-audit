@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
+    "dev": "vite",
     "check": "node scripts/generate-api.mjs --check && tsc --noEmit && node --test tests/*.test.mjs",
     "test:browser": "playwright test",
     "build": "tsc --noEmit && vite build",

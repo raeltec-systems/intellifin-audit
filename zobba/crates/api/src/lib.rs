@@ -1,4 +1,6 @@
 //! Owned HTTP interface. OpenAPI is generated from these handler and wire types.
+pub mod auth;
+pub mod engagements;
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
 use serde::Serialize;
 use utoipa::{OpenApi, ToSchema};
@@ -69,14 +71,90 @@ pub fn router(database: RuntimeDatabase) -> Router {
         .with_state(database)
 }
 
+pub fn authenticated_router(database: RuntimeDatabase, identity: auth::AuthState) -> Router {
+    router(database)
+        .merge(auth::router(identity))
+        .layer(axum::middleware::from_fn(
+            |request: axum::extract::Request, next: axum::middleware::Next| async move {
+                let login_document =
+                    request.uri().path() == "/auth/login" && auth::wants_html(request.headers());
+                let mut response = match tokio::time::timeout(
+                    std::time::Duration::from_secs(15),
+                    next.run(request),
+                )
+                .await
+                {
+                    Ok(response) => response,
+                    Err(_) if login_document => auth::login_failure(
+                        zobba_application::identity::IdentityError::Unavailable,
+                        true,
+                    ),
+                    Err(_) => {
+                        auth::failure(zobba_application::identity::IdentityError::Unavailable)
+                    }
+                };
+                response.headers_mut().insert(
+                    axum::http::header::CACHE_CONTROL,
+                    axum::http::HeaderValue::from_static("no-store"),
+                );
+                response.headers_mut().insert(
+                    axum::http::header::REFERRER_POLICY,
+                    axum::http::HeaderValue::from_static("no-referrer"),
+                );
+                response.headers_mut().insert(
+                    axum::http::header::X_CONTENT_TYPE_OPTIONS,
+                    axum::http::HeaderValue::from_static("nosniff"),
+                );
+                response
+            },
+        ))
+}
+
 #[derive(OpenApi)]
 #[openapi(
+    modifiers(&AuthenticationContract),
     info(
         title = "Zobba owned HTTP interface",
         version = "1.0.0",
-        description = "Bootstrap service health only. No audit, identity or Task capability is implied."
+        description = "Service health, OIDC server sessions and current assigned engagement scope. No Task capability is implied."
     ),
-    paths(live, ready),
-    components(schemas(HealthResponse, Service, HealthStatus))
+    paths(
+        live,
+        ready,
+        auth::login,
+        auth::callback,
+        auth::session,
+        auth::logout,
+        engagements::list,
+        engagements::open
+    ),
+    components(schemas(
+        HealthResponse,
+        Service,
+        HealthStatus,
+        auth::ErrorResponse,
+        auth::IdentityResponse,
+        auth::SessionResponse,
+        engagements::EngagementResponse,
+        engagements::EngagementsResponse,
+        engagements::ScopeResponse
+    ))
 )]
 pub struct ApiDocument;
+
+struct AuthenticationContract;
+impl utoipa::Modify for AuthenticationContract {
+    fn modify(&self, document: &mut utoipa::openapi::OpenApi) {
+        use utoipa::openapi::security::{ApiKey, ApiKeyValue, SecurityScheme};
+        if let Some(components) = document.components.as_mut() {
+            components.add_security_scheme("server_session",SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::with_description("__Host-zobba-session","Opaque server session; Secure, HttpOnly, SameSite=Lax, Path=/; browser managed, never an OIDC provider token"))));
+            components.add_security_scheme(
+                "login_binding",
+                SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::with_description(
+                    "__Host-zobba-login",
+                    "One-use current login browser binding; Secure, HttpOnly, SameSite=Lax, Path=/",
+                ))),
+            );
+        }
+    }
+}

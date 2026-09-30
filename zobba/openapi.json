@@ -2,13 +2,426 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Zobba owned HTTP interface",
-    "description": "Bootstrap service health only. No audit, identity or Task capability is implied.",
+    "description": "Service health, OIDC server sessions and current assigned engagement scope. No Task capability is implied.",
     "license": {
       "name": ""
     },
     "version": "1.0.0"
   },
   "paths": {
+    "/auth/callback": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "callback",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Exact one-use state from the current login attempt",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 43,
+              "minLength": 43,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "description": "One-use provider authorization code; required unless error is present",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 4096,
+              "minLength": 1
+            }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "description": "Provider denial code; never reflected to clients",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Verified success rotates session; failure returns only fixed sign-in status to configured app. Clear only matching consumed binding."
+          },
+          "400": {
+            "description": "Invalid response when no application origin is configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Whole-request deadline exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "login_binding": []
+          }
+        ]
+      }
+    },
+    "/auth/login": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "login",
+        "responses": {
+          "303": {
+            "description": "Redirect to trusted OIDC sign-in with one-use state and PKCE"
+          },
+          "429": {
+            "description": "Outstanding sign-in capacity reached; try again later",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Recoverable sign-in failure; native browser navigation receives an HTML return link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "logout",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exactly the configured HTTPS application origin, supplied by the browser",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "Current session-bound CSRF token from GET /auth/session",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 43,
+              "minLength": 43,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Server session deleted and cookie expired"
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/auth/session": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "session",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements": {
+      "get": {
+        "tags": [
+          "engagements"
+        ],
+        "operationId": "list",
+        "parameters": [
+          {
+            "name": "after_organisation_id",
+            "in": "query",
+            "description": "Supply all three cursor fields together",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "after_client_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "after_engagement_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Freshly authorized page, ordered by complete scope identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EngagementsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Incomplete or invalid cursor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}": {
+      "get": {
+        "tags": [
+          "engagements"
+        ],
+        "operationId": "open",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Explicit scope opened independently of chooser page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EngagementResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
     "/health/live": {
       "get": {
         "tags": [],
@@ -58,6 +471,100 @@
   },
   "components": {
     "schemas": {
+      "EngagementResponse": {
+        "type": "object",
+        "required": [
+          "organisation_id",
+          "organisation_name",
+          "client_id",
+          "client_name",
+          "engagement_id",
+          "engagement_name",
+          "roles"
+        ],
+        "properties": {
+          "client_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "client_name": {
+            "type": "string",
+            "description": "1–200 Unicode scalars; no C0/C1 controls or leading/trailing Unicode White_Space.",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "engagement_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "engagement_name": {
+            "type": "string",
+            "description": "1–200 Unicode scalars; no C0/C1 controls or leading/trailing Unicode White_Space.",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "organisation_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "organisation_name": {
+            "type": "string",
+            "description": "1–200 Unicode scalars; no C0/C1 controls or leading/trailing Unicode White_Space.",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "EngagementsResponse": {
+        "type": "object",
+        "required": [
+          "engagements",
+          "next_cursor"
+        ],
+        "properties": {
+          "engagements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EngagementResponse"
+            },
+            "maxItems": 50
+          },
+          "next_cursor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScopeResponse",
+                "description": "Continue after this complete scope tuple; null means no further current assignments."
+              }
+            ]
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      },
       "HealthResponse": {
         "type": "object",
         "required": [
@@ -90,12 +597,84 @@
           "unavailable"
         ]
       },
+      "IdentityResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "ScopeResponse": {
+        "type": "object",
+        "required": [
+          "organisation_id",
+          "client_id",
+          "engagement_id"
+        ],
+        "properties": {
+          "client_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "engagement_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "organisation_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          }
+        }
+      },
       "Service": {
         "type": "string",
         "enum": [
           "api",
           "worker"
         ]
+      },
+      "SessionResponse": {
+        "type": "object",
+        "required": [
+          "identity",
+          "csrf_token"
+        ],
+        "properties": {
+          "csrf_token": {
+            "type": "string"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/IdentityResponse"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "login_binding": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-zobba-login",
+        "description": "One-use current login browser binding; Secure, HttpOnly, SameSite=Lax, Path=/"
+      },
+      "server_session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-zobba-session",
+        "description": "Opaque server session; Secure, HttpOnly, SameSite=Lax, Path=/; browser managed, never an OIDC provider token"
       }
     }
   }

@@ -114,18 +114,20 @@ def node_graph() -> None:
     root_package = json.loads((ROOT / "package.json").read_text())
     require(root_package.get("packageManager") == "pnpm@11.25.0", "pnpm must be pinned to 11.25.0")
     require((ROOT / ".nvmrc").read_text().strip() == "24.20.0", "Node must be pinned to 24.20.0")
-    # A negative pattern is unnecessary here: only the owned web package is admitted.
+    # Only the owned web client and independent synthetic IdP are admitted.
     workspace = (ROOT / "pnpm-workspace.yaml").read_text()
     package_section = re.search(r"^packages:[ \t]*\n(.*?)(?=^\S|\Z)", workspace, re.MULTILINE | re.DOTALL)
     package_patterns = re.findall(
         r"^\s+-\s+[\"']?([^\s\"'#]+)", package_section[1] if package_section else "", re.MULTILINE,
     )
-    require(package_patterns == ["web"], "pnpm workspace must include exactly the owned web package")
+    require(package_patterns == ["web", "fixtures/oidc"], "pnpm workspace must include exactly web and the independent OIDC fixture")
     for path, data in manifests:
         label = str(path.relative_to(ROOT))
         require(inside(path), f"{label}: package manifest escapes zobba/")
         for section in ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies"):
             for name, version in data.get(section, {}).items():
+                if name in {"oidc-provider", "@zobba/oidc-fixture"}:
+                    require(label == "fixtures/oidc/package.json", f"{label}: IdP implementation is fixture infrastructure only")
                 require(
                     not name.startswith("@intellifin/") and not re.search(r"drizzle|pg-boss", name),
                     f"{label}: legacy backend dependency {name}",

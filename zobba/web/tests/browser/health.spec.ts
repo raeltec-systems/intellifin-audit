@@ -20,9 +20,9 @@ test('real database loss is unavailable, then keyboard refresh restores Ready', 
   };
 
   try {
-    await page.goto(runtime.url);
-    await expect(page).toHaveTitle('Zobba · Workspace foundation');
-    await expect(page.getByRole('heading', { name: 'Your Zobba workspace' })).toBeVisible();
+    await page.goto(`${runtime.url}/status`);
+    await expect(page).toHaveTitle('Zobba · Pair');
+    await expect(page.getByRole('heading', { name: 'Connection status', level: 1 })).toBeVisible();
     await expect(page.locator('vite-error-overlay')).toHaveCount(0);
     const statuses = page.locator('.status-label');
     const refresh = page.getByRole('button', { name: 'Check again' });
@@ -51,7 +51,7 @@ test('real database loss is unavailable, then keyboard refresh restores Ready', 
     const restoredResponse = page.waitForResponse((response) =>
       new URL(response.url()).pathname === '/api/health/ready' && response.status() === 200);
     await page.keyboard.press('Enter');
-    expect(await (await restoredResponse).json()).toEqual({ service: 'api', status: 'ready', schema_version: 1 });
+    expect(await (await restoredResponse).json()).toEqual({ service: 'api', status: 'ready', schema_version: 2 });
     await expect(statuses).toHaveText(['Responding', 'Ready']);
     await expect(page.locator('.connection-help')).toHaveCount(0);
     await expect(refresh).toBeFocused();

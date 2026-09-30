@@ -1,5 +1,6 @@
 packages:
   - web
+  - fixtures/oidc
 
 engineStrict: true
 minimumReleaseAge: 1440

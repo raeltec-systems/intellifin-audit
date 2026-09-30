@@ -275,6 +275,42 @@ class DatabaseUrlGuardTests(unittest.TestCase):
             self.assert_refused()
 
 
+class FixtureWorkspaceGuardTests(unittest.TestCase):
+    def setUp(self):
+        temporary = self.enterContext(tempfile.TemporaryDirectory(prefix="zobba-fixture-guard-"))
+        self.root = Path(temporary)
+        self.enterContext(mock.patch.object(boundaries, "ROOT", self.root))
+        self.enterContext(mock.patch.object(boundaries, "ERRORS", []))
+        (self.root / ".nvmrc").write_text("24.20.0\n")
+        (self.root / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n")
+        (self.root / "pnpm-workspace.yaml").write_text("packages:\n  - web\n  - fixtures/oidc\n")
+        self.manifest("package.json", {"name": "zobba-workspace", "packageManager": "pnpm@11.25.0"})
+        self.manifest("web/package.json", {"name": "@zobba/web"})
+        self.manifest("fixtures/oidc/package.json", {"name": "@zobba/oidc-fixture", "dependencies": {"oidc-provider": "9.12.2"}})
+
+    def manifest(self, relative, value):
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(value))
+
+    def test_separate_owned_idp_fixture_is_accepted(self):
+        boundaries.node_graph()
+        self.assertEqual(boundaries.ERRORS, [])
+
+    def test_web_cannot_depend_on_fixture_or_idp_implementation(self):
+        for name, version in (("oidc-provider", "9.12.2"), ("@zobba/oidc-fixture", "workspace:*")):
+            with self.subTest(dependency=name):
+                boundaries.ERRORS.clear()
+                self.manifest("web/package.json", {"name": "@zobba/web", "dependencies": {name: version}})
+                boundaries.node_graph()
+                self.assertTrue(any("fixture infrastructure only" in error for error in boundaries.ERRORS))
+
+    def test_additional_workspace_package_is_refused(self):
+        (self.root / "pnpm-workspace.yaml").write_text("packages:\n  - web\n  - fixtures/oidc\n  - ../legacy\n")
+        boundaries.node_graph()
+        self.assertTrue(any("exactly web" in error for error in boundaries.ERRORS))
+
+
 class SourceBoundaryGuardTests(unittest.TestCase):
     def setUp(self):
         self.temporary = self.enterContext(tempfile.TemporaryDirectory(prefix="zobba-guard-test-"))

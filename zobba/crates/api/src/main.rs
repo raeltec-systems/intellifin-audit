@@ -21,14 +21,18 @@ async fn run() -> Result<(), BootstrapError> {
         .parse()
         .map_err(|_| BootstrapError::InvalidConfiguration)?;
     let database = RuntimeDatabase::connect(&url).await?;
+    let identity = zobba_api::auth::AuthState::from_environment(&database)?;
     let listener = tokio::net::TcpListener::bind(address)
         .await
         .map_err(|_| BootstrapError::ListenerUnavailable)?;
     eprintln!("api: ready");
-    axum::serve(listener, zobba_api::router(database))
-        .with_graceful_shutdown(shutdown())
-        .await
-        .map_err(|_| BootstrapError::ListenerUnavailable)
+    axum::serve(
+        listener,
+        zobba_api::authenticated_router(database, identity),
+    )
+    .with_graceful_shutdown(shutdown())
+    .await
+    .map_err(|_| BootstrapError::ListenerUnavailable)
 }
 
 async fn shutdown() {
