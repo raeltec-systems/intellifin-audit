@@ -23,7 +23,7 @@ vi.mock('@intellifin/infrastructure', () => ({
     readTimeline = calls.timeline; readFrames = calls.frames;
     readEscalations = calls.escalations; readReplayExceptions = calls.exceptions;
     readEvidenceItems = async () => []; readEvidenceItemsByIds = async () => [];
-    readReplayGaps = async () => ({ missing: 0, suppressed: 0, rows: [] });
+    readReplayGaps = async () => ({ missing: 0, suppressed: 0, rows: [], window: [] });
     readInspectionReplay = async () => ({ kind: 'unavailable' });
   },
   DrizzleFrozenExecutionReader: class { readFrozenExecution = calls.plan; },
@@ -80,10 +80,10 @@ beforeEach(() => {
   calls.escalations.mockResolvedValue({ total: 612, rows: [
     // At the frame read: it lands there.
     { waitId: 'w-read', kind: 'choose-candidate', openedAt: '2026-09-26T00:00:11.000Z', closedAt: '2026-09-26T00:00:12.000Z',
-      closureKind: 'answer', answerOptionId: 'candidate-1', framesThrough: 1, landing: { workItemId: WORK_ITEM, cursor: 0 } },
+      closureKind: 'answer', answerOptionId: 'candidate-1', framesThrough: 1, landedBy: 'raised-at', landing: { workItemId: WORK_ITEM, cursor: 0 } },
     // Its frame is the 812th, which the page never read: the page that holds it is the ninth.
     { waitId: 'w-late', kind: 'unnamed-value', openedAt: '2026-09-26T02:00:00.000Z', closedAt: '2026-09-26T02:00:01.000Z',
-      closureKind: 'answer', answerOptionId: 'unevaluated', framesThrough: 812, landing: { workItemId: WORK_ITEM, cursor: 800 } },
+      closureKind: 'answer', answerOptionId: 'unevaluated', framesThrough: 812, landedBy: 'raised-at', landing: { workItemId: WORK_ITEM, cursor: 800 } },
   ] });
   calls.exceptions.mockResolvedValue({ total: 1_204, rows: [
     { exceptionId: 'x-1', workItemId: WORK_ITEM, populationRecordKey: 'parameter-0001', raisedAt: AT },

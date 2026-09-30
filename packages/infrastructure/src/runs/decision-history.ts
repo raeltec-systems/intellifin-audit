@@ -141,7 +141,12 @@ export interface RunPauseRequestEntry {
 export interface RunPauseRequestHistory {
   /** Every pause request of this Run that never took effect, counted exactly. */
   readonly total: number;
-  /** The first `PAUSE_REQUEST_LIMIT` of them, in the order the chain recorded them. */
+  /**
+   * The first `PAUSE_REQUEST_LIMIT` of them in the order they were ASKED FOR: by each
+   * request's own request time, or — when its record holds none — by when the platform
+   * recorded it superseded, ties in chain order (`pauseRequestOrder`). The list is cut by
+   * that same order, so "the first N" is true of the Run's own requests (Story 10.12).
+   */
   readonly entries: readonly RunPauseRequestEntry[];
 }
 
@@ -413,8 +418,39 @@ function pauseRequestEvents(runId: string) {
 }
 
 /**
- * Every pause request of a Run that never took effect, in the order the chain recorded
- * them: the exact total and a bounded list.
+ * When a pause request was asked for, in SQL, read from that request's own record: the
+ * `requestedAt` a `lifecycle.pause-superseded` event carries, or the `requested_at` of the
+ * `run_deferred_pause` row a `lifecycle.deferred-pause-superseded` event names by its command
+ * id. NULL when the record holds no instant: a text that is not an ISO instant is not one,
+ * and `pg_input_is_valid` keeps an impossible date (`2026-02-30T…`) from failing the whole
+ * read. The outer columns are written qualified, because the subquery is correlated.
+ */
+function pauseRequestedAt(runId: string) {
+  return sql`(CASE
+    WHEN "audit_events"."event_type" = ${PAUSE_SUPERSEDED_EVENT}
+      AND ("audit_events"."payload"->>'requestedAt') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T'
+      AND pg_input_is_valid("audit_events"."payload"->>'requestedAt', 'timestamptz')
+    THEN ("audit_events"."payload"->>'requestedAt')::timestamptz
+    WHEN "audit_events"."event_type" = ${DEFERRED_PAUSE_SUPERSEDED_EVENT}
+    THEN (SELECT "marker"."requested_at" FROM "run_deferred_pause" AS "marker"
+      WHERE "marker"."run_id" = ${runId}::uuid
+        AND "marker"."command_id"::text = ("audit_events"."payload"->>'commandId'))
+  END)`;
+}
+
+/**
+ * The one order pause requests are listed AND cut in (Story 10.12): when each was asked
+ * for, or, when its record holds no request time, when the platform recorded it
+ * superseded; ties in chain order. The same instant the entry shows, so the list reads in
+ * the order its own sentences say.
+ */
+function pauseRequestOrder(runId: string) {
+  return [sql`coalesce(${pauseRequestedAt(runId)}, "audit_events"."occurred_at")`, asc(auditEvents.sequence)] as const;
+}
+
+/**
+ * Every pause request of a Run that never took effect, in the order they were asked for
+ * (`pauseRequestOrder`): the exact total and a bounded list, cut by that same order.
  *
  * A request to pause at once is recorded only when a terminal transition finds it still
  * outstanding, so its record says the Run ended first. A request to pause after an
@@ -441,10 +477,13 @@ export async function readPauseRequests(
       eventType: auditEvents.eventType,
       occurredAt: auditEvents.occurredAt,
       payload: auditEvents.payload,
+      // The same instant the order reads, rendered as text so it never meets a driver's
+      // own date parsing; a record without one is NULL.
+      requestedAt: sql<string | null>`to_char(${pauseRequestedAt(runId)} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`,
     })
     .from(auditEvents)
     .where(where)
-    .orderBy(asc(auditEvents.sequence))
+    .orderBy(...pauseRequestOrder(runId))
     .limit(Math.max(1, bound));
   // The total describes these rows, not an earlier snapshot before a supersession committed.
   const total = Number(events[0]?.total ?? 0);
@@ -459,7 +498,6 @@ export async function readPauseRequests(
   const markers = commandIds.length === 0 ? [] : await db
     .select({
       commandId: runDeferredPause.commandId,
-      requestedAt: runDeferredPause.requestedAt,
       workItemId: runDeferredPause.workItemId,
     })
     .from(runDeferredPause)
@@ -476,7 +514,7 @@ export async function readPauseRequests(
         eventId: event.eventId,
         mode: 'immediate',
         requestedBy,
-        requestedAt: instant(payload['requestedAt']),
+        requestedAt: instant(event.requestedAt),
         supersededAt,
         outcome: 'run-ended',
         inspection: null,
@@ -490,7 +528,7 @@ export async function readPauseRequests(
       eventId: event.eventId,
       mode: 'after-inspection',
       requestedBy,
-      requestedAt: marker === undefined ? null : marker.requestedAt.toISOString(),
+      requestedAt: instant(event.requestedAt),
       supersededAt,
       // A cancellation and a finalized Run both mean the Run ended before the pause took
       // effect; a request to pause at once replaced it without the Run ending.

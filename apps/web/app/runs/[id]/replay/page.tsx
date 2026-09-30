@@ -114,7 +114,8 @@ export default async function RunReplayPage({
       // THIS record's own gaps (owner decision D2 b, 2026-09-29): a missing frame of the
       // record is stated here too, so the one-record view cannot look complete. Scoped by
       // the same Work Item rule the frame read uses, never the whole session's gaps.
-      request.kind === 'inspection' ? detail.readRecordReplayGaps(run.runId, request.workItemId) : Promise.resolve(null),
+      // The page shown is the cursor's: its gaps are marked whatever their place in the list.
+      request.kind === 'inspection' ? detail.readRecordReplayGaps(run.runId, request.workItemId, request.cursor) : Promise.resolve(null),
     ]);
     const owner = selected.kind === 'inspection' ? selected.workItem : null;
     const system = owner === null ? null : plan?.inputs.targets
@@ -182,6 +183,9 @@ export default async function RunReplayPage({
           }))}
           adapterSteps={[]}
           {...(gaps === undefined ? {} : { gaps })}
+          // A record link that also names an Escalation opens the record and says the
+          // Escalation is not available here, never nothing (Story 10.12, item 3).
+          escalationNotOpened={query.escalation !== undefined}
         />
         <p className="ls-caption">Read at <Timestamp value={readAt} precision="minute" />.</p>
       </div>

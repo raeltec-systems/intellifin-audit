@@ -259,6 +259,27 @@ rewritten: the entry reads the wait row and the two events already written with 
     section's words on 2026-09-26; the sentences for the cases the approved list does not
     cover (a Work Item not recorded, an unreadable answer, a bounded list) were approved on
     2026-09-29 (sheet 2, B1–B3). All of them are in `apps/web/src/runs/decision-words.ts`.
+35g. **Both decision lists are bounded at 100, and each says so when it is cut** (Story
+    10.12, owner, 2026-09-29). The Timeline shows at most `ESCALATION_ANSWER_LIMIT` (100)
+    Escalation answers and at most `PAUSE_REQUEST_LIMIT` (100) pause requests the Run never
+    honoured. Each read answers the exact total beside its rows in ONE statement (a window
+    count, a zero-row request included), so the total always describes the rows shown, even
+    while another decision commits. When a list holds fewer rows than its total, its caption
+    is exactly:
+
+    | List | Order it is shown AND cut in | Caption |
+    | --- | --- | --- |
+    | Escalation answers | When each wait was opened (`opened_at`), ties by wait id | `Showing the first {shown} of {total} Escalation answers.` (sheet 2, B3) |
+    | Pause requests | When each was asked for: `coalesce(requested at, recorded superseded at)`, ties in chain order | `Showing the first {shown} of {total} pause requests.` (sheet 2, B11) |
+
+    "The first" names the order the list is shown in, because each list is cut by that same
+    order: a pause request's "requested at" is the `requestedAt` its
+    `lifecycle.pause-superseded` event holds, or the `requested_at` of the `run_deferred_pause`
+    row its `lifecycle.deferred-pause-superseded` event names; a text that is not an instant
+    is no request time, and the request is placed by when it was recorded superseded
+    (`run-pause-v1.md`, "A pause request the Run never honoured"). The rest of either list is
+    not reachable from the Timeline in this build: Next/Previous paging ("Next Escalation
+    answers") is a later story, and until it exists the caption is the whole statement.
 
 ## Untrusted question text
 

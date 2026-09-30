@@ -8,6 +8,7 @@ import type { RunPauseEntry, RunPauseHistory } from '@intellifin/infrastructure'
 import { executablePlanInputs } from '../../../../tests/fixtures/executable-plan';
 import { shortReference } from '../design/references';
 import { readableStamp } from '../design/time';
+import { PAUSE_REQUEST_WORDS } from './decision-words';
 import { PauseHistorySection, PauseHoldNote } from './PauseHistory';
 import {
   PAUSE_WORDS,
@@ -116,6 +117,7 @@ describe('the pause history on the Execution Timeline', () => {
     const sentences = [
       PAUSE_WORDS.heading,
       PAUSE_WORDS.intro,
+      PAUSE_REQUEST_WORDS.intro,
       pauseTitleWords(1),
       pausedByWords('Daniel Okonjo', readableStamp(FIRST.pausedAt)),
       heldInFlightWords(inspect, 1),

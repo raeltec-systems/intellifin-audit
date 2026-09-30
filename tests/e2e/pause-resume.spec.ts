@@ -603,6 +603,9 @@ test.describe('pausing and resuming a Run', () => {
     await page.goto(`/runs/${runId}/timeline`);
     const history = page.getByRole('region', { name: PAUSE_WORDS.heading });
     await expect(history).toBeVisible();
+    // Story 10.12, item 8: the intro's owner-approved third sentence says the request is
+    // listed here, after the two sentences the intro already had.
+    await expect(history.locator(':scope > p').first()).toHaveText(`${PAUSE_WORDS.intro} ${PAUSE_REQUEST_WORDS.intro}`);
     // The request is the section's only entry: nothing ever paused this Run.
     await expect(history.locator('.ls-pause-history__entry')).toHaveCount(1);
     const request = history.locator('[data-pause-request="immediate"]');

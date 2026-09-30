@@ -9,8 +9,8 @@ vi.mock('@intellifin/infrastructure', () => ({
     readInspectionReplay = calls.read; readTimeline = calls.prefix; readFrames = calls.frames;
     readEscalations = async () => ({ rows: [], total: 0 }); readReplayExceptions = async () => ({ rows: [], total: 0 });
     readEvidenceItems = async () => []; readEvidenceItemsByIds = async () => [];
-    readReplayGaps = async () => ({ missing: 0, suppressed: 0, rows: [] });
-    readRecordReplayGaps = async () => ({ missing: 0, suppressed: 0, rows: [] });
+    readReplayGaps = async () => ({ missing: 0, suppressed: 0, rows: [], window: [] });
+    readRecordReplayGaps = async () => ({ missing: 0, suppressed: 0, rows: [], window: [] });
   },
   DrizzleFrozenExecutionReader: class { readFrozenExecution = calls.plan; },
 }));

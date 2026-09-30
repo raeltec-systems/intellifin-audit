@@ -17,6 +17,7 @@ import {
   CryptoUuidV7Generator,
   DrizzleRunDetailRepository,
   PostgresProceduresUnitOfWork,
+  PostgresRunsUnitOfWork,
   PostgresWorkspaceRepository,
   REPLAY_GAP_LIMIT,
   type Database,
@@ -70,6 +71,7 @@ describe.skipIf(!url)('the Replay asset set on PostgreSQL', () => {
         await sql`DELETE FROM run_step_execution WHERE run_id=${runId}`;
         await sql`DELETE FROM run_work_item WHERE run_id=${runId}`;
         await sql`DELETE FROM run_evidence WHERE run_id=${runId}`;
+        await sql`DELETE FROM run_wait WHERE run_id=${runId}`;
         await sql`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
         await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
         await sql`DELETE FROM audit_run WHERE run_id=${runId}`;
@@ -300,14 +302,14 @@ describe.skipIf(!url)('the Replay asset set on PostgreSQL', () => {
     expect(session.missing).toBe(3);
     expect(session.rows.every((gap) => gap.recordFramesBefore === undefined)).toBe(true);
     // A record of another Run, or an identifier that is not one, reads nothing.
-    expect(await detail.readRecordReplayGaps(run.runId, ids.next())).toEqual({ missing: 0, suppressed: 0, rows: [] });
-    expect(await detail.readRecordReplayGaps(run.runId, 'not-a-record')).toEqual({ missing: 0, suppressed: 0, rows: [] });
+    expect(await detail.readRecordReplayGaps(run.runId, ids.next())).toEqual({ missing: 0, suppressed: 0, rows: [], window: [] });
+    expect(await detail.readRecordReplayGaps(run.runId, 'not-a-record')).toEqual({ missing: 0, suppressed: 0, rows: [], window: [] });
   });
 
   it('answers no gap for a Run whose every performed action left its frame', async () => {
     const run = await seedRun();
     await toolAction(run, { outcome: 'performed', capture: 'PERMITTED', frame: 'registered', at: at(1) });
-    expect(await replayGaps(run.runId)).toEqual({ missing: 0, suppressed: 0, rows: [] });
+    expect(await replayGaps(run.runId)).toEqual({ missing: 0, suppressed: 0, rows: [], window: [] });
   });
 
   it('counts EVERY gap exactly while listing at most the bound', async () => {
@@ -326,8 +328,168 @@ describe.skipIf(!url)('the Replay asset set on PostgreSQL', () => {
     expect(gaps.missing).toBe((await missingFrames(run.runId)).total);
   });
 
+  /**
+   * Story 10.12, item 1: the markers follow the frames SHOWN. 120 gaps come before a record's
+   * first frame, so the bounded list (the first 100 by time) is full of them; the record then
+   * has 150 frames, and one more gap sits after its 110th -- on its SECOND inspection page and
+   * inside the whole-session prefix. The old read drew its markers from the list, so that gap
+   * had none on either view.
+   */
+  it('reads the gaps among the frames shown, past the bounded list, on both views', async () => {
+    const run = await seedRun();
+    const record = ids.next();
+    await sql`INSERT INTO run_work_item(work_item_id,run_id,step_id,ordinal,registration_id,display_name,
+      subject_key,state,attempts,cycles,observations)
+      VALUES(${record},${run.runId},'target-1-1',1,'loancore','LoanCore','E-PAGED','OBSERVED',1,0,0)`;
+    const EARLY = REPLAY_GAP_LIMIT + 20, FRAMES = 150;
+    // The early gaps, one second apart, all before the record's first frame.
+    await sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,work_item_id,surface,target_system,
+      action,method,destination,parameters,outcome,redirected,downloads,started_at,completed_at,capture,capture_suppression,denial)
+      SELECT gen_random_uuid(),${run.runId},${run.stepExecutionId},${record},'agent','loancore','read-attribute','GET',
+        ${SOURCE},'[]'::jsonb,'performed',false,0,
+        ${at(0)}::timestamptz + make_interval(secs => n),${at(0)}::timestamptz + make_interval(secs => n),'PERMITTED',NULL,NULL
+      FROM generate_series(1, ${EARLY}) AS n`;
+    // The record's frames at seconds 1000..1149, each a registered, bound screenshot.
+    const frames = Array.from({ length: FRAMES }, (_, k) => ({ tool_action_id: ids.next(), evidence_id: ids.next(),
+      at: new Date(Date.parse(at(0)) + (1_000 + k) * 1_000).toISOString() }));
+    const json = JSON.stringify(frames);
+    await sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,work_item_id,surface,target_system,
+      action,method,destination,parameters,outcome,redirected,downloads,started_at,completed_at,capture)
+      SELECT r.tool_action_id,${run.runId},${run.stepExecutionId},${record},'agent','loancore','read-attribute','GET',
+        ${SOURCE},'[]'::jsonb,'performed',false,0,r.at,r.at,'PERMITTED'
+      FROM jsonb_to_recordset(${json}::text::jsonb) AS r(tool_action_id uuid, at timestamptz)`;
+    await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,
+      state,required,captured_at,capture_method,capture_time_source,role)
+      SELECT r.evidence_id,${run.runId},'screenshot','loancore','screenshot/' || r.evidence_id::text,'image/png',
+        ${'a'.repeat(64)},11,'REGISTERED',false,r.at,'agent','registration','evidence'
+      FROM jsonb_to_recordset(${json}::text::jsonb) AS r(evidence_id uuid, at timestamptz)`;
+    await sql`INSERT INTO run_evidence_capture(evidence_id,run_id,tool_action_id,source_location)
+      SELECT r.evidence_id,${run.runId},r.tool_action_id,${SOURCE}
+      FROM jsonb_to_recordset(${json}::text::jsonb) AS r(evidence_id uuid, tool_action_id uuid)`;
+    // The late gap, half a second after the record's 110th frame.
+    const late = await toolAction(run, { outcome: 'performed', capture: 'PERMITTED', frame: null, workItemId: record,
+      at: new Date(Date.parse(at(0)) + 1_109_500).toISOString() });
+
+    const detail = new DrizzleRunDetailRepository(db);
+    // The whole-session view: the list is the first 100 by time and does not name it; the
+    // prefix's markers do, at its place among the 500 frames the view shows.
+    const session = await detail.readReplayGaps(run.runId);
+    expect(session.missing).toBe(EARLY + 1);
+    expect(session.rows).toHaveLength(REPLAY_GAP_LIMIT);
+    expect(session.rows.some((gap) => gap.toolActionId === late)).toBe(false);
+    expect(session.window).toHaveLength(EARLY + 1);
+    expect(session.window.find((gap) => gap.toolActionId === late)).toMatchObject({ kind: 'missing', framesBefore: 110 });
+
+    // The record's second page (cursor 100): only its own gap, at the record's 110th frame.
+    const second = await detail.readRecordReplayGaps(run.runId, record, 100);
+    expect(second.missing).toBe(EARLY + 1);
+    expect(second.rows).toHaveLength(REPLAY_GAP_LIMIT);
+    expect(second.rows.some((gap) => gap.toolActionId === late)).toBe(false);
+    expect(second.window.map((gap) => [gap.toolActionId, gap.framesBefore, gap.recordFramesBefore])).toEqual([[late, 110, 110]]);
+    // Its first page: the early gaps, every one of them, and not the late one.
+    const first = await detail.readRecordReplayGaps(run.runId, record, 0);
+    expect(first.window).toHaveLength(EARLY);
+    expect(first.window.every((gap) => gap.recordFramesBefore === 0)).toBe(true);
+    // And the placement agrees with an independent count of the frames before it.
+    const [counted] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM run_evidence e
+      JOIN run_evidence_capture c ON c.evidence_id = e.evidence_id
+      JOIN run_tool_action a ON a.tool_action_id = c.tool_action_id
+      WHERE e.run_id = ${run.runId} AND e.kind = 'screenshot'
+        AND a.started_at < (SELECT started_at FROM run_tool_action WHERE tool_action_id = ${late})`;
+    expect(counted!.n).toBe(110);
+  });
+
+  /**
+   * Story 10.12, item 5: ONE rule for an Escalation's record. When the raise's Evidence
+   * establishes a record by the Timeline's rule (every id resolves, through its capture, its
+   * Tool Action and that action's Step Execution, to ONE Work Item at the raise's plan step),
+   * Replay lands on the frame that Evidence was captured with; otherwise on the last frame at
+   * or before the raise. Here the two rules pick different frames: the question is about
+   * E-ASKED's second screen, and E-NEXT's screen was captured after it and before the raise.
+   */
+  it('lands an Escalation on the frame its Evidence cites, and on the time rule otherwise', async () => {
+    const run = await seedRun();
+    const [asked, next] = [ids.next(), ids.next()];
+    for (const [index, [id, key]] of ([[asked, 'E-ASKED'], [next, 'E-NEXT']] as const).entries()) {
+      await sql`INSERT INTO run_work_item(work_item_id,run_id,step_id,ordinal,registration_id,display_name,
+        subject_key,state,attempts,cycles,observations)
+        VALUES(${id},${run.runId},'target-1-1',${index + 1},'loancore','LoanCore',${key},'OBSERVED',1,0,0)`;
+    }
+    const evidenceOf = async (toolActionId: string): Promise<string> =>
+      (await sql<{ id: string }[]>`SELECT evidence_id::text AS id FROM run_evidence_capture WHERE tool_action_id=${toolActionId}`)[0]!.id;
+    // Frames 1 and 2 are E-ASKED's, frame 3 E-NEXT's.
+    const asked1 = await toolAction(run, { outcome: 'performed', capture: 'PERMITTED', frame: 'registered', at: at(10), workItemId: asked });
+    const asked2 = await toolAction(run, { outcome: 'performed', capture: 'PERMITTED', frame: 'registered', at: at(20), workItemId: asked });
+    const next1 = await toolAction(run, { outcome: 'performed', capture: 'PERMITTED', frame: 'registered', at: at(30), workItemId: next });
+    // The Structural Snapshot captured with frame 2, as the agent captures both on one action.
+    const snapshot = ids.next();
+    await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,
+      state,required,captured_at,capture_method,capture_time_source,role)
+      VALUES(${snapshot},${run.runId},'structural-snapshot','loancore',${`snapshot/${snapshot}`},
+      'application/vnd.intellifin.web-tree+json',${'b'.repeat(64)},11,'REGISTERED',false,${at(20)},'agent','registration','evidence')`;
+    await sql`INSERT INTO run_evidence_capture(evidence_id,run_id,tool_action_id,source_location)
+      VALUES(${snapshot},${run.runId},${asked2},${SOURCE})`;
+    // An action that froze a snapshot and no frame: its Evidence resolves, to no frame.
+    const frameless = await toolAction(run, { outcome: 'performed', capture: 'PERMITTED', frame: 'registered',
+      kind: 'structural-snapshot', at: at(25), workItemId: asked });
+    const [frame1, frame2, frame3, framelessSnapshot] = (await Promise.all([asked1, asked2, next1, frameless].map(evidenceOf))) as [string, string, string, string];
+
+    let second = 40;
+    const raise = async (options: {
+      readonly cites: readonly (string | number)[] | undefined;
+      // A stored value that is not a list at all: a scalar or an object an older or damaged
+      // writer left. It must fall back to the time rule, never fail the whole read.
+      readonly citesValue?: string | Record<string, string>;
+      readonly stepId?: string;
+      readonly writer?: string;
+      readonly raises?: number;
+    }): Promise<string> => {
+      const waitId = ids.next();
+      const openedAt = at(second += 2);
+      await sql`INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,opened_by,deadline,closed_at,closure_kind,answer_option_id,actor)
+        VALUES(${waitId},${run.runId},'choose-candidate','[{"id":"candidate-a","label":"Candidate A"}]'::jsonb,${openedAt},NULL,
+        ${openedAt}::timestamptz + interval '30 minutes',${openedAt}::timestamptz + interval '1 second','answer','candidate-a',${author})`;
+      for (let index = 0; index < (options.raises ?? 1); index += 1) {
+        await new PostgresRunsUnitOfWork(db, { clock: { now: () => new Date(openedAt) } }).execute((c) => c.auditEvents.append({
+          actor: { type: 'system', id: options.writer ?? 'escalation-platform' }, eventType: 'execution.escalation-raised',
+          source: 'platform', outcome: 'success', aggregateId: run.runId, correlationId: ids.next(), sessionId: 'replay-assets',
+          payload: { waitId, runId: run.runId, kind: 'choose-candidate', stepId: options.stepId ?? 'target-1-1',
+            ...(options.cites === undefined ? {} : { supportingEvidenceIds: [...options.cites] }),
+            ...(options.citesValue === undefined ? {} : { supportingEvidenceIds: options.citesValue }) },
+        }));
+      }
+      return waitId;
+    };
+    const cited = await raise({ cites: [snapshot] });
+    const citedFrame = await raise({ cites: [frame2.toUpperCase()] });
+    const citedBoth = await raise({ cites: [snapshot, frame1] });
+    const twoRecords = await raise({ cites: [snapshot, frame3] });
+    const mixed = await raise({ cites: [snapshot, ids.next()] });
+    const otherStep = await raise({ cites: [snapshot], stepId: 'target-2-1' });
+    const forged = await raise({ cites: [snapshot], writer: 'someone-else' });
+    const twice = await raise({ cites: [snapshot], raises: 2 });
+    const noFrame = await raise({ cites: [framelessSnapshot] });
+    const none = await raise({ cites: undefined });
+    const notText = await raise({ cites: [snapshot, 7] });
+    const scalar = await raise({ cites: undefined, citesValue: snapshot });
+    const object = await raise({ cites: undefined, citesValue: { id: snapshot } });
+
+    const read = await new DrizzleRunDetailRepository(db).readEscalations(run.runId, 100);
+    const of = (waitId: string) => read.rows.find((row) => row.waitId === waitId)!;
+    // The Evidence rule: E-ASKED's second screen, not the last one before the raise.
+    expect(of(cited)).toMatchObject({ framesThrough: 2, landedBy: 'cited-evidence', landing: { workItemId: asked, cursor: 0 } });
+    // The cited Evidence IS a frame (any letter case): that frame.
+    expect(of(citedFrame)).toMatchObject({ framesThrough: 2, landedBy: 'cited-evidence' });
+    // Two of one record's frames cited: the later one.
+    expect(of(citedBoth)).toMatchObject({ framesThrough: 2, landedBy: 'cited-evidence' });
+    // Every other raise establishes no record, so the time rule: frame 3, E-NEXT's.
+    for (const [name, waitId] of Object.entries({ twoRecords, mixed, otherStep, forged, twice, noFrame, none, notText, scalar, object }))
+      expect(of(waitId), name).toMatchObject({ framesThrough: 3, landedBy: 'raised-at', landing: { workItemId: next, cursor: 0 } });
+  });
+
   it('reads no gap for an identifier that names no Run', async () => {
-    expect(await replayGaps('not-a-run')).toEqual({ missing: 0, suppressed: 0, rows: [] });
+    expect(await replayGaps('not-a-run')).toEqual({ missing: 0, suppressed: 0, rows: [], window: [] });
   });
 
   /**

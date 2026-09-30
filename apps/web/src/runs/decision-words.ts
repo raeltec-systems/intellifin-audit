@@ -58,6 +58,12 @@ export const ESCALATION_ANSWER_WORDS = {
 } as const;
 
 export const PAUSE_REQUEST_WORDS = {
+  /**
+   * APPROVED by the owner on 2026-09-29 (Story 10.12, item 8), verbatim. The third sentence
+   * of the "Pauses and resumes" intro, after `PAUSE_WORDS.intro`'s two: the section lists
+   * the requests the Run never honoured too, and each says why.
+   */
+  intro: 'A pause request the Run never honoured is listed here too, with why it did not take effect.',
   /** APPROVED. A pause the Run never reached, as an entry in "Pauses and resumes". */
   title: 'Pause request',
   /** APPROVED. */
@@ -253,25 +259,33 @@ export type PauseHistoryRow =
  * its record holds no request time, when the platform recorded it as superseded). Each is
  * an instant the record stores for THAT row; nothing here pairs a request with a pause. A
  * pause keeps its ordinal among the pauses, so "Pause 2" means the same on every page.
+ *
+ * Each list keeps the order its read gave it, and only the two are merged (Story 10.12).
+ * `readPauseRequests` orders AND cuts the requests by that same instant, ties in chain order,
+ * so its bounded caption's "the first N" is the first N shown here. Rendered instants hold
+ * milliseconds and the read orders by microseconds, so re-sorting requests among themselves
+ * here — by an id, say — could reorder two that the read, and its cut, tell apart.
  */
 export function pauseHistoryRows(
   pauses: readonly RunPauseEntry[],
   requests: readonly RunPauseRequestEntry[],
 ): readonly PauseHistoryRow[] {
-  const rows: { readonly at: number; readonly key: string; readonly row: PauseHistoryRow }[] = [
+  const rows: { readonly at: number; readonly kind: 0 | 1; readonly index: number; readonly row: PauseHistoryRow }[] = [
     ...pauses.map((entry, index) => ({
       at: Date.parse(entry.pausedAt),
-      key: `0:${entry.waitId}`,
+      kind: 0 as const,
+      index,
       row: { kind: 'pause', ordinal: index + 1, entry } as const,
     })),
-    ...requests.map((entry) => ({
+    ...requests.map((entry, index) => ({
       at: Date.parse(entry.requestedAt ?? entry.supersededAt),
-      key: `1:${entry.eventId}`,
+      kind: 1 as const,
+      index,
       row: { kind: 'request', entry } as const,
     })),
   ];
   const time = (value: number): number => (Number.isFinite(value) ? value : Number.POSITIVE_INFINITY);
   return rows
-    .sort((left, right) => time(left.at) - time(right.at) || (left.key < right.key ? -1 : left.key > right.key ? 1 : 0))
+    .sort((left, right) => time(left.at) - time(right.at) || left.kind - right.kind || left.index - right.index)
     .map((entry) => entry.row);
 }
