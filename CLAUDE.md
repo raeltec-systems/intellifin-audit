@@ -1,3 +1,11 @@
+## 2026-09-29 — A red gate can be the job's clock, not a test
+
+CI on `main` at `d9c72c8` (Epic 10 merged) cancelled the browser job at its 40-minute
+limit after 305 of 313 tests had passed and none had failed, so Release was skipped and
+every open PR went red the same way. The job limit is 60 minutes now. When a job ends
+"cancelled" with no failed test, read its last test line and its duration before
+looking for a defect; the fix is the budget, never a skipped spec.
+
 ## 2026-09-26 — Stacked story PRs need an admitted CI base
 
 Stories 10.9 and 10.10 keep the handover's `claude/10-6-legacy-visibility` PR base.
