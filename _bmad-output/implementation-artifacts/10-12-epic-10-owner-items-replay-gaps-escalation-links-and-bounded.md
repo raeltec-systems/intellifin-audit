@@ -2,7 +2,7 @@
 title: 'Epic 10 owner items: Replay gap marks and words, Escalation links, one record rule, bounded Timeline lists'
 type: 'fix'
 created: '2026-09-29'
-status: 'review'
+status: 'done'
 review_loop_iteration: 0
 implementation_authorised: true
 implementation_authorisation: 'Owner, 2026-09-29: "B, and approve Fable''s words for 2 and 8" (all eight items as one follow-up story after the Epic 10 merge); "yes to both" (start it now)'
