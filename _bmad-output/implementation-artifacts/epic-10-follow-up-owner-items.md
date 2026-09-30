@@ -1,5 +1,5 @@
 ---
-status: in-progress (Story 10.12)
+status: done (Story 10.12, PR #67, merged into main at 9c17d19 on 2026-09-30)
 created: 2026-09-29
 source: Stories 10.6, 10.9 and 10.10 review findings, reviewed by Fable against the code
 owner_decision: 2026-09-29 — Option B. Merge Epic 10 first (10.7 → 10.6 → 10.8 → 10.9 → 10.10), then do all eight items below as ONE follow-up story.
@@ -10,6 +10,9 @@ owner_decision: 2026-09-29 — Option B. Merge Epic 10 first (10.7 → 10.6 → 
 None of these blocks a story. Each needed a rule or words from the owner. Fable checked all
 eight against the code and found all eight real. This file is the backlog record; it is not
 a story spec yet. Do not start it before the Epic 10 merge.
+
+`[CLOSED 2026-09-30]` All eight items were done as Story 10.12
+(`10-12-epic-10-owner-items-replay-gaps-escalation-links-and-bounded.md`), merged in PR #67.
 
 ## Approved wording (owner, 2026-09-29, verbatim)
 
