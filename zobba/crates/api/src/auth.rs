@@ -103,6 +103,16 @@ impl AuthState {
         let token = cookie(headers, SESSION_COOKIE).ok_or(IdentityError::Unauthenticated)?;
         self.repository.session(&token).await
     }
+
+    /// Reserved Task controls use the same identity rules through their own pool.
+    pub(crate) fn with_repository(mut self, repository: IdentityRepository) -> Self {
+        self.repository = repository;
+        self
+    }
+
+    pub(crate) fn permits_mutation(&self, headers: &HeaderMap, csrf: &str) -> bool {
+        valid_mutation(headers, &self.origin, csrf)
+    }
 }
 
 pub fn router(state: AuthState) -> Router {

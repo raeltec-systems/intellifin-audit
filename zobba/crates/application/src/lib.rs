@@ -1,5 +1,6 @@
-//! Application-owned bootstrap port. No SQL, HTTP or vendor error crosses it.
+//! Application-owned ports. No SQL, HTTP or vendor error crosses them.
 pub mod identity;
+pub mod task;
 use std::{fmt, future::Future};
 use zobba_domain::SchemaVersion;
 

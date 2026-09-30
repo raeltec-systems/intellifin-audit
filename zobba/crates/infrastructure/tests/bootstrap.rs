@@ -21,6 +21,7 @@ async fn snapshot(conn: &mut PgConnection) -> Vec<String> {
         'defaults',(SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(d) ORDER BY d.adnum) FROM pg_catalog.pg_attrdef d WHERE d.adrelid=c.oid),
         'constraints',(SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(k) ORDER BY k.conname) FROM pg_catalog.pg_constraint k WHERE k.conrelid=c.oid),
         'triggers',(SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(t) ORDER BY t.tgname) FROM pg_catalog.pg_trigger t WHERE t.tgrelid=c.oid),
+        'policies',(SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(p) ORDER BY p.polname) FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid),
         'rules',(SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(r) ORDER BY r.rulename) FROM pg_catalog.pg_rewrite r WHERE r.ev_class=c.oid))::text
       FROM pg_catalog.pg_namespace n LEFT JOIN pg_catalog.pg_class c ON c.relnamespace=n.oid
       WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema' ORDER BY n.nspname,c.relname
@@ -81,24 +82,27 @@ async fn bootstrap_contract() {
     migrate(&migration_url, role)
         .await
         .expect("explicit bootstrap migration");
-    let installed: String =
-        sqlx::query_scalar("SELECT installed_on::text FROM public._sqlx_migrations")
-            .fetch_one(&mut admin)
-            .await
-            .unwrap();
+    let installed: Vec<String> = sqlx::query_scalar(
+        "SELECT pg_catalog.to_jsonb(m)::text FROM public._sqlx_migrations m ORDER BY version",
+    )
+    .fetch_all(&mut admin)
+    .await
+    .unwrap();
     migrate(&migration_url, role)
         .await
         .expect("repeat migration");
-    let repeated: String =
-        sqlx::query_scalar("SELECT installed_on::text FROM public._sqlx_migrations")
-            .fetch_one(&mut admin)
-            .await
-            .unwrap();
-    assert_eq!(installed, repeated, "repeat reapplied migration");
+    let repeated: Vec<String> = sqlx::query_scalar(
+        "SELECT pg_catalog.to_jsonb(m)::text FROM public._sqlx_migrations m ORDER BY version",
+    )
+    .fetch_all(&mut admin)
+    .await
+    .unwrap();
+    assert_eq!(installed.len(), 3, "fresh migration ledger is incomplete");
+    assert_eq!(installed, repeated, "repeat changed migration ledger");
     let database = RuntimeDatabase::connect(&runtime_url)
         .await
         .expect("nonowner runtime starts");
-    assert_eq!(database.check().await.unwrap().0, 2);
+    assert_eq!(database.check().await.unwrap().0, 3);
     refused_without_mutation(
         &mut admin,
         &migration_url,
@@ -143,6 +147,15 @@ async fn bootstrap_contract() {
         "ALTER TABLE public.sessions ADD COLUMN alien text",
         "DROP INDEX public.sessions_expiry",
         "DROP INDEX public.login_attempts_expiry",
+        "DROP INDEX public.task_commands_pending",
+        "DROP INDEX public.tasks_open_scope",
+        "ALTER TABLE public.tasks ALTER COLUMN applied_command_cursor SET DEFAULT 1",
+        "ALTER TABLE public.tasks DROP CONSTRAINT tasks_applied_command_cursor_check",
+        "ALTER TABLE public.task_deliveries NO FORCE ROW LEVEL SECURITY",
+        "ALTER POLICY dispatcher_lease ON public.task_deliveries USING (true) WITH CHECK (true)",
+        "ALTER POLICY scoped_delivery_insert ON public.task_deliveries WITH CHECK (true)",
+        "CREATE POLICY dispatcher_mutation ON public.task_wakeups FOR UPDATE USING (pg_catalog.current_setting('zobba.dispatcher',true)='on') WITH CHECK (pg_catalog.current_setting('zobba.dispatcher',true)='on')",
+        "ALTER TABLE public.task_deliveries DROP CONSTRAINT task_deliveries_wakeup_id_fkey",
         "ALTER TABLE public.engagements DROP CONSTRAINT engagements_name_check",
         "ALTER TABLE public.organisations DROP CONSTRAINT organisations_id_check",
         "ALTER TABLE public.engagement_assignments DROP CONSTRAINT engagement_assignments_organisation_id_client_id_engagemen_fkey",
@@ -154,7 +167,7 @@ async fn bootstrap_contract() {
         "ALTER TABLE public.zobba_bootstrap ALTER COLUMN singleton SET DEFAULT false",
         "ALTER TABLE public._sqlx_migrations ALTER COLUMN installed_on SET DEFAULT '2000-01-01'::timestamptz",
         "CREATE RULE alien_rule AS ON DELETE TO public.zobba_bootstrap DO ALSO NOTHING",
-        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(3,1000) v",
+        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(4,1000) v",
         "UPDATE public._sqlx_migrations SET description=repeat('x',1048576),checksum=decode(repeat('ff',1048576),'hex')",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product='foreign'",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product=repeat('x',1048576)",
@@ -177,6 +190,44 @@ async fn bootstrap_contract() {
 
     internal_trigger_contract(&config, &mut admin).await;
 
+    // Column-level leases must not expand to routing identity, scheduling or
+    // initial lease ownership writes, even if accidental grants remain unused.
+    for privilege in [
+        "UPDATE(wakeup_id) ON public.task_deliveries",
+        "INSERT(delivery_owner) ON public.task_deliveries",
+        "INSERT(delivery_until) ON public.task_deliveries",
+        "DELETE ON public.task_deliveries",
+        "UPDATE(actor_id) ON public.task_wakeups",
+        "UPDATE(task_id) ON public.task_wakeups",
+        "SELECT ON public.task_wakeups",
+        "SELECT ON public.task_deliveries",
+    ] {
+        admin
+            .execute(format!("GRANT {privilege} TO \"{role}\"").as_str())
+            .await
+            .unwrap();
+        refused_without_mutation(&mut admin, &runtime_url, BootstrapError::UnsafeRuntimeRole).await;
+        migration_refused_without_mutation(
+            &mut admin,
+            &config,
+            role,
+            BootstrapError::UnsafeRuntimeRole,
+        )
+        .await;
+        admin
+            .execute(format!("REVOKE {privilege} FROM \"{role}\"").as_str())
+            .await
+            .unwrap();
+        // PostgreSQL REVOKE at table level also removes that role's column
+        // grants. The explicit idempotent migrator restores the owned narrow set.
+        migrate(&migration_url, role)
+            .await
+            .expect("restore exact narrow grants after removing the accidental privilege");
+        RuntimeDatabase::connect(&runtime_url)
+            .await
+            .expect("exact lease/routing grants restore a usable runtime");
+    }
+
     // Even a limited role with accidental metadata writes is an unsafe runtime.
     admin
         .execute(format!("GRANT UPDATE ON public.zobba_bootstrap TO \"{role}\"").as_str())
@@ -190,7 +241,7 @@ async fn bootstrap_contract() {
     lock_and_blackhole(&config, &mut admin).await;
     reset(&config, &mut admin).await;
     println!(
-        "bootstrap contract: fresh/repeat/owner/privilege/foreign/marker/checksum/version refusals passed; test schema empty"
+        "bootstrap contract: fresh/v1/v2/repeat/owner/privilege/foreign/marker/checksum/version refusals passed; test schema empty"
     );
 }
 
@@ -559,52 +610,85 @@ async fn upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
         .unwrap()
         .get_username()
         .to_owned();
-    for corrupt in [false, true] {
-        reset(config, conn).await;
-        // Reproduce the actual published 20.1 migration and ledger; never rewrite it.
-        conn.execute("CREATE TABLE public._sqlx_migrations(version bigint PRIMARY KEY,description text NOT NULL,installed_on timestamptz NOT NULL DEFAULT now(),success boolean NOT NULL,checksum bytea NOT NULL,execution_time bigint NOT NULL)").await.unwrap();
-        conn.execute(include_str!("../../../migrations/0001_bootstrap.sql"))
-            .await
-            .unwrap();
-        let migrator = sqlx::migrate!("../../migrations");
-        let first = migrator.iter().next().unwrap();
-        sqlx::query("INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) VALUES($1,$2,true,$3,0)")
-            .bind(first.version).bind(first.description.as_ref()).bind(first.checksum.as_ref()).execute(&mut *conn).await.unwrap();
-        conn.execute(
-            format!("GRANT SELECT ON public._sqlx_migrations,public.zobba_bootstrap TO \"{role}\"")
-                .as_str(),
-        )
-        .await
-        .unwrap();
-        refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
-        if corrupt {
-            conn.execute("UPDATE public._sqlx_migrations SET checksum='\\x00'::bytea")
+    let published = [
+        include_str!("../../../migrations/0001_bootstrap.sql"),
+        include_str!("../../../migrations/0002_identity_scope.sql"),
+    ];
+    let migrator = sqlx::migrate!("../../migrations");
+    for prefix in [1_usize, 2] {
+        for corruption in [None, Some("checksum"), Some("catalog")] {
+            reset(config, conn).await;
+            // Execute the exact published bytes with their original SQLx ledger.
+            // Neither an edited current schema nor a marker downgrade proves upgrade.
+            conn.execute("CREATE TABLE public._sqlx_migrations(version bigint PRIMARY KEY,description text NOT NULL,installed_on timestamptz NOT NULL DEFAULT now(),success boolean NOT NULL,checksum bytea NOT NULL,execution_time bigint NOT NULL)").await.unwrap();
+            for (sql, migration) in published.iter().zip(migrator.iter()).take(prefix) {
+                conn.execute(*sql).await.unwrap();
+                sqlx::query("INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) VALUES($1,$2,true,$3,0)")
+                    .bind(migration.version).bind(migration.description.as_ref()).bind(migration.checksum.as_ref()).execute(&mut *conn).await.unwrap();
+            }
+            conn.execute(format!("REVOKE ALL ON public._sqlx_migrations FROM PUBLIC; GRANT USAGE ON SCHEMA public TO \"{role}\"; GRANT SELECT ON public._sqlx_migrations,public.zobba_bootstrap TO \"{role}\"").as_str()).await.unwrap();
+            if prefix == 2 {
+                conn.execute(format!("GRANT SELECT ON public.identities,public.login_attempts,public.sessions,public.organisations,public.clients,public.engagements,public.organisation_memberships,public.engagement_assignments TO \"{role}\"; GRANT INSERT(id,issuer,subject,display_name),UPDATE(display_name) ON public.identities TO \"{role}\"; GRANT INSERT,DELETE ON public.login_attempts,public.sessions TO \"{role}\"; GRANT UPDATE(name) ON public.engagements TO \"{role}\"").as_str()).await.unwrap();
+            }
+            refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
+            if let Some(corruption) = corruption {
+                let sql = match corruption {
+                    "checksum" => "UPDATE public._sqlx_migrations SET checksum='\\x00'::bytea",
+                    "catalog" if prefix == 2 => {
+                        "ALTER POLICY scoped_engagement_update ON public.engagements USING (true) WITH CHECK (true)"
+                    }
+                    "catalog" => {
+                        "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check"
+                    }
+                    _ => unreachable!(),
+                };
+                conn.execute(sql).await.unwrap();
+                migration_refused_without_mutation(
+                    conn,
+                    config,
+                    &role,
+                    BootstrapError::SchemaMismatch,
+                )
+                .await;
+            } else {
+                let before: Vec<String> = sqlx::query_scalar(
+                    "SELECT pg_catalog.to_jsonb(m)::text FROM public._sqlx_migrations m ORDER BY version",
+                )
+                .fetch_all(&mut *conn)
                 .await
                 .unwrap();
-            migration_refused_without_mutation(conn, config, &role, BootstrapError::SchemaMismatch)
-                .await;
-        } else {
-            let before: String = sqlx::query_scalar(
-                "SELECT installed_on::text FROM public._sqlx_migrations WHERE version=1",
-            )
-            .fetch_one(&mut *conn)
-            .await
-            .unwrap();
-            migrate(&config.migration, &role)
+                assert_eq!(before.len(), prefix);
+                migrate(&config.migration, &role)
+                    .await
+                    .expect("verified historical prefix upgrades");
+                let after: Vec<String> = sqlx::query_scalar(
+                    "SELECT pg_catalog.to_jsonb(m)::text FROM public._sqlx_migrations m WHERE version <= $1 ORDER BY version",
+                )
+                .bind(prefix as i64)
+                .fetch_all(&mut *conn)
                 .await
-                .expect("verified 20.1 prefix upgrades");
-            let after: String = sqlx::query_scalar(
-                "SELECT installed_on::text FROM public._sqlx_migrations WHERE version=1",
-            )
-            .fetch_one(&mut *conn)
-            .await
-            .unwrap();
-            assert_eq!(before, after, "upgrade replayed historical migration");
-            let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-            assert_eq!(database.check().await.unwrap().0, 2);
-            migrate(&config.migration, &role)
+                .unwrap();
+                assert_eq!(before, after, "upgrade changed historical migration ledger");
+                let all: Vec<String> = sqlx::query_scalar(
+                    "SELECT pg_catalog.to_jsonb(m)::text FROM public._sqlx_migrations m ORDER BY version",
+                )
+                .fetch_all(&mut *conn)
                 .await
-                .expect("upgrade repeat is safe");
+                .unwrap();
+                assert_eq!(all.len(), 3, "upgrade did not reach the complete ledger");
+                let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
+                assert_eq!(database.check().await.unwrap().0, 3);
+                migrate(&config.migration, &role)
+                    .await
+                    .expect("upgrade repeat is safe");
+                let repeated: Vec<String> = sqlx::query_scalar(
+                    "SELECT pg_catalog.to_jsonb(m)::text FROM public._sqlx_migrations m ORDER BY version",
+                )
+                .fetch_all(&mut *conn)
+                .await
+                .unwrap();
+                assert_eq!(all, repeated, "repeat changed an upgraded ledger");
+            }
         }
     }
     reset(config, conn).await;

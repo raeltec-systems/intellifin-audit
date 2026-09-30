@@ -7,10 +7,15 @@ publish.workspace = true
 
 [dependencies]
 zobba-application.workspace = true
+zobba-domain.workspace = true
 zobba-infrastructure.workspace = true
 axum.workspace = true
 tokio.workspace = true
 serde.workspace = true
+rand.workspace = true
+
+[dev-dependencies]
+sqlx.workspace = true
 
 [lints]
 workspace = true

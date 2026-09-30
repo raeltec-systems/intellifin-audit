@@ -1,10 +1,12 @@
 # Zobba foundation
 
 This independent workspace builds the Rust API, worker, explicit migration CLI
-and Pair web interface through Story 20.2. Real OIDC sign-in creates opaque Rust
+and Pair web interface through Story 20.3. Real OIDC sign-in creates opaque Rust
 server sessions; current membership limits engagement selection to explicitly
-assigned work. Health reports the actual database state. Task execution, audit
-conclusions, real computers and customer SSO qualification remain later capabilities.
+assigned work. Durable Task commands and an inert worker survive process restarts
+without inventing execution outcomes. Health reports the actual database state.
+Conversation UI, model/tool execution, audit conclusions, real computers and
+customer SSO qualification remain later capabilities.
 
 Run every command below from `zobba/`. The historical repository-root Node
 application has its own workspace and database. Zobba does not import that
@@ -58,9 +60,10 @@ GRANT CONNECT ON DATABASE zobba_dev, zobba_local_test TO zobba_app;
 The migrator owns schema objects. The runtime role must be a distinct, nonowner
 role without superuser, BYPASSRLS, role/database creation or schema creation
 privileges. Migration grants narrow identity/session operations, current assigned
-engagement reads and engagement-name updates protected by forced RLS. Runtime
-cannot change identity activation, roles or assignments. Schema changes never run
-at startup.
+engagement reads and engagement-name updates protected by forced RLS. Task grants
+separately bound scoped state, content-free wakeup routing and exact-attempt
+receipt observations. Runtime cannot change identity activation, roles or
+assignments. Schema changes never run at startup.
 
 Copy `.env.example` to ignored `.env` and replace the local placeholders. URL-encode
 special characters in passwords. Existing managed environments may already export
@@ -80,8 +83,8 @@ cargo run -p zobba-cli --locked -- migrate --runtime-role zobba_app
 ```
 
 This command reads `ZOBBA_MIGRATION_DATABASE_URL`; repeating it is safe against
-the same valid schema. It accepts empty databases, an exactly verified Story 20.1
-prefix, or the exact Story 20.2 schema. Physical catalog checks precede metadata
+the same valid schema. It accepts empty databases, exactly verified Story 20.1
+or Story 20.2 prefixes, or the exact Story 20.3 schema. Physical catalog checks precede metadata
 reads; migration checksums, changes and restricted grants are validated atomically.
 Foreign, altered and newer states refuse without mutation. API and worker read
 only `ZOBBA_RUNTIME_DATABASE_URL` and
@@ -172,6 +175,95 @@ revocation/expiry and narrow keyboard use. It retains screenshot
 proof in `/tmp/zobba-browser-results`. Never run destructive database suites
 concurrently. `pnpm fixture:test` separately validates the independent fixture.
 
+## Durable Tasks and the inert worker
+
+Create, Guide, Pause, Resume, Stop and Continue are explicit commands scoped to
+one organisation/client/engagement and exact Task/work cycle. The authenticated
+session supplies the accountable author. Repeating the same idempotency key and
+meaning returns the original immutable **Received** receipt after current access
+is checked again; changing the meaning conflicts. **Applied** is a separate durable
+fact. Admission commits the command, receipt, state, event and wakeup together.
+Engagement event cursors are strings and follow transaction commit order. The
+coordinator persists an application cursor and reads only the next indexed command
+batch; retained applied history is never rescanned under the engagement lock.
+Open-task admission uses a scoped partial index that excludes stopped history.
+
+Guidance advances intent at admission and applies to the working brief at a work
+boundary. Worker ownership, execution epoch, intent revision and Task revision
+are separate fences. A still-valid owner cannot use an old-intent proposal or
+unconsumed claim. Guidance received while paused or stopped does not resume work.
+Resume retains the paused cycle; Continue after Stop creates a new cycle. Controls
+for an old cycle cannot affect its continuation. Guide/Pause/Stop authentication and
+admission reserve two database connections independently of ordinary requests.
+
+Task API paths share `/engagements/{engagement_id}` and require the explicit
+`organisation_id` and `client_id` query parameters plus a current server session:
+
+| Path beneath the engagement | Operation |
+|---|---|
+| `POST /task-commands` | Create, Resume or Continue |
+| `POST /task-controls` | Guide, Pause or Stop through reserved capacity |
+| `GET /tasks?after_task_id=<optional Task ID>` | Page scoped Tasks in ID order |
+| `GET /tasks/{task_id}` | Read one exact scoped Task |
+| `GET /task-events?after=<decimal>` | Read bounded durable events after a cursor |
+
+Task pages return up to 100 `tasks` and a `next_cursor`; null means exhausted.
+Use the exclusive cursor as `after_task_id` to reach retained stopped Tasks beyond
+the active-work limit. Known Task IDs open independently of the current page.
+Each engagement admits at most 100 open Tasks. Stopped Tasks remain retained;
+Continue must acquire capacity again before opening a new cycle.
+
+POST requests require the exact configured Origin and `X-CSRF-Token` from
+`/auth/session`. JSON has `key`, `kind` and, where applicable, `task_id`, `cycle_id`
+and `content`. Create requires content and no target; Guide requires content and
+an exact Task/cycle; other commands require the exact target and no content.
+Keys are 1–128 ASCII letters, digits, underscores or hyphens, content is at most
+4,000 UTF-8 bytes, and the complete JSON body is at most 32 KiB. Accepted requests
+return HTTP 202 with `command_id`, `task_id`, `cycle_id`, `event_cursor` and
+`status: "received"`. At most eight ordinary and four control requests are
+admitted concurrently, with a six-second deadline per Task request. Capacity
+refusal is retryable; it is not a receipt.
+
+The worker runs only bounded inert child processes. It polls durable wakeups every
+200 ms, runs at most four children, and holds no database connection while a child
+runs or waits. `ZOBBA_INERT_DURATION_MS` sets the synthetic activity duration
+(default 500 ms, range 10–30,000 ms); cancellation is requested after 31 seconds.
+Each database port call has a two-second client deadline, startup connection has
+seven seconds, and cancellation join has two seconds. An unconfirmed join remains
+uncertain. Authority polling runs concurrently with the exact child join and
+shutdown signals. The supervisor withdraws readiness if coordination exits and
+bounds graceful shutdown to 20 seconds. Fixed operational error codes are limited
+to one message per code per five seconds, with counters for suppressed repeats.
+The child receives no inherited environment or connected standard streams.
+An observed inert result leaves the Task waiting with a confirmed observation;
+it does not complete an audit objective or establish model, tool or computer work.
+
+Pause/Stop receipt and observed cessation are different facts. The coordinator
+cancels and joins its exact child before reporting a termination observation.
+A timeout, lease expiry or cancellation request alone never proves cessation.
+Consuming an activity claim is the possible-dispatch cutoff: an abrupt crash after
+consumption leaves reconciliation required, and replacement ownership cannot replay
+that activity. Other Tasks and control admission continue to operate.
+
+A stale or revoked producer can submit only a bounded immutable observation for
+its exact consumed attempt using a private receipt capability. Only the digest is
+stored. That context grants no Task read, new execution or transition; contradictory
+reuse conflicts. A currently authorized coordinator may incorporate the fact later.
+There is no public late-receipt endpoint. Dispatcher discovery returns bounded
+content-free routing metadata and rechecks execution authority in a fresh scoped
+transaction; browser-session expiry alone does not revoke background membership.
+Delivery leases live in `task_deliveries`: dispatcher context cannot mutate the
+coordinator-owned wakeup scheduling fields, even with direct runtime SQL. Execution
+meanings live in domain and coordination/receipt ports in application; SQL and
+process adapters implement those inward contracts.
+
+The worker retries an identical joined observation at most five times with 500 ms
+backoff. A prolonged database outage can exhaust retries and lose the local fact;
+the consumed attempt remains uncertain, never silently replayed. Process fault
+wrappers exist only in integration-test executables, with no production fault or
+authentication bypass. The normally ignored process-helper entry is explicitly
+executed by the reliability scenario as a child process.
+
 ## Start the processes
 
 After migrating, start each command in a separate shell with the runtime variable
@@ -200,7 +292,7 @@ Both Rust processes expose:
 | Request | Healthy response | Dependency failure |
 |---|---|---|
 | `GET /health/live` | 200, `status: "live"`, `schema_version: null` | Remains live while the process can serve |
-| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 2` | 503, `status: "unavailable"`, `schema_version: null` |
+| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 3` | 503, `status: "unavailable"`, `schema_version: null` |
 
 Each response also identifies `service: "api"` or `service: "worker"`. Readiness
 checks the supported schema through the restricted runtime connection. Startup
@@ -248,6 +340,15 @@ python3 scripts/smoke.py
 pnpm test:browser
 ```
 
+The [Task PostgreSQL contract](crates/infrastructure/tests/task.rs) runs concurrent
+identical and changed commands, competing owners, same-owner guidance races,
+consumed uncertainty, late receipts after revocation, one-connection context reset,
+and pagination beyond 100 retained Tasks. Its test-admin-only deferred trigger
+holds an actual admission at commit, proving no premature receipt or cursor, then
+forces rollback or releases competing commits in order. The fixture is created
+and removed only inside the guarded disposable database. The worker's process
+suite separately joins actual inert children and exercises restart and Stop.
+
 The boundary check reads Cargo's actual workspace metadata, enforces inward crate
 dependencies and rejects local paths/imports escaping this workspace or bringing
 in the old Node backend. Domain has no crate dependencies; application owns ports;
@@ -263,7 +364,10 @@ or accessing PostgreSQL.
 
 Smoke builds the real binaries, runs the destructive PostgreSQL contract tests,
 proves both processes refuse an unmigrated database, invokes the migration CLI
-twice, and checks exact API/worker liveness and readiness. It then cuts only its
+twice, and checks exact API/worker liveness and readiness. The bootstrap contract
+also replays the exact published v1 and v2 migration bytes and ledger checksums,
+proves both prefixes upgrade without rewriting historical ledger rows, and rejects
+altered prefix catalogs or checksums without mutation. It then cuts only its
 own PostgreSQL proxy connections to prove 503 readiness while both processes stay
 live, then restores forwarding on the same port and requires those same processes
 to recover readiness and liveness. It does not stop the database server or alter a shared login role. Child
@@ -294,4 +398,4 @@ database for synthetic expiry/revocation fixtures.
 The separate [Zobba foundation workflow](../.github/workflows/zobba.yml) runs these
 gates with disposable PostgreSQL 18.4 and the workspace's own lockfiles/cache.
 Its distinct workflow name keeps it outside the historical deployment trigger.
-This story creates no deployment or customer launch configuration.
+These foundation stories create no deployment or customer launch configuration.

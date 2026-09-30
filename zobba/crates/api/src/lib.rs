@@ -1,6 +1,7 @@
 //! Owned HTTP interface. OpenAPI is generated from these handler and wire types.
 pub mod auth;
 pub mod engagements;
+pub mod tasks;
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
 use serde::Serialize;
 use utoipa::{OpenApi, ToSchema};
@@ -72,8 +73,10 @@ pub fn router(database: RuntimeDatabase) -> Router {
 }
 
 pub fn authenticated_router(database: RuntimeDatabase, identity: auth::AuthState) -> Router {
+    let task_routes = tasks::router(&database, identity.clone());
     router(database)
         .merge(auth::router(identity))
+        .merge(task_routes)
         .layer(axum::middleware::from_fn(
             |request: axum::extract::Request, next: axum::middleware::Next| async move {
                 let login_document =
@@ -116,7 +119,7 @@ pub fn authenticated_router(database: RuntimeDatabase, identity: auth::AuthState
     info(
         title = "Zobba owned HTTP interface",
         version = "1.0.0",
-        description = "Service health, OIDC server sessions and current assigned engagement scope. No Task capability is implied."
+        description = "Service health, current scoped identity and durable Task commands with bounded inert execution. No model, tool, computer or audit execution is implied."
     ),
     paths(
         live,
@@ -126,7 +129,12 @@ pub fn authenticated_router(database: RuntimeDatabase, identity: auth::AuthState
         auth::session,
         auth::logout,
         engagements::list,
-        engagements::open
+        engagements::open,
+        tasks::admit,
+        tasks::control,
+        tasks::list,
+        tasks::get,
+        tasks::events
     ),
     components(schemas(
         HealthResponse,
@@ -137,7 +145,17 @@ pub fn authenticated_router(database: RuntimeDatabase, identity: auth::AuthState
         auth::SessionResponse,
         engagements::EngagementResponse,
         engagements::EngagementsResponse,
-        engagements::ScopeResponse
+        engagements::ScopeResponse,
+        tasks::CommandKindRequest,
+        tasks::TaskCommandRequest,
+        tasks::ReceiptStatusResponse,
+        tasks::CommandReceiptResponse,
+        tasks::TaskStateResponse,
+        tasks::CessationResponse,
+        tasks::TaskResponse,
+        tasks::TasksResponse,
+        tasks::TaskEventResponse,
+        tasks::TaskEventsResponse
     ))
 )]
 pub struct ApiDocument;

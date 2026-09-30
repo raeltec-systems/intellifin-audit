@@ -134,7 +134,7 @@ export async function startAuthRuntime(): Promise<AuthRuntime> {
         if (api.exitCode !== null) throw new Error('Authentication API refused startup.');
         try {
           const response = await fetch(`${apiUrl}/health/ready`, { signal: AbortSignal.timeout(1000) });
-          if (response.status === 200 && (await response.json()).schema_version === 2) { healthy = true; break; }
+          if (response.status === 200 && (await response.json()).schema_version === 3) { healthy = true; break; }
         } catch { /* Startup is bounded; do not expose URLs or provider errors. */ }
         await delay(100);
       }

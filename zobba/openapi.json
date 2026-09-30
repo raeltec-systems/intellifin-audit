@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Zobba owned HTTP interface",
-    "description": "Service health, OIDC server sessions and current assigned engagement scope. No Task capability is implied.",
+    "description": "Service health, current scoped identity and durable Task commands with bounded inert execution. No model, tool, computer or audit execution is implied.",
     "license": {
       "name": ""
     },
@@ -422,6 +422,616 @@
         ]
       }
     },
+    "/engagements/{engagement_id}/task-commands": {
+      "post": {
+        "tags": [
+          "tasks"
+        ],
+        "operationId": "admit_task_command",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact configured HTTPS application origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "Current session-bound token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskCommandRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Durable immutable Received receipt for Create, Resume or Continue; identical retry returns the original",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandReceiptResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/task-controls": {
+      "post": {
+        "tags": [
+          "tasks"
+        ],
+        "operationId": "admit_task_control",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact configured HTTPS application origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "Current session-bound token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskCommandRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Reserved admission/authentication for Guide, Pause and Stop; Received is not proof of cessation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandReceiptResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/task-events": {
+      "get": {
+        "tags": [
+          "tasks"
+        ],
+        "operationId": "list_task_events",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Decimal durable cursor; omitted starts at zero",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 19,
+              "pattern": "^[0-9]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "At most 100 commit-ordered metadata events; repeat from next_cursor to drain/reconnect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskEventsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/tasks": {
+      "get": {
+        "tags": [
+          "tasks"
+        ],
+        "operationId": "list_tasks",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after_task_id",
+            "in": "query",
+            "description": "Exclusive Task ID cursor from next_cursor",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TasksResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/tasks/{task_id}": {
+      "get": {
+        "tags": [
+          "tasks"
+        ],
+        "operationId": "get_task",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
     "/health/live": {
       "get": {
         "tags": [],
@@ -471,6 +1081,56 @@
   },
   "components": {
     "schemas": {
+      "CessationResponse": {
+        "type": "string",
+        "enum": [
+          "none",
+          "pending",
+          "confirmed",
+          "reconciliation_required"
+        ]
+      },
+      "CommandKindRequest": {
+        "type": "string",
+        "enum": [
+          "create",
+          "guide",
+          "pause",
+          "resume",
+          "stop",
+          "continue"
+        ]
+      },
+      "CommandReceiptResponse": {
+        "type": "object",
+        "required": [
+          "command_id",
+          "task_id",
+          "cycle_id",
+          "event_cursor",
+          "status"
+        ],
+        "properties": {
+          "command_id": {
+            "type": "string"
+          },
+          "cycle_id": {
+            "type": "string"
+          },
+          "event_cursor": {
+            "type": "string",
+            "description": "Decimal commit-ordered cursor; represented as text to preserve integer precision.",
+            "pattern": "^[0-9]+$"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReceiptStatusResponse",
+            "description": "Admission is durable. Applied and observed cessation are separate event/snapshot facts."
+          },
+          "task_id": {
+            "type": "string"
+          }
+        }
+      },
       "EngagementResponse": {
         "type": "object",
         "required": [
@@ -612,6 +1272,12 @@
           }
         }
       },
+      "ReceiptStatusResponse": {
+        "type": "string",
+        "enum": [
+          "received"
+        ]
+      },
       "ScopeResponse": {
         "type": "object",
         "required": [
@@ -659,6 +1325,197 @@
           },
           "identity": {
             "$ref": "#/components/schemas/IdentityResponse"
+          }
+        }
+      },
+      "TaskCommandRequest": {
+        "type": "object",
+        "required": [
+          "key",
+          "kind"
+        ],
+        "properties": {
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Exact retained text, at most 4000 UTF-8 bytes. Required only for Create and Guide.\nMust contain non-whitespace; control characters other than LF, CR and tab are refused.",
+            "maxLength": 4000,
+            "minLength": 1
+          },
+          "cycle_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "key": {
+            "type": "string",
+            "description": "Author and composite scope bind this key. Identical retries return the original receipt.",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/CommandKindRequest"
+          },
+          "task_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required together with cycle_id except for Create, which requires both absent/null.",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TaskEventResponse": {
+        "type": "object",
+        "required": [
+          "cursor",
+          "task_id",
+          "cycle_id",
+          "command_id",
+          "kind"
+        ],
+        "properties": {
+          "command_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cursor": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "cycle_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "Fixed event category, including received and applied. No content or capability is included."
+          },
+          "task_id": {
+            "type": "string"
+          }
+        }
+      },
+      "TaskEventsResponse": {
+        "type": "object",
+        "required": [
+          "events",
+          "next_cursor"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskEventResponse"
+            },
+            "maxItems": 100
+          },
+          "next_cursor": {
+            "type": "string",
+            "description": "Last returned cursor, or the input cursor on an empty page. Poll again from this value.",
+            "pattern": "^[0-9]+$"
+          }
+        }
+      },
+      "TaskResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "cycle_id",
+          "objective",
+          "working_brief",
+          "state",
+          "cessation",
+          "intent_revision",
+          "revision",
+          "execution_epoch",
+          "accountable_actor"
+        ],
+        "properties": {
+          "accountable_actor": {
+            "type": "string",
+            "description": "Accountable human identity, distinct from worker ownership."
+          },
+          "cessation": {
+            "$ref": "#/components/schemas/CessationResponse"
+          },
+          "cycle_id": {
+            "type": "string"
+          },
+          "execution_epoch": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "id": {
+            "type": "string"
+          },
+          "intent_revision": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "objective": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TaskStateResponse",
+            "description": "Desired control/work state; Paused/Stopped require separate observed cessation."
+          },
+          "working_brief": {
+            "type": "string",
+            "description": "Retained plain text; no model understanding or audit result is asserted."
+          }
+        }
+      },
+      "TaskStateResponse": {
+        "type": "string",
+        "enum": [
+          "ready",
+          "running",
+          "paused",
+          "stopped",
+          "waiting"
+        ]
+      },
+      "TasksResponse": {
+        "type": "object",
+        "required": [
+          "tasks",
+          "next_cursor"
+        ],
+        "properties": {
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass this Task ID as after_task_id; null means no further current Tasks.",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskResponse"
+            },
+            "description": "Current projection ordered by Task ID; open known IDs independently of this page.",
+            "maxItems": 100
           }
         }
       }

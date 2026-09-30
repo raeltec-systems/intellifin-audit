@@ -1,3 +1,75 @@
+## 2026-09-30 — Story 20.3 durable Task commands and factual recovery
+
+The original Received receipt is immutable. Applied guidance and observed child
+cessation are separate durable facts; retry rechecks current authority and returns
+the original receipt only for identical author/scope/key/meaning. Commit command,
+receipt, state, event and wakeup atomically. Engagement event cursors are strings
+and serialize with commit. Preserve the exact 0001/0002 migration bytes and catalog
+prefixes; schema3 upgrades must leave all historical SQLx ledger fields intact.
+Capture PostgreSQL catalog signatures as raw UTF-8 bytes and split only on LF.
+Python `text=True` universal-newline conversion and `splitlines()` alter embedded
+CR or Unicode whitespace intentionally present in the 20.2 constraints. Never
+recapture the published v1/v2 catalogs to accommodate those conversion errors.
+
+Owner epoch, execution epoch, intent revision and Task revision are distinct.
+Guide advances intent on admission; the owner applies it at the next work boundary.
+Current ownership cannot validate an old-intent proposal or unused claim. Paused or
+stopped guidance never resumes work; Resume retains the cycle, while Continue
+creates a new cycle after Stop. Old-cycle controls never affect that continuation.
+
+Consumption is the possible-dispatch cutoff. Abrupt process loss after consumption
+leaves reconciliation required; a replacement owner must not replay it or infer
+quiescence from expiry. Coordinator reentry without a tracked child must expose that
+uncertainty even when the same owner's lease remains valid. Join the exact child
+before recording cancellation or exit.
+A successful inert observation leaves the Task waiting/confirmed, never an audit
+objective completed. The executor is bounded test activity, with no model/tool or
+computer dispatch. Other Tasks continue while one Task needs reconciliation.
+
+Late receipt authority is an exact-attempt capability, stored only as a digest.
+Transaction-local receipt context admits bounded immutable inert facts from stale
+or revoked producers; it grants no Task read, transition, proposal or new activity.
+Identical receipt retries deduplicate, contradictory reuse refuses, and pooled
+context must reset. A currently authorized coordinator incorporates facts later.
+Dispatcher discovery is content-free and never establishes execution authority.
+Prioritize never-delivered wakeups, then older deliveries; sorting only by original
+availability lets repeatedly due work starve newer Tasks. The 100-open-Task limit
+also applies to Continue, because stopped history remains outside that capacity.
+
+Guide/Pause/Stop authentication and admission have two reserved database connections,
+separate from ordinary reads and worker work. Release every connection during
+inert child execution or waits. Run guarded database/process suites, smoke and the
+23 retained browser cases sequentially against the same disposable test database.
+Their commands are verification instructions, not evidence of an unexecuted pass.
+
+The Create author remains both accountable human and recorded execution actor.
+Other current members may control the Task without silently transferring background
+authority; reassignment belongs to a later capability. Receipt facts may be written
+by revoked producers, but transitions wait for current recorded authority. The worker
+retries an identical joined fact at most five times; a prolonged database outage can
+lose the local fact/capability and leaves consumed work requiring reconciliation.
+
+Story 20.3 review repairs separate `task_deliveries` from scoped scheduling:
+dispatcher context has lease writes only; direct runtime SQL must be unable to
+change wakeup `pending` or `available_at`. Scoped lease INSERT with ON CONFLICT
+also needs scoped SELECT visibility for PostgreSQL RLS. Preserve exact catalog and
+column-grant checks for both tables. A monotonic applied-command cursor plus the
+scoped partial open-task index keeps retained history out of locked admission work.
+
+All worker database ports have client deadlines; SQL statement timeouts do not
+bound a blackholed socket. Poll authority concurrently with child exit and shutdown,
+and supervise the coordinator itself. Cap cancellation join and graceful drain;
+unconfirmed outcomes remain uncertain. Fixed diagnostics are rate-limited per code,
+never interpolated with scope, payload, SQL errors, or receipt secrets.
+
+HTTP saturation proofs use real `Expect: 100-continue` barriers after permit
+acquisition. Prove the byte limit by whitespace-padding otherwise-valid JSON.
+Drain event pages using returned cursors and preserve the exact supplied cursor on
+empty pages. Test schema resets use the migration owner; the separate administrator
+only arranges guarded synthetic data. Re-run against a restricted migration owner,
+not only the convenient local superuser. Test-only port wrappers and process
+executables expose deterministic cutoff faults without production fault flags.
+
 ## 2026-09-30 — Story 20.2 identity and current scope
 
 The Rust `zobba/` workspace owns OIDC verification and opaque server sessions.

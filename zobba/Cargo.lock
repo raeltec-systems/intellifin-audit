@@ -3201,7 +3201,10 @@ name = "zobba-api"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "reqwest",
  "serde",
+ "serde_json",
+ "sqlx",
  "tokio",
  "url",
  "utoipa",
@@ -3255,8 +3258,11 @@ name = "zobba-worker"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "rand 0.8.8",
  "serde",
+ "sqlx",
  "tokio",
  "zobba-application",
+ "zobba-domain",
  "zobba-infrastructure",
 ]

@@ -206,7 +206,7 @@ def health(port: int, route: str) -> tuple[int, dict]:
 
 def wait_health(process: subprocess.Popen, service: str, port: int, *, ready: bool) -> None:
     deadline = time.monotonic() + 20
-    expected = (200, {"service": service, "status": "ready", "schema_version": 2}) if ready else (
+    expected = (200, {"service": service, "status": "ready", "schema_version": 3}) if ready else (
         503, {"service": service, "status": "unavailable", "schema_version": None}
     )
     while time.monotonic() < deadline:
@@ -312,6 +312,14 @@ def main() -> None:
                             "unsafe_runtime_role", "unsupported_postgres",
                         )
                     }
+                    if service == "worker":
+                        allowed.update(f"worker: {code}" for code in (
+                            "discovery_failed", "coordination_failed", "consumption_uncertain",
+                            "delivery_release_failed", "authority_failed", "receipt_write_failed",
+                            "receipt_retries_exhausted", "reconciliation_failed", "runner_failed",
+                            "coordinator_failed", "shutdown_timeout", "process_join_unconfirmed",
+                            "process_start_failed",
+                        ))
                     require(all(line in allowed for line in lines), f"{service} logged a non-allowlisted field")
                     require(
                         f"{service}: ready" in lines and f"{service}: database_unavailable" in lines,
