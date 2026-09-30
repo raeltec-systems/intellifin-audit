@@ -1,5 +1,8 @@
 # Zobba product and architecture design
 
+[Download the complete design package (ZIP)](https://github.com/raeltec-systems/intellifin-audit/raw/refs/heads/codex/zobba-product-architecture-design/_bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/Zobba-Design-Package.zip).
+Extract it and open **Zobba-Design.html** to read the design locally. The archive includes the PDF, editable documents, diagrams and supporting references. **MANIFEST.json** records the size and SHA-256 hash of each package file except itself and the ZIP.
+
 Start with **Owner-Summary.md** for the recommendation and five consequential choices.
 
 The integrated recommendation is **Zobba-Product-and-Architecture-Design.md**. **Zobba-Design.html** is the readable edition with embedded diagrams and navigation; **Zobba-Design.pdf** is its printable edition. They contain the same design.

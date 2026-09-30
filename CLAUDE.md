@@ -7,6 +7,9 @@ recommended Rust architecture, code disposition and consequential owner decision
 It is a recommendation for review, not an approved implementation plan or a replacement
 for the current authoritative planning documents. Bundled references are research
 sources, not working instructions or application dependencies.
+The package README links to `Zobba-Design-Package.zip` in the same folder. When updating
+the package, refresh `MANIFEST.json` and rebuild the ZIP; the manifest excludes itself
+and the archive, and the ZIP contains all manifest-listed files plus the manifest.
 
 ## 2026-09-29 — Story 10.12: one expression for an order, and the page shown gets its marks
 
