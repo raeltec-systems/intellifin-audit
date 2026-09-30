@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300..800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+</helmet>
+<div style="width: 1280px; height: 800px; overflow: hidden; background: #FBFAF7; display: flex; font-family: 'Hanken Grotesk', 'Segoe UI', sans-serif; color: #1C1B19;">
+  <sc-if value="{{ railOnly }}">
+    <div style="width: 52px; flex-shrink: 0; background: #EFEDE8; border-right: 1px solid #E3E0D8; display: flex; flex-direction: column; align-items: center; padding: 16px 0; gap: 18px;"><dc-import name="Zobba Pair Mark" size="22" hint-size="22px,22px"></dc-import><div style="width: 18px; height: 15px; border: 1.5px solid #5E5A52; border-radius: 3px;"></div></div>
+  </sc-if>
+  <sc-if value="{{ fullSidebar }}">
+    <div style="width: 248px; flex-shrink: 0; background: #EFEDE8; border-right: 1px solid #E3E0D8; display: flex; flex-direction: column; padding: 14px 10px;">
+      <div style="padding: 4px 8px 18px;"><dc-import name="Zobba Wordmark" size="20" hint-size="92px,22px"></dc-import></div>
+      <div style="padding: 8px 10px; font-size: 14px; line-height: 20px; font-weight: 600;">New task</div>
+      <div style="padding: 8px 10px; font-size: 14px; line-height: 20px; color: #3D3A35;">Search</div>
+      <div style="padding: 8px 10px; font-size: 14px; line-height: 20px; border-radius: 8px; background: {{ schedBg }}; box-shadow: {{ schedShadow }}; color: #3D3A35;">Scheduled checks</div>
+      <div style="padding: 18px 10px 6px; font-size: 12px; line-height: 16px; font-weight: 600; color: #5E5A52;">Engagements</div>
+      <div style="padding: 7px 10px; font-size: 14px; line-height: 20px;">Northstar · Q3 2026 ITGC</div>
+      <div style="padding: 7px 10px; font-size: 14px; line-height: 20px;">Kafue Mining · FY26 IA</div>
+      <div style="padding: 18px 10px 6px; font-size: 12px; line-height: 16px; font-weight: 600; color: #5E5A52;">Recent tasks</div>
+      <div style="padding: 7px 10px; font-size: 14px; line-height: 20px; font-weight: {{ taskWeight }}; border-radius: 8px; background: {{ taskBg }}; box-shadow: {{ taskShadow }}; display: flex; align-items: center; gap: 8px;"><span style="flex: 1;">Test leaver access for Q3</span><sc-if value="{{ isRunning }}"><dc-import name="Zobba Pair Mark" state="working" size="14" hint-size="14px,14px"></dc-import></sc-if><sc-if value="{{ isPermission }}"><dc-import name="Zobba Pair Mark" state="waiting" size="14" hint-size="14px,14px"></dc-import></sc-if></div>
+      <div style="padding: 7px 10px; font-size: 14px; line-height: 20px;">Sample 25 Q3 changes</div>
+      <div style="padding: 7px 10px; font-size: 14px; line-height: 20px;">Privileged users review</div>
+      <div style="flex: 1;"></div>
+      <div style="padding: 7px 10px; font-size: 13px; line-height: 18px; color: #3D3A35;">Connections</div>
+      <div style="padding: 7px 10px; font-size: 13px; line-height: 18px; color: #3D3A35;">Settings</div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px; border-top: 1px solid #E3E0D8; margin-top: 4px;"><span style="width: 28px; height: 28px; border-radius: 999px; background: #1C1B19; color: #fff; font-size: 11px; line-height: 28px; font-weight: 600; text-align: center;">DO</span><span style="font-size: 14px; line-height: 20px; font-weight: 500;">Daniel Okonjo</span></div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isHome }}">
+    <div style="flex: 1; display: flex; flex-direction: column; align-items: center; padding-top: 150px; gap: 24px;">
+      <dc-import name="Zobba Pair Mark" size="40" hint-size="40px,40px"></dc-import>
+      <div style="font-size: 38px; line-height: 46px; font-weight: 600; letter-spacing: -.022em;">What are we auditing today?</div>
+      <div style="width: 720px; background: #fff; border: 1.5px solid #4C3FB8; border-radius: 18px; padding: 16px 16px 12px; box-shadow: 0 0 0 4px #EEECFA; display: flex; flex-direction: column; gap: 22px; box-sizing: border-box;">
+        <span style="font-size: 16px; line-height: 24px; color: #7A766D; padding: 0 4px;">Describe what you want to check, analyse or prepare</span>
+        <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 32px; height: 32px; border-radius: 999px; border: 1px solid #CCC8BD; box-sizing: border-box; font-size: 18px; line-height: 30px; text-align: center; color: #3D3A35;">+</span><span style="height: 32px; box-sizing: border-box; border: 1px solid #CCC8BD; border-radius: 999px; padding: 0 12px; font-size: 13px; line-height: 30px; font-weight: 500; white-space: nowrap;">Northstar · Q3 2026 ITGC</span><span style="height: 32px; box-sizing: border-box; border: 1px solid #CCC8BD; border-radius: 999px; padding: 0 12px; font-size: 13px; line-height: 30px; font-weight: 500; color: #3D3A35; white-space: nowrap;">Permissions: reads selected sources</span><div style="flex: 1;"></div><span style="width: 32px; height: 32px; border-radius: 999px; background: #1C1B19; color: #fff; font-size: 15px; line-height: 32px; text-align: center;">↑</span></div>
+      </div>
+      <div style="display: flex; gap: 8px;"><span style="border: 1px solid #CCC8BD; border-radius: 999px; padding: 8px 14px; font-size: 13px; line-height: 18px; font-weight: 500; white-space: nowrap;">Test a control</span><span style="border: 1px solid #CCC8BD; border-radius: 999px; padding: 8px 14px; font-size: 13px; line-height: 18px; font-weight: 500; white-space: nowrap;">Analyse a population</span><span style="border: 1px solid #CCC8BD; border-radius: 999px; padding: 8px 14px; font-size: 13px; line-height: 18px; font-weight: 500; white-space: nowrap;">Draft a working paper</span><span style="border: 1px solid #CCC8BD; border-radius: 999px; padding: 8px 14px; font-size: 13px; line-height: 18px; font-weight: 500; white-space: nowrap;">Plan a walkthrough</span></div>
+      <div style="width: 720px; margin-top: 34px; display: flex; flex-direction: column;">
+        <div style="font-size: 12px; line-height: 16px; font-weight: 600; color: #5E5A52; padding: 0 4px 8px;">Continue</div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-top: 1px solid #E3E0D8;"><span style="width: 14px; font-size: 13px; color: #3D3A35; text-align: center;">◐</span><span style="font-size: 14px; line-height: 20px; font-weight: 500; flex: 1;">Weekly leaver check · inconclusive · not reviewed</span><span style="font-size: 13px; line-height: 18px; color: #5E5A52;">Mon 06:14 UTC</span></div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-top: 1px solid #E3E0D8; border-bottom: 1px solid #E3E0D8;"><span style="width: 14px; font-size: 13px; color: #5E5A52; text-align: center;">○</span><span style="font-size: 14px; line-height: 20px; font-weight: 500; flex: 1;">Sample 25 Q3 changes · 14 of 25 tested</span><span style="font-size: 13px; line-height: 18px; color: #5E5A52;">Yesterday</span></div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isRunning }}">
+    <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
+      <div style="height: 52px; flex-shrink: 0; display: flex; align-items: center; padding: 0 24px; gap: 10px; border-bottom: 1px solid #E3E0D8;"><span style="font-size: 15px; line-height: 20px; font-weight: 600; flex: 1;">Test leaver access for Q3</span><span style="display: flex; align-items: center; gap: 7px; font-size: 12px; line-height: 16px; font-weight: 600; color: #3B2F99; background: #EEECFA; border-radius: 999px; padding: 4px 10px 4px 8px; white-space: nowrap;"><dc-import name="Zobba Pair Mark" state="working" size="14" hint-size="14px,14px"></dc-import>Zobba is analysing</span></div>
+      <div style="flex: 1; padding: 24px 28px; display: flex; flex-direction: column; gap: 18px;">
+        <div style="align-self: flex-end; max-width: 380px; background: #EFEDE8; border-radius: 16px; padding: 10px 14px; font-size: 15px; line-height: 23px;">Test leaver access for Q3 using the material in the shared folder.</div>
+        <div style="font-size: 15px; line-height: 24px;">I found the control definition, the HR leaver population and two access extracts. The LoanCore extract appears to cover only accounts created during the period, so I can't treat it as the complete population yet.</div>
+        <div style="display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 20px; color: #5E5A52;">
+          <div style="display: flex; gap: 10px;"><span style="width: 16px; text-align: center;">✓</span><span style="flex: 1;">Read control documentation · AC-07 leaver removal</span></div>
+          <div style="display: flex; gap: 10px;"><span style="width: 16px; text-align: center;">✓</span><span style="flex: 1;">Reconciled the HR leavers list to its cover-sheet total</span></div>
+          <div style="display: flex; gap: 10px;"><span style="width: 16px; text-align: center; color: #3D3A35;">◐</span><span style="flex: 1;">LoanCore listing covers new accounts only · recorded as limitation L1</span></div>
+          <div style="display: flex; gap: 10px; align-items: flex-start; color: #1C1B19;"><span style="width: 16px; padding-top: 3px; display: flex; justify-content: center;"><dc-import name="Zobba Pair Mark" state="working" size="14" hint-size="14px,14px"></dc-import></span><span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-weight: 600;">Comparing 23 leavers against 1,516 accounts</span><span style="font-size: 13px; color: #5E5A52;">HR leavers list against AccessGate users and sign-ins · <span style="color: #4C3FB8; text-decoration: underline; text-underline-offset: 2px;">Inspect</span></span></span></div>
+          <div style="display: flex; gap: 10px; color: #7A766D;"><span style="width: 16px;"></span><span>Next: check population completeness, then prepare the working paper</span></div>
+        </div>
+      </div>
+      <div style="padding: 0 20px 18px;"><div style="border: 1px solid #CCC8BD; background: #fff; border-radius: 18px; padding: 14px; height: 92px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between;"><span style="font-size: 15px; line-height: 22px; color: #7A766D;">Add guidance or ask a question</span><div style="display: flex; gap: 6px; justify-content: flex-end;"><span style="height: 32px; box-sizing: border-box; border: 1px solid #CCC8BD; border-radius: 999px; padding: 0 14px; font-size: 13px; line-height: 30px; font-weight: 600;">Stop</span><span style="width: 32px; height: 32px; border-radius: 999px; background: #E3E0D8;"></span></div></div></div>
+    </div>
+    <div style="width: 540px; flex-shrink: 0; background: #FFFFFF; border-left: 1px solid #E3E0D8; display: flex; flex-direction: column;">
+      <div style="height: 52px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 18px; border-bottom: 1px solid #E3E0D8;"><div style="flex: 1; display: flex; flex-direction: column;"><span style="font-size: 14px; line-height: 19px; font-weight: 600;">Working data · leavers matched to accounts</span><span style="font-size: 12px; line-height: 16px; color: #5E5A52;">From Test leaver access for Q3 · working copy</span></div><span style="font-size: 12px; line-height: 16px; color: #5E5A52;">Pin  ·  Expand  ·  Close</span></div>
+      <div style="padding: 16px 18px;"><div style="border: 1px solid #E3E0D8; border-radius: 8px; overflow: hidden; font-size: 13px; line-height: 18px;">
+        <div style="display: grid; grid-template-columns: 1.3fr .8fr .95fr .95fr 1.2fr; white-space: nowrap; font-weight: 600; font-size: 12px; color: #3D3A35; background: #FBFAF7; border-bottom: 1px solid #E3E0D8;"><span style="padding: 10px 12px;">Name</span><span style="padding: 10px 12px;">Exit date</span><span style="padding: 10px 12px;">Account</span><span style="padding: 10px 12px;">System</span><span style="padding: 10px 12px;">Access status</span></div>
+        <div style="display: grid; grid-template-columns: 1.3fr .8fr .95fr .95fr 1.2fr; white-space: nowrap; border-bottom: 1px solid #EFEDE8;"><span style="padding: 10px 12px;">Ruth Banda</span><span style="padding: 10px 12px;">10 Jul</span><span style="padding: 10px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 12px;">LC-4471</span><span style="padding: 10px 12px;">LoanCore</span><span style="padding: 10px 12px; color: #B42318; font-weight: 600;">Still active</span></div>
+        <div style="display: grid; grid-template-columns: 1.3fr .8fr .95fr .95fr 1.2fr; white-space: nowrap; border-bottom: 1px solid #EFEDE8;"><span style="padding: 10px 12px;">Joseph Mwale</span><span style="padding: 10px 12px;">18 Jul</span><span style="padding: 10px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 12px;">AG-91377</span><span style="padding: 10px 12px;">AccessGate</span><span style="padding: 10px 12px; color: #B42318; font-weight: 600;">Still active</span></div>
+        <div style="display: grid; grid-template-columns: 1.3fr .8fr .95fr .95fr 1.2fr; white-space: nowrap; border-bottom: 1px solid #EFEDE8;"><span style="padding: 10px 12px;">Mercy Phiri</span><span style="padding: 10px 12px;">31 Jul</span><span style="padding: 10px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 12px;">AG-90417</span><span style="padding: 10px 12px;">AccessGate</span><span style="padding: 10px 12px; color: #3D3A35;">Removed 4 Aug</span></div>
+        <div style="display: grid; grid-template-columns: 1.3fr .8fr .95fr .95fr 1.2fr; white-space: nowrap; border-bottom: 1px solid #EFEDE8;"><span style="padding: 10px 12px;">Kelvin Chanda</span><span style="padding: 10px 12px;">12 Sep</span><span style="padding: 10px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 12px;">AG-91002</span><span style="padding: 10px 12px;">AccessGate</span><span style="padding: 10px 12px; color: #B42318; font-weight: 600;">Still active</span></div>
+        <div style="display: grid; grid-template-columns: 1.3fr .8fr .95fr .95fr 1.2fr; white-space: nowrap; background: #F6F5FD;"><span style="padding: 10px 12px;">Tiza Mulenga</span><span style="padding: 10px 12px;">20 Sep</span><span style="padding: 10px 12px; color: #3B2F99; display: flex; align-items: center; gap: 6px;"><dc-import name="Zobba Pair Mark" state="working" size="12" hint-size="12px,12px"></dc-import>Matching</span><span></span><span></span></div>
+      </div></div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isChanges }}">
+    <div style="width: 430px; flex-shrink: 0; display: flex; flex-direction: column;">
+      <div style="height: 52px; flex-shrink: 0; display: flex; align-items: center; padding: 0 22px; border-bottom: 1px solid #E3E0D8; font-size: 15px; line-height: 20px; font-weight: 600;">Test leaver access for Q3</div>
+      <div style="flex: 1; padding: 20px 22px; display: flex; flex-direction: column; gap: 16px;">
+        <div style="align-self: flex-start; font-size: 12px; line-height: 16px; font-weight: 500; color: #3B2F99; background: #EEECFA; border-radius: 6px; padding: 4px 8px;">Selected · Conclusion, paragraph 1</div>
+        <div style="align-self: flex-end; max-width: 350px; background: #EFEDE8; border-radius: 16px; padding: 10px 14px; font-size: 15px; line-height: 23px;">This conclusion is too strong. We haven't established completeness of the contractor population.</div>
+        <div style="font-size: 15px; line-height: 24px;">Agreed. The HR list covers employees only, so I can't support a conclusion about all Q3 leavers. I've limited the AccessGate conclusion to the 23 employee leavers and added limitation L2 for contractors.</div>
+        <div style="font-size: 15px; line-height: 24px;">The two exceptions are unchanged. Both are supported by the HR exit date and AccessGate sign-ins after exit <span style="font-size: 12px; font-weight: 600; color: #3B2F99; background: #EEECFA; border-radius: 4px; padding: 1px 5px;">E3</span> <span style="font-size: 12px; font-weight: 600; color: #3B2F99; background: #EEECFA; border-radius: 4px; padding: 1px 5px;">E6</span></div>
+        <div style="display: flex; gap: 14px; font-size: 13px; line-height: 18px; color: #5E5A52;"><b style="font-weight: 600; color: #1C1B19;">Draft 2 saved</b><span style="color: #4C3FB8; text-decoration: underline; text-underline-offset: 2px;">View changes</span><span style="color: #4C3FB8; text-decoration: underline; text-underline-offset: 2px;">Undo</span></div>
+      </div>
+      <div style="padding: 0 18px 18px;"><div style="border: 1px solid #CCC8BD; background: #fff; border-radius: 18px; padding: 14px; height: 92px; box-sizing: border-box; font-size: 15px; line-height: 22px; color: #7A766D;">Ask about this conclusion</div></div>
+    </div>
+    <div style="flex: 1; background: #F6F5F1; border-left: 1px solid #E3E0D8; display: flex; flex-direction: column; min-width: 0;">
+      <div style="height: 52px; flex-shrink: 0; display: flex; align-items: center; padding: 0 18px; border-bottom: 1px solid #E3E0D8; gap: 12px; background: #fff;"><div style="flex: 1; display: flex; flex-direction: column;"><span style="font-size: 14px; line-height: 19px; font-weight: 600;">Working paper · draft 2 · Changes</span><span style="font-size: 12px; line-height: 16px; color: #5E5A52;">From Test leaver access for Q3 · pinned</span></div><span style="font-size: 12px; line-height: 16px; color: #5E5A52;">Pin  ·  Expand  ·  Close</span></div>
+      <div style="padding: 18px 22px; display: flex; flex-direction: column; gap: 12px;">
+        <div style="background: #fff; box-shadow: 0 1px 3px rgba(28,27,25,.08); padding: 26px 34px; display: flex; flex-direction: column; gap: 10px; font-family: Arial, Helvetica, sans-serif; color: #111;">
+          <div style="display: flex; justify-content: space-between; font-size: 10px; line-height: 14px; color: #444; border-bottom: 1.5px solid #111; padding-bottom: 8px;"><span><b>Northstar Bank plc · Internal Audit</b></span><span>WP ref ITGC-AC-07 · Template IA-WP-03 v4</span></div>
+          <div style="font-size: 18px; line-height: 24px; font-weight: 700;">Leaver access removal, Q3 2026</div>
+          <div style="font-size: 12px; line-height: 16px; font-weight: 700; margin-top: 4px;">3 Conclusion</div>
+          <div style="font-size: 13px; line-height: 21px; box-shadow: 0 0 0 2px #4C3FB8; background: #F6F5FD; border-radius: 2px; padding: 4px 6px; margin: 0 -6px;">AccessGate: the control did not operate effectively for <span style="color: #6F6B63; text-decoration: line-through;">Q3 leavers</span> <span style="background: #E8E4DA; border-bottom: 1.5px solid #1C1B19;">the 23 employee leavers on the HR list</span>. Two retained access after exit. LoanCore: no conclusion until the full population is available (L1).</div>
+          <div style="font-size: 12px; line-height: 16px; font-weight: 700; margin-top: 6px;">4 Limitations</div>
+          <div style="font-size: 13px; line-height: 20px;">L1 LoanCore listing covers accounts created in the period only.</div>
+          <div style="font-size: 13px; line-height: 20px;"><span style="background: #E8E4DA; border-bottom: 1.5px solid #1C1B19;">L2 Contractor leavers are not on the HR list. Their population has not been established.</span></div>
+          <div style="font-size: 10px; line-height: 14px; color: #555; border-top: 1px solid #CCC; padding-top: 8px; margin-top: 6px;">Prepared by Daniel Okonjo · Reviewed by: pending</div>
+        </div>
+        <div style="background: #fff; border: 1px solid #E3E0D8; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; line-height: 18px;">
+          <div style="display: flex; gap: 10px;"><span style="font-weight: 600; flex: 1;">Evidence for the selected conclusion</span><span style="color: #5E5A52;">Changes: 1 edit, 1 addition</span></div>
+          <div style="display: flex; gap: 10px;"><span style="font-weight: 600; color: #3B2F99; width: 26px;">E3</span><span style="flex: 1;">HR leavers list, Q3 · employees only</span><span style="color: #4C3FB8; text-decoration: underline;">Open</span></div>
+          <div style="display: flex; gap: 10px;"><span style="font-weight: 600; color: #3B2F99; width: 26px;">E5</span><span style="flex: 1;">AccessGate user listing, 30 Sep</span><span style="color: #4C3FB8; text-decoration: underline;">Open</span></div>
+          <div style="display: flex; gap: 10px;"><span style="font-weight: 600; color: #3B2F99; width: 26px;">E6</span><span style="flex: 1;">AccessGate sign-ins after exit · 2 accounts</span><span style="color: #4C3FB8; text-decoration: underline;">Open</span></div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isPermission }}">
+    <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
+      <div style="height: 52px; flex-shrink: 0; display: flex; align-items: center; padding: 0 24px; gap: 10px; border-bottom: 1px solid #E3E0D8;"><span style="font-size: 15px; line-height: 20px; font-weight: 600; flex: 1;">Test leaver access for Q3</span><span style="display: flex; align-items: center; gap: 7px; font-size: 12px; line-height: 16px; font-weight: 600; color: #1C1B19; background: #EFEDE8; border-radius: 999px; padding: 4px 10px 4px 8px; white-space: nowrap;"><dc-import name="Zobba Pair Mark" state="waiting" size="14" hint-size="14px,14px"></dc-import>Zobba needs your permission</span></div>
+      <div style="flex: 1; padding: 22px 28px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="align-self: flex-end; max-width: 400px; background: #EFEDE8; border-radius: 16px; padding: 10px 14px; font-size: 15px; line-height: 23px;">Request the full LoanCore listing from Chipo and set up a walkthrough with her.</div>
+        <div style="font-size: 15px; line-height: 24px;">I've prepared an email asking for a complete LoanCore user listing as at 30 September, and a walkthrough invitation for Thursday. I need your permission before sending these.</div>
+        <div style="border: 1px solid #CCC8BD; background: #fff; border-radius: 12px; overflow: hidden;">
+          <div style="padding: 14px 16px 6px; font-size: 14px; line-height: 20px; font-weight: 600;">Send 1 email and 1 calendar invitation</div>
+          <div style="padding: 4px 16px 12px; display: grid; grid-template-columns: 84px 1fr; gap: 5px 12px; font-size: 13px; line-height: 19px;"><span style="color: #5E5A52;">From</span><span>Daniel Okonjo · daniel.okonjo@northstar-audit.com</span><span style="color: #5E5A52;">To</span><span>Chipo Zulu · chipo.zulu@northstar.co.zm</span><span style="color: #5E5A52;">Email</span><span>Q3 ITGC: complete LoanCore user listing · no attachments</span><span style="color: #5E5A52;">Meeting</span><span>LoanCore extract walkthrough · Thu 8 Oct 2026, 10:00 to 10:45 CAT · Teams</span><span style="color: #5E5A52;">Calendar</span><span>Daniel Okonjo (Outlook) · invitees Chipo Zulu, Daniel Okonjo</span></div>
+          <div style="padding: 0 16px 14px; display: flex; gap: 8px;"><span style="background: #1C1B19; color: #fff; border-radius: 8px; padding: 7px 14px; font-size: 13px; line-height: 18px; font-weight: 600;">Allow and send</span><span style="border: 1px solid #CCC8BD; border-radius: 8px; padding: 6px 14px; font-size: 13px; line-height: 18px; font-weight: 600;">Edit first</span><span style="padding: 7px 10px; font-size: 13px; line-height: 18px; font-weight: 600; color: #3D3A35;">Don't send</span></div>
+          <div style="padding: 10px 16px; background: #FBFAF7; border-top: 1px solid #E3E0D8; display: flex; gap: 10px; align-items: baseline; font-size: 12px; line-height: 17px; color: #3D3A35;"><b style="font-weight: 600; color: #1C1B19;">Permissions</b><span style="flex: 1;">Can read selected sources and work on copies. Asks before sending messages or invitations.</span><span style="color: #4C3FB8; text-decoration: underline; white-space: nowrap;">View permissions</span></div>
+        </div>
+      </div>
+      <div style="padding: 0 20px 18px;"><div style="border: 1px solid #CCC8BD; background: #fff; border-radius: 18px; padding: 14px; height: 80px; box-sizing: border-box; font-size: 15px; line-height: 22px; color: #7A766D;">Reply or change the drafts</div></div>
+    </div>
+    <div style="width: 480px; flex-shrink: 0; background: #FFFFFF; border-left: 1px solid #E3E0D8; display: flex; flex-direction: column;">
+      <div style="height: 52px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 18px; border-bottom: 1px solid #E3E0D8;"><div style="flex: 1; display: flex; flex-direction: column;"><span style="font-size: 14px; line-height: 19px; font-weight: 600;">Drafts · not sent</span><span style="font-size: 12px; line-height: 16px; color: #5E5A52;">From Test leaver access for Q3</span></div><span style="font-size: 12px; line-height: 16px; color: #5E5A52;">Expand  ·  Close</span></div>
+      <div style="padding: 12px 18px 0; display: flex; gap: 18px; font-size: 13px; line-height: 18px;"><span style="font-weight: 600; border-bottom: 2px solid #1C1B19; padding-bottom: 8px;">Email</span><span style="color: #5E5A52;">Invitation</span></div>
+      <div style="padding: 0 18px 18px;"><div style="border: 1px solid #E3E0D8; border-radius: 8px; font-size: 13px; line-height: 20px;">
+        <div style="padding: 10px 16px; border-bottom: 1px solid #EFEDE8; display: flex; gap: 10px;"><span style="color: #5E5A52; width: 56px;">To</span><span>Chipo Zulu</span></div>
+        <div style="padding: 10px 16px; border-bottom: 1px solid #EFEDE8; display: flex; gap: 10px;"><span style="color: #5E5A52; width: 56px;">Subject</span><span>Q3 ITGC: complete LoanCore user listing</span></div>
+        <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px; font-size: 14px; line-height: 22px;"><span>Hi Chipo,</span><span>For the Q3 leaver access test we received a LoanCore listing that appears to include only accounts created during the quarter. Could you send a complete listing of all active and disabled users as at 30 September, with last sign-in dates?</span><span>I've also sent a short walkthrough invitation for Thursday 8 October at 10:00 so we can confirm how the extract is produced.</span><span>Thanks,<br>Daniel</span></div>
+      </div></div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isScheduled }}">
+    <div style="flex: 1; display: flex; flex-direction: column;">
+      <div style="height: 60px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 28px; border-bottom: 1px solid #E3E0D8;"><div style="display: flex; flex-direction: column; flex: 1;"><span style="font-size: 15px; line-height: 20px; font-weight: 600;">Weekly leaver check</span><span style="font-size: 12px; line-height: 16px; color: #5E5A52;">Northstar · Mondays 06:00 UTC · next run Mon 12 Oct 2026</span></div><span style="display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; font-weight: 600; color: #3D3A35; border: 1px solid #CCC8BD; border-radius: 999px; padding: 3px 10px;">○ Not reviewed</span></div>
+      <div style="flex: 1; display: flex; justify-content: center;"><div style="width: 740px; padding-top: 26px; display: flex; flex-direction: column; gap: 16px;">
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 18px; color: #3D3A35;"><dc-import name="Zobba Pair Mark" tone="mono" size="14" hint-size="14px,14px"></dc-import><span>Zobba ran this unattended · Mon 5 Oct 2026, 06:14 UTC · created from <span style="color: #4C3FB8; text-decoration: underline;">Test leaver access for Q3</span></span></div>
+        <span style="align-self: flex-start; display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; font-weight: 600; color: #3D3A35; background: #F3F1EC; border: 1px dashed #8C8578; border-radius: 999px; padding: 3px 10px;">◐ Inconclusive · coverage incomplete</span>
+        <div style="font-size: 20px; line-height: 30px; font-weight: 500; letter-spacing: -.005em;">Analysis completed. Three supported exceptions were identified, but the overall assessment is inconclusive because the application population was incomplete.</div>
+        <div style="font-size: 14px; line-height: 22px; color: #3D3A35;">This week's LoanCore export again covers only accounts created this quarter. AccessGate was complete.</div>
+        <div style="display: flex;"><span style="background: #1C1B19; color: #fff; border-radius: 8px; padding: 7px 14px; font-size: 13px; line-height: 18px; font-weight: 600;">Request a complete weekly LoanCore export</span></div>
+        <div style="border: 1px solid #E3E0D8; background: #fff; border-radius: 12px; overflow: hidden; font-size: 13px; line-height: 19px;">
+          <div style="padding: 12px 16px; display: flex; gap: 12px; border-bottom: 1px solid #EFEDE8;"><span style="width: 100px; font-weight: 600;">Exceptions</span><span style="flex: 1;"><span style="color: #B42318; font-weight: 600;">3</span> · Kelvin Chanda, Grace Tembo (AccessGate), Ruth Banda (LoanCore)</span><span style="color: #5E5A52;">›</span></div>
+          <div style="padding: 12px 16px; display: flex; gap: 12px; border-bottom: 1px solid #EFEDE8;"><span style="width: 100px; font-weight: 600;">Coverage</span><span style="flex: 1;">AccessGate complete · LoanCore 318 of unknown</span><span style="color: #5E5A52;">›</span></div>
+          <div style="padding: 12px 16px; display: flex; gap: 12px; border-bottom: 1px solid #EFEDE8;"><span style="width: 100px; font-weight: 600;">Evidence</span><span style="flex: 1;">HR leavers list, AccessGate users and sign-ins, LoanCore partial listing</span><span style="color: #5E5A52;">›</span></div>
+          <div style="padding: 12px 16px; display: flex; gap: 12px;"><span style="width: 100px; font-weight: 600;">How it ran</span><span style="flex: 1;">14m 22s · same method and permissions as 28 Sep</span><span style="color: #5E5A52;">›</span></div>
+        </div>
+      </div></div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:800},&quot;screen&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;home&quot;,&quot;running&quot;,&quot;changes&quot;,&quot;permission&quot;,&quot;scheduled&quot;],&quot;default&quot;:&quot;home&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const screen = this.props.screen || 'home';
+    const onTask = screen === 'running' || screen === 'permission';
+    return {
+      isHome: screen === 'home', isRunning: screen === 'running', isChanges: screen === 'changes', isPermission: screen === 'permission', isScheduled: screen === 'scheduled',
+      railOnly: screen === 'changes', fullSidebar: screen !== 'changes',
+      schedBg: screen === 'scheduled' ? '#FFFFFF' : 'transparent',
+      schedShadow: screen === 'scheduled' ? '0 0 0 1px #E3E0D8' : 'none',
+      taskBg: onTask ? '#FFFFFF' : 'transparent',
+      taskShadow: onTask ? '0 0 0 1px #E3E0D8' : 'none',
+      taskWeight: onTask ? 600 : 400
+    };
+  }
+}
+</script>
+</body>
+</html>

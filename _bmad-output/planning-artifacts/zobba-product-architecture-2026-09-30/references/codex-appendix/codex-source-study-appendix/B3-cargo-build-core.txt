@@ -1,0 +1,22 @@
+=== B3 — timed cargo build / incremental rebuild / first cargo check of codex-core (2026-09-29; paths sanitised) ===
+
+machine: 4 vCPU, 15 GB RAM; toolchain rustc 1.95.0 (59807616e 2026-04-14); commit 8ffd91e42aa001b7e897bea812b02f89264f9fa0
+start (rlibs already present from the two-crate test run: 617): 2026-09-29T19:38:21Z
+   Compiling codex-attachment-store v0.0.0 (<codex-checkout>/codex-rs/attachment-store)
+   Compiling whoami v1.6.1
+   Compiling codex-core v0.0.0 (<codex-checkout>/codex-rs/core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 15m 51s
+BUILD_EXIT=0 elapsed_s=952
+rlibs after core build: 1154
+core build end: 2026-09-29T19:54:13Z
+incremental start (touched core/src/safety.rs): 2026-09-29T19:54:13Z
+   Compiling codex-core v0.0.0 (<codex-checkout>/codex-rs/core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 22.97s
+INCR_EXIT=0 elapsed_s=23
+incremental end: 2026-09-29T19:54:36Z
+check-only after touch: 2026-09-29T19:54:36Z
+    Checking codex-core v0.0.0 (<codex-checkout>/codex-rs/core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 9m 54s
+CHECK_EXIT=0 elapsed_s=595
+target dir size: 16G
+DONE 2026-09-29T20:04:31Z

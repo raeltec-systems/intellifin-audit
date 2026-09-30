@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @keyframes zpWorkL { 0%, 100% { transform: translateY(0); } 42%, 58% { transform: translateY(3px); } }
+    @keyframes zpWorkR { 0%, 100% { transform: translateY(0); } 42%, 58% { transform: translateY(-3px); } }
+    @keyframes zpSettleL { from { transform: translateY(3px); } to { transform: translateY(0); } }
+    @keyframes zpSettleR { from { transform: translateY(-3px); } to { transform: translateY(0); } }
+  </style>
+</helmet>
+<span style="display: block; line-height: 0;">{{ svg }}</span>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:96,&quot;height&quot;:96},&quot;size&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:64,&quot;tsType&quot;:&quot;number&quot;},&quot;tone&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;color&quot;,&quot;mono&quot;,&quot;reverse&quot;,&quot;reverseMono&quot;,&quot;iconDark&quot;,&quot;iconLight&quot;],&quot;default&quot;:&quot;color&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;state&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;idle&quot;,&quot;working&quot;,&quot;waiting&quot;,&quot;complete&quot;],&quot;default&quot;:&quot;idle&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#4C3FB8&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;accentLight&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#B9B0F5&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const h = React.createElement;
+    const size = parseInt(this.props.size, 10) || 32;
+    const tone = this.props.tone || 'color';
+    const state = this.props.state || 'idle';
+    const ink = '#1C1B19';
+    const accent = this.props.accent || '#4C3FB8';
+    const light = this.props.accentLight || '#B9B0F5';
+    let c1 = ink, c2 = accent, bg = null, bgStroke = null, scale = 1;
+    if (tone === 'mono') c2 = ink;
+    if (tone === 'reverse') { c1 = '#FFFFFF'; c2 = light; }
+    if (tone === 'reverseMono') { c1 = '#FFFFFF'; c2 = '#FFFFFF'; }
+    if (tone === 'iconDark') { bg = ink; c1 = '#FFFFFF'; c2 = light; scale = 0.64; }
+    if (tone === 'iconLight') { bg = '#EFEDE8'; bgStroke = '#D6D2C8'; scale = 0.64; }
+    // optical gap: widen the channel at small sizes so the two forms never merge
+    const gap = size <= 12 ? 3.6 : size <= 18 ? 2.8 : 2;
+    const half = gap / 2;
+    const R = 5.5, r = 1.2;
+    const rr = (x, y, w, hh, tl, tr, br, bl) => `M${x + tl} ${y} H${x + w - tr} Q${x + w} ${y} ${x + w} ${y + tr} V${y + hh - br} Q${x + w} ${y + hh} ${x + w - br} ${y + hh} H${x + bl} Q${x} ${y + hh} ${x} ${y + hh - bl} V${y + tl} Q${x} ${y} ${x + tl} ${y} Z`;
+    const lx = 16 - half - 11, rx = 16 + half;
+    const waiting = state === 'waiting';
+    const ly = waiting ? 7 : 4, ry = waiting ? 7 : 10;
+    const dL = rr(lx, ly, 11, 18, R, r, r, R);
+    const dR = rr(rx, ry, 11, 18, r, R, R, r);
+    const anim = (name, dur, iter, fill) => ({ animation: `${name} ${dur} ${iter} ${fill || ''}`, animationTimingFunction: 'cubic-bezier(.45,0,.25,1)' });
+    let sL, sR;
+    if (state === 'working') { sL = anim('zpWorkL', '3.6s', 'infinite'); sR = anim('zpWorkR', '3.6s', 'infinite'); }
+    if (state === 'complete') { sL = { animation: 'zpSettleL 1.1s cubic-bezier(.2,.7,.2,1) 1 both' }; sR = { animation: 'zpSettleR 1.1s cubic-bezier(.2,.7,.2,1) 1 both' }; }
+    const right = waiting
+      ? h('path', { key: 'r', d: rr(rx + 0.8, ry + 0.8, 9.4, 16.4, r, R - 0.8, R - 0.8, r), fill: 'none', stroke: c2, strokeWidth: 1.6 })
+      : h('path', { key: 'r', d: dR, fill: c2, style: sR });
+    const t = scale === 1 ? '' : `translate(${16 - 16 * scale} ${16 - 16 * scale}) scale(${scale})`;
+    const svg = h('svg', { width: size, height: size, viewBox: '0 0 32 32', style: { display: 'block', overflow: 'visible' } },
+      bg ? h('rect', { width: 32, height: 32, rx: 7.2, fill: bg, stroke: bgStroke || 'none', strokeWidth: bgStroke ? 0.5 : 0 }) : null,
+      h('g', { transform: t }, h('path', { key: 'l', d: dL, fill: c1, style: sL }), right));
+    return { svg };
+  }
+}
+</script>
+</body>
+</html>

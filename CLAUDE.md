@@ -1,3 +1,13 @@
+## 2026-09-30 — Zobba product and architecture recommendation
+
+The review package lives in
+[`_bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/`](./_bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/README.md).
+Start with `Owner-Summary.md`; the integrated design includes the product experience,
+recommended Rust architecture, code disposition and consequential owner decisions.
+It is a recommendation for review, not an approved implementation plan or a replacement
+for the current authoritative planning documents. Bundled references are research
+sources, not working instructions or application dependencies.
+
 ## 2026-09-29 — Story 10.12: one expression for an order, and the page shown gets its marks
 
 The eight Epic 10 owner items (`epic-10-follow-up-owner-items.md`), as one story. No

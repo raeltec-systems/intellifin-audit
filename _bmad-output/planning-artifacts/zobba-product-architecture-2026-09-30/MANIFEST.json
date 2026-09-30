@@ -1,0 +1,775 @@
+{
+  "created": "2026-09-30",
+  "files": [
+    {
+      "path": "Owner-Summary.md",
+      "bytes": 3347,
+      "sha256": "1df672fcbb88fb055938b32b942db0149e9576df64a415054bb9ae1ad757574e"
+    },
+    {
+      "path": "README.md",
+      "bytes": 1607,
+      "sha256": "d417ea4f3a7e37815dd1b68a10b3129e21077b70b1119c284d9e4132bae93f2b"
+    },
+    {
+      "path": "Zobba-Design.html",
+      "bytes": 309379,
+      "sha256": "905aabe30fa17a28f392e7ca2d9b6e77d85d27815fb8aa858bebe4678ef9ee02"
+    },
+    {
+      "path": "Zobba-Design.pdf",
+      "bytes": 803170,
+      "sha256": "123e41a24a74295117ff66c34c4529b8ec91afc1b2a5a621daa22200ff64ed03"
+    },
+    {
+      "path": "Zobba-Product-and-Architecture-Design.md",
+      "bytes": 92956,
+      "sha256": "8ea2f59a57a4f542807f3479cbebc0da30a39b6976aac334f5edb078cd31771b"
+    },
+    {
+      "path": "diagrams/01.mmd",
+      "bytes": 308,
+      "sha256": "a020d8c7a8886919d5f3087ad6e01a55be27f9098f804e1fefc3f23aa92609ea"
+    },
+    {
+      "path": "diagrams/01.svg",
+      "bytes": 20256,
+      "sha256": "4cd2708c40e95526cf4c69659b7ff0a6bce073bd172b0e7e2b25bf50bcaf093f"
+    },
+    {
+      "path": "diagrams/02.mmd",
+      "bytes": 571,
+      "sha256": "7f264cbc2b612dbde13b43e5e6f5a93a556fe77f3d31592c5f67ced2d64f25e5"
+    },
+    {
+      "path": "diagrams/02.svg",
+      "bytes": 31597,
+      "sha256": "2e1611a6791b7543868e142c8a54062da95b9f823cd542567f966fa3a338cb2d"
+    },
+    {
+      "path": "diagrams/03.mmd",
+      "bytes": 818,
+      "sha256": "0b22954b2909905dca344b746e8912911b10d038c5f3928a7ea5d205006a375e"
+    },
+    {
+      "path": "diagrams/03.svg",
+      "bytes": 32520,
+      "sha256": "93c45fdb89686077dae74c6fd948fd2d51bbb77f06f9e6434059eff3ff9f60fc"
+    },
+    {
+      "path": "diagrams/04.mmd",
+      "bytes": 834,
+      "sha256": "4f1b34b5411cc66441a28828e4818eab314b377661f9e05116525c7b93d18054"
+    },
+    {
+      "path": "diagrams/04.svg",
+      "bytes": 31519,
+      "sha256": "78418dfcf7f5041512068263734ab6c91c7a0f888c56e5f0e68b1b703f328f47"
+    },
+    {
+      "path": "diagrams/05.mmd",
+      "bytes": 777,
+      "sha256": "dc5cb1ce56332c41ee3d338440522ca53784c1a6406f1f029cd2896585caff56"
+    },
+    {
+      "path": "diagrams/05.svg",
+      "bytes": 31071,
+      "sha256": "8fa32d40ea5dd2946da048c19a74637d13b2b1fde5ab1f11a527cd94ca339963"
+    },
+    {
+      "path": "diagrams/06.mmd",
+      "bytes": 567,
+      "sha256": "f6e610d6434eecec814bf28a33d4835af7b15d805a196346a8c4ba00f56e024f"
+    },
+    {
+      "path": "diagrams/06.svg",
+      "bytes": 27864,
+      "sha256": "e8a91f7f79669d26d9245448ebf424dd8d34d3ed15a42d1a8807fd55bb8e6ddf"
+    },
+    {
+      "path": "diagrams/07.mmd",
+      "bytes": 651,
+      "sha256": "e43f330e9291c7b9e10af2482914b2252a13f51ee8939e78266510933e6e4dfc"
+    },
+    {
+      "path": "diagrams/07.svg",
+      "bytes": 26265,
+      "sha256": "84dac3c9011fd66ea9fbbf114c9c54d0105b6d70c1f5f71953b4f0cc0552da25"
+    },
+    {
+      "path": "notes/code-disposition.md",
+      "bytes": 22398,
+      "sha256": "ff519884a93a8fb8f04db166b8636041b413461d1cedf39c2321066c28b2dfd2"
+    },
+    {
+      "path": "notes/product-experience.md",
+      "bytes": 26881,
+      "sha256": "0abd5a410f66b9087aa812f2f945e5b0633592bdeeb4859fc92f57d662412000"
+    },
+    {
+      "path": "notes/source-patterns.md",
+      "bytes": 23568,
+      "sha256": "5e20a6837e3ea02b4890fb0d5f52504f59a65b80aada271c89cc71a5d77069ca"
+    },
+    {
+      "path": "notes/workspace-architecture.md",
+      "bytes": 25049,
+      "sha256": "5fe344c6e9f3944dce46ed8fd978a56c5e6a9f517c513c480f975d577d426adc"
+    },
+    {
+      "path": "references/Zobba-Codex-Source-Study-2026-09-29.md",
+      "bytes": 135397,
+      "sha256": "91d5194350488d33427c59879b759396efe5a11e7f92e3de880e2c6ce62285b8"
+    },
+    {
+      "path": "references/Zobba_Product_and_Architecture_Direction.md",
+      "bytes": 20728,
+      "sha256": "153ddd0341aea1f72a295bdab7bfe7fd01c87e8a0ee01da90cc6dfa0ad65b9f8"
+    },
+    {
+      "path": "references/codex-appendix/codex-source-study-appendix/A-reviewer-brief.md",
+      "bytes": 3446,
+      "sha256": "a7492db6ec2afd9393b1bf8f36f4d66f839d598852299437035f8379c0aebf87"
+    },
+    {
+      "path": "references/codex-appendix/codex-source-study-appendix/A00-lead-baseline-notes.md",
+      "bytes": 4736,
+      "sha256": "668a1327e656e9d1bb8a2cfcd77774c363eaac0b3f0668163a9ca0ed6e55dcb5"
+    },
+    {
+      "path": "references/codex-appendix/codex-source-study-appendix/A01-agent-loop.md",
+      "bytes": 33212,
+      "sha256": "d26938a412b746814c766d1e114e8d85054a61cc99af81e66110898bd9075a37"
+    },
+    {
+      "path": "references/codex-appendix/codex-source-study-appendix/A02-concurrency.md",
+      "bytes": 39527,
+      "sha256": "67c3df33857eea75b1b339bcb9820338efaad1a32fc6a4f76c77717f74e36235"
+    },
+    {
+      "path": "references/codex-appendix/codex-source-study-appendix/A03-tools-dispatch.md",
+      "bytes": 36654,
+      "sha256": "c0456ba48746d9fec7ef1d982101495d66caa73df33ff8a7b364a116d6568957"
+    },
+    {
+      "path": "references/codex-appendix/codex-source-study-appendix/A04-permissions-isolation.md",
+      "bytes": 35971,
+      "sha256": "4c8060664300312f790a9291df655b674a332a99f65621cf16ccf5f18a03d3bd"
+    },
+    {
+      "path": "references/codex-appendix/codex-source-study-appendix/A05-model-adapters.md",
+      "bytes": 39645,
+      "sha256": "535c343eb6d480ac7b7888990c86b91fe0a5be4885496e01312245e9db2e4d77"
+    },
+    {
+      "path": "references/codex-appendix/codex-source-study-appendix/A06-context-memory.md",
+      "bytes": 36297,
+      "sha256": "2d6013c7936daeaf7f2e615af6532a3dcb0e22b65ee44e240246693913f2aa8f"
+    },
+    {
+      "path": "references/codex-appendix/codex-source-study-appendix/A07-durability-recovery.md",
+      "bytes": 36234,
+      "sha256": "a97c5bb8543d5f692d6f4cce2e3725a7c962e104047d22cc494342fc2eebe738"
+    },
+    {
+      "path": "references/codex-appendix/codex-source-study-appendix/A08-execution-data.md",
+      "bytes": 46004,
+      "sha256": "7bb272a0186be6d3d951b74dcaf285db3cdf5a851f5dbd86876faaab6f91a66c"
+    },
+    {
+      "path": "references/codex-appendix/codex-source-study-appendix/A09-protocol-observability-verification.md",
+      "bytes": 46194,
+      "sha256": "040df8d028230fed8d0be89c9ffc1df2cc6864f78fe9b1a8aaa97ab93acf0e0a"
+    },
+    {
+      "path": "references/codex-appendix/codex-source-study-appendix/A10-skills-instructions.md",
+      "bytes": 37495,
+      "sha256": "f89887a346bfafb0c3defa46b42421e23cce6497aeb9886cb62e31fefa707257"
+    },
+    {
+      "path": "references/codex-appendix/codex-source-study-appendix/A11-zobba-baseline.md",
+      "bytes": 52242,
+      "sha256": "d8186a6a2083d6b76cf33bd3b87828fbc9e693928053908a743a7b578c43ea26"
+    },
+    {
+      "path": "references/codex-appendix/codex-source-study-appendix/B1-execpolicy-probe.md",
+      "bytes": 2622,
+      "sha256": "bedcb9a7eb12ff5728dc70c1ca3177e9e7912567ceb1e69126426d2eee62909a"
+    },
+    {
+      "path": "references/codex-appendix/codex-source-study-appendix/B2-cargo-test-execpolicy-applypatch.txt",
+      "bytes": 13912,
+      "sha256": "c0ed14dc28d62572aa272e07b6476cd26d26cfa88203bf8612fc3ab5c8511a66"
+    },
+    {
+      "path": "references/codex-appendix/codex-source-study-appendix/B3-cargo-build-core.txt",
+      "bytes": 1199,
+      "sha256": "610ecf6f1d8d649f2f3f44c403cdf812c8c0d4e204e7122a71f660b349242ba0"
+    },
+    {
+      "path": "references/codex-appendix/codex-source-study-appendix/B4-crates-io-snapshot.txt",
+      "bytes": 3282,
+      "sha256": "1e30f2868a03bc8cca694df1f01fcbc63c9174dce7af56477be7d25f0a4eac82"
+    },
+    {
+      "path": "references/codex-appendix/codex-source-study-appendix/B5-npm-snapshot.txt",
+      "bytes": 1682,
+      "sha256": "f7c2bc451e4eb67b656e21971ddd04278eee36ab79b42290defb033971f56c3f"
+    },
+    {
+      "path": "references/codex-appendix/codex-source-study-appendix/README.md",
+      "bytes": 719,
+      "sha256": "6cbc6193713f000d6140c446bbd534747c8d7661c940e95d6db0a636c218300c"
+    },
+    {
+      "path": "references/codex-source/LICENSE",
+      "bytes": 10926,
+      "sha256": "d17f227e4df5da1600391338865ce0f3055211760a36688f816941d58232d8dc"
+    },
+    {
+      "path": "references/codex-source/NOTICE",
+      "bytes": 242,
+      "sha256": "9d71575ecfd9a843fc1677b0efb08053c6ba9fd686a0de1a6f5382fd3c220915"
+    },
+    {
+      "path": "references/codex-source/SOURCE-REVISION.txt",
+      "bytes": 130,
+      "sha256": "81e3e7dde346d69ef17dff328fb93fe93e2ce4688428a4cd157e61d14c41aa39"
+    },
+    {
+      "path": "references/codex-source/codex-rs/app-server/src/request_serialization.rs",
+      "bytes": 34355,
+      "sha256": "b624a9bac63d16f786939f3e9d2c8916faf5d4bc499af7ed099b1e3803f4632a"
+    },
+    {
+      "path": "references/codex-source/codex-rs/codex-mcp/src/binding.rs",
+      "bytes": 12921,
+      "sha256": "3b9f48ce4f861f979b465fb8ce4c3ef25a0ca0c2aa57d0a8b85429eb298a4ac8"
+    },
+    {
+      "path": "references/codex-source/codex-rs/codex-mcp/src/binding_tests.rs",
+      "bytes": 12467,
+      "sha256": "8e57201f49a6a961f083d19f1e4fb36d49cad5f72b6144c35ee4fffa8dc4c1c5"
+    },
+    {
+      "path": "references/codex-source/codex-rs/core/src/context_manager/normalize.rs",
+      "bytes": 16573,
+      "sha256": "4340c30ef792ac40fe64aa1acebf076eafb44ed65cdcf1bab5a09239c5b73881"
+    },
+    {
+      "path": "references/codex-source/codex-rs/core/src/mcp_tool_call.rs",
+      "bytes": 89636,
+      "sha256": "509b10168a9a1e99abd0f5722ad5bf377645dbb2e446ead6c324daef7a84af58"
+    },
+    {
+      "path": "references/codex-source/codex-rs/core/src/session/mod.rs",
+      "bytes": 206529,
+      "sha256": "760dae295dcd61534a437a53fdd8ce4984fa52966ee3651d841b86fbe6a16429"
+    },
+    {
+      "path": "references/codex-source/codex-rs/core/src/stream_events_utils.rs",
+      "bytes": 21061,
+      "sha256": "abf50919073924347870aefd94325598ef23c0d552d6cf6192d6fe851378a559"
+    },
+    {
+      "path": "references/codex-source/codex-rs/core/src/tasks/mod.rs",
+      "bytes": 38534,
+      "sha256": "400b02b66b2fd829ee876d5094c0ae3ab5fb52536ce2d220f8b257e6ee6c41c5"
+    },
+    {
+      "path": "references/codex-source/codex-rs/core/src/tools/parallel.rs",
+      "bytes": 33294,
+      "sha256": "b924fb1e123e503a896fa99d661e61da0c54139f7729e71ac61405d7dd636408"
+    },
+    {
+      "path": "references/codex-source/codex-rs/core/src/tools/registry.rs",
+      "bytes": 31508,
+      "sha256": "d2793cddbdc34ad8d849a991dafd5871a3ce8ded4b33c446b2c1934e1cee526b"
+    },
+    {
+      "path": "references/codex-source/codex-rs/core/src/unified_exec/head_tail_buffer.rs",
+      "bytes": 5961,
+      "sha256": "d57aa4118842bee24a896e85af05f01e4ef44760ea2804bc015c8efd7ae89ad5"
+    },
+    {
+      "path": "references/codex-source/codex-rs/core/src/unified_exec/head_tail_buffer_tests.rs",
+      "bytes": 2597,
+      "sha256": "d4537e931d4c937c247ce34852844a3d9c32ae2e955f03cc3591df4f42ce10e2"
+    },
+    {
+      "path": "references/codex-source/codex-rs/http-client/src/retry_after.rs",
+      "bytes": 1919,
+      "sha256": "025334619c1f6a419ea670fc3728737e78b61238deae3ca0f7d6cd2ae67d9313"
+    },
+    {
+      "path": "references/codex-source/codex-rs/tools/src/tool_executor.rs",
+      "bytes": 4659,
+      "sha256": "74e3ee04ebcbb84c15b10445b2392a34c8f47bc3f492388fd82fa11714ce0764"
+    },
+    {
+      "path": "references/codex-source/codex-rs/utils/string/src/truncate/tests.rs",
+      "bytes": 3071,
+      "sha256": "c2b000b02eaa736362eb01f7dac0e981db4c8d081ed15710bda33bf3b437e1e0"
+    },
+    {
+      "path": "references/codex-source/codex-rs/utils/string/src/truncate.rs",
+      "bytes": 4502,
+      "sha256": "d5755286344f10d10b4bd9f93bb3bff6f1b85270a15df378254051b147ad38ad"
+    },
+    {
+      "path": "references/codex-source-study.md",
+      "bytes": 178915,
+      "sha256": "9e920ef6b9b47d0af1727feaff05e4d17d53a781c7db9314abf24784b4f71786"
+    },
+    {
+      "path": "references/poc/zobba-design-system/ASSET-MANIFEST.md",
+      "bytes": 3709,
+      "sha256": "d1cbb1debbf298a50b298e6f70255627cf04002f6e993a72d85ee023bab7b388"
+    },
+    {
+      "path": "references/poc/zobba-design-system/BRAND.md",
+      "bytes": 10247,
+      "sha256": "7a4b032092e8c39d06926c7d19278f9c5866fdfa17480f7c5f6baea654e61641"
+    },
+    {
+      "path": "references/poc/zobba-design-system/COMPONENT-INVENTORY.md",
+      "bytes": 12232,
+      "sha256": "a6b0ea28d33ddec71c3b6c1bd88b98006dc707681ecf40b0912d3fd9e69fe5db"
+    },
+    {
+      "path": "references/poc/zobba-design-system/DESIGN-SYSTEM.md",
+      "bytes": 23776,
+      "sha256": "96ec0bc1680f4858e09e1a706161da4b04931ff82a8010828c639442a6a668ea"
+    },
+    {
+      "path": "references/poc/zobba-design-system/DESIGN-TOKENS.md",
+      "bytes": 15638,
+      "sha256": "1cb8f190846e27ad78f90bd39d745d61a4e70a3604d016f3b1c06f96b0543413"
+    },
+    {
+      "path": "references/poc/zobba-design-system/EXPERIENCE-RULES.md",
+      "bytes": 11085,
+      "sha256": "ac21fda1fc6283d94a66dc63cfdae4eab4109c15f5ebebbd94c8a778b7ff868b"
+    },
+    {
+      "path": "references/poc/zobba-design-system/HANDOFF.md",
+      "bytes": 8264,
+      "sha256": "fe395305ea919f9cb0867f58dac0993ff63e9a3f541f66c6e7ce9f301da91952"
+    },
+    {
+      "path": "references/poc/zobba-design-system/OPEN-QUESTIONS.md",
+      "bytes": 3259,
+      "sha256": "5706a4c0bd2ee5d23aad1ab31ba5b08c3404828e25e4227d7c90f4f3527c6b78"
+    },
+    {
+      "path": "references/poc/zobba-design-system/PATTERNS.md",
+      "bytes": 5526,
+      "sha256": "19d4379fffd7d088fe68999aabba8a08e67b62ede2b9211862a31ef3017a1ef7"
+    },
+    {
+      "path": "references/poc/zobba-design-system/README.md",
+      "bytes": 904,
+      "sha256": "4f5fdbcf35292a2be2bbf755efc73c90140a4b9c197bf1de86aa1ee4e8c55961"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/favicon/favicon-16.png",
+      "bytes": 6159,
+      "sha256": "93034955ab36bad73618657d624f5f9eb3762aadf4466f1baa98159866280514"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/favicon/favicon-32.png",
+      "bytes": 6291,
+      "sha256": "c6f70fa85d8f213831f311a6df253ba4b2d7f790fd70bc9b16e0ac8d88293ba2"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/favicon/favicon-48.png",
+      "bytes": 6502,
+      "sha256": "329b77806889a970ec844746e4b8a757d38a7a838e2233bfc40afc77497d05f6"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/favicon/favicon.svg",
+      "bytes": 8088,
+      "sha256": "0c79bcd4be4b180e0b1fa117306721f870796e64f5992bddef92d93ad4838d4b"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-dark-16.png",
+      "bytes": 6150,
+      "sha256": "88e4b43c652bf09d21a71de4faa3a641a3c97efb29d4d24bbb2f3a87d789c218"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-dark-24.png",
+      "bytes": 6269,
+      "sha256": "5645f58fc99d95faa1af1e150a4766406473289d163a406e6e3944f8a825729b"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-dark-256.png",
+      "bytes": 12077,
+      "sha256": "f3146586c23efaa20eaf0dd056f14dd23f779de83549193313e12be5aff39a56"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-dark-32.png",
+      "bytes": 6435,
+      "sha256": "4a1caf00e511817a17a5b0d3a3daacf9f88f0b19b59b4c07544831bd585f7a2e"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-dark-48.png",
+      "bytes": 6758,
+      "sha256": "e20bbbe352ebf495b3633ce0bcf0c4d335149f284b70eb21ef96052e259acc06"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-dark-512.png",
+      "bytes": 21528,
+      "sha256": "caad31e14153db49ee8c445939879c57e8dc13789df795b5e0bbe5d9664a9829"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-dark-96.png",
+      "bytes": 7784,
+      "sha256": "50d4bfcdd604c34d09cf04242e066388cfb8ab345d18f4fc1079dfc2523feed1"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-light-16.png",
+      "bytes": 6211,
+      "sha256": "ace8b1bfecfdc85ea0b376e428ad4b7423257de9ff13fd2bc706361770e70be9"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-light-24.png",
+      "bytes": 6400,
+      "sha256": "f334bdaa31c84d4ca33d6e927f5045d19c74c686db022c5be8ad231a77fe2f36"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-light-256.png",
+      "bytes": 14272,
+      "sha256": "607ed50288736feaeedd5d3d61407c83ff18da93f7b59891d27c1db70bdf22f0"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-light-32.png",
+      "bytes": 6536,
+      "sha256": "c84771cfc38c44591b8cb5b45ca78e3e139a118edcd3ea3156da4602b61b3037"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-light-48.png",
+      "bytes": 6917,
+      "sha256": "afba40571b3ae12b0ac239b16af5eefcc4fc9c8dd31265030d3b43b8d4d94ef9"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-light-512.png",
+      "bytes": 26291,
+      "sha256": "7f542b961e870bdbd25bb5199c47174bf77442a6bde442f0404f484b66ca9c09"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-light-96.png",
+      "bytes": 8353,
+      "sha256": "a0e27022e11585d0dc1840ded2d6ce23391d916337fdd2dcba7cd6625155102c"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/zobba-app-icon-dark-small.svg",
+      "bytes": 8190,
+      "sha256": "781eaf19594c3b44ba5029fea03d1bd3cb5a465758c35574e1f45a960a2059b4"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/zobba-app-icon-dark.svg",
+      "bytes": 8176,
+      "sha256": "4e993b0965f1b3983a63432a30715e60d9c6966398d38f23e87c8cdac98ba4a0"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/zobba-app-icon-light-small.svg",
+      "bytes": 8246,
+      "sha256": "54fdfd158ac9b170b000e7f8768fb23a3475f7505078bc7460bc1490c7393419"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/zobba-app-icon-light.svg",
+      "bytes": 8232,
+      "sha256": "3d9fa8caed088eb595571eb5f9add6f39cad9fa88cfc223db51d9b297d365ee7"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/zobba-notification-template-black.svg",
+      "bytes": 8088,
+      "sha256": "7bfb25f7a6d663c8446044fa985b499af081026e2071810cfec63b66f35815fc"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/icon/zobba-notification-template-white.svg",
+      "bytes": 8088,
+      "sha256": "d0c9f36bb8d4fb609961591b543958508244315e76d1be0401e8c2a8adb12b4e"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/lockup/zobba-lockup-color.svg",
+      "bytes": 10632,
+      "sha256": "4d7ac4d7fc0f236b3c76ec2884977ea83984cfe642327bdb86d8ef802360a8b5"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/lockup/zobba-lockup-endorsed-color.svg",
+      "bytes": 16189,
+      "sha256": "abd47dc45732cdf1e69ca5baf108945b483a78b4e9e8ff6a5b41f00c28ca25d8"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/lockup/zobba-lockup-endorsed-reverse.svg",
+      "bytes": 16189,
+      "sha256": "21cc0b0fc4c439815db612d266c7a773f619c8418b5f723ffde404b357e861d4"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/lockup/zobba-lockup-mono.svg",
+      "bytes": 10632,
+      "sha256": "a4a0605a15872aba95bae041b782399acbba56eec1c498c373dc677ca8300ab8"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/lockup/zobba-lockup-reverse.svg",
+      "bytes": 10632,
+      "sha256": "a7b7b5c6744dc3bc511bb90d3dfbb2feb9b6c5330a1731da8924a1ad54dd3440"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/lockup/zobba-provenance-mono.svg",
+      "bytes": 10632,
+      "sha256": "d2a0bc82accad084dbd5ca1f1638f10f4ab9065317361a831fd77e8216391428"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/reference/zobba-wordmark-lowercase-reference.svg",
+      "bytes": 10296,
+      "sha256": "f5fa6137039c740528454bc2534383ebfcca870e4e60cee68e351beca9b1dae6"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/reference/zobba-wordmark-unstepped-reference.svg",
+      "bytes": 10306,
+      "sha256": "df2d9999a948e6ecc2bc733c9bb0bc837bf0bf7b0fc47a55c706b7de524d9021"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/symbol/png/zobba-symbol-micro-mono-10.png",
+      "bytes": 6165,
+      "sha256": "b0225b0477ff0a744804cfef52e5a921c409ee70aaf3cd8169cce05bee7e167f"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/symbol/png/zobba-symbol-micro-mono-12.png",
+      "bytes": 6225,
+      "sha256": "eabb0fce81a959c7766292bd06b38cb67977749a857e3192ae6b9c07e41ad476"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/symbol/zobba-symbol-color.svg",
+      "bytes": 8064,
+      "sha256": "b55dc95bb95fa4570ab718af6f46d7d0f82df9fe5e7e85fee060b4a9103951a9"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/symbol/zobba-symbol-micro-color.svg",
+      "bytes": 8078,
+      "sha256": "cef2a940159eac39ca4ed1332c278c6996569b55e4a8e115286fc8a6b0bc8c60"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/symbol/zobba-symbol-micro-mono.svg",
+      "bytes": 8078,
+      "sha256": "9b9c26d33d426f6a2694191a7798fcde5056a367463a6ce56a35f87f09f9cc56"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/symbol/zobba-symbol-micro-reverse-mono.svg",
+      "bytes": 8078,
+      "sha256": "9c975c633d77e6369c2ed826a2aee93df69f243fa2274edeeaf0d3462e7789f2"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/symbol/zobba-symbol-micro-reverse.svg",
+      "bytes": 8078,
+      "sha256": "841ec2221b6e14fee56b5f60941ae6826390d68fb1cd7caa6b572911dd2288f2"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/symbol/zobba-symbol-mono.svg",
+      "bytes": 8064,
+      "sha256": "8f007c740f13f0f2e289cd02ae7f636ed832a5bae8213c19d7b6e84d5ce124b2"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/symbol/zobba-symbol-reverse-mono.svg",
+      "bytes": 8064,
+      "sha256": "8f99c2bf88a77e2f23886482302b0cb176ac83adc547152956e6302ac0925304"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/symbol/zobba-symbol-reverse.svg",
+      "bytes": 8064,
+      "sha256": "80662955da23e2b85286088622b016ad4cb23e74211461dcb2bf298ceb1c637a"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/symbol/zobba-symbol-small-color.svg",
+      "bytes": 8088,
+      "sha256": "5d8383b9c4a44d3105b54957e460462967325a47f58aef6671b3f3776481eaa0"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/symbol/zobba-symbol-small-mono.svg",
+      "bytes": 8088,
+      "sha256": "08ae548fe14077fb15ecdef8afb7c43f8af6547c8a695108b25222f0c9935c22"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/symbol/zobba-symbol-small-reverse-mono.svg",
+      "bytes": 8088,
+      "sha256": "5053e18bf2d569694c2f49d60deef11000bc3215c33a92f13a5745bfca680207"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/symbol/zobba-symbol-small-reverse.svg",
+      "bytes": 8088,
+      "sha256": "d37a6c2aac579afa0e3533f50557876fedd1b32addafb5a269a519f22182b286"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/wordmark/zobba-wordmark-graphite.svg",
+      "bytes": 10306,
+      "sha256": "27e0add95b2f874dd3f3753f5a95bf132c08d73992e16a1c4b73508c1ab8229a"
+    },
+    {
+      "path": "references/poc/zobba-design-system/assets/wordmark/zobba-wordmark-reverse.svg",
+      "bytes": 10306,
+      "sha256": "839b17beb785b8ec9997878622a1237afa2ef29f1020a71f47cdd09679744bc5"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/01-home-desktop-1280x800.png",
+      "bytes": 139503,
+      "sha256": "413a8415c3348f30ccc476805b3209e0935ee04dcf6393113c0e1ab6efb794c0"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/02-active-task-desktop-1280x800.png",
+      "bytes": 137781,
+      "sha256": "9cca6889180ead342beb4fa3e57314f2786c3c2765cb6712bb1a407e2870cd10"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/03-active-task-working-data-desktop-1280x800.png",
+      "bytes": 227281,
+      "sha256": "412bb7c17492f7590f9e5a2a251f00fd912e32bbd31f433292af09018e3a7fc4"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/04-browser-workspace-desktop-1280x800.png",
+      "bytes": 182277,
+      "sha256": "e62a9c6e03faab05abdd0cb3f3dc5d0e1ce805cf575f6ae50dad01bb6f108112"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/05-artifact-inspection-desktop-1280x800.png",
+      "bytes": 198574,
+      "sha256": "aab8ad4a677af17b60136937611cf6bc7b5cf3fdc7b0ed91103ab23d5e240d85"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/06-evidence-inspection-desktop-1280x800.png",
+      "bytes": 155037,
+      "sha256": "15cca943f7254422ceac975bf427f892d66d6e8f9966e42c2b9ea7afc79e5687"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/07-changes-desktop-1280x800.png",
+      "bytes": 164272,
+      "sha256": "2c3306b0230b49fed23b96b1ad7387d0556626cbc5ed32832e625b22e51bd0eb"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/08-clarification-desktop-1280x800.png",
+      "bytes": 175659,
+      "sha256": "593785827f0cc09f3efbf5c4ab999269bc293b93472c0666c208998da882fb5e"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/09-permission-request-desktop-1280x800.png",
+      "bytes": 228773,
+      "sha256": "7641862a7079c03120d47064615567b90f1b8551cae9d38ac5215a401e645d83"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/10-engagement-desktop-1280x800.png",
+      "bytes": 191290,
+      "sha256": "2652f6ede1a0fc29d09139e9dd56cb78fd8dc1fe5dfd271f99a367dd8e72d7df"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/11-search-desktop-1280x800.png",
+      "bytes": 163100,
+      "sha256": "7b57de70cd2456544de011cb6e2fee34e2908e285f4637553c03b5b9efb55731"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/12-scheduled-checks-desktop-1280x800.png",
+      "bytes": 148808,
+      "sha256": "a92694633dfbf08ab9c373c09c8e3d517979f89b0c1f72dc5b0f77c00d577721"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/13-scheduled-result-desktop-1280x800.png",
+      "bytes": 171370,
+      "sha256": "d617d1748dda50d57c39ebfc206e52f20b5cb097c803bcea2b193a1eb972e287"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/14-connections-desktop-1280x800.png",
+      "bytes": 163755,
+      "sha256": "0fe7af10996dc44efd19554d1180349c33c81f67e9c60f6522b42dccef0aed3a"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/15-settings-methodology-skills-desktop-1280x800.png",
+      "bytes": 141053,
+      "sha256": "3ce1395631a3e018a2184c048c85b4f6623b166d103e3ba9f67a5a5aaf9c632f"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/16-permissions-detail-desktop-1280x800.png",
+      "bytes": 205523,
+      "sha256": "c2074df9950199b3a02621b8592feadc8fbc46891f2f2652b5cb3ad15fec0e37"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/17-narrow-active-task-390x844.png",
+      "bytes": 193660,
+      "sha256": "533aab1f10513001c33cb45ff32dddec328bb4169b0c11c2a595bd801c01a300"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/18-narrow-scheduled-result-390x844.png",
+      "bytes": 171238,
+      "sha256": "e480d9075d37ca9ce78d8acc3528ed46635b0cd9f766264a4a11968a45fdd477"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/19-composer-model-effort-desktop-1280x800.png",
+      "bytes": 168841,
+      "sha256": "a99dab4cafb836f0321c3e8f59ed188f9754fee50cb9ba8a85662e067d4fec80"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/20-manager-reviews-desktop-1280x800.png",
+      "bytes": 196144,
+      "sha256": "73803cfa530d7c5c91da17c5a4d6d85619048658a57ddcf65eb98d5eac3af6ef"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/21-manager-review-paper-desktop-1280x800.png",
+      "bytes": 179891,
+      "sha256": "de7c789af8b61090a3b495e1936669ad181b630fe785799d2a07f01a77644ed3"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/22-admin-models-providers-desktop-1280x800.png",
+      "bytes": 133573,
+      "sha256": "40095664bb5ba528224911c4e68bad043b173844284203dec58b54af852bc532"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/23-admin-users-roles-desktop-1280x800.png",
+      "bytes": 179396,
+      "sha256": "408867a7e16cf1229f8ede39b65487896d03e58b3c92bfa53f76b125c4de4651"
+    },
+    {
+      "path": "references/poc/zobba-design-system/reference-screens/README.md",
+      "bytes": 4255,
+      "sha256": "74518feae35800f36f235c583a1ad9d90e409533bd8c1c745e0431b256baf66c"
+    },
+    {
+      "path": "references/poc/zobba-design-system/source/Zobba Final Screen.dc.html",
+      "bytes": 31345,
+      "sha256": "01735b186947c83697540550e387ee75982a9027996552a0ae30d29eac330594"
+    },
+    {
+      "path": "references/poc/zobba-design-system/source/Zobba Identity Final.dc.html",
+      "bytes": 88602,
+      "sha256": "2c8f917ee9db9a891df680085e7d487b1581f29b6fbc887475cf0b1d379425c9"
+    },
+    {
+      "path": "references/poc/zobba-design-system/source/Zobba Pair Mark.dc.html",
+      "bytes": 4383,
+      "sha256": "9c34036025df64f9c91708ec8eab83298a1fd18a6c2d3a906c572356a86a2add"
+    },
+    {
+      "path": "references/poc/zobba-design-system/source/Zobba Reference Board.dc.html",
+      "bytes": 7683,
+      "sha256": "c8ba8a7a242507e2f716c1a43bf0a33f29269bdcada9ce30ef7ed4fb7b6cc077"
+    },
+    {
+      "path": "references/poc/zobba-design-system/source/Zobba Reference Screen.dc.html",
+      "bytes": 138254,
+      "sha256": "f6ea0753e465755989313c699f9cd3dc6556b5141c07a455ee7a8fb0feb9739b"
+    },
+    {
+      "path": "references/poc/zobba-design-system/source/Zobba Wordmark.dc.html",
+      "bytes": 1853,
+      "sha256": "496653ada4ef08f2b6d27a7b6af37151b37c8681f42227834d50546c5e56e579"
+    },
+    {
+      "path": "references/poc/zobba-design-system/source/support.js",
+      "bytes": 69150,
+      "sha256": "8fe7df74405f3c55f49b7249c74ea1397e65d07dea2b1bd3b4a489bec2e28cbe"
+    },
+    {
+      "path": "references/poc/zobba-design-system/tokens/zobba-tokens.json",
+      "bytes": 21929,
+      "sha256": "feafa32ea4f50171df702578e3f35489b6782715287192b0def872e7dabb69ff"
+    }
+  ]
+}
