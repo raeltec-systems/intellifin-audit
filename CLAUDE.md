@@ -1,4 +1,30 @@
-## 2026-09-30 — Zobba product and architecture recommendation
+## 2026-09-30 — Accepted Zobba revision 3 and brownfield course correction
+
+The owner accepted revision 3 and requested active-document consolidation,
+implementation planning, Pair screen updates and sized operating costs. Use
+[`ACTIVE-BASELINE.md`](_bmad-output/planning-artifacts/ACTIVE-BASELINE.md) as the
+current entry point. Existing PRD/architecture paths are updated in place; active
+UX is `ux-Zobba-2026-09-25`. The SPEC is re-derived through `bmad-spec` with CAP-17–30.
+Retired IDs retain historical meaning; exact prior artifacts are archived.
+
+This is the `bmad-correct-course` path, followed by `bmad-create-epics-and-stories`
+and `bmad-sprint-planning`. New stories start at Epic 20. Keep the standard
+`implementation-artifacts/sprint-status.yaml` as the active queue because
+`bmad-build` resolves that fixed name; a parallel named queue would be ignored.
+The old queue is archived without changing statuses. `bmad-build` should receive
+explicit new story IDs; legacy unfinished specs on disk are not new-build work.
+
+The operating budget lives in `zobba-operating-budget-2026-09-30/` and replaces
+the prior $300 allowance with sized shared services and explicit customer/model
+consumption. Region, app qualification and commercial terms are assumptions/gates,
+not deployment approval. The accepted revision3 package remains a dated design
+snapshot; the implementation handoff is the current delivery view. Pair screens
+are verified prototypes, not live computers or implemented audit capabilities.
+
+Use `UV_CACHE_DIR=/tmp/zobba-uv-cache` with `uv run` in the current cloud sandbox;
+the default home cache is read-only. Do not change HOME or disable verification.
+
+## 2026-09-30 — Zobba product and architecture recommendation (historical preparation)
 
 The review package lives in
 [`_bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/`](./_bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/README.md).

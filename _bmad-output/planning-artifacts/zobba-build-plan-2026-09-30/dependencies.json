@@ -1,0 +1,3199 @@
+{
+  "schema": "zobba-planning-dependencies-v1",
+  "baseline": "Accepted design revision 3; consolidated PRD revision 5 / SPEC revision 3-baseline",
+  "canonical_backlog": "../epics.md",
+  "generated_from": "epics.md story metadata; acceptance criteria remain solely there",
+  "epics": [
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28
+  ],
+  "nodes": [
+    {
+      "id": "20.1",
+      "title": "Start the new application from one reproducible workspace",
+      "depends_on": [],
+      "requirements": [
+        "FR-97"
+      ],
+      "capabilities": [
+        "CAP-17",
+        "CAP-30"
+      ],
+      "quality": [
+        "NFR-20",
+        "NFR-30"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-36",
+        "AD-37",
+        "AD-38",
+        "AD-49"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 20
+    },
+    {
+      "id": "20.2",
+      "title": "Sign in to an explicitly scoped engagement",
+      "depends_on": [
+        "20.1"
+      ],
+      "requirements": [
+        "FR-97",
+        "FR-98"
+      ],
+      "capabilities": [
+        "CAP-17"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-36",
+        "AD-37",
+        "AD-38",
+        "AD-49"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 20
+    },
+    {
+      "id": "20.3",
+      "title": "Accept task commands once and recover them after restart",
+      "depends_on": [
+        "20.2"
+      ],
+      "requirements": [
+        "FR-100",
+        "FR-102",
+        "FR-103",
+        "FR-104"
+      ],
+      "capabilities": [
+        "CAP-18",
+        "CAP-19"
+      ],
+      "quality": [
+        "NFR-21",
+        "NFR-22",
+        "NFR-24"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-36",
+        "AD-37",
+        "AD-38",
+        "AD-49"
+      ],
+      "ux": [
+        "UX-DR46"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 20
+    },
+    {
+      "id": "20.4",
+      "title": "Keep one engagement conversation with attributed task cards",
+      "depends_on": [
+        "20.3"
+      ],
+      "requirements": [
+        "FR-99",
+        "FR-101",
+        "FR-102",
+        "FR-104",
+        "FR-140"
+      ],
+      "capabilities": [
+        "CAP-18",
+        "CAP-19"
+      ],
+      "quality": [
+        "NFR-22",
+        "NFR-24",
+        "NFR-25"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-36",
+        "AD-37",
+        "AD-38",
+        "AD-49"
+      ],
+      "ux": [
+        "UX-DR42",
+        "UX-DR49"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 20
+    },
+    {
+      "id": "20.5",
+      "title": "Apply standing Permissions to exact recorded operations",
+      "depends_on": [
+        "20.3"
+      ],
+      "requirements": [
+        "FR-109",
+        "FR-110",
+        "FR-118"
+      ],
+      "capabilities": [
+        "CAP-19",
+        "CAP-20"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-21"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-36",
+        "AD-37",
+        "AD-38",
+        "AD-49"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 20
+    },
+    {
+      "id": "20.6",
+      "title": "Administer membership without granting audit authority",
+      "depends_on": [
+        "20.2",
+        "20.5"
+      ],
+      "requirements": [
+        "FR-97",
+        "FR-98",
+        "FR-109",
+        "FR-111"
+      ],
+      "capabilities": [
+        "CAP-17",
+        "CAP-20"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-36",
+        "AD-37",
+        "AD-38",
+        "AD-49"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 20
+    },
+    {
+      "id": "20.7",
+      "title": "Deploy a recoverable qualification environment",
+      "depends_on": [
+        "20.1",
+        "20.5"
+      ],
+      "requirements": [
+        "FR-97",
+        "FR-111",
+        "FR-137",
+        "FR-140"
+      ],
+      "capabilities": [
+        "CAP-17",
+        "CAP-19",
+        "CAP-20",
+        "CAP-30"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-20",
+        "NFR-21",
+        "NFR-24",
+        "NFR-29",
+        "NFR-30"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-36",
+        "AD-37",
+        "AD-38",
+        "AD-49"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 20
+    },
+    {
+      "id": "21.1",
+      "title": "Acquire and inspect immutable scoped evidence",
+      "depends_on": [
+        "20.2",
+        "20.5"
+      ],
+      "requirements": [
+        "FR-121",
+        "FR-138"
+      ],
+      "capabilities": [
+        "CAP-25"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-20"
+      ],
+      "architecture": [
+        "AD-8",
+        "AD-14",
+        "AD-38",
+        "AD-39",
+        "AD-42",
+        "AD-45",
+        "AD-46"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 21
+    },
+    {
+      "id": "21.2",
+      "title": "Save and bind applicable firm methodology",
+      "depends_on": [
+        "20.6"
+      ],
+      "requirements": [
+        "FR-112",
+        "FR-113"
+      ],
+      "capabilities": [
+        "CAP-23"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-20",
+        "NFR-27"
+      ],
+      "architecture": [
+        "AD-8",
+        "AD-14",
+        "AD-38",
+        "AD-39",
+        "AD-42",
+        "AD-45",
+        "AD-46"
+      ],
+      "ux": [
+        "UX-DR47"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 21
+    },
+    {
+      "id": "21.3",
+      "title": "Install and select trusted skills",
+      "depends_on": [
+        "21.2"
+      ],
+      "requirements": [
+        "FR-114",
+        "FR-118"
+      ],
+      "capabilities": [
+        "CAP-23",
+        "CAP-29"
+      ],
+      "quality": [
+        "NFR-19",
+        "NFR-20"
+      ],
+      "architecture": [
+        "AD-8",
+        "AD-14",
+        "AD-38",
+        "AD-39",
+        "AD-42",
+        "AD-45",
+        "AD-46"
+      ],
+      "ux": [
+        "UX-DR47"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 21
+    },
+    {
+      "id": "21.4",
+      "title": "Remember scoped working knowledge with its basis",
+      "depends_on": [
+        "20.4",
+        "21.1",
+        "21.2"
+      ],
+      "requirements": [
+        "FR-115",
+        "FR-116",
+        "FR-138"
+      ],
+      "capabilities": [
+        "CAP-24"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-20"
+      ],
+      "architecture": [
+        "AD-8",
+        "AD-14",
+        "AD-38",
+        "AD-39",
+        "AD-42",
+        "AD-45",
+        "AD-46"
+      ],
+      "ux": [
+        "UX-DR47"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 21
+    },
+    {
+      "id": "21.5",
+      "title": "Acquire documents through a firm-owned connection",
+      "depends_on": [
+        "20.5",
+        "20.6",
+        "21.1"
+      ],
+      "requirements": [
+        "FR-111",
+        "FR-118",
+        "FR-121"
+      ],
+      "capabilities": [
+        "CAP-20",
+        "CAP-25",
+        "CAP-29"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-21",
+        "NFR-26"
+      ],
+      "architecture": [
+        "AD-8",
+        "AD-14",
+        "AD-38",
+        "AD-39",
+        "AD-42",
+        "AD-45",
+        "AD-46"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 21
+    },
+    {
+      "id": "21.6",
+      "title": "Find working material without losing provenance",
+      "depends_on": [
+        "21.1",
+        "21.4"
+      ],
+      "requirements": [
+        "FR-121",
+        "FR-138"
+      ],
+      "capabilities": [
+        "CAP-24",
+        "CAP-25"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-24",
+        "NFR-25"
+      ],
+      "architecture": [
+        "AD-8",
+        "AD-14",
+        "AD-38",
+        "AD-39",
+        "AD-42",
+        "AD-45",
+        "AD-46"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 21
+    },
+    {
+      "id": "22.1",
+      "title": "Route native models through a current tool catalog",
+      "depends_on": [
+        "20.5",
+        "21.2",
+        "21.3"
+      ],
+      "requirements": [
+        "FR-117",
+        "FR-118"
+      ],
+      "capabilities": [
+        "CAP-20",
+        "CAP-29"
+      ],
+      "quality": [
+        "NFR-19",
+        "NFR-21",
+        "NFR-24",
+        "NFR-26"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-37",
+        "AD-39",
+        "AD-41",
+        "AD-45",
+        "AD-46",
+        "AD-48"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 22
+    },
+    {
+      "id": "22.2",
+      "title": "Continue a real Task under changing guidance",
+      "depends_on": [
+        "22.1",
+        "21.4",
+        "20.4"
+      ],
+      "requirements": [
+        "FR-99",
+        "FR-100",
+        "FR-101",
+        "FR-102",
+        "FR-103",
+        "FR-104",
+        "FR-140"
+      ],
+      "capabilities": [
+        "CAP-18",
+        "CAP-19",
+        "CAP-24"
+      ],
+      "quality": [
+        "NFR-21",
+        "NFR-22",
+        "NFR-24"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-37",
+        "AD-39",
+        "AD-41",
+        "AD-45",
+        "AD-46",
+        "AD-48"
+      ],
+      "ux": [
+        "UX-DR42"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 22
+    },
+    {
+      "id": "22.3",
+      "title": "Compact context without inventing authority or evidence",
+      "depends_on": [
+        "22.2",
+        "21.4"
+      ],
+      "requirements": [
+        "FR-115",
+        "FR-116"
+      ],
+      "capabilities": [
+        "CAP-24"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-20",
+        "NFR-24"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-37",
+        "AD-39",
+        "AD-41",
+        "AD-45",
+        "AD-46",
+        "AD-48"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 22
+    },
+    {
+      "id": "22.4",
+      "title": "Run measured analysis in an isolated workspace",
+      "depends_on": [
+        "20.5",
+        "21.1"
+      ],
+      "requirements": [
+        "FR-119",
+        "FR-121"
+      ],
+      "capabilities": [
+        "CAP-22",
+        "CAP-25"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-20",
+        "NFR-21",
+        "NFR-24"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-37",
+        "AD-39",
+        "AD-41",
+        "AD-45",
+        "AD-46",
+        "AD-48"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 22
+    },
+    {
+      "id": "22.5",
+      "title": "Extract usable facts with stable source locations",
+      "depends_on": [
+        "22.4"
+      ],
+      "requirements": [
+        "FR-119",
+        "FR-121",
+        "FR-123"
+      ],
+      "capabilities": [
+        "CAP-22",
+        "CAP-25",
+        "CAP-26"
+      ],
+      "quality": [
+        "NFR-19",
+        "NFR-20",
+        "NFR-24",
+        "NFR-27"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-37",
+        "AD-39",
+        "AD-41",
+        "AD-45",
+        "AD-46",
+        "AD-48"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 22
+    },
+    {
+      "id": "22.6",
+      "title": "Use methods and installed skills during investigation",
+      "depends_on": [
+        "22.2",
+        "22.5",
+        "21.2",
+        "21.3"
+      ],
+      "requirements": [
+        "FR-112",
+        "FR-113",
+        "FR-114",
+        "FR-115",
+        "FR-123",
+        "FR-140"
+      ],
+      "capabilities": [
+        "CAP-23",
+        "CAP-24",
+        "CAP-26",
+        "CAP-29"
+      ],
+      "quality": [
+        "NFR-19",
+        "NFR-20",
+        "NFR-27"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-37",
+        "AD-39",
+        "AD-41",
+        "AD-45",
+        "AD-46",
+        "AD-48"
+      ],
+      "ux": [
+        "UX-DR47"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 22
+    },
+    {
+      "id": "22.7",
+      "title": "Keep work within budgets and responsive under contention",
+      "depends_on": [
+        "22.2",
+        "22.4"
+      ],
+      "requirements": [
+        "FR-103",
+        "FR-137",
+        "FR-140"
+      ],
+      "capabilities": [
+        "CAP-19",
+        "CAP-30"
+      ],
+      "quality": [
+        "NFR-21",
+        "NFR-22",
+        "NFR-24",
+        "NFR-30"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-37",
+        "AD-39",
+        "AD-41",
+        "AD-45",
+        "AD-46",
+        "AD-48"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 22
+    },
+    {
+      "id": "23.1",
+      "title": "Prove the first real computer and sign-in profile",
+      "depends_on": [
+        "20.1",
+        "20.2",
+        "20.5"
+      ],
+      "requirements": [
+        "FR-105",
+        "FR-107",
+        "FR-108"
+      ],
+      "capabilities": [
+        "CAP-21",
+        "CAP-30"
+      ],
+      "quality": [
+        "NFR-19",
+        "NFR-23",
+        "NFR-31"
+      ],
+      "architecture": [
+        "AD-37",
+        "AD-38",
+        "AD-39",
+        "AD-40",
+        "AD-42",
+        "AD-48",
+        "AD-49"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 23
+    },
+    {
+      "id": "23.2",
+      "title": "Attach to a scoped computer with honest lifecycle state",
+      "depends_on": [
+        "23.1",
+        "20.3"
+      ],
+      "requirements": [
+        "FR-105",
+        "FR-108",
+        "FR-111",
+        "FR-140"
+      ],
+      "capabilities": [
+        "CAP-19",
+        "CAP-21"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-21",
+        "NFR-23",
+        "NFR-24"
+      ],
+      "architecture": [
+        "AD-37",
+        "AD-38",
+        "AD-39",
+        "AD-40",
+        "AD-42",
+        "AD-48",
+        "AD-49"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 23
+    },
+    {
+      "id": "23.3",
+      "title": "Take over and hand back all computer input safely",
+      "depends_on": [
+        "23.2",
+        "20.5"
+      ],
+      "requirements": [
+        "FR-103",
+        "FR-106",
+        "FR-118"
+      ],
+      "capabilities": [
+        "CAP-19",
+        "CAP-20",
+        "CAP-21"
+      ],
+      "quality": [
+        "NFR-19",
+        "NFR-21",
+        "NFR-22",
+        "NFR-23"
+      ],
+      "architecture": [
+        "AD-37",
+        "AD-38",
+        "AD-39",
+        "AD-40",
+        "AD-42",
+        "AD-48",
+        "AD-49"
+      ],
+      "ux": [
+        "UX-DR45",
+        "UX-DR46"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 23
+    },
+    {
+      "id": "23.4",
+      "title": "Sign in privately and verify the intended account",
+      "depends_on": [
+        "23.3",
+        "20.6"
+      ],
+      "requirements": [
+        "FR-107",
+        "FR-111"
+      ],
+      "capabilities": [
+        "CAP-20",
+        "CAP-21"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-21",
+        "NFR-31"
+      ],
+      "architecture": [
+        "AD-37",
+        "AD-38",
+        "AD-39",
+        "AD-40",
+        "AD-42",
+        "AD-48",
+        "AD-49"
+      ],
+      "ux": [
+        "UX-DR45"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 23
+    },
+    {
+      "id": "23.5",
+      "title": "Move files and recover a computer without fabricating continuity",
+      "depends_on": [
+        "23.2",
+        "23.4",
+        "21.1",
+        "22.7"
+      ],
+      "requirements": [
+        "FR-105",
+        "FR-108",
+        "FR-119",
+        "FR-121",
+        "FR-137"
+      ],
+      "capabilities": [
+        "CAP-21",
+        "CAP-22",
+        "CAP-25",
+        "CAP-30"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-20",
+        "NFR-21",
+        "NFR-23",
+        "NFR-24"
+      ],
+      "architecture": [
+        "AD-37",
+        "AD-38",
+        "AD-39",
+        "AD-40",
+        "AD-42",
+        "AD-48",
+        "AD-49"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 23
+    },
+    {
+      "id": "23.6",
+      "title": "Use the computer adaptively under the same Permissions",
+      "depends_on": [
+        "22.1",
+        "23.3",
+        "23.4",
+        "23.5"
+      ],
+      "requirements": [
+        "FR-105",
+        "FR-109",
+        "FR-110",
+        "FR-111",
+        "FR-118"
+      ],
+      "capabilities": [
+        "CAP-20",
+        "CAP-21",
+        "CAP-29"
+      ],
+      "quality": [
+        "NFR-19",
+        "NFR-21",
+        "NFR-26",
+        "NFR-31"
+      ],
+      "architecture": [
+        "AD-37",
+        "AD-38",
+        "AD-39",
+        "AD-40",
+        "AD-42",
+        "AD-48",
+        "AD-49"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 23
+    },
+    {
+      "id": "24.1",
+      "title": "Bind typed criteria and facts to an assessment basis",
+      "depends_on": [
+        "21.2",
+        "22.5",
+        "22.6"
+      ],
+      "requirements": [
+        "FR-122",
+        "FR-123",
+        "FR-124"
+      ],
+      "capabilities": [
+        "CAP-23",
+        "CAP-25",
+        "CAP-26"
+      ],
+      "quality": [
+        "NFR-20",
+        "NFR-27"
+      ],
+      "architecture": [
+        "AD-14",
+        "AD-42",
+        "AD-43",
+        "AD-44",
+        "AD-45"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 24
+    },
+    {
+      "id": "24.2",
+      "title": "Show exact population, sample and coverage denominators",
+      "depends_on": [
+        "24.1"
+      ],
+      "requirements": [
+        "FR-122",
+        "FR-125"
+      ],
+      "capabilities": [
+        "CAP-25",
+        "CAP-26"
+      ],
+      "quality": [
+        "NFR-20",
+        "NFR-27"
+      ],
+      "architecture": [
+        "AD-14",
+        "AD-42",
+        "AD-43",
+        "AD-44",
+        "AD-45"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 24
+    },
+    {
+      "id": "24.3",
+      "title": "Revise evaluations without overwriting facts or exceptions",
+      "depends_on": [
+        "24.2",
+        "22.2"
+      ],
+      "requirements": [
+        "FR-123",
+        "FR-124",
+        "FR-125",
+        "FR-135"
+      ],
+      "capabilities": [
+        "CAP-26",
+        "CAP-28"
+      ],
+      "quality": [
+        "NFR-20",
+        "NFR-27"
+      ],
+      "architecture": [
+        "AD-14",
+        "AD-42",
+        "AD-43",
+        "AD-44",
+        "AD-45"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 24
+    },
+    {
+      "id": "24.4",
+      "title": "Create firm-shaped work products with supported claims",
+      "depends_on": [
+        "24.3",
+        "21.2"
+      ],
+      "requirements": [
+        "FR-125",
+        "FR-127",
+        "FR-138"
+      ],
+      "capabilities": [
+        "CAP-25",
+        "CAP-26",
+        "CAP-27"
+      ],
+      "quality": [
+        "NFR-20",
+        "NFR-25",
+        "NFR-27"
+      ],
+      "architecture": [
+        "AD-14",
+        "AD-42",
+        "AD-43",
+        "AD-44",
+        "AD-45"
+      ],
+      "ux": [
+        "UX-DR44"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 24
+    },
+    {
+      "id": "24.5",
+      "title": "Review and issue the exact work honestly",
+      "depends_on": [
+        "24.4",
+        "20.6"
+      ],
+      "requirements": [
+        "FR-129",
+        "FR-130",
+        "FR-131"
+      ],
+      "capabilities": [
+        "CAP-17",
+        "CAP-27"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-20",
+        "NFR-27"
+      ],
+      "architecture": [
+        "AD-14",
+        "AD-42",
+        "AD-43",
+        "AD-44",
+        "AD-45"
+      ],
+      "ux": [
+        "UX-DR48"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 24
+    },
+    {
+      "id": "24.6",
+      "title": "Reconcile concurrent edits and stale review packages",
+      "depends_on": [
+        "24.5"
+      ],
+      "requirements": [
+        "FR-128",
+        "FR-129",
+        "FR-131"
+      ],
+      "capabilities": [
+        "CAP-27"
+      ],
+      "quality": [
+        "NFR-20",
+        "NFR-25",
+        "NFR-27"
+      ],
+      "architecture": [
+        "AD-14",
+        "AD-42",
+        "AD-43",
+        "AD-44",
+        "AD-45"
+      ],
+      "ux": [
+        "UX-DR48"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 24
+    },
+    {
+      "id": "25.1",
+      "title": "Coordinate work through the Pair companion workspace",
+      "depends_on": [
+        "20.4",
+        "22.2",
+        "23.4",
+        "24.4"
+      ],
+      "requirements": [
+        "FR-99",
+        "FR-101",
+        "FR-105",
+        "FR-127",
+        "FR-138",
+        "FR-140"
+      ],
+      "capabilities": [
+        "CAP-18",
+        "CAP-21",
+        "CAP-27"
+      ],
+      "quality": [
+        "NFR-22",
+        "NFR-24",
+        "NFR-25"
+      ],
+      "architecture": [
+        "AD-36",
+        "AD-37",
+        "AD-38",
+        "AD-40",
+        "AD-42",
+        "AD-43",
+        "AD-44",
+        "AD-45",
+        "AD-46",
+        "AD-48",
+        "AD-49"
+      ],
+      "ux": [
+        "UX-DR42",
+        "UX-DR44",
+        "UX-DR49"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 25
+    },
+    {
+      "id": "25.2",
+      "title": "Answer durable questions where the work needs them",
+      "depends_on": [
+        "20.5",
+        "22.2",
+        "23.4",
+        "25.1"
+      ],
+      "requirements": [
+        "FR-102",
+        "FR-104",
+        "FR-107",
+        "FR-110",
+        "FR-136"
+      ],
+      "capabilities": [
+        "CAP-18",
+        "CAP-19",
+        "CAP-20",
+        "CAP-21"
+      ],
+      "quality": [
+        "NFR-20",
+        "NFR-22",
+        "NFR-25"
+      ],
+      "architecture": [
+        "AD-36",
+        "AD-37",
+        "AD-38",
+        "AD-40",
+        "AD-42",
+        "AD-43",
+        "AD-44",
+        "AD-45",
+        "AD-46",
+        "AD-48",
+        "AD-49"
+      ],
+      "ux": [
+        "UX-DR43",
+        "UX-DR45",
+        "UX-DR46",
+        "UX-DR49"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 25
+    },
+    {
+      "id": "25.3",
+      "title": "Return to a truthful digest and stable work shelf",
+      "depends_on": [
+        "22.7",
+        "24.6",
+        "25.2"
+      ],
+      "requirements": [
+        "FR-125",
+        "FR-127",
+        "FR-136",
+        "FR-138",
+        "FR-140"
+      ],
+      "capabilities": [
+        "CAP-18",
+        "CAP-24",
+        "CAP-25",
+        "CAP-27",
+        "CAP-30"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-20",
+        "NFR-24",
+        "NFR-25",
+        "NFR-30"
+      ],
+      "architecture": [
+        "AD-36",
+        "AD-37",
+        "AD-38",
+        "AD-40",
+        "AD-42",
+        "AD-43",
+        "AD-44",
+        "AD-45",
+        "AD-46",
+        "AD-48",
+        "AD-49"
+      ],
+      "ux": [
+        "UX-DR43",
+        "UX-DR44",
+        "UX-DR49"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 25
+    },
+    {
+      "id": "25.4",
+      "title": "Qualify the first complete audit Task and concurrent work",
+      "depends_on": [
+        "21.5",
+        "21.6",
+        "22.3",
+        "22.6",
+        "22.7",
+        "23.6",
+        "24.6",
+        "25.3",
+        "20.7",
+        "27.4"
+      ],
+      "requirements": [
+        "FR-97",
+        "FR-99",
+        "FR-100",
+        "FR-102",
+        "FR-103",
+        "FR-105",
+        "FR-107",
+        "FR-112",
+        "FR-114",
+        "FR-115",
+        "FR-121",
+        "FR-122",
+        "FR-124",
+        "FR-125",
+        "FR-127",
+        "FR-129",
+        "FR-130",
+        "FR-131",
+        "FR-137",
+        "FR-140"
+      ],
+      "capabilities": [
+        "CAP-17",
+        "CAP-18",
+        "CAP-19",
+        "CAP-20",
+        "CAP-21",
+        "CAP-22",
+        "CAP-23",
+        "CAP-24",
+        "CAP-25",
+        "CAP-26",
+        "CAP-27",
+        "CAP-29",
+        "CAP-30"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-20",
+        "NFR-21",
+        "NFR-22",
+        "NFR-23",
+        "NFR-24",
+        "NFR-25",
+        "NFR-26",
+        "NFR-27",
+        "NFR-30",
+        "NFR-31"
+      ],
+      "architecture": [
+        "AD-36",
+        "AD-37",
+        "AD-38",
+        "AD-40",
+        "AD-42",
+        "AD-43",
+        "AD-44",
+        "AD-45",
+        "AD-46",
+        "AD-48",
+        "AD-49"
+      ],
+      "ux": [
+        "UX-DR42",
+        "UX-DR49"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 25
+    },
+    {
+      "id": "26.1",
+      "title": "Promote useful work to a reviewed Check",
+      "depends_on": [
+        "25.4",
+        "24.5",
+        "21.2"
+      ],
+      "requirements": [
+        "FR-113",
+        "FR-132",
+        "FR-134"
+      ],
+      "capabilities": [
+        "CAP-23",
+        "CAP-27",
+        "CAP-28"
+      ],
+      "quality": [
+        "NFR-20",
+        "NFR-27",
+        "NFR-28"
+      ],
+      "architecture": [
+        "AD-37",
+        "AD-38",
+        "AD-43",
+        "AD-44",
+        "AD-45",
+        "AD-47",
+        "AD-48"
+      ],
+      "ux": [
+        "UX-DR48"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 26
+    },
+    {
+      "id": "26.2",
+      "title": "Schedule one logical occurrence with bounded catch-up",
+      "depends_on": [
+        "26.1",
+        "20.3",
+        "22.7"
+      ],
+      "requirements": [
+        "FR-100",
+        "FR-133",
+        "FR-137"
+      ],
+      "capabilities": [
+        "CAP-19",
+        "CAP-28",
+        "CAP-30"
+      ],
+      "quality": [
+        "NFR-21",
+        "NFR-24",
+        "NFR-28"
+      ],
+      "architecture": [
+        "AD-37",
+        "AD-38",
+        "AD-43",
+        "AD-44",
+        "AD-45",
+        "AD-47",
+        "AD-48"
+      ],
+      "ux": [
+        "UX-DR46"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 26
+    },
+    {
+      "id": "26.3",
+      "title": "Receive evidence without pretending the request is satisfied",
+      "depends_on": [
+        "26.2",
+        "21.1",
+        "24.3",
+        "25.2"
+      ],
+      "requirements": [
+        "FR-124",
+        "FR-126",
+        "FR-133",
+        "FR-136"
+      ],
+      "capabilities": [
+        "CAP-25",
+        "CAP-26",
+        "CAP-28"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-20",
+        "NFR-21",
+        "NFR-27",
+        "NFR-28"
+      ],
+      "architecture": [
+        "AD-37",
+        "AD-38",
+        "AD-43",
+        "AD-44",
+        "AD-45",
+        "AD-47",
+        "AD-48"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 26
+    },
+    {
+      "id": "26.4",
+      "title": "Keep findings and follow-up continuous across periods",
+      "depends_on": [
+        "26.3",
+        "24.3"
+      ],
+      "requirements": [
+        "FR-125",
+        "FR-135",
+        "FR-136"
+      ],
+      "capabilities": [
+        "CAP-26",
+        "CAP-28"
+      ],
+      "quality": [
+        "NFR-20",
+        "NFR-27"
+      ],
+      "architecture": [
+        "AD-37",
+        "AD-38",
+        "AD-43",
+        "AD-44",
+        "AD-45",
+        "AD-47",
+        "AD-48"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 26
+    },
+    {
+      "id": "26.5",
+      "title": "Run unattended work only with current delegation",
+      "depends_on": [
+        "26.2",
+        "21.5",
+        "20.6",
+        "25.3"
+      ],
+      "requirements": [
+        "FR-111",
+        "FR-133",
+        "FR-134",
+        "FR-136",
+        "FR-137"
+      ],
+      "capabilities": [
+        "CAP-20",
+        "CAP-28",
+        "CAP-29",
+        "CAP-30"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-21",
+        "NFR-24",
+        "NFR-28"
+      ],
+      "architecture": [
+        "AD-37",
+        "AD-38",
+        "AD-43",
+        "AD-44",
+        "AD-45",
+        "AD-47",
+        "AD-48"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 26
+    },
+    {
+      "id": "26.6",
+      "title": "Qualify a later occurrence and incomplete-period correction",
+      "depends_on": [
+        "26.4",
+        "26.5"
+      ],
+      "requirements": [
+        "FR-100",
+        "FR-124",
+        "FR-125",
+        "FR-126",
+        "FR-132",
+        "FR-133",
+        "FR-134",
+        "FR-135",
+        "FR-136",
+        "FR-137"
+      ],
+      "capabilities": [
+        "CAP-19",
+        "CAP-25",
+        "CAP-26",
+        "CAP-28",
+        "CAP-30"
+      ],
+      "quality": [
+        "NFR-20",
+        "NFR-21",
+        "NFR-27",
+        "NFR-28"
+      ],
+      "architecture": [
+        "AD-37",
+        "AD-38",
+        "AD-43",
+        "AD-44",
+        "AD-45",
+        "AD-47",
+        "AD-48"
+      ],
+      "ux": [
+        "UX-DR48"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 26
+    },
+    {
+      "id": "27.1",
+      "title": "Coordinate through Microsoft mail and calendar",
+      "depends_on": [
+        "21.5",
+        "26.3"
+      ],
+      "requirements": [
+        "FR-111",
+        "FR-118",
+        "FR-126",
+        "FR-136"
+      ],
+      "capabilities": [
+        "CAP-20",
+        "CAP-25",
+        "CAP-29"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-21",
+        "NFR-26"
+      ],
+      "architecture": [
+        "AD-36",
+        "AD-37",
+        "AD-38",
+        "AD-39",
+        "AD-40",
+        "AD-46",
+        "AD-47",
+        "AD-48"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 27
+    },
+    {
+      "id": "27.2",
+      "title": "Use Google documents, mail and calendar through qualified accounts",
+      "depends_on": [
+        "21.5",
+        "27.1"
+      ],
+      "requirements": [
+        "FR-111",
+        "FR-118",
+        "FR-121",
+        "FR-126",
+        "FR-136"
+      ],
+      "capabilities": [
+        "CAP-20",
+        "CAP-25",
+        "CAP-29"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-21",
+        "NFR-26"
+      ],
+      "architecture": [
+        "AD-36",
+        "AD-37",
+        "AD-38",
+        "AD-39",
+        "AD-40",
+        "AD-46",
+        "AD-47",
+        "AD-48"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 27
+    },
+    {
+      "id": "27.3",
+      "title": "Use GitHub and task-system tools with exact repository scope",
+      "depends_on": [
+        "22.1",
+        "21.5"
+      ],
+      "requirements": [
+        "FR-111",
+        "FR-118",
+        "FR-121"
+      ],
+      "capabilities": [
+        "CAP-20",
+        "CAP-25",
+        "CAP-29"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-21",
+        "NFR-26"
+      ],
+      "architecture": [
+        "AD-36",
+        "AD-37",
+        "AD-38",
+        "AD-39",
+        "AD-40",
+        "AD-46",
+        "AD-47",
+        "AD-48"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 27
+    },
+    {
+      "id": "27.4",
+      "title": "Delegate bounded subtasks to helpers",
+      "depends_on": [
+        "22.3",
+        "22.7",
+        "24.3"
+      ],
+      "requirements": [
+        "FR-100",
+        "FR-103",
+        "FR-120",
+        "FR-140"
+      ],
+      "capabilities": [
+        "CAP-19",
+        "CAP-24",
+        "CAP-29",
+        "CAP-30"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-21",
+        "NFR-24"
+      ],
+      "architecture": [
+        "AD-36",
+        "AD-37",
+        "AD-38",
+        "AD-39",
+        "AD-40",
+        "AD-46",
+        "AD-47",
+        "AD-48"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 27
+    },
+    {
+      "id": "27.5",
+      "title": "Speak into the same conversation safely",
+      "depends_on": [
+        "25.2",
+        "23.4"
+      ],
+      "requirements": [
+        "FR-102",
+        "FR-107",
+        "FR-139"
+      ],
+      "capabilities": [
+        "CAP-18",
+        "CAP-21",
+        "CAP-29"
+      ],
+      "quality": [
+        "NFR-19",
+        "NFR-22",
+        "NFR-25",
+        "NFR-26"
+      ],
+      "architecture": [
+        "AD-36",
+        "AD-37",
+        "AD-38",
+        "AD-39",
+        "AD-40",
+        "AD-46",
+        "AD-47",
+        "AD-48"
+      ],
+      "ux": [
+        "UX-DR45"
+      ],
+      "release_scope": "accepted-core",
+      "epic": 27
+    },
+    {
+      "id": "27.6",
+      "title": "Add later contact channels without widening authority",
+      "depends_on": [
+        "27.1",
+        "27.5",
+        "26.5"
+      ],
+      "requirements": [
+        "FR-111",
+        "FR-136",
+        "FR-139"
+      ],
+      "capabilities": [
+        "CAP-18",
+        "CAP-20",
+        "CAP-29"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-21",
+        "NFR-26"
+      ],
+      "architecture": [
+        "AD-36",
+        "AD-37",
+        "AD-38",
+        "AD-39",
+        "AD-40",
+        "AD-46",
+        "AD-47",
+        "AD-48"
+      ],
+      "ux": [],
+      "release_scope": "later-extension",
+      "epic": 27
+    },
+    {
+      "id": "27.7",
+      "title": "Offer opt-in proactive suggestions without beginning unauthorised work",
+      "depends_on": [
+        "22.3",
+        "22.7",
+        "26.5"
+      ],
+      "requirements": [
+        "FR-100",
+        "FR-109",
+        "FR-115",
+        "FR-137"
+      ],
+      "capabilities": [
+        "CAP-18",
+        "CAP-20",
+        "CAP-24",
+        "CAP-30"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-24"
+      ],
+      "architecture": [
+        "AD-36",
+        "AD-37",
+        "AD-38",
+        "AD-39",
+        "AD-40",
+        "AD-46",
+        "AD-47",
+        "AD-48"
+      ],
+      "ux": [],
+      "release_scope": "later-extension",
+      "epic": 27
+    },
+    {
+      "id": "28.1",
+      "title": "Qualify a named Windows and private-network profile",
+      "depends_on": [
+        "23.6",
+        "26.5"
+      ],
+      "requirements": [
+        "FR-105",
+        "FR-107",
+        "FR-108",
+        "FR-111"
+      ],
+      "capabilities": [
+        "CAP-20",
+        "CAP-21",
+        "CAP-30"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-23",
+        "NFR-31"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-38",
+        "AD-40",
+        "AD-41",
+        "AD-42",
+        "AD-48",
+        "AD-49"
+      ],
+      "ux": [],
+      "release_scope": "qualified-profile-extension",
+      "epic": 28
+    },
+    {
+      "id": "28.2",
+      "title": "Qualify Office operations and their unattended limits",
+      "depends_on": [
+        "28.1",
+        "24.6"
+      ],
+      "requirements": [
+        "FR-108",
+        "FR-119",
+        "FR-127",
+        "FR-128"
+      ],
+      "capabilities": [
+        "CAP-21",
+        "CAP-22",
+        "CAP-27",
+        "CAP-30"
+      ],
+      "quality": [
+        "NFR-19",
+        "NFR-20",
+        "NFR-27",
+        "NFR-31"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-38",
+        "AD-40",
+        "AD-41",
+        "AD-42",
+        "AD-48",
+        "AD-49"
+      ],
+      "ux": [],
+      "release_scope": "qualified-profile-extension",
+      "epic": 28
+    },
+    {
+      "id": "28.3",
+      "title": "Measure readiness and capacity before promising a service level",
+      "depends_on": [
+        "25.4",
+        "26.6",
+        "27.5"
+      ],
+      "requirements": [
+        "FR-108",
+        "FR-137",
+        "FR-140"
+      ],
+      "capabilities": [
+        "CAP-21",
+        "CAP-30"
+      ],
+      "quality": [
+        "NFR-22",
+        "NFR-23",
+        "NFR-24",
+        "NFR-30",
+        "NFR-31"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-38",
+        "AD-40",
+        "AD-41",
+        "AD-42",
+        "AD-48",
+        "AD-49"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 28
+    },
+    {
+      "id": "28.4",
+      "title": "Enforce retention, deletion and durable operational recovery",
+      "depends_on": [
+        "25.4",
+        "26.6",
+        "20.1"
+      ],
+      "requirements": [
+        "FR-121",
+        "FR-131",
+        "FR-137",
+        "FR-140"
+      ],
+      "capabilities": [
+        "CAP-25",
+        "CAP-27",
+        "CAP-30"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-20",
+        "NFR-21",
+        "NFR-24",
+        "NFR-29",
+        "NFR-30"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-38",
+        "AD-40",
+        "AD-41",
+        "AD-42",
+        "AD-48",
+        "AD-49"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 28
+    },
+    {
+      "id": "28.5",
+      "title": "Cut over to the new product and retire conflicting legacy paths",
+      "depends_on": [
+        "25.4",
+        "26.6",
+        "28.4"
+      ],
+      "requirements": [
+        "FR-97",
+        "FR-100",
+        "FR-109",
+        "FR-118",
+        "FR-121",
+        "FR-140"
+      ],
+      "capabilities": [
+        "CAP-17",
+        "CAP-19",
+        "CAP-20",
+        "CAP-25",
+        "CAP-30"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-20",
+        "NFR-21",
+        "NFR-30"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-38",
+        "AD-40",
+        "AD-41",
+        "AD-42",
+        "AD-48",
+        "AD-49"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 28
+    },
+    {
+      "id": "28.6",
+      "title": "Declare supported launch scope from completed qualification",
+      "depends_on": [
+        "26.6",
+        "27.1",
+        "27.2",
+        "27.3",
+        "27.4",
+        "27.5",
+        "28.3",
+        "28.4",
+        "28.5"
+      ],
+      "requirements": [
+        "FR-108",
+        "FR-111",
+        "FR-117",
+        "FR-120",
+        "FR-137",
+        "FR-139",
+        "FR-140"
+      ],
+      "capabilities": [
+        "CAP-21",
+        "CAP-29",
+        "CAP-30"
+      ],
+      "quality": [
+        "NFR-18",
+        "NFR-19",
+        "NFR-20",
+        "NFR-21",
+        "NFR-22",
+        "NFR-23",
+        "NFR-24",
+        "NFR-25",
+        "NFR-26",
+        "NFR-27",
+        "NFR-28",
+        "NFR-29",
+        "NFR-30",
+        "NFR-31"
+      ],
+      "architecture": [
+        "AD-1",
+        "AD-8",
+        "AD-10",
+        "AD-12",
+        "AD-14",
+        "AD-35",
+        "AD-38",
+        "AD-40",
+        "AD-41",
+        "AD-42",
+        "AD-48",
+        "AD-49"
+      ],
+      "ux": [],
+      "release_scope": "accepted-core",
+      "epic": 28
+    }
+  ],
+  "edges": [
+    {
+      "from": "20.1",
+      "to": "20.2",
+      "kind": "requires"
+    },
+    {
+      "from": "20.2",
+      "to": "20.3",
+      "kind": "requires"
+    },
+    {
+      "from": "20.3",
+      "to": "20.4",
+      "kind": "requires"
+    },
+    {
+      "from": "20.3",
+      "to": "20.5",
+      "kind": "requires"
+    },
+    {
+      "from": "20.2",
+      "to": "20.6",
+      "kind": "requires"
+    },
+    {
+      "from": "20.5",
+      "to": "20.6",
+      "kind": "requires"
+    },
+    {
+      "from": "20.1",
+      "to": "20.7",
+      "kind": "requires"
+    },
+    {
+      "from": "20.5",
+      "to": "20.7",
+      "kind": "requires"
+    },
+    {
+      "from": "20.2",
+      "to": "21.1",
+      "kind": "requires"
+    },
+    {
+      "from": "20.5",
+      "to": "21.1",
+      "kind": "requires"
+    },
+    {
+      "from": "20.6",
+      "to": "21.2",
+      "kind": "requires"
+    },
+    {
+      "from": "21.2",
+      "to": "21.3",
+      "kind": "requires"
+    },
+    {
+      "from": "20.4",
+      "to": "21.4",
+      "kind": "requires"
+    },
+    {
+      "from": "21.1",
+      "to": "21.4",
+      "kind": "requires"
+    },
+    {
+      "from": "21.2",
+      "to": "21.4",
+      "kind": "requires"
+    },
+    {
+      "from": "20.5",
+      "to": "21.5",
+      "kind": "requires"
+    },
+    {
+      "from": "20.6",
+      "to": "21.5",
+      "kind": "requires"
+    },
+    {
+      "from": "21.1",
+      "to": "21.5",
+      "kind": "requires"
+    },
+    {
+      "from": "21.1",
+      "to": "21.6",
+      "kind": "requires"
+    },
+    {
+      "from": "21.4",
+      "to": "21.6",
+      "kind": "requires"
+    },
+    {
+      "from": "20.5",
+      "to": "22.1",
+      "kind": "requires"
+    },
+    {
+      "from": "21.2",
+      "to": "22.1",
+      "kind": "requires"
+    },
+    {
+      "from": "21.3",
+      "to": "22.1",
+      "kind": "requires"
+    },
+    {
+      "from": "22.1",
+      "to": "22.2",
+      "kind": "requires"
+    },
+    {
+      "from": "21.4",
+      "to": "22.2",
+      "kind": "requires"
+    },
+    {
+      "from": "20.4",
+      "to": "22.2",
+      "kind": "requires"
+    },
+    {
+      "from": "22.2",
+      "to": "22.3",
+      "kind": "requires"
+    },
+    {
+      "from": "21.4",
+      "to": "22.3",
+      "kind": "requires"
+    },
+    {
+      "from": "20.5",
+      "to": "22.4",
+      "kind": "requires"
+    },
+    {
+      "from": "21.1",
+      "to": "22.4",
+      "kind": "requires"
+    },
+    {
+      "from": "22.4",
+      "to": "22.5",
+      "kind": "requires"
+    },
+    {
+      "from": "22.2",
+      "to": "22.6",
+      "kind": "requires"
+    },
+    {
+      "from": "22.5",
+      "to": "22.6",
+      "kind": "requires"
+    },
+    {
+      "from": "21.2",
+      "to": "22.6",
+      "kind": "requires"
+    },
+    {
+      "from": "21.3",
+      "to": "22.6",
+      "kind": "requires"
+    },
+    {
+      "from": "22.2",
+      "to": "22.7",
+      "kind": "requires"
+    },
+    {
+      "from": "22.4",
+      "to": "22.7",
+      "kind": "requires"
+    },
+    {
+      "from": "20.1",
+      "to": "23.1",
+      "kind": "requires"
+    },
+    {
+      "from": "20.2",
+      "to": "23.1",
+      "kind": "requires"
+    },
+    {
+      "from": "20.5",
+      "to": "23.1",
+      "kind": "requires"
+    },
+    {
+      "from": "23.1",
+      "to": "23.2",
+      "kind": "requires"
+    },
+    {
+      "from": "20.3",
+      "to": "23.2",
+      "kind": "requires"
+    },
+    {
+      "from": "23.2",
+      "to": "23.3",
+      "kind": "requires"
+    },
+    {
+      "from": "20.5",
+      "to": "23.3",
+      "kind": "requires"
+    },
+    {
+      "from": "23.3",
+      "to": "23.4",
+      "kind": "requires"
+    },
+    {
+      "from": "20.6",
+      "to": "23.4",
+      "kind": "requires"
+    },
+    {
+      "from": "23.2",
+      "to": "23.5",
+      "kind": "requires"
+    },
+    {
+      "from": "23.4",
+      "to": "23.5",
+      "kind": "requires"
+    },
+    {
+      "from": "21.1",
+      "to": "23.5",
+      "kind": "requires"
+    },
+    {
+      "from": "22.7",
+      "to": "23.5",
+      "kind": "requires"
+    },
+    {
+      "from": "22.1",
+      "to": "23.6",
+      "kind": "requires"
+    },
+    {
+      "from": "23.3",
+      "to": "23.6",
+      "kind": "requires"
+    },
+    {
+      "from": "23.4",
+      "to": "23.6",
+      "kind": "requires"
+    },
+    {
+      "from": "23.5",
+      "to": "23.6",
+      "kind": "requires"
+    },
+    {
+      "from": "21.2",
+      "to": "24.1",
+      "kind": "requires"
+    },
+    {
+      "from": "22.5",
+      "to": "24.1",
+      "kind": "requires"
+    },
+    {
+      "from": "22.6",
+      "to": "24.1",
+      "kind": "requires"
+    },
+    {
+      "from": "24.1",
+      "to": "24.2",
+      "kind": "requires"
+    },
+    {
+      "from": "24.2",
+      "to": "24.3",
+      "kind": "requires"
+    },
+    {
+      "from": "22.2",
+      "to": "24.3",
+      "kind": "requires"
+    },
+    {
+      "from": "24.3",
+      "to": "24.4",
+      "kind": "requires"
+    },
+    {
+      "from": "21.2",
+      "to": "24.4",
+      "kind": "requires"
+    },
+    {
+      "from": "24.4",
+      "to": "24.5",
+      "kind": "requires"
+    },
+    {
+      "from": "20.6",
+      "to": "24.5",
+      "kind": "requires"
+    },
+    {
+      "from": "24.5",
+      "to": "24.6",
+      "kind": "requires"
+    },
+    {
+      "from": "20.4",
+      "to": "25.1",
+      "kind": "requires"
+    },
+    {
+      "from": "22.2",
+      "to": "25.1",
+      "kind": "requires"
+    },
+    {
+      "from": "23.4",
+      "to": "25.1",
+      "kind": "requires"
+    },
+    {
+      "from": "24.4",
+      "to": "25.1",
+      "kind": "requires"
+    },
+    {
+      "from": "20.5",
+      "to": "25.2",
+      "kind": "requires"
+    },
+    {
+      "from": "22.2",
+      "to": "25.2",
+      "kind": "requires"
+    },
+    {
+      "from": "23.4",
+      "to": "25.2",
+      "kind": "requires"
+    },
+    {
+      "from": "25.1",
+      "to": "25.2",
+      "kind": "requires"
+    },
+    {
+      "from": "22.7",
+      "to": "25.3",
+      "kind": "requires"
+    },
+    {
+      "from": "24.6",
+      "to": "25.3",
+      "kind": "requires"
+    },
+    {
+      "from": "25.2",
+      "to": "25.3",
+      "kind": "requires"
+    },
+    {
+      "from": "21.5",
+      "to": "25.4",
+      "kind": "requires"
+    },
+    {
+      "from": "21.6",
+      "to": "25.4",
+      "kind": "requires"
+    },
+    {
+      "from": "22.3",
+      "to": "25.4",
+      "kind": "requires"
+    },
+    {
+      "from": "22.6",
+      "to": "25.4",
+      "kind": "requires"
+    },
+    {
+      "from": "22.7",
+      "to": "25.4",
+      "kind": "requires"
+    },
+    {
+      "from": "23.6",
+      "to": "25.4",
+      "kind": "requires"
+    },
+    {
+      "from": "24.6",
+      "to": "25.4",
+      "kind": "requires"
+    },
+    {
+      "from": "25.3",
+      "to": "25.4",
+      "kind": "requires"
+    },
+    {
+      "from": "20.7",
+      "to": "25.4",
+      "kind": "requires"
+    },
+    {
+      "from": "27.4",
+      "to": "25.4",
+      "kind": "requires"
+    },
+    {
+      "from": "25.4",
+      "to": "26.1",
+      "kind": "requires"
+    },
+    {
+      "from": "24.5",
+      "to": "26.1",
+      "kind": "requires"
+    },
+    {
+      "from": "21.2",
+      "to": "26.1",
+      "kind": "requires"
+    },
+    {
+      "from": "26.1",
+      "to": "26.2",
+      "kind": "requires"
+    },
+    {
+      "from": "20.3",
+      "to": "26.2",
+      "kind": "requires"
+    },
+    {
+      "from": "22.7",
+      "to": "26.2",
+      "kind": "requires"
+    },
+    {
+      "from": "26.2",
+      "to": "26.3",
+      "kind": "requires"
+    },
+    {
+      "from": "21.1",
+      "to": "26.3",
+      "kind": "requires"
+    },
+    {
+      "from": "24.3",
+      "to": "26.3",
+      "kind": "requires"
+    },
+    {
+      "from": "25.2",
+      "to": "26.3",
+      "kind": "requires"
+    },
+    {
+      "from": "26.3",
+      "to": "26.4",
+      "kind": "requires"
+    },
+    {
+      "from": "24.3",
+      "to": "26.4",
+      "kind": "requires"
+    },
+    {
+      "from": "26.2",
+      "to": "26.5",
+      "kind": "requires"
+    },
+    {
+      "from": "21.5",
+      "to": "26.5",
+      "kind": "requires"
+    },
+    {
+      "from": "20.6",
+      "to": "26.5",
+      "kind": "requires"
+    },
+    {
+      "from": "25.3",
+      "to": "26.5",
+      "kind": "requires"
+    },
+    {
+      "from": "26.4",
+      "to": "26.6",
+      "kind": "requires"
+    },
+    {
+      "from": "26.5",
+      "to": "26.6",
+      "kind": "requires"
+    },
+    {
+      "from": "21.5",
+      "to": "27.1",
+      "kind": "requires"
+    },
+    {
+      "from": "26.3",
+      "to": "27.1",
+      "kind": "requires"
+    },
+    {
+      "from": "21.5",
+      "to": "27.2",
+      "kind": "requires"
+    },
+    {
+      "from": "27.1",
+      "to": "27.2",
+      "kind": "requires"
+    },
+    {
+      "from": "22.1",
+      "to": "27.3",
+      "kind": "requires"
+    },
+    {
+      "from": "21.5",
+      "to": "27.3",
+      "kind": "requires"
+    },
+    {
+      "from": "22.3",
+      "to": "27.4",
+      "kind": "requires"
+    },
+    {
+      "from": "22.7",
+      "to": "27.4",
+      "kind": "requires"
+    },
+    {
+      "from": "24.3",
+      "to": "27.4",
+      "kind": "requires"
+    },
+    {
+      "from": "25.2",
+      "to": "27.5",
+      "kind": "requires"
+    },
+    {
+      "from": "23.4",
+      "to": "27.5",
+      "kind": "requires"
+    },
+    {
+      "from": "27.1",
+      "to": "27.6",
+      "kind": "requires"
+    },
+    {
+      "from": "27.5",
+      "to": "27.6",
+      "kind": "requires"
+    },
+    {
+      "from": "26.5",
+      "to": "27.6",
+      "kind": "requires"
+    },
+    {
+      "from": "22.3",
+      "to": "27.7",
+      "kind": "requires"
+    },
+    {
+      "from": "22.7",
+      "to": "27.7",
+      "kind": "requires"
+    },
+    {
+      "from": "26.5",
+      "to": "27.7",
+      "kind": "requires"
+    },
+    {
+      "from": "23.6",
+      "to": "28.1",
+      "kind": "requires"
+    },
+    {
+      "from": "26.5",
+      "to": "28.1",
+      "kind": "requires"
+    },
+    {
+      "from": "28.1",
+      "to": "28.2",
+      "kind": "requires"
+    },
+    {
+      "from": "24.6",
+      "to": "28.2",
+      "kind": "requires"
+    },
+    {
+      "from": "25.4",
+      "to": "28.3",
+      "kind": "requires"
+    },
+    {
+      "from": "26.6",
+      "to": "28.3",
+      "kind": "requires"
+    },
+    {
+      "from": "27.5",
+      "to": "28.3",
+      "kind": "requires"
+    },
+    {
+      "from": "25.4",
+      "to": "28.4",
+      "kind": "requires"
+    },
+    {
+      "from": "26.6",
+      "to": "28.4",
+      "kind": "requires"
+    },
+    {
+      "from": "20.1",
+      "to": "28.4",
+      "kind": "requires"
+    },
+    {
+      "from": "25.4",
+      "to": "28.5",
+      "kind": "requires"
+    },
+    {
+      "from": "26.6",
+      "to": "28.5",
+      "kind": "requires"
+    },
+    {
+      "from": "28.4",
+      "to": "28.5",
+      "kind": "requires"
+    },
+    {
+      "from": "26.6",
+      "to": "28.6",
+      "kind": "requires"
+    },
+    {
+      "from": "27.1",
+      "to": "28.6",
+      "kind": "requires"
+    },
+    {
+      "from": "27.2",
+      "to": "28.6",
+      "kind": "requires"
+    },
+    {
+      "from": "27.3",
+      "to": "28.6",
+      "kind": "requires"
+    },
+    {
+      "from": "27.4",
+      "to": "28.6",
+      "kind": "requires"
+    },
+    {
+      "from": "27.5",
+      "to": "28.6",
+      "kind": "requires"
+    },
+    {
+      "from": "28.3",
+      "to": "28.6",
+      "kind": "requires"
+    },
+    {
+      "from": "28.4",
+      "to": "28.6",
+      "kind": "requires"
+    },
+    {
+      "from": "28.5",
+      "to": "28.6",
+      "kind": "requires"
+    }
+  ],
+  "topological_order": [
+    "20.1",
+    "20.2",
+    "20.3",
+    "20.4",
+    "20.5",
+    "20.6",
+    "20.7",
+    "21.1",
+    "23.1",
+    "21.2",
+    "21.5",
+    "22.4",
+    "23.2",
+    "21.3",
+    "21.4",
+    "22.5",
+    "23.3",
+    "21.6",
+    "22.1",
+    "23.4",
+    "22.2",
+    "27.3",
+    "22.3",
+    "22.6",
+    "22.7",
+    "23.5",
+    "24.1",
+    "23.6",
+    "24.2",
+    "24.3",
+    "24.4",
+    "27.4",
+    "24.5",
+    "25.1",
+    "24.6",
+    "25.2",
+    "25.3",
+    "27.5",
+    "25.4",
+    "26.1",
+    "26.2",
+    "26.3",
+    "26.5",
+    "26.4",
+    "27.1",
+    "27.7",
+    "28.1",
+    "26.6",
+    "27.2",
+    "27.6",
+    "28.2",
+    "28.3",
+    "28.4",
+    "28.5",
+    "28.6"
+  ],
+  "first_batch": [
+    "20.1",
+    "20.2",
+    "20.3",
+    "20.4"
+  ],
+  "gates": [
+    {
+      "id": "G0",
+      "name": "First implementation batch",
+      "exit_story": "20.4",
+      "required_stories": [
+        "20.1",
+        "20.2",
+        "20.3",
+        "20.4"
+      ],
+      "proves": "Scoped Rust foundation and durable explicit conversation commands; no audit agent acceptance"
+    },
+    {
+      "id": "Q1",
+      "name": "Early computer and sign-in feasibility",
+      "exit_story": "23.1",
+      "required_stories": [
+        "20.1",
+        "20.2",
+        "20.3",
+        "20.5",
+        "23.1"
+      ],
+      "proves": "Actual named Linux/app/authentication path feasibility; not production fleet or all apps"
+    },
+    {
+      "id": "G1",
+      "name": "First complete audit Task",
+      "exit_story": "25.4",
+      "required_stories": [
+        "20.1",
+        "20.2",
+        "20.3",
+        "20.4",
+        "20.5",
+        "20.6",
+        "20.7",
+        "21.1",
+        "21.2",
+        "21.3",
+        "21.4",
+        "21.5",
+        "21.6",
+        "22.1",
+        "22.2",
+        "22.3",
+        "22.4",
+        "22.5",
+        "22.6",
+        "22.7",
+        "23.1",
+        "23.2",
+        "23.3",
+        "23.4",
+        "23.5",
+        "23.6",
+        "24.1",
+        "24.2",
+        "24.3",
+        "24.4",
+        "24.5",
+        "24.6",
+        "25.1",
+        "25.2",
+        "25.3",
+        "25.4",
+        "27.4"
+      ],
+      "proves": "Real first-Task journey and baseline safety/recovery; not recurring baseline or customer launch"
+    },
+    {
+      "id": "G2",
+      "name": "First complete recurring baseline",
+      "exit_story": "26.6",
+      "required_stories": [
+        "20.1",
+        "20.2",
+        "20.3",
+        "20.4",
+        "20.5",
+        "20.6",
+        "20.7",
+        "21.1",
+        "21.2",
+        "21.3",
+        "21.4",
+        "21.5",
+        "21.6",
+        "22.1",
+        "22.2",
+        "22.3",
+        "22.4",
+        "22.5",
+        "22.6",
+        "22.7",
+        "23.1",
+        "23.2",
+        "23.3",
+        "23.4",
+        "23.5",
+        "23.6",
+        "24.1",
+        "24.2",
+        "24.3",
+        "24.4",
+        "24.5",
+        "24.6",
+        "25.1",
+        "25.2",
+        "25.3",
+        "25.4",
+        "26.1",
+        "26.2",
+        "26.3",
+        "26.4",
+        "26.5",
+        "26.6",
+        "27.4"
+      ],
+      "proves": "G1 plus later occurrence, current delegation, incomplete and late evidence"
+    },
+    {
+      "id": "G3",
+      "name": "Accepted web release scope and operating qualification",
+      "exit_story": "28.6",
+      "required_stories": [
+        "20.1",
+        "20.2",
+        "20.3",
+        "20.4",
+        "20.5",
+        "20.6",
+        "20.7",
+        "21.1",
+        "21.2",
+        "21.3",
+        "21.4",
+        "21.5",
+        "21.6",
+        "22.1",
+        "22.2",
+        "22.3",
+        "22.4",
+        "22.5",
+        "22.6",
+        "22.7",
+        "23.1",
+        "23.2",
+        "23.3",
+        "23.4",
+        "23.5",
+        "23.6",
+        "24.1",
+        "24.2",
+        "24.3",
+        "24.4",
+        "24.5",
+        "24.6",
+        "25.1",
+        "25.2",
+        "25.3",
+        "25.4",
+        "26.1",
+        "26.2",
+        "26.3",
+        "26.4",
+        "26.5",
+        "26.6",
+        "27.1",
+        "27.2",
+        "27.3",
+        "27.4",
+        "27.5",
+        "28.3",
+        "28.4",
+        "28.5",
+        "28.6"
+      ],
+      "conditional_stories": [
+        "28.1",
+        "28.2"
+      ],
+      "proves": "Implemented accepted core including speech/helpers/named connectors and launch evidence for the declared profiles; requires separate commercial gates"
+    },
+    {
+      "id": "EXT",
+      "name": "Later optional contact/discovery extensions",
+      "stories": [
+        "27.6",
+        "27.7"
+      ],
+      "proves": "Only the separately enabled and qualified extension"
+    }
+  ]
+}

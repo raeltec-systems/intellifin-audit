@@ -1,0 +1,246 @@
+{
+  "as_of": "2026-09-30",
+  "basis": "Illustrative workload model, not production measurements or provider performance claims.",
+  "unit": "one active auditor per month",
+  "active_people_scenarios": [
+    1,
+    5,
+    20
+  ],
+  "cached_input_fraction": 0,
+  "cache_write_fraction": 0,
+  "no_cache_mode": "OpenAI explicit mode with no breakpoints; Anthropic no cache_control. This is a conservative budgeting comparison, not production implementation advice.",
+  "scenarios": {
+    "light": {
+      "active_workdays": 20,
+      "substantial_tasks": 8,
+      "nonvisual_work_cycles_per_task": 20,
+      "useful_computer_hours": 60,
+      "observations_per_useful_computer_hour": 5,
+      "billable_redo_volume_fraction": 0.1,
+      "rows": [
+        {
+          "category": "interactive_coordination",
+          "model": "gpt-6.1-sol",
+          "planned_calls": 100,
+          "input_text_tokens_per_call": 8000,
+          "input_image_tokens_per_call": 0,
+          "output_tokens_per_call_including_reasoning": 1000
+        },
+        {
+          "category": "nonvisual_task_work",
+          "model": "gpt-6.1-sol",
+          "planned_calls": 160,
+          "input_text_tokens_per_call": 16000,
+          "input_image_tokens_per_call": 0,
+          "output_tokens_per_call_including_reasoning": 2500
+        },
+        {
+          "category": "computer_observation_and_action_proposal",
+          "model": "gpt-6.1-sol",
+          "planned_calls": 300,
+          "input_text_tokens_per_call": 8000,
+          "input_image_tokens_per_call": 2000,
+          "output_tokens_per_call_including_reasoning": 750
+        },
+        {
+          "category": "validated_extraction_and_classification",
+          "model": "gpt-6-luna",
+          "planned_calls": 200,
+          "input_text_tokens_per_call": 5000,
+          "input_image_tokens_per_call": 0,
+          "output_tokens_per_call_including_reasoning": 750
+        },
+        {
+          "category": "consequential_claim_challenge",
+          "model": "claude-opus-5-5",
+          "planned_calls": 8,
+          "input_text_tokens_per_call": 25000,
+          "input_image_tokens_per_call": 0,
+          "output_tokens_per_call_including_reasoning": 4000
+        },
+        {
+          "category": "scheduled_or_event_check_wakeup",
+          "model": "gpt-6.1-sol",
+          "planned_calls": 20,
+          "input_text_tokens_per_call": 6000,
+          "input_image_tokens_per_call": 0,
+          "output_tokens_per_call_including_reasoning": 750
+        }
+      ]
+    },
+    "base": {
+      "active_workdays": 20,
+      "substantial_tasks": 20,
+      "nonvisual_work_cycles_per_task": 40,
+      "useful_computer_hours": 60,
+      "observations_per_useful_computer_hour": 20,
+      "billable_redo_volume_fraction": 0.2,
+      "rows": [
+        {
+          "category": "interactive_coordination",
+          "model": "gpt-6.1-sol",
+          "planned_calls": 400,
+          "input_text_tokens_per_call": 12000,
+          "input_image_tokens_per_call": 0,
+          "output_tokens_per_call_including_reasoning": 2000
+        },
+        {
+          "category": "nonvisual_task_work",
+          "model": "gpt-6.1-sol",
+          "planned_calls": 800,
+          "input_text_tokens_per_call": 30000,
+          "input_image_tokens_per_call": 0,
+          "output_tokens_per_call_including_reasoning": 5000
+        },
+        {
+          "category": "computer_observation_and_action_proposal",
+          "model": "gpt-6.1-sol",
+          "planned_calls": 1200,
+          "input_text_tokens_per_call": 12000,
+          "input_image_tokens_per_call": 3000,
+          "output_tokens_per_call_including_reasoning": 1000
+        },
+        {
+          "category": "validated_extraction_and_classification",
+          "model": "gpt-6-luna",
+          "planned_calls": 800,
+          "input_text_tokens_per_call": 8000,
+          "input_image_tokens_per_call": 0,
+          "output_tokens_per_call_including_reasoning": 1000
+        },
+        {
+          "category": "consequential_claim_challenge",
+          "model": "claude-opus-5-5",
+          "planned_calls": 20,
+          "input_text_tokens_per_call": 40000,
+          "input_image_tokens_per_call": 0,
+          "output_tokens_per_call_including_reasoning": 8000
+        },
+        {
+          "category": "scheduled_or_event_check_wakeup",
+          "model": "gpt-6.1-sol",
+          "planned_calls": 80,
+          "input_text_tokens_per_call": 10000,
+          "input_image_tokens_per_call": 0,
+          "output_tokens_per_call_including_reasoning": 1000
+        }
+      ]
+    },
+    "heavy": {
+      "active_workdays": 20,
+      "substantial_tasks": 60,
+      "nonvisual_work_cycles_per_task": 80,
+      "useful_computer_hours": 60,
+      "observations_per_useful_computer_hour": 60,
+      "billable_redo_volume_fraction": 0.35,
+      "rows": [
+        {
+          "category": "interactive_coordination",
+          "model": "gpt-6.1-sol",
+          "planned_calls": 800,
+          "input_text_tokens_per_call": 20000,
+          "input_image_tokens_per_call": 0,
+          "output_tokens_per_call_including_reasoning": 3000
+        },
+        {
+          "category": "nonvisual_task_work",
+          "model": "gpt-6.1-sol",
+          "planned_calls": 4800,
+          "input_text_tokens_per_call": 50000,
+          "input_image_tokens_per_call": 0,
+          "output_tokens_per_call_including_reasoning": 8000
+        },
+        {
+          "category": "computer_observation_and_action_proposal",
+          "model": "gpt-6.1-sol",
+          "planned_calls": 3600,
+          "input_text_tokens_per_call": 20000,
+          "input_image_tokens_per_call": 6000,
+          "output_tokens_per_call_including_reasoning": 1500
+        },
+        {
+          "category": "validated_extraction_and_classification",
+          "model": "gpt-6-luna",
+          "planned_calls": 3000,
+          "input_text_tokens_per_call": 12000,
+          "input_image_tokens_per_call": 0,
+          "output_tokens_per_call_including_reasoning": 1500
+        },
+        {
+          "category": "consequential_claim_challenge",
+          "model": "claude-opus-5-5",
+          "planned_calls": 60,
+          "input_text_tokens_per_call": 60000,
+          "input_image_tokens_per_call": 0,
+          "output_tokens_per_call_including_reasoning": 12000
+        },
+        {
+          "category": "scheduled_or_event_check_wakeup",
+          "model": "gpt-6.1-sol",
+          "planned_calls": 400,
+          "input_text_tokens_per_call": 20000,
+          "input_image_tokens_per_call": 0,
+          "output_tokens_per_call_including_reasoning": 2000
+        }
+      ]
+    }
+  },
+  "shared_monthly_quality_evaluation": {
+    "scope": "One deployment-wide recurring evaluation suite; allocate once, not once per auditor or tenant. Customer-specific method qualification adds actual separate usage.",
+    "cases": 200,
+    "lead_calls_per_case": 4,
+    "challenge_calls_per_case": 1,
+    "billable_redo_volume_fraction": 0.2,
+    "rows": [
+      {
+        "category": "evaluation_case_work",
+        "model": "gpt-6.1-sol",
+        "planned_calls": 800,
+        "input_text_tokens_per_call": 30000,
+        "input_image_tokens_per_call": 0,
+        "output_tokens_per_call_including_reasoning": 5000
+      },
+      {
+        "category": "evaluation_claim_challenge",
+        "model": "claude-opus-5-5",
+        "planned_calls": 200,
+        "input_text_tokens_per_call": 40000,
+        "input_image_tokens_per_call": 0,
+        "output_tokens_per_call_including_reasoning": 8000
+      }
+    ]
+  },
+  "optional_cache_sensitivity": {
+    "cached_text_fraction": 0.5,
+    "cache_write_text_fraction": 0.1,
+    "uncached_text_fraction": 0.4,
+    "image_tokens_always_uncached": true,
+    "source": "Illustrative only; not assumed in headline totals."
+  },
+  "exclusions": [
+    "Human reviewer salaries, support and method maintenance",
+    "Cloud infrastructure and own-computer execution, accounted in infrastructure workbook",
+    "Third-party OCR, search, connectors, email/notifications and specialist software",
+    "Voice/audio, image generation, embeddings and vendor hosted code/container/vector-store services unless enabled",
+    "Taxes, provider contract/region changes, provisioned throughput and fast/ultrafast modes"
+  ],
+  "embeddings_separate_from_call_totals": {
+    "model": "text-embedding-3-small",
+    "new_tokens_per_active_auditor_month": 1000000,
+    "initial_ingest_sensitivity_tokens_per_auditor": [
+      1000000,
+      10000000,
+      100000000
+    ],
+    "note": "Separate corpus/index decision; storage, retrieval, chunking and re-embedding runtime are in infrastructure. Query and replay embedding tokens are additional if outside this allowance."
+  },
+  "speech_input_separate_from_call_totals": {
+    "model": "gpt-transcribe",
+    "captured_audio_minutes_per_active_auditor_month": 60,
+    "billable_retry_fraction": 0.2,
+    "billable_minutes": 72,
+    "cost_usd": 0.324,
+    "note": "3 captured minutes per 20 workdays; explicit paid API transcription then editable text submitted through existing command route. Excludes real-time spoken replies/calls. Transcribed text participates in coordination input allowance, not a second chat call."
+  }
+}

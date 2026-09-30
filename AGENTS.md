@@ -1,5 +1,32 @@
 # AGENTS.md
 
+## Active Zobba baseline — 30 September 2026
+
+For **new Zobba work**, the owner-accepted design revision 3 and the
+[active baseline index](_bmad-output/planning-artifacts/ACTIVE-BASELINE.md)
+supersede the older product/architecture/planning descriptions and pointers in
+the managed context below. This is a brownfield course correction, not a restart
+of product discovery. The current application is still TypeScript/Node; the
+accepted target is an own Rust backend, fresh schema, engagement conversation
+coordinating Tasks, real managed computers and standing Permissions.
+
+The active SPEC remains `_bmad-output/specs/spec-IntelliFin Audit/SPEC.md`;
+read its adopted companions. Active UX is `ux-designs/ux-Zobba-2026-09-25/`.
+The new backlog begins at Epic 20 in `planning-artifacts/epics.md`; the normal
+`implementation-artifacts/sprint-status.yaml` is its sole active queue. Historical
+epics/status and prior contracts are archived without rewriting completion.
+Do not resume an older unfinished story as new-build work merely because it is
+still on disk. Use an explicit new story ID and the first-batch handoff.
+
+Use current BMAD workflows: `bmad-correct-course` for cross-artifact changes;
+`bmad-prd`, `bmad-architecture`, `bmad-ux` and `bmad-spec` for owned documents;
+`bmad-create-epics-and-stories` then `bmad-sprint-planning` for planning;
+`bmad-build` for implementation. Preserve stable identifiers; retired does not
+mean completed. Old code/tests are reuse evidence, not a requirement for a second
+engine or Node domain authority. No application rewrite/deployment is claimed by
+the planning consolidation. Current runtime commands below still describe the
+existing application until an implementation story supplies Rust commands.
+
 <!-- bmad:context -->
 <!-- Verified 2026-09-01 against 6c93db5. Managed by bmad-project-context; edits inside this block are replaced on refresh. Keep anything you want preserved outside the markers. -->
 

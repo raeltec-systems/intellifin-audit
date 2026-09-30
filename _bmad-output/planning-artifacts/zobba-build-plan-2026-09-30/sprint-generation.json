@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "action": "generate",
+  "status_file": "/workspace/intellifin-audit/_bmad-output/implementation-artifacts/sprint-status.yaml",
+  "dry_run": false,
+  "fresh": false,
+  "epics": 9,
+  "stories": 55,
+  "counts": {
+    "backlog": 64,
+    "optional": 9
+  },
+  "generated": "09-30-2026 16:09",
+  "last_updated": "09-30-2026 16:07",
+  "warnings": [],
+  "new_entries": [],
+  "preserved": 73,
+  "changed": 0,
+  "upgraded_from_disk": [],
+  "dropped_orphans": [],
+  "legacy_mapped": [],
+  "illegal": [],
+  "in_sync": true,
+  "explicit_set": []
+}

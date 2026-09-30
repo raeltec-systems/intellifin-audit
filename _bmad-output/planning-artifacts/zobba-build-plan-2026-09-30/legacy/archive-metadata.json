@@ -1,0 +1,10 @@
+{
+  "source": "_bmad-output/planning-artifacts/epics.md",
+  "source_sha256": "d257dcd2b5202cb71e7675365d53a3e56ca09f715c74944173b1a132b044e5f3",
+  "historical_max_epic": 19,
+  "new_epics_start": 20,
+  "old_sprint_tracking": "_bmad-output/implementation-artifacts/sprint-status.yaml",
+  "old_tracking_preserved": true,
+  "old_sprint_sha256": "e23038ea1e96f85de3d3da22d3c70b519eedbda3fbd7676921601a51b0d07fae",
+  "old_sprint_archive": "_bmad-output/implementation-artifacts/archive/pre-revision-3-2026-09-30/sprint-status.yaml"
+}

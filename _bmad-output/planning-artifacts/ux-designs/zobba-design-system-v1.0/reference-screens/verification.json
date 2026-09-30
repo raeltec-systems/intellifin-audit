@@ -1,0 +1,140 @@
+{
+  "date": "2026-09-30",
+  "tool": "Puppeteer with system Chromium",
+  "scope": "Local design prototype only",
+  "rendered": [
+    {
+      "scene": "engagement",
+      "viewport": 1280,
+      "scroll": 1280,
+      "dialog": false,
+      "title": "Zobba · continuing audit work · interactive design reference"
+    },
+    {
+      "scene": "needs",
+      "viewport": 1280,
+      "scroll": 1280,
+      "dialog": false,
+      "title": "Zobba · continuing audit work · interactive design reference"
+    },
+    {
+      "scene": "output",
+      "viewport": 1280,
+      "scroll": 1280,
+      "dialog": false,
+      "title": "Zobba · continuing audit work · interactive design reference"
+    },
+    {
+      "scene": "signin",
+      "viewport": 1280,
+      "scroll": 1280,
+      "dialog": true,
+      "title": "Zobba · continuing audit work · interactive design reference"
+    },
+    {
+      "scene": "submitted",
+      "viewport": 1280,
+      "scroll": 1280,
+      "dialog": true,
+      "title": "Zobba · continuing audit work · interactive design reference"
+    },
+    {
+      "scene": "verifying",
+      "viewport": 1280,
+      "scroll": 1280,
+      "dialog": true,
+      "title": "Zobba · continuing audit work · interactive design reference"
+    },
+    {
+      "scene": "computer",
+      "viewport": 1280,
+      "scroll": 1280,
+      "dialog": false,
+      "title": "Zobba · continuing audit work · interactive design reference"
+    },
+    {
+      "scene": "takeover",
+      "viewport": 1280,
+      "scroll": 1280,
+      "dialog": false,
+      "title": "Zobba · continuing audit work · interactive design reference"
+    },
+    {
+      "scene": "human",
+      "viewport": 1280,
+      "scroll": 1280,
+      "dialog": false,
+      "title": "Zobba · continuing audit work · interactive design reference"
+    },
+    {
+      "scene": "handback",
+      "viewport": 1280,
+      "scroll": 1280,
+      "dialog": false,
+      "title": "Zobba · continuing audit work · interactive design reference"
+    },
+    {
+      "scene": "pausing",
+      "viewport": 1280,
+      "scroll": 1280,
+      "dialog": false,
+      "title": "Zobba · continuing audit work · interactive design reference"
+    },
+    {
+      "scene": "paused",
+      "viewport": 1280,
+      "scroll": 1280,
+      "dialog": false,
+      "title": "Zobba · continuing audit work · interactive design reference"
+    },
+    {
+      "scene": "stopping",
+      "viewport": 1280,
+      "scroll": 1280,
+      "dialog": false,
+      "title": "Zobba · continuing audit work · interactive design reference"
+    },
+    {
+      "scene": "stopped",
+      "viewport": 1280,
+      "scroll": 1280,
+      "dialog": false,
+      "title": "Zobba · continuing audit work · interactive design reference"
+    },
+    {
+      "scene": "reconnecting",
+      "viewport": 1280,
+      "scroll": 1280,
+      "dialog": false,
+      "title": "Zobba · continuing audit work · interactive design reference"
+    },
+    {
+      "scene": "narrow",
+      "viewport": 390,
+      "scroll": 390,
+      "dialog": false,
+      "title": "Zobba · continuing audit work · interactive design reference"
+    },
+    {
+      "scene": "narrow-workspace",
+      "viewport": 390,
+      "scroll": 390,
+      "dialog": false,
+      "title": "Zobba · continuing audit work · interactive design reference"
+    }
+  ],
+  "interactions": [
+    "open output",
+    "preserve pinned output while new inventory opens",
+    "takeover pending and confirmed",
+    "handback verification",
+    "task pause pending and confirmed",
+    "private submitted / verifying / verified",
+    "guidance received / applied",
+    "narrow workspace / needs / conversation",
+    "computer controls remain visible",
+    "intermediate 768 / 1024 width",
+    "Escape closes sign-in and returns focus"
+  ],
+  "pageErrors": []
+}

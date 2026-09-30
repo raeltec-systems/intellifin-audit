@@ -1,0 +1,16 @@
+scenario,case,operating_cash_usd,delta_from_base_usd
+initial_1,12 months accumulated evidence at same20GB/user/month; no deletion,1351.83144,11.0308
+initial_1,Dense computer:360 observations/useful hour; other base tokens unchanged,2320.00064,979.2
+initial_1,Illustrative50%textcachehits10%writes,1248.02624,-92.7744
+initial_1,Uniform10%eligible model regional-processing uplift,1378.65344,37.8528
+initial_1,One person per organisation; regional resources still once,1340.80064,0.0
+team_5,12 months accumulated evidence at same20GB/user/month; no deletion,2286.481354,55.154
+team_5,Dense computer:360 observations/useful hour; other base tokens unchanged,7127.327354,4896.0
+team_5,Illustrative50%textcachehits10%writes,1940.255354,-291.072
+team_5,Uniform10%eligible model regional-processing uplift,2347.631354,116.304
+team_5,One person per organisation; regional resources still once,2239.175354,7.848
+team_20,12 months accumulated evidence at same20GB/user/month; no deletion,5838.547924,220.616
+team_20,Dense computer:360 observations/useful hour; other base tokens unchanged,25201.931924,19584.0
+team_20,Illustrative50%textcachehits10%writes,4583.243924,-1034.688
+team_20,Uniform10%eligible model regional-processing uplift,6028.427924,410.496
+team_20,One person per organisation; regional resources still once,5655.209923,37.278
