@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { sha256HexOfBytes, utf8Bytes } from '@intellifin/domain';
 
@@ -160,6 +160,21 @@ describe('server-side Evidence snapshot consumption', () => {
       observedSize: null,
     }]);
     expect(fake.access).toEqual([]);
+  });
+
+  // CI on 39f7d5a5 (2026-09-29): with a zero wait, a millisecond passing before the first
+  // check meant the grant was never read. The clock here moves on every call.
+  it('reads the grant at least once, even when the clock moves before the first check', async () => {
+    let clock = 1_000;
+    const spy = vi.spyOn(Date, 'now').mockImplementation(() => { clock += 1; return clock; });
+    try {
+      const fake = repository(capability());
+      const result = await readSnapshotCellWithGrant(fake.repository, input, environment(responseWithBytes()));
+      expect(result.failure).toBeNull();
+      expect(fake.access).toEqual([GRANT_ID]);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('does not turn a transient storage 5xx into an integrity finding', async () => {
