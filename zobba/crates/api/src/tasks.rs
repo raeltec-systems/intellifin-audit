@@ -50,6 +50,7 @@ pub(crate) fn router(database: &RuntimeDatabase, identity: AuthState) -> Router 
             control: true,
         });
     let conversation = crate::conversation::router(database.pool().clone(), identity.clone());
+    let operations = crate::operations::router(database.pool().clone(), identity.clone());
     let ordinary = Router::new()
         .route("/engagements/{engagement_id}/task-commands", post(admit))
         .route("/engagements/{engagement_id}/tasks", route_get(list))
@@ -66,7 +67,8 @@ pub(crate) fn router(database: &RuntimeDatabase, identity: AuthState) -> Router 
             repository: TaskRepository::new(database.pool().clone()),
             control: false,
         })
-        .merge(conversation);
+        .merge(conversation)
+        .merge(operations);
     bounded(ordinary, 8).merge(bounded(controls, 4))
 }
 

@@ -73,7 +73,7 @@ async fn begin(pool: &PgPool, actor: &str, selected: &Scope) -> Result<Tx, TaskE
             scope::ScopeError::Unavailable => TaskError::Unavailable,
         })
 }
-async fn lock(pool: &PgPool, actor: &str, selected: &Scope) -> Result<Tx, TaskError> {
+pub(crate) async fn lock(pool: &PgPool, actor: &str, selected: &Scope) -> Result<Tx, TaskError> {
     let mut tx = begin(pool, actor, selected).await?;
     // All writers serialize engagement -> task -> command/claim/wakeup. The row
     // lock is held through commit, so event cursor order is commit order.
@@ -84,7 +84,7 @@ async fn lock(pool: &PgPool, actor: &str, selected: &Scope) -> Result<Tx, TaskEr
     }
     Ok(tx)
 }
-async fn task(tx: &mut Tx, id: &str) -> Result<PgRow, TaskError> {
+pub(crate) async fn task(tx: &mut Tx, id: &str) -> Result<PgRow, TaskError> {
     sqlx::query("SELECT *,owner_until>clock_timestamp() AS owner_live,(SELECT left(display_name,200) FROM public.identities WHERE id=tasks.accountable_actor) AS accountable_label FROM public.tasks WHERE id=$1 FOR UPDATE")
         .bind(id).fetch_optional(&mut **tx).await.map_err(unavailable)?.ok_or(TaskError::Denied)
 }
@@ -92,7 +92,7 @@ async fn cursor(tx: &mut Tx, s: &Scope) -> Result<i64, TaskError> {
     sqlx::query_scalar("INSERT INTO public.task_counters(organisation_id,client_id,engagement_id,cursor) VALUES($1,$2,$3,1) ON CONFLICT(organisation_id,client_id,engagement_id) DO UPDATE SET cursor=task_counters.cursor+1 RETURNING cursor")
         .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id).fetch_one(&mut **tx).await.map_err(unavailable)
 }
-async fn event(
+pub(crate) async fn event(
     tx: &mut Tx,
     s: &Scope,
     task_id: &str,
@@ -119,7 +119,7 @@ async fn put_event(
         .execute(&mut **tx).await.map_err(unavailable)?;
     Ok(())
 }
-async fn wake(tx: &mut Tx, s: &Scope, id: &str, actor: &str) -> Result<(), TaskError> {
+pub(crate) async fn wake(tx: &mut Tx, s: &Scope, id: &str, actor: &str) -> Result<(), TaskError> {
     sqlx::query("INSERT INTO public.task_wakeups(id,actor_id,organisation_id,client_id,engagement_id,task_id) VALUES($1,$2,$3,$4,$5,$1) ON CONFLICT(task_id) DO UPDATE SET pending=true,available_at=clock_timestamp()")
         .bind(id).bind(actor).bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id).execute(&mut **tx).await.map_err(unavailable)?;
     sqlx::query("INSERT INTO public.task_deliveries(wakeup_id) VALUES($1) ON CONFLICT(wakeup_id) DO NOTHING")
@@ -187,7 +187,7 @@ impl TaskCommands for TaskRepository {
             if before.cycle_id != cycle || !before.state.accepts(c.kind, before.cessation) {
                 return Err(TaskError::Conflict);
             }
-            let unresolved:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM public.task_claims WHERE task_id=$1 AND state='consumed')").bind(&id).fetch_one(&mut *tx).await.map_err(unavailable)?;
+            let unresolved:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM public.task_claims WHERE task_id=$1 AND state='consumed') OR EXISTS(SELECT 1 FROM public.operations o JOIN public.operation_claims c ON c.operation_id=o.id WHERE o.task_id=$1 AND c.state='consumed' AND NOT EXISTS(SELECT 1 FROM public.operation_receipts r WHERE r.attempt_id=c.attempt_id AND r.outcome IN ('completed','absent')))").bind(&id).fetch_one(&mut *tx).await.map_err(unavailable)?;
             match c.kind {
                 CommandKind::Guide => {
                     sqlx::query("UPDATE public.tasks SET intent_revision=intent_revision+1,revision=revision+1 WHERE id=$1").bind(&id).execute(&mut *tx).await.map_err(unavailable)?;
@@ -234,6 +234,7 @@ impl TaskCommands for TaskRepository {
                 CommandKind::Create => unreachable!(),
             }
             sqlx::query("UPDATE public.task_claims SET state='abandoned' WHERE task_id=$1 AND state='admitted'").bind(&id).execute(&mut *tx).await.map_err(unavailable)?;
+            sqlx::query("UPDATE public.operation_claims SET state='abandoned' WHERE operation_id IN (SELECT id FROM public.operations WHERE task_id=$1) AND state='admitted'").bind(&id).execute(&mut *tx).await.map_err(unavailable)?;
         }
         let after = task(&mut tx, &id).await?;
         let command_id = token();
@@ -351,6 +352,10 @@ impl TaskRepository {
         sqlx::query("UPDATE public.tasks SET owner_id=$2,owner_until=clock_timestamp()+interval '5 seconds',owner_epoch=owner_epoch+$3 WHERE id=$1")
             .bind(&route.task_id).bind(worker).bind(i64::from(changed)).execute(&mut *tx).await.map_err(unavailable)?;
         let mut now = snapshot(&row)?;
+        let was_reconciling = matches!(
+            now.cessation,
+            Cessation::Pending | Cessation::ReconciliationRequired
+        );
         // Applying retained text is an ordinary work boundary, not AI understanding.
         let commands=sqlx::query("SELECT c.id,c.kind,c.content,c.cycle_id,c.intent_revision,c.received_cursor FROM public.task_commands c WHERE c.task_id=$1 AND c.received_cursor>$2 ORDER BY c.received_cursor LIMIT $3")
             .bind(&route.task_id).bind(get::<i64>(&row,"applied_command_cursor")?).bind(COMMAND_BATCH).fetch_all(&mut *tx).await.map_err(unavailable)?;
@@ -380,8 +385,10 @@ impl TaskRepository {
         }
         let consumed=sqlx::query("SELECT c.*,o.outcome FROM public.task_claims c LEFT JOIN public.task_observations o ON o.claim_id=c.id WHERE c.task_id=$1 AND c.state='consumed' ORDER BY c.id LIMIT 1")
             .bind(&route.task_id).fetch_optional(&mut *tx).await.map_err(unavailable)?;
+        let mut inert_observed = false;
         if let Some(claim) = consumed {
             if let Some(outcome) = get::<Option<String>>(&claim, "outcome")? {
+                inert_observed = true;
                 sqlx::query("UPDATE public.task_claims SET state='observed' WHERE id=$1")
                     .bind(get::<String>(&claim, "id")?)
                     .execute(&mut *tx)
@@ -450,6 +457,80 @@ impl TaskRepository {
                 }
                 tx.commit().await.map_err(unavailable)?;
                 return Ok(Decision::Waiting);
+            }
+        }
+        // An inert child receipt proves only that child ended. External claims
+        // that crossed consumption remain possibly dispatched until source facts
+        // establish completion or authoritative absence under the source contract.
+        let external: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM public.operations o JOIN public.operation_claims c ON c.operation_id=o.id WHERE o.task_id=$1 AND c.state='consumed' AND NOT EXISTS(SELECT 1 FROM public.operation_receipts r WHERE r.attempt_id=c.attempt_id AND r.outcome IN ('completed','absent')))")
+            .bind(&route.task_id).fetch_one(&mut *tx).await.map_err(unavailable)?;
+        if external {
+            let state = if matches!(now.state, TaskState::Paused | TaskState::Stopped) {
+                now.state.as_str()
+            } else {
+                "waiting"
+            };
+            let changed = sqlx::query("UPDATE public.tasks SET state=$2,cessation='reconciliation_required',revision=revision+1 WHERE id=$1 AND (state<>$2 OR cessation<>'reconciliation_required')")
+                .bind(&route.task_id).bind(state).execute(&mut *tx).await.map_err(unavailable)?;
+            if changed.rows_affected() != 0 {
+                event(
+                    &mut tx,
+                    &route.scope,
+                    &route.task_id,
+                    &now.cycle_id,
+                    None,
+                    "waiting",
+                )
+                .await?;
+            }
+            tx.commit().await.map_err(unavailable)?;
+            return Ok(Decision::Waiting);
+        }
+        let reconciling = was_reconciling
+            || matches!(
+                now.cessation,
+                Cessation::Pending | Cessation::ReconciliationRequired
+            );
+        let retry = now.state == TaskState::Waiting
+            && (reconciling || inert_observed)
+            && retryable_external_absence(&mut tx, route, &now).await?;
+        if reconciling || retry {
+            // Any unresolved inert claim returned above; all remaining source
+            // facts are terminal. Only this freshly authorized owner incorporates
+            // those facts, including receipt-only facts from a revoked producer.
+            // A stopped/paused Task never resumes here. An active Task may obtain
+            // a fresh producer only for a latest source-confirmed absence under
+            // its unchanged cycle/intent/execution. Consumption still rechecks
+            // current policy and exact operation authority independently.
+            let state = if retry { "ready" } else { now.state.as_str() };
+            let cessation = if retry || matches!(now.state, TaskState::Ready | TaskState::Running) {
+                "none"
+            } else {
+                "confirmed"
+            };
+            // The inert receipt may already have incorporated this exact state
+            // above. Do not create a second revision/event for that same fact.
+            let changed = sqlx::query(
+                "UPDATE public.tasks SET state=$2,cessation=$3,revision=revision+1 WHERE id=$1 AND (state<>$2 OR cessation<>$3)",
+            )
+            .bind(&route.task_id)
+            .bind(state)
+            .bind(cessation)
+            .execute(&mut *tx)
+            .await
+            .map_err(unavailable)?;
+            now.state = TaskState::parse(state).ok_or(TaskError::Unavailable)?;
+            now.cessation = Cessation::parse(cessation).ok_or(TaskError::Unavailable)?;
+            if changed.rows_affected() != 0 {
+                event(
+                    &mut tx,
+                    &route.scope,
+                    &route.task_id,
+                    &now.cycle_id,
+                    None,
+                    "observed",
+                )
+                .await?;
             }
         }
         let row = task(&mut tx, &route.task_id).await?;
@@ -607,7 +688,41 @@ impl TaskRepository {
         self.coordinate(route, worker).await.map(|_| ())
     }
 }
-fn valid_basis(row: &PgRow, b: &ClaimBasis) -> Result<bool, TaskError> {
+/// Return only a same-meaning retry opportunity, never permission to dispatch.
+/// The operation store caps each Task at 1,000 logical operations. Decode its
+/// strict persisted basis rather than interpreting untrusted request labels.
+async fn retryable_external_absence(
+    tx: &mut Tx,
+    route: &WakeupRoute,
+    now: &TaskSnapshot,
+) -> Result<bool, TaskError> {
+    let rows = sqlx::query("SELECT a.basis FROM public.operation_attempts a JOIN public.operations o ON o.id=a.operation_id WHERE o.task_id=$1 AND o.cycle_id=$2 AND NOT EXISTS(SELECT 1 FROM public.operation_attempts later WHERE later.operation_id=a.operation_id AND later.attempt_number>a.attempt_number) AND EXISTS(SELECT 1 FROM public.operation_receipts r WHERE r.attempt_id=a.id AND r.outcome='absent') LIMIT 1001")
+        .bind(&route.task_id)
+        .bind(&now.cycle_id)
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(unavailable)?;
+    if rows.len() > 1000 {
+        return Err(TaskError::Unavailable);
+    }
+    for row in rows {
+        let basis: zobba_application::operation::wire::StoredBasis =
+            serde_json::from_str(&get::<String>(&row, "basis")?)
+                .map_err(|_| TaskError::Unavailable)?;
+        let b = basis.0;
+        if b.actor_id == route.actor_id
+            && b.scope == route.scope
+            && b.task_id == now.id
+            && b.cycle_id == now.cycle_id
+            && b.intent_revision == now.intent_revision as i64
+            && b.execution_epoch == now.execution_epoch as i64
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+pub(crate) fn valid_basis(row: &PgRow, b: &ClaimBasis) -> Result<bool, TaskError> {
     Ok(get::<String>(row, "accountable_actor")? == b.actor_id
         && get::<Option<String>>(row, "owner_id")?.as_deref() == Some(b.worker_id.as_str())
         && get::<Option<bool>>(row, "owner_live")?.unwrap_or(false)
@@ -618,7 +733,7 @@ fn valid_basis(row: &PgRow, b: &ClaimBasis) -> Result<bool, TaskError> {
         && get::<String>(row, "cycle_id")? == b.cycle_id
         && matches!(get::<String>(row, "state")?.as_str(), "ready" | "running"))
 }
-fn claim_matches(row: &PgRow, b: &ClaimBasis) -> Result<bool, TaskError> {
+pub(crate) fn claim_matches(row: &PgRow, b: &ClaimBasis) -> Result<bool, TaskError> {
     Ok(get::<String>(row, "actor_id")? == b.actor_id
         && get::<String>(row, "task_id")? == b.task_id
         && get::<String>(row, "cycle_id")? == b.cycle_id

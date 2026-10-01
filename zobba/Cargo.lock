@@ -3217,6 +3217,7 @@ dependencies = [
 name = "zobba-application"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "zobba-domain",
 ]
 
@@ -3258,8 +3259,12 @@ name = "zobba-worker"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "rand 0.8.8",
+ "reqwest",
  "serde",
+ "serde_json",
+ "sha2",
  "sqlx",
  "tokio",
  "zobba-application",

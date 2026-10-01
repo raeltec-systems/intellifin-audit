@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Zobba owned HTTP interface",
-    "description": "Service health, current scoped identity and durable Task commands with bounded inert execution. No model, tool, computer or audit execution is implied.",
+    "description": "Service health, current scoped identity, durable Task commands and exact operation decisions under standing Permissions. Provider acceptance and completed effects are distinct; no live connector, model, computer or audit execution is implied.",
     "license": {
       "name": ""
     },
@@ -916,6 +916,789 @@
         ]
       }
     },
+    "/engagements/{engagement_id}/operations": {
+      "get": {
+        "tags": [
+          "operations"
+        ],
+        "operationId": "list_operations",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional current session-bound CSRF read precondition; mismatch refuses without changing cookies",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "query",
+            "description": "Exact Task whose operation history is requested",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after_operation_id",
+            "in": "query",
+            "description": "Exclusive operation ID from next_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed; refresh composed reads without replacing the cookie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/operations/{operation_id}": {
+      "get": {
+        "tags": [
+          "operations"
+        ],
+        "operationId": "get_operation",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional current session-bound CSRF read precondition; mismatch refuses without changing cookies",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed; refresh composed reads without replacing the cookie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/operations/{operation_id}/decisions": {
+      "post": {
+        "tags": [
+          "operations"
+        ],
+        "operationId": "decide_operation",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact configured HTTPS application origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "Current session-bound token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Actor",
+            "in": "header",
+            "description": "Required refusal fence for the current session actor; never supplies author authority",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationDecisionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/operations/{operation_id}/history": {
+      "get": {
+        "tags": [
+          "operations"
+        ],
+        "operationId": "get_operation_history",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional current session-bound CSRF read precondition; mismatch refuses without changing cookies",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
+          {
+            "name": "after_decision_id",
+            "in": "query",
+            "description": "Exclusive decision ID from decision_next_cursor",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "after_attempt_id",
+            "in": "query",
+            "description": "Exclusive attempt ID from attempt_next_cursor",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "after_observation_id",
+            "in": "query",
+            "description": "Exclusive observation ID from observation_next_cursor",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fresh authenticated history: up to50 immutable records per independent collection, ordered by ID; restart pages to discover newly recorded facts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationHistoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed; refresh reads without replacing the cookie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/permissions/{authority_id}/revoke": {
+      "post": {
+        "tags": [
+          "operations"
+        ],
+        "operationId": "revoke_permission",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact configured HTTPS application origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "Current session-bound token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Actor",
+            "in": "header",
+            "description": "Required refusal fence for the current session actor; never supplies author authority",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "authority_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PermissionRevocationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionRevocationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
     "/engagements/{engagement_id}/task-commands": {
       "post": {
         "tags": [
@@ -1677,6 +2460,192 @@
   },
   "components": {
     "schemas": {
+      "ActionRequest": {
+        "type": "string",
+        "enum": [
+          "read",
+          "write",
+          "send"
+        ]
+      },
+      "AttachmentRequest": {
+        "type": "object",
+        "required": [
+          "id",
+          "digest",
+          "classification"
+        ],
+        "properties": {
+          "classification": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "digest": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "id": {
+            "type": "string",
+            "description": "Immutable logical material identity; never a credential or download capability.",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AttemptHistoryResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "operation_id",
+          "number",
+          "request_digest",
+          "recorded_at",
+          "source_id",
+          "ledger_id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ledger_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Non-secret source ledger identity bound when this attempt was admitted."
+          },
+          "number": {
+            "type": "string",
+            "maxLength": 19,
+            "pattern": "^[1-9][0-9]{0,18}$"
+          },
+          "operation_id": {
+            "type": "string"
+          },
+          "recorded_at": {
+            "type": "string",
+            "maxLength": 19,
+            "pattern": "^[1-9][0-9]{0,18}$"
+          },
+          "request_digest": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "source_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Non-secret logical source identity; never an endpoint URL or capability."
+          }
+        }
+      },
+      "CanonicalOperationRequest": {
+        "type": "object",
+        "required": [
+          "version",
+          "purpose",
+          "action",
+          "account_id",
+          "environment_id",
+          "destination",
+          "recipients",
+          "material",
+          "material_digest",
+          "attachments",
+          "resource_id",
+          "resource_version",
+          "expires_at"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "action": {
+            "$ref": "#/components/schemas/ActionRequest"
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttachmentRequest"
+            },
+            "description": "Sorted by unique attachment ID; complete immutable material identities.",
+            "maxItems": 16
+          },
+          "destination": {
+            "type": "string",
+            "description": "Exact logical destination, never a caller-selected URL or credential.",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "environment_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "expires_at": {
+            "type": "string",
+            "description": "Exact positive Unix seconds represented as decimal text.",
+            "maxLength": 19,
+            "pattern": "^[1-9][0-9]{0,18}$"
+          },
+          "material": {
+            "type": "string",
+            "description": "Exact reviewed material, at most 4000 UTF-8 bytes.",
+            "maxLength": 4000
+          },
+          "material_digest": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/PurposeRequest"
+          },
+          "recipients": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Sorted unique logical recipient identities; order is canonical and substitutions refuse.",
+            "maxItems": 16
+          },
+          "resource_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "resource_version": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Canonical request contract version, currently 1.",
+            "maximum": 1,
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
       "CessationResponse": {
         "type": "string",
         "enum": [
@@ -1996,6 +2965,29 @@
           }
         }
       },
+      "DecisionHistoryResponse": {
+        "type": "object",
+        "required": [
+          "key",
+          "decision",
+          "recorded_at"
+        ],
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/OperationDecisionResponse"
+          },
+          "key": {
+            "type": "string",
+            "description": "Exact persisted decision key, scoped to the recorded actor and engagement."
+          },
+          "recorded_at": {
+            "type": "string",
+            "description": "Server recording time, positive Unix seconds as decimal text.",
+            "maxLength": 19,
+            "pattern": "^[1-9][0-9]{0,18}$"
+          }
+        }
+      },
       "EngagementResponse": {
         "type": "object",
         "required": [
@@ -2137,6 +3129,329 @@
           }
         }
       },
+      "ObservationHistoryResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "attempt_id",
+          "fact",
+          "source",
+          "recorded_at"
+        ],
+        "properties": {
+          "attempt_id": {
+            "type": "string"
+          },
+          "fact": {
+            "$ref": "#/components/schemas/SourceFactResponse",
+            "description": "A recorded source fact. Unknown or Accepted proves neither completion nor absence."
+          },
+          "id": {
+            "type": "string"
+          },
+          "recorded_at": {
+            "type": "string",
+            "maxLength": 19,
+            "pattern": "^[1-9][0-9]{0,18}$"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ObservationSourceResponse"
+          }
+        }
+      },
+      "ObservationSourceResponse": {
+        "type": "string",
+        "enum": [
+          "dispatch",
+          "reconciliation"
+        ]
+      },
+      "OperationDecisionRequest": {
+        "type": "object",
+        "required": [
+          "key",
+          "expected_revision",
+          "request",
+          "expires_at",
+          "allow"
+        ],
+        "properties": {
+          "allow": {
+            "type": "boolean",
+            "description": "False records an exact refusal; true cannot override a hard prohibition."
+          },
+          "expected_revision": {
+            "type": "string",
+            "maxLength": 19,
+            "pattern": "^[1-9][0-9]{0,18}$"
+          },
+          "expires_at": {
+            "type": "string",
+            "description": "Decision expiry cannot exceed request expiry. Positive Unix seconds as decimal text.",
+            "maxLength": 19,
+            "pattern": "^[1-9][0-9]{0,18}$"
+          },
+          "key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "request": {
+            "$ref": "#/components/schemas/CanonicalOperationRequest",
+            "description": "The complete request read and reviewed by this actor. Any material change refuses."
+          }
+        },
+        "additionalProperties": false
+      },
+      "OperationDecisionResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "operation_id",
+          "actor_id",
+          "request_digest",
+          "expected_revision",
+          "expires_at",
+          "allowed"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": "string"
+          },
+          "allowed": {
+            "type": "boolean"
+          },
+          "expected_revision": {
+            "type": "string",
+            "maxLength": 19,
+            "pattern": "^[1-9][0-9]{0,18}$"
+          },
+          "expires_at": {
+            "type": "string",
+            "maxLength": 19,
+            "pattern": "^[1-9][0-9]{0,18}$"
+          },
+          "id": {
+            "type": "string"
+          },
+          "operation_id": {
+            "type": "string"
+          },
+          "request_digest": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      },
+      "OperationHistoryResponse": {
+        "type": "object",
+        "required": [
+          "operation_id",
+          "decisions",
+          "attempts",
+          "observations",
+          "decision_next_cursor",
+          "attempt_next_cursor",
+          "observation_next_cursor"
+        ],
+        "properties": {
+          "attempt_next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Exclusive attempt ID; each history collection has its own continuation."
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttemptHistoryResponse"
+            },
+            "maxItems": 50
+          },
+          "decision_next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Exclusive decision ID; null means this fresh page exhausted that collection."
+          },
+          "decisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DecisionHistoryResponse"
+            },
+            "description": "Immutable decisions in ID order, including the persisted decider and exact expiry.",
+            "maxItems": 50
+          },
+          "observation_next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Exclusive observation ID. Restart from the first page to discover new records."
+          },
+          "observations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ObservationHistoryResponse"
+            },
+            "maxItems": 50
+          },
+          "operation_id": {
+            "type": "string"
+          }
+        }
+      },
+      "OperationResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "task_id",
+          "cycle_id",
+          "actor_id",
+          "request",
+          "request_digest",
+          "revision",
+          "state"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": "string",
+            "description": "Immutable producing actor; the reading or deciding actor does not replace it."
+          },
+          "cycle_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "request": {
+            "$ref": "#/components/schemas/CanonicalOperationRequest"
+          },
+          "request_digest": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "revision": {
+            "type": "string",
+            "maxLength": 19,
+            "pattern": "^[1-9][0-9]{0,18}$"
+          },
+          "state": {
+            "$ref": "#/components/schemas/OperationStateResponse",
+            "description": "Provider acceptance is distinct from a completed effect; possible dispatch remains uncertain."
+          },
+          "task_id": {
+            "type": "string"
+          }
+        }
+      },
+      "OperationStateResponse": {
+        "type": "string",
+        "enum": [
+          "needs_decision",
+          "ready",
+          "possibly_dispatched",
+          "accepted",
+          "completed",
+          "absent",
+          "revoked"
+        ]
+      },
+      "OperationsResponse": {
+        "type": "object",
+        "required": [
+          "operations",
+          "next_cursor"
+        ],
+        "properties": {
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Exclusive operation ID; null means no further rows for this exact Task."
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OperationResponse"
+            },
+            "maxItems": 50
+          }
+        }
+      },
+      "PermissionRevocationRequest": {
+        "type": "object",
+        "required": [
+          "key",
+          "kind",
+          "expected_version"
+        ],
+        "properties": {
+          "expected_version": {
+            "type": "string",
+            "maxLength": 19,
+            "pattern": "^[1-9][0-9]{0,18}$"
+          },
+          "key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PolicyKindRequest"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PermissionRevocationResponse": {
+        "type": "object",
+        "required": [
+          "kind",
+          "subject_id",
+          "version"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/PolicyKindRequest"
+          },
+          "subject_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string",
+            "maxLength": 19,
+            "pattern": "^[1-9][0-9]{0,18}$"
+          }
+        }
+      },
+      "PolicyKindRequest": {
+        "type": "string",
+        "enum": [
+          "organisation",
+          "engagement",
+          "member",
+          "account",
+          "task",
+          "delegation"
+        ]
+      },
+      "PurposeRequest": {
+        "type": "string",
+        "enum": [
+          "live_inspection",
+          "test_workflows",
+          "audit_coordination"
+        ]
+      },
       "ReceiptStatusResponse": {
         "type": "string",
         "enum": [
@@ -2192,6 +3507,15 @@
             "$ref": "#/components/schemas/IdentityResponse"
           }
         }
+      },
+      "SourceFactResponse": {
+        "type": "string",
+        "enum": [
+          "unknown",
+          "accepted",
+          "completed",
+          "authoritatively_absent"
+        ]
       },
       "TaskCommandRequest": {
         "type": "object",

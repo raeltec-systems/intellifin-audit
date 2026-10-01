@@ -2,6 +2,7 @@
 pub mod auth;
 pub mod conversation;
 pub mod engagements;
+pub mod operations;
 pub mod tasks;
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
 use serde::Serialize;
@@ -120,7 +121,7 @@ pub fn authenticated_router(database: RuntimeDatabase, identity: auth::AuthState
     info(
         title = "Zobba owned HTTP interface",
         version = "1.0.0",
-        description = "Service health, current scoped identity and durable Task commands with bounded inert execution. No model, tool, computer or audit execution is implied."
+        description = "Service health, current scoped identity, durable Task commands and exact operation decisions under standing Permissions. Provider acceptance and completed effects are distinct; no live connector, model, computer or audit execution is implied."
     ),
     paths(
         live,
@@ -138,7 +139,12 @@ pub fn authenticated_router(database: RuntimeDatabase, identity: auth::AuthState
         tasks::events,
         conversation::snapshot,
         conversation::history,
-        conversation::events
+        conversation::events,
+        operations::list,
+        operations::get,
+        operations::decide,
+        operations::revoke,
+        operations::history
     ),
     components(schemas(
         HealthResponse,
@@ -165,7 +171,25 @@ pub fn authenticated_router(database: RuntimeDatabase, identity: auth::AuthState
         conversation::ConversationMessageResponse,
         conversation::ConversationSnapshotResponse,
         conversation::ConversationHistoryResponse,
-        conversation::ConversationFeedResponse
+        conversation::ConversationFeedResponse,
+        operations::PurposeRequest,
+        operations::ActionRequest,
+        operations::AttachmentRequest,
+        operations::CanonicalOperationRequest,
+        operations::OperationDecisionRequest,
+        operations::OperationDecisionResponse,
+        operations::OperationStateResponse,
+        operations::OperationResponse,
+        operations::OperationsResponse,
+        operations::PolicyKindRequest,
+        operations::PermissionRevocationRequest,
+        operations::PermissionRevocationResponse,
+        operations::DecisionHistoryResponse,
+        operations::AttemptHistoryResponse,
+        operations::SourceFactResponse,
+        operations::ObservationSourceResponse,
+        operations::ObservationHistoryResponse,
+        operations::OperationHistoryResponse
     ))
 )]
 pub struct ApiDocument;

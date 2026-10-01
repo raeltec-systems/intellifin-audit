@@ -1,3 +1,66 @@
+## 2026-10-01 — Story 20.5 standing Permissions and operation custody
+
+Keep logical operation keys independent of worker ownership, attempts and one-use
+claims. Admission retries under replacement ownership recover the same immutable
+operation for identical Task/cycle/intent/execution and canonical meaning. A
+never-consumed operation can dispatch under fresh ownership; a consumed attempt
+must query the source before another attempt. The local qualification source
+atomically fences absent attempt IDs and deduplicates operation fingerprints so a
+delayed old sender cannot invalidate absence or repeat an effect. This qualifies
+that source contract only; it makes no remote exactly-once claim.
+
+Intersect current organisation/engagement/member/account/Task/delegation records
+with the accepted Task snapshot. Organisation/member/account heads are shared
+across engagements. Explicit Task acceptance records widening; it never rewrites
+an admitted operation's snapshot. Scope readers recheck audience before returning
+material. Unconsumed stopped/stale operations project refused authority, while
+consumed attempts retain factual unknown/pending/completed/absent outcomes.
+
+Permission writes and consumption lock organisation advisory205 before the shared
+engagement row. Story 20.6 membership writers must join the same fence; do not widen
+runtime membership DML privileges or claim coordination with arbitrary privileged
+owner SQL. Existing RLS checks continue to refuse currently revoked membership.
+
+Receipt custody is persisted per exact attempt/producer, with only secret digests
+stored. Dispatch and reconciliation capability kinds cannot be changed by caller
+fields. Exact-capability readers can compare facts across producers for their one
+attempt; insertion remains bound to the exact producer. Separate scoped producer
+metadata bounds recovery issuance without disclosing capability hashes. A late
+receipt writes facts only; current Task ownership incorporates them later. An inert
+child receipt cannot confirm cessation while an external attempt remains unresolved.
+
+The gateway is an owned Rust library exercised by actual PostgreSQL/HTTP child
+process fault tests. The inert worker still proposes no business operation. Keep
+fault controls in tests, fixed numeric loopback configuration in qualification,
+no arbitrary request-selected host, and current source authority even for lookup.
+Exact permission decisions require the accountable Task actor or a current
+assigned Audit manager, including idempotent retries. Peer Auditor guidance does
+not grant decision authority; Admin alone remains insufficient. The HTTP
+decision/projection seam uses ordinary capacity, preserving reserved
+Guide/Pause/Stop. Full Needs you UI remains Story 25.2.
+
+Independent review repairs bind admission/consumption to the exact persisted Task
+claim/process, including terminal inert receipts not yet coordinated. Flush deferred
+writes before the final current-lease/policy/request/decision expiry check. Ordinary
+Task revisions preserve accepted authority; delegation updates require both old-root
+and new-lineage authority. A persisted exact refusal is terminal regardless of clock
+ordering. Source-terminal absence restores active execution only under the current
+producing intent/cycle/execution; Pause/Stop remain stopped until explicit commands.
+
+Pin durable source/ledger identity, trusted endpoint digest and protocol version in
+operations and attempts. Empty-ledger restarts cannot prove another ledger absent.
+Trusted material metadata is immutable and SELECT-only for runtime; the guarded
+fixture owner supplies it. No ingestion/registration product exists yet. The owned
+source rechecks actual attachment bytes/classification, resource version and expiry
+atomically before an effect. Never use caller classifications as trusted metadata.
+
+Recovery reuses exact receipt custody in memory and freshly checks actor/scope,
+account/policy and source before every lookup. Keep up to 1,000 cache entries without
+evicting unresolved custody. The 32-producer limit is a crash/replacement limit,
+not a normal polling budget. Use cursor pagination for unresolved attempts and
+independent decision/attempt/observation history. History is freshly scoped and
+secret-free; ID cursors enumerate immutable records, not a concurrent change feed.
+
 ## 2026-10-01 — Foundation read binding and fixture setup
 
 Compose protected browser reads from one captured session, using its in-memory

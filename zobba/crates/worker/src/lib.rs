@@ -1,6 +1,7 @@
 //! Bounded inert execution for the durable Task foundation.
 pub mod diagnostics;
 pub mod executor;
+pub mod gateway;
 pub mod supervision;
 
 use rand::{RngCore, rngs::OsRng};

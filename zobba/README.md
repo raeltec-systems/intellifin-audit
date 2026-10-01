@@ -1,12 +1,13 @@
 # Zobba foundation
 
 This independent workspace builds the Rust API, worker, explicit migration CLI
-and Pair web interface through Story 20.4. Real OIDC sign-in creates opaque Rust
+and Pair web interface through Story 20.5. Real OIDC sign-in creates opaque Rust
 server sessions; current membership limits engagement selection to explicitly
 assigned work. Durable Task commands and an inert worker survive process restarts
 without inventing execution outcomes. Health reports the actual database state.
 The engagement conversation retains attributed messages, factual Task cards and
-plain working briefs. Model/tool execution, audit conclusions, real computers and
+plain working briefs. Standing Permissions now qualify exact recorded operations
+through an owned local gateway. Live model/tool execution, audit conclusions, real computers and
 customer SSO qualification remain later capabilities.
 
 Run every command below from `zobba/`. The historical repository-root Node
@@ -98,7 +99,7 @@ cargo run -p zobba-cli --locked -- migrate --runtime-role zobba_app
 
 This command reads `ZOBBA_MIGRATION_DATABASE_URL`; repeating it is safe against
 the same valid schema. It accepts empty databases, exactly verified Story 20.1
-or Story 20.2 prefixes, or the exact Story 20.3 schema. Physical catalog checks precede metadata
+or Story 20.2 prefixes, the exactly verified Story 20.3 prefix, or current schema 4. Physical catalog checks precede metadata
 reads; migration checksums, changes and restricted grants are validated atomically.
 Foreign, altered and newer states refuse without mutation. API and worker read
 only `ZOBBA_RUNTIME_DATABASE_URL` and
@@ -217,6 +218,119 @@ logout/CSRF and retry races, real replacement-session revocation, paginated scop
 revocation/expiry and narrow keyboard use. It retains screenshot
 proof in `/tmp/zobba-browser-results`. Never run destructive database suites
 concurrently. `pnpm fixture:test` separately validates the independent fixture.
+
+## Standing Permissions and recorded operations
+
+Story 20.5 supplies pure policy, versioned authority, exact decisions and a Rust
+operation gateway qualified against a real owned local HTTP endpoint. The inert
+worker still creates no business proposals. Live connectors, customer accounts,
+real computer actions and the full Needs you interface remain later capabilities.
+The production library ports are callable by future trusted proposal adapters;
+the fault endpoint and crash controls exist only in test executables.
+
+Each immutable operation binds one purpose (Live inspection, Test workflows or
+Audit coordination), actual account and environment, logical destination,
+recipients, complete reviewed material and its SHA-256, attachment identities and
+digests, resource/version and expiry. Inputs are strict and bounded; canonical
+bytes use versioned length framing. Logical destination IDs never select a URL.
+Live inspection requires a verified read restriction surviving takeover; test
+writes require a verified test environment, exact resources and cleanup; audit
+coordination is limited to audit resources. Prompts and tool metadata grant nothing.
+Attachment ID, SHA-256 and classification must also match immutable trusted source
+metadata in PostgreSQL. Runtime access to this registry is SELECT-only; this story
+has no document ingestion or metadata registration product. Owned qualification
+fixtures register synthetic material through a guarded owner connection. The
+source independently checks its actual attachment bytes/classification and exact
+resource version atomically with applying an effect, including request expiry.
+
+Current organisation, engagement, member, account and Task limits intersect with
+the explicitly accepted immutable Task snapshot and every delegated ancestor.
+Current narrowing takes effect at consumption; broader policy requires a new
+attributed Task-authority acceptance. Ordinary Task policy revisions retain that
+accepted upper bound; a delegation revision requires authority over both its old
+root and proposed lineage. Organisation/member/account policies are
+shared across an organisation, while engagement/Task/delegation records retain
+composite scope. Admin policy configuration still requires current audit access;
+Admin alone receives no client data. Policy changes and consumption take the same
+organisation advisory lock before the engagement row lock used by Task controls.
+The future Story 20.6 membership writer must use these fences too; arbitrary
+privileged owner SQL is not an application-authorized mutation contract.
+
+Operation admission uses an explicit durable logical-operation key independent of
+owner, attempt and dispatch claim. Identical retries recover the same operation;
+changed material or producing Task/cycle/intent/execution meaning conflicts. Each
+attempt has an independent one-use claim. Consumption commits before any network
+I/O and is the possible-dispatch cutoff. Pause, Stop, guidance or revoked policy
+refuses a fresh consumption. Already consumed attempts retain uncertainty; an
+inert child receipt cannot confirm cessation while external attempts are unresolved.
+Only a current authorized Task coordinator incorporates late facts into Task state.
+Admission and consumption validate the exact persisted producing Task claim and
+process, including unincorporated terminal receipts. After deferred writes finish,
+consumption rechecks the current owner lease and policy/request/decision expiry;
+any expiry rolls the transaction back.
+
+The owned gateway uses an explicitly supplied numeric loopback endpoint, no proxy
+or redirects, two-second database/source deadlines and a 4 KiB response bound.
+Trusted account configuration pins source ID, durable ledger incarnation, endpoint
+digest and protocol version in each operation and attempt. Another endpoint or an
+empty replacement ledger cannot establish absence for the recorded source.
+Recovery queries the source before any new attempt. The test source binds operation
+ID plus fingerprint, deduplicates effects and atomically fences absent attempt IDs,
+including a delayed old sender. Unknown and asynchronous acceptance remain
+unresolved. A new attempt needs source-confirmed absence and fresh Task authority;
+this is a qualified local source contract, not a remote exactly-once promise.
+
+Exact receipt capabilities are stored only as digests and convey immutable facts,
+including after producer revocation. Stored producer custody distinguishes dispatch
+from reconciliation; changing a caller field cannot grant absence authority.
+Recovery custody cannot dispatch or read another attempt. Normal polling reuses
+in-memory custody and freshly reauthorizes every lookup. The cache retains up to
+1,000 entries without evicting unresolved attempts; terminal entries may be replaced.
+At most 32 producers
+per attempt, 64 attempts and 64 decisions per operation, 1,000 operations per Task,
+eight exact rules per policy layer, and 50 records per cursor page bound the
+qualification seam. Unresolved attempts and each history collection have cursors.
+Repeated process crashes can exhaust the 32 receipt producers for one attempt;
+that limit refuses further recovery custody without permitting a new send.
+
+All operation HTTP paths use the existing eight-request ordinary lane and pool;
+Guide/Pause/Stop retain their separate capacity. Under
+`/engagements/{engagement_id}` with explicit `organisation_id` and `client_id`:
+
+| Path | Contract |
+|---|---|
+| `GET /operations?task_id=<id>&after_operation_id=<optional id>` | Freshly scoped bounded operation page |
+| `GET /operations/{operation_id}` | Exact operation and factual outcome |
+| `GET /operations/{operation_id}/history` | Persisted decider/expiry/key, attempts and source observations; independent optional `after_decision_id`, `after_attempt_id`, `after_observation_id` cursors |
+| `POST /operations/{operation_id}/decisions` | Exact current request/revision/expiry and allow/refuse |
+| `POST /permissions/{authority_id}/revoke` | Exact policy kind/subject/version and durable key |
+
+Only the accountable Task actor or a currently assigned Audit manager may decide
+an exact permission request, including retries. Peer Auditor guidance authority
+does not grant permission-decision authority; Admin alone remains insufficient.
+Mutation requests require the configured Origin, current session CSRF and
+`X-Expected-Actor`; read requests support `X-Expected-Session`. Decimal revisions
+and expiry values use strings. Projections exclude capability secrets, producer
+custody, internal policy snapshots and raw connection handles. History retains safe
+source/ledger identities, not endpoint digests or execution bindings. Cursor pages
+walk bounded immutable history; restart at the first page to discover new concurrent
+records, since these cursors are not a change feed. These contracts
+provide the decision seam for Story 25.2; no new browser decision UI is claimed.
+
+Run the focused qualification suites serially against the same guarded disposable
+PostgreSQL database, with the fixture environment sourced for HTTP configuration:
+
+```sh
+cargo test --locked -p zobba-infrastructure --test operations -- --test-threads=1
+cargo test --locked -p zobba-api --test operations_http -- --test-threads=1
+cargo test --locked -p zobba-worker --test gateway_process -- --test-threads=1
+```
+
+The process harness executes the real repository and gateway in child processes
+against PostgreSQL and an owned HTTP source. It crashes after consumption and after
+effect/before receipt, loses acknowledgements, delays old senders, tests pending
+and unknown results, and proves ordinary database connections are released across
+remote I/O. It does not bind IdP port 9444 or contact a live connector.
 
 ## Durable Tasks and the inert worker
 
@@ -417,7 +531,7 @@ Both Rust processes expose:
 | Request | Healthy response | Dependency failure |
 |---|---|---|
 | `GET /health/live` | 200, `status: "live"`, `schema_version: null` | Remains live while the process can serve |
-| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 3` | 503, `status: "unavailable"`, `schema_version: null` |
+| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 4` | 503, `status: "unavailable"`, `schema_version: null` |
 
 Each response also identifies `service: "api"` or `service: "worker"`. Readiness
 checks the supported schema through the restricted runtime connection. Startup

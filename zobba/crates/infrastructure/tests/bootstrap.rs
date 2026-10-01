@@ -158,12 +158,12 @@ async fn bootstrap_contract() {
     .fetch_all(&mut admin)
     .await
     .unwrap();
-    assert_eq!(installed.len(), 3, "fresh migration ledger is incomplete");
+    assert_eq!(installed.len(), 4, "fresh migration ledger is incomplete");
     assert_eq!(installed, repeated, "repeat changed migration ledger");
     let database = RuntimeDatabase::connect(&runtime_url)
         .await
         .expect("nonowner runtime starts");
-    assert_eq!(database.check().await.unwrap().0, 3);
+    assert_eq!(database.check().await.unwrap().0, 4);
     refused_without_mutation(
         &mut admin,
         &migration_url,
@@ -178,6 +178,26 @@ async fn bootstrap_contract() {
         "UPDATE public.zobba_bootstrap SET local_fixture_issuer='https://fixture.invalid'",
         "DELETE FROM public._sqlx_migrations",
         "ALTER TABLE public.zobba_bootstrap ADD COLUMN forbidden text",
+        "UPDATE public.permission_versions SET document='{}'",
+        "DELETE FROM public.permission_versions",
+        "UPDATE public.permission_heads SET policy_key='substituted'",
+        "UPDATE public.operations SET request='substituted'",
+        "UPDATE public.operations SET source_binding='substituted'",
+        "UPDATE public.operation_attempts SET source_binding='substituted'",
+        "INSERT INTO public.trusted_attachment_metadata VALUES('org','client','engagement','source','attachment',repeat('a',64),'public')",
+        "UPDATE public.trusted_attachment_metadata SET classification='public'",
+        "DELETE FROM public.trusted_attachment_metadata",
+        "UPDATE public.operation_decisions SET allow=true",
+        "UPDATE public.operation_attempts SET basis='{}'",
+        "UPDATE public.operation_claims SET attempt_id='substituted'",
+        "UPDATE public.operation_receipt_slots SET capability_hash=repeat('a',64)",
+        "UPDATE public.operation_receipts SET outcome='completed'",
+        "DELETE FROM public.operations",
+        "DELETE FROM public.operation_decisions",
+        "DELETE FROM public.operation_attempts",
+        "DELETE FROM public.operation_claims",
+        "DELETE FROM public.operation_receipt_slots",
+        "DELETE FROM public.operation_receipts",
     ] {
         assert!(
             restricted.execute(mutation).await.is_err(),
@@ -185,6 +205,8 @@ async fn bootstrap_contract() {
         );
     }
     restricted.close().await.unwrap();
+
+    schema4_scope_contract(&config).await;
 
     admin.execute("CREATE SCHEMA foreign_schema").await.unwrap();
     assert_eq!(
@@ -210,6 +232,30 @@ async fn bootstrap_contract() {
         "DROP INDEX public.login_attempts_expiry",
         "DROP INDEX public.task_commands_pending",
         "DROP INDEX public.tasks_open_scope",
+        "ALTER TABLE public.permission_versions NO FORCE ROW LEVEL SECURITY",
+        "ALTER POLICY scoped_insert ON public.permission_versions WITH CHECK (true)",
+        "ALTER POLICY scoped_update ON public.permission_heads USING (true) WITH CHECK (true)",
+        "ALTER TABLE public.operations DROP CONSTRAINT operations_request_digest_check",
+        "DROP INDEX public.operations_task",
+        "ALTER TABLE public.operations DROP CONSTRAINT operations_source_binding_check",
+        "ALTER TABLE public.operation_attempts DROP CONSTRAINT operation_attempts_source_binding_check",
+        "ALTER TABLE public.trusted_attachment_metadata NO FORCE ROW LEVEL SECURITY",
+        "ALTER POLICY scoped_read ON public.trusted_attachment_metadata USING (true)",
+        "ALTER POLICY owner_registration ON public.trusted_attachment_metadata WITH CHECK (true)",
+        "ALTER TABLE public.trusted_attachment_metadata DROP CONSTRAINT trusted_attachment_metadata_digest_check",
+        "ALTER TABLE public.operation_decisions DROP CONSTRAINT operation_decisions_request_digest_check",
+        "ALTER TABLE public.operation_attempts DROP CONSTRAINT operation_attempts_attempt_number_check",
+        "ALTER TABLE public.operation_claims NO FORCE ROW LEVEL SECURITY",
+        "ALTER POLICY scoped_consume ON public.operation_claims USING (true) WITH CHECK (true)",
+        "DROP INDEX public.operation_claims_admitted",
+        "ALTER TABLE public.operation_receipt_slots DROP CONSTRAINT operation_receipt_slots_capability_hash_check",
+        "ALTER POLICY exact_receipt ON public.operation_receipt_slots USING (true)",
+        "ALTER TABLE public.operation_receipt_producers NO FORCE ROW LEVEL SECURITY",
+        "ALTER POLICY scoped_read ON public.operation_receipt_producers USING (true)",
+        "ALTER TABLE public.operation_receipt_slots DROP CONSTRAINT operation_receipt_slots_custody_check",
+        "ALTER POLICY receipt_insert ON public.operation_receipts WITH CHECK (true)",
+        "ALTER POLICY scoped_read ON public.operation_receipts USING (true)",
+        "DROP INDEX public.operation_receipts_attempt",
         "ALTER TABLE public.tasks ALTER COLUMN applied_command_cursor SET DEFAULT 1",
         "ALTER TABLE public.tasks DROP CONSTRAINT tasks_applied_command_cursor_check",
         "ALTER TABLE public.task_deliveries NO FORCE ROW LEVEL SECURITY",
@@ -228,7 +274,7 @@ async fn bootstrap_contract() {
         "ALTER TABLE public.zobba_bootstrap ALTER COLUMN singleton SET DEFAULT false",
         "ALTER TABLE public._sqlx_migrations ALTER COLUMN installed_on SET DEFAULT '2000-01-01'::timestamptz",
         "CREATE RULE alien_rule AS ON DELETE TO public.zobba_bootstrap DO ALSO NOTHING",
-        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(4,1000) v",
+        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(5,1000) v",
         "UPDATE public._sqlx_migrations SET description=repeat('x',1048576),checksum=decode(repeat('ff',1048576),'hex')",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product='foreign'",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product=repeat('x',1048576)",
@@ -262,6 +308,31 @@ async fn bootstrap_contract() {
         "UPDATE(task_id) ON public.task_wakeups",
         "SELECT ON public.task_wakeups",
         "SELECT ON public.task_deliveries",
+        "UPDATE(document) ON public.permission_versions",
+        "UPDATE(accepted_snapshot) ON public.permission_versions",
+        "DELETE ON public.permission_versions",
+        "UPDATE(client_id) ON public.permission_heads",
+        "UPDATE(policy_key) ON public.permission_heads",
+        "DELETE ON public.permission_heads",
+        "UPDATE(request) ON public.operations",
+        "UPDATE(source_binding) ON public.operations",
+        "UPDATE(source_binding) ON public.operation_attempts",
+        "INSERT ON public.trusted_attachment_metadata",
+        "UPDATE(classification) ON public.trusted_attachment_metadata",
+        "DELETE ON public.trusted_attachment_metadata",
+        "UPDATE(authority_snapshot) ON public.operations",
+        "UPDATE(actor_id) ON public.operation_decisions",
+        "UPDATE(allow) ON public.operation_decisions",
+        "UPDATE(basis) ON public.operation_attempts",
+        "UPDATE(attempt_id) ON public.operation_claims",
+        "UPDATE(operation_id) ON public.operation_claims",
+        "UPDATE(capability_hash) ON public.operation_receipt_slots",
+        "UPDATE(custody) ON public.operation_receipt_slots",
+        "UPDATE(producer_id) ON public.operation_receipt_producers",
+        "DELETE ON public.operation_receipt_producers",
+        "UPDATE(outcome) ON public.operation_receipts",
+        "UPDATE ON public.operation_claims",
+        "DELETE ON public.operation_receipts",
     ] {
         admin
             .execute(format!("GRANT {privilege} TO \"{role}\"").as_str())
@@ -303,7 +374,7 @@ async fn bootstrap_contract() {
     lock_and_blackhole(&config, &mut admin).await;
     reset(&config, &mut admin).await;
     println!(
-        "bootstrap contract: fresh/v1/v2/repeat/owner/privilege/foreign/marker/checksum/version refusals passed; test schema empty"
+        "bootstrap contract: fresh/v1/v2/v3/repeat/owner/privilege/foreign/marker/checksum/version refusals passed; test schema empty"
     );
 }
 
@@ -442,7 +513,7 @@ async fn foreign_catalog_objects(config: &Configuration, conn: &mut PgConnection
                 .await
                 .expect("remove foreign catalog fixture");
             if let Some(running) = running {
-                assert_eq!(running.check().await.unwrap().0, 3);
+                assert_eq!(running.check().await.unwrap().0, 4);
             }
         }
     }
@@ -459,7 +530,7 @@ async fn foreign_catalog_objects(config: &Configuration, conn: &mut PgConnection
     refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
     assert_eq!(running.check().await, Err(BootstrapError::SchemaMismatch));
     admin.execute("DROP STATISTICS public.alien").await.unwrap();
-    assert_eq!(running.check().await.unwrap().0, 3);
+    assert_eq!(running.check().await.unwrap().0, 4);
     reset(config, conn).await;
 }
 
@@ -539,7 +610,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
             .execute(format!("REVOKE MAINTAIN ON public.{table} FROM \"{target}\"").as_str())
             .await
             .unwrap();
-        assert_eq!(running.check().await.unwrap().0, 3);
+        assert_eq!(running.check().await.unwrap().0, 4);
     }
     privileged.execute(format!("GRANT pg_read_server_files TO \"{parent}\" WITH INHERIT TRUE, SET FALSE; GRANT \"{parent}\" TO \"{target}\" WITH INHERIT FALSE, SET TRUE").as_str()).await.unwrap();
     let mut capable = PgConnection::connect(&target_url).await.unwrap();
@@ -566,7 +637,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         Err(BootstrapError::UnsafeRuntimeRole)
     );
     privileged.execute(format!("REVOKE \"{parent}\" FROM \"{target}\"; REVOKE pg_read_server_files FROM \"{parent}\"").as_str()).await.unwrap();
-    assert_eq!(running.check().await.unwrap().0, 3);
+    assert_eq!(running.check().await.unwrap().0, 4);
 
     for flags in [
         "REPLICATION",
@@ -718,7 +789,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         .execute(format!("REVOKE \"{migrator_role}\" FROM \"{target}\"").as_str())
         .await
         .unwrap();
-    assert_eq!(running.check().await.unwrap().0, 3);
+    assert_eq!(running.check().await.unwrap().0, 4);
 
     // Simulate interruption after SQLx creates its ledger but before bootstrap
     // finishes. The outer transaction must remove BOTH tables and all grants.
@@ -741,7 +812,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         .execute("DROP EVENT TRIGGER zobba_fixture_interrupt")
         .await
         .unwrap();
-    assert_eq!(running.check().await.unwrap().0, 3);
+    assert_eq!(running.check().await.unwrap().0, 4);
     reset(config, conn).await;
     privileged.execute(trigger).await.unwrap();
     migration_refused_without_mutation(conn, config, &target, BootstrapError::SchemaMismatch).await;
@@ -940,9 +1011,10 @@ async fn upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
     let published = [
         include_str!("../../../migrations/0001_bootstrap.sql"),
         include_str!("../../../migrations/0002_identity_scope.sql"),
+        include_str!("../../../migrations/0003_tasks.sql"),
     ];
     let migrator = sqlx::migrate!("../../migrations");
-    for prefix in [1_usize, 2] {
+    for prefix in [1_usize, 2, 3] {
         for corruption in [None, Some("checksum"), Some("catalog")] {
             reset(config, conn).await;
             // Execute the exact published bytes with their original SQLx ledger.
@@ -954,14 +1026,14 @@ async fn upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
                     .bind(migration.version).bind(migration.description.as_ref()).bind(migration.checksum.as_ref()).execute(&mut *conn).await.unwrap();
             }
             conn.execute(format!("REVOKE ALL ON public._sqlx_migrations FROM PUBLIC; GRANT USAGE ON SCHEMA public TO \"{role}\"; GRANT SELECT ON public._sqlx_migrations,public.zobba_bootstrap TO \"{role}\"").as_str()).await.unwrap();
-            if prefix == 2 {
+            if prefix >= 2 {
                 conn.execute(format!("GRANT SELECT ON public.identities,public.login_attempts,public.sessions,public.organisations,public.clients,public.engagements,public.organisation_memberships,public.engagement_assignments TO \"{role}\"; GRANT INSERT(id,issuer,subject,display_name),UPDATE(display_name) ON public.identities TO \"{role}\"; GRANT INSERT,DELETE ON public.login_attempts,public.sessions TO \"{role}\"; GRANT UPDATE(name) ON public.engagements TO \"{role}\"").as_str()).await.unwrap();
             }
             refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
             if let Some(corruption) = corruption {
                 let sql = match corruption {
                     "checksum" => "UPDATE public._sqlx_migrations SET checksum='\\x00'::bytea",
-                    "catalog" if prefix == 2 => {
+                    "catalog" if prefix >= 2 => {
                         "ALTER POLICY scoped_engagement_update ON public.engagements USING (true) WITH CHECK (true)"
                     }
                     "catalog" => {
@@ -1002,9 +1074,9 @@ async fn upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
                 .fetch_all(&mut *conn)
                 .await
                 .unwrap();
-                assert_eq!(all.len(), 3, "upgrade did not reach the complete ledger");
+                assert_eq!(all.len(), 4, "upgrade did not reach the complete ledger");
                 let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-                assert_eq!(database.check().await.unwrap().0, 3);
+                assert_eq!(database.check().await.unwrap().0, 4);
                 migrate(&config.migration, &role)
                     .await
                     .expect("upgrade repeat is safe");
@@ -1047,4 +1119,158 @@ async fn internal_trigger_contract(config: &Configuration, conn: &mut PgConnecti
             .await
             .expect("ordinary internal FK triggers remain supported");
     }
+}
+/// Table policy proof independent of repository filters: shared organisation
+/// limits cross engagements, exact requests and late receipts never do.
+async fn schema4_scope_contract(config: &Configuration) {
+    // The migration owner remains subject to forced RLS. Only this explicitly
+    // guarded fixture connection arranges synthetic rows and revocation; all
+    // migration/readiness checks above retain the restricted migration role.
+    let mut admin = PgConnection::connect(&config.admin).await.unwrap();
+    config.guard_connection(&mut admin).await;
+    admin.execute(r#"
+      BEGIN;
+      INSERT INTO public.identities(id,issuer,subject,display_name) VALUES('schema4_actor','schema4','actor','Schema fixture');
+      INSERT INTO public.organisations(id,name) VALUES('schema4_org','Schema fixture');
+      INSERT INTO public.clients(organisation_id,id,name) VALUES('schema4_org','a','A'),('schema4_org','b','B');
+      INSERT INTO public.engagements(organisation_id,client_id,id,name) VALUES('schema4_org','a','a','A'),('schema4_org','b','b','B');
+      INSERT INTO public.organisation_memberships(organisation_id,actor_id,roles) VALUES('schema4_org','schema4_actor',ARRAY['auditor']);
+      INSERT INTO public.engagement_assignments(organisation_id,client_id,engagement_id,actor_id) VALUES('schema4_org','a','a','schema4_actor'),('schema4_org','b','b','schema4_actor');
+      INSERT INTO public.tasks(organisation_id,client_id,engagement_id,id,cycle_id,accountable_actor,objective,working_brief,state,cessation) VALUES('schema4_org','a','a','schema4_task','schema4_cycle','schema4_actor','Scope proof','Scope proof','running','none');
+      INSERT INTO public.task_cycles(organisation_id,client_id,engagement_id,task_id,id,status) VALUES('schema4_org','a','a','schema4_task','schema4_cycle','active');
+      INSERT INTO public.permission_versions(organisation_id,policy_key,client_id,engagement_id,kind,subject_id,version,document,actor_id) VALUES
+        ('schema4_org','shared',NULL,NULL,'organisation','schema4_org',1,'shared authority','schema4_actor'),
+        ('schema4_org','scope_a','a','a','engagement','a',1,'scope A canary','schema4_actor'),
+        ('schema4_org','scope_b','b','b','engagement','b',1,'scope B canary','schema4_actor');
+      INSERT INTO public.permission_heads(organisation_id,policy_key,current_version,client_id,engagement_id) SELECT organisation_id,policy_key,version,client_id,engagement_id FROM public.permission_versions;
+      INSERT INTO public.operations(organisation_id,client_id,engagement_id,id,task_id,cycle_id,actor_id,key,request,source_binding,request_digest,authority_snapshot,basis) VALUES('schema4_org','a','a','schema4_op','schema4_task','schema4_cycle','schema4_actor','schema4_key','request canary','{"source_id":"schema4_source","ledger_id":"schema4_ledger","endpoint_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","contract_version":1}',repeat('a',64),'{}','{}');
+      INSERT INTO public.operation_attempts(organisation_id,client_id,engagement_id,id,operation_id,attempt_number,source_binding,basis) VALUES('schema4_org','a','a','schema4_attempt','schema4_op',1,'{"source_id":"schema4_source","ledger_id":"schema4_ledger","endpoint_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","contract_version":1}','{}');
+      INSERT INTO public.operation_claims(organisation_id,client_id,engagement_id,id,operation_id,attempt_id,state,consumed_at) VALUES('schema4_org','a','a','schema4_claim','schema4_op','schema4_attempt','consumed',clock_timestamp());
+      INSERT INTO public.operation_attempts(organisation_id,client_id,engagement_id,id,operation_id,attempt_number,source_binding,basis) VALUES('schema4_org','a','a','schema4_other_attempt','schema4_op',2,'{"source_id":"schema4_source","ledger_id":"schema4_ledger","endpoint_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","contract_version":1}','{}');
+      INSERT INTO public.operation_receipt_producers(organisation_id,client_id,engagement_id,attempt_id,producer_id) VALUES('schema4_org','a','a','schema4_attempt','original'),('schema4_org','a','a','schema4_attempt','recovery'),('schema4_org','a','a','schema4_other_attempt','original');
+      INSERT INTO public.operation_receipt_slots(organisation_id,client_id,engagement_id,attempt_id,producer_id,capability_hash,custody) VALUES('schema4_org','a','a','schema4_attempt','original',repeat('b',64),'dispatch'),('schema4_org','a','a','schema4_attempt','recovery',repeat('c',64),'reconciliation'),('schema4_org','a','a','schema4_other_attempt','original',repeat('d',64),'dispatch');
+      INSERT INTO public.operation_receipts(organisation_id,client_id,engagement_id,id,attempt_id,producer_id,key,outcome,source) VALUES('schema4_org','a','a','schema4_other_fact','schema4_other_attempt','original','other','completed','dispatch');
+      COMMIT;
+    "#).await.unwrap();
+    // A non-superuser schema owner can register trusted fixture metadata while
+    // ordinary runtime principals retain no registration or mutation privilege.
+    let mut registrar = PgConnection::connect(&config.migration).await.unwrap();
+    registrar.execute("INSERT INTO public.trusted_attachment_metadata(organisation_id,client_id,engagement_id,source_key,attachment_id,digest,classification) VALUES('schema4_org','a','a','schema4_source','attachment_a',repeat('a',64),'internal'),('schema4_org','b','b','schema4_source','attachment_b',repeat('b',64),'restricted');").await.expect("trusted schema owner can register attachment metadata");
+    registrar.close().await.unwrap();
+    let mut runtime = PgConnection::connect(&config.runtime).await.unwrap();
+    runtime.execute("SELECT set_config('zobba.actor_id','schema4_actor',false),set_config('zobba.organisation_id','schema4_org',false),set_config('zobba.client_id','a',false),set_config('zobba.engagement_id','a',false)").await.unwrap();
+    let documents: Vec<String> =
+        sqlx::query_scalar("SELECT document FROM public.permission_versions ORDER BY document")
+            .fetch_all(&mut runtime)
+            .await
+            .unwrap();
+    assert_eq!(documents, ["scope A canary", "shared authority"]);
+    let attachments: Vec<String> =
+        sqlx::query_scalar("SELECT attachment_id FROM public.trusted_attachment_metadata")
+            .fetch_all(&mut runtime)
+            .await
+            .unwrap();
+    assert_eq!(
+        attachments,
+        ["attachment_a"],
+        "trusted metadata follows the current scope"
+    );
+    assert_eq!(runtime.execute("UPDATE public.operation_claims SET state='admitted',consumed_at=NULL WHERE id='schema4_claim'").await.unwrap().rows_affected(), 0, "consumed one-use claims cannot be reset even with direct runtime SQL");
+
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM public.operation_receipt_producers WHERE attempt_id='schema4_attempt'")
+            .fetch_one(&mut runtime)
+            .await
+            .unwrap(),
+        2,
+        "scoped recovery can bound how many capability slots were minted"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(capability_hash) FROM public.operation_receipt_slots"
+        )
+        .fetch_one(&mut runtime)
+        .await
+        .unwrap(),
+        0,
+        "ordinary scoped access cannot retrieve stored capability digests"
+    );
+    assert!(runtime.execute("INSERT INTO public.operation_receipts(organisation_id,client_id,engagement_id,id,attempt_id,producer_id,key,outcome,source) VALUES('schema4_org','a','a','schema4_uncap','schema4_attempt','original','uncap','completed','dispatch')").await.is_err(), "current membership alone cannot append producer facts");
+    runtime.execute("SELECT set_config('zobba.client_id','b',false),set_config('zobba.engagement_id','b',false)").await.unwrap();
+    let documents: Vec<String> =
+        sqlx::query_scalar("SELECT document FROM public.permission_versions ORDER BY document")
+            .fetch_all(&mut runtime)
+            .await
+            .unwrap();
+    assert_eq!(documents, ["scope B canary", "shared authority"]);
+    let attachments: Vec<String> =
+        sqlx::query_scalar("SELECT attachment_id FROM public.trusted_attachment_metadata")
+            .fetch_all(&mut runtime)
+            .await
+            .unwrap();
+    assert_eq!(attachments, ["attachment_b"]);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM public.operations")
+            .fetch_one(&mut runtime)
+            .await
+            .unwrap(),
+        0
+    );
+    // Scope B cannot point its head at scope A, even when it guesses the key.
+    assert!(runtime.execute("INSERT INTO public.permission_heads(organisation_id,policy_key,current_version,client_id,engagement_id) VALUES('schema4_org','scope_a',1,'b','b')").await.is_err());
+    admin.execute("UPDATE public.organisation_memberships SET active=false WHERE organisation_id='schema4_org' AND actor_id='schema4_actor'").await.unwrap();
+    runtime.execute("SELECT set_config('zobba.client_id','a',false),set_config('zobba.engagement_id','a',false),set_config('zobba.receipt_claim','schema4_attempt',false),set_config('zobba.receipt_hash',repeat('b',64),false),set_config('zobba.receipt_org','schema4_org',false),set_config('zobba.receipt_client','a',false),set_config('zobba.receipt_engagement','a',false)").await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM public.permission_versions")
+            .fetch_one(&mut runtime)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM public.operations")
+            .fetch_one(&mut runtime)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM public.operation_claims")
+            .fetch_one(&mut runtime)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM public.trusted_attachment_metadata")
+            .fetch_one(&mut runtime)
+            .await
+            .unwrap(),
+        0,
+        "revocation hides trusted attachment metadata"
+    );
+    runtime.execute("INSERT INTO public.operation_receipts(organisation_id,client_id,engagement_id,id,attempt_id,producer_id,key,outcome,source) VALUES('schema4_org','a','a','schema4_late','schema4_attempt','original','late','pending','dispatch')").await.expect("revoked producer retains exact receipt-only authority");
+    assert!(runtime.execute("INSERT INTO public.operation_receipts(organisation_id,client_id,engagement_id,id,attempt_id,producer_id,key,outcome,source) VALUES('schema4_org','a','a','schema4_wrong','schema4_attempt','recovery','wrong','completed','reconciliation')").await.is_err(), "original capability cannot impersonate recovery producer");
+    runtime
+        .execute("SELECT set_config('zobba.receipt_hash',repeat('c',64),false)")
+        .await
+        .unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM public.operation_receipts")
+            .fetch_one(&mut runtime)
+            .await
+            .unwrap(),
+        1,
+        "recovery capability reads all exact-attempt facts across producers, excluding other attempts"
+    );
+    runtime.execute("SELECT set_config('zobba.receipt_hash',repeat('b',64),false),set_config('zobba.receipt_client','b',false)").await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM public.operation_receipts")
+            .fetch_one(&mut runtime)
+            .await
+            .unwrap(),
+        0,
+        "exact receipt capability also binds scope"
+    );
+    runtime.close().await.unwrap();
 }

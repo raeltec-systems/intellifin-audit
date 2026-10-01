@@ -144,6 +144,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/engagements/{engagement_id}/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_operations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/operations/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_operation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/operations/{operation_id}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["decide_operation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/operations/{operation_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_operation_history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/permissions/{authority_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["revoke_permission"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/engagements/{engagement_id}/task-commands": {
         parameters: {
             query?: never;
@@ -261,6 +341,49 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /** @enum {string} */
+        ActionRequest: "read" | "write" | "send";
+        AttachmentRequest: {
+            classification: string;
+            digest: string;
+            /** @description Immutable logical material identity; never a credential or download capability. */
+            id: string;
+        };
+        AttemptHistoryResponse: {
+            id: string;
+            /** @description Non-secret source ledger identity bound when this attempt was admitted. */
+            ledger_id: string | null;
+            number: string;
+            operation_id: string;
+            recorded_at: string;
+            request_digest: string;
+            /** @description Non-secret logical source identity; never an endpoint URL or capability. */
+            source_id: string | null;
+        };
+        CanonicalOperationRequest: {
+            account_id: string;
+            action: components["schemas"]["ActionRequest"];
+            /** @description Sorted by unique attachment ID; complete immutable material identities. */
+            attachments: components["schemas"]["AttachmentRequest"][];
+            /** @description Exact logical destination, never a caller-selected URL or credential. */
+            destination: string;
+            environment_id: string;
+            /** @description Exact positive Unix seconds represented as decimal text. */
+            expires_at: string;
+            /** @description Exact reviewed material, at most 4000 UTF-8 bytes. */
+            material: string;
+            material_digest: string;
+            purpose: components["schemas"]["PurposeRequest"];
+            /** @description Sorted unique logical recipient identities; order is canonical and substitutions refuse. */
+            recipients: string[];
+            resource_id: string;
+            resource_version: string;
+            /**
+             * Format: int32
+             * @description Canonical request contract version, currently 1.
+             */
+            version: number;
+        };
+        /** @enum {string} */
         CessationResponse: "none" | "pending" | "confirmed" | "reconciliation_required";
         /** @enum {string} */
         CommandKindRequest: "create" | "guide" | "pause" | "resume" | "stop" | "continue";
@@ -340,6 +463,13 @@ export interface components {
             /** @description All included Task state and receipt facts come from the same statement as this cursor. */
             watermark: string;
         };
+        DecisionHistoryResponse: {
+            decision: components["schemas"]["OperationDecisionResponse"];
+            /** @description Exact persisted decision key, scoped to the recorded actor and engagement. */
+            key: string;
+            /** @description Server recording time, positive Unix seconds as decimal text. */
+            recorded_at: string;
+        };
         EngagementResponse: {
             client_id: string;
             /** @description 1–200 Unicode scalars; no C0/C1 controls or leading/trailing Unicode White_Space. */
@@ -371,6 +501,81 @@ export interface components {
             display_name: string;
             id: string;
         };
+        ObservationHistoryResponse: {
+            attempt_id: string;
+            /** @description A recorded source fact. Unknown or Accepted proves neither completion nor absence. */
+            fact: components["schemas"]["SourceFactResponse"];
+            id: string;
+            recorded_at: string;
+            source: components["schemas"]["ObservationSourceResponse"];
+        };
+        /** @enum {string} */
+        ObservationSourceResponse: "dispatch" | "reconciliation";
+        OperationDecisionRequest: {
+            /** @description False records an exact refusal; true cannot override a hard prohibition. */
+            allow: boolean;
+            expected_revision: string;
+            /** @description Decision expiry cannot exceed request expiry. Positive Unix seconds as decimal text. */
+            expires_at: string;
+            key: string;
+            /** @description The complete request read and reviewed by this actor. Any material change refuses. */
+            request: components["schemas"]["CanonicalOperationRequest"];
+        };
+        OperationDecisionResponse: {
+            actor_id: string;
+            allowed: boolean;
+            expected_revision: string;
+            expires_at: string;
+            id: string;
+            operation_id: string;
+            request_digest: string;
+        };
+        OperationHistoryResponse: {
+            /** @description Exclusive attempt ID; each history collection has its own continuation. */
+            attempt_next_cursor: string | null;
+            attempts: components["schemas"]["AttemptHistoryResponse"][];
+            /** @description Exclusive decision ID; null means this fresh page exhausted that collection. */
+            decision_next_cursor: string | null;
+            /** @description Immutable decisions in ID order, including the persisted decider and exact expiry. */
+            decisions: components["schemas"]["DecisionHistoryResponse"][];
+            /** @description Exclusive observation ID. Restart from the first page to discover new records. */
+            observation_next_cursor: string | null;
+            observations: components["schemas"]["ObservationHistoryResponse"][];
+            operation_id: string;
+        };
+        OperationResponse: {
+            /** @description Immutable producing actor; the reading or deciding actor does not replace it. */
+            actor_id: string;
+            cycle_id: string;
+            id: string;
+            request: components["schemas"]["CanonicalOperationRequest"];
+            request_digest: string;
+            revision: string;
+            /** @description Provider acceptance is distinct from a completed effect; possible dispatch remains uncertain. */
+            state: components["schemas"]["OperationStateResponse"];
+            task_id: string;
+        };
+        /** @enum {string} */
+        OperationStateResponse: "needs_decision" | "ready" | "possibly_dispatched" | "accepted" | "completed" | "absent" | "revoked";
+        OperationsResponse: {
+            /** @description Exclusive operation ID; null means no further rows for this exact Task. */
+            next_cursor: string | null;
+            operations: components["schemas"]["OperationResponse"][];
+        };
+        PermissionRevocationRequest: {
+            expected_version: string;
+            key: string;
+            kind: components["schemas"]["PolicyKindRequest"];
+        };
+        PermissionRevocationResponse: {
+            kind: components["schemas"]["PolicyKindRequest"];
+            subject_id: string;
+            version: string;
+        };
+        /** @enum {string} */
+        PolicyKindRequest: "organisation" | "engagement" | "member" | "account" | "task" | "delegation";
+        /** @enum {string} */
+        PurposeRequest: "live_inspection" | "test_workflows" | "audit_coordination";
         /** @enum {string} */
         ReceiptStatusResponse: "received";
         ScopeResponse: {
@@ -384,6 +589,8 @@ export interface components {
             csrf_token: string;
             identity: components["schemas"]["IdentityResponse"];
         };
+        /** @enum {string} */
+        SourceFactResponse: "unknown" | "accepted" | "completed" | "authoritatively_absent";
         TaskCommandRequest: {
             /**
              * @description Exact retained text, at most 4000 UTF-8 bytes. Required only for Create and Guide.
@@ -956,6 +1163,431 @@ export interface operations {
             };
             /** @description Session changed; compose fresh reads without replacing the current cookie */
             412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_operations: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+                /** @description Exact Task whose operation history is requested */
+                task_id: string;
+                /** @description Exclusive operation ID from next_cursor */
+                after_operation_id?: string;
+            };
+            header?: {
+                /** @description Optional current session-bound CSRF read precondition; mismatch refuses without changing cookies */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationsResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed; refresh composed reads without replacing the cookie */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_operation: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header?: {
+                /** @description Optional current session-bound CSRF read precondition; mismatch refuses without changing cookies */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed; refresh composed reads without replacing the cookie */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_operation: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header: {
+                /** @description Exact configured HTTPS application origin */
+                Origin: string;
+                /** @description Current session-bound token */
+                "X-CSRF-Token": string;
+                /** @description Required refusal fence for the current session actor; never supplies author authority */
+                "X-Expected-Actor": string;
+            };
+            path: {
+                engagement_id: string;
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OperationDecisionRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationDecisionResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_operation_history: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+                /** @description Exclusive decision ID from decision_next_cursor */
+                after_decision_id?: string;
+                /** @description Exclusive attempt ID from attempt_next_cursor */
+                after_attempt_id?: string;
+                /** @description Exclusive observation ID from observation_next_cursor */
+                after_observation_id?: string;
+            };
+            header?: {
+                /** @description Optional current session-bound CSRF read precondition; mismatch refuses without changing cookies */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fresh authenticated history: up to50 immutable records per independent collection, ordered by ID; restart pages to discover newly recorded facts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationHistoryResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed; refresh reads without replacing the cookie */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    revoke_permission: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header: {
+                /** @description Exact configured HTTPS application origin */
+                Origin: string;
+                /** @description Current session-bound token */
+                "X-CSRF-Token": string;
+                /** @description Required refusal fence for the current session actor; never supplies author authority */
+                "X-Expected-Actor": string;
+            };
+            path: {
+                engagement_id: string;
+                authority_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PermissionRevocationRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionRevocationResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

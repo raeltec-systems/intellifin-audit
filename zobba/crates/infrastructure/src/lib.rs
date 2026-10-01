@@ -4,6 +4,7 @@ pub mod dispatcher;
 pub mod fixture;
 pub mod identity;
 pub mod oidc;
+pub mod operation;
 pub mod scope;
 pub mod task;
 use sqlx::{
@@ -106,14 +107,14 @@ async fn check_effective_role(
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace, reachable r
           WHERE n.nspname='public' AND (c.relowner=r.oid OR (c.relkind IN ('r','p') AND (
             pg_catalog.has_table_privilege(r.oid,c.oid,'TRUNCATE,REFERENCES,TRIGGER,MAINTAIN')
-            OR (c.relname NOT IN ('login_attempts','sessions','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations') AND pg_catalog.has_table_privilege(r.oid,c.oid,'INSERT'))
+            OR (c.relname NOT IN ('login_attempts','sessions','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers') AND pg_catalog.has_table_privilege(r.oid,c.oid,'INSERT'))
             OR (c.relname NOT IN ('login_attempts','sessions') AND pg_catalog.has_table_privilege(r.oid,c.oid,'DELETE'))
             OR pg_catalog.has_table_privilege(r.oid,c.oid,'UPDATE')
             OR (c.relname IN ('task_wakeups','task_deliveries') AND pg_catalog.has_table_privilege(r.oid,c.oid,'SELECT'))
             OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped AND (
               pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'REFERENCES')
-              OR (NOT (c.relname IN ('login_attempts','sessions','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations') OR (c.relname='identities' AND a.attname IN ('id','issuer','subject','display_name')) OR (c.relname='task_deliveries' AND a.attname='wakeup_id')) AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'INSERT'))
-              OR (NOT ((c.relname IN ('identities','engagements') AND a.attname IN ('display_name','name')) OR (c.relname='task_counters' AND a.attname='cursor') OR (c.relname='tasks' AND a.attname IN ('cycle_id','working_brief','state','cessation','intent_revision','applied_intent','applied_command_cursor','revision','execution_epoch','owner_id','owner_until','owner_epoch')) OR (c.relname='task_cycles' AND a.attname='status') OR (c.relname='task_claims' AND a.attname='state') OR (c.relname='task_wakeups' AND a.attname IN ('pending','available_at')) OR (c.relname='task_deliveries' AND a.attname IN ('delivery_owner','delivery_until'))) AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'UPDATE'))
+              OR (NOT (c.relname IN ('login_attempts','sessions','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers') OR (c.relname='identities' AND a.attname IN ('id','issuer','subject','display_name')) OR (c.relname='task_deliveries' AND a.attname='wakeup_id')) AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'INSERT'))
+              OR (NOT ((c.relname IN ('identities','engagements') AND a.attname IN ('display_name','name')) OR (c.relname='task_counters' AND a.attname='cursor') OR (c.relname='tasks' AND a.attname IN ('cycle_id','working_brief','state','cessation','intent_revision','applied_intent','applied_command_cursor','revision','execution_epoch','owner_id','owner_until','owner_epoch')) OR (c.relname='task_cycles' AND a.attname='status') OR (c.relname='task_claims' AND a.attname='state') OR (c.relname='permission_heads' AND a.attname='current_version') OR (c.relname='operation_claims' AND a.attname IN ('state','consumed_at')) OR (c.relname='task_wakeups' AND a.attname IN ('pending','available_at')) OR (c.relname='task_deliveries' AND a.attname IN ('delivery_owner','delivery_until'))) AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'UPDATE'))
             ))))))
     "#).bind(role).bind(current_session).fetch_one(conn).await.map_err(|_| BootstrapError::DatabaseUnavailable)?;
     if unsafe_role {
@@ -166,6 +167,18 @@ async fn check_runtime_grants(conn: &mut PgConnection, role: &str) -> Result<(),
         AND pg_catalog.has_table_privilege($1,'public.task_claims','INSERT')
         AND pg_catalog.has_table_privilege($1,'public.task_receipt_slots','INSERT')
         AND pg_catalog.has_table_privilege($1,'public.task_observations','INSERT')
+        AND pg_catalog.has_table_privilege($1,'public.permission_versions','INSERT')
+        AND pg_catalog.has_table_privilege($1,'public.permission_heads','INSERT')
+        AND pg_catalog.has_table_privilege($1,'public.operations','INSERT')
+        AND pg_catalog.has_table_privilege($1,'public.operation_decisions','INSERT')
+        AND pg_catalog.has_table_privilege($1,'public.operation_attempts','INSERT')
+        AND pg_catalog.has_table_privilege($1,'public.operation_claims','INSERT')
+        AND pg_catalog.has_table_privilege($1,'public.operation_receipt_slots','INSERT')
+        AND pg_catalog.has_table_privilege($1,'public.operation_receipt_producers','INSERT')
+        AND pg_catalog.has_table_privilege($1,'public.operation_receipts','INSERT')
+        AND pg_catalog.has_column_privilege($1,'public.permission_heads','current_version','UPDATE')
+        AND pg_catalog.has_column_privilege($1,'public.operation_claims','state','UPDATE')
+        AND pg_catalog.has_column_privilege($1,'public.operation_claims','consumed_at','UPDATE')
         AND pg_catalog.has_column_privilege($1,'public.task_counters','cursor','UPDATE')
         AND pg_catalog.has_column_privilege($1,'public.tasks','cycle_id','UPDATE')
         AND pg_catalog.has_column_privilege($1,'public.tasks','working_brief','UPDATE')
@@ -212,16 +225,16 @@ async fn inventory(conn: &mut PgConnection) -> Result<Vec<String>, BootstrapErro
         OR EXISTS (
           SELECT 1 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace
           WHERE n.nspname='public' AND t.oid NOT IN (
-            SELECT c.reltype FROM pg_catalog.pg_class c WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap','identities','login_attempts','sessions','organisations','clients','engagements','organisation_memberships','engagement_assignments','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','task_deliveries')
+            SELECT c.reltype FROM pg_catalog.pg_class c WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap','identities','login_attempts','sessions','organisations','clients','engagements','organisation_memberships','engagement_assignments','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','trusted_attachment_metadata','task_deliveries','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers')
             UNION ALL SELECT rowtype.typarray FROM pg_catalog.pg_type rowtype JOIN pg_catalog.pg_class c ON c.reltype=rowtype.oid
-              WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap','identities','login_attempts','sessions','organisations','clients','engagements','organisation_memberships','engagement_assignments','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','task_deliveries')
+              WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap','identities','login_attempts','sessions','organisations','clients','engagements','organisation_memberships','engagement_assignments','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','trusted_attachment_metadata','task_deliveries','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers')
           ))
     "#).fetch_one(&mut *conn).await.map_err(|_| BootstrapError::DatabaseUnavailable)?;
     if foreign {
         return Err(BootstrapError::SchemaMismatch);
     }
     // Bound inventory independently of attacker-controlled catalog size.
-    sqlx::query_scalar("SELECT c.relname::text FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind <> 'i' ORDER BY c.relname LIMIT 21")
+    sqlx::query_scalar("SELECT c.relname::text FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind <> 'i' ORDER BY c.relname LIMIT 31")
         .fetch_all(conn).await.map_err(|_| BootstrapError::DatabaseUnavailable)
 }
 
@@ -275,6 +288,41 @@ async fn check_schema(
         ]
     {
         3
+    } else if tables
+        == [
+            "_sqlx_migrations",
+            "clients",
+            "engagement_assignments",
+            "engagements",
+            "identities",
+            "login_attempts",
+            "operation_attempts",
+            "operation_claims",
+            "operation_decisions",
+            "operation_receipt_producers",
+            "operation_receipt_slots",
+            "operation_receipts",
+            "operations",
+            "organisation_memberships",
+            "organisations",
+            "permission_heads",
+            "permission_versions",
+            "sessions",
+            "task_claims",
+            "task_commands",
+            "task_counters",
+            "task_cycles",
+            "task_deliveries",
+            "task_events",
+            "task_observations",
+            "task_receipt_slots",
+            "task_wakeups",
+            "tasks",
+            "trusted_attachment_metadata",
+            "zobba_bootstrap",
+        ]
+    {
+        4
     } else {
         return Err(BootstrapError::SchemaMismatch);
     };
@@ -293,15 +341,17 @@ async fn check_schema(
         include_str!("schema-v1.catalog")
     } else if version == 2 {
         include_str!("schema-v2.catalog")
-    } else {
+    } else if version == 3 {
         include_str!("schema-v3.catalog")
+    } else {
+        include_str!("schema-v4.catalog")
     };
     if !signature.iter().map(String::as_str).eq(expected.lines()) {
         return Err(BootstrapError::SchemaMismatch);
     }
     // Compare bounded booleans, never allocate untrusted metadata strings/blobs.
     let versions: Vec<i64> =
-        sqlx::query_scalar("SELECT version FROM public._sqlx_migrations ORDER BY version LIMIT 4")
+        sqlx::query_scalar("SELECT version FROM public._sqlx_migrations ORDER BY version LIMIT 5")
             .fetch_all(&mut *conn)
             .await
             .map_err(|_| BootstrapError::SchemaMismatch)?;
@@ -453,6 +503,9 @@ async fn migrate_locked(conn: &mut PgConnection, runtime_role: &str) -> Result<(
     );
     let grants = format!(
         "{grants} GRANT SELECT,INSERT ON public.task_counters,public.tasks,public.task_cycles,public.task_commands,public.task_events,public.task_claims,public.task_receipt_slots,public.task_observations TO \"{runtime_role}\"; GRANT INSERT ON public.task_wakeups TO \"{runtime_role}\"; GRANT SELECT(id,actor_id,organisation_id,client_id,engagement_id,task_id,pending,available_at) ON public.task_wakeups TO \"{runtime_role}\"; GRANT UPDATE(cursor) ON public.task_counters TO \"{runtime_role}\"; GRANT UPDATE(cycle_id,working_brief,state,cessation,intent_revision,applied_intent,applied_command_cursor,revision,execution_epoch,owner_id,owner_until,owner_epoch) ON public.tasks TO \"{runtime_role}\"; GRANT UPDATE(status) ON public.task_cycles TO \"{runtime_role}\"; GRANT UPDATE(state) ON public.task_claims TO \"{runtime_role}\"; GRANT INSERT(wakeup_id),SELECT(wakeup_id,delivery_owner,delivery_until),UPDATE(delivery_owner,delivery_until) ON public.task_deliveries TO \"{runtime_role}\"; GRANT UPDATE(pending,available_at) ON public.task_wakeups TO \"{runtime_role}\";"
+    );
+    let grants = format!(
+        "{grants} GRANT SELECT ON public.trusted_attachment_metadata TO \"{runtime_role}\"; GRANT SELECT,INSERT ON public.permission_versions,public.permission_heads,public.operations,public.operation_decisions,public.operation_attempts,public.operation_claims,public.operation_receipt_slots,public.operation_receipt_producers,public.operation_receipts TO \"{runtime_role}\"; GRANT UPDATE(current_version) ON public.permission_heads TO \"{runtime_role}\"; GRANT UPDATE(state,consumed_at) ON public.operation_claims TO \"{runtime_role}\";"
     );
     sqlx::raw_sql(&grants)
         .execute(&mut *tx)

@@ -104,7 +104,14 @@ test('real replacement OIDC actor and scope cannot reveal or replay the previous
     page.on('request', request => { if (request.method() === 'POST' && request.url().includes('/task-')) replacementPosts++; });
     await page.unroute('**/api/engagements/engagement-a/conversation**');
     await page.getByRole('button', { name: 'Refresh access' }).click();
-    await expect(page.getByText('This engagement is no longer available to you.', { exact: false })).toBeVisible();
+    // Polling may already have withdrawn the old scope before this explicit
+    // refresh. Its one-refresh notice is transient; assert the stable boundary.
+    await expect(page.getByRole('banner').getByText('auditor-b', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Your engagements', exact: true })).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Assigned engagements' }).getByRole('button')).toHaveCount(1);
+    await expect(page.getByRole('button', { name: /FY2026 audit/ })).toHaveCount(0);
+    await expect(page.locator('.pending-message')).toHaveCount(0);
+    await expect(page.getByText('Previous actor private recovery text', { exact: false })).toHaveCount(0);
     await page.getByRole('button', { name: /FY2026 review/ }).click();
     await expect(page.getByText('Conversation up to date', { exact: true })).toBeVisible();
     await expect(page.locator('.pending-message')).toHaveCount(0);
