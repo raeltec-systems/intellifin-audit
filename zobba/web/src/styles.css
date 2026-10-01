@@ -466,3 +466,54 @@ textarea:focus-visible, select:focus-visible, summary:focus-visible, [tabindex='
   .membership-heading h2 { font-size: 21px; }
   .membership-editor > button, .private-invitation > button { width: 100%; white-space: normal; }
 }
+
+/* Evidence inspection keeps the coordinating conversation mounted. */
+.evidence-composition { flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.evidence-toolbar { display: flex; flex: none; gap: 12px; align-items: center; margin-top: 6px; }
+.evidence-toolbar > span { font-size: 11px; color: var(--tertiary); }
+.evidence-toolbar > button { min-height: 44px; }
+.evidence-layout, .continuing-conversation { flex: 1; min-width: 0; min-height: 0; display: flex; }
+.continuing-conversation > .conversation-workspace { width: 100%; }
+.evidence-open > .evidence-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, .85fr); gap: 20px; }
+.evidence-open .conversation-columns, .evidence-open .has-inspection .conversation-columns { display: flex; flex-direction: column; }
+.evidence-open .conversation-pane { display: flex; flex: 1; padding-right: 0; }
+.evidence-open .inspection-pane { display: none; }
+.evidence-open .conversation-view-tabs { display: none; }
+.evidence-pane { margin-top: 10px; padding: 16px; border: 1px solid var(--hairline); background: var(--paper); border-radius: 10px; overflow: auto; min-width: 0; overscroll-behavior: contain; }
+.evidence-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.evidence-header h2 { font-size: 20px; padding-top: 8px; }
+.evidence-header button { font-size: 12px; max-width: 180px; text-align: right; }
+.evidence-pane h3 { font-size: 16px; }
+.evidence-pane h4 { font-size: 14px; margin: 20px 0 8px; }
+.evidence-pane > .scope-note { margin: 8px 0; overflow-wrap: anywhere; }
+.evidence-acquisition { margin-top: 22px; }
+.evidence-acquisition input[type='file'] { font-size: 12px; }
+.evidence-acquisition .notice { font-size: 13px; overflow-wrap: anywhere; }
+.evidence-id { display: block; font-size: 11px; color: var(--secondary); margin-top: 6px; }
+.evidence-source, .evidence-recovery { margin-top: 14px; font-size: 13px; }
+.evidence-source > summary, .evidence-recovery > summary { min-height: 44px; padding: 10px 0; cursor: pointer; }
+.evidence-registry { border-top: 1px solid var(--hairline); padding-top: 14px; margin-top: 24px; }
+.evidence-registry ul, .evidence-recovery ul { list-style: none; padding: 0; margin: 8px 0; }
+.evidence-open-item { display: flex; flex-direction: column; width: 100%; text-align: left; gap: 4px; background: var(--canvas); border: 1px solid var(--hairline); border-radius: 6px; padding: 12px; margin-bottom: 8px; color: var(--text); }
+.evidence-open-item strong { font-size: 14px; overflow-wrap: anywhere; }
+.evidence-open-item span { font-size: 11px; color: var(--secondary); }
+.evidence-recovery li { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--hairline); }
+.evidence-recovery li > span { overflow-wrap: anywhere; }
+.evidence-inspection { border-top: 1px solid var(--hairline); margin-top: 20px; padding-top: 20px; }
+.evidence-inspection h3 { overflow-wrap: anywhere; }
+.evidence-inspection dl, .evidence-reserved-details dl { font-size: 12px; margin: 16px 0; }
+.evidence-inspection dl > div, .evidence-reserved-details dl > div { display: grid; grid-template-columns: minmax(100px, .65fr) minmax(0, 1fr); gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--hairline); }
+.evidence-inspection dt, .evidence-reserved-details dt { color: var(--tertiary); }
+.evidence-inspection dd, .evidence-reserved-details dd { margin: 0; overflow-wrap: anywhere; }
+.evidence-preview { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 340px; overflow: auto; font-size: 12px; background: var(--sidebar); padding: 12px; border-radius: 6px; }
+@media (max-width: 1000px) {
+  .evidence-open > .evidence-layout { display: block; overflow: auto; }
+  .evidence-open .continuing-conversation { display: none; }
+  .evidence-pane { min-height: 100%; margin-top: 0; }
+}
+@media (max-width: 620px) {
+  .evidence-toolbar > span { max-width: 200px; }
+  .evidence-pane { padding: 12px; }
+  .evidence-acquisition .membership-actions { display: grid; }
+  .evidence-inspection dl > div, .evidence-reserved-details dl > div { grid-template-columns: 1fr; gap: 4px; }
+}

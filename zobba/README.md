@@ -610,7 +610,7 @@ Both Rust processes expose:
 | Request | Healthy response | Dependency failure |
 |---|---|---|
 | `GET /health/live` | 200, `status: "live"`, `schema_version: null` | Remains live while the process can serve |
-| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 5` | 503, `status: "unavailable"`, `schema_version: null` |
+| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 6` | 503, `status: "unavailable"`, `schema_version: null` |
 
 Each response also identifies `service: "api"` or `service: "worker"`. Readiness
 checks the supported schema through the restricted runtime connection. Startup
@@ -717,3 +717,105 @@ The separate [Zobba foundation workflow](../.github/workflows/zobba.yml) runs th
 gates with disposable PostgreSQL 18.4 and the workspace's own lockfiles/cache.
 Its distinct workflow name keeps it outside the historical deployment trigger.
 These foundation stories create no deployment or customer launch configuration.
+
+
+## Immutable scoped evidence (Story 21.1)
+
+Schema 6 adds immutable owner-scoped reservations and registered originals.
+Migrations 1–5 and their catalogues retain their published bytes. Runtime grants
+permit scoped inserts and reads, never original update or deletion. The exact
+session is checked after organisation and engagement locks; a narrow inventoried
+owner function locks that session against logout without granting session UPDATE.
+No database transaction or authority lock spans storage I/O.
+
+An auditor reserves one immutable original with an actor/scope-bound retry key,
+SHA-256, byte count, filename and source assertions. The server assigns its opaque
+identity, records reservation time, and conditionally writes its owned object key.
+It independently reads the returned non-null storage version before registering
+measured identity and the verified acquisition time. Reservation time is distinct
+from acquisition completion: a recovered reservation may be older. Replaying the
+same reservation or registration returns the exact original result; changed
+meaning conflicts. An uncertain conditional create probes the latest version and,
+only when the key is absent in an available bucket, permits one more conditional
+create. Incomplete material is quarantined and excluded from registered evidence.
+
+Acquisition is always **direct upload**. Entered source system, account, source
+version, selection and coverage are attributed assertions; omitted values are
+unknown. The verified storage version is separate from the asserted source version.
+Matching hashes prove byte identity, not truth, completeness or audit sufficiency.
+Evidence remains separate from work products and executable instructions.
+
+Set `ZOBBA_EVIDENCE_BUCKET` to enable production S3 composition. Standard AWS
+configuration supplies region, endpoint, credentials and trusted CA/proxy settings.
+Missing or invalid configuration leaves evidence storage explicitly unavailable
+and the conversation/Tasks usable. Configuration presence alone does not establish
+bucket readiness. The builder requires signed HTTPS, validates certificates and
+keeps configured trusted CAs/proxies. Bucket versioning is required: absent or
+literal `null` version IDs are refused. Namespace fingerprints retain the raw
+effective endpoint setting (including absence and trailing slash), bucket, region,
+addressing mode and S3 Express configuration. Omitted and explicit endpoints are
+distinct because the SDK can address them differently. Changing these cannot
+silently retarget registered originals. Restoring the matching configuration is required to
+read an older namespace. No live connector or paid service is configured by tests.
+
+S3 permissions are limited to `s3:PutObject` on owned `evidence/` keys,
+`s3:GetObject`/`s3:GetObjectVersion` for metadata and pinned reads, plus
+`s3:ListBucket` conditioned to the `__health/sentinel/` readiness prefix. The
+bounded list distinguishes a missing object from an unavailable bucket; it is not
+atomic with a later write. Service-level IAM/KMS/versioning, SigV4 acceptance and a
+real invalid-certificate TLS handshake require separate deployment qualification.
+The local protocol fixture makes no claim to prove those service properties.
+
+Every original is at most 10 MiB. Two shared API I/O slots are acquired fail-fast
+before upload body collection and retained through verified reads and final
+current-session/scope checks. Upload, preview and download have a total 120-second
+budget; each full storage request, including its body, has 20 seconds and no hidden
+SDK retries. Metadata retains 15 seconds. Guide/Pause/Stop keep separate capacity.
+Reservation JSON is bounded to 32 KiB, each source assertion to 2,000 UTF-8 bytes,
+and the filename to 255 bytes. Lists and owner-only incomplete recovery use
+exclusive opaque cursors with at most 50 items per page, ordered by ASCII bytes
+independently of database locale. Each actor/scope may hold at most 100 incomplete
+reservations. Reaching that durable limit returns `409 evidence_reservation_limit`
+without `Retry-After`: waiting does not free a slot. Complete an existing reserved
+original to free one slot; exact reservation replay remains available at the limit.
+This story has no abandonment, deletion or expiry lifecycle for incomplete custody.
+If the matching original bytes cannot be recovered, that incomplete reservation
+continues to occupy its slot. This differs from the temporary two-request I/O
+limit, which returns `429 evidence_capacity` with `Retry-After: 1`.
+
+Routes below `/engagements/{engagement_id}` require explicit `organisation_id`
+and `client_id` and an authenticated current session. Mutations additionally
+require Origin and CSRF. Optional `X-Expected-Session` and `X-Expected-Actor`
+headers are refusal preconditions, not authority; the owned browser always
+supplies them to bind reads and mutations to its verified audience:
+
+| Route | Meaning |
+| --- | --- |
+| `POST /evidence-reservations` | Reserve or recover an identical reservation key |
+| `GET /evidence-reservations` | Page the current owner's incomplete custody |
+| `PUT /evidence-reservations/{reservation_id}/upload` | Conditional upload, verified read-back and registration |
+| `GET /evidence` | Page registered originals and storage-configuration status |
+| `GET /evidence/{evidence_id}` | Inspect current scoped provenance |
+| `GET /evidence/{evidence_id}/preview` | Inert plain UTF-8 preview, at most 64 KiB / 100 lines |
+| `GET /evidence/{evidence_id}/download` | Authenticated verified original bytes |
+
+Unsupported binaries and markup are download-only. Responses preserve no-store,
+no-referrer and nosniff; downloads use a sanitized attachment filename. There are
+no presigned/public URLs. The browser verifies its exact audience after completed
+reads and before creating or activating a Blob download; changed account, session
+or scope withdraws previous private state. Reload recovery requires explicit
+reselection of the identical file and uses the existing reservation. An in-memory
+or browser draft never authorizes a retry for a replacement session. Current
+same-owner recovery remains explicit and does not delete durable custody.
+
+`crates/infrastructure/tests/evidence_s3.rs` uses actual `object_store` S3 HTTP
+requests against an owned numeric-loopback protocol fixture. API HTTP tests combine
+that fixture with guarded disposable PostgreSQL. Browser tests use the test-only
+`evidence_fixture` Cargo target and Node protocol fixture; the ordinary production
+binary has no insecure-transport environment switch. Fixture credentials are
+synthetic, redirects and proxies are disabled only in that test connector, and
+fixture listeners and processes are cleaned up on failure/teardown. Browser
+checks require the explicit `ZOBBA_TEST_ADMIN_DATABASE_URL` for that same guarded
+throwaway database. New evidence authority mutations use bounded asynchronous
+admin SQL so the Node database proxy can continue forwarding API transactions. The full
+verification commands above cover these targets, schema 5→6 and browser continuity.

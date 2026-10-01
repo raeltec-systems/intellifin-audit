@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+. /workspace/zobba-build-tools/activate-tests.sh
+cd /workspace/intellifin-audit/zobba/web
+export ZOBBA_TEST_ADMIN_DATABASE_URL=postgresql://zobba_local_admin@127.0.0.1:55434/zobba_story_20_test
+export ZOBBA_FIXTURE_DIR=/tmp/zobba-21-1-browser-fixture
+export ZOBBA_BROWSER_EXECUTABLE=/usr/bin/chromium
+export ZOBBA_BROWSER_OUTPUT_DIR=/tmp/zobba-21-1-repair-browser-full
+pnpm test:browser > /tmp/zobba-21-1-repair-browser-full.log 2>&1

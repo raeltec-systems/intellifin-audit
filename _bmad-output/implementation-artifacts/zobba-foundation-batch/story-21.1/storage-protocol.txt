@@ -1,0 +1,30 @@
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.85s
+     Running tests/evidence_s3.rs (target/debug/deps/evidence_s3-603819ee7a943b41)
+
+running 23 tests
+test body_claim_mismatch_and_oversize_fail_before_network_io ... ok
+test both_uncommitted_create_failures_return_no_object_or_receipt ... ok
+test absent_latest_after_409_or_412_retries_without_overwriting ... ok
+test conditional_create_is_signed_versioned_and_independently_read_back ... ok
+test adapter_does_not_acquire_a_second_internal_admission_lane ... ok
+test complete_get_body_and_bucket_probe_obey_request_deadlines ... ok
+test fixture_transport_requires_numeric_loopback_without_url_extras ... ok
+test fixture_connector_ignores_hostile_proxy_environment_in_child_process ... ok
+test invalid_ids_versions_and_changed_namespace_are_refused_before_network ... ok
+test existing_exact_bytes_reconcile_but_changed_bytes_never_overwrite ... ok
+test lost_put_ack_is_reconciled_with_head_and_pinned_read_without_second_write ... ok
+test corruption_or_truncation_never_registers_or_discloses_bytes ... ok
+test later_corruption_is_refused_before_original_disclosure ... ok
+test missing_bucket_is_unavailable_and_no_put_is_attempted ... ok
+test missing_key_with_healthy_bucket_is_explicitly_absent ... ok
+test newer_latest_object_cannot_substitute_a_registered_original ... ok
+test one_uncommitted_put_failure_retries_the_same_conditional_key ... ok
+test missing_or_literal_null_version_never_registers ... ok
+test registered_retry_reads_same_version_without_another_put ... ok
+test returned_version_must_match_the_explicitly_requested_version ... ok
+test repeated_409_or_412_without_commit_returns_no_receipt ... ok
+test oversized_response_metadata_is_refused_before_body_collection ... ok
+test ten_mib_is_inclusive_for_put_and_verified_get ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.54s

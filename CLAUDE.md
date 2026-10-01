@@ -1,3 +1,39 @@
+## 2026-10-01 — Story 21.1 immutable evidence custody
+
+Reserve the server-owned identity once with actor/composite-scope idempotency;
+source facts remain attributed assertions and direct upload is the acquisition
+method. Keep reservation time distinct from verified acquisition completion.
+Persist the namespace fingerprint so endpoint/bucket/addressing changes cannot
+retarget old originals. Conditional writes, pinned independent read-back and
+measured identity precede registration; missing/null versions and changed bytes
+never publish. Two fail-fast I/O slots cover body collection through post-I/O
+session checks, with 120-second total and 20-second full-storage-request limits.
+
+Registration locks organisation then engagement, rechecks the captured exact
+session after waits and locks it against logout via the narrow inventoried
+`evidence_session_locked` function. Do not grant runtime session UPDATE merely to
+acquire row locks. No SQL transaction spans S3 I/O. Keep catalogue snapshots 1–5
+unchanged; inventory now refuses overflow at 4,097 rows before comparing schema 6.
+Explicit test-only S3 transport ignores proxies/redirects and accepts numeric
+loopback only; production always signs HTTPS and validates TLS. Browser-held
+metadata and Blob downloads must pass session/scope verification before release.
+Keep coordinating conversation state mounted during evidence inspection.
+Browser evidence fixtures must await real asynchronous admin SQL whenever it can
+contend with API authority locks: synchronous psql blocks the Node database proxy
+that must forward the API commit, creating a harness deadlock. Keep the same
+disposable-target guards and bounded child-process deadlines.
+Opaque evidence cursor IDs use explicit PostgreSQL `COLLATE "C"` in predicates,
+ordering and supporting indexes so a locale-specific database cannot disagree
+with browser ASCII ordering. Test with a non-C database, not only the default
+local fixture. Namespace fingerprints preserve endpoint absence and raw spelling;
+SDK signed-URL proofs show that endpoint normalization can change actual routing.
+Keep the durable 100-incomplete-reservation limit distinct from transient I/O
+capacity: waiting does not free custody, while exact replay and completing an
+existing original remain available. There is no abandonment/deletion/expiry
+lifecycle in this story. Validate UTF-8 byte and encoded-draft envelopes before
+freezing an acquisition, and keep accepted registration separate from later list
+refresh success.
+
 ## 2026-10-01 — Story 20.6 membership and recipient proof
 
 Keep organisation administration separate from audit RLS and engagement selection.

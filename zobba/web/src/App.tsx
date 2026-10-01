@@ -5,6 +5,8 @@ import { readEngagement, readEngagements, roleLabel, scopeFromLocation, showScop
 import type { Engagement, EngagementPage, Scope } from './engagements';
 import { HealthPage } from './HealthPage';
 import { ConversationWorkspace } from './ConversationWorkspace';
+import { EvidenceWorkspace } from './EvidenceWorkspace';
+import { discardAcquisitionDraft } from './evidence';
 import { sameScope } from './engagements';
 import { captureIncomingInvitation, hasIncomingInvitation, MembershipWorkspace } from './MembershipWorkspace';
 
@@ -24,6 +26,8 @@ function PairWorkspace() {
   const [view, setView] = useState<View>({ kind: 'loading' });
   const [busy, setBusy] = useState(false);
   const [projectionUsable, setProjectionUsable] = useState(false);
+  const [evidenceProjectionUsable, setEvidenceProjectionUsable] = useState(true);
+  const evidenceProjectionStatus = useCallback((usable: boolean) => setEvidenceProjectionUsable(usable), []);
   const projectionStatus = useCallback((usable: boolean) => setProjectionUsable(usable), []);
   const currentView = useRef<View>({ kind: 'loading' });
   currentView.current = view;
@@ -60,7 +64,7 @@ function PairWorkspace() {
   }, []);
 
   useLayoutEffect(() => {
-    if (view.kind === 'loading' || busy || view.kind === 'ready' && view.selected && !projectionUsable) return;
+    if (view.kind === 'loading' || busy || view.kind === 'ready' && view.selected && (!projectionUsable || !evidenceProjectionUsable)) return;
     const saved = focusSnapshot.current;
     const target = pendingFocus.current;
     if (target !== 'workspace-heading' && saved?.element.isConnected && saved.element.getClientRects().length) {
@@ -76,7 +80,7 @@ function PairWorkspace() {
     focusSnapshot.current = null;
     pendingFocus.current = null;
     restoreFocus.current = null;
-  }, [view, busy, projectionUsable]);
+  }, [view, busy, projectionUsable, evidenceProjectionUsable]);
 
   const refresh = useCallback(async (focus = false, userInitiated = false) => {
     if (logoutIntent.current) return;
@@ -119,6 +123,7 @@ function PairWorkspace() {
             catch (error) {
               if (request.current !== controller) return;
               if (error instanceof AccessError && [403, 404].includes(error.status)) {
+                discardAcquisitionDraft();
                 scope.current = null;
                 showScope(null);
                 message = 'This engagement is no longer available to you. Choose from your current assignments.';
@@ -137,6 +142,7 @@ function PairWorkspace() {
     } catch (error) {
       if (request.current !== controller) return;
       if (error instanceof AccessError && error.status === 401) {
+        discardAcquisitionDraft();
         scope.current = null;
         showScope(null);
         setView({ kind: 'signed-out', message: signInFailed
@@ -192,6 +198,7 @@ function PairWorkspace() {
   async function signOut(session?: Session) {
     if (logoutRequest.current) return;
     logoutIntent.current = true;
+    discardAcquisitionDraft();
     pendingFocus.current = 'workspace-heading';
     request.current?.abort(); request.current = null;
     const controller = new AbortController();
@@ -223,6 +230,7 @@ function PairWorkspace() {
 
   function select(next: Scope | null) {
     if (logoutIntent.current) return;
+    if (!next || !scope.current || !sameScope(scope.current, next)) discardAcquisitionDraft();
     scope.current = next;
     showScope(next);
     void refresh(true, true);
@@ -287,9 +295,11 @@ function PairWorkspace() {
               </div>
             </details>
             </div>
-            <ConversationWorkspace key={`${view.session.identity.id}/${view.selected.organisation_id}/${view.selected.client_id}/${view.selected.engagement_id}`}
-              engagement={view.selected} session={view.session} accessReady={!busy}
-              onAccessFailure={accessFailure} onAccessStable={accessStable} onProjectionUsable={projectionStatus} />
+            <EvidenceWorkspace engagement={view.selected} session={view.session} accessReady={!busy} onAccessFailure={accessFailure} onProjectionUsable={evidenceProjectionStatus}>
+            {(onOpenTask) => <ConversationWorkspace onOpenTask={onOpenTask} key={`${view.session.identity.id}/${view.selected!.organisation_id}/${view.selected!.client_id}/${view.selected!.engagement_id}`}
+              engagement={view.selected!} session={view.session} accessReady={!busy}
+              onAccessFailure={accessFailure} onAccessStable={accessStable} onProjectionUsable={projectionStatus} />}
+            </EvidenceWorkspace>
           </> : <>
             <div className="intro"><p className="eyebrow">Zobba · Pair</p><h1 ref={heading} data-focus="workspace-heading" tabIndex={-1}>Your engagements</h1>
               <p className="intro-copy">Choose the client work you want to open.</p></div>

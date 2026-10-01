@@ -12,6 +12,7 @@ interface WorkspaceProps {
   onAccessFailure: (error?: AccessError) => void;
   onAccessStable: () => void;
   onProjectionUsable: (usable: boolean) => void;
+  onOpenTask?: () => void;
 }
 
 type Target = { kind: 'create' } | { kind: 'guide'; task_id: string; cycle_id: string; objective: string };
@@ -47,7 +48,7 @@ function targetKey(target: Target): string {
 }
 function cycleLabel(id: string): string { return id.slice(0, 8); }
 
-export function ConversationWorkspace({ engagement, session, accessReady, onAccessFailure, onAccessStable, onProjectionUsable }: WorkspaceProps) {
+export function ConversationWorkspace({ engagement, session, accessReady, onAccessFailure, onAccessStable, onProjectionUsable, onOpenTask }: WorkspaceProps) {
   const conversation = useConversation({ engagement, session, accessReady, onAccessFailure });
   const [draft, setDraft] = useState('');
   const [target, setTarget] = useState<Target>({ kind: 'create' });
@@ -129,6 +130,7 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
   const owner = (task: Task) => task.accountable_label;
 
   function openTask(id: string, source?: HTMLElement) {
+    onOpenTask?.();
     openGeneration.current += 1;
     opener.current = source ?? document.activeElement as HTMLElement;
     focusInspection.current = true;

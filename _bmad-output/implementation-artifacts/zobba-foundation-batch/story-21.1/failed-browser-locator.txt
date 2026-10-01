@@ -1,0 +1,55 @@
+$ playwright test evidence.spec.ts --grep 'verified acquisition|registry and recovery|routine same-session|narrow keyboard' --max-failures=1
+
+Running 4 tests using 1 worker
+
+(node:504596) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/evidence.spec.ts:63:1 › verified acquisition keeps source assertions distinct and preserves Task guidance, selection and return focus (9.8s)
+  ✓  2 tests/browser/evidence.spec.ts:161:1 › narrow keyboard inspection caps plain text and keeps markup download-only (7.3s)
+  ✓  3 tests/browser/evidence.spec.ts:241:1 › routine same-session access checks retain an in-flight upload, inspection, file control and focus (4.7s)
+  ✘  4 tests/browser/evidence.spec.ts:265:1 › registry and recovery pages stay bounded and new registration refreshes canonical ordering and cursor (26.7s)
+Testing stopped early after 1 maximum allowed failures.
+
+
+  1) tests/browser/evidence.spec.ts:265:1 › registry and recovery pages stay bounded and new registration refreshes canonical ordering and cursor
+
+    Error: expect(locator).toHaveText(expected) failed
+
+    Locator: locator('.evidence-recovery li')
+    Timeout: 12000ms
+    - Expected  - 2
+    + Received  + 1
+
+    - bounded-page-85.txt
+    - Recover reservation
+    + bounded-page-85.txtRecover reservation
+
+    Call log:
+      - Expect "toHaveText" with timeout 12000ms
+      - waiting for locator('.evidence-recovery li')
+        27 × locator resolved to <li>…</li>
+           - unexpected value "bounded-page-85.txtRecover reservation"
+
+
+      293 |   await expect(page.locator('.evidence-registry li')).toHaveCount(1);
+      294 |   expect(await page.locator('.evidence-open-item').evaluateAll(elements => elements.map(element => element.getAttribute('data-evidence-id')))).toEqual(laterIds);
+    > 295 |   await expect(page.locator('.evidence-recovery li')).toHaveText(laterReservation);
+          |                                                       ^
+      296 |   await page.getByRole('button', { name: 'Previous evidence', exact: true }).click(); await expect(page.locator('.evidence-registry li')).toHaveCount(50);
+      297 |   await page.setViewportSize({ width: 390, height: 844 });
+      298 |   const opener = page.locator('.evidence-open-item').last();
+        at /workspace/intellifin-audit/zobba/web/tests/browser/evidence.spec.ts:295:55
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-21-1-browser-repair-root/evidence-registry-and-reco-2d506-nonical-ordering-and-cursor/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-21-1-browser-repair-root/evidence-registry-and-reco-2d506-nonical-ordering-and-cursor/error-context.md
+
+    Error Context: ../../../../tmp/zobba-21-1-browser-repair-root/evidence-registry-and-reco-2d506-nonical-ordering-and-cursor/error-context.md
+
+  1 failed
+    tests/browser/evidence.spec.ts:265:1 › registry and recovery pages stay bounded and new registration refreshes canonical ordering and cursor
+  3 passed (1.1m)
+  1 error was not a part of any test, see above for details
+[ELIFECYCLE] Command failed with exit code 1.

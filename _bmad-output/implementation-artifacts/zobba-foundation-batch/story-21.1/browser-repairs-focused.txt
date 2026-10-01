@@ -1,0 +1,15 @@
+$ playwright test evidence-repairs.spec.ts evidence.spec.ts --grep 'R03|R04|R05|R06|R08|R10|registry and recovery' --max-failures=1
+
+Running 7 tests using 1 worker
+
+(node:507050) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/evidence-repairs.spec.ts:54:1 › R03 maximum escaped assertions survive a lost registered response and reload with the exact reservation key (8.2s)
+  ✓  2 tests/browser/evidence-repairs.spec.ts:93:1 › R04 invalid UTF-8 source and filename bounds remain editable without creating or persisting a reservation (6.5s)
+  ✓  3 tests/browser/evidence-repairs.spec.ts:115:1 › R05 an oversized local original gives size correction without network acquisition or a recovery draft (13.5s)
+  ✓  4 tests/browser/evidence-repairs.spec.ts:128:1 › R06 durable reservation saturation explains finishing existing custody and has no transient Retry-After (15.0s)
+  ✓  5 tests/browser/evidence-repairs.spec.ts:153:1 › R08 an accepted registration remains certain when only the following evidence list refresh fails (4.7s)
+  ✓  6 tests/browser/evidence-repairs.spec.ts:179:1 › R10 same-name incomplete originals expose distinct immutable expected identity and assertions before any upload (4.1s)
+  ✓  7 tests/browser/evidence.spec.ts:265:1 › registry and recovery pages stay bounded and new registration refreshes canonical ordering and cursor (30.2s)
+
+  7 passed (1.6m)

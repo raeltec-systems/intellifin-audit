@@ -66,6 +66,44 @@ export async function stop(process: ChildProcess): Promise<void> {
   try { await exited; } finally { clearTimeout(timer); }
 }
 
+const externalStorageEnvironment = /^(?:AWS(?:_|$)|S3(?:_|$)|MINIO(?:_|$)|OBJECT_STORE(?:_|$)|OBJECTSTORE(?:_|$)|OBJECT_STORAGE(?:_|$)|OBJSTORE(?:_|$)|RUST_S3(?:_|$)|STORAGE(?:_|$)|ZOBBA_.*(?:AWS|S3|MINIO|OBJECT.?STORE|OBJSTORE|EVIDENCE|STORAGE))/i;
+
+export function sanitizedStorageEnvironment(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(source).filter(([name]) => !externalStorageEnvironment.test(name)));
+}
+
+const privateRuntimeEnvironment = /^(?:ZOBBA_.*DATABASE_URL$|ZOBBA_OIDC_|PG[A-Z_]*$)/i;
+
+export function sanitizedRuntimeEnvironment(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(sanitizedStorageEnvironment(source))
+    .filter(([name]) => !privateRuntimeEnvironment.test(name)));
+}
+
+export function buildEvidenceApiHarness(): string {
+  const result = spawnSync('cargo', [
+    'test', '--locked', '-p', 'zobba-api', '--test', 'evidence_fixture', '--no-run', '--message-format=json',
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    env: sanitizedRuntimeEnvironment(),
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  if (result.error || result.status !== 0) throw new Error('The owned Rust API test harness build failed.');
+
+  for (const line of result.stdout.split(/\r?\n/)) {
+    try {
+      const message = JSON.parse(line) as {
+        reason?: string;
+        target?: { name?: string; kind?: string[] };
+        executable?: string | null;
+      };
+      if (message.reason === 'compiler-artifact' && message.target?.name === 'evidence_fixture' &&
+        message.target.kind?.includes('test') && message.executable) return message.executable;
+    } catch { /* Cargo emits one JSON object per line; ignore non-artifact messages. */ }
+  }
+  throw new Error('The evidence API test harness executable was not produced.');
+}
+
 export async function startRuntime(): Promise<{
   url: string;
   disconnectDatabase: () => void;
@@ -73,17 +111,7 @@ export async function startRuntime(): Promise<{
   close: () => Promise<void>;
 }> {
   const source = runtimeUrl();
-  const built = spawnSync('cargo', ['build', '--quiet', '--locked', '-p', 'zobba-api'], {
-    cwd: root,
-    stdio: 'inherit',
-  });
-  if (built.error || built.status !== 0) throw new Error('The owned Rust API build failed.');
-  const metadata = spawnSync('cargo', ['metadata', '--locked', '--no-deps', '--format-version', '1'], {
-    cwd: root,
-    encoding: 'utf8',
-  });
-  if (metadata.error || metadata.status !== 0) throw new Error('Could not resolve the owned Rust build output.');
-  const target: string = JSON.parse(metadata.stdout).target_directory;
+  const apiExecutable = buildEvidenceApiHarness();
   const database = new DatabaseProxy(source);
   let api: ChildProcess | undefined;
   let vite: ViteDevServer | undefined;
@@ -98,10 +126,10 @@ export async function startRuntime(): Promise<{
     const apiPort = await freePort();
     const apiUrl = `http://127.0.0.1:${apiPort}`;
     // Runtime children get no migration/admin/test database bindings.
-    const environment = Object.fromEntries(Object.entries(process.env)
+    const environment = sanitizedRuntimeEnvironment(Object.fromEntries(Object.entries(process.env)
       .filter(([name]) => !/^ZOBBA_.*DATABASE_URL$/.test(name) &&
-        !/^ZOBBA_OIDC_/.test(name) && !['ZOBBA_PUBLIC_ORIGIN', 'ZOBBA_LOCAL_FIXTURES'].includes(name)));
-    api = spawn(resolve(target, 'debug', 'zobba-api'), [], {
+        !/^ZOBBA_OIDC_/.test(name) && !['ZOBBA_PUBLIC_ORIGIN', 'ZOBBA_LOCAL_FIXTURES'].includes(name))));
+    api = spawn(apiExecutable, ['--serve'], {
       cwd: root,
       env: { ...environment, ZOBBA_RUNTIME_DATABASE_URL: databaseUrl, ZOBBA_API_BIND: `127.0.0.1:${apiPort}` },
       stdio: 'ignore',
@@ -116,7 +144,7 @@ export async function startRuntime(): Promise<{
       try {
         const response = await fetch(`${apiUrl}/health/ready`, { signal: AbortSignal.timeout(1500) });
         const body = await response.json();
-        if (response.status === 200 && body.service === 'api' && body.status === 'ready' && body.schema_version === 5) {
+        if (response.status === 200 && body.service === 'api' && body.status === 'ready' && body.schema_version === 6) {
           serving = true;
           break;
         }

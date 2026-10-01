@@ -281,7 +281,7 @@ mod observed_process {
 
     #[tokio::test]
     async fn actual_child_completion_remains_responsive_while_authority_is_stalled() {
-        let config = Config::new(PathBuf::from(WORKER), 100).unwrap();
+        let config = Config::new(PathBuf::from(WORKER), 500).unwrap();
         let basis = basis();
         let requested = AtomicBool::new(false);
         let (_shutdown, receiver) = watch::channel(false);
@@ -290,13 +290,21 @@ mod observed_process {
             std::future::pending().await
         });
         tokio::pin!(execution);
-        let child = tokio::select! {
-            outcome = &mut execution => panic!("reported {outcome:?} before observing child"),
-            child = wait_for_child(&basis.process_instance) => child,
-        };
-        let outcome = timeout(Duration::from_millis(500), execution)
-            .await
-            .expect("actual completion must not wait for the stalled authority timeout");
+        // Allow procfs observation time while bounding the entire operation
+        // below the executor's two-second authority timeout.
+        let completion_bound = Duration::from_secs(1);
+        let started = std::time::Instant::now();
+        let (child, outcome) = timeout(completion_bound, async {
+            let child = tokio::select! {
+                outcome = &mut execution => panic!("reported {outcome:?} before observing child"),
+                child = wait_for_child(&basis.process_instance) => child,
+            };
+            (child, execution.await)
+        })
+        .await
+        .expect("observation and completion must not wait for the stalled authority timeout");
+        // A synchronous procfs scan can delay polling Tokio's timeout.
+        assert!(started.elapsed() < completion_bound);
         assert!(requested.load(Ordering::SeqCst));
         assert_eq!(outcome, Some(Observation::Completed));
         assert_joined(&child);

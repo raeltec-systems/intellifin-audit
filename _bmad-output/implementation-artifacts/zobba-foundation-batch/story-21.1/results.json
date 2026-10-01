@@ -1,0 +1,219 @@
+{
+  "state": "all final checks passed",
+  "source_manifest": "../SOURCE-MANIFEST-21.1.json",
+  "counts": {
+    "rust_passed": 172,
+    "rust_failed": 0,
+    "rust_ignored_helper_entries": 3,
+    "rust_result_blocks": 34,
+    "browser_passed": 95,
+    "web_passed": 100,
+    "identity_fixture_passed": 54,
+    "python_guards_passed": 47
+  },
+  "results": [
+    {
+      "file": "rust-format.txt",
+      "command": "cargo fmt --all --check",
+      "outcome": "passed, exit 0",
+      "exit_code": 0,
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "rust-clippy.txt",
+      "command": "cargo clippy --workspace --all-targets --locked --offline -- -D warnings",
+      "outcome": "passed, exit 0",
+      "exit_code": 0,
+      "original_sha256": "2293fcccd63548306e0451e6966ac5a88635650172ef6a88f722689aad1b6d8a"
+    },
+    {
+      "file": "rust-build.txt",
+      "command": "cargo build --workspace --locked --offline",
+      "outcome": "passed, exit 0",
+      "exit_code": 0,
+      "original_sha256": "703cc0cfe1c6c3374e003495e3166cb098fb6e9cb394c7e9c506e154f32cd344"
+    },
+    {
+      "file": "rust-workspace.txt",
+      "command": "cargo test --workspace --locked --offline",
+      "outcome": "passed, exit 0",
+      "exit_code": 0,
+      "original_sha256": "f9db14445cee8c739dbc42f372948d5fc0f3cd4c756445e33c3f00676e310951"
+    },
+    {
+      "file": "frozen-install.txt",
+      "command": "pnpm install --frozen-lockfile",
+      "outcome": "passed, exit 0",
+      "exit_code": 0,
+      "original_sha256": "37ffb6980accc404225e540fd8733fa22558f70322243cd56f58def9f1bdaabb"
+    },
+    {
+      "file": "web-check.txt",
+      "command": "pnpm check",
+      "outcome": "passed, exit 0",
+      "exit_code": 0,
+      "original_sha256": "96867494fd6032a2ba1c11c22d60317ecd27b912d07e96da25829996c01bb18b"
+    },
+    {
+      "file": "web-build.txt",
+      "command": "pnpm build",
+      "outcome": "passed, exit 0",
+      "exit_code": 0,
+      "original_sha256": "58d4199ba94491decebd0787837140169b14aee368750303f86be3f1d6da5067"
+    },
+    {
+      "file": "identity-fixture.txt",
+      "command": "pnpm fixture:test",
+      "outcome": "passed, exit 0",
+      "exit_code": 0,
+      "original_sha256": "f431dd59a1484e62794729c5308e7cfc701de44b864046b4b0deabce843e940e"
+    },
+    {
+      "file": "python-guards.txt",
+      "command": "python3 -B -m unittest discover -s scripts -p 'test_*.py'",
+      "outcome": "passed, exit 0",
+      "exit_code": 0,
+      "original_sha256": "4bd097adab9f9ef63dee31dd6de6c7c76132b52c8f5d9a5bcc7813807a4dd3ac"
+    },
+    {
+      "file": "boundaries.txt",
+      "command": "python3 scripts/check-boundaries.py",
+      "outcome": "passed, exit 0",
+      "exit_code": 0,
+      "original_sha256": "f0a6a67f082db9c88d9258aa2c5bb329389182a2e2bd8cb50f81160f38808a78"
+    },
+    {
+      "file": "browser-full.txt",
+      "command": "pnpm test:browser",
+      "outcome": "95 passed; Playwright last-run status passed and failedTests empty; normal owned-service cleanup; shell exit receipt unavailable after exec transport loss",
+      "exit_code": null,
+      "original_sha256": "49b72454d14a1389b4fd73cc1c1dc9216a68c58e3b562e1c9e249ed42db849d6"
+    },
+    {
+      "file": "process-smoke.txt",
+      "command": "python3 scripts/smoke.py",
+      "outcome": "passed, exit 0",
+      "exit_code": 0,
+      "original_sha256": "e89e4d3929daf6f4317772d97b389869a4dc3f5382f12f6d3832c7eab6ef2025"
+    },
+    {
+      "file": "bootstrap-focused.txt",
+      "command": "restricted bootstrap, 3/3",
+      "outcome": "focused evidence; see report for exact scope",
+      "exit_code": null,
+      "original_sha256": "2aa7f7650fd6878b15d1f637f6dbc67598cc6c5de38b4eed5f5ebadb3a7ea3ff"
+    },
+    {
+      "file": "non-c-metadata.txt",
+      "command": "restricted non-C evidence metadata, 3/3",
+      "outcome": "focused evidence; see report for exact scope",
+      "exit_code": null,
+      "original_sha256": "31f9face19b82f9389ac1bbd4d3b5ebf50d380a06e6f079e3f2e309ccab4b552"
+    },
+    {
+      "file": "non-c-facts.txt",
+      "command": "locale/order/role/index observations",
+      "outcome": "focused evidence; see report for exact scope",
+      "exit_code": null,
+      "original_sha256": "258652272ca8cc3c96616bbf30f15c3701092a13fdea4b5e70352df71eea5499"
+    },
+    {
+      "file": "non-c-cleanup.txt",
+      "command": "guarded owned disposable database cleanup",
+      "outcome": "focused evidence; see report for exact scope",
+      "exit_code": null,
+      "original_sha256": "125a2bb5dc3cf137a02d9e8f0e07b67c3b6952bd217b4245c3996e7d5734b555"
+    },
+    {
+      "file": "storage-destinations.txt",
+      "command": "S3 adapter destination units, 6/6",
+      "outcome": "focused evidence; see report for exact scope",
+      "exit_code": null,
+      "original_sha256": "6c695aee297f5b4725e07fe1902ebef9154e6d7a9ca4ab6b030a1cf41141c13b"
+    },
+    {
+      "file": "storage-protocol.txt",
+      "command": "S3 protocol tests, 23/23",
+      "outcome": "focused evidence; see report for exact scope",
+      "exit_code": null,
+      "original_sha256": "eb1eaee0951bff483fc108b7b7e042a2be0b352cb1a0518fdad788179df119d6"
+    },
+    {
+      "file": "api-contract-focused.txt",
+      "command": "binary/finite-limit API contract, 2/2",
+      "outcome": "focused evidence; see report for exact scope",
+      "exit_code": null,
+      "original_sha256": "ecf9482028abb1fb1afbbf7b1f9528ce0428a72c4841337ec128ad41175b1ad4"
+    },
+    {
+      "file": "api-units-focused.txt",
+      "command": "API evidence units, 5/5",
+      "outcome": "focused evidence; see report for exact scope",
+      "exit_code": null,
+      "original_sha256": "7ba44c01bdeb0f5111c8b6ee9fa4a4202c02125092e3e935476dbe5fb207138d"
+    },
+    {
+      "file": "api-http-focused.txt",
+      "command": "composed authenticated evidence HTTP, 3/3",
+      "outcome": "focused evidence; see report for exact scope",
+      "exit_code": null,
+      "original_sha256": "5a386dc3203e42e5f11cde99610a3bf935926f29c942cacc136f57e46a2a18ff"
+    },
+    {
+      "file": "browser-repairs-focused.txt",
+      "command": "six repair cases and extended pagination, 7/7",
+      "outcome": "focused evidence; see report for exact scope",
+      "exit_code": null,
+      "original_sha256": "4de8544684cf7dbef79891927c570488e521ef06f4f5e58d9e8e1314fc6e6294"
+    },
+    {
+      "file": "browser-empty-page-focused.txt",
+      "command": "final empty recovery page and navigation, 1/1",
+      "outcome": "focused evidence; see report for exact scope",
+      "exit_code": null,
+      "original_sha256": "b9be8175feec11aca472c359b802061db4004399f3fc496a90b8917a5975af13"
+    },
+    {
+      "file": "membership-http-rerun.txt",
+      "command": "existing membership HTTP exact standalone rerun, 1/1",
+      "outcome": "focused evidence; see report for exact scope",
+      "exit_code": null,
+      "original_sha256": "367c5e9f6d7c1b2f5220cb2b87a8a70f5af5c1b59858d5f94a0062986eb3bc04"
+    },
+    {
+      "file": "worker-process-focused.txt",
+      "command": "bounded actual-child observation/completion suite, 12/12",
+      "outcome": "focused evidence; see report for exact scope",
+      "exit_code": null,
+      "original_sha256": "af75b9b551e52e5bf436ca8287c811371a2abd733685878d4be711424b7639ba"
+    },
+    {
+      "file": "worker-test-clippy.txt",
+      "command": "cargo clippy -p zobba-worker --test inert_process -- -D warnings",
+      "outcome": "focused evidence; see report for exact scope",
+      "exit_code": null,
+      "original_sha256": "4ac17ce80a3c6497ec91fb738f5c06783144d923bb26ba11e4e9d02bc0c49bd2"
+    },
+    {
+      "file": "failed-rust-initial.txt",
+      "command": "initial repaired combined Rust run",
+      "outcome": "failed, exit 101; preserved intermediate membership HTTP 503",
+      "exit_code": null,
+      "original_sha256": "25ad3373ad564b3cd23ce092d78b9ad0fc08bb862ab8f2169ddb8bb6f91385c6"
+    },
+    {
+      "file": "failed-rust-process-observation.txt",
+      "command": "second repaired combined Rust run",
+      "outcome": "failed, exit 101; existing 100ms child observation race",
+      "exit_code": null,
+      "original_sha256": "ca786d53b49cab954b0030a0e01af07600d0bbebc980806d87244dfa629b84b2"
+    },
+    {
+      "file": "failed-browser-locator.txt",
+      "command": "initial four focused browser cases",
+      "outcome": "three passed; paging test whitespace locator failed and was corrected",
+      "exit_code": null,
+      "original_sha256": "aff5e9bafe54f1c970f9b5e63c56b0f7c1b98125895edd468e7fa00f65cc36f7"
+    }
+  ]
+}

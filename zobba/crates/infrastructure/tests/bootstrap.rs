@@ -158,12 +158,12 @@ async fn bootstrap_contract() {
     .fetch_all(&mut admin)
     .await
     .unwrap();
-    assert_eq!(installed.len(), 5, "fresh migration ledger is incomplete");
+    assert_eq!(installed.len(), 6, "fresh migration ledger is incomplete");
     assert_eq!(installed, repeated, "repeat changed migration ledger");
     let database = RuntimeDatabase::connect(&runtime_url)
         .await
         .expect("nonowner runtime starts");
-    assert_eq!(database.check().await.unwrap().0, 5);
+    assert_eq!(database.check().await.unwrap().0, 6);
     refused_without_mutation(
         &mut admin,
         &migration_url,
@@ -278,6 +278,11 @@ async fn bootstrap_contract() {
         "ALTER POLICY scoped_delivery_insert ON public.task_deliveries WITH CHECK (true)",
         "CREATE POLICY dispatcher_mutation ON public.task_wakeups FOR UPDATE USING (pg_catalog.current_setting('zobba.dispatcher',true)='on') WITH CHECK (pg_catalog.current_setting('zobba.dispatcher',true)='on')",
         "ALTER TABLE public.task_deliveries DROP CONSTRAINT task_deliveries_wakeup_id_fkey",
+        "ALTER TABLE public.evidence_originals NO FORCE ROW LEVEL SECURITY",
+        "DROP POLICY scoped_insert ON public.evidence_reservations",
+        "ALTER FUNCTION public.evidence_session_locked(text,text) SECURITY INVOKER",
+        "DROP INDEX public.evidence_originals_scope; CREATE INDEX evidence_originals_scope ON public.evidence_originals(organisation_id,client_id,engagement_id,id)",
+        "DROP INDEX public.evidence_reservations_owner; CREATE INDEX evidence_reservations_owner ON public.evidence_reservations(organisation_id,client_id,engagement_id,actor_id,id)",
         "ALTER TABLE public.engagements DROP CONSTRAINT engagements_name_check",
         "ALTER TABLE public.organisations DROP CONSTRAINT organisations_id_check",
         "ALTER TABLE public.engagement_assignments DROP CONSTRAINT engagement_assignments_organisation_id_client_id_engagemen_fkey",
@@ -289,7 +294,7 @@ async fn bootstrap_contract() {
         "ALTER TABLE public.zobba_bootstrap ALTER COLUMN singleton SET DEFAULT false",
         "ALTER TABLE public._sqlx_migrations ALTER COLUMN installed_on SET DEFAULT '2000-01-01'::timestamptz",
         "CREATE RULE alien_rule AS ON DELETE TO public.zobba_bootstrap DO ALSO NOTHING",
-        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(6,1000) v",
+        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(7,1000) v",
         "UPDATE public._sqlx_migrations SET description=repeat('x',1048576),checksum=decode(repeat('ff',1048576),'hex')",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product='foreign'",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product=repeat('x',1048576)",
@@ -539,7 +544,7 @@ async fn foreign_catalog_objects(config: &Configuration, conn: &mut PgConnection
                 .await
                 .expect("remove foreign catalog fixture");
             if let Some(running) = running {
-                assert_eq!(running.check().await.unwrap().0, 5);
+                assert_eq!(running.check().await.unwrap().0, 6);
             }
         }
     }
@@ -556,7 +561,7 @@ async fn foreign_catalog_objects(config: &Configuration, conn: &mut PgConnection
     refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
     assert_eq!(running.check().await, Err(BootstrapError::SchemaMismatch));
     admin.execute("DROP STATISTICS public.alien").await.unwrap();
-    assert_eq!(running.check().await.unwrap().0, 5);
+    assert_eq!(running.check().await.unwrap().0, 6);
     reset(config, conn).await;
 }
 
@@ -636,7 +641,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
             .execute(format!("REVOKE MAINTAIN ON public.{table} FROM \"{target}\"").as_str())
             .await
             .unwrap();
-        assert_eq!(running.check().await.unwrap().0, 5);
+        assert_eq!(running.check().await.unwrap().0, 6);
     }
     privileged.execute(format!("GRANT pg_read_server_files TO \"{parent}\" WITH INHERIT TRUE, SET FALSE; GRANT \"{parent}\" TO \"{target}\" WITH INHERIT FALSE, SET TRUE").as_str()).await.unwrap();
     let mut capable = PgConnection::connect(&target_url).await.unwrap();
@@ -663,7 +668,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         Err(BootstrapError::UnsafeRuntimeRole)
     );
     privileged.execute(format!("REVOKE \"{parent}\" FROM \"{target}\"; REVOKE pg_read_server_files FROM \"{parent}\"").as_str()).await.unwrap();
-    assert_eq!(running.check().await.unwrap().0, 5);
+    assert_eq!(running.check().await.unwrap().0, 6);
 
     for flags in [
         "REPLICATION",
@@ -815,7 +820,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         .execute(format!("REVOKE \"{migrator_role}\" FROM \"{target}\"").as_str())
         .await
         .unwrap();
-    assert_eq!(running.check().await.unwrap().0, 5);
+    assert_eq!(running.check().await.unwrap().0, 6);
 
     // Simulate interruption after SQLx creates its ledger but before bootstrap
     // finishes. The outer transaction must remove BOTH tables and all grants.
@@ -838,7 +843,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         .execute("DROP EVENT TRIGGER zobba_fixture_interrupt")
         .await
         .unwrap();
-    assert_eq!(running.check().await.unwrap().0, 5);
+    assert_eq!(running.check().await.unwrap().0, 6);
     reset(config, conn).await;
     privileged.execute(trigger).await.unwrap();
     migration_refused_without_mutation(conn, config, &target, BootstrapError::SchemaMismatch).await;
@@ -1039,9 +1044,10 @@ async fn upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
         include_str!("../../../migrations/0002_identity_scope.sql"),
         include_str!("../../../migrations/0003_tasks.sql"),
         include_str!("../../../migrations/0004_permissions_operations.sql"),
+        include_str!("../../../migrations/0005_membership_administration.sql"),
     ];
     let migrator = sqlx::migrate!("../../migrations");
-    for prefix in [1_usize, 2, 3, 4] {
+    for prefix in [1_usize, 2, 3, 4, 5] {
         for corruption in [None, Some("checksum"), Some("catalog")] {
             reset(config, conn).await;
             // Execute the exact published bytes with their original SQLx ledger.
@@ -1101,9 +1107,9 @@ async fn upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
                 .fetch_all(&mut *conn)
                 .await
                 .unwrap();
-                assert_eq!(all.len(), 5, "upgrade did not reach the complete ledger");
+                assert_eq!(all.len(), 6, "upgrade did not reach the complete ledger");
                 let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-                assert_eq!(database.check().await.unwrap().0, 5);
+                assert_eq!(database.check().await.unwrap().0, 6);
                 migrate(&config.migration, &role)
                     .await
                     .expect("upgrade repeat is safe");

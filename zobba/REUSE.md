@@ -3,6 +3,7 @@
 Stories 20.1–20.2 reuse only the accepted Pair identity and token assets listed below.
 The application shell, identity flow and health checks are new implementation; no prototype logic,
 legacy application packages, schema, fixtures, or backend code enter this workspace.
+Story 21.1 adds the explicitly scoped adapter reuse below.
 
 ## Exact source
 
@@ -58,3 +59,38 @@ IBM Plex Mono is not bundled or fetched by this shell.
   locked in Cargo; the independent `oidc-provider` 9.12.2 fixture is locked in
   pnpm. Fixture Node code is test infrastructure, with no legacy domain imports
   and no application authentication bypass.
+
+
+## Story 21.1 evidence adapter and protocol fixture
+
+Adapted first-party research prototype `/workspace/zobba-evidence-adapter-lab/`
+into infrastructure `src/evidence/s3.rs`, `tests/support/s3_protocol.rs` and
+`tests/evidence_s3.rs`, through new application-owned custody ports. The scratch
+crate is unpublished and has no package licence declaration; this is within the
+owner-authorized repository implementation, not a new redistribution licence.
+
+| Prototype file | SHA-256 before adaptation |
+| --- | --- |
+| `src/lib.rs` | `3389966ed753943478930bddbdad51d5aefc06cb759dfd164099f310a3b633e7` |
+| `src/tests.rs` | `5b40471969bc3f66ae9831e642ab422454e1633301e67584faf55646922b3418` |
+| `Cargo.toml` | `823e3eeacb3ff1d7f04addc81b99943d44e49e089df960f7fd576a6a9f4c3063` |
+| `Cargo.lock` | `9e3dc5dcfd9357b1177a6281f67bbc62879a1498c31e28011b0c1122dd3db21e` |
+| `README.md` | `92492e8385bfebcbd9ba427034d80df8ffe76df7acd70350a7809701722c7819` |
+
+The historical TypeScript files `packages/infrastructure/src/evidence/s3-evidence-store.ts`
+and `s3-evidence-store.test.ts`, exactly at commit
+`4fb496eaee4a676e0875e00ba5b00b913e107899` (2026-09-06), are behavioral references
+only. Their hashes are respectively
+`8a7fb41193b9168278c904dca3e4a43049d7f94f1d57cc072319901ae6cf45e4` and
+`425a459f7369c8991e901cc5e23f73c6873f7071f34a5640e81eb1c8152802cc`.
+No legacy package or Node domain authority is transplanted.
+
+Pinned `object_store` 0.14.2 is MIT/Apache-2.0, checksum
+`f1796bc93603f78c5760a69f2d58badc9618d22adade0a95385bb2adbae4eb94`.
+Fixture-only direct `reqwest` 0.13.5 is MIT OR Apache-2.0, checksum
+`16a1cfa75cc186dd73d5818e510e042e40927bccc9c236b061cea97e1eb08029`;
+it is also the adapter's transitive HTTP dependency. The existing direct production
+reqwest 0.12.28 is retained. `bytes` 1.12.1 is MIT; `futures-util` 0.3.34 is
+MIT OR Apache-2.0. The fixture's `http-body-util` 0.1.5, `hyper` 1.11.1 and
+`hyper-util` 0.1.21 use MIT. Their upstream source notices remain in the locked
+Cargo dependencies; none is vendored with altered licence text.

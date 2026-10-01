@@ -2,6 +2,7 @@
 pub mod auth;
 pub mod conversation;
 pub mod engagements;
+pub mod evidence;
 pub mod membership;
 pub mod operations;
 pub mod tasks;
@@ -76,18 +77,43 @@ pub fn router(database: RuntimeDatabase) -> Router {
 }
 
 pub fn authenticated_router(database: RuntimeDatabase, identity: auth::AuthState) -> Router {
+    let objects = std::env::var("ZOBBA_EVIDENCE_BUCKET")
+        .ok()
+        .and_then(|bucket| {
+            match zobba_infrastructure::evidence::s3::S3EvidenceObjects::from_env(&bucket) {
+                Ok(objects) => Some(objects),
+                Err(_) => {
+                    eprintln!("api: evidence_unavailable");
+                    None
+                }
+            }
+        });
+    authenticated_router_with_evidence(database, identity, objects)
+}
+
+/// Explicit dependency composition. Insecure fixture transports are constructed
+/// only by test targets, never by a production environment-variable switch.
+pub fn authenticated_router_with_evidence(
+    database: RuntimeDatabase,
+    identity: auth::AuthState,
+    objects: Option<zobba_infrastructure::evidence::s3::S3EvidenceObjects>,
+) -> Router {
     let task_routes = tasks::router(&database, identity.clone());
     let membership_routes = membership::router(database.pool().clone(), identity.clone());
+    let evidence_routes = evidence::router(database.pool().clone(), identity.clone(), objects);
     router(database)
         .merge(auth::router(identity))
         .merge(task_routes)
         .merge(membership_routes)
+        .merge(evidence_routes)
         .layer(axum::middleware::from_fn(
             |request: axum::extract::Request, next: axum::middleware::Next| async move {
                 let login_document =
                     request.uri().path() == "/auth/login" && auth::wants_html(request.headers());
+                let evidence_io = evidence::is_io_request(&request);
+                let deadline = if evidence_io { 120 } else { 15 };
                 let mut response = match tokio::time::timeout(
-                    std::time::Duration::from_secs(15),
+                    std::time::Duration::from_secs(deadline),
                     next.run(request),
                 )
                 .await
@@ -97,6 +123,9 @@ pub fn authenticated_router(database: RuntimeDatabase, identity: auth::AuthState
                         zobba_application::identity::IdentityError::Unavailable,
                         true,
                     ),
+                    Err(_) if evidence_io => {
+                        evidence::failure(zobba_application::evidence::EvidenceError::Unavailable)
+                    }
                     Err(_) => {
                         auth::failure(zobba_application::identity::IdentityError::Unavailable)
                     }
@@ -124,7 +153,7 @@ pub fn authenticated_router(database: RuntimeDatabase, identity: auth::AuthState
     info(
         title = "Zobba owned HTTP interface",
         version = "1.0.0",
-        description = "Service health, current scoped identity, durable Task commands and exact operation decisions under standing Permissions. Provider acceptance and completed effects are distinct; no live connector, model, computer or audit execution is implied."
+        description = "Service health, current scoped identity, durable Task commands, immutable scoped evidence and exact operation decisions under standing Permissions. Provider acceptance and completed effects are distinct; no live connector, model, computer or audit execution is implied."
     ),
     paths(
         live,
@@ -155,7 +184,14 @@ pub fn authenticated_router(database: RuntimeDatabase, identity: auth::AuthState
         membership::invite,
         membership::revoke_invitation,
         membership::preview,
-        membership::accept
+        membership::accept,
+        evidence::reserve,
+        evidence::recover,
+        evidence::upload,
+        evidence::list,
+        evidence::inspect,
+        evidence::preview,
+        evidence::download
     ),
     components(schemas(
         HealthResponse,
@@ -226,7 +262,17 @@ pub fn authenticated_router(database: RuntimeDatabase, identity: auth::AuthState
         membership::RevokeInvitationRequest,
         membership::AcceptInvitationRequest
         ,membership::PreviewInvitationRequest,
-        membership::InvitationPreviewResponse
+        membership::InvitationPreviewResponse,
+        evidence::EvidenceContentIdentity,
+        evidence::EvidenceSourceAssertions,
+        evidence::EvidenceReservationRequest,
+        evidence::EvidenceReservationResponse,
+        evidence::EvidenceResponse,
+        evidence::EvidencePageResponse,
+        evidence::EvidenceReservationPageResponse,
+        evidence::EvidencePreviewKind,
+        evidence::EvidencePreviewResponse,
+        evidence::EvidenceBinary
     ))
 )]
 pub struct ApiDocument;

@@ -15,9 +15,13 @@ export async function readJson(path: string, signal?: AbortSignal, init?: Reques
     headers: { Accept: 'application/json', ...init?.headers },
   });
   if (!response.ok) throw new AccessError(response.status);
+  return readJsonBody(response);
+}
+
+export async function readJsonBody(response: Response, limit = MAX_JSON_BYTES): Promise<unknown> {
   if (response.status === 204) return null;
   // Bound the actual decompressed body too; Content-Length alone is insufficient.
-  if (!response.body || Number(response.headers.get('Content-Length') ?? 0) > MAX_JSON_BYTES) {
+  if (!response.body || Number(response.headers.get('Content-Length') ?? 0) > limit) {
     await response.body?.cancel(); throw new Error('Invalid response size');
   }
   const reader = response.body.getReader();
@@ -28,7 +32,7 @@ export async function readJson(path: string, signal?: AbortSignal, init?: Reques
       const { done, value } = await reader.read();
       if (done) break;
       length += value.byteLength;
-      if (length > MAX_JSON_BYTES) { await reader.cancel(); throw new Error('Invalid response size'); }
+      if (length > limit) { await reader.cancel(); throw new Error('Invalid response size'); }
       chunks.push(value);
     }
   } finally { reader.releaseLock(); }

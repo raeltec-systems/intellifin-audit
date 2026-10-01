@@ -8,9 +8,11 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createServer as createViteServer } from 'vite';
 import type { ViteDevServer } from 'vite';
-import { DatabaseProxy, freePort, port, stop } from './runtime';
+import { buildEvidenceApiHarness, DatabaseProxy, freePort, port, sanitizedRuntimeEnvironment, sanitizedStorageEnvironment, stop } from './runtime';
 import { databaseEndpoint } from './database-endpoint.ts';
 import { protectProxyErrors } from '../../proxy-errors';
+import { startEvidenceS3Fixture } from './evidence-s3.ts';
+import type { EvidenceS3Fixture } from './evidence-s3.ts';
 
 const root = fileURLToPath(new URL('../../..', import.meta.url));
 const fixtureRoot = resolve(root, 'fixtures/oidc');
@@ -33,6 +35,75 @@ function run(command: string, args: string[], env: NodeJS.ProcessEnv): string {
   return result.stdout;
 }
 
+function databaseMutationEnvironment(environment: NodeJS.ProcessEnv, database: URL, host: string, port: number): NodeJS.ProcessEnv {
+  return {
+    ...environment,
+    PGHOST: host,
+    PGPORT: String(port),
+    PGUSER: decodeURIComponent(database.username),
+    PGPASSWORD: decodeURIComponent(database.password),
+    PGDATABASE: decodeURIComponent(database.pathname.slice(1)),
+    PGCONNECT_TIMEOUT: '5',
+    PGOPTIONS: '-c statement_timeout=10000 -c lock_timeout=5000',
+  };
+}
+
+function runSqlAsync(statement: string, environment: NodeJS.ProcessEnv): Promise<void> {
+  return new Promise<void>((resolveSql, rejectSql) => {
+    let settled = false;
+    let timeout: NodeJS.Timeout | undefined;
+    let forceKill: NodeJS.Timeout | undefined;
+    const child = spawn('psql', ['-X', '-q', '-v', 'ON_ERROR_STOP=1'], {
+      cwd: root, env: environment, stdio: ['pipe', 'ignore', 'ignore'],
+    });
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      if (error) rejectSql(error);
+      else resolveSql();
+    };
+    child.once('error', () => finish(new Error('Synthetic browser database mutation failed.')));
+    child.stdin.on('error', () => finish(new Error('Synthetic browser database mutation failed.')));
+    child.once('close', (code) => {
+      if (forceKill) clearTimeout(forceKill);
+      if (code === 0) finish();
+      else finish(new Error('Synthetic browser database mutation failed.'));
+    });
+    timeout = setTimeout(() => {
+      child.kill('SIGTERM');
+      forceKill = setTimeout(() => child.kill('SIGKILL'), 500);
+      finish(new Error('Synthetic browser database mutation failed.'));
+    }, 10_000);
+    try {
+      child.stdin.end(statement);
+    } catch {
+      finish(new Error('Synthetic browser database mutation failed.'));
+      child.kill('SIGTERM');
+    }
+  });
+}
+
+function resetSyntheticFixture(database: URL, host: string, port: number): void {
+  const result = spawnSync('psql', ['-X', '-q', '-1', '-v', 'ON_ERROR_STOP=1'], {
+    cwd: root,
+    encoding: 'utf8',
+    input: 'TRUNCATE public.identities, public.organisations CASCADE; UPDATE public.zobba_bootstrap SET local_fixture_issuer=NULL WHERE singleton;',
+    timeout: 10_000,
+    env: {
+      ...sanitizedRuntimeEnvironment(),
+      PGHOST: host,
+      PGPORT: String(port),
+      PGUSER: decodeURIComponent(database.username),
+      PGPASSWORD: decodeURIComponent(database.password),
+      PGDATABASE: decodeURIComponent(database.pathname.slice(1)),
+      PGCONNECT_TIMEOUT: '5',
+      PGOPTIONS: '-c statement_timeout=10000 -c lock_timeout=5000',
+    },
+  });
+  if (result.error || result.status !== 0) throw new Error('Synthetic browser fixture reset refused.');
+}
+
 async function ready(url: string, ca: Buffer): Promise<boolean> {
   return new Promise((resolveReady) => {
     const request = httpsRequest(url, { ca, timeout: 1000 }, (response) => {
@@ -50,24 +121,26 @@ export interface AuthRuntime {
   listeners: { host: string; port: number }[];
   password: string;
   sql: (statement: string) => void;
+  sqlAsync: (statement: string) => Promise<void>;
   disconnectDatabase: () => void;
   restoreDatabase: () => void;
   captureCallback: () => Promise<string>;
-  restartApi: () => Promise<void>;
+  restartApi: (options?: { evidence?: boolean }) => Promise<void>;
   startWorker: (duration?: number) => Promise<void>;
   stopWorker: () => Promise<void>;
   freezeWorker: () => Promise<{ process_id: number; application_name: string; state: string; connections: number; unsettled_transactions: number; granted_locks: number; live_children: number }>;
   thawWorker: () => void;
   crashWorker: () => Promise<void>;
   scenario: (name: 'normal' | 'slow_discovery') => Promise<void>;
+  evidence?: Pick<EvidenceS3Fixture, 'endpoint' | 'stats' | 'holdNext' | 'faultNext'>;
   close: () => Promise<void>;
 }
 
-export async function startAuthRuntime(): Promise<AuthRuntime> {
+export async function startAuthRuntime(options: { evidence?: boolean } = {}): Promise<AuthRuntime> {
   // Share the smoke suite's complete alias/role/development-target guard before
   // provisioning or changing rows. Keep inherited development bindings visible
   // to this check; child credential stripping happens only afterward.
-  run('python3', ['-c', "import sys; sys.path.insert(0, 'scripts'); import smoke; smoke.test_urls()"], process.env);
+  run('python3', ['-c', "import sys; sys.path.insert(0, 'scripts'); import smoke; smoke.test_urls()"], sanitizedStorageEnvironment());
   const runtimeDatabase = testDatabase('ZOBBA_TEST_RUNTIME_DATABASE_URL');
   const migrationDatabase = testDatabase('ZOBBA_TEST_MIGRATION_DATABASE_URL');
   const adminDatabase = testDatabase('ZOBBA_TEST_ADMIN_DATABASE_URL');
@@ -77,18 +150,21 @@ export async function startAuthRuntime(): Promise<AuthRuntime> {
   // Resolve inherited PGPORT before child environments remove PostgreSQL bindings.
   migrationDatabase.port = String(databaseEndpoint(migrationDatabase).port);
   const adminEndpoint = databaseEndpoint(adminDatabase);
-  run('cargo', ['build', '--quiet', '--locked', '-p', 'zobba-api', '-p', 'zobba-cli', '-p', 'zobba-worker'], process.env);
-  const metadata = JSON.parse(run('cargo', ['metadata', '--locked', '--no-deps', '--format-version', '1'], process.env));
+  run('cargo', ['build', '--quiet', '--locked', '-p', 'zobba-cli', '-p', 'zobba-worker'], sanitizedRuntimeEnvironment());
+  const apiExecutable = buildEvidenceApiHarness();
+  const metadata = JSON.parse(run('cargo', ['metadata', '--locked', '--no-deps', '--format-version', '1'], sanitizedRuntimeEnvironment()));
   const fixtureDirectory = resolve(process.env.ZOBBA_FIXTURE_DIR ?? resolve(fixtureRoot, '.local'));
-  run('node', [resolve(fixtureRoot, 'setup.mjs')], { ...process.env, ZOBBA_FIXTURE_DIR: fixtureDirectory });
+  run('node', [resolve(fixtureRoot, 'setup.mjs')], { ...sanitizedRuntimeEnvironment(), ZOBBA_FIXTURE_DIR: fixtureDirectory });
   const config = JSON.parse(readFileSync(resolve(fixtureDirectory, 'fixture.json'), 'utf8'));
   const ca = readFileSync(resolve(fixtureDirectory, 'ca.pem'));
   const appPort = await freePort();
   const apiPort = await freePort();
   const issuer = 'https://127.0.0.1:9444';
   const origin = `https://localhost:${appPort}`;
-  const environment = Object.fromEntries(Object.entries(process.env)
-    .filter(([name]) => !/^ZOBBA_.*DATABASE_URL$/.test(name) && !/^ZOBBA_OIDC_/.test(name) && !/^PG[A-Z_]*$/.test(name)));
+  const environment = sanitizedRuntimeEnvironment(Object.fromEntries(Object.entries(process.env)
+    .filter(([name]) => !/^ZOBBA_.*DATABASE_URL$/.test(name) && !/^ZOBBA_OIDC_/.test(name) && !/^PG[A-Z_]*$/.test(name))));
+  let evidence: EvidenceS3Fixture | undefined;
+  let evidenceEnabled = options.evidence === true;
   const auth = {
     ZOBBA_LOCAL_FIXTURES: '1', ZOBBA_OIDC_ISSUER: issuer,
     ZOBBA_OIDC_CLIENT_ID: config.client_id, ZOBBA_OIDC_CLIENT_SECRET: config.client_secret,
@@ -107,7 +183,9 @@ export async function startAuthRuntime(): Promise<AuthRuntime> {
     try { await vite?.close(); } finally {
       try { if (worker) { worker.kill('SIGCONT'); await stop(worker); } } finally {
       try { if (api) await stop(api); } finally {
-        try { if (provider) await stop(provider); } finally { await database.close(); }
+        try { if (provider) await stop(provider); } finally {
+          try { await evidence?.close(); } finally { await database.close(); }
+        }
       }
       }
     }
@@ -132,15 +210,22 @@ export async function startAuthRuntime(): Promise<AuthRuntime> {
     run(resolve(metadata.target_directory, 'debug/zobba-cli'), ['migrate', '--runtime-role', decodeURIComponent(runtimeDatabase.username)], {
       ...environment, ZOBBA_MIGRATION_DATABASE_URL: migrationDatabase.toString(),
     });
+    // The earlier issuer marker is deliberately cleared only after the complete
+    // smoke/test-database guard above has verified every configured endpoint.
+    resetSyntheticFixture(adminDatabase, adminEndpoint.host, adminEndpoint.port);
     run(resolve(metadata.target_directory, 'debug/zobba-cli'), ['seed-local'], {
       ...environment, ...auth, ZOBBA_MIGRATION_DATABASE_URL: migrationDatabase.toString(),
     });
     const databaseUrl = await database.start();
+    if (evidenceEnabled) evidence = await startEvidenceS3Fixture();
     const apiUrl = `http://127.0.0.1:${apiPort}`;
     const startApi = async () => {
-      api = spawn(resolve(metadata.target_directory, 'debug/zobba-api'), [], {
+      api = spawn(apiExecutable, ['--serve'], {
         cwd: root,
-        env: { ...environment, ...auth, ZOBBA_RUNTIME_DATABASE_URL: databaseUrl, ZOBBA_API_BIND: `127.0.0.1:${apiPort}` },
+        env: {
+          ...environment, ...auth, ZOBBA_RUNTIME_DATABASE_URL: databaseUrl, ZOBBA_API_BIND: `127.0.0.1:${apiPort}`,
+          ...(evidenceEnabled && evidence ? { ZOBBA_TEST_EVIDENCE_S3_ENDPOINT: evidence.endpoint } : {}),
+        },
         stdio: 'ignore',
       });
       api.on('error', () => {});
@@ -149,7 +234,7 @@ export async function startAuthRuntime(): Promise<AuthRuntime> {
         if (api.exitCode !== null) throw new Error('Authentication API refused startup.');
         try {
           const response = await fetch(`${apiUrl}/health/ready`, { signal: AbortSignal.timeout(1000) });
-          if (response.status === 200 && (await response.json()).schema_version === 5) { healthy = true; break; }
+          if (response.status === 200 && (await response.json()).schema_version === 6) { healthy = true; break; }
         } catch { /* Startup is bounded; do not expose URLs or provider errors. */ }
         await delay(100);
       }
@@ -178,23 +263,43 @@ export async function startAuthRuntime(): Promise<AuthRuntime> {
     return {
       url: origin, issuer, password: config.account_password,
       listeners: [{ host: 'localhost', port: appPort }, { host: '127.0.0.1', port: apiPort },
-        { host: '127.0.0.1', port: 9444 }, { host: '127.0.0.1', port: Number(new URL(databaseUrl).port) }],
+        { host: '127.0.0.1', port: 9444 }, { host: '127.0.0.1', port: Number(new URL(databaseUrl).port) },
+        ...(evidence ? [{ host: '127.0.0.1', port: Number(new URL(evidence.endpoint).port) }] : [])],
+      ...(evidence ? { evidence: {
+        endpoint: evidence.endpoint, stats: () => evidence!.stats(),
+        holdNext: (method: 'PUT' | 'GET') => evidence!.holdNext(method),
+        faultNext: (fault: 'lost-put-ack' | 'corrupt-get' | 'missing-version' | 'missing-bucket') => evidence!.faultNext(fault),
+      } } : {}),
       sql(statement) {
         // SQL text is fixed by the committed tests; no credentials enter arguments or output.
         const result = spawnSync('psql', ['-X', '-q', '-v', 'ON_ERROR_STOP=1'], {
-          cwd: root, encoding: 'utf8', input: statement,
-          env: { ...environment, PGHOST: adminEndpoint.host, PGPORT: String(adminEndpoint.port),
-            PGUSER: decodeURIComponent(adminDatabase.username), PGPASSWORD: decodeURIComponent(adminDatabase.password),
-            PGDATABASE: decodeURIComponent(adminDatabase.pathname.slice(1)) },
+          cwd: root, encoding: 'utf8', input: statement, timeout: 10_000,
+          env: databaseMutationEnvironment(environment, adminDatabase, adminEndpoint.host, adminEndpoint.port),
         });
         if (result.error || result.status !== 0) throw new Error('Synthetic browser database mutation failed.');
+      },
+      sqlAsync(statement) {
+        return runSqlAsync(statement,
+          databaseMutationEnvironment(environment, adminDatabase, adminEndpoint.host, adminEndpoint.port));
       },
       disconnectDatabase: () => database.disconnect(), restoreDatabase: () => database.restore(),
       captureCallback() {
         if (callbackCapture) throw new Error('Callback capture already pending');
         return new Promise<string>((resolveCallback) => { callbackCapture = resolveCallback; });
       },
-      async restartApi() { if (api) await stop(api); await startApi(); },
+      async restartApi(restartOptions = {}) {
+        const requestedEvidence = restartOptions.evidence;
+        if (requestedEvidence === true && !evidence) throw new Error('Evidence fixture is unavailable for this runtime.');
+        const previousEvidenceEnabled = evidenceEnabled;
+        if (requestedEvidence !== undefined) evidenceEnabled = requestedEvidence;
+        try {
+          if (api) await stop(api);
+          await startApi();
+        } catch (error) {
+          evidenceEnabled = previousEvidenceEnabled;
+          throw error;
+        }
+      },
       async startWorker(duration = 30_000) {
         if (worker && worker.exitCode === null && worker.signalCode === null) throw new Error('Owned worker is already running.');
         if (!Number.isInteger(duration) || duration < 10 || duration > 30_000) throw new Error('Invalid owned inert duration.');

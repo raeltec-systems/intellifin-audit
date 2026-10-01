@@ -1,0 +1,16 @@
+{
+  "utc": "2026-10-01T15:46:04.142055+00:00",
+  "passed": 95,
+  "failed": 0,
+  "retries": 0,
+  "duration": "12.3m",
+  "playwright_last_run": {
+    "status": "passed",
+    "failedTests": []
+  },
+  "log_sha256": "49b72454d14a1389b4fd73cc1c1dc9216a68c58e3b562e1c9e249ed42db849d6",
+  "owned_9444_no_listener": true,
+  "development_9443_listening": true,
+  "shell_exit_code": null,
+  "qualification": "Original tool session was lost during exec transport disruption. Completion is established from final Playwright summary, .last-run.json and normal owned fixture cleanup; no recovered shell status is asserted."
+}

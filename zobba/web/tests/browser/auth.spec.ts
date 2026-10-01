@@ -468,6 +468,20 @@ test('cold provider discovery failure bounds concurrent sign-in requests and rec
   }
 });
 
+test('missing evidence storage is explicit while the foundation conversation remains usable', async ({ page }) => {
+  await signIn(page);
+  await page.getByRole('button', { name: /FY2026 audit/ }).click();
+  await expect(page.getByText('Conversation up to date', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Evidence', exact: true }).click();
+  await expect(page.getByText('Original acquisition and downloads are unavailable.', { exact: false })).toBeVisible();
+  await expect(page.getByLabel('Original file (up to 10 MiB)', { exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Acquire and verify original', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Return to conversation and Task' }).click();
+  await page.getByLabel('Task objective', { exact: true }).fill('Foundation remains available without evidence storage');
+  await page.getByRole('button', { name: 'Send', exact: false }).click();
+  await expect(page.getByRole('button', { name: 'Open Foundation remains available without evidence storage', exact: true })).toBeVisible();
+});
+
 test('failed restoration SQL still closes the owned fixture servers', async ({ page }) => {
   await expect(restoreAndClose(runtime, 'SELECT 1 / 0;')).rejects.toThrow('Synthetic browser database mutation failed.');
   await expect(page.context().request.get(runtime.url, { timeout: 1500 })).rejects.toThrow();

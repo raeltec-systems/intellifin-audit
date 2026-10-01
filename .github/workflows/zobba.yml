@@ -24,7 +24,8 @@ concurrency:
 jobs:
   foundation:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    # Includes the S3 protocol suite, schema-prefix refusals and full Chromium coverage.
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: zobba
@@ -103,7 +104,7 @@ jobs:
         run: cargo fmt --check
       - name: Lint Rust
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - name: Test Rust and real PostgreSQL refusal cases
+      - name: Test Rust, immutable S3 protocol and PostgreSQL refusal cases
         run: |
           source "$ZOBBA_FIXTURE_DIR/env.sh"
           node fixtures/oidc/server.mjs > /tmp/zobba-oidc-fixture.log 2>&1 &
@@ -121,7 +122,7 @@ jobs:
         run: python3 scripts/smoke.py
       - name: Install Chromium for the owned browser regression
         run: pnpm --filter @zobba/web exec playwright install --with-deps chromium
-      - name: Verify HTTPS sign-in, scoped access, logout and keyboard recovery
+      - name: Verify HTTPS sign-in, immutable evidence, audience fences and keyboard recovery
         run: pnpm test:browser
       - name: Preserve browser regression evidence
         if: always()
