@@ -1,0 +1,35 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.62s
+     Running unittests src/lib.rs (target/debug/deps/zobba_domain-e3cd4001b4dd28f1)
+
+running 20 tests
+test identity::tests::administrative_roles_never_imply_audit_authority ... ok
+test identity::tests::scope_bounds_match_unicode_and_ascii_contracts ... ok
+test membership::tests::expiry_bounds_match_the_owned_wire_timestamp_range ... ok
+test membership::tests::commands_are_bounded_and_roles_do_not_invent_authority ... ok
+test membership::tests::recipient_identity_preserves_local_case_and_rejects_ambiguous_addresses ... ok
+test permissions::tests::accepted_scope_actor_task_and_immutable_versions_cannot_be_substituted ... ok
+test permissions::tests::all_three_purposes_need_their_verified_account_boundary ... ok
+test permissions::tests::audit_coordination_never_grants_operational_resource_writes ... ok
+test permissions::tests::decisions_bind_every_material_field_revision_and_expiry ... ok
+test permissions::tests::expiry_and_attachment_recipient_bounds_apply_to_all_policy_layers ... ok
+test evidence::tests::preview_is_inert_bounded_and_utf8_safe ... ok
+test permissions::tests::every_required_layer_narrows_immediately_and_widening_cannot_enlarge_acceptance ... ok
+test permissions::tests::live_write_and_unrestricted_takeover_remain_hard_denials ... ok
+test permissions::tests::complete_delegation_chain_is_ordered_versioned_bounded_and_revocable ... ok
+test permissions::tests::malformed_unbounded_and_ambiguous_requests_have_no_canonical_encoding ... ok
+test permissions::tests::source_facts_never_infer_completion_or_absence_from_pending ... ok
+test task::tests::exact_text_is_retained_but_invalid_or_unbounded_content_is_refused ... ok
+test task::tests::command_matrix_requires_exact_target_and_content ... ok
+test task::tests::resumption_requires_explicit_command_and_observed_cessation ... ok
+test permissions::tests::test_labels_do_not_replace_verification_scope_or_cleanup ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Doc-tests zobba_domain
+
+running 2 tests
+test crates/domain/src/task.rs - task::ConsumedAttempt (line 248) - compile fail ... ok
+test crates/domain/src/permissions.rs - permissions::ConsumedOperation (line 568) - compile fail ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+

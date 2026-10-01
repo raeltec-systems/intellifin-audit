@@ -36,6 +36,10 @@ function text(value: unknown, max: number): string {
   if (typeof value !== 'string' || new TextEncoder().encode(value).length > max || /[\u0000-\u001f\u007f-\u009f]/.test(value)) invalid();
   return value;
 }
+// Match Rust str::trim: Unicode White_Space excludes the accepted U+FEFF.
+export function trimEvidenceWhitespace(value: string): string {
+  return value.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, '');
+}
 export function parseReservationRequest(value: unknown): ReservationRequest {
   const row = record(value), identity = record(row.identity), source = record(row.source);
   if (typeof identity.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(identity.sha256) ||
@@ -43,11 +47,11 @@ export function parseReservationRequest(value: unknown): ReservationRequest {
   const asserted = (key: string) => {
     if (source[key] === null) return null;
     const value = text(source[key], 2000);
-    if (!value || value.trim() !== value) invalid();
+    if (!value || trimEvidenceWhitespace(value) !== value) invalid();
     return value;
   };
   const filename = text(row.filename, 255);
-  if (!filename || filename.trim() !== filename || /[/\\]/.test(filename)) invalid();
+  if (!filename || trimEvidenceWhitespace(filename) !== filename || /[/\\]/.test(filename)) invalid();
   return { key: identifier(row.key), filename, identity: { sha256: identity.sha256, size: identity.size as number },
     source: { system: asserted('system'), account: asserted('account'), source_version: asserted('source_version'), selection: asserted('selection'), coverage: asserted('coverage') } };
 }

@@ -1,3 +1,14 @@
+## 2026-10-01 — Evidence metadata Unicode compatibility
+
+Rust `str::trim` follows Unicode White_Space; JavaScript `trim()` also removes
+U+FEFF. Do not use ECMAScript trim as the validity test for Rust-accepted evidence
+metadata. Preserve immutable filename/source strings and recovery drafts exactly.
+Use shared Rust/browser parity cases and API-created mixed-record browser tests;
+assert raw strings because browser text matchers can normalise the affected value.
+Download attachment sanitation is separate from stored metadata. Admin continuity
+through a non-expiring membership is a pending owner policy decision, not an
+implicit consequence of this compatibility repair.
+
 ## 2026-10-01 — Story 21.1 immutable evidence custody
 
 Reserve the server-owned identity once with actor/composite-scope idempotency;

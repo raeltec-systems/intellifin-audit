@@ -1,0 +1,16 @@
+{
+  "negative_browser_guard_on_repaired_source": {
+    "exit_code": 2,
+    "test_executed": false
+  },
+  "output_directory_created": true,
+  "isolated_negative_unit": {
+    "baseline_commit": "26271284b03d5114f6ead2146092c5e1a50fdd7c",
+    "current_tests_overlaid": true,
+    "baseline_missing_helper_import_omitted": true,
+    "production_bytes_exact_baseline": true,
+    "exit_code": 1,
+    "failed_groups": 6,
+    "worktree_removed": true
+  }
+}

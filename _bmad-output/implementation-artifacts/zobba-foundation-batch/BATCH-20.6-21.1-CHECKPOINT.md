@@ -2,6 +2,11 @@
 
 **1 October 2026 (Africa/Lusaka). Implementation complete; ready for owner review.**
 
+**Owner-review follow-up:** Story 20.6 is now accepted. Story 21.1's Unicode
+compatibility repair is complete and independently reviewed; see the [repair checkpoint](STORY-21.1-UNICODE-REPAIR.md) and [specification](../spec-21-1-preserve-evidence-unicode-values.md).
+The [Admin-continuity proposal](ADMIN-EXPIRY-OWNER-DECISION.md) is separately pending
+owner approval. The verification counts below describe the original checkpoint.
+
 This is the authorised next batch after owner acceptance of Story 20.5. It keeps
 the Rust backend, fresh schema, continuing engagement conversation and standing
 Permissions as the build baseline.

@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euo pipefail
+. /workspace/zobba-build-tools/activate-tests.sh
+repair_repo=${ZOBBA_UNICODE_REPOSITORY_DIR:-/workspace/intellifin-audit}
+evidence_dir=${ZOBBA_UNICODE_EVIDENCE_DIR:-/tmp/zobba-21-1-unicode}
+mkdir -p "$evidence_dir"
+export ZOBBA_TEST_ADMIN_DATABASE_URL=postgresql://zobba_local_admin@127.0.0.1:55434/zobba_story_20_test
+export ZOBBA_FIXTURE_DIR=/tmp/zobba-21-1-unicode-fixture
+export ZOBBA_BROWSER_EXECUTABLE=/usr/bin/chromium
+export ZOBBA_BROWSER_OUTPUT_DIR="$evidence_dir/browser-results"
+run_check() {
+  local check_name="$1"
+  shift
+  local result=0
+  "$@" > "$evidence_dir/${check_name}.log" 2>&1 || result=$?
+  printf '%s exit=%s\n' "$check_name" "$result" >> "$evidence_dir/exit-receipts.txt"
+  return "$result"
+}
+require_baseline() {
+  if ! git -C "$repair_repo" diff --quiet 26271284b03d5114f6ead2146092c5e1a50fdd7c -- zobba/web/src/evidence.ts zobba/web/src/EvidenceWorkspace.tsx; then
+    echo 'Negative controls require isolated original production files; see NEGATIVE-CONTROL-REPLAY.md.' >&2
+    exit 2
+  fi
+}
+case "${1:-}" in
+  negative-unit)
+    require_baseline
+    cd "$repair_repo/zobba/web"
+    run_check negative-unit node --test --test-name-pattern='shared Rust/browser Unicode' tests/evidence.test.mjs
+    ;;
+  negative-browser)
+    require_baseline
+    cd "$repair_repo/zobba/web"
+    export ZOBBA_BROWSER_OUTPUT_DIR="$evidence_dir/negative-browser-results"
+    run_check negative-browser pnpm test:browser evidence-unicode.spec.ts --workers=1 --retries=0
+    ;;
+  frontend)
+    cd "$repair_repo"
+    run_check frontend-check pnpm --dir zobba/web check
+    run_check frontend-build pnpm --dir zobba/web build
+    ;;
+  rust)
+    cd "$repair_repo/zobba"
+    run_check fmt cargo fmt --all -- --check
+    run_check evidence-contract cargo test -p zobba-api --test evidence_contract
+    run_check domain cargo test -p zobba-domain
+    run_check clippy cargo clippy --workspace --all-targets -- -D warnings
+    ;;
+  browser)
+    cd "$repair_repo/zobba/web"
+    run_check browser pnpm test:browser evidence.spec.ts evidence-repairs.spec.ts evidence-unicode.spec.ts account-binding.spec.ts auth.spec.ts --workers=1 --retries=0
+    ;;
+  *) exit 2 ;;
+esac

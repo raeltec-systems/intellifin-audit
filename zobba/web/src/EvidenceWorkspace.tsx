@@ -5,7 +5,7 @@ import type { Session } from './auth';
 import type { Engagement } from './engagements';
 import { discardAcquisitionDraft, downloadEvidence, evidenceAudience, liveEvidenceAudience, inspectEvidence, listEvidence, listReservations,
   measureFile, previewEvidence, recoverAcquisitionDraft, reserveEvidence, safeFilename, saveAcquisitionDraft, uploadEvidence, verifyEvidenceAudience } from './evidence';
-import { MAX_ORIGINAL_BYTES, parseReservationRequest, ReservationLimitError } from './evidence';
+import { MAX_ORIGINAL_BYTES, parseReservationRequest, ReservationLimitError, trimEvidenceWhitespace } from './evidence';
 import type { AcquisitionDraft, Evidence, EvidencePage, Preview, Reservation, ReservationPage, ReservationRequest } from './evidence';
 
 interface Props {
@@ -174,7 +174,7 @@ export function EvidenceWorkspace({ engagement, session, accessReady, onAccessFa
         setError('This file does not match the retained reservation. Reselect the identical original, including its filename.'); return;
       }
       if (!pending) {
-        const assertions = Object.fromEntries(Object.entries(source).map(([key, value]) => [key, value.trim() || null])) as ReservationRequest['source'];
+        const assertions = Object.fromEntries(Object.entries(source).map(([key, value]) => [key, trimEvidenceWhitespace(value) || null])) as ReservationRequest['source'];
         let canonical: ReservationRequest;
         try { canonical = parseReservationRequest({ key: crypto.randomUUID(), filename: file.name, identity, source: assertions }); }
         catch {

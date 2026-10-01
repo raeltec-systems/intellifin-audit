@@ -7,3 +7,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-1-bootstrap-the-monorepo-and-deploy-web-and-worker.md`
   summary: Drop the root-only `typescript@6.0.3` pin once dependency-cruiser supports TypeScript 7; `scripts/check-boundaries.mjs` will fail loudly rather than silently if the pin is removed early.
   evidence: With TypeScript 7 at the root, dependency-cruiser 18.2.0 cruises zero modules and exits 0 (reproduced 2026-09-02 after a clean reinstall).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-21-1-preserve-evidence-unicode-values.md`
+  summary: Align evidence request validation for malformed UTF-16 wire strings in a focused follow-up.
+  evidence: Pre-existing browser TextEncoder measurement substitutes isolated surrogates while retaining the input string; Rust JSON decoding refuses their escaped wire form. The U+FEFF repair changes neither behaviour. Add wire-level parity cases and client refusal without narrowing valid server values.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-21-1-preserve-evidence-unicode-values.md`
+  summary: Provide an accessible display description for evidence filenames composed entirely of invisible Unicode characters while preserving immutable metadata.
+  evidence: Existing filename rendering can appear blank for accepted U+200B and similar strings; U+FEFF-only values expose the same display limitation after this repair. Raw metadata, identity and byte access now work, but a labelled display representation is a separate presentational follow-up.

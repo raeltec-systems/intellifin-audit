@@ -1,0 +1,50 @@
+{
+  "fields": { "filename": 255, "system": 2000, "account": 2000, "source_version": 2000, "selection": 2000, "coverage": 2000 },
+  "literals": [
+    { "name": "FEFF-leading", "value": "\ufeffmetadata", "filename_valid": true, "source_valid": true },
+    { "name": "FEFF-trailing", "value": "metadata\ufeff", "filename_valid": true, "source_valid": true },
+    { "name": "FEFF-internal", "value": "meta\ufeffdata", "filename_valid": true, "source_valid": true },
+    { "name": "FEFF-alone", "value": "\ufeff", "filename_valid": true, "source_valid": true },
+    { "name": "empty", "value": "", "filename_valid": false, "source_valid": false },
+    { "name": "null", "value": null, "filename_valid": false, "source_valid": true },
+    { "name": "non-normalized-unicode", "value": "re\u0301sume\u0301-界-😺", "filename_valid": true, "source_valid": true },
+    { "name": "internal-white-space", "value": "meta\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000data", "filename_valid": true, "source_valid": true },
+    { "name": "space-before-FEFF", "value": " \ufeff", "filename_valid": false, "source_valid": false },
+    { "name": "space-after-FEFF", "value": "\ufeff ", "filename_valid": false, "source_valid": false },
+    { "name": "space-between-FEFF", "value": "\ufeff \ufeff", "filename_valid": true, "source_valid": true }
+  ],
+  "characters": [
+    {
+      "name": "Unicode-White_Space",
+      "codepoints": [9, 10, 11, 12, 13, 32, 133, 160, 5760, 8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288],
+      "ranges": [],
+      "positions": ["leading", "trailing", "alone"],
+      "filename_valid": false,
+      "source_valid": false
+    },
+    {
+      "name": "C0-C1-control",
+      "codepoints": [],
+      "ranges": [[0, 31], [127, 159]],
+      "positions": ["leading", "trailing", "internal", "alone"],
+      "filename_valid": false,
+      "source_valid": false
+    },
+    {
+      "name": "path-separator",
+      "codepoints": [47, 92],
+      "ranges": [],
+      "positions": ["leading", "trailing", "internal", "alone"],
+      "filename_valid": false,
+      "source_valid": true
+    }
+  ],
+  "byte_boundaries": [
+    { "name": "ascii", "prefix": "", "unit": "a", "suffix": "" },
+    { "name": "FEFF-leading", "prefix": "\ufeff", "unit": "a", "suffix": "" },
+    { "name": "FEFF-trailing", "prefix": "", "unit": "a", "suffix": "\ufeff" },
+    { "name": "multibyte", "prefix": "", "unit": "界", "suffix": "" },
+    { "name": "astral", "prefix": "", "unit": "😺", "suffix": "" },
+    { "name": "FEFF-and-multibyte", "prefix": "\ufeff", "unit": "界", "suffix": "\ufeff" }
+  ]
+}

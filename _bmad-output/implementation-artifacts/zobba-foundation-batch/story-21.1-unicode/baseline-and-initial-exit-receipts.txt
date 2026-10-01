@@ -1,0 +1,11 @@
+negative-unit: cwd=/workspace/intellifin-audit/zobba/web; source /workspace/zobba-build-tools/activate-tests.sh; node --test --test-name-pattern='shared Rust/browser Unicode' tests/evidence.test.mjs > /tmp/zobba-21-1-unicode/negative-unit.log 2>&1; exit=1 (expected baseline mismatch: 366 cases per field, six fields, 42 FEFF acceptance failures)
+negative-browser-initial-harness exit=1 (product failures plus fixed test-only anonymous-401 wording mismatch)
+negative-browser exit=1
+fmt exit=0
+evidence-contract exit=0
+domain exit=0
+clippy exit=0
+frontend-check exit=0
+frontend-build exit=0
+browser exit=0
+published-hashes exit=0 (12 published migration/catalogue files unchanged)

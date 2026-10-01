@@ -1,5 +1,9 @@
 # Story 21.1 independent review
 
+Owner review subsequently identified a Rust/browser Unicode metadata mismatch.
+The [compatibility repair](../spec-21-1-preserve-evidence-unicode-values.md) tracks
+that blocker separately. This report preserves the original review and results.
+
 Three same-capability reviewers independently examined the complete tracked and
 untracked implementation: blind implementation, edge cases and verification gaps.
 All layers were launched before collection and triage. The root consolidated

@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { AccessError } from '../src/auth.ts';
 import { discardAcquisitionDraft, downloadEvidence, evidenceAudience, listEvidence, measureFile, parseEvidence, parseReservationRequest,
-  previewEvidence, recoverAcquisitionDraft, ReservationLimitError, reserveEvidence, safeFilename, saveAcquisitionDraft } from '../src/evidence.ts';
+  previewEvidence, recoverAcquisitionDraft, ReservationLimitError, reserveEvidence, safeFilename, saveAcquisitionDraft, trimEvidenceWhitespace } from '../src/evidence.ts';
 const scope = { organisation_id: 'org-a', client_id: 'client-a', engagement_id: 'engagement-a' };
 const session = { identity: { id: 'actor-a', display_name: 'Auditor A' }, csrf_token: 'session-a' };
 const engagement = { ...scope, organisation_name: 'Northstar', client_name: 'Alder', engagement_name: 'FY2026 audit', roles: ['auditor'] };
@@ -12,6 +13,78 @@ const request = { key: 'request-a', filename: file.name, identity, source: { sys
 const reservation = { id: 'evidence-a', actor_id: session.identity.id, scope, request, reserved_at: 1800000000 };
 const evidence = { reservation, version: 'opaque-v1', registered_at: 1800000001 };
 const signal = () => new AbortController().signal;
+// The Rust API contract test expands this same matrix against its domain validator.
+const metadataParity = JSON.parse(readFileSync(new URL('../../tests/fixtures/evidence-metadata-parity.json', import.meta.url), 'utf8'));
+function metadataCases(maxBytes) {
+  const cases = [...metadataParity.literals];
+  for (const group of metadataParity.characters) {
+    const codepoints = [...group.codepoints, ...group.ranges.flatMap(([first, last]) => Array.from({ length: last - first + 1 }, (_, index) => first + index))];
+    for (const point of codepoints) {
+      const character = String.fromCodePoint(point);
+      const positions = { leading: `${character}metadata`, trailing: `metadata${character}`, internal: `meta${character}data`, alone: character };
+      for (const position of group.positions) cases.push({ ...group, name: `${group.name}-U+${point.toString(16)}-${position}`, value: positions[position] });
+    }
+  }
+  for (const boundary of metadataParity.byte_boundaries) {
+    for (const extra of [0, 1]) {
+      const remaining = maxBytes + extra - Buffer.byteLength(boundary.prefix + boundary.suffix);
+      const unitBytes = Buffer.byteLength(boundary.unit);
+      const value = boundary.prefix + boundary.unit.repeat(Math.floor(remaining / unitBytes)) + 'a'.repeat(remaining % unitBytes) + boundary.suffix;
+      assert.equal(Buffer.byteLength(value), maxBytes + extra);
+      cases.push({ name: `${boundary.name}-${maxBytes + extra}-bytes`, value, filename_valid: extra === 0, source_valid: extra === 0 });
+    }
+  }
+  return cases;
+}
+for (const [field, maxBytes] of Object.entries(metadataParity.fields)) {
+  test(`shared Rust/browser Unicode metadata parity preserves ${field} and recovery exactly`, async context => {
+    const values = new Map();
+    Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) } });
+    context.after(() => { delete globalThis.sessionStorage; });
+    const audience = await evidenceAudience(session, scope);
+    const cases = metadataCases(maxBytes), failures = [];
+    for (const entry of cases) {
+      const label = `${field}: ${entry.name}`;
+      const candidate = field === 'filename' ? { ...request, filename: entry.value } : { ...request, source: { ...request.source, [field]: entry.value } };
+      const draft = { audience, request: candidate, reservationId: reservation.id };
+      try {
+        if (field === 'filename' ? entry.filename_valid : entry.source_valid) {
+          const originalRequest = structuredClone(candidate);
+          assert.deepEqual(parseReservationRequest(candidate), originalRequest, label);
+          const item = { ...evidence, reservation: { ...reservation, request: candidate } };
+          assert.deepEqual(parseEvidence(item, scope), item, label);
+          for (const reservationId of [null, reservation.id]) {
+            const expected = { ...draft, request: originalRequest, reservationId };
+            saveAcquisitionDraft(structuredClone(expected));
+            assert.deepEqual(JSON.parse([...values.values()][0]), expected, label);
+            assert.deepEqual(recoverAcquisitionDraft(audience), expected, label);
+          }
+        } else {
+          assert.throws(() => parseReservationRequest(candidate), label);
+          assert.throws(() => saveAcquisitionDraft(draft), label);
+          values.set('zobba.evidence-draft.v1', JSON.stringify(draft));
+          assert.equal(recoverAcquisitionDraft(audience), null, label);
+          assert.equal(values.size, 0, label);
+        }
+      } catch (error) { failures.push(`${label}: ${error.message}`); }
+      values.clear();
+    }
+    assert.deepEqual(failures, [], `${field}: all ${cases.length} shared cases executed`);
+  });
+}
+test('new evidence input trims Unicode White_Space while preserving FEFF and internal values', () => {
+  const whitespace = metadataParity.characters.find(group => group.name === 'Unicode-White_Space').codepoints;
+  for (const point of whitespace) {
+    const character = String.fromCodePoint(point);
+    assert.equal(trimEvidenceWhitespace(`${character}\ufeffmetadata\ufeff${character}`), '\ufeffmetadata\ufeff', `U+${point.toString(16)}`);
+  }
+  assert.equal(trimEvidenceWhitespace(String.fromCodePoint(...whitespace)), '');
+  assert.equal(trimEvidenceWhitespace(' \ufeff '), '\ufeff');
+  assert.equal(trimEvidenceWhitespace('\u0000metadata\u0000'), '\u0000metadata\u0000');
+  for (const entry of metadataParity.literals) {
+    if (entry.source_valid && entry.value !== null) assert.equal(trimEvidenceWhitespace(entry.value), entry.value, entry.name);
+  }
+});
 function authorizedFetch(context, first, current = session) {
   context.mock.method(globalThis, 'fetch', async (path, init) => {
     assert.equal(init.credentials, 'same-origin'); assert.equal(init.cache, 'no-store');
