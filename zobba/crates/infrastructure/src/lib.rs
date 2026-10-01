@@ -3,6 +3,7 @@ pub mod conversation;
 pub mod dispatcher;
 pub mod fixture;
 pub mod identity;
+pub mod membership;
 pub mod oidc;
 pub mod operation;
 pub mod scope;
@@ -110,9 +111,10 @@ async fn check_effective_role(
             OR (c.relname NOT IN ('login_attempts','sessions','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers') AND pg_catalog.has_table_privilege(r.oid,c.oid,'INSERT'))
             OR (c.relname NOT IN ('login_attempts','sessions') AND pg_catalog.has_table_privilege(r.oid,c.oid,'DELETE'))
             OR pg_catalog.has_table_privilege(r.oid,c.oid,'UPDATE')
-            OR (c.relname IN ('task_wakeups','task_deliveries') AND pg_catalog.has_table_privilege(r.oid,c.oid,'SELECT'))
+            OR (c.relname IN ('task_wakeups','task_deliveries','membership_events','membership_invitations','membership_versions') AND pg_catalog.has_table_privilege(r.oid,c.oid,'SELECT'))
             OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped AND (
               pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'REFERENCES')
+              OR (c.relname IN ('membership_events','membership_invitations','membership_versions') AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'SELECT'))
               OR (NOT (c.relname IN ('login_attempts','sessions','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers') OR (c.relname='identities' AND a.attname IN ('id','issuer','subject','display_name')) OR (c.relname='task_deliveries' AND a.attname='wakeup_id')) AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'INSERT'))
               OR (NOT ((c.relname IN ('identities','engagements') AND a.attname IN ('display_name','name')) OR (c.relname='task_counters' AND a.attname='cursor') OR (c.relname='tasks' AND a.attname IN ('cycle_id','working_brief','state','cessation','intent_revision','applied_intent','applied_command_cursor','revision','execution_epoch','owner_id','owner_until','owner_epoch')) OR (c.relname='task_cycles' AND a.attname='status') OR (c.relname='task_claims' AND a.attname='state') OR (c.relname='permission_heads' AND a.attname='current_version') OR (c.relname='operation_claims' AND a.attname IN ('state','consumed_at')) OR (c.relname='task_wakeups' AND a.attname IN ('pending','available_at')) OR (c.relname='task_deliveries' AND a.attname IN ('delivery_owner','delivery_until'))) AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'UPDATE'))
             ))))))
@@ -135,7 +137,7 @@ async fn check_runtime_role(conn: &mut PgConnection) -> Result<(), BootstrapErro
 async fn check_runtime_grants(conn: &mut PgConnection, role: &str) -> Result<(), BootstrapError> {
     let complete: bool = sqlx::query_scalar(r#"
       SELECT (SELECT pg_catalog.bool_and(pg_catalog.has_table_privilege($1,c.oid,'SELECT'))
-        FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' AND c.relname NOT IN ('task_wakeups','task_deliveries'))
+        FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' AND c.relname NOT IN ('task_wakeups','task_deliveries','membership_events','membership_invitations','membership_versions'))
         AND pg_catalog.has_table_privilege($1,'public.login_attempts','INSERT')
         AND pg_catalog.has_table_privilege($1,'public.login_attempts','DELETE')
         AND pg_catalog.has_table_privilege($1,'public.sessions','INSERT')
@@ -198,11 +200,30 @@ async fn check_runtime_grants(conn: &mut PgConnection, role: &str) -> Result<(),
         AND pg_catalog.has_column_privilege($1,'public.task_wakeups','available_at','UPDATE')
         AND pg_catalog.has_column_privilege($1,'public.task_deliveries','delivery_owner','UPDATE')
         AND pg_catalog.has_column_privilege($1,'public.task_deliveries','delivery_until','UPDATE')
-    "#).bind(role).fetch_one(conn).await.map_err(|_| BootstrapError::UnsafeRuntimeRole)?;
+    "#).bind(role).fetch_one(&mut *conn).await.map_err(|_| BootstrapError::UnsafeRuntimeRole)?;
+    check_membership_functions(conn, Some(role)).await?;
     if complete {
         Ok(())
     } else {
         Err(BootstrapError::UnsafeRuntimeRole)
+    }
+}
+
+async fn check_membership_functions(
+    conn: &mut PgConnection,
+    runtime: Option<&str>,
+) -> Result<(), BootstrapError> {
+    let safe: bool = sqlx::query_scalar(r#"
+      SELECT count(*)=9 AND bool_and(
+        p.proowner=(SELECT relowner FROM pg_catalog.pg_class WHERE oid='public.zobba_bootstrap'::regclass)
+        AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a WHERE a.grantee=0 OR (a.grantee<>p.proowner AND (a.privilege_type<>'EXECUTE' OR a.is_grantable OR p.proname NOT IN ('membership_read','membership_write','membership_accept','membership_preview','membership_assignments') OR ($1::text IS NOT NULL AND a.grantee<>(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=$1)))))
+        AND ($1::text IS NULL OR CASE WHEN p.proname IN ('membership_read','membership_write','membership_accept','membership_preview','membership_assignments') THEN pg_catalog.has_function_privilege($1,p.oid,'EXECUTE') ELSE NOT pg_catalog.has_function_privilege($1,p.oid,'EXECUTE') END)
+      ) FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public'
+    "#).bind(runtime).fetch_one(conn).await.map_err(|_| BootstrapError::SchemaMismatch)?;
+    if safe {
+        Ok(())
+    } else {
+        Err(BootstrapError::SchemaMismatch)
     }
 }
 
@@ -221,20 +242,20 @@ async fn inventory(conn: &mut PgConnection) -> Result<Vec<String>, BootstrapErro
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_dict o JOIN pg_catalog.pg_namespace n ON n.oid=o.dictnamespace WHERE n.nspname='public')
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_parser o JOIN pg_catalog.pg_namespace n ON n.oid=o.prsnamespace WHERE n.nspname='public')
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_template o JOIN pg_catalog.pg_namespace n ON n.oid=o.tmplnamespace WHERE n.nspname='public')
-        OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public')
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname NOT IN ('membership_admin','membership_session','membership_validate','membership_fence','membership_read','membership_write','membership_accept','membership_preview','membership_assignments'))
         OR EXISTS (
           SELECT 1 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace
           WHERE n.nspname='public' AND t.oid NOT IN (
-            SELECT c.reltype FROM pg_catalog.pg_class c WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap','identities','login_attempts','sessions','organisations','clients','engagements','organisation_memberships','engagement_assignments','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','trusted_attachment_metadata','task_deliveries','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers')
+            SELECT c.reltype FROM pg_catalog.pg_class c WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap','identities','login_attempts','sessions','organisations','clients','engagements','organisation_memberships','engagement_assignments','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','trusted_attachment_metadata','task_deliveries','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers','membership_events','membership_invitations','membership_versions')
             UNION ALL SELECT rowtype.typarray FROM pg_catalog.pg_type rowtype JOIN pg_catalog.pg_class c ON c.reltype=rowtype.oid
-              WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap','identities','login_attempts','sessions','organisations','clients','engagements','organisation_memberships','engagement_assignments','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','trusted_attachment_metadata','task_deliveries','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers')
+              WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap','identities','login_attempts','sessions','organisations','clients','engagements','organisation_memberships','engagement_assignments','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','trusted_attachment_metadata','task_deliveries','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers','membership_events','membership_invitations','membership_versions')
           ))
     "#).fetch_one(&mut *conn).await.map_err(|_| BootstrapError::DatabaseUnavailable)?;
     if foreign {
         return Err(BootstrapError::SchemaMismatch);
     }
     // Bound inventory independently of attacker-controlled catalog size.
-    sqlx::query_scalar("SELECT c.relname::text FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind <> 'i' ORDER BY c.relname LIMIT 31")
+    sqlx::query_scalar("SELECT c.relname::text FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind <> 'i' ORDER BY c.relname LIMIT 35")
         .fetch_all(conn).await.map_err(|_| BootstrapError::DatabaseUnavailable)
 }
 
@@ -323,6 +344,44 @@ async fn check_schema(
         ]
     {
         4
+    } else if tables
+        == [
+            "_sqlx_migrations",
+            "clients",
+            "engagement_assignments",
+            "engagements",
+            "identities",
+            "login_attempts",
+            "membership_events",
+            "membership_invitations",
+            "membership_versions",
+            "operation_attempts",
+            "operation_claims",
+            "operation_decisions",
+            "operation_receipt_producers",
+            "operation_receipt_slots",
+            "operation_receipts",
+            "operations",
+            "organisation_memberships",
+            "organisations",
+            "permission_heads",
+            "permission_versions",
+            "sessions",
+            "task_claims",
+            "task_commands",
+            "task_counters",
+            "task_cycles",
+            "task_deliveries",
+            "task_events",
+            "task_observations",
+            "task_receipt_slots",
+            "task_wakeups",
+            "tasks",
+            "trusted_attachment_metadata",
+            "zobba_bootstrap",
+        ]
+    {
+        5
     } else {
         return Err(BootstrapError::SchemaMismatch);
     };
@@ -343,15 +402,20 @@ async fn check_schema(
         include_str!("schema-v2.catalog")
     } else if version == 3 {
         include_str!("schema-v3.catalog")
-    } else {
+    } else if version == 4 {
         include_str!("schema-v4.catalog")
+    } else {
+        include_str!("schema-v5.catalog")
     };
     if !signature.iter().map(String::as_str).eq(expected.lines()) {
         return Err(BootstrapError::SchemaMismatch);
     }
+    if version == 5 {
+        check_membership_functions(conn, None).await?;
+    }
     // Compare bounded booleans, never allocate untrusted metadata strings/blobs.
     let versions: Vec<i64> =
-        sqlx::query_scalar("SELECT version FROM public._sqlx_migrations ORDER BY version LIMIT 5")
+        sqlx::query_scalar("SELECT version FROM public._sqlx_migrations ORDER BY version LIMIT 6")
             .fetch_all(&mut *conn)
             .await
             .map_err(|_| BootstrapError::SchemaMismatch)?;
@@ -468,6 +532,23 @@ pub async fn migrate(url: &str, runtime_role: &str) -> Result<(), BootstrapError
     .map_err(|_| BootstrapError::DatabaseUnavailable)?
 }
 
+fn migration_error(error: sqlx::migrate::MigrateError) -> BootstrapError {
+    let sqlx::migrate::MigrateError::ExecuteMigration(sqlx::Error::Database(database), _) = error
+    else {
+        return BootstrapError::MigrationFailed;
+    };
+    if database.code().as_deref() == Some("23514")
+        && matches!(
+            database.constraint(),
+            Some("organisation_memberships_expiry_range" | "engagement_assignments_expiry_range")
+        )
+    {
+        BootstrapError::MembershipExpiryOutOfRange
+    } else {
+        BootstrapError::MigrationFailed
+    }
+}
+
 async fn migrate_locked(conn: &mut PgConnection, runtime_role: &str) -> Result<(), BootstrapError> {
     check_effective_role(conn, runtime_role, false).await?;
     if !inventory(conn).await?.is_empty() {
@@ -487,10 +568,7 @@ async fn migrate_locked(conn: &mut PgConnection, runtime_role: &str) -> Result<(
         .map_err(|_| BootstrapError::MigrationFailed)?;
     let mut migrator = sqlx::migrate!("../../migrations");
     migrator.set_locking(false);
-    migrator
-        .run(&mut *tx)
-        .await
-        .map_err(|_| BootstrapError::MigrationFailed)?;
+    migrator.run(&mut *tx).await.map_err(migration_error)?;
     sqlx::query("SET LOCAL search_path=pg_catalog,public")
         .execute(&mut *tx)
         .await
@@ -506,6 +584,9 @@ async fn migrate_locked(conn: &mut PgConnection, runtime_role: &str) -> Result<(
     );
     let grants = format!(
         "{grants} GRANT SELECT ON public.trusted_attachment_metadata TO \"{runtime_role}\"; GRANT SELECT,INSERT ON public.permission_versions,public.permission_heads,public.operations,public.operation_decisions,public.operation_attempts,public.operation_claims,public.operation_receipt_slots,public.operation_receipt_producers,public.operation_receipts TO \"{runtime_role}\"; GRANT UPDATE(current_version) ON public.permission_heads TO \"{runtime_role}\"; GRANT UPDATE(state,consumed_at) ON public.operation_claims TO \"{runtime_role}\";"
+    );
+    let grants = format!(
+        "{grants} GRANT EXECUTE ON FUNCTION public.membership_assignments(text,text,text,text,text),public.membership_preview(text,text,text,text),public.membership_read(text,text,text,text,text,text),public.membership_write(text,text,text,text,jsonb,text,text,text),public.membership_accept(text,text,text,text,text,text) TO \"{runtime_role}\";"
     );
     sqlx::raw_sql(&grants)
         .execute(&mut *tx)

@@ -87,7 +87,9 @@ Chromium tests. Independent review findings and the retained Task event regressi
 were repaired and rechecked. See [implementation evidence](story-20-5-implementation-evidence.md),
 [review record](zobba-foundation-batch/REVIEW-20.5.md) and the
 [tested source manifest](zobba-foundation-batch/SOURCE-MANIFEST-20.5.json).
-Implementation is complete; the sprint entry is `review` for owner acceptance.
+Implementation is complete. The owner accepted checkpoint
+`3db538252b2833ca2ecb4342fb7ca9d69cb7582c` on 1 October 2026; the sprint entry
+is `done` and the next dependency-ready batch is authorised.
 
 ## Suggested Review Order
 

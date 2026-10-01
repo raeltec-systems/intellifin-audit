@@ -205,6 +205,7 @@ async fn session_contract(repository: &IdentityRepository, admin: &mut PgConnect
     assert_ne!(token, attacker_chosen, "session fixation admitted");
     let current = repository.session(&token).await.unwrap();
     assert_eq!(current.identity.id, "identity-a");
+    assert!(current.recipient_proof.is_none());
     assert!(valid_secret(&current.csrf_token));
     assert_ne!(current.csrf_token, token);
     let row: (String, String, String, i64) = sqlx::query_as("SELECT token_hash,actor_id,csrf_token,expires_at-extract(epoch FROM clock_timestamp())::bigint FROM public.sessions")
@@ -346,6 +347,151 @@ async fn session_contract(repository: &IdentityRepository, admin: &mut PgConnect
         Some(IdentityError::Unauthenticated),
         "reactivation restored a revoked session"
     );
+}
+
+async fn verified_recipient_contract(repository: &IdentityRepository, admin: &mut PgConnection) {
+    let before: i64 = sqlx::query_scalar("SELECT extract(epoch FROM clock_timestamp())::bigint")
+        .fetch_one(&mut *admin)
+        .await
+        .unwrap();
+    let token = repository
+        .establish_verified_session(ISSUER, "auditor-a", "Alex", Some("Alex@EXAMPLE.TEST"), None)
+        .await
+        .unwrap();
+    let current = repository.session(&token).await.unwrap();
+    let proof = current
+        .recipient_proof
+        .expect("verified callback binds recipient proof");
+    assert_eq!(proof.issuer, ISSUER);
+    assert_eq!(
+        proof.email, "Alex@example.test",
+        "only the email domain is case folded"
+    );
+    let after: i64 = sqlx::query_scalar("SELECT extract(epoch FROM clock_timestamp())::bigint")
+        .fetch_one(&mut *admin)
+        .await
+        .unwrap();
+    assert!((before..=after).contains(&proof.verified_at));
+    let stored: (String, String, i64) = sqlx::query_as("SELECT verified_issuer,verified_email,verified_at FROM public.sessions WHERE token_hash=$1")
+        .bind(secret_hash(&token)).fetch_one(&mut *admin).await.unwrap();
+    assert_eq!(
+        stored,
+        (ISSUER.into(), "Alex@example.test".into(), proof.verified_at)
+    );
+    sqlx::query("UPDATE public.sessions SET verified_at=$1 WHERE token_hash=$2")
+        .bind(before - 301)
+        .bind(secret_hash(&token))
+        .execute(&mut *admin)
+        .await
+        .unwrap();
+    assert_eq!(
+        repository
+            .session(&token)
+            .await
+            .unwrap()
+            .recipient_proof
+            .unwrap()
+            .verified_at,
+        before - 301,
+        "ordinary session reads cannot refresh stale callback proof"
+    );
+
+    // Recipient proof belongs to this exact callback/session. Another concurrent
+    // session for the same identity cannot inherit it from the profile.
+    let unverified = repository
+        .establish_session(ISSUER, "auditor-a", "Alex@example.test", None)
+        .await
+        .unwrap();
+    assert!(
+        repository
+            .session(&unverified)
+            .await
+            .unwrap()
+            .recipient_proof
+            .is_none()
+    );
+    let replacement = repository
+        .establish_verified_session(
+            ISSUER,
+            "auditor-a",
+            "Alex",
+            Some("Different@example.test"),
+            Some(&token),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        repository.session(&token).await.err(),
+        Some(IdentityError::Unauthenticated)
+    );
+    assert_eq!(
+        repository
+            .session(&replacement)
+            .await
+            .unwrap()
+            .recipient_proof
+            .unwrap()
+            .email,
+        "Different@example.test"
+    );
+    assert!(
+        repository
+            .session(&unverified)
+            .await
+            .unwrap()
+            .recipient_proof
+            .is_none()
+    );
+
+    // A later sign-in without a usable recipient claim cannot retain earlier
+    // proof, even when the display name still resembles the verified email.
+    let without_proof = repository
+        .establish_verified_session(
+            ISSUER,
+            "auditor-a",
+            "Different@example.test",
+            None,
+            Some(&replacement),
+        )
+        .await
+        .unwrap();
+    assert!(
+        repository
+            .session(&without_proof)
+            .await
+            .unwrap()
+            .recipient_proof
+            .is_none()
+    );
+    assert_eq!(
+        repository.session(&replacement).await.err(),
+        Some(IdentityError::Unauthenticated)
+    );
+    let invalid_claim = repository
+        .establish_verified_session(
+            ISSUER,
+            "auditor-a",
+            "Alex",
+            Some("invalid@@example.test"),
+            None,
+        )
+        .await
+        .unwrap();
+    assert!(
+        repository
+            .session(&invalid_claim)
+            .await
+            .unwrap()
+            .recipient_proof
+            .is_none()
+    );
+    for token in [&unverified, &without_proof, &invalid_claim] {
+        let absent: (Option<String>, Option<String>, Option<i64>) = sqlx::query_as("SELECT verified_issuer,verified_email,verified_at FROM public.sessions WHERE token_hash=$1")
+            .bind(secret_hash(token)).fetch_one(&mut *admin).await.unwrap();
+        assert_eq!(absent, (None, None, None));
+        repository.logout(token).await.unwrap();
+    }
+    assert_eq!(count(admin, "sessions").await, 0);
 }
 
 fn scope(organisation: &str, client: &str, engagement: &str) -> Scope {
@@ -505,6 +651,7 @@ async fn postgres_identity_contract() {
         login_contract(&repository, &rival, &mut admin).await;
         bounded_capacity_contract(&repository, &rival, &mut admin).await;
         session_contract(&repository, &mut admin).await;
+        verified_recipient_contract(&repository, &mut admin).await;
         stored_scope_bounds_contract(&mut admin).await;
         paginated_authority_contract(&repository, &mut admin).await;
         authority_contract(&repository, &test_pool, &mut admin).await;

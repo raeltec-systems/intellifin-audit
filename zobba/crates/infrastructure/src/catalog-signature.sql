@@ -17,4 +17,8 @@ WITH objects AS (
  UNION ALL
  SELECT 'policy|' || c.relname || '|' || p.polname || '|' || p.polcmd::text || '|' || p.polpermissive || '|' || p.polroles::text || '|' || COALESCE(pg_catalog.left(pg_catalog.pg_get_expr(p.polqual,p.polrelid),8192),'') || '|' || COALESCE(pg_catalog.left(pg_catalog.pg_get_expr(p.polwithcheck,p.polrelid),8192),'')
  FROM pg_catalog.pg_policy p JOIN pg_catalog.pg_class c ON c.oid=p.polrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public'
+ UNION ALL
+ SELECT 'function|' || p.proname || '|' || pg_catalog.pg_get_function_identity_arguments(p.oid) || '|' || pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.pg_get_functiondef(p.oid),'UTF8')),'hex')
+ FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public'
+
 ) SELECT pg_catalog.replace(signature, pg_catalog.chr(10), ' ') AS signature FROM objects ORDER BY signature COLLATE "C" LIMIT 1025;

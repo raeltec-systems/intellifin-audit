@@ -2,6 +2,7 @@
 pub mod auth;
 pub mod conversation;
 pub mod engagements;
+pub mod membership;
 pub mod operations;
 pub mod tasks;
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
@@ -76,9 +77,11 @@ pub fn router(database: RuntimeDatabase) -> Router {
 
 pub fn authenticated_router(database: RuntimeDatabase, identity: auth::AuthState) -> Router {
     let task_routes = tasks::router(&database, identity.clone());
+    let membership_routes = membership::router(database.pool().clone(), identity.clone());
     router(database)
         .merge(auth::router(identity))
         .merge(task_routes)
+        .merge(membership_routes)
         .layer(axum::middleware::from_fn(
             |request: axum::extract::Request, next: axum::middleware::Next| async move {
                 let login_document =
@@ -144,7 +147,15 @@ pub fn authenticated_router(database: RuntimeDatabase, identity: auth::AuthState
         operations::get,
         operations::decide,
         operations::revoke,
-        operations::history
+        operations::history,
+        membership::organisations,
+        membership::snapshot,
+        membership::member_assignments,
+        membership::save_member,
+        membership::invite,
+        membership::revoke_invitation,
+        membership::preview,
+        membership::accept
     ),
     components(schemas(
         HealthResponse,
@@ -189,7 +200,33 @@ pub fn authenticated_router(database: RuntimeDatabase, identity: auth::AuthState
         operations::SourceFactResponse,
         operations::ObservationSourceResponse,
         operations::ObservationHistoryResponse,
-        operations::OperationHistoryResponse
+        operations::OperationHistoryResponse,
+        membership::MembershipAssignment,
+        membership::MembershipAssignmentChange,
+        membership::MembershipRole,
+        membership::MembershipInvitationStatus,
+        membership::MembershipReceiptKind,
+        membership::MembershipAssignmentMode,
+        membership::MembershipIdentifier,
+        membership::MembershipVersion,
+        membership::MembershipRecipientEmail,
+        membership::MembershipInvitationSecret,
+        membership::MembershipAssignmentCursor,
+        membership::MembershipMemberAssignment,
+        membership::MembershipMemberAssignments,
+        membership::MembershipAssignmentOption,
+        membership::MembershipOrganisation,
+        membership::MembershipOrganisations,
+        membership::MembershipMember,
+        membership::MembershipInvitation,
+        membership::MembershipSnapshot,
+        membership::MembershipReceipt,
+        membership::SaveMemberRequest,
+        membership::InviteMemberRequest,
+        membership::RevokeInvitationRequest,
+        membership::AcceptInvitationRequest
+        ,membership::PreviewInvitationRequest,
+        membership::InvitationPreviewResponse
     ))
 )]
 pub struct ApiDocument;

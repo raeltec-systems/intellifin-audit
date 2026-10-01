@@ -1,7 +1,7 @@
 # Zobba foundation
 
 This independent workspace builds the Rust API, worker, explicit migration CLI
-and Pair web interface through Story 20.5. Real OIDC sign-in creates opaque Rust
+and Pair web interface through Story 20.6. Real OIDC sign-in creates opaque Rust
 server sessions; current membership limits engagement selection to explicitly
 assigned work. Durable Task commands and an inert worker survive process restarts
 without inventing execution outcomes. Health reports the actual database state.
@@ -9,6 +9,85 @@ The engagement conversation retains attributed messages, factual Task cards and
 plain working briefs. Standing Permissions now qualify exact recorded operations
 through an owned local gateway. Live model/tool execution, audit conclusions, real computers and
 customer SSO qualification remain later capabilities.
+
+## Organisation administration
+
+Open **Organisation administration** from the engagement chooser. A current Admin
+selects an organisation explicitly, edits a member's three application roles and
+engagement assignments, and uses ordinary **Save membership**. Administration shows
+only the membership and assignment metadata needed for this work. Admin alone
+never opens an engagement, reads audit content or grants sign-off; an assigned
+Auditor or Audit manager role remains separately required.
+
+Invitations are private copyable links, with no email sender or delivery claim.
+The browser generates a random 32-byte secret and places it in the link fragment;
+opening the link removes that fragment from browser history immediately. The
+secret travels to the owned API only in a POST body, and only its digest is
+persisted. Keep the original private link until acceptance is confirmed.
+
+The recipient sees the verified organisation, fixed roles, named assignments and
+expiry before explicitly accepting while signed in. Preview and acceptance require a
+signed, verified email claim from the configured issuer, bound to the exact
+current server session by an OIDC callback within five minutes. Email local-part
+case is preserved; ASCII domain case is normalized. This verifies fresh claims,
+not forced provider password or MFA reauthentication. Missing or unverified email,
+or a well-typed string that is not a supported email address, still permits ordinary
+sign-in without invitation proof. Malformed claim JSON types, such as `email: 123`
+or `email_verified: "true"`, fail sign-in through the pinned OIDC decoder; there is
+no alternate parser or signature-verification bypass. If fresh sign-in is needed,
+reopen the original private link afterwards.
+
+Invitations fix roles and assignments, expire after five minutes to seven days,
+and refuse a wrong recipient or issuer, a departed/demoted inviter, revocation,
+expiry or an already-existing organisation member. Saves and invitation actions
+carry an organisation version and immutable request key. An exact retry returns
+the original attributable receipt; a changed payload or stale version conflicts.
+Keep an uncertain command in the current page and use its explicit retry action.
+A temporary access-check failure hides its private recovery state until the same
+actor and exact session are verified again. Replacing the session, even for the
+same person, discards old drafts, private links and pending recovery state.
+An accepted receipt is historical: replay never restores subsequently removed
+membership or assignments.
+
+Membership changes use schema 5's narrow, inventoried SQL functions through the
+non-owner runtime pool. Forced audit RLS remains enabled. Writes lock organisation
+205 before sorted engagements, recheck current Admin/session authority, preserve
+the last eligible Admin, and retain immutable attribution. Narrowing advances
+affected Task execution epochs, abandons unused claims and revokes affected
+delegation. Consumed effects and late factual receipts remain available for
+reconciliation. Regrant does not revive old execution, and unrelated organisations
+remain usable through the same identity session. There are no computer or
+connector revocation hooks yet.
+
+Membership routes live under `/membership/organisations`,
+`/membership/invitations/preview` and `/membership/invitations/accept`; the generated OpenAPI document describes their
+exact bodies. Lists use bounded pages of 50, and replacement commands and new
+invitations contain at most 100 assignments. Existing members with more assignments
+remain administrable: inspect their named assignments and expiry on separate pages,
+preserve the full set while changing membership, or explicitly remove selected
+assignments. Replacement is refused until the existing set fits the command bound;
+off-page assignments are never silently dropped. An opened editor retains its
+assignment editing mode even if expiry changes the current assignment count.
+Ordinary Saves preserve retained assignment expiry, including expiry that passes
+while editing. Newly selected assignments carry an explicit per-scope renewal
+intent; retaining a selection never renews it implicitly. To regrant an expired
+scope, reopen the editor and deliberately select that omitted assignment.
+Explicit renewal of an existing finite assignment fences that scope's old
+execution even if its deadline is still future and therefore remains unchanged.
+Extending or clearing a finite membership expiry likewise fences the member's
+old execution across that organisation. This prevents expiry during the Save
+from restoring an old execution basis. Unchanged expiry and retained selections
+preserve unaffected work. Member
+expiry can be extended or cleared explicitly, and the
+workspace distinguishes expired access from an active Boolean flag.
+All administration uses ordinary bounded capacity, leaving
+the reserved Guide/Pause/Stop lane independent. Migrate explicitly with the normal
+CLI; API and worker startup still only validate the exact schema and privileges.
+Schema 5 requires stored membership and assignment expiries to be null or Unix
+seconds in `1..=253402300799`. An exceptional older row outside that business range
+refuses the upgrade with `membership_expiry_out_of_range`; the transaction preserves
+its old schema and data. An operator must deliberately correct the invalid expiry
+before retrying. Migration never silently clears or clamps an existing expiry.
 
 Run every command below from `zobba/`. The historical repository-root Node
 application has its own workspace and database. Zobba does not import that
@@ -98,8 +177,8 @@ cargo run -p zobba-cli --locked -- migrate --runtime-role zobba_app
 ```
 
 This command reads `ZOBBA_MIGRATION_DATABASE_URL`; repeating it is safe against
-the same valid schema. It accepts empty databases, exactly verified Story 20.1
-or Story 20.2 prefixes, the exactly verified Story 20.3 prefix, or current schema 4. Physical catalog checks precede metadata
+the same valid schema. It accepts empty databases, exactly verified published
+schema 1–4 prefixes, or current schema 5. Physical catalog checks precede metadata
 reads; migration checksums, changes and restricted grants are validated atomically.
 Foreign, altered and newer states refuse without mutation. API and worker read
 only `ZOBBA_RUNTIME_DATABASE_URL` and
@@ -531,7 +610,7 @@ Both Rust processes expose:
 | Request | Healthy response | Dependency failure |
 |---|---|---|
 | `GET /health/live` | 200, `status: "live"`, `schema_version: null` | Remains live while the process can serve |
-| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 4` | 503, `status: "unavailable"`, `schema_version: null` |
+| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 5` | 503, `status: "unavailable"`, `schema_version: null` |
 
 Each response also identifies `service: "api"` or `service: "worker"`. Readiness
 checks the supported schema through the restricted runtime connection. Startup

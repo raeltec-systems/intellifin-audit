@@ -14,6 +14,8 @@ export const scenarios = new Set([
   'bad_signature', 'bad_algorithm', 'no_signature', 'unknown_key', 'key_rotation',
   'same_kid_rotation', 'retired_key', 'retired_key_unavailable',
   'expired', 'future_iat', 'old_iat', 'bad_expiry', 'bad_nonce', 'no_nonce', 'bad_at_hash',
+  'missing_email', 'unverified_email', 'missing_email_verified', 'invalid_email', 'mixed_case_email', 'old_auth_time',
+  'malformed_email_type', 'malformed_email_verified_type',
   'untrusted_jku', 'untrusted_x5u',
   'untrusted_token_endpoint', 'untrusted_authorization_endpoint', 'untrusted_jwks_uri', 'bad_discovery_issuer',
   ...['token', 'jwks', 'discovery'].flatMap((endpoint) => ['oversized', 'oversized_chunked', 'padded', 'padded_chunked', 'slow', 'redirect'].map((kind) => `${kind}_${endpoint}`)),
@@ -62,11 +64,11 @@ export async function startFixture({ directory = fixtureDirectory, port = Number
     enabledJWA: { idTokenSigningAlgValues: ['RS256'] },
     pkce: { methods: ['S256'], required: () => true },
     responseTypes: ['code'],
-    claims: { openid: ['sub'], profile: ['name'] },
-    scopes: ['openid', 'profile'],
+    claims: { openid: ['sub'], profile: ['name'], email: ['email', 'email_verified'] },
+    scopes: ['openid', 'profile', 'email'],
     ttl: { IdToken: 300, AccessToken: 300, Grant: 600, AuthorizationCode: 60, Interaction: 300, Session: 600 },
     interactions: { url: (_ctx, interaction) => `/interaction/${interaction.uid}` },
-    findAccount: async (_ctx, id) => config.accounts.includes(id) ? { accountId: id, claims: async () => ({ sub: id, name: id }) } : undefined,
+    findAccount: async (_ctx, id) => config.accounts.includes(id) ? { accountId: id, claims: async () => ({ sub: id, name: id, email: `${id}@example.test`, email_verified: true }) } : undefined,
     renderError: async (ctx) => { ctx.type = 'text/plain'; ctx.body = 'Synthetic sign-in request refused.'; },
   });
 
@@ -85,6 +87,14 @@ export async function startFixture({ directory = fixtureDirectory, port = Number
       case 'bad_nonce': claims.nonce = 'unrelated-nonce'; break;
       case 'no_nonce': delete claims.nonce; break;
       case 'bad_at_hash': claims.at_hash = 'invalid-hash-value'; break;
+      case 'missing_email': delete claims.email; break;
+      case 'unverified_email': claims.email_verified = false; break;
+      case 'missing_email_verified': delete claims.email_verified; break;
+      case 'invalid_email': claims.email = 'recipient@@example.test'; break;
+      case 'malformed_email_type': claims.email = 123; break;
+      case 'malformed_email_verified_type': claims.email_verified = 'true'; break;
+      case 'mixed_case_email': claims.email = 'Auditor.A@EXAMPLE.TEST'; break;
+      case 'old_auth_time': claims.auth_time = now - 86_400; break;
       case 'expired': claims.iat = now - 61; claims.exp = now - 1; break;
       case 'future_iat': claims.iat = now + 120; claims.exp = now + 420; break;
       case 'old_iat': claims.iat = now - 700; claims.exp = now + 300; break;
@@ -190,7 +200,7 @@ export async function startFixture({ directory = fixtureDirectory, port = Number
         if (pathname !== `/interaction/${uid}`) { json(response, 400, { error: 'fixture_interaction_invalid' }); return; }
         if (request.method === 'GET' && prompt.name === 'consent') {
           const grant = new provider.Grant({ accountId: session.accountId, clientId: params.client_id });
-          grant.addOIDCScope('openid profile');
+          grant.addOIDCScope('openid profile email');
           if (prompt.details.missingOIDCClaims) grant.addOIDCClaims(prompt.details.missingOIDCClaims);
           const grantId = await grant.save();
           await provider.interactionFinished(request, response, { consent: { grantId } }, { mergeWithLastSubmission: true });

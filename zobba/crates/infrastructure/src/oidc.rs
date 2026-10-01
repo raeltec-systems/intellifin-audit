@@ -25,6 +25,7 @@ use tokio::{
     time::Instant,
 };
 use url::Url;
+use zobba_domain::membership::normalize_email;
 
 const HTTP_DEADLINE: Duration = Duration::from_secs(5);
 const OPERATION_DEADLINE: Duration = Duration::from_secs(12);
@@ -184,11 +185,12 @@ fn configured_origin(value: &str) -> Result<Url, OidcError> {
     Ok(url)
 }
 
-/// Only these already verified display attributes cross into session persistence.
+/// Only these signed, verified claims cross into private session persistence.
 pub struct VerifiedIdentity {
     pub issuer: String,
     pub subject: String,
     pub display_name: String,
+    pub verified_email: Option<String>,
 }
 
 #[derive(Clone)]
@@ -326,7 +328,11 @@ impl OidcProvider {
                 move || Nonce::new(nonce),
             )
             .add_scope(Scope::new("profile".into()))
-            .add_extra_param("claims", r#"{"id_token":{"name":null}}"#)
+            .add_scope(Scope::new("email".into()))
+            .add_extra_param(
+                "claims",
+                r#"{"id_token":{"name":null,"email":null,"email_verified":null}}"#,
+            )
             .set_pkce_challenge(PkceCodeChallenge::from_code_verifier_sha256(
                 &PkceCodeVerifier::new(pkce_verifier.to_owned()),
             ))
@@ -364,6 +370,9 @@ impl OidcProvider {
         verifier: &str,
         nonce: &str,
     ) -> Result<VerifiedIdentity, OidcError> {
+        // The pinned SDK rejects malformed claim JSON types before verification.
+        // Only well-typed but absent/unusable recipient evidence gets no proof;
+        // never normalize signed JWT bytes or bypass the strict token decoder.
         let response = self
             .client
             .exchange_code(AuthorizationCode::new(code.to_owned()))
@@ -459,6 +468,10 @@ impl OidcProvider {
             issuer: self.config.issuer.clone(),
             subject: claims.subject().as_str().to_owned(),
             display_name: display_name.to_owned(),
+            verified_email: claims
+                .email()
+                .filter(|_| claims.email_verified() == Some(true))
+                .and_then(|email| normalize_email(email.as_str())),
         })
     }
 

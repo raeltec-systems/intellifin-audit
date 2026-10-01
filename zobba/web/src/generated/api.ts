@@ -336,10 +336,143 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/membership/invitations/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["membership_accept_invitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/membership/invitations/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["membership_preview_invitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/membership/organisations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["membership_organisations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/membership/organisations/{organisation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["membership_snapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/membership/organisations/{organisation_id}/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["membership_invite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/membership/organisations/{organisation_id}/invitations/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["membership_revoke_invitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/membership/organisations/{organisation_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["membership_save_member"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/membership/organisations/{organisation_id}/members/{actor_id}/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["membership_member_assignments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AcceptInvitationRequest: {
+            key: components["schemas"]["MembershipIdentifier"];
+            /** @description Private random 32-byte base64url invitation value. POST bodies only; never a query, log or projection. */
+            secret: components["schemas"]["MembershipInvitationSecret"];
+        };
         /** @enum {string} */
         ActionRequest: "read" | "write" | "send";
         AttachmentRequest: {
@@ -501,6 +634,149 @@ export interface components {
             display_name: string;
             id: string;
         };
+        InvitationPreviewResponse: {
+            assignments: components["schemas"]["MembershipAssignmentOption"][];
+            /** Format: int64 */
+            expires_at: number;
+            organisation_id: components["schemas"]["MembershipIdentifier"];
+            organisation_name: string;
+            recipient_email: components["schemas"]["MembershipRecipientEmail"];
+            roles: components["schemas"]["MembershipRole"][];
+        };
+        InviteMemberRequest: {
+            assignments: components["schemas"]["MembershipAssignment"][];
+            expected_version: components["schemas"]["MembershipVersion"];
+            /** Format: int32 */
+            expires_in_seconds: number;
+            key: components["schemas"]["MembershipIdentifier"];
+            recipient_email: components["schemas"]["MembershipRecipientEmail"];
+            /** @description Unique roles fixed for this invitation; acceptance cannot broaden them. */
+            roles: components["schemas"]["MembershipRole"][];
+            /** @description Private random 32-byte base64url invitation value. POST bodies only; never a query, log or projection. */
+            secret: components["schemas"]["MembershipInvitationSecret"];
+        };
+        MembershipAssignment: {
+            client_id: components["schemas"]["MembershipIdentifier"];
+            engagement_id: components["schemas"]["MembershipIdentifier"];
+        };
+        /**
+         * @description One assignment selected in a membership Save. Renewal is an explicit choice
+         *     for this scope; omitting it has the same meaning as false for exact retries.
+         */
+        MembershipAssignmentChange: {
+            client_id: components["schemas"]["MembershipIdentifier"];
+            engagement_id: components["schemas"]["MembershipIdentifier"];
+            /**
+             * @description True explicitly renews this scope if its stored assignment expired or
+             *     became inactive. A future active expiry is preserved. Remove mode must use false.
+             * @default false
+             */
+            renew: boolean;
+        };
+        /** @description Exclusive cursor containing a client identifier, a dot, then an engagement identifier. */
+        MembershipAssignmentCursor: string;
+        /**
+         * @description Replace supplies the complete assignment set and refuses legacy sets above
+         *     100. Preserve requires an empty assignments array and keeps every assignment;
+         *     remove revokes only the listed assignments, including across paged legacy sets.
+         * @enum {string}
+         */
+        MembershipAssignmentMode: "replace" | "preserve" | "remove";
+        MembershipAssignmentOption: {
+            client_id: components["schemas"]["MembershipIdentifier"];
+            client_name: string;
+            engagement_id: components["schemas"]["MembershipIdentifier"];
+            engagement_name: string;
+        };
+        /** @description A bounded ASCII application identifier; also used for idempotency keys. */
+        MembershipIdentifier: string;
+        MembershipInvitation: {
+            assignments: components["schemas"]["MembershipAssignment"][];
+            /** Format: int64 */
+            expires_at: number;
+            id: components["schemas"]["MembershipIdentifier"];
+            inviter_actor_id: components["schemas"]["MembershipIdentifier"];
+            recipient_email: components["schemas"]["MembershipRecipientEmail"];
+            roles: components["schemas"]["MembershipRole"][];
+            status: components["schemas"]["MembershipInvitationStatus"];
+        };
+        /** @description Private random 32-byte base64url capability. POST bodies only; never query strings or logs. */
+        MembershipInvitationSecret: string;
+        /** @enum {string} */
+        MembershipInvitationStatus: "pending" | "accepted" | "revoked" | "expired";
+        MembershipMember: {
+            active: boolean;
+            actor_id: components["schemas"]["MembershipIdentifier"];
+            assignments: components["schemas"]["MembershipAssignment"][];
+            /** @description False requires the paged assignment endpoint; the preview must not be used as a replacement set. */
+            assignments_complete: boolean;
+            /**
+             * Format: int64
+             * @description Effective assignments in this organisation, including any beyond the bounded preview.
+             */
+            assignments_count: number;
+            display_name: string;
+            /** Format: int64 */
+            expires_at: number | null;
+            roles: components["schemas"]["MembershipRole"][];
+        };
+        MembershipMemberAssignment: {
+            client_id: components["schemas"]["MembershipIdentifier"];
+            client_name: string;
+            engagement_id: components["schemas"]["MembershipIdentifier"];
+            engagement_name: string;
+            /** Format: int64 */
+            expires_at: number | null;
+        };
+        MembershipMemberAssignments: {
+            actor_id: components["schemas"]["MembershipIdentifier"];
+            assignments: components["schemas"]["MembershipMemberAssignment"][];
+            next_cursor: null | components["schemas"]["MembershipAssignmentCursor"];
+            organisation_id: components["schemas"]["MembershipIdentifier"];
+            /** Format: int64 */
+            total: number;
+            version: components["schemas"]["MembershipVersion"];
+        };
+        MembershipOrganisation: {
+            organisation_id: components["schemas"]["MembershipIdentifier"];
+            organisation_name: string;
+            version: components["schemas"]["MembershipVersion"];
+        };
+        MembershipOrganisations: {
+            next_cursor: null | components["schemas"]["MembershipIdentifier"];
+            organisations: components["schemas"]["MembershipOrganisation"][];
+        };
+        MembershipReceipt: {
+            actor_id: components["schemas"]["MembershipIdentifier"];
+            event_id: components["schemas"]["MembershipIdentifier"];
+            invitation_id: null | components["schemas"]["MembershipIdentifier"];
+            kind: components["schemas"]["MembershipReceiptKind"];
+            organisation_id: components["schemas"]["MembershipIdentifier"];
+            subject_actor_id: null | components["schemas"]["MembershipIdentifier"];
+            version: components["schemas"]["MembershipVersion"];
+        };
+        /** @enum {string} */
+        MembershipReceiptKind: "save_member" | "invite" | "revoke_invitation" | "accept";
+        /** @description ASCII address with a local part of 1–64 characters and DNS-style domain labels. Preserve local-part case; lowercase the domain. */
+        MembershipRecipientEmail: string;
+        /**
+         * @description Application roles are fixed; provider roles never grant application authority.
+         * @enum {string}
+         */
+        MembershipRole: "auditor" | "audit_manager" | "admin";
+        MembershipSnapshot: {
+            engagements: components["schemas"]["MembershipAssignmentOption"][];
+            engagements_next_cursor: null | components["schemas"]["MembershipAssignmentCursor"];
+            invitations: components["schemas"]["MembershipInvitation"][];
+            invitations_next_cursor: null | components["schemas"]["MembershipIdentifier"];
+            members: components["schemas"]["MembershipMember"][];
+            members_next_cursor: null | components["schemas"]["MembershipIdentifier"];
+            organisation_id: components["schemas"]["MembershipIdentifier"];
+            organisation_name: string;
+            version: components["schemas"]["MembershipVersion"];
+        };
+        /** @description Canonical nonnegative decimal through 9223372036854775807; no signs or leading zeros. */
+        MembershipVersion: string;
         ObservationHistoryResponse: {
             attempt_id: string;
             /** @description A recorded source fact. Unknown or Accepted proves neither completion nor absence. */
@@ -574,10 +850,34 @@ export interface components {
         };
         /** @enum {string} */
         PolicyKindRequest: "organisation" | "engagement" | "member" | "account" | "task" | "delegation";
+        PreviewInvitationRequest: {
+            secret: components["schemas"]["MembershipInvitationSecret"];
+        };
         /** @enum {string} */
         PurposeRequest: "live_inspection" | "test_workflows" | "audit_coordination";
         /** @enum {string} */
         ReceiptStatusResponse: "received";
+        RevokeInvitationRequest: {
+            expected_version: components["schemas"]["MembershipVersion"];
+            invitation_id: components["schemas"]["MembershipIdentifier"];
+            key: components["schemas"]["MembershipIdentifier"];
+        };
+        SaveMemberRequest: {
+            active: boolean;
+            actor_id: components["schemas"]["MembershipIdentifier"];
+            /** @default replace */
+            assignment_mode: components["schemas"]["MembershipAssignmentMode"];
+            assignments: components["schemas"]["MembershipAssignmentChange"][];
+            expected_version: components["schemas"]["MembershipVersion"];
+            /**
+             * Format: int64
+             * @description Unix seconds through 9999-12-31T23:59:59Z; null explicitly clears membership expiry.
+             */
+            expires_at: number | null;
+            key: components["schemas"]["MembershipIdentifier"];
+            /** @description Unique application roles; an active membership must have at least one. */
+            roles: components["schemas"]["MembershipRole"][];
+        };
         ScopeResponse: {
             client_id: string;
             engagement_id: string;
@@ -2044,6 +2344,675 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    membership_accept_invitation: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Additional current session refusal fence */
+                "X-Expected-Session"?: string | null;
+                Origin: string;
+                "X-CSRF-Token": string;
+                /** @description Required exact current actor refusal fence */
+                "X-Expected-Actor": components["schemas"]["MembershipIdentifier"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptInvitationRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipReceipt"];
+                };
+            };
+            /** @description Invalid membership command; unknown fields, vocabulary and out-of-range values refuse without changes */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    membership_preview_invitation: {
+        parameters: {
+            query?: never;
+            header: {
+                Origin: string;
+                "X-CSRF-Token": string;
+                "X-Expected-Actor": components["schemas"]["MembershipIdentifier"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewInvitationRequest"];
+            };
+        };
+        responses: {
+            /** @description Current verified recipient's fixed invitation terms; grants no authority */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationPreviewResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    membership_organisations: {
+        parameters: {
+            query?: {
+                after?: components["schemas"]["MembershipIdentifier"];
+            };
+            header?: {
+                /** @description Additional current session refusal fence */
+                "X-Expected-Session"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipOrganisations"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    membership_snapshot: {
+        parameters: {
+            query?: {
+                members_after?: components["schemas"]["MembershipIdentifier"];
+                invitations_after?: components["schemas"]["MembershipIdentifier"];
+                engagements_after?: components["schemas"]["MembershipAssignmentCursor"];
+            };
+            header?: {
+                /** @description Additional current session refusal fence */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                organisation_id: components["schemas"]["MembershipIdentifier"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipSnapshot"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    membership_invite: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Additional current session refusal fence */
+                "X-Expected-Session"?: string | null;
+                Origin: string;
+                "X-CSRF-Token": string;
+                /** @description Required exact current actor refusal fence */
+                "X-Expected-Actor": components["schemas"]["MembershipIdentifier"];
+            };
+            path: {
+                organisation_id: components["schemas"]["MembershipIdentifier"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteMemberRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipReceipt"];
+                };
+            };
+            /** @description Invalid membership command; unknown fields, vocabulary and out-of-range values refuse without changes */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    membership_revoke_invitation: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Additional current session refusal fence */
+                "X-Expected-Session"?: string | null;
+                Origin: string;
+                "X-CSRF-Token": string;
+                /** @description Required exact current actor refusal fence */
+                "X-Expected-Actor": components["schemas"]["MembershipIdentifier"];
+            };
+            path: {
+                organisation_id: components["schemas"]["MembershipIdentifier"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevokeInvitationRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipReceipt"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    membership_save_member: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Additional current session refusal fence */
+                "X-Expected-Session"?: string | null;
+                Origin: string;
+                "X-CSRF-Token": string;
+                /** @description Required exact current actor refusal fence */
+                "X-Expected-Actor": components["schemas"]["MembershipIdentifier"];
+            };
+            path: {
+                organisation_id: components["schemas"]["MembershipIdentifier"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveMemberRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipReceipt"];
+                };
+            };
+            /** @description Invalid membership command; unknown fields, vocabulary and out-of-range values refuse without changes */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    membership_member_assignments: {
+        parameters: {
+            query?: {
+                after?: components["schemas"]["MembershipAssignmentCursor"];
+            };
+            header?: {
+                /** @description Additional current session refusal fence */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                organisation_id: components["schemas"]["MembershipIdentifier"];
+                actor_id: components["schemas"]["MembershipIdentifier"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current Admin's bounded page of effective member assignments */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipMemberAssignments"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

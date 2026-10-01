@@ -1,0 +1,38 @@
+[
+  {
+    "file": "membership-clock-race.txt",
+    "original_sha256": "6627152d956e07bf9aa41d7f3ec023d065e342aa429378e2f83a6fef14eb9ddb",
+    "source": "/tmp/zobba-membership-r1-postgres.log",
+    "role": "focused verification"
+  },
+  {
+    "file": "membership-browser-focused.txt",
+    "original_sha256": "30bd0c713c8b7ab8b918b59bb371292b44b8db4dbada0c687ce1b8deef520a4e",
+    "source": "/tmp/zobba-review-20-6/ui-second-repair-browser.log",
+    "role": "focused verification"
+  },
+  {
+    "file": "membership-contract-focused.txt",
+    "original_sha256": "e7dfa12d6765a0bbf077352896f5b9f250f22131700ef8b9173ccbb96040b6a8",
+    "source": "/tmp/zobba-review-20-6/renew-api-contract-tests.log",
+    "role": "focused verification"
+  },
+  {
+    "file": "failed-legacy-sql-fixture-order.txt",
+    "original_sha256": "729a3b32a54d009a313380ba86be793e1c7f0f794f8f64c8d38264db7dfe2458",
+    "source": "/tmp/zobba-membership-second-repair-postgres-initial-failure.log",
+    "role": "intermediate failure"
+  },
+  {
+    "file": "failed-legacy-claim-fixture.txt",
+    "original_sha256": "70c1f7024e758e4200cb1ffae9de6889311722230fd699e2a9010be094af6a19",
+    "source": "/tmp/zobba-membership-second-repair-postgres-vg4-fixture-failure.log",
+    "role": "intermediate failure"
+  },
+  {
+    "file": "failed-legacy-page-fixture-count.txt",
+    "original_sha256": "d8298c1d7fd8ffd99614ee3c7c234dc51d7d964692f93a96884fc56e88c09715",
+    "source": "/tmp/zobba-membership-second-repair-postgres-pagination-fixture-failure.log",
+    "role": "intermediate failure"
+  }
+]

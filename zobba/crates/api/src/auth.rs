@@ -126,6 +126,12 @@ impl AuthState {
     pub(crate) fn permits_mutation(&self, headers: &HeaderMap, csrf: &str) -> bool {
         valid_mutation(headers, &self.origin, csrf)
     }
+
+    pub(crate) fn configured_issuer(&self) -> &str {
+        self.config
+            .as_ref()
+            .map_or("", |config| config.issuer.as_str())
+    }
 }
 
 pub fn router(state: AuthState) -> Router {
@@ -303,10 +309,11 @@ async fn callback(
             .map_err(|_| IdentityError::InvalidResponse)?;
         let token = state
             .repository
-            .establish_session(
+            .establish_verified_session(
                 &verified.issuer,
                 &verified.subject,
                 &verified.display_name,
+                verified.verified_email.as_deref(),
                 cookie(&headers, SESSION_COOKIE).as_deref(),
             )
             .await?;

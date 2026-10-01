@@ -75,8 +75,14 @@ async fn begin(pool: &PgPool, actor: &str, selected: &Scope) -> Result<Tx, TaskE
 }
 pub(crate) async fn lock(pool: &PgPool, actor: &str, selected: &Scope) -> Result<Tx, TaskError> {
     let mut tx = begin(pool, actor, selected).await?;
-    // All writers serialize engagement -> task -> command/claim/wakeup. The row
-    // lock is held through commit, so event cursor order is commit order.
+    // Membership narrowing, permission consumption and Task controls share the
+    // organisation -> engagement -> Task order. The following statements use a
+    // fresh snapshot after a concurrent revocation has released this lock.
+    sqlx::query("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended($1,205))")
+        .bind(&selected.organisation_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(unavailable)?;
     let row=sqlx::query("SELECT id FROM public.engagements WHERE organisation_id=$1 AND client_id=$2 AND id=$3 FOR UPDATE")
         .bind(&selected.organisation_id).bind(&selected.client_id).bind(&selected.engagement_id).fetch_optional(&mut *tx).await.map_err(unavailable)?;
     if row.is_none() {

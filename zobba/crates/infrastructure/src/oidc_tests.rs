@@ -77,6 +77,67 @@ fn protocol_inputs_have_rfc_and_resource_bounds() {
     assert!(!binding_value(&"\n".repeat(32)));
 }
 
+#[test]
+fn pinned_claim_decoder_keeps_optional_evidence_and_malformed_types_distinct() {
+    use openidconnect::core::CoreIdTokenClaims;
+    use serde_json::json;
+
+    let identity = json!({
+        "iss": "https://issuer.example.test",
+        "sub": "auditor-a",
+        "aud": "application-client",
+        "iat": 1_800_000_000,
+        "exp": 1_800_000_300,
+        "nonce": "bound-nonce"
+    });
+    for evidence in [
+        json!({}),
+        json!({"email": null, "email_verified": null}),
+        json!({"email": "auditor@example.test", "email_verified": false}),
+        json!({"email": "recipient@@example.test", "email_verified": true}),
+    ] {
+        let mut claims = identity.clone();
+        claims
+            .as_object_mut()
+            .unwrap()
+            .extend(evidence.as_object().unwrap().clone());
+        assert!(serde_json::from_value::<CoreIdTokenClaims>(claims).is_ok());
+    }
+    for (field, malformed) in [
+        ("email", json!(123)),
+        ("email", json!(true)),
+        ("email", json!([])),
+        ("email", json!({})),
+        ("email_verified", json!("true")),
+        ("email_verified", json!(1)),
+        ("email_verified", json!([])),
+        ("email_verified", json!({})),
+        ("sub", json!(123)),
+        ("aud", json!({})),
+        ("iat", json!("not-a-time")),
+        ("exp", json!([])),
+    ] {
+        let mut claims = identity.clone();
+        claims[field] = malformed;
+        assert!(
+            serde_json::from_value::<CoreIdTokenClaims>(claims).is_err(),
+            "{field}"
+        );
+    }
+    // The SDK's duplicate-field refusal remains intact, including a null first value.
+    for duplicate in [
+        r#""email":null,"email":"auditor@example.test""#,
+        r#""email_verified":null,"email_verified":true"#,
+        r#""sub":"first","sub":"second""#,
+    ] {
+        let raw = format!(
+            r#"{{"iss":"https://issuer.example.test","sub":"auditor-a","aud":"application-client","iat":1800000000,"exp":1800000300,{duplicate}}}"#
+        );
+        let error = serde_json::from_str::<CoreIdTokenClaims>(&raw).unwrap_err();
+        assert!(error.to_string().contains("duplicate field"));
+    }
+}
+
 #[tokio::test]
 async fn http_rejects_untrusted_url_and_method_before_network_io() {
     let http = BoundedHttp {

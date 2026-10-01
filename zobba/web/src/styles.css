@@ -408,3 +408,61 @@ textarea:focus-visible, select:focus-visible, summary:focus-visible, [tabindex='
 /* Keep same-scope controls mounted while all protected surfaces are hidden. */
 .protected-workspace { display: contents; }
 .protected-workspace[hidden], .identity[hidden], .conversation-content[hidden] { display: none; }
+
+/* Organisation administration is distinct from the engagement conversation. */
+.sidebar nav { display: grid; gap: 8px; }
+.sidebar nav a:not([aria-current='page']) { background: transparent; }
+.membership-main { max-width: 960px; padding-top: 36px; }
+.membership-protected[hidden] { display: none; }
+.membership-breadcrumb, .membership-heading, .membership-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.membership-breadcrumb { margin-bottom: 28px; font-size: 13px; }
+.membership-breadcrumb a { min-height: 44px; display: inline-flex; align-items: center; }
+.membership-organisation { margin-top: 32px; }
+.membership-heading h2 { font-size: 24px; line-height: 32px; overflow-wrap: anywhere; }
+.membership-heading h3 { font-size: 18px; line-height: 26px; }
+.membership-heading + .scope-note { margin-top: 12px; max-width: 620px; }
+.membership-section { margin-top: 32px; }
+.membership-section > h3 { font-size: 18px; }
+.membership-list { list-style: none; padding: 0; margin: 12px 0; border: 1px solid var(--hairline); border-radius: 10px; background: var(--paper); }
+.membership-list:empty { display: none; }
+.membership-list li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; }
+.membership-list li + li { border-top: 1px solid var(--hairline); }
+.membership-list li > div { min-width: 0; }
+.membership-list strong { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.membership-list span { display: block; font-size: 12px; color: var(--tertiary); overflow-wrap: anywhere; }
+.membership-actions { justify-content: flex-start; margin: 12px 0; }
+.membership-actions button { white-space: normal; }
+.membership-editor, .private-invitation, .invitation-acceptance { margin-top: 24px; padding: 24px; border: 1px solid var(--input); border-radius: 12px; background: var(--paper); }
+.membership-editor h3, .private-invitation h3, .invitation-acceptance h2 { font-size: 18px; line-height: 26px; }
+.membership-editor > button { margin-top: 20px; }
+.membership-fieldset { border: 0; padding: 0; margin: 24px 0; min-width: 0; }
+.membership-fieldset legend { font-weight: 600; font-size: 14px; margin-bottom: 8px; }
+.membership-check { display: flex; gap: 10px; align-items: center; min-height: 44px; font-size: 14px; overflow-wrap: anywhere; }
+.membership-check input { width: 18px; height: 18px; flex: none; accent-color: var(--accent); }
+.membership-label { display: grid; gap: 6px; font-size: 14px; font-weight: 500; margin-top: 16px; }
+.membership-label input, .membership-label select { min-width: 0; width: 100%; border: 1px solid var(--input); background: var(--paper); border-radius: 6px; padding: 10px 12px; min-height: 44px; }
+.membership-label input:focus-visible, .membership-check input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.field-help { font-size: 12px; color: var(--tertiary); line-height: 20px; margin: 4px 0 12px; overflow-wrap: anywhere; }
+.private-invitation { border-color: var(--accent); background: var(--accent-wash); }
+.private-invitation p, .invitation-acceptance p { font-size: 14px; overflow-wrap: anywhere; }
+.private-invitation button { margin-top: 12px; }
+.invitation-terms { padding: 16px; margin: 20px 0; border: 1px solid var(--hairline); border-radius: 8px; }
+.invitation-terms dl { margin: 12px 0; }
+.invitation-terms dl > div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 12px; font-size: 14px; padding: 4px 0; }
+.invitation-terms dt { color: var(--tertiary); }
+.invitation-terms dd { margin: 0; overflow-wrap: anywhere; }
+.invitation-terms li { overflow-wrap: anywhere; font-size: 14px; }
+.membership-organisation .notice p { margin-top: 0; }
+.membership-shell .notice { overflow-wrap: anywhere; }
+.membership-organisation .notice p:last-child { margin-bottom: 0; }
+@media (max-width: 620px) {
+  .membership-shell .sidebar nav { display: none; }
+  .membership-main { padding: 24px 16px; }
+  .membership-main h1 { font-size: 27px; line-height: 34px; }
+  .membership-editor, .private-invitation, .invitation-acceptance { padding: 16px; }
+  .membership-list li { align-items: flex-start; padding: 12px; gap: 8px; }
+  .membership-list li button { padding: 8px 10px; }
+  .membership-heading { align-items: flex-start; }
+  .membership-heading h2 { font-size: 21px; }
+  .membership-editor > button, .private-invitation > button { width: 100%; white-space: normal; }
+}

@@ -52,6 +52,16 @@ and `unassigned`. The password is the generated `account_password` field in
 Application roles and assignments are independently seeded and read from the
 application database; the provider conveys no audit authority.
 
+Normal ID tokens also contain the signed `email` claim
+`<account>@example.test` and `email_verified: true`. Zobba binds that recipient
+proof to the rotated server session for invitation acceptance, preserves email
+local-part case, and lowercases only the ASCII domain. A missing or unverified
+email, or an unsupported email string, still permits ordinary sign-in without
+recipient proof. Malformed JSON types, such as a numeric email or string-valued
+email_verified, fail sign-in through the pinned OIDC decoder. Acceptance requires a callback
+within five minutes; this means fresh claim verification, not forced provider
+password or MFA reauthentication.
+
 The form requires an exact issuer `Origin` and a one-use CSRF token. Its
 `Referrer-Policy: same-origin` preserves that browser proof but strips referrers
 on the cross-origin callback. CSP `form-action` permits only the provider and
@@ -102,6 +112,13 @@ provider has verified the code, client credentials and PKCE. Supported modes:
 
 - `normal`, `bad_issuer`, `bad_audience`, `multi_audience`, `missing_azp`,
   `bad_azp`, `bad_nonce`, `no_nonce`, `bad_at_hash`.
+- `missing_email`, `unverified_email`, `missing_email_verified`, `invalid_email`:
+  retain a valid signed identity while withholding usable recipient proof.
+  `mixed_case_email` signs `Auditor.A@EXAMPLE.TEST`; `old_auth_time` retains
+  otherwise valid fresh claims while the provider authentication happened a day ago.
+- `malformed_email_type`, `malformed_email_verified_type`: sign otherwise valid
+  identities containing `email: 123` or `email_verified: "true"`. The pinned
+  OIDC claim decoder refuses sign-in; these types are not coerced or reparsed.
 - `bad_signature`, `bad_algorithm` (RS512), `no_signature` (`none`),
   `unknown_key`, `untrusted_jku`, `untrusted_x5u`.
 - `expired`: a recently expired token (`iat` 61 seconds ago, `exp` one second

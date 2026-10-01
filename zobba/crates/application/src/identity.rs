@@ -29,9 +29,20 @@ impl IdentityError {
     }
 }
 
+/// Private evidence from the signed OIDC ID token verified at this session's
+/// callback. It is never part of the browser profile or session response.
+/// The timestamp records claim verification, not provider password/MFA reauthentication.
+#[derive(Clone, PartialEq, Eq)]
+pub struct VerifiedRecipientProof {
+    pub issuer: String,
+    pub email: String,
+    pub verified_at: i64,
+}
+
 pub struct CurrentSession {
     pub identity: Identity,
     pub csrf_token: String,
+    pub recipient_proof: Option<VerifiedRecipientProof>,
 }
 
 pub trait CurrentAuthority: Send + Sync {

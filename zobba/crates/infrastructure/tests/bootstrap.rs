@@ -158,12 +158,12 @@ async fn bootstrap_contract() {
     .fetch_all(&mut admin)
     .await
     .unwrap();
-    assert_eq!(installed.len(), 4, "fresh migration ledger is incomplete");
+    assert_eq!(installed.len(), 5, "fresh migration ledger is incomplete");
     assert_eq!(installed, repeated, "repeat changed migration ledger");
     let database = RuntimeDatabase::connect(&runtime_url)
         .await
         .expect("nonowner runtime starts");
-    assert_eq!(database.check().await.unwrap().0, 4);
+    assert_eq!(database.check().await.unwrap().0, 5);
     refused_without_mutation(
         &mut admin,
         &migration_url,
@@ -198,6 +198,12 @@ async fn bootstrap_contract() {
         "DELETE FROM public.operation_claims",
         "DELETE FROM public.operation_receipt_slots",
         "DELETE FROM public.operation_receipts",
+        "UPDATE public.organisation_memberships SET active=false",
+        "INSERT INTO public.membership_versions VALUES('forbidden',1)",
+        "UPDATE public.membership_events SET receipt='{}'",
+        "DELETE FROM public.membership_events",
+        "SELECT secret_hash FROM public.membership_invitations",
+        "SELECT public.membership_admin('actor','org')",
     ] {
         assert!(
             restricted.execute(mutation).await.is_err(),
@@ -228,6 +234,15 @@ async fn bootstrap_contract() {
         "ALTER TABLE public.engagements NO FORCE ROW LEVEL SECURITY",
         "ALTER POLICY scoped_engagement_update ON public.engagements USING (true) WITH CHECK (true)",
         "ALTER TABLE public.sessions ADD COLUMN alien text",
+        "ALTER TABLE public.sessions DROP CONSTRAINT sessions_verified_recipient",
+        "ALTER TABLE public.membership_invitations NO FORCE ROW LEVEL SECURITY",
+        "ALTER POLICY membership_owner ON public.organisation_memberships USING (true) WITH CHECK (true)",
+        "ALTER FUNCTION public.membership_read(text,text,text,text,text,text) SECURITY INVOKER",
+        "ALTER FUNCTION public.membership_read(text,text,text,text,text,text) SET search_path=public",
+        "CREATE OR REPLACE FUNCTION public.membership_admin(actor text,org text) RETURNS boolean LANGUAGE sql VOLATILE SET search_path=pg_catalog,public AS 'SELECT true'",
+        "GRANT EXECUTE ON FUNCTION public.membership_read(text,text,text,text,text,text) TO PUBLIC",
+        "GRANT EXECUTE ON FUNCTION public.membership_session(text,text) TO PUBLIC",
+        "DROP INDEX public.membership_invitations_page",
         "DROP INDEX public.sessions_expiry",
         "DROP INDEX public.login_attempts_expiry",
         "DROP INDEX public.task_commands_pending",
@@ -274,7 +289,7 @@ async fn bootstrap_contract() {
         "ALTER TABLE public.zobba_bootstrap ALTER COLUMN singleton SET DEFAULT false",
         "ALTER TABLE public._sqlx_migrations ALTER COLUMN installed_on SET DEFAULT '2000-01-01'::timestamptz",
         "CREATE RULE alien_rule AS ON DELETE TO public.zobba_bootstrap DO ALSO NOTHING",
-        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(5,1000) v",
+        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(6,1000) v",
         "UPDATE public._sqlx_migrations SET description=repeat('x',1048576),checksum=decode(repeat('ff',1048576),'hex')",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product='foreign'",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product=repeat('x',1048576)",
@@ -295,11 +310,22 @@ async fn bootstrap_contract() {
             .expect("restore synthetic fixture");
     }
 
+    membership_function_authority(&config, &mut admin).await;
     internal_trigger_contract(&config, &mut admin).await;
 
     // Column-level leases must not expand to routing identity, scheduling or
     // initial lease ownership writes, even if accidental grants remain unused.
     for privilege in [
+        "INSERT ON public.organisation_memberships",
+        "UPDATE(roles) ON public.organisation_memberships",
+        "DELETE ON public.engagement_assignments",
+        "SELECT ON public.membership_events",
+        "SELECT(receipt) ON public.membership_events",
+        "SELECT(secret_hash) ON public.membership_invitations",
+        "SELECT(version) ON public.membership_versions",
+        "INSERT ON public.membership_events",
+        "UPDATE(status) ON public.membership_invitations",
+        "DELETE ON public.membership_invitations",
         "UPDATE(wakeup_id) ON public.task_deliveries",
         "INSERT(delivery_owner) ON public.task_deliveries",
         "INSERT(delivery_until) ON public.task_deliveries",
@@ -374,7 +400,7 @@ async fn bootstrap_contract() {
     lock_and_blackhole(&config, &mut admin).await;
     reset(&config, &mut admin).await;
     println!(
-        "bootstrap contract: fresh/v1/v2/v3/repeat/owner/privilege/foreign/marker/checksum/version refusals passed; test schema empty"
+        "bootstrap contract: fresh/v1/v2/v3/v4/repeat/owner/privilege/foreign/marker/checksum/version refusals passed; test schema empty"
     );
 }
 
@@ -513,7 +539,7 @@ async fn foreign_catalog_objects(config: &Configuration, conn: &mut PgConnection
                 .await
                 .expect("remove foreign catalog fixture");
             if let Some(running) = running {
-                assert_eq!(running.check().await.unwrap().0, 4);
+                assert_eq!(running.check().await.unwrap().0, 5);
             }
         }
     }
@@ -530,7 +556,7 @@ async fn foreign_catalog_objects(config: &Configuration, conn: &mut PgConnection
     refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
     assert_eq!(running.check().await, Err(BootstrapError::SchemaMismatch));
     admin.execute("DROP STATISTICS public.alien").await.unwrap();
-    assert_eq!(running.check().await.unwrap().0, 4);
+    assert_eq!(running.check().await.unwrap().0, 5);
     reset(config, conn).await;
 }
 
@@ -610,7 +636,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
             .execute(format!("REVOKE MAINTAIN ON public.{table} FROM \"{target}\"").as_str())
             .await
             .unwrap();
-        assert_eq!(running.check().await.unwrap().0, 4);
+        assert_eq!(running.check().await.unwrap().0, 5);
     }
     privileged.execute(format!("GRANT pg_read_server_files TO \"{parent}\" WITH INHERIT TRUE, SET FALSE; GRANT \"{parent}\" TO \"{target}\" WITH INHERIT FALSE, SET TRUE").as_str()).await.unwrap();
     let mut capable = PgConnection::connect(&target_url).await.unwrap();
@@ -637,7 +663,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         Err(BootstrapError::UnsafeRuntimeRole)
     );
     privileged.execute(format!("REVOKE \"{parent}\" FROM \"{target}\"; REVOKE pg_read_server_files FROM \"{parent}\"").as_str()).await.unwrap();
-    assert_eq!(running.check().await.unwrap().0, 4);
+    assert_eq!(running.check().await.unwrap().0, 5);
 
     for flags in [
         "REPLICATION",
@@ -789,7 +815,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         .execute(format!("REVOKE \"{migrator_role}\" FROM \"{target}\"").as_str())
         .await
         .unwrap();
-    assert_eq!(running.check().await.unwrap().0, 4);
+    assert_eq!(running.check().await.unwrap().0, 5);
 
     // Simulate interruption after SQLx creates its ledger but before bootstrap
     // finishes. The outer transaction must remove BOTH tables and all grants.
@@ -812,7 +838,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         .execute("DROP EVENT TRIGGER zobba_fixture_interrupt")
         .await
         .unwrap();
-    assert_eq!(running.check().await.unwrap().0, 4);
+    assert_eq!(running.check().await.unwrap().0, 5);
     reset(config, conn).await;
     privileged.execute(trigger).await.unwrap();
     migration_refused_without_mutation(conn, config, &target, BootstrapError::SchemaMismatch).await;
@@ -1012,9 +1038,10 @@ async fn upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
         include_str!("../../../migrations/0001_bootstrap.sql"),
         include_str!("../../../migrations/0002_identity_scope.sql"),
         include_str!("../../../migrations/0003_tasks.sql"),
+        include_str!("../../../migrations/0004_permissions_operations.sql"),
     ];
     let migrator = sqlx::migrate!("../../migrations");
-    for prefix in [1_usize, 2, 3] {
+    for prefix in [1_usize, 2, 3, 4] {
         for corruption in [None, Some("checksum"), Some("catalog")] {
             reset(config, conn).await;
             // Execute the exact published bytes with their original SQLx ledger.
@@ -1074,9 +1101,9 @@ async fn upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
                 .fetch_all(&mut *conn)
                 .await
                 .unwrap();
-                assert_eq!(all.len(), 4, "upgrade did not reach the complete ledger");
+                assert_eq!(all.len(), 5, "upgrade did not reach the complete ledger");
                 let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-                assert_eq!(database.check().await.unwrap().0, 4);
+                assert_eq!(database.check().await.unwrap().0, 5);
                 migrate(&config.migration, &role)
                     .await
                     .expect("upgrade repeat is safe");
@@ -1273,4 +1300,47 @@ async fn schema4_scope_contract(config: &Configuration) {
         "exact receipt capability also binds scope"
     );
     runtime.close().await.unwrap();
+}
+
+/// Function identity, grants and owner are checked before any owned entry point
+/// runs; a refused migration may not silently repair an altered authority.
+async fn membership_function_authority(config: &Configuration, conn: &mut PgConnection) {
+    let role = database_options(&config.runtime)
+        .unwrap()
+        .get_username()
+        .to_owned();
+    let owner: String = sqlx::query_scalar("SELECT current_user::text")
+        .fetch_one(&mut *conn)
+        .await
+        .unwrap();
+    let mut privileged = PgConnection::connect(&config.admin).await.unwrap();
+    config.guard_connection(&mut privileged).await;
+    for mutation in [
+        format!("GRANT EXECUTE ON FUNCTION public.membership_validate(text,jsonb) TO \"{role}\""),
+        format!(
+            "GRANT EXECUTE ON FUNCTION public.membership_write(text,text,text,text,jsonb,text,text,text) TO \"{role}\" WITH GRANT OPTION"
+        ),
+        format!(
+            "REVOKE EXECUTE ON FUNCTION public.membership_accept(text,text,text,text,text,text) FROM \"{role}\""
+        ),
+        format!(
+            "ALTER FUNCTION public.membership_preview(text,text,text,text) OWNER TO \"{role}\""
+        ),
+    ] {
+        privileged.execute(mutation.as_str()).await.unwrap();
+        refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
+        // A missing owned EXECUTE can be restored by explicit migration. Other
+        // altered private/grantable/owner authority is refused before mutation.
+        if mutation.starts_with("REVOKE") {
+            migrate(&config.migration, &role)
+                .await
+                .expect("explicit migration restores missing public entry point grant");
+        } else {
+            migration_refused_without_mutation(conn, config, &role, BootstrapError::SchemaMismatch)
+                .await;
+            privileged.execute(format!("ALTER FUNCTION public.membership_preview(text,text,text,text) OWNER TO \"{owner}\"").as_str()).await.unwrap();
+            reset(config, conn).await;
+            migrate(&config.migration, &role).await.unwrap();
+        }
+    }
 }

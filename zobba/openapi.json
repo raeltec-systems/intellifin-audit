@@ -2456,10 +2456,1215 @@
           }
         }
       }
+    },
+    "/membership/invitations/accept": {
+      "post": {
+        "tags": [
+          "membership"
+        ],
+        "operationId": "membership_accept_invitation",
+        "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Additional current session refusal fence",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Actor",
+            "in": "header",
+            "description": "Required exact current actor refusal fence",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MembershipIdentifier"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptInvitationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid membership command; unknown fields, vocabulary and out-of-range values refuse without changes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "invalidSecret": {
+                    "description": "An invitation secret shorter or longer than 43 base64url characters is rejected.",
+                    "value": {
+                      "error": "invalid_membership"
+                    }
+                  },
+                  "noncanonicalVersion": {
+                    "description": "expected_version:\"01\", a negative value or a decimal above 9223372036854775807 is rejected.",
+                    "value": {
+                      "error": "invalid_membership"
+                    }
+                  },
+                  "outOfRangeExpiry": {
+                    "description": "expires_at:253402300800 is rejected; use null or Unix seconds from 1 through 253402300799.",
+                    "value": {
+                      "error": "invalid_membership"
+                    }
+                  },
+                  "unknownRole": {
+                    "description": "A request containing roles:[\"owner\"] is rejected; only auditor, audit_manager and admin are application roles.",
+                    "value": {
+                      "error": "invalid_membership"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/membership/invitations/preview": {
+      "post": {
+        "tags": [
+          "membership"
+        ],
+        "operationId": "membership_preview_invitation",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Actor",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MembershipIdentifier"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewInvitationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Current verified recipient's fixed invitation terms; grants no authority",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/membership/organisations": {
+      "get": {
+        "tags": [
+          "membership"
+        ],
+        "operationId": "membership_organisations",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/MembershipIdentifier"
+            }
+          },
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Additional current session refusal fence",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipOrganisations"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/membership/organisations/{organisation_id}": {
+      "get": {
+        "tags": [
+          "membership"
+        ],
+        "operationId": "membership_snapshot",
+        "parameters": [
+          {
+            "name": "members_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/MembershipIdentifier"
+            }
+          },
+          {
+            "name": "invitations_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/MembershipIdentifier"
+            }
+          },
+          {
+            "name": "engagements_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/MembershipAssignmentCursor"
+            }
+          },
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Additional current session refusal fence",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MembershipIdentifier"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/membership/organisations/{organisation_id}/invitations": {
+      "post": {
+        "tags": [
+          "membership"
+        ],
+        "operationId": "membership_invite",
+        "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Additional current session refusal fence",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MembershipIdentifier"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Actor",
+            "in": "header",
+            "description": "Required exact current actor refusal fence",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MembershipIdentifier"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteMemberRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid membership command; unknown fields, vocabulary and out-of-range values refuse without changes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "invalidSecret": {
+                    "description": "An invitation secret shorter or longer than 43 base64url characters is rejected.",
+                    "value": {
+                      "error": "invalid_membership"
+                    }
+                  },
+                  "noncanonicalVersion": {
+                    "description": "expected_version:\"01\", a negative value or a decimal above 9223372036854775807 is rejected.",
+                    "value": {
+                      "error": "invalid_membership"
+                    }
+                  },
+                  "outOfRangeExpiry": {
+                    "description": "expires_at:253402300800 is rejected; use null or Unix seconds from 1 through 253402300799.",
+                    "value": {
+                      "error": "invalid_membership"
+                    }
+                  },
+                  "unknownRole": {
+                    "description": "A request containing roles:[\"owner\"] is rejected; only auditor, audit_manager and admin are application roles.",
+                    "value": {
+                      "error": "invalid_membership"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/membership/organisations/{organisation_id}/invitations/revoke": {
+      "post": {
+        "tags": [
+          "membership"
+        ],
+        "operationId": "membership_revoke_invitation",
+        "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Additional current session refusal fence",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MembershipIdentifier"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Actor",
+            "in": "header",
+            "description": "Required exact current actor refusal fence",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MembershipIdentifier"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeInvitationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/membership/organisations/{organisation_id}/members": {
+      "post": {
+        "tags": [
+          "membership"
+        ],
+        "operationId": "membership_save_member",
+        "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Additional current session refusal fence",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MembershipIdentifier"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Actor",
+            "in": "header",
+            "description": "Required exact current actor refusal fence",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MembershipIdentifier"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveMemberRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid membership command; unknown fields, vocabulary and out-of-range values refuse without changes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "invalidRenewal": {
+                    "description": "assignments:[{client_id:\"client\",engagement_id:\"engagement\",renew:\"true\"}] is rejected: renew must be a boolean. Remove mode also rejects renew:true; omitted renewal means false.",
+                    "value": {
+                      "error": "invalid_membership"
+                    }
+                  },
+                  "invalidSecret": {
+                    "description": "An invitation secret shorter or longer than 43 base64url characters is rejected.",
+                    "value": {
+                      "error": "invalid_membership"
+                    }
+                  },
+                  "noncanonicalVersion": {
+                    "description": "expected_version:\"01\", a negative value or a decimal above 9223372036854775807 is rejected.",
+                    "value": {
+                      "error": "invalid_membership"
+                    }
+                  },
+                  "outOfRangeExpiry": {
+                    "description": "expires_at:253402300800 is rejected; use null or Unix seconds from 1 through 253402300799.",
+                    "value": {
+                      "error": "invalid_membership"
+                    }
+                  },
+                  "unknownRole": {
+                    "description": "A request containing roles:[\"owner\"] is rejected; only auditor, audit_manager and admin are application roles.",
+                    "value": {
+                      "error": "invalid_membership"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/membership/organisations/{organisation_id}/members/{actor_id}/assignments": {
+      "get": {
+        "tags": [
+          "membership"
+        ],
+        "operationId": "membership_member_assignments",
+        "parameters": [
+          {
+            "name": "organisation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MembershipIdentifier"
+            }
+          },
+          {
+            "name": "actor_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MembershipIdentifier"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/MembershipAssignmentCursor"
+            }
+          },
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Additional current session refusal fence",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current Admin's bounded page of effective member assignments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipMemberAssignments"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
     }
   },
   "components": {
     "schemas": {
+      "AcceptInvitationRequest": {
+        "type": "object",
+        "required": [
+          "key",
+          "secret"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "secret": {
+            "$ref": "#/components/schemas/MembershipInvitationSecret",
+            "description": "Private random 32-byte base64url invitation value. POST bodies only; never a query, log or projection."
+          }
+        },
+        "additionalProperties": false
+      },
       "ActionRequest": {
         "type": "string",
         "enum": [
@@ -3129,6 +4334,604 @@
           }
         }
       },
+      "InvitationPreviewResponse": {
+        "type": "object",
+        "required": [
+          "organisation_id",
+          "organisation_name",
+          "recipient_email",
+          "roles",
+          "assignments",
+          "expires_at"
+        ],
+        "properties": {
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipAssignmentOption"
+            },
+            "maxItems": 100
+          },
+          "expires_at": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 253402300799,
+            "minimum": 1
+          },
+          "organisation_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "organisation_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "recipient_email": {
+            "$ref": "#/components/schemas/MembershipRecipientEmail"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipRole"
+            },
+            "maxItems": 3,
+            "minItems": 1
+          }
+        }
+      },
+      "InviteMemberRequest": {
+        "type": "object",
+        "required": [
+          "key",
+          "expected_version",
+          "recipient_email",
+          "roles",
+          "assignments",
+          "expires_in_seconds",
+          "secret"
+        ],
+        "properties": {
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipAssignment"
+            },
+            "maxItems": 100
+          },
+          "expected_version": {
+            "$ref": "#/components/schemas/MembershipVersion"
+          },
+          "expires_in_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 604800,
+            "minimum": 300
+          },
+          "key": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "recipient_email": {
+            "$ref": "#/components/schemas/MembershipRecipientEmail"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipRole"
+            },
+            "description": "Unique roles fixed for this invitation; acceptance cannot broaden them.",
+            "maxItems": 3,
+            "minItems": 1
+          },
+          "secret": {
+            "$ref": "#/components/schemas/MembershipInvitationSecret",
+            "description": "Private random 32-byte base64url invitation value. POST bodies only; never a query, log or projection."
+          }
+        },
+        "additionalProperties": false
+      },
+      "MembershipAssignment": {
+        "type": "object",
+        "required": [
+          "client_id",
+          "engagement_id"
+        ],
+        "properties": {
+          "client_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "engagement_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MembershipAssignmentChange": {
+        "type": "object",
+        "description": "One assignment selected in a membership Save. Renewal is an explicit choice\nfor this scope; omitting it has the same meaning as false for exact retries.",
+        "required": [
+          "client_id",
+          "engagement_id"
+        ],
+        "properties": {
+          "client_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "engagement_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "renew": {
+            "type": "boolean",
+            "description": "True explicitly renews this scope if its stored assignment expired or\nbecame inactive. A future active expiry is preserved. Remove mode must use false.",
+            "default": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "MembershipAssignmentCursor": {
+        "type": "string",
+        "description": "Exclusive cursor containing a client identifier, a dot, then an engagement identifier.",
+        "maxLength": 257,
+        "minLength": 3,
+        "pattern": "^[A-Za-z0-9_-]{1,128}\\.[A-Za-z0-9_-]{1,128}$(?![\\s\\S])"
+      },
+      "MembershipAssignmentMode": {
+        "type": "string",
+        "description": "Replace supplies the complete assignment set and refuses legacy sets above\n100. Preserve requires an empty assignments array and keeps every assignment;\nremove revokes only the listed assignments, including across paged legacy sets.",
+        "enum": [
+          "replace",
+          "preserve",
+          "remove"
+        ]
+      },
+      "MembershipAssignmentOption": {
+        "type": "object",
+        "required": [
+          "client_id",
+          "client_name",
+          "engagement_id",
+          "engagement_name"
+        ],
+        "properties": {
+          "client_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "client_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "engagement_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "engagement_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "MembershipIdentifier": {
+        "type": "string",
+        "description": "A bounded ASCII application identifier; also used for idempotency keys.",
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])"
+      },
+      "MembershipInvitation": {
+        "type": "object",
+        "required": [
+          "id",
+          "recipient_email",
+          "roles",
+          "assignments",
+          "inviter_actor_id",
+          "expires_at",
+          "status"
+        ],
+        "properties": {
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipAssignment"
+            },
+            "maxItems": 100
+          },
+          "expires_at": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 253402300799,
+            "minimum": 1
+          },
+          "id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "inviter_actor_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "recipient_email": {
+            "$ref": "#/components/schemas/MembershipRecipientEmail"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipRole"
+            },
+            "maxItems": 3,
+            "minItems": 1
+          },
+          "status": {
+            "$ref": "#/components/schemas/MembershipInvitationStatus"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MembershipInvitationSecret": {
+        "type": "string",
+        "description": "Private random 32-byte base64url capability. POST bodies only; never query strings or logs.",
+        "maxLength": 43,
+        "minLength": 43,
+        "pattern": "^[A-Za-z0-9_-]{43}$(?![\\s\\S])"
+      },
+      "MembershipInvitationStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "accepted",
+          "revoked",
+          "expired"
+        ]
+      },
+      "MembershipMember": {
+        "type": "object",
+        "required": [
+          "actor_id",
+          "display_name",
+          "roles",
+          "active",
+          "expires_at",
+          "assignments_count",
+          "assignments_complete",
+          "assignments"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "actor_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipAssignment"
+            },
+            "maxItems": 100
+          },
+          "assignments_complete": {
+            "type": "boolean",
+            "description": "False requires the paged assignment endpoint; the preview must not be used as a replacement set."
+          },
+          "assignments_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Effective assignments in this organisation, including any beyond the bounded preview.",
+            "minimum": 0
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "expires_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "maximum": 253402300799,
+            "minimum": 1
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipRole"
+            },
+            "maxItems": 3
+          }
+        },
+        "additionalProperties": false
+      },
+      "MembershipMemberAssignment": {
+        "type": "object",
+        "required": [
+          "client_id",
+          "client_name",
+          "engagement_id",
+          "engagement_name",
+          "expires_at"
+        ],
+        "properties": {
+          "client_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "client_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "engagement_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "engagement_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "expires_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "maximum": 253402300799,
+            "minimum": 1
+          }
+        }
+      },
+      "MembershipMemberAssignments": {
+        "type": "object",
+        "required": [
+          "organisation_id",
+          "actor_id",
+          "version",
+          "total",
+          "assignments",
+          "next_cursor"
+        ],
+        "properties": {
+          "actor_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipMemberAssignment"
+            },
+            "maxItems": 50
+          },
+          "next_cursor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MembershipAssignmentCursor"
+              }
+            ]
+          },
+          "organisation_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "version": {
+            "$ref": "#/components/schemas/MembershipVersion"
+          }
+        }
+      },
+      "MembershipOrganisation": {
+        "type": "object",
+        "required": [
+          "organisation_id",
+          "organisation_name",
+          "version"
+        ],
+        "properties": {
+          "organisation_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "organisation_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "version": {
+            "$ref": "#/components/schemas/MembershipVersion"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MembershipOrganisations": {
+        "type": "object",
+        "required": [
+          "organisations",
+          "next_cursor"
+        ],
+        "properties": {
+          "next_cursor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MembershipIdentifier"
+              }
+            ]
+          },
+          "organisations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipOrganisation"
+            },
+            "maxItems": 50
+          }
+        },
+        "additionalProperties": false
+      },
+      "MembershipReceipt": {
+        "type": "object",
+        "required": [
+          "event_id",
+          "organisation_id",
+          "actor_id",
+          "subject_actor_id",
+          "invitation_id",
+          "version",
+          "kind"
+        ],
+        "properties": {
+          "actor_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "event_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "invitation_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MembershipIdentifier"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MembershipReceiptKind"
+          },
+          "organisation_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "subject_actor_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MembershipIdentifier"
+              }
+            ]
+          },
+          "version": {
+            "$ref": "#/components/schemas/MembershipVersion"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MembershipReceiptKind": {
+        "type": "string",
+        "enum": [
+          "save_member",
+          "invite",
+          "revoke_invitation",
+          "accept"
+        ]
+      },
+      "MembershipRecipientEmail": {
+        "type": "string",
+        "description": "ASCII address with a local part of 1–64 characters and DNS-style domain labels. Preserve local-part case; lowercase the domain.",
+        "maxLength": 254,
+        "minLength": 3,
+        "pattern": "^(?=.{1,64}@)[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$(?![\\s\\S])"
+      },
+      "MembershipRole": {
+        "type": "string",
+        "description": "Application roles are fixed; provider roles never grant application authority.",
+        "enum": [
+          "auditor",
+          "audit_manager",
+          "admin"
+        ]
+      },
+      "MembershipSnapshot": {
+        "type": "object",
+        "required": [
+          "organisation_id",
+          "organisation_name",
+          "version",
+          "members",
+          "members_next_cursor",
+          "invitations",
+          "invitations_next_cursor",
+          "engagements",
+          "engagements_next_cursor"
+        ],
+        "properties": {
+          "engagements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipAssignmentOption"
+            },
+            "maxItems": 50
+          },
+          "engagements_next_cursor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MembershipAssignmentCursor"
+              }
+            ]
+          },
+          "invitations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipInvitation"
+            },
+            "maxItems": 50
+          },
+          "invitations_next_cursor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MembershipIdentifier"
+              }
+            ]
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipMember"
+            },
+            "maxItems": 50
+          },
+          "members_next_cursor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MembershipIdentifier"
+              }
+            ]
+          },
+          "organisation_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "organisation_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "version": {
+            "$ref": "#/components/schemas/MembershipVersion"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MembershipVersion": {
+        "type": "string",
+        "description": "Canonical nonnegative decimal through 9223372036854775807; no signs or leading zeros.",
+        "maxLength": 19,
+        "minLength": 1,
+        "pattern": "^(0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[01][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$(?![\\s\\S])"
+      },
       "ObservationHistoryResponse": {
         "type": "object",
         "required": [
@@ -3444,6 +5247,18 @@
           "delegation"
         ]
       },
+      "PreviewInvitationRequest": {
+        "type": "object",
+        "required": [
+          "secret"
+        ],
+        "properties": {
+          "secret": {
+            "$ref": "#/components/schemas/MembershipInvitationSecret"
+          }
+        },
+        "additionalProperties": false
+      },
       "PurposeRequest": {
         "type": "string",
         "enum": [
@@ -3457,6 +5272,86 @@
         "enum": [
           "received"
         ]
+      },
+      "RevokeInvitationRequest": {
+        "type": "object",
+        "required": [
+          "key",
+          "expected_version",
+          "invitation_id"
+        ],
+        "properties": {
+          "expected_version": {
+            "$ref": "#/components/schemas/MembershipVersion"
+          },
+          "invitation_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "key": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SaveMemberRequest": {
+        "type": "object",
+        "required": [
+          "key",
+          "expected_version",
+          "actor_id",
+          "roles",
+          "active",
+          "expires_at",
+          "assignments"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "actor_id": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "assignment_mode": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MembershipAssignmentMode"
+              }
+            ],
+            "default": "replace"
+          },
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipAssignmentChange"
+            },
+            "maxItems": 100
+          },
+          "expected_version": {
+            "$ref": "#/components/schemas/MembershipVersion"
+          },
+          "expires_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Unix seconds through 9999-12-31T23:59:59Z; null explicitly clears membership expiry.",
+            "maximum": 253402300799,
+            "minimum": 1
+          },
+          "key": {
+            "$ref": "#/components/schemas/MembershipIdentifier"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipRole"
+            },
+            "description": "Unique application roles; an active membership must have at least one.",
+            "maxItems": 3
+          }
+        },
+        "additionalProperties": false
       },
       "ScopeResponse": {
         "type": "object",

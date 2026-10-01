@@ -110,13 +110,20 @@ async fn durable_state(admin: &mut PgConnection) -> Vec<String> {
     rows
 }
 async fn waiting_backend(admin: &mut PgConnection, wait: &str) -> i32 {
+    waiting_backend_blocked_by(admin, wait, None).await
+}
+async fn waiting_backend_blocked_by(
+    admin: &mut PgConnection,
+    wait: &str,
+    blocker: Option<i32>,
+) -> i32 {
     let until = Instant::now() + Duration::from_secs(2);
     loop {
-        if let Some(pid) = sqlx::query_scalar("SELECT pid FROM pg_stat_activity WHERE application_name='zobba-task-contract' AND wait_event=$1 ORDER BY query_start LIMIT 1")
-            .bind(wait).fetch_optional(&mut *admin).await.unwrap() { return pid; }
+        if let Some(pid) = sqlx::query_scalar("SELECT pid FROM pg_stat_activity WHERE application_name='zobba-task-contract' AND wait_event=$1 AND ($2::integer IS NULL OR $2=ANY(pg_blocking_pids(pid))) ORDER BY query_start LIMIT 1")
+            .bind(wait).bind(blocker).fetch_optional(&mut *admin).await.unwrap() { return pid; }
         assert!(
             Instant::now() < until,
-            "admission did not reach the expected PostgreSQL wait"
+            "admission did not reach PostgreSQL {wait} wait behind {blocker:?}"
         );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
@@ -206,7 +213,7 @@ async fn admission_atomicity(
         )
         .await
     });
-    waiting_backend(admin, "advisory").await;
+    let first_pid = waiting_backend(admin, "advisory").await;
     let repo = repository.clone();
     let second = tokio::spawn(async move {
         repo.admit(
@@ -216,7 +223,11 @@ async fn admission_atomicity(
         )
         .await
     });
-    waiting_backend(admin, "transactionid").await;
+    // The organisation fence precedes the engagement row lock. The second
+    // admission must wait behind this exact first admission, not merely share
+    // its advisory wait type (the first is itself held by the COMMIT gate).
+    let second_pid = waiting_backend_blocked_by(admin, "advisory", Some(first_pid)).await;
+    assert_ne!(first_pid, second_pid);
     assert!(!first.is_finished() && !second.is_finished());
     assert_eq!(
         repository

@@ -17,6 +17,12 @@ pub async fn begin_actor(
         return Err(ScopeError::Denied);
     }
     let mut tx = pool.begin().await.map_err(|_| ScopeError::Unavailable)?;
+    // Authority must refresh after waiting for a membership/engagement fence,
+    // even when a deployment changes its default transaction isolation level.
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| ScopeError::Unavailable)?;
     sqlx::query("SELECT pg_catalog.set_config('zobba.actor_id',$1,true), pg_catalog.set_config('zobba.organisation_id','',true), pg_catalog.set_config('zobba.client_id','',true), pg_catalog.set_config('zobba.engagement_id','',true), pg_catalog.set_config('zobba.dispatcher','',true), pg_catalog.set_config('zobba.receipt_claim','',true), pg_catalog.set_config('zobba.receipt_hash','',true), pg_catalog.set_config('zobba.receipt_org','',true), pg_catalog.set_config('zobba.receipt_client','',true), pg_catalog.set_config('zobba.receipt_engagement','',true)")
         .bind(actor_id).execute(&mut *tx).await.map_err(|_| ScopeError::Unavailable)?;
     Ok(tx)

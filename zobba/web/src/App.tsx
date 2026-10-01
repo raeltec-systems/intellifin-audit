@@ -6,6 +6,7 @@ import type { Engagement, EngagementPage, Scope } from './engagements';
 import { HealthPage } from './HealthPage';
 import { ConversationWorkspace } from './ConversationWorkspace';
 import { sameScope } from './engagements';
+import { captureIncomingInvitation, hasIncomingInvitation, MembershipWorkspace } from './MembershipWorkspace';
 
 type View =
   | { kind: 'loading'; signingOut?: boolean }
@@ -239,7 +240,7 @@ function PairWorkspace() {
     <a className="skip-link" href="#workspace">Skip to workspace</a>
     <aside className="sidebar" aria-label="Workspace navigation">
       <img className="brand-lockup" src="/assets/zobba-lockup-color.svg" alt="Zobba" width="132" height="32" />
-      <nav aria-label="Main"><a href="/" aria-current="page" onClick={(event) => { event.preventDefault(); select(null); }}><span aria-hidden="true">▦</span> Engagements</a></nav>
+      <nav aria-label="Main"><a href="/" aria-current="page" onClick={(event) => { event.preventDefault(); select(null); }}><span aria-hidden="true">▦</span> Engagements</a><a href="/membership"><span aria-hidden="true">⚙</span> Membership</a></nav>
       <div className="sidebar-note"><span className="pair-label">Pair</span><p>Your engagement workspace</p><a href="/status">Connection status</a></div>
     </aside>
     <div className="workspace">
@@ -307,11 +308,25 @@ function PairWorkspace() {
               {view.page.next_cursor ? <button className="quiet-button" data-focus="next-page" type="button" onClick={() => changePage(view.page.next_cursor)}>Next page</button> : null}
             </nav> : null}
           </>}
-          <div className="access-footer"><span>Showing your current access</span><button type="button" className="quiet-button" data-focus="refresh-access" aria-disabled={busy} onClick={() => void refresh(false, true)}>Refresh access</button></div>
+          <div className="access-footer"><span>Showing your current access</span><a href="/membership">Membership administration</a><button type="button" className="quiet-button" data-focus="refresh-access" aria-disabled={busy} onClick={() => void refresh(false, true)}>Refresh access</button></div>
         </div> : null}
       </main>
     </div>
   </div>;
 }
 
-export function App() { return location.pathname === '/status' ? <HealthPage /> : <PairWorkspace />; }
+export function App() {
+  const [incomingInvitation, setIncomingInvitation] = useState(hasIncomingInvitation);
+  useEffect(() => {
+    const receive = () => {
+      if (!location.hash.startsWith('#invitation=') || location.pathname === '/membership' || incomingInvitation) return;
+      captureIncomingInvitation(); setIncomingInvitation(true);
+    };
+    window.addEventListener('hashchange', receive);
+    window.addEventListener('popstate', receive);
+    return () => { window.removeEventListener('hashchange', receive); window.removeEventListener('popstate', receive); };
+  }, [incomingInvitation]);
+  if (location.pathname === '/status') return <HealthPage />;
+  if (location.pathname === '/membership' || incomingInvitation) return <MembershipWorkspace invitation={incomingInvitation} />;
+  return <PairWorkspace />;
+}

@@ -3,8 +3,9 @@
 Baseline: `adaa83a83ea0c1be462f866f127525417b2e0be1` on
 `codex/zobba-foundation-batch`.
 Contract: [standing Permissions specification](spec-20-5-standing-permissions.md).
-Status: implementation and independent repair review complete; all final local
-gates passed. Story 20.5 is ready for owner review on the foundation branch.
+Status: owner reviewed and accepted checkpoint
+`3db538252b2833ca2ecb4342fb7ca9d69cb7582c` on 1 October 2026 and authorised the
+next batch. All final local gates and independent repair review passed.
 
 ## Delivered boundary
 

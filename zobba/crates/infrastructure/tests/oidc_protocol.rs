@@ -110,6 +110,11 @@ impl Fixture {
         );
         assert!(pairs.get("state").is_some_and(|value| value == state));
         assert!(pairs.get("nonce").is_some_and(|value| value == nonce));
+        assert!(
+            pairs
+                .get("scope")
+                .is_some_and(|value| value.split(' ').any(|scope| scope == "email"))
+        );
         assert!(!pairs.contains_key("client_secret"));
         let mut child = Command::new("node")
             .arg(&self.script)
@@ -177,6 +182,10 @@ async fn actual_provider_protocol_and_bounded_transport_contract() {
     assert!(identity.subject == "auditor-a");
     assert!(identity.issuer == fixture.configuration.issuer);
     assert!(identity.display_name == "auditor-a");
+    assert_eq!(
+        identity.verified_email.as_deref(),
+        Some("auditor-a@example.test")
+    );
     assert!(
         provider.exchange(&code, verifier, nonce).await.is_err(),
         "authorization-code replay denied"
@@ -317,6 +326,67 @@ async fn actual_provider_protocol_and_bounded_transport_contract() {
         fixture.status().await["untrusted_key_requests"] == 0,
         "discovery redirects must never be fetched"
     );
+    fixture.control("reset", json!({})).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn signed_verified_recipient_claims_are_optional_and_preserve_local_part_case() {
+    let _guard = FIXTURE_LOCK.lock().await;
+    let fixture = Fixture::from_environment();
+    fixture.control("reset", json!({})).await;
+    let provider = OidcProvider::initialize(fixture.configuration.clone())
+        .await
+        .unwrap();
+    for (scenario, expected) in [
+        ("normal", Some("auditor-a@example.test")),
+        ("missing_email", None),
+        ("unverified_email", None),
+        ("missing_email_verified", None),
+        ("invalid_email", None),
+        ("mixed_case_email", Some("Auditor.A@example.test")),
+        // The contract verifies fresh callback claims; it does not claim that
+        // the provider has forced another password or MFA ceremony.
+        ("old_auth_time", Some("auditor-a@example.test")),
+    ] {
+        fixture.scenario(scenario).await;
+        let code = fixture.code(&provider, VERIFIER, NONCE);
+        let identity = provider
+            .exchange(&code, VERIFIER, NONCE)
+            .await
+            .unwrap_or_else(|_| panic!("ordinary login must remain usable: {scenario}"));
+        assert_eq!(identity.subject, "auditor-a");
+        assert_eq!(identity.issuer, fixture.configuration.issuer);
+        assert_eq!(identity.verified_email.as_deref(), expected, "{scenario}");
+    }
+    fixture.control("reset", json!({})).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn signed_malformed_recipient_claim_types_fail_closed_without_parser_fallback() {
+    let _guard = FIXTURE_LOCK.lock().await;
+    let fixture = Fixture::from_environment();
+    fixture.control("reset", json!({})).await;
+    let provider = OidcProvider::initialize(fixture.configuration.clone())
+        .await
+        .unwrap();
+    for scenario in ["malformed_email_type", "malformed_email_verified_type"] {
+        fixture.scenario(scenario).await;
+        let code = fixture.code(&provider, VERIFIER, NONCE);
+        assert!(
+            matches!(
+                provider.exchange(&code, VERIFIER, NONCE).await,
+                Err(OidcError::InvalidResponse)
+            ),
+            "malformed typed claims must retain the pinned SDK refusal: {scenario}"
+        );
+    }
+    // A decoder refusal does not poison later well-formed sign-in. A missing
+    // optional recipient claim remains an ordinary identity without proof.
+    fixture.scenario("missing_email").await;
+    let code = fixture.code(&provider, VERIFIER, NONCE);
+    let identity = provider.exchange(&code, VERIFIER, NONCE).await.unwrap();
+    assert_eq!(identity.subject, "auditor-a");
+    assert!(identity.verified_email.is_none());
     fixture.control("reset", json!({})).await;
 }
 

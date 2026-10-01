@@ -1,0 +1,15 @@
+   Compiling zobba-application v0.1.0 (/workspace/intellifin-audit/zobba/crates/application)
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+   Compiling zobba-api v0.1.0 (/workspace/intellifin-audit/zobba/crates/api)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 23.62s
+     Running tests/membership_contract.rs (target/debug/deps/membership_contract-dfffdc123a968612)
+
+running 6 tests
+test legacy_assignment_modes_cannot_silently_replace_unseen_assignments ... ok
+test assignment_renewal_is_a_scope_specific_boolean_with_canonical_false_default ... ok
+test membership_save_rejects_invalid_vocabulary_versions_identifiers_and_expiry ... ok
+test invitation_request_limits_match_the_owned_validator ... ok
+test one_hundred_assignment_renewals_fit_the_existing_request_body_bound ... ok
+test generated_contract_exposes_shared_vocabulary_bounds_and_invalid_examples ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s

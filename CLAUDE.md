@@ -1,3 +1,64 @@
+## 2026-10-01 — Story 20.6 membership and recipient proof
+
+Keep organisation administration separate from audit RLS and engagement selection.
+Admin metadata comes through narrow inventoried owner functions, never an owner
+pool or runtime membership DML. Preserve FORCE RLS and the published migration and
+catalogue prefixes. Membership, operation consumption and Task controls share
+organisation advisory205 then engagement locks; scoped transactions explicitly use
+READ COMMITTED so authority refreshes after waiting. Recheck the exact session and
+current Admin after locks, and fence affected execution/unused claims/delegation
+durably. Do not globally log out an identity for one organisation's revocation.
+
+Invitation recipient proof comes only from a signed ID-token email with boolean
+email_verified=true and the configured issuer. Bind it to the exact rotated server
+session using database callback time, never browser profile or provider auth_time.
+Missing or unverified email, or an unsupported but well-typed email string,
+preserves sign-in without proof. Malformed claim JSON types (for example email
+as a number or email_verified as a string) retain the pinned OIDC decoder's
+sign-in refusal; never alter signed JWT bytes or introduce a fallback verifier.
+A later callback cannot inherit an earlier session's proof. Acceptance rechecks session
+hash, actor, expiry and the 300-second proof window inside its transaction. This
+does not assert forced password or MFA reauthentication.
+
+Private invitation secrets are browser-generated random 32-byte base64url values,
+fragment-only in links and body-only in requests. Scrub the fragment immediately,
+persist only its digest, and retain the exact in-memory command for explicit retry.
+An exact receipt replay is history and must never grant authority a second time.
+Use the local fixture's signed email scenarios to prove claim handling, separately
+from direct repository session fixtures used by HTTP/storage authority tests.
+
+Assignment renewal belongs to each newly selected command assignment. Retained
+selections preserve their expiry even when time passes during editing; missing
+renewal and false are the same durable meaning. Freeze assignment completeness
+and selection baseline with the opened draft, so an expiry-driven 101-to-100
+refresh cannot silently switch a legacy preserve/remove command to replacement.
+Use the same client/engagement tuple order for assignment page selection,
+aggregation and continuation; concatenated cursor text has a different ordering
+for otherwise valid identifiers such as `a` and `a-`.
+
+Fence explicit renewal of an existing finite assignment independently of whether
+its expiry has passed yet. Also fence all of a member's organisation scopes when
+extending or clearing an existing finite membership expiry. Separate wall-clock
+reads can straddle expiry between fence selection and UPDATE; conservative
+fencing prevents the restored grant from reviving old execution. Keep unchanged
+expiry and retained renew=false selections unaffected, and retain fresh
+post-lock checks rather than substituting a transaction-start timestamp.
+
+Use `/workspace/zobba-build-tools/activate-tests.sh` for disposable test work.
+Both test and general activation now unset development migration/runtime URLs;
+development requires the separate explicit `activate-development.sh`. Never
+diagnose a test migration with a bare `zobba-cli migrate`: first guard the effective
+`_test` target and bind `ZOBBA_MIGRATION_DATABASE_URL` to its test migration URL for
+that command. A stale unpublished migration checksum in a disposable fixture
+requires its guarded reset. Preserve an accidental migration's exact SQL, ledger
+and catalog and report it immediately; do not silently rewrite a ledger or roll
+back development data.
+
+Browser invitation tests target the exact invitation ID from the saved receipt,
+not the last row in a randomly ordered ID page. Resolve its textbox by role: the
+containing private-link region also has an accessible label. Opaque receipt IDs
+need wrapping at narrow widths.
+
 ## 2026-10-01 — Story 20.5 standing Permissions and operation custody
 
 Keep logical operation keys independent of worker ownership, attempts and one-use

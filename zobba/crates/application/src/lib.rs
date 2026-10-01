@@ -1,6 +1,7 @@
 //! Application-owned ports. No SQL, HTTP or vendor error crosses them.
 pub mod conversation;
 pub mod identity;
+pub mod membership;
 pub mod operation;
 pub mod task;
 use std::{fmt, future::Future};
@@ -14,6 +15,7 @@ pub enum BootstrapError {
     UnsafeRuntimeRole,
     SchemaMismatch,
     MigrationFailed,
+    MembershipExpiryOutOfRange,
     ListenerUnavailable,
 }
 
@@ -26,6 +28,7 @@ impl BootstrapError {
             Self::UnsafeRuntimeRole => "unsafe_runtime_role",
             Self::SchemaMismatch => "schema_mismatch",
             Self::MigrationFailed => "migration_failed",
+            Self::MembershipExpiryOutOfRange => "membership_expiry_out_of_range",
             Self::ListenerUnavailable => "listener_unavailable",
         }
     }
@@ -59,6 +62,7 @@ mod tests {
             BootstrapError::UnsafeRuntimeRole,
             BootstrapError::SchemaMismatch,
             BootstrapError::MigrationFailed,
+            BootstrapError::MembershipExpiryOutOfRange,
             BootstrapError::ListenerUnavailable,
         ] {
             assert!(

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd /workspace/intellifin-audit/zobba
+source /workspace/zobba-build-tools/activate-tests.sh
+pnpm install --frozen-lockfile > /tmp/zobba-20-6-final-install.log 2>&1
+pnpm --dir web check > /tmp/zobba-20-6-final-web-check.log 2>&1
+pnpm --dir web build > /tmp/zobba-20-6-final-web-build.log 2>&1
+pnpm fixture:test > /tmp/zobba-20-6-final-fixture.log 2>&1
+python3 -B -m unittest discover -s scripts -p 'test_*.py' > /tmp/zobba-20-6-final-python.log 2>&1
+python3 scripts/check-boundaries.py > /tmp/zobba-20-6-final-boundaries.log 2>&1
+cargo fmt --check > /tmp/zobba-20-6-final-fmt.log 2>&1
+cargo clippy --workspace --all-targets --locked -- -D warnings > /tmp/zobba-20-6-final-clippy.log 2>&1
+cargo build --workspace --locked > /tmp/zobba-20-6-final-build.log 2>&1
+git diff --check > /tmp/zobba-20-6-final-diff-check.log 2>&1

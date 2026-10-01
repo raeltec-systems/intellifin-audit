@@ -63,7 +63,7 @@ test('independent HTTPS OIDC fixture uses real code, login, PKCE and controlled 
   }
   function authorization(verifier, overrides = {}) {
     const url = new URL(`${issuer}/auth`);
-    url.search = new URLSearchParams({ client_id: config.client_id, redirect_uri: redirectUri, response_type: 'code', scope: 'openid profile', claims: JSON.stringify({ id_token: { name: null } }), nonce: 'fixture-nonce', state: 'fixture-state', code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', ...overrides });
+    url.search = new URLSearchParams({ client_id: config.client_id, redirect_uri: redirectUri, response_type: 'code', scope: 'openid profile email', claims: JSON.stringify({ id_token: { name: null, email: null, email_verified: null } }), nonce: 'fixture-nonce', state: 'fixture-state', code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', ...overrides });
     return url.href;
   }
   async function issue(account = 'auditor-a') {
@@ -128,6 +128,8 @@ test('independent HTTPS OIDC fixture uses real code, login, PKCE and controlled 
     const { payload } = await jwtVerify(response.body.id_token, await importJWK(jwks.keys[0], 'RS256'), { issuer, audience: config.client_id, algorithms: ['RS256'] });
     assert.equal(payload.sub, 'manager-a');
     assert.equal(payload.name, 'manager-a');
+    assert.equal(payload.email, 'manager-a@example.test');
+    assert.equal(payload.email_verified, true);
     assert.equal(payload.nonce, 'fixture-nonce');
     assert.equal((await exchange(flow.code, flow.verifier)).status, 400);
     const wrong = await issue();
@@ -144,6 +146,14 @@ test('independent HTTPS OIDC fixture uses real code, login, PKCE and controlled 
     bad_nonce: (claims) => assert.equal(claims.nonce, 'unrelated-nonce'),
     no_nonce: (claims) => assert.equal(claims.nonce, undefined),
     bad_at_hash: (claims) => assert.equal(claims.at_hash, 'invalid-hash-value'),
+    missing_email: (claims) => { assert.equal(claims.email, undefined); assert.equal(claims.email_verified, true); },
+    unverified_email: (claims) => { assert.equal(claims.email, 'auditor-a@example.test'); assert.equal(claims.email_verified, false); },
+    missing_email_verified: (claims) => { assert.equal(claims.email, 'auditor-a@example.test'); assert.equal(claims.email_verified, undefined); },
+    invalid_email: (claims) => assert.equal(claims.email, 'recipient@@example.test'),
+    malformed_email_type: (claims) => { assert.equal(claims.email, 123); assert.equal(claims.email_verified, true); },
+    malformed_email_verified_type: (claims) => { assert.equal(claims.email, 'auditor-a@example.test'); assert.equal(claims.email_verified, 'true'); },
+    mixed_case_email: (claims) => { assert.equal(claims.email, 'Auditor.A@EXAMPLE.TEST'); assert.equal(claims.email_verified, true); },
+    old_auth_time: (claims) => assert.ok(claims.auth_time < Date.now() / 1000 - 86_000),
     expired: (claims) => {
       const now = Math.floor(Date.now() / 1000);
       assert.ok(claims.exp < now);
@@ -161,6 +171,13 @@ test('independent HTTPS OIDC fixture uses real code, login, PKCE and controlled 
       const response = await exchange(flow.code, flow.verifier);
       assert.equal(response.status, 200);
       check(decodeJwt(response.body.id_token));
+      if (scenario === 'malformed_email_type' || scenario === 'malformed_email_verified_type') {
+        const key = JSON.parse((await request('/jwks')).body).keys[0];
+        const { payload } = await jwtVerify(response.body.id_token, await importJWK(key, 'RS256'), { issuer, audience: config.client_id, algorithms: ['RS256'] });
+        check(payload);
+        assert.equal(payload.sub, 'auditor-a');
+        assert.equal(payload.nonce, 'fixture-nonce');
+      }
       if (scenario === 'expired') {
         const key = JSON.parse((await request('/jwks')).body).keys[0];
         const verifier = await importJWK(key, 'RS256');

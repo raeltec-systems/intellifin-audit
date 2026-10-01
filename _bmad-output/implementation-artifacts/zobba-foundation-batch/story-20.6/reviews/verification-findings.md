@@ -1,0 +1,41 @@
+### VG-1 — Role-only narrowing has no regression for durable execution fencing
+
+- **Changed surface:** `zobba/migrations/0005_membership_administration.sql:182` treats removal of an application role as narrowing even when membership stays active and all assignments are retained; `membership_fence` then advances execution epochs, abandons unused claims and revokes dependent delegation.
+- **Impacted consumer or site:** Existing Task claims consumed through `TaskRepository::consume` at `zobba/crates/infrastructure/src/task.rs:593`, and the combined-role member edited through `zobba/web/src/MembershipWorkspace.tsx:178`.
+- **Existing test evidence:**
+  - `Regression gap`: `zobba/crates/infrastructure/tests/membership/revocation.rs:31` fixes every helper command to active `auditor` membership and varies assignments. Its execution/delegation assertions at lines 212–282 prove assignment removal/regrant. Its expired-membership case at line 308 proves a different predicate in the narrowing expression.
+  - `zobba/web/tests/browser/membership.spec.ts:213` removes Audit manager while retaining Admin and checks the engagement chooser and administration view, but creates no Task, claim or delegation and does not regrant the removed role.
+  - The pre-existing role change at `zobba/crates/infrastructure/tests/operations.rs:1353` directly updates membership using fixture SQL after stopping the Task; it does not call the new membership write/fence path.
+  - Repository-wide searches for `membership_fence`, `MembershipRepository`, `save_member`, `saveMemberApi` and `/membership/`, followed by role/regrant searches through the membership, Task, operation and browser tests, found no test asserting durable fencing for a role-only Save.
+- **Missing verification:** A role-only downgrade with assignments unchanged must advance the existing Task's epoch, abandon its unused claim and revoke its delegation; restoring the role must leave that original execution unusable.
+- **Demonstration:** Remove only `OR NOT old.roles<@new_roles` from the narrowing predicate, with the corresponding normal catalogue regeneration. An active assigned member can lose its audit role and later regain it while retaining the original epoch, claim and delegation. The assignment-removal and expired-grant tests still exercise their other narrowing predicates, while the browser role test still loses immediate engagement access through RLS.
+- **Consequence:** Restoring a role can revive pre-revocation execution authority without any of the checked behavioral assertions failing.
+- **Suggested test shape:** Extend the real restricted-runtime revocation contract with an admitted claim and Task-rooted delegation, downgrade `auditor + admin` to `admin` without changing assignments, then regrant `auditor` and assert the old basis remains fenced and the delegation remains revoked.
+
+### VG-2 — Invitation acceptance does not test recipient proof invalidation during a lock wait
+
+- **Changed surface:** `zobba/migrations/0005_membership_administration.sql:224` waits for engagement locks, then rechecks and locks the exact current session and its fresh verified recipient proof at line 226 before granting membership.
+- **Impacted consumer or site:** Authenticated `POST /membership/invitations/accept` at `zobba/crates/api/src/membership.rs:514`, through `MembershipRepository::accept` at `zobba/crates/infrastructure/src/membership.rs:229`.
+- **Existing test evidence:**
+  - `Regression gap`: `zobba/crates/api/tests/membership_http.rs:594` makes `verified_at` stale or future-dated before sending acceptance, and asserts refusal. Those cases are rejected by the first proof query at migration line 215.
+  - `zobba/crates/infrastructure/tests/membership.rs:311` deliberately logs out a session during an organisation lock wait, but the pending operation is `snapshot`, exercising `membership_read` rather than acceptance.
+  - `zobba/crates/infrastructure/tests/membership/operation_revocation.rs:217` controls engagement lock waits for operation consumption and membership Save; it never queues invitation acceptance or invalidates the recipient session during that wait.
+  - Repository-wide searches for `membership_accept`, `MembershipRepository`, `/membership/invitations/accept` and their import references, plus `logout`, `replac`, `advisory` and proof-expiry searches in the discovered tests, found no acceptance test crossing this second authority boundary.
+- **Missing verification:** If a valid acceptance has passed its first proof check but waits on an engagement row, logout/session replacement or proof expiry before that lock releases must refuse acceptance without creating membership, assignments, an accepted invitation or a receipt.
+- **Demonstration:** Omit the second session/proof query and its refusal at migration lines 226–227, retaining the first check. Every upfront invalid-proof case still refuses, ordinary acceptance/replay still works, and the snapshot logout race still passes. A recipient logged out while acceptance is blocked can then receive a new membership when the engagement lock releases.
+- **Consequence:** The checked tests would allow acceptance to grant authority from a session or recipient proof that was invalidated before the final grant boundary.
+- **Suggested test shape:** Reuse the existing deterministic engagement-row barrier, wait until real acceptance is blocked, revoke the exact session (and independently age its proof), release the barrier, and assert both the refusal and unchanged durable membership/invitation/event state.
+
+### VG-3 — Assignment pagination does not verify that an editor retains selections across pages
+
+- **Changed surface:** `zobba/web/src/MembershipWorkspace.tsx:77` exposes paged assignment choices while retaining selected assignments from other pages; `MemberEditor` at line 98 and `InvitationEditor` at line 117 retain the draft through `changePage` at line 333.
+- **Impacted consumer or site:** Save membership at `zobba/web/src/MembershipWorkspace.tsx:178` submits the entire replacement assignment set. The database deactivates all existing assignments before applying that set at `zobba/migrations/0005_membership_administration.sql:185`.
+- **Existing test evidence:**
+  - `Regression gap`: `zobba/crates/infrastructure/tests/membership.rs:363` creates more than 50 engagements and asserts two repository pages and their counts; it never edits through the browser.
+  - `zobba/web/tests/membership.test.mjs:48` asserts parser cursor validity, and line 60 checks read URL parameters using a mocked fetch. Neither mounts the editor or carries draft selections between pages.
+  - `zobba/web/tests/browser/membership.spec.ts:74` changes and saves the single named engagement, and its invitation helper at line 61 selects that same engagement. None of the seven browser cases clicks an engagement pagination button.
+  - Repository-wide searches for `MembershipWorkspace`, `AssignmentFields`, `pageAssignments`, `Next engagement page`, `First engagement page` and the membership module's import references found no test of editor draft preservation across pages.
+- **Missing verification:** Select assignments on two different pages, return to the first page, save, and verify the durable replacement set contains every intended selection and preserves pre-existing off-page assignments. The equivalent invitation flow must preserve its selections and recipient draft.
+- **Demonstration:** Re-key the editor by the engagement-page cursor, or rebuild its assignments from the newly displayed page on page changes. The editor would silently discard unsaved earlier-page choices; all checked repository-pagination and parser tests would still pass, and the current single-page browser Saves would be unaffected.
+- **Consequence:** Administrators working with more than 50 engagements can save an incomplete assignment set, unintentionally removing access or issuing an invitation with less access than they selected.
+- **Suggested test shape:** Add one real browser scenario with at least 51 engagements and assignments on both pages, asserting the final server snapshot or accepted invitation assignments rather than only the checkboxes or submitted request.

@@ -1,0 +1,92 @@
+{
+  "state": "all final checks passed",
+  "source_manifest": "../SOURCE-MANIFEST-20.6.json",
+  "results": [
+    {
+      "file": "rust-format.txt",
+      "command": "cargo fmt --check",
+      "exit_code": 0,
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "rust-clippy.txt",
+      "command": "cargo clippy --workspace --all-targets --locked -- -D warnings",
+      "exit_code": 0,
+      "original_sha256": "02630abfe80b3fcbeed04856812d51b35d950b6c31d7fe52ddc9d78ab5fb9662"
+    },
+    {
+      "file": "rust-workspace.txt",
+      "command": "cargo test --workspace --locked -- --test-threads=1",
+      "exit_code": 0,
+      "original_sha256": "0679ba0d6e13d38e5a218be0e2ed256079909ba77f1ed899789385799b40cbac"
+    },
+    {
+      "file": "rust-build.txt",
+      "command": "cargo build --workspace --locked",
+      "exit_code": 0,
+      "original_sha256": "b4e54c45356acc54119ab5aa76f6d850d88e3aa103c04cd95c78c65fad74c310"
+    },
+    {
+      "file": "frozen-install.txt",
+      "command": "pnpm install --frozen-lockfile",
+      "exit_code": 0,
+      "original_sha256": "626fc33c86ace73d79f37044730388b42f4917182b2b542a9fdde649007dbc40"
+    },
+    {
+      "file": "web-check.txt",
+      "command": "pnpm --dir web check",
+      "exit_code": 0,
+      "original_sha256": "e6adf974b88533642cfef9220632568255ddeff64dcbd1cef58d0b787e72c3fd"
+    },
+    {
+      "file": "web-build.txt",
+      "command": "pnpm --dir web build",
+      "exit_code": 0,
+      "original_sha256": "82d4bfb917aeee77804bccede6354c68282337d4ae75bbdde14040e92a80a0f0"
+    },
+    {
+      "file": "identity-fixture.txt",
+      "command": "pnpm fixture:test",
+      "exit_code": 0,
+      "original_sha256": "17ee297485ebd05d3a9170d7bddee2076a1e2bd1a2911ab3f81a1e0163ba18ce"
+    },
+    {
+      "file": "python-guards.txt",
+      "command": "python3 -B -m unittest discover -s scripts -p 'test_*.py'",
+      "exit_code": 0,
+      "original_sha256": "87f19e8aa54e8ead9566f1a9ddbb34dfe442a3f03247d336f857ba4b6bbe1898"
+    },
+    {
+      "file": "boundaries.txt",
+      "command": "python3 scripts/check-boundaries.py",
+      "exit_code": 0,
+      "original_sha256": "f0a6a67f082db9c88d9258aa2c5bb329389182a2e2bd8cb50f81160f38808a78"
+    },
+    {
+      "file": "process-smoke.txt",
+      "command": "python3 scripts/smoke.py",
+      "exit_code": 0,
+      "original_sha256": "fec726e5abc71fdde5bbbb2928b0db88c97487d6bc39e75ff80117960a21b552"
+    },
+    {
+      "file": "browser-full.txt",
+      "command": "pnpm --dir web exec playwright test",
+      "exit_code": 0,
+      "original_sha256": "04f29c2c1ae96baf2861eb0146de525078f004bc98b08d4a5d4689ee7af55ff7"
+    },
+    {
+      "file": "browser-reset.txt",
+      "command": "cargo test --locked -p zobba-infrastructure --test membership -- --test-threads=1",
+      "exit_code": 0,
+      "original_sha256": "ed9825febd3990ab64b9d74b0e36de0be993388454ec8ab573a70ee0a16bd7b1"
+    }
+  ],
+  "counts": {
+    "rust_passed": 129,
+    "rust_ignored_subprocess_entrypoints": 2,
+    "browser_passed": 72,
+    "web_passed": 89,
+    "identity_fixture_passed": 54,
+    "python_guards_passed": 47
+  }
+}

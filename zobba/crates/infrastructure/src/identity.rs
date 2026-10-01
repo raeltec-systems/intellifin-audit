@@ -4,10 +4,13 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use rand::{RngCore, rngs::OsRng};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
-use zobba_application::identity::{CurrentAuthority, CurrentSession, IdentityError};
+use zobba_application::identity::{
+    CurrentAuthority, CurrentSession, IdentityError, VerifiedRecipientProof,
+};
 use zobba_domain::identity::{
     AuditRole, ENGAGEMENT_PAGE_SIZE, Engagement, EngagementPage, Identity, Scope,
 };
+use zobba_domain::membership::normalize_email;
 
 use crate::scope;
 
@@ -144,6 +147,21 @@ impl IdentityRepository {
         display_name: &str,
         previous_token: Option<&str>,
     ) -> Result<String, IdentityError> {
+        self.establish_verified_session(issuer, subject, display_name, None, previous_token)
+            .await
+    }
+
+    /// The OIDC callback supplies only the issuer and verified email produced by
+    /// its signed-token verifier. Never pass browser profile or form values here.
+    /// An absent/unusable recipient claim still permits ordinary sign-in.
+    pub async fn establish_verified_session(
+        &self,
+        issuer: &str,
+        subject: &str,
+        display_name: &str,
+        verified_email: Option<&str>,
+        previous_token: Option<&str>,
+    ) -> Result<String, IdentityError> {
         if issuer.len() > 2048
             || subject.is_empty()
             || subject.len() > 255
@@ -154,6 +172,7 @@ impl IdentityRepository {
         let token = random_secret()?;
         let actor_id = random_secret()?;
         let csrf = random_secret()?;
+        let verified_email = verified_email.and_then(normalize_email);
         let mut tx = self
             .pool
             .begin()
@@ -183,8 +202,10 @@ impl IdentityRepository {
             .execute(&mut *tx)
             .await
             .map_err(|_| IdentityError::Unavailable)?;
-        sqlx::query("INSERT INTO public.sessions(token_hash,actor_id,csrf_token,expires_at) VALUES($1,$2,$3,$4)")
+        sqlx::query("INSERT INTO public.sessions(token_hash,actor_id,csrf_token,expires_at,verified_issuer,verified_email,verified_at) VALUES($1,$2,$3,$4,$5,$6,$7)")
             .bind(secret_hash(&token)).bind(id).bind(csrf).bind(cutoff + SESSION_SECONDS)
+            .bind(verified_email.as_ref().map(|_| issuer)).bind(&verified_email)
+            .bind(verified_email.as_ref().map(|_| cutoff))
             .execute(&mut *tx).await.map_err(|_| IdentityError::Unavailable)?;
         tx.commit().await.map_err(|_| IdentityError::Unavailable)?;
         Ok(token)
@@ -201,6 +222,14 @@ impl IdentityRepository {
 }
 
 type EngagementRow = (String, String, String, String, String, String, Vec<String>);
+type SessionRow = (
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<i64>,
+);
 
 fn engagement_from_row(row: EngagementRow) -> Engagement {
     Engagement {
@@ -227,13 +256,22 @@ impl CurrentAuthority for IdentityRepository {
         if !valid_secret(token) {
             return Err(IdentityError::Unauthenticated);
         }
-        let row: Option<(String,String,String)> = sqlx::query_as("SELECT i.id,i.display_name,s.csrf_token FROM public.sessions s JOIN public.identities i ON i.id=s.actor_id WHERE s.token_hash=$1 AND s.expires_at>extract(epoch FROM clock_timestamp())::bigint AND i.active")
+        let row: Option<SessionRow> = sqlx::query_as("SELECT i.id,i.display_name,s.csrf_token,s.verified_issuer,s.verified_email,s.verified_at FROM public.sessions s JOIN public.identities i ON i.id=s.actor_id WHERE s.token_hash=$1 AND s.expires_at>extract(epoch FROM clock_timestamp())::bigint AND i.active")
             .bind(secret_hash(token)).fetch_optional(&self.pool).await.map_err(|_| IdentityError::Unavailable)?;
         match row {
-            Some((id, display_name, csrf_token)) => Ok(CurrentSession {
-                identity: Identity { id, display_name },
-                csrf_token,
-            }),
+            Some((id, display_name, csrf_token, issuer, email, verified_at)) => {
+                Ok(CurrentSession {
+                    identity: Identity { id, display_name },
+                    csrf_token,
+                    recipient_proof: issuer.zip(email).zip(verified_at).map(
+                        |((issuer, email), verified_at)| VerifiedRecipientProof {
+                            issuer,
+                            email,
+                            verified_at,
+                        },
+                    ),
+                })
+            }
             None => {
                 self.logout(token).await?;
                 Err(IdentityError::Unauthenticated)
