@@ -5,6 +5,7 @@ use zobba_domain::identity::{Engagement, EngagementPage, Identity, Scope};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IdentityError {
     Unauthenticated,
+    SessionChanged,
     Denied,
     Unavailable,
     InvalidResponse,
@@ -17,6 +18,7 @@ impl IdentityError {
     pub const fn code(self) -> &'static str {
         match self {
             Self::Unauthenticated => "authentication_required",
+            Self::SessionChanged => "session_changed",
             Self::Denied => "access_denied",
             Self::Unavailable => "identity_unavailable",
             Self::InvalidResponse => "sign_in_failed",

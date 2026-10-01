@@ -37,6 +37,18 @@ function PairWorkspace() {
   const heading = useRef<HTMLHeadingElement>(null);
   const restoreFocus = useRef<string | null>(null);
   const pendingFocus = useRef<string | null>(null);
+  // One automatic recovery covers the entire session -> scope -> conversation
+  // composition. A successful scope read alone does not replenish this budget.
+  const sessionRecovery = useRef({ remaining: 1, blocked: false });
+  const accessStable = useCallback(() => { sessionRecovery.current = { remaining: 1, blocked: false }; }, []);
+  const recoverSession = useCallback(() => {
+    if (sessionRecovery.current.remaining === 0) {
+      sessionRecovery.current.blocked = true;
+      return false;
+    }
+    sessionRecovery.current.remaining--;
+    return true;
+  }, []);
 
   const rememberFocus = useCallback(() => {
     const active = document.activeElement;
@@ -65,8 +77,10 @@ function PairWorkspace() {
     restoreFocus.current = null;
   }, [view, busy, projectionUsable]);
 
-  const refresh = useCallback(async (focus = false) => {
+  const refresh = useCallback(async (focus = false, userInitiated = false) => {
     if (logoutIntent.current) return;
+    if (userInitiated) accessStable();
+    else if (sessionRecovery.current.blocked) return;
     rememberFocus();
     pendingFocus.current = focus ? 'workspace-heading' : restoreFocus.current;
     request.current?.abort();
@@ -81,32 +95,44 @@ function PairWorkspace() {
       scope.current && previous.selected && sameScope(scope.current, previous.selected));
     if (!retain) setView({ kind: 'loading' });
     try {
-      const [session, initialPage] = await Promise.all([
-        readSession(controller.signal), readEngagements(controller.signal, pageCursors.current.at(-1)),
-      ]);
-      if (request.current !== controller) return;
-      let page = initialPage;
-      // Deleted assignments may leave a later page empty. Start again using a
-      // fresh authorized read instead of displaying cached earlier results.
-      if (page.engagements.length === 0 && pageCursors.current.length > 1) {
-        pageCursors.current = [null];
-        page = await readEngagements(controller.signal);
-      }
-      let selected: Engagement | null = null;
-      let message: string | undefined;
-      if (scope.current) {
-        try { selected = await readEngagement(scope.current, controller.signal); }
-        catch (error) {
+      // Session and protected projections form one read dependency. The server
+      // refuses a changed cookie rather than composing another actor's results.
+      // Share the single recovery with later conversation reads. All protected
+      // UI remains hidden until a coherent session/scope is verified.
+      for (;;) {
+        try {
+          const session = await readSession(controller.signal);
           if (request.current !== controller) return;
-          if (error instanceof AccessError && [403, 404].includes(error.status)) {
-            scope.current = null;
-            showScope(null);
-            message = 'This engagement is no longer available to you. Choose from your current assignments.';
-          } else { throw error; }
+          if (previous.kind === 'ready' && previous.session.identity.id !== session.identity.id) pageCursors.current = [null];
+          let page = await readEngagements(session, controller.signal, pageCursors.current.at(-1));
+          // Deleted assignments may leave a later page empty. Start again using a
+          // fresh authorized read instead of displaying cached earlier results.
+          if (page.engagements.length === 0 && pageCursors.current.length > 1) {
+            pageCursors.current = [null];
+            page = await readEngagements(session, controller.signal);
+          }
+          let selected: Engagement | null = null;
+          let message: string | undefined;
+          if (scope.current) {
+            try { selected = await readEngagement(scope.current, controller.signal, session); }
+            catch (error) {
+              if (request.current !== controller) return;
+              if (error instanceof AccessError && [403, 404].includes(error.status)) {
+                scope.current = null;
+                showScope(null);
+                message = 'This engagement is no longer available to you. Choose from your current assignments.';
+              } else { throw error; }
+            }
+          }
+          if (request.current !== controller) return;
+          if (!selected) accessStable();
+          setView({ kind: 'ready', session, page, pageNumber: pageCursors.current.length, selected, message });
+          return;
+        } catch (error) {
+          if (request.current !== controller) return;
+          if (!(error instanceof AccessError && error.status === 412 && recoverSession())) throw error;
         }
       }
-      if (request.current !== controller) return;
-      setView({ kind: 'ready', session, page, pageNumber: pageCursors.current.length, selected, message });
     } catch (error) {
       if (request.current !== controller) return;
       if (error instanceof AccessError && error.status === 401) {
@@ -123,13 +149,24 @@ function PairWorkspace() {
         setBusy(false);
       }
     }
-  }, [rememberFocus]);
+  }, [rememberFocus, accessStable, recoverSession]);
+
+  const accessFailure = useCallback((error?: AccessError) => {
+    if (error?.status === 412 && !recoverSession()) {
+      rememberFocus();
+      request.current?.abort(); request.current = null;
+      setBusy(false);
+      setView({ kind: 'unavailable', action: 'read', message: 'We could not verify your access. Check your connection and try again.' });
+      return;
+    }
+    void refresh();
+  }, [recoverSession, rememberFocus, refresh]);
 
   useEffect(() => {
     void refresh();
     const onFocus = () => { if (document.visibilityState === 'visible') void refresh(); };
     const onVisibility = () => {
-      if (logoutIntent.current) return;
+      if (logoutIntent.current || sessionRecovery.current.blocked) return;
       if (document.visibilityState === 'hidden') {
         rememberFocus();
         request.current?.abort(); request.current = null;
@@ -187,14 +224,14 @@ function PairWorkspace() {
     if (logoutIntent.current) return;
     scope.current = next;
     showScope(next);
-    void refresh(true);
+    void refresh(true, true);
   }
 
   function changePage(next: Scope | null) {
     if (logoutIntent.current) return;
     if (next) pageCursors.current.push(next);
     else if (pageCursors.current.length > 1) pageCursors.current.pop();
-    void refresh(true);
+    void refresh(true, true);
   }
 
   const selected = view.kind === 'ready' ? view.selected : null;
@@ -225,7 +262,7 @@ function PairWorkspace() {
           <p className="eyebrow">Zobba · Pair</p><h1 ref={heading} data-focus="workspace-heading" tabIndex={-1}>Connection interrupted</h1>
           <p className="intro-copy" role="alert">{view.message}</p>
           <button className="retry-button" data-focus="retry" type="button" aria-disabled={busy}
-            onClick={() => void (view.action === 'logout' ? signOut() : refresh(true))}>
+            onClick={() => void (view.action === 'logout' ? signOut() : refresh(true, true))}>
             {view.action === 'logout' ? 'Try signing out again' : 'Try again'}</button>
         </section> : null}
         {view.kind === 'ready' && busy ? <div className="intro" role="status">Checking current access…</div> : null}
@@ -251,7 +288,7 @@ function PairWorkspace() {
             </div>
             <ConversationWorkspace key={`${view.session.identity.id}/${view.selected.organisation_id}/${view.selected.client_id}/${view.selected.engagement_id}`}
               engagement={view.selected} session={view.session} accessReady={!busy}
-              onAccessFailure={() => void refresh()} onProjectionUsable={projectionStatus} />
+              onAccessFailure={accessFailure} onAccessStable={accessStable} onProjectionUsable={projectionStatus} />
           </> : <>
             <div className="intro"><p className="eyebrow">Zobba · Pair</p><h1 ref={heading} data-focus="workspace-heading" tabIndex={-1}>Your engagements</h1>
               <p className="intro-copy">Choose the client work you want to open.</p></div>
@@ -270,7 +307,7 @@ function PairWorkspace() {
               {view.page.next_cursor ? <button className="quiet-button" data-focus="next-page" type="button" onClick={() => changePage(view.page.next_cursor)}>Next page</button> : null}
             </nav> : null}
           </>}
-          <div className="access-footer"><span>Showing your current access</span><button type="button" className="quiet-button" data-focus="refresh-access" aria-disabled={busy} onClick={() => void refresh()}>Refresh access</button></div>
+          <div className="access-footer"><span>Showing your current access</span><button type="button" className="quiet-button" data-focus="refresh-access" aria-disabled={busy} onClick={() => void refresh(false, true)}>Refresh access</button></div>
         </div> : null}
       </main>
     </div>

@@ -247,15 +247,15 @@ fn scope(
 }
 
 #[utoipa::path(get,path="/engagements/{engagement_id}/conversation",operation_id="get_conversation",security(("server_session"=[])),
-    params(("engagement_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query)),
-    responses((status=200,description="One consistent current snapshot, bounded messages and Tasks with explicit page continuations",body=ConversationSnapshotResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=429,body=ErrorResponse),(status=503,body=ErrorResponse)))]
+    params(("X-Expected-Session"=Option<String>,Header,description="Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",min_length=1,max_length=128),("engagement_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query)),
+    responses((status=412,description="Session changed; compose fresh reads without replacing the current cookie",body=ErrorResponse),(status=200,description="One consistent current snapshot, bounded messages and Tasks with explicit page continuations",body=ConversationSnapshotResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=429,body=ErrorResponse),(status=503,body=ErrorResponse)))]
 pub(crate) async fn snapshot(
     State(state): State<ConversationHttpState>,
     headers: HeaderMap,
     Path(engagement_id): Path<String>,
     query: Result<Query<ScopeQuery>, axum::extract::rejection::QueryRejection>,
 ) -> Response {
-    let current = match state.identity.current(&headers).await {
+    let current = match state.identity.current_read(&headers).await {
         Ok(current) => current,
         Err(error) => return crate::auth::failure(error),
     };
@@ -282,15 +282,15 @@ pub(crate) struct HistoryQuery {
     task_id: Option<String>,
 }
 #[utoipa::path(get,path="/engagements/{engagement_id}/conversation/history",operation_id="get_conversation_history",security(("server_session"=[])),
-    params(("engagement_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query),("through"=String,Query,description="Snapshot watermark bounding retained Received and Applied facts",pattern="^[0-9]+$",max_length=19),("before"=Option<String>,Query,description="Exclusive Received cursor; omitted returns latest page through watermark",pattern="^[0-9]+$",max_length=19),("task_id"=Option<String>,Query,description="Optional exact Task history",min_length=1,max_length=128,pattern="^[A-Za-z0-9_-]+$")),
-    responses((status=200,body=ConversationHistoryResponse),(status=400,body=ErrorResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=409,description="Requested watermark is ahead of retained history; resnapshot",body=ErrorResponse),(status=429,body=ErrorResponse),(status=503,body=ErrorResponse)))]
+    params(("X-Expected-Session"=Option<String>,Header,description="Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",min_length=1,max_length=128),("engagement_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query),("through"=String,Query,description="Snapshot watermark bounding retained Received and Applied facts",pattern="^[0-9]+$",max_length=19),("before"=Option<String>,Query,description="Exclusive Received cursor; omitted returns latest page through watermark",pattern="^[0-9]+$",max_length=19),("task_id"=Option<String>,Query,description="Optional exact Task history",min_length=1,max_length=128,pattern="^[A-Za-z0-9_-]+$")),
+    responses((status=412,description="Session changed; compose fresh reads without replacing the current cookie",body=ErrorResponse),(status=200,body=ConversationHistoryResponse),(status=400,body=ErrorResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=409,description="Requested watermark is ahead of retained history; resnapshot",body=ErrorResponse),(status=429,body=ErrorResponse),(status=503,body=ErrorResponse)))]
 pub(crate) async fn history(
     State(state): State<ConversationHttpState>,
     headers: HeaderMap,
     Path(engagement_id): Path<String>,
     query: Result<Query<HistoryQuery>, axum::extract::rejection::QueryRejection>,
 ) -> Response {
-    let current = match state.identity.current(&headers).await {
+    let current = match state.identity.current_read(&headers).await {
         Ok(current) => current,
         Err(error) => return crate::auth::failure(error),
     };
@@ -337,15 +337,15 @@ pub(crate) struct FeedQuery {
     after: String,
 }
 #[utoipa::path(get,path="/engagements/{engagement_id}/conversation/events",operation_id="get_conversation_events",security(("server_session"=[])),
-    params(("engagement_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query),("after"=String,Query,description="Last delivered decimal cursor or snapshot watermark",pattern="^[0-9]+$",max_length=19)),
-    responses((status=200,description="Finite ordered invalidation page; explicit resync for gaps or replay overflow",body=ConversationFeedResponse),(status=400,body=ErrorResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=429,body=ErrorResponse),(status=503,body=ErrorResponse)))]
+    params(("X-Expected-Session"=Option<String>,Header,description="Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",min_length=1,max_length=128),("engagement_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query),("after"=String,Query,description="Last delivered decimal cursor or snapshot watermark",pattern="^[0-9]+$",max_length=19)),
+    responses((status=412,description="Session changed; compose fresh reads without replacing the current cookie",body=ErrorResponse),(status=200,description="Finite ordered invalidation page; explicit resync for gaps or replay overflow",body=ConversationFeedResponse),(status=400,body=ErrorResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=429,body=ErrorResponse),(status=503,body=ErrorResponse)))]
 pub(crate) async fn events(
     State(state): State<ConversationHttpState>,
     headers: HeaderMap,
     Path(engagement_id): Path<String>,
     query: Result<Query<FeedQuery>, axum::extract::rejection::QueryRejection>,
 ) -> Response {
-    let current = match state.identity.current(&headers).await {
+    let current = match state.identity.current_read(&headers).await {
         Ok(current) => current,
         Err(error) => return crate::auth::failure(error),
     };

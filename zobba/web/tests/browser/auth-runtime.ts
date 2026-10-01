@@ -9,6 +9,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { createServer as createViteServer } from 'vite';
 import type { ViteDevServer } from 'vite';
 import { DatabaseProxy, freePort, port, stop } from './runtime';
+import { databaseEndpoint } from './database-endpoint.ts';
 import { protectProxyErrors } from '../../proxy-errors';
 
 const root = fileURLToPath(new URL('../../..', import.meta.url));
@@ -73,6 +74,9 @@ export async function startAuthRuntime(): Promise<AuthRuntime> {
   if (new Set([runtimeDatabase.pathname, migrationDatabase.pathname, adminDatabase.pathname]).size !== 1) {
     throw new Error('Browser database role bindings must target the same disposable database.');
   }
+  // Resolve inherited PGPORT before child environments remove PostgreSQL bindings.
+  migrationDatabase.port = String(databaseEndpoint(migrationDatabase).port);
+  const adminEndpoint = databaseEndpoint(adminDatabase);
   run('cargo', ['build', '--quiet', '--locked', '-p', 'zobba-api', '-p', 'zobba-cli', '-p', 'zobba-worker'], process.env);
   const metadata = JSON.parse(run('cargo', ['metadata', '--locked', '--no-deps', '--format-version', '1'], process.env));
   const fixtureDirectory = resolve(process.env.ZOBBA_FIXTURE_DIR ?? resolve(fixtureRoot, '.local'));
@@ -179,7 +183,7 @@ export async function startAuthRuntime(): Promise<AuthRuntime> {
         // SQL text is fixed by the committed tests; no credentials enter arguments or output.
         const result = spawnSync('psql', ['-X', '-q', '-v', 'ON_ERROR_STOP=1'], {
           cwd: root, encoding: 'utf8', input: statement,
-          env: { ...environment, PGHOST: adminDatabase.hostname, PGPORT: adminDatabase.port || '5432',
+          env: { ...environment, PGHOST: adminEndpoint.host, PGPORT: String(adminEndpoint.port),
             PGUSER: decodeURIComponent(adminDatabase.username), PGPASSWORD: decodeURIComponent(adminDatabase.password),
             PGDATABASE: decodeURIComponent(adminDatabase.pathname.slice(1)) },
         });
@@ -251,7 +255,7 @@ export async function startAuthRuntime(): Promise<AuthRuntime> {
             const result = spawnSync('psql', ['-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1'], {
               cwd: root, encoding: 'utf8', timeout: 2000,
               input: `WITH owned AS MATERIALIZED (SELECT pid,state,xact_start FROM pg_catalog.pg_stat_activity WHERE datname=current_database() AND backend_type='client backend' AND application_name='${applicationName}') SELECT json_build_object('connections',count(*),'unsettled_transactions',count(*) FILTER (WHERE state<>'idle' OR xact_start IS NOT NULL),'granted_locks',(SELECT count(*) FROM pg_catalog.pg_locks WHERE granted AND pid IN (SELECT pid FROM owned)))::text FROM owned;`,
-              env: { ...environment, PGHOST: adminDatabase.hostname, PGPORT: adminDatabase.port || '5432', PGUSER: decodeURIComponent(adminDatabase.username),
+              env: { ...environment, PGHOST: adminEndpoint.host, PGPORT: String(adminEndpoint.port), PGUSER: decodeURIComponent(adminDatabase.username),
                 PGPASSWORD: decodeURIComponent(adminDatabase.password), PGDATABASE: decodeURIComponent(adminDatabase.pathname.slice(1)), PGCONNECT_TIMEOUT: '2', PGOPTIONS: '-c statement_timeout=1000' },
             });
             if (result.error || result.status !== 0) throw new Error('Owned worker freeze database observation failed.');

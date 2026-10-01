@@ -177,7 +177,11 @@ test('role demotion, membership expiry and session expiry clear previously opene
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await expect(page.getByRole('heading', { name: 'Your work starts here' })).toBeFocused();
   await expect(page.getByText('Alder Manufacturing', { exact: false })).toHaveCount(0);
-  expect((await page.context().cookies(runtime.url)).some((cookie) => cookie.name === '__Host-zobba-session')).toBe(false);
+  // Generic 401 must not delete a cookie installed by a newer OIDC callback.
+  // The retained opaque cookie grants no authority after server-side expiry.
+  expect((await page.context().cookies(runtime.url)).some((cookie) => cookie.name === '__Host-zobba-session')).toBe(true);
+  expect((await page.request.get(`${runtime.url}/api/auth/session`)).status()).toBe(401);
+  expect((await page.request.get(`${runtime.url}/api/engagements`)).status()).toBe(401);
 });
 
 test('pending logout survives focus, periodic refresh, visibility changes and navigation', async ({ page }) => {

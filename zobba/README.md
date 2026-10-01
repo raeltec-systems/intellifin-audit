@@ -66,6 +66,19 @@ separately bound scoped state, content-free wakeup routing and exact-attempt
 receipt observations. Runtime cannot change identity activation, roles or
 assignments. Schema changes never run at startup.
 
+Admission and live readiness conservatively traverse membership edges with any
+INHERIT, SET or ADMIN option, including mixed paths and ADMIN self-regrant. Unsafe
+role attributes, dangerous predefined roles and table MAINTAIN grants are refused,
+including MAINTAIN on otherwise runtime-writable tables. Harmless `pg_monitor`
+membership remains supported. This closure can also refuse membership combinations
+that a single session cannot immediately use; use separate monitoring identities
+for those ambiguous graphs.
+
+Exact schema inventory also refuses public collations, operators, operator
+classes/families, conversions, text-search objects, extended statistics and all
+database event triggers, even when the accepted schema tables otherwise match.
+Migration preflight and runtime validation share these checks.
+
 Copy `.env.example` to ignored `.env` and replace the local placeholders. URL-encode
 special characters in passwords. Existing managed environments may already export
 the four database variables and need no file. The processes read environment
@@ -106,6 +119,25 @@ cargo run -p zobba-cli --locked -- seed-local
 pnpm fixture:start
 ```
 
+`fixture:setup` invokes `pnpm --filter @zobba/oidc-fixture run setup`.
+Keep the explicit `run`: `pnpm ... setup` invokes pnpm's own shell setup command
+and does not generate the fixture. Repeating fixture setup preserves its keys and
+credentials. For an isolated verification directory, including the CI command path:
+
+```sh
+fixture_check_root=$(mktemp -d)
+export ZOBBA_FIXTURE_DIR="$fixture_check_root/oidc"
+pnpm --filter @zobba/oidc-fixture run setup
+pnpm fixture:setup
+. "$ZOBBA_FIXTURE_DIR/env.sh"
+pnpm fixture:test
+```
+
+Use a new child path beneath the temporary directory; setup refuses an existing
+empty or incomplete fixture directory. With `ZOBBA_FIXTURE_DIR` set, source that
+directory's `env.sh` instead of the default path. Keep its generated credentials
+private and stop its owned processes before removing it.
+
 Run migrations first and seed before the first synthetic sign-in. Then start the
 API and web as below in separate shells. The explicit `seed-local` command requires
 `ZOBBA_LOCAL_FIXTURES=1`, a loopback HTTPS issuer and a loopback migration database.
@@ -144,7 +176,17 @@ Logout requires POST, the exact configured Origin and session-bound CSRF.
 Pending or failed sign-out stays separate from automatic access refresh; retry
 continues sign-out, and an already expired session counts as signed out.
 Each protected request checks current session/membership; forced RLS and composite
-references independently enforce scope. Auth requests have a 15-second overall
+references independently enforce scope. The browser captures `/auth/session` first
+and sends its in-memory CSRF value as `X-Expected-Session` on composed protected
+GETs. This optional refusal precondition never chooses the server identity:
+the cookie remains authoritative. A mismatch returns HTTP 412 `session_changed`
+without setting or expiring cookies. One automatic retry budget spans engagement
+composition and conversation reads; a usable verified projection or an explicit
+user retry restores that budget. Repeated replacement withdraws the workspace
+until the user retries. Generic
+401 replies also leave cookies unchanged so a delayed reply cannot delete a newer
+sign-in; explicit logout still expires the session cookie.
+Auth requests have a 15-second overall
 deadline, with separate IdP HTTP byte/connect/total limits and discovery backoff.
 Verification keys expire from the cache after five minutes. Relevant unknown-key
 or signature failures get one coalesced refresh/retry; failed refresh cannot use
@@ -336,6 +378,9 @@ Same-scope access revalidation hides the protected surface while keeping its
 nodes, independent draft, selection and focus mounted. Success restores that
 view; failure, logout or actor/scope change withdraws it. Abort controllers and
 access/read generations prevent older callbacks from restoring withdrawn work.
+Same-account session rotation retains the mounted workspace only after fresh
+session-bound reads verify the same actor and scope. A different account starts
+its own workspace even when both accounts can open the same engagement.
 Sign-out intent remains independent of automatic focus/visibility/timer refresh.
 
 Received never means Applied. Applied means retained direction reached a working

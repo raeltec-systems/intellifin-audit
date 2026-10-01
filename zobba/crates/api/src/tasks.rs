@@ -451,15 +451,15 @@ pub(crate) struct TaskListQuery {
 }
 
 #[utoipa::path(get,path="/engagements/{engagement_id}/tasks",operation_id="list_tasks",security(("server_session"=[])),
-    params(("engagement_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query),("after_task_id"=Option<String>,Query,description="Exclusive Task ID cursor from next_cursor",min_length=1,max_length=128,pattern="^[A-Za-z0-9_-]+$")),
-    responses((status=200,body=TasksResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=429,body=ErrorResponse),(status=503,body=ErrorResponse)))]
+    params(("X-Expected-Session"=Option<String>,Header,description="Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",min_length=1,max_length=128),("engagement_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query),("after_task_id"=Option<String>,Query,description="Exclusive Task ID cursor from next_cursor",min_length=1,max_length=128,pattern="^[A-Za-z0-9_-]+$")),
+    responses((status=412,description="Session changed; compose fresh reads without replacing the current cookie",body=ErrorResponse),(status=200,body=TasksResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=429,body=ErrorResponse),(status=503,body=ErrorResponse)))]
 pub(crate) async fn list(
     State(state): State<TaskHttpState>,
     headers: HeaderMap,
     Path(engagement_id): Path<String>,
     query: Result<Query<TaskListQuery>, axum::extract::rejection::QueryRejection>,
 ) -> Response {
-    let current = match state.identity.current(&headers).await {
+    let current = match state.identity.current_read(&headers).await {
         Ok(current) => current,
         Err(error) => return crate::auth::failure(error),
     };
@@ -498,8 +498,8 @@ pub(crate) async fn list(
 }
 
 #[utoipa::path(get,path="/engagements/{engagement_id}/tasks/{task_id}",operation_id="get_task",security(("server_session"=[])),
-    params(("engagement_id"=String,Path),("task_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query)),
-    responses((status=200,body=TaskResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=429,body=ErrorResponse),(status=503,body=ErrorResponse)))]
+    params(("X-Expected-Session"=Option<String>,Header,description="Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",min_length=1,max_length=128),("engagement_id"=String,Path),("task_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query)),
+    responses((status=412,description="Session changed; compose fresh reads without replacing the current cookie",body=ErrorResponse),(status=200,body=TaskResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=429,body=ErrorResponse),(status=503,body=ErrorResponse)))]
 pub(crate) async fn get(
     State(state): State<TaskHttpState>,
     headers: HeaderMap,
@@ -525,7 +525,7 @@ async fn read_scope(
     engagement_id: String,
     query: Result<Query<TaskScopeQuery>, axum::extract::rejection::QueryRejection>,
 ) -> Result<(String, Scope), zobba_application::identity::IdentityError> {
-    let current = state.identity.current(headers).await?;
+    let current = state.identity.current_read(headers).await?;
     let scope = query
         .map_err(|_| TaskError::Denied)
         .and_then(|Query(query)| query.scope(engagement_id))
@@ -556,15 +556,15 @@ pub(crate) fn cursor(value: Option<&str>) -> Result<u64, TaskError> {
 }
 
 #[utoipa::path(get,path="/engagements/{engagement_id}/task-events",operation_id="list_task_events",security(("server_session"=[])),
-    params(("engagement_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query),("after"=Option<String>,Query,description="Decimal durable cursor; omitted starts at zero",pattern="^[0-9]+$",max_length=19)),
-    responses((status=200,description="At most 100 commit-ordered metadata events; repeat from next_cursor to drain/reconnect",body=TaskEventsResponse),(status=400,body=ErrorResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=429,body=ErrorResponse),(status=503,body=ErrorResponse)))]
+    params(("X-Expected-Session"=Option<String>,Header,description="Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",min_length=1,max_length=128),("engagement_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query),("after"=Option<String>,Query,description="Decimal durable cursor; omitted starts at zero",pattern="^[0-9]+$",max_length=19)),
+    responses((status=412,description="Session changed; compose fresh reads without replacing the current cookie",body=ErrorResponse),(status=200,description="At most 100 commit-ordered metadata events; repeat from next_cursor to drain/reconnect",body=TaskEventsResponse),(status=400,body=ErrorResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=429,body=ErrorResponse),(status=503,body=ErrorResponse)))]
 pub(crate) async fn events(
     State(state): State<TaskHttpState>,
     headers: HeaderMap,
     Path(engagement_id): Path<String>,
     query: Result<Query<EventsQuery>, axum::extract::rejection::QueryRejection>,
 ) -> Response {
-    let current = match state.identity.current(&headers).await {
+    let current = match state.identity.current_read(&headers).await {
         Ok(current) => current,
         Err(error) => return crate::auth::failure(error),
     };

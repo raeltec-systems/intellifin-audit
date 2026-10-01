@@ -49,7 +49,7 @@ export class ConversationController {
   private readonly scope: Scope;
   private readonly store: OutboxStore;
   private readonly dependencies: Required<Omit<Dependencies, 'store' | 'initialSession'>>;
-  private readonly accessFailure: () => void;
+  private readonly accessFailure: (error?: AccessError) => void;
   private verifiedSession: Session | null;
   private generation = 0;
   private active = false;
@@ -65,7 +65,7 @@ export class ConversationController {
   private historical = false;
   private taskPaged = false;
   private taskAfter: string | null = null;
-  constructor(actor: string, scope: Scope, accessFailure: () => void, dependencies: Dependencies = {}) {
+  constructor(actor: string, scope: Scope, accessFailure: (error?: AccessError) => void, dependencies: Dependencies = {}) {
     this.actor = identifier(actor); this.scope = { ...parseScope(scope) }; this.accessFailure = accessFailure;
     this.verifiedSession = dependencies.initialSession ?? null;
     this.store = dependencies.store ?? new OutboxStore(actor, scope);
@@ -140,8 +140,8 @@ export class ConversationController {
   }
   private failed(error: unknown, generation: number): void {
     if (!this.current(generation)) return;
-    if (error instanceof AccessError && [401, 403, 404].includes(error.status)) {
-      this.setAccess(false); this.accessFailure(); return;
+    if (error instanceof AccessError && [401, 403, 404, 412].includes(error.status)) {
+      this.setAccess(false); this.accessFailure(error); return;
     }
     // Server projections are withdrawn when their current audience cannot be verified.
     this.watermark = null; this.historical = false; this.taskPaged = false; this.taskAfter = null;
@@ -212,19 +212,19 @@ export class ConversationController {
     try {
       let changed = this.watermark === null;
       if (this.watermark !== null) {
-        const events = await this.request(signal => this.dependencies.events(this.scope, this.watermark!, signal));
+        const events = await this.request(signal => this.dependencies.events(this.scope, this.watermark!, signal, this.verifiedSession));
         if (!this.current(generation) || revision !== this.revision) return;
         changed = events.resync_required || events.events.length > 0;
         if (events.resync_required || events.has_more) this.update({ connection: 'resyncing' });
       }
       if (changed) {
         const after = this.taskAfter;
-        const snapshot = await this.request(signal => this.dependencies.snapshot(this.scope, signal));
+        const snapshot = await this.request(signal => this.dependencies.snapshot(this.scope, signal, this.verifiedSession));
         if (!this.current(generation) || revision !== this.revision) return;
         // A later page has no watermark of its own. Start its read only after
         // the snapshot completes, so it cannot precede the cursor we will install.
         const page = this.taskPaged && after !== null
-          ? await this.request(signal => this.dependencies.tasks(this.scope, after, signal)) : null;
+          ? await this.request(signal => this.dependencies.tasks(this.scope, after, signal, this.verifiedSession)) : null;
         if (!this.current(generation) || revision !== this.revision) return;
         this.acceptSnapshot(snapshot, page);
       } else this.update(this.connectedStatus());
@@ -246,7 +246,7 @@ export class ConversationController {
     const generation = this.generation, revision = ++this.revision;
     const before = this.before, through = this.historyWatermark;
     try {
-      const page = await this.request(signal => this.dependencies.history(this.scope, through, before, signal));
+      const page = await this.request(signal => this.dependencies.history(this.scope, through, before, signal, this.verifiedSession));
       if (!this.current(generation) || revision !== this.revision) return;
       this.historical = true; this.before = page.before_cursor;
       this.update({ messages: page.messages, hasEarlier: this.before !== null }); void this.reconcile(page.messages);
@@ -256,7 +256,7 @@ export class ConversationController {
     if (!this.active || this.nextTask === null) return;
     const generation = this.generation, revision = ++this.revision, after = this.nextTask;
     try {
-      const page = await this.request(signal => this.dependencies.tasks(this.scope, after, signal));
+      const page = await this.request(signal => this.dependencies.tasks(this.scope, after, signal, this.verifiedSession));
       if (!this.current(generation) || revision !== this.revision) return;
       this.taskPaged = true; this.taskAfter = after; this.nextTask = page.next_cursor; this.projectionRevision++;
       this.update({ tasks: page.tasks, hasMoreTasks: this.nextTask !== null });
@@ -269,7 +269,7 @@ export class ConversationController {
     const current = () => this.current(generation) && revision === this.revision && projection === this.projectionRevision &&
       inspection === this.inspectionRevision && !lifetime?.aborted;
     try {
-      const task = await this.request(signal => this.dependencies.task(this.scope, id, signal), lifetime);
+      const task = await this.request(signal => this.dependencies.task(this.scope, id, signal, this.verifiedSession), lifetime);
       return current() ? task : null;
     } catch (error) { if (current()) this.failed(error, generation); return null; }
   };
@@ -349,11 +349,13 @@ export class ConversationController {
       // Reserved controls freshly authorize session, actor, CSRF and membership
       // before idempotency lookup on the server. No ordinary read can hold that lane.
       const session = (!retry || ['guide', 'pause', 'stop'].includes(item.command.kind)) && this.verifiedSession ? this.verifiedSession : await this.request(async signal => {
-        const [session] = await Promise.all([this.dependencies.session(signal), this.dependencies.engagement(this.scope, signal)]);
+        const session = await this.dependencies.session(signal);
+        if (session.identity.id !== this.actor) throw new AccessError(412);
+        await this.dependencies.engagement(this.scope, signal, session);
         return session;
       });
       if (!this.current(generation)) return false;
-      if (session.identity.id !== this.actor) { this.setAccess(false); this.accessFailure(); return false; }
+      if (session.identity.id !== this.actor) { this.setAccess(false); this.accessFailure(new AccessError(412)); return false; }
       // Re-read exact persisted meaning immediately before transmission; never take retry content from the editor.
       const stored = (await this.store.read()).find(pending => pending.key === item.key);
       if (!this.current(generation)) return false;
@@ -372,7 +374,7 @@ export class ConversationController {
       return true;
     } catch (error) {
       if (!this.current(generation)) return false;
-      if (error instanceof AccessError && [401, 403, 404].includes(error.status)) { this.setAccess(false); this.accessFailure(); return false; }
+      if (error instanceof AccessError && [401, 403, 404, 412].includes(error.status)) { this.setAccess(false); this.accessFailure(error); return false; }
       if (delivery.received) return true;
       if (error instanceof AccessError && error.status === 409) {
         try { await this.store.save(item.command, 'conflict'); } catch { /* Original uncertain bytes remain available. */ }
@@ -389,10 +391,10 @@ export class ConversationController {
   }
 }
 
-export function useConversation(options: { engagement: Engagement; session: Session; accessReady: boolean; onAccessFailure: () => void }) {
+export function useConversation(options: { engagement: Engagement; session: Session; accessReady: boolean; onAccessFailure: (error?: AccessError) => void }) {
   const { engagement, session, accessReady } = options;
   const failure = useRef(options.onAccessFailure); failure.current = options.onAccessFailure;
-  const controller = useMemo(() => new ConversationController(session.identity.id, engagement, () => failure.current(), { initialSession: session }),
+  const controller = useMemo(() => new ConversationController(session.identity.id, engagement, error => failure.current(error), { initialSession: session }),
     [session.identity.id, engagement.organisation_id, engagement.client_id, engagement.engagement_id]);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   useEffect(() => { controller.setSession(session); }, [controller, session]);

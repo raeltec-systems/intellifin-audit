@@ -4,6 +4,11 @@
 BMAD workflow, independently reviewed, and demonstrated in the actual browser.
 This checkpoint closes the four-story batch; Epic 20 remains in progress.
 
+The latest repaired foundation is recorded in the
+[owner-review checkpoint](OWNER-REPAIR-CHECKPOINT.md), including the accepted
+bootstrap fixes, account-switch repair, setup correction and current combined
+verification. The original batch results below remain historical evidence.
+
 The new `zobba/` application now has its own Rust API/control and worker processes,
 fresh PostgreSQL schema, scoped server sessions, durable Task commands and a
 working engagement conversation. Legacy Node code remains reference material;
@@ -32,7 +37,7 @@ Permissions are the next dependency, not a delivered capability of this batch.
 |20.1 Reproducible independent workspace|`9c272c960342313055f053b917841a3cbc3c90f6`|[Review](REVIEW-20.1.md), [implementation](STORY-20.1-IMPLEMENTATION.md)|
 |20.2 Scoped sign-in|`f6cf6bade4ceff910184b03f4e50601db39cd24a`|[Review](REVIEW-20.2.md), [implementation](STORY-20.2-IMPLEMENTATION.md)|
 |20.3 Durable commands/recovery|`1c598ca55511c6e27d6cc3a2e2b836912c2a9adf`|[Review](REVIEW-20.3.md), [implementation](../story-20-3-implementation-evidence.md)|
-|20.4 Attributed engagement conversation|This checkpoint|[Specification](../spec-20-4-engagement-conversation.md), [implementation](../story-20-4-implementation-evidence.md), [review](REVIEW-20.4.md)|
+|20.4 Attributed engagement conversation|`ac47de0204219aafdf85b364be71ec83cd3f8321`|[Specification](../spec-20-4-engagement-conversation.md), [implementation](../story-20-4-implementation-evidence.md), [review](REVIEW-20.4.md)|
 
 All checkpoints belong to `codex/zobba-foundation-batch`; none is pushed to main.
 The standard [sprint queue](../sprint-status.yaml) remains the sole status source.

@@ -13,7 +13,7 @@
     "test:browser": "pnpm --filter @zobba/web test:browser",
     "build": "pnpm --filter @zobba/web build",
     "api:generate": "pnpm --filter @zobba/web api:generate",
-    "fixture:setup": "pnpm --filter @zobba/oidc-fixture setup",
+    "fixture:setup": "pnpm --filter @zobba/oidc-fixture run setup",
     "fixture:start": "pnpm --filter @zobba/oidc-fixture start",
     "fixture:test": "pnpm --filter @zobba/oidc-fixture test"
   }

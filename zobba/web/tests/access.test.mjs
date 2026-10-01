@@ -8,6 +8,7 @@ const engagement = {
   client_name: 'Alder Manufacturing', engagement_id: 'engagement-a',
   engagement_name: 'FY2026 audit', roles: ['auditor', 'admin'],
 };
+const session = { identity: { id: 'actor-a', display_name: 'Alex' }, csrf_token: 'opaque' };
 
 test('session bootstrap requires server identity and a nonempty CSRF token', () => {
   assert.equal(parseSession({ identity: { id: 'actor-a', display_name: 'Alex' }, csrf_token: 'opaque' }).identity.id, 'actor-a');
@@ -30,7 +31,7 @@ test('engagement responses require every explicit scope and a current audit role
 test('a shaped response cannot silently change any selected scope identifier', async (context) => {
   for (const key of ['organisation_id', 'client_id', 'engagement_id']) {
     context.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ ...engagement, [key]: 'different' }), { status: 200 }));
-    await assert.rejects(readEngagement(engagement, new AbortController().signal), /scope changed/);
+    await assert.rejects(readEngagement(engagement, new AbortController().signal, session), /scope changed/);
     context.mock.restoreAll();
   }
 });
@@ -61,13 +62,14 @@ test('bounded pages preserve identical local IDs across scopes and request all c
     { engagements: [engagement, engagement], next_cursor: null }]) {
     assert.throws(() => parseEngagementPage(invalid));
   }
-  context.mock.method(globalThis, 'fetch', async (path) => {
+  context.mock.method(globalThis, 'fetch', async (path, options) => {
+    assert.equal(options.headers['X-Expected-Session'], session.csrf_token);
     const url = new URL(path, 'https://localhost');
     assert.equal(url.pathname, '/api/engagements');
     assert.deepEqual(Object.fromEntries(url.searchParams), { after_organisation_id: 'org-a', after_client_id: 'client-49', after_engagement_id: 'engagement-a' });
     return new Response(JSON.stringify({ engagements: [engagement], next_cursor: null }));
   });
-  assert.equal((await readEngagements(new AbortController().signal, after)).engagements.length, 1);
+  assert.equal((await readEngagements(session, new AbortController().signal, after)).engagements.length, 1);
 });
 
 test('already expired logout is success while refusal and outage remain errors', async (context) => {
@@ -83,9 +85,10 @@ test('already expired logout is success while refusal and outage remain errors',
 
 test('session identity cannot introduce an invalid actor binding or unbounded header', () => {
   const session = { identity: { id: 'actor-a', display_name: 'Alex' }, csrf_token: 'opaque' };
+  assert.equal(parseSession({ ...session, csrf_token: 'x'.repeat(128) }).csrf_token.length, 128);
   for (const id of ['', 'actor/other', 'actor\n', 'a'.repeat(129)]) assert.throws(() => parseSession({ ...session, identity: { ...session.identity, id } }));
   for (const display_name of ['', 'Alex\nAdmin', 'a'.repeat(201)]) assert.throws(() => parseSession({ ...session, identity: { ...session.identity, display_name } }));
-  for (const csrf_token of ['x\nInjected', 'x'.repeat(4097)]) assert.throws(() => parseSession({ ...session, csrf_token }));
+  for (const csrf_token of ['x\nInjected', 'x'.repeat(129)]) assert.throws(() => parseSession({ ...session, csrf_token }));
 });
 
 test('JSON response bodies are bounded even without a truthful Content-Length', async context => {

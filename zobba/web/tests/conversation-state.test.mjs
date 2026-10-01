@@ -34,6 +34,18 @@ function controller(context, overrides = {}, storage = memory(), actor = 'actor-
   return { client, store, storage, get failures() { return failed; } };
 }
 
+test('session mismatch withdraws projections and preserves uncertain work without making it dismissible conflict', async context => {
+  let posts = 0;
+  const state = controller(context, { engagement: async () => { throw new AccessError(412); }, post: async () => { posts++; return receipt; } });
+  const request = { key: 'session-bound-create', kind: 'create', content: 'Private uncertain work' };
+  await state.store.reserve(request); state.client.setAccess(true); await flush();
+  assert.equal(await state.client.retry(request.key), false);
+  assert.equal(posts, 0); assert.equal(state.failures, 1);
+  assert.equal(state.client.getSnapshot().messages.length, 0); assert.equal(state.client.getSnapshot().pending.length, 0);
+  const saved = await state.store.read(); assert.equal(saved.length, 1);
+  assert.notEqual(saved[0].status, 'conflict'); assert.deepEqual(saved[0].command, { ...request, task_id: null, cycle_id: null });
+});
+
 test('outbox persists immutable meaning per actor and complete scope, never credentials', async () => {
   const storage = memory(), store = new OutboxStore('actor-a', scope, () => storage);
   await store.reserve(command);

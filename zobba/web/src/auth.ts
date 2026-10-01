@@ -45,7 +45,7 @@ export function parseSession(value: unknown): Session {
     !('display_name' in value.identity) || typeof value.identity.display_name !== 'string' || !value.identity.display_name ||
     [...value.identity.display_name].length > 200 || /[\u0000-\u001f\u007f-\u009f]/.test(value.identity.display_name) ||
     !('csrf_token' in value) || typeof value.csrf_token !== 'string' || !value.csrf_token ||
-    value.csrf_token.length > 4096 || /[\u0000-\u001f\u007f-\u009f]/.test(value.csrf_token)) {
+    value.csrf_token.length > 128 || /[\u0000-\u001f\u007f-\u009f]/.test(value.csrf_token)) {
     throw new Error('Invalid session response');
   }
   return value as Session;
@@ -53,6 +53,12 @@ export function parseSession(value: unknown): Session {
 
 export async function readSession(signal: AbortSignal): Promise<Session> {
   return parseSession(await readJson('/auth/session', signal));
+}
+
+export function readSessionJson(path: string, session: Session | null, signal: AbortSignal): Promise<unknown> {
+  // In-memory refusal fence only: cookie-derived identity remains authoritative.
+  if (!session) throw new AccessError(401);
+  return readJson(path, signal, { headers: { 'X-Expected-Session': session.csrf_token } });
 }
 
 export async function logout(session: Session, signal: AbortSignal): Promise<void> {

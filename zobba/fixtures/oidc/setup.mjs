@@ -81,8 +81,8 @@ export function setup(directory = fixtureDirectory) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    setup();
-    console.log('Synthetic OIDC fixture prepared; source fixtures/oidc/.local/env.sh from the zobba workspace.');
+    const directory = setup();
+    console.log(`Synthetic OIDC fixture prepared; source ${shellQuote(join(directory, 'env.sh'))} in each shell.`);
   } catch (error) {
     const safeErrors = new Set(['fixture_directory_invalid', 'fixture_incomplete_remove_local_directory_to_regenerate', 'fixture_version_unsupported']);
     console.error(safeErrors.has(error.message) ? error.message : 'fixture_setup_failed');

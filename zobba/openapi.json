@@ -202,6 +202,22 @@
           "auth"
         ],
         "operationId": "session",
+        "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -215,6 +231,16 @@
           },
           "401": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed; compose fresh reads without replacing the current cookie",
             "content": {
               "application/json": {
                 "schema": {
@@ -248,6 +274,20 @@
         ],
         "operationId": "list",
         "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
           {
             "name": "after_organisation_id",
             "in": "query",
@@ -314,6 +354,16 @@
               }
             }
           },
+          "412": {
+            "description": "Session changed; compose fresh reads without replacing the current cookie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "503": {
             "description": "",
             "content": {
@@ -339,6 +389,20 @@
         ],
         "operationId": "open",
         "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
           {
             "name": "engagement_id",
             "in": "path",
@@ -404,6 +468,16 @@
               }
             }
           },
+          "412": {
+            "description": "Session changed; compose fresh reads without replacing the current cookie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "503": {
             "description": "",
             "content": {
@@ -429,6 +503,20 @@
         ],
         "operationId": "get_conversation",
         "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
           {
             "name": "engagement_id",
             "in": "path",
@@ -485,6 +573,16 @@
               }
             }
           },
+          "412": {
+            "description": "Session changed; compose fresh reads without replacing the current cookie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "429": {
             "description": "",
             "content": {
@@ -520,6 +618,20 @@
         ],
         "operationId": "get_conversation_events",
         "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
           {
             "name": "engagement_id",
             "in": "path",
@@ -597,6 +709,16 @@
               }
             }
           },
+          "412": {
+            "description": "Session changed; compose fresh reads without replacing the current cookie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "429": {
             "description": "",
             "content": {
@@ -632,6 +754,20 @@
         ],
         "operationId": "get_conversation_history",
         "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
           {
             "name": "engagement_id",
             "in": "path",
@@ -734,6 +870,16 @@
           },
           "409": {
             "description": "Requested watermark is ahead of retained history; resnapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed; compose fresh reads without replacing the current cookie",
             "content": {
               "application/json": {
                 "schema": {
@@ -1104,6 +1250,20 @@
         "operationId": "list_task_events",
         "parameters": [
           {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
+          {
             "name": "engagement_id",
             "in": "path",
             "required": true,
@@ -1180,6 +1340,16 @@
               }
             }
           },
+          "412": {
+            "description": "Session changed; compose fresh reads without replacing the current cookie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "429": {
             "description": "",
             "content": {
@@ -1215,6 +1385,20 @@
         ],
         "operationId": "list_tasks",
         "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
           {
             "name": "engagement_id",
             "in": "path",
@@ -1283,6 +1467,16 @@
               }
             }
           },
+          "412": {
+            "description": "Session changed; compose fresh reads without replacing the current cookie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "429": {
             "description": "",
             "content": {
@@ -1318,6 +1512,20 @@
         ],
         "operationId": "get_task",
         "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
           {
             "name": "engagement_id",
             "in": "path",
@@ -1374,6 +1582,16 @@
           },
           "403": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed; compose fresh reads without replacing the current cookie",
             "content": {
               "application/json": {
                 "schema": {

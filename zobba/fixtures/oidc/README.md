@@ -15,6 +15,12 @@ pnpm fixture:setup
 pnpm fixture:start
 ```
 
+The setup shortcut expands to `pnpm --filter @zobba/oidc-fixture run setup`.
+The explicit `run` is required because `pnpm setup` configures pnpm's shell
+environment instead of executing this package's fixture script. For an isolated
+fixture, set `ZOBBA_FIXTURE_DIR` to a new directory path before setup and source
+`"$ZOBBA_FIXTURE_DIR/env.sh"`; an existing empty directory is refused as incomplete.
+
 In this managed development machine, first run
 `. /workspace/zobba-build-tools/activate.sh`. That path is a machine convenience,
 not an application dependency. Run the API and Vite in separate shells with the

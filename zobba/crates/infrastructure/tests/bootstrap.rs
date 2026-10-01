@@ -26,6 +26,67 @@ async fn snapshot(conn: &mut PgConnection) -> Vec<String> {
       FROM pg_catalog.pg_namespace n LEFT JOIN pg_catalog.pg_class c ON c.relnamespace=n.oid
       WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema' ORDER BY n.nspname,c.relname
     "#).fetch_all(&mut *conn).await.expect("snapshot definitions and privileges");
+    // Include catalog-only objects and authority edges in no-mutation evidence.
+    for (catalog, namespace) in [
+        ("pg_statistic_ext", "stxnamespace"),
+        ("pg_collation", "collnamespace"),
+        ("pg_operator", "oprnamespace"),
+        ("pg_opclass", "opcnamespace"),
+        ("pg_opfamily", "opfnamespace"),
+        ("pg_conversion", "connamespace"),
+        ("pg_ts_config", "cfgnamespace"),
+        ("pg_ts_dict", "dictnamespace"),
+        ("pg_ts_parser", "prsnamespace"),
+        ("pg_ts_template", "tmplnamespace"),
+        ("pg_proc", "pronamespace"),
+        ("pg_type", "typnamespace"),
+    ] {
+        let rows: String = sqlx::query_scalar(&format!("SELECT COALESCE(jsonb_agg(to_jsonb(o) ORDER BY o.oid),'[]'::jsonb)::text FROM pg_catalog.{catalog} o JOIN pg_catalog.pg_namespace n ON n.oid=o.{namespace} WHERE n.nspname='public'"))
+            .fetch_one(&mut *conn).await.unwrap();
+        snapshot.push(rows);
+    }
+    let triggers: String = sqlx::query_scalar("SELECT COALESCE(jsonb_agg(to_jsonb(o) ORDER BY o.oid),'[]'::jsonb)::text FROM pg_catalog.pg_event_trigger o")
+        .fetch_one(&mut *conn).await.unwrap();
+    snapshot.push(triggers);
+    for (catalog, parent, link, namespace) in [
+        ("pg_ts_config_map", "pg_ts_config", "mapcfg", "cfgnamespace"),
+        ("pg_amop", "pg_opfamily", "amopfamily", "opfnamespace"),
+        ("pg_amproc", "pg_opfamily", "amprocfamily", "opfnamespace"),
+    ] {
+        let rows: String = sqlx::query_scalar(&format!("SELECT COALESCE(jsonb_agg(to_jsonb(o) ORDER BY to_jsonb(o)::text),'[]'::jsonb)::text FROM pg_catalog.{catalog} o JOIN pg_catalog.{parent} p ON p.oid=o.{link} JOIN pg_catalog.pg_namespace n ON n.oid=p.{namespace} WHERE n.nspname='public'"))
+            .fetch_one(&mut *conn).await.unwrap();
+        snapshot.push(rows);
+    }
+    let config = Configuration::from_environment();
+    let mut roles = vec![
+        database_options(&config.runtime)
+            .unwrap()
+            .get_username()
+            .to_owned(),
+        database_options(&config.migration)
+            .unwrap()
+            .get_username()
+            .to_owned(),
+    ];
+    for suffix in ["runtime", "parent", "login"] {
+        roles.push(format!("zobba_fixture_{}_{suffix}", std::process::id()));
+    }
+    let memberships: String = sqlx::query_scalar(
+        r#"
+        WITH RECURSIVE relevant(oid) AS (
+            SELECT oid FROM pg_catalog.pg_roles WHERE rolname=ANY($1)
+            UNION
+            SELECT m.roleid FROM pg_catalog.pg_auth_members m JOIN relevant r ON m.member=r.oid
+        )
+        SELECT COALESCE(jsonb_agg(to_jsonb(m) ORDER BY m.oid),'[]'::jsonb)::text
+        FROM pg_catalog.pg_auth_members m WHERE m.member IN (SELECT oid FROM relevant)
+    "#,
+    )
+    .bind(&roles)
+    .fetch_one(&mut *conn)
+    .await
+    .unwrap();
+    snapshot.push(memberships);
     // Only ordinary owned-name tables are read, never an attacker-controlled view.
     for table in ["_sqlx_migrations", "zobba_bootstrap"] {
         let ordinary: bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname=$1 AND c.relkind='r')").bind(table).fetch_one(&mut *conn).await.unwrap();
@@ -237,6 +298,7 @@ async fn bootstrap_contract() {
     reset(&config, &mut admin).await;
     upgrade_contract(&config, &mut admin).await;
     no_foreign_code_runs(&config, &mut admin).await;
+    foreign_catalog_objects(&config, &mut admin).await;
     authority_and_atomicity(&config, &mut admin).await;
     lock_and_blackhole(&config, &mut admin).await;
     reset(&config, &mut admin).await;
@@ -314,6 +376,93 @@ async fn no_foreign_code_runs(config: &Configuration, conn: &mut PgConnection) {
     }
 }
 
+async fn foreign_catalog_objects(config: &Configuration, conn: &mut PgConnection) {
+    let runtime = database_options(&config.runtime).unwrap();
+    let role = runtime.get_username();
+    let mut admin = PgConnection::connect(&config.admin).await.unwrap();
+    // Catalog-only fixtures exercise each formerly omitted inventory family.
+    for (create, remove) in [
+        (
+            "CREATE COLLATION public.alien FROM pg_catalog.\"C\"",
+            "DROP COLLATION public.alien",
+        ),
+        (
+            "CREATE OPERATOR public.=== (FUNCTION=pg_catalog.int4eq, LEFTARG=integer, RIGHTARG=integer)",
+            "DROP OPERATOR public.=== (integer,integer)",
+        ),
+        (
+            "CREATE OPERATOR FAMILY public.alien USING btree",
+            "DROP OPERATOR FAMILY public.alien USING btree",
+        ),
+        (
+            "CREATE OPERATOR CLASS public.alien FOR TYPE integer USING btree AS OPERATOR 1 pg_catalog.< (integer,integer), FUNCTION 1 pg_catalog.btint4cmp(integer,integer)",
+            "DROP OPERATOR CLASS public.alien USING btree; DROP OPERATOR FAMILY public.alien USING btree",
+        ),
+        (
+            "CREATE CONVERSION public.alien FOR 'UTF8' TO 'LATIN1' FROM pg_catalog.utf8_to_iso8859_1",
+            "DROP CONVERSION public.alien",
+        ),
+        (
+            "CREATE TEXT SEARCH CONFIGURATION public.alien (COPY=pg_catalog.simple)",
+            "DROP TEXT SEARCH CONFIGURATION public.alien",
+        ),
+        (
+            "CREATE TEXT SEARCH DICTIONARY public.alien (TEMPLATE=pg_catalog.simple)",
+            "DROP TEXT SEARCH DICTIONARY public.alien",
+        ),
+        (
+            "CREATE TEXT SEARCH TEMPLATE public.alien (LEXIZE=pg_catalog.dsimple_lexize)",
+            "DROP TEXT SEARCH TEMPLATE public.alien",
+        ),
+        (
+            "CREATE TEXT SEARCH PARSER public.alien (START=pg_catalog.prsd_start, GETTOKEN=pg_catalog.prsd_nexttoken, END=pg_catalog.prsd_end, LEXTYPES=pg_catalog.prsd_lextype)",
+            "DROP TEXT SEARCH PARSER public.alien",
+        ),
+    ] {
+        for bootstrapped in [false, true] {
+            reset(config, conn).await;
+            let running = if bootstrapped {
+                migrate(&config.migration, role).await.unwrap();
+                Some(RuntimeDatabase::connect(&config.runtime).await.unwrap())
+            } else {
+                None
+            };
+            admin
+                .execute(create)
+                .await
+                .expect("create foreign catalog fixture");
+            migration_refused_without_mutation(conn, config, role, BootstrapError::SchemaMismatch)
+                .await;
+            refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
+            if let Some(running) = &running {
+                assert_eq!(running.check().await, Err(BootstrapError::SchemaMismatch));
+            }
+            admin
+                .execute(remove)
+                .await
+                .expect("remove foreign catalog fixture");
+            if let Some(running) = running {
+                assert_eq!(running.check().await.unwrap().0, 3);
+            }
+        }
+    }
+    reset(config, conn).await;
+    migrate(&config.migration, role).await.unwrap();
+    let running = RuntimeDatabase::connect(&config.runtime).await.unwrap();
+    admin
+        .execute(
+            "CREATE STATISTICS public.alien ON product,schema_version FROM public.zobba_bootstrap",
+        )
+        .await
+        .unwrap();
+    migration_refused_without_mutation(conn, config, role, BootstrapError::SchemaMismatch).await;
+    refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
+    assert_eq!(running.check().await, Err(BootstrapError::SchemaMismatch));
+    admin.execute("DROP STATISTICS public.alien").await.unwrap();
+    assert_eq!(running.check().await.unwrap().0, 3);
+    reset(config, conn).await;
+}
+
 async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection) {
     config.guard_connection(conn).await;
     let mut privileged = PgConnection::connect_with(&database_options(&config.admin).unwrap())
@@ -353,9 +502,71 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
     migrate(&config.migration, &target)
         .await
         .expect("safe independent runtime target");
-    RuntimeDatabase::connect(&target_url)
+    let running = RuntimeDatabase::connect(&target_url)
         .await
         .expect("safe nonowner target starts");
+
+    for table in [
+        "zobba_bootstrap",
+        "_sqlx_migrations",
+        "sessions",
+        "tasks",
+        "task_deliveries",
+    ] {
+        privileged
+            .execute(format!("GRANT MAINTAIN ON public.{table} TO \"{target}\"").as_str())
+            .await
+            .unwrap();
+        let mut capable = PgConnection::connect(&target_url).await.unwrap();
+        capable
+            .execute(format!("VACUUM public.{table}").as_str())
+            .await
+            .expect("direct MAINTAIN really permits maintenance");
+        capable.close().await.unwrap();
+        refused_without_mutation(conn, &target_url, BootstrapError::UnsafeRuntimeRole).await;
+        migration_refused_without_mutation(
+            conn,
+            config,
+            &target,
+            BootstrapError::UnsafeRuntimeRole,
+        )
+        .await;
+        assert_eq!(
+            running.check().await,
+            Err(BootstrapError::UnsafeRuntimeRole)
+        );
+        privileged
+            .execute(format!("REVOKE MAINTAIN ON public.{table} FROM \"{target}\"").as_str())
+            .await
+            .unwrap();
+        assert_eq!(running.check().await.unwrap().0, 3);
+    }
+    privileged.execute(format!("GRANT pg_read_server_files TO \"{parent}\" WITH INHERIT TRUE, SET FALSE; GRANT \"{parent}\" TO \"{target}\" WITH INHERIT FALSE, SET TRUE").as_str()).await.unwrap();
+    let mut capable = PgConnection::connect(&target_url).await.unwrap();
+    capable
+        .execute(format!("SET ROLE \"{parent}\"").as_str())
+        .await
+        .unwrap();
+    let inherited: bool = sqlx::query_scalar(
+        "SELECT pg_catalog.pg_has_role(current_user,'pg_read_server_files','USAGE')",
+    )
+    .fetch_one(&mut capable)
+    .await
+    .unwrap();
+    assert!(
+        inherited,
+        "mixed path must expose actual server-file authority"
+    );
+    capable.close().await.unwrap();
+    refused_without_mutation(conn, &target_url, BootstrapError::UnsafeRuntimeRole).await;
+    migration_refused_without_mutation(conn, config, &target, BootstrapError::UnsafeRuntimeRole)
+        .await;
+    assert_eq!(
+        running.check().await,
+        Err(BootstrapError::UnsafeRuntimeRole)
+    );
+    privileged.execute(format!("REVOKE \"{parent}\" FROM \"{target}\"; REVOKE pg_read_server_files FROM \"{parent}\"").as_str()).await.unwrap();
+    assert_eq!(running.check().await.unwrap().0, 3);
 
     for flags in [
         "REPLICATION",
@@ -447,6 +658,12 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         .unwrap();
     let migrator = database_options(&config.migration).unwrap();
     let migrator_role = migrator.get_username();
+    let migrator_is_superuser: bool =
+        sqlx::query_scalar("SELECT rolsuper FROM pg_catalog.pg_roles WHERE rolname=$1")
+            .bind(migrator_role)
+            .fetch_one(&mut privileged)
+            .await
+            .unwrap();
     privileged
         .execute(
             format!("GRANT \"{migrator_role}\" TO \"{target}\" WITH INHERIT FALSE, SET TRUE")
@@ -462,6 +679,47 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         .await
         .unwrap();
 
+    privileged.execute(format!("GRANT \"{migrator_role}\" TO \"{target}\" WITH ADMIN TRUE, INHERIT FALSE, SET FALSE").as_str()).await.unwrap();
+    // ADMIN-only can promote membership in a restricted migrator. PostgreSQL
+    // reserves changes to superuser membership for superusers, even with ADMIN.
+    // Roll either transaction back before checking the original authority edge.
+    let mut capable = PgConnection::connect(&target_url).await.unwrap();
+    capable.execute("BEGIN").await.unwrap();
+    let promotion = capable
+        .execute(format!("GRANT \"{migrator_role}\" TO \"{target}\" WITH SET TRUE").as_str())
+        .await;
+    if migrator_is_superuser {
+        let error = promotion.expect_err("only superusers may alter superuser membership");
+        assert_eq!(
+            error
+                .as_database_error()
+                .and_then(|error| error.code())
+                .as_deref(),
+            Some("42501"),
+            "superuser membership promotion must fail for insufficient privilege"
+        );
+    } else {
+        promotion.expect("ADMIN permits restricted-migrator self-regrant");
+        capable
+            .execute(format!("SET LOCAL ROLE \"{migrator_role}\"").as_str())
+            .await
+            .expect("regrant enables restricted migrator role");
+    }
+    capable.execute("ROLLBACK").await.unwrap();
+    capable.close().await.unwrap();
+    refused_without_mutation(conn, &target_url, BootstrapError::UnsafeRuntimeRole).await;
+    migration_refused_without_mutation(conn, config, &target, BootstrapError::UnsafeRuntimeRole)
+        .await;
+    assert_eq!(
+        running.check().await,
+        Err(BootstrapError::UnsafeRuntimeRole)
+    );
+    privileged
+        .execute(format!("REVOKE \"{migrator_role}\" FROM \"{target}\"").as_str())
+        .await
+        .unwrap();
+    assert_eq!(running.check().await.unwrap().0, 3);
+
     // Simulate interruption after SQLx creates its ledger but before bootstrap
     // finishes. The outer transaction must remove BOTH tables and all grants.
     reset(config, conn).await;
@@ -471,10 +729,79 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         IF EXISTS(SELECT 1 FROM pg_catalog.pg_event_trigger_ddl_commands() WHERE object_identity='public.zobba_bootstrap')
         THEN RAISE EXCEPTION 'synthetic bootstrap interruption'; END IF;
       END $$;
-      CREATE EVENT TRIGGER zobba_fixture_interrupt ON ddl_command_end WHEN TAG IN ('CREATE TABLE') EXECUTE FUNCTION pg_catalog.zobba_fixture_interrupt();
     "#).await.unwrap();
-    migration_refused_without_mutation(conn, config, &target, BootstrapError::MigrationFailed)
-        .await;
+    let trigger = "CREATE EVENT TRIGGER zobba_fixture_interrupt ON ddl_command_end WHEN TAG IN ('CREATE TABLE') EXECUTE FUNCTION pg_catalog.zobba_fixture_interrupt()";
+    migrate(&config.migration, &target).await.unwrap();
+    // An already-installed event trigger is foreign, even outside public.
+    privileged.execute(trigger).await.unwrap();
+    assert_eq!(running.check().await, Err(BootstrapError::SchemaMismatch));
+    migration_refused_without_mutation(conn, config, &target, BootstrapError::SchemaMismatch).await;
+    refused_without_mutation(conn, &target_url, BootstrapError::SchemaMismatch).await;
+    privileged
+        .execute("DROP EVENT TRIGGER zobba_fixture_interrupt")
+        .await
+        .unwrap();
+    assert_eq!(running.check().await.unwrap().0, 3);
+    reset(config, conn).await;
+    privileged.execute(trigger).await.unwrap();
+    migration_refused_without_mutation(conn, config, &target, BootstrapError::SchemaMismatch).await;
+    refused_without_mutation(conn, &target_url, BootstrapError::SchemaMismatch).await;
+    privileged
+        .execute("DROP EVENT TRIGGER zobba_fixture_interrupt")
+        .await
+        .unwrap();
+    // Block catalog writes, but allow preflight reads. Install the interruption
+    // only after the migrator reaches CREATE TABLE, then let its transaction run.
+    let mut blocker = tokio::time::timeout(
+        Duration::from_secs(5),
+        PgConnection::connect_with(&database_options(&config.admin).unwrap()),
+    )
+    .await
+    .expect("bounded blocker connection")
+    .unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        blocker.execute("BEGIN; LOCK TABLE pg_catalog.pg_class IN SHARE MODE"),
+    )
+    .await
+    .expect("bounded catalog lock acquisition")
+    .unwrap();
+    let application = format!("zobba_interrupt_{}", std::process::id());
+    let mut interrupted_url = url::Url::parse(&config.migration).unwrap();
+    let query: Vec<(String, String)> = interrupted_url
+        .query_pairs()
+        .filter(|(key, _)| key != "application_name")
+        .map(|(key, value)| (key.into_owned(), value.into_owned()))
+        .collect();
+    interrupted_url.set_query(None);
+    interrupted_url
+        .query_pairs_mut()
+        .extend_pairs(query)
+        .append_pair("application_name", &application);
+    let (result, before) = tokio::join!(migrate(interrupted_url.as_str(), &target), async {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            let blocked: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_locks l JOIN pg_catalog.pg_stat_activity a ON a.pid=l.pid WHERE l.database=(SELECT oid FROM pg_catalog.pg_database WHERE datname=current_database()) AND a.datname=current_database() AND a.usename=$1 AND a.application_name=$2 AND l.relation='pg_catalog.pg_class'::regclass AND l.mode='RowExclusiveLock' AND NOT l.granted)").bind(migrator_role).bind(&application).fetch_one(&mut privileged).await.unwrap();
+            if blocked {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "migration never reached catalog writes"
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        privileged.execute(trigger).await.unwrap();
+        let before = snapshot(conn).await;
+        blocker.execute("COMMIT").await.unwrap();
+        before
+    });
+    assert_eq!(result, Err(BootstrapError::MigrationFailed));
+    assert_eq!(
+        before,
+        snapshot(conn).await,
+        "interrupted transaction left bootstrap objects or grants"
+    );
     privileged.execute("DROP EVENT TRIGGER zobba_fixture_interrupt; DROP FUNCTION pg_catalog.zobba_fixture_interrupt()").await.unwrap();
     migrate(&config.migration, &target)
         .await

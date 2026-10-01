@@ -575,7 +575,10 @@ export interface operations {
     session: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
+                "X-Expected-Session"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -590,6 +593,15 @@ export interface operations {
                 };
             };
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed; compose fresh reads without replacing the current cookie */
+            412: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -615,7 +627,10 @@ export interface operations {
                 after_client_id?: string;
                 after_engagement_id?: string;
             };
-            header?: never;
+            header?: {
+                /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
+                "X-Expected-Session"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -647,6 +662,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Session changed; compose fresh reads without replacing the current cookie */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -663,7 +687,10 @@ export interface operations {
                 organisation_id: string;
                 client_id: string;
             };
-            header?: never;
+            header?: {
+                /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
+                "X-Expected-Session"?: string | null;
+            };
             path: {
                 engagement_id: string;
             };
@@ -696,6 +723,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Session changed; compose fresh reads without replacing the current cookie */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -712,7 +748,10 @@ export interface operations {
                 organisation_id: string;
                 client_id: string;
             };
-            header?: never;
+            header?: {
+                /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
+                "X-Expected-Session"?: string | null;
+            };
             path: {
                 engagement_id: string;
             };
@@ -738,6 +777,15 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed; compose fresh reads without replacing the current cookie */
+            412: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -771,7 +819,10 @@ export interface operations {
                 /** @description Last delivered decimal cursor or snapshot watermark */
                 after: string;
             };
-            header?: never;
+            header?: {
+                /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
+                "X-Expected-Session"?: string | null;
+            };
             path: {
                 engagement_id: string;
             };
@@ -812,6 +863,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Session changed; compose fresh reads without replacing the current cookie */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -842,7 +902,10 @@ export interface operations {
                 /** @description Optional exact Task history */
                 task_id?: string;
             };
-            header?: never;
+            header?: {
+                /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
+                "X-Expected-Session"?: string | null;
+            };
             path: {
                 engagement_id: string;
             };
@@ -884,6 +947,15 @@ export interface operations {
             };
             /** @description Requested watermark is ahead of retained history; resnapshot */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed; compose fresh reads without replacing the current cookie */
+            412: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1085,7 +1157,10 @@ export interface operations {
                 /** @description Decimal durable cursor; omitted starts at zero */
                 after?: string;
             };
-            header?: never;
+            header?: {
+                /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
+                "X-Expected-Session"?: string | null;
+            };
             path: {
                 engagement_id: string;
             };
@@ -1126,6 +1201,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Session changed; compose fresh reads without replacing the current cookie */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -1152,7 +1236,10 @@ export interface operations {
                 /** @description Exclusive Task ID cursor from next_cursor */
                 after_task_id?: string;
             };
-            header?: never;
+            header?: {
+                /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
+                "X-Expected-Session"?: string | null;
+            };
             path: {
                 engagement_id: string;
             };
@@ -1184,6 +1271,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Session changed; compose fresh reads without replacing the current cookie */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -1208,7 +1304,10 @@ export interface operations {
                 organisation_id: string;
                 client_id: string;
             };
-            header?: never;
+            header?: {
+                /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
+                "X-Expected-Session"?: string | null;
+            };
             path: {
                 engagement_id: string;
                 task_id: string;
@@ -1234,6 +1333,15 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed; compose fresh reads without replacing the current cookie */
+            412: {
                 headers: {
                     [name: string]: unknown;
                 };

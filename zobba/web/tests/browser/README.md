@@ -64,6 +64,32 @@ asserts real HTTP 503 and **Unavailable**, then restores the sockets and uses
 keyboard **Check again** to recover **Ready** without losing focus. Neither the
 PostgreSQL service nor any developer server is stopped.
 
+The database harness resolves bracketed IPv6 hosts as real socket addresses and
+uses an explicit URL port first, then `PGPORT`, then PostgreSQL's default 5432.
+Migration, runtime proxy and test-admin connections share that effective port;
+removing inherited PostgreSQL variables from child environments preserves it.
+Invalid effective ports refuse with a fixed diagnostic. From `zobba/`, the
+focused socket regressions exercise IPv4/IPv6, port precedence, disconnect and
+recovery without a PostgreSQL schema reset:
+
+```sh
+pnpm --filter @zobba/web exec node --test tests/database-endpoint.test.mjs
+```
+
+The normal browser suite also routes all three guarded test roles through an
+owned relay on an ephemeral port, using portless URLs plus `PGPORT`. It checks the
+original database bindings before rewriting them. Migration and test-admin SQL
+must refuse while that relay is disconnected and recover after it resumes; actual
+HTTPS sign-in proves the authenticated path. The relay runs independently
+of the test's synchronous CLI calls and never changes the PostgreSQL service.
+
+`account-binding.spec.ts` holds a completed real session response while another
+tab signs in to the same engagement as a different account. It verifies the new
+identity, absence of the old private draft and zero command replay. The same
+boundary verifies retained draft/editor/focus after same-account rotation,
+obsolete-session refusal across every protected GET, delayed401 cookie safety,
+and bounded recovery when the session keeps changing.
+
 If Chromium is already installed, select it without another download:
 
 ```sh

@@ -1,10 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { AccessError } from '../src/auth.ts';
+import { readConversation, readEvents, readHistory, readTask, readTasks } from '../src/conversation.ts';
 import { compareCursors, parseCommand, parseEvents, parseHistory, parseMessage, parseReceipt, parseSnapshot, parseTask, postCommand } from '../src/conversation.ts';
 const scope = { organisation_id: 'org-a', client_id: 'client-a', engagement_id: 'engagement-a' };
 const task = { id: 'task-a', cycle_id: 'cycle-a', objective: 'Objective', working_brief: 'Retained guidance', state: 'waiting', cessation: 'confirmed', intent_revision: '2', revision: '3', execution_epoch: '1', accountable_actor: 'actor-a', accountable_label: 'Alex' };
 const message = { command_id: 'command-a', key: 'key-a', author_id: 'actor-a', author_label: 'Alex', kind: 'create', task_id: 'task-a', cycle_id: 'cycle-a', target_task_id: null, target_cycle_id: null, content: 'Objective', received_cursor: '9007199254740993', applied_cursor: '9007199254740994' };
 const snapshot = { scope, audience: 'engagement_members', watermark: '9007199254740994', latest_activity: { cursor: '9007199254740994', task_id: 'task-a' }, messages: [message], before_cursor: null, tasks: [task], next_task_cursor: null };
+
+test('every workspace read binds the current session and preserves mismatch status distinctly from command conflicts', async context => {
+  const session = { identity: { id: 'actor-a', display_name: 'Alex' }, csrf_token: 'read-binding' };
+  const signal = new AbortController().signal;
+  let reads = 0;
+  context.mock.method(globalThis, 'fetch', async (_path, options) => {
+    assert.equal(options.headers['X-Expected-Session'], session.csrf_token); reads++;
+    return Response.json({ error: 'session_changed' }, { status: 412 });
+  });
+  for (const read of [() => readConversation(scope, signal, session), () => readEvents(scope, '0', signal, session),
+    () => readHistory(scope, '2', '1', signal, session), () => readTasks(scope, 'task-a', signal, session),
+    () => readTask(scope, 'task-a', signal, session)]) {
+    await assert.rejects(read(), error => error instanceof AccessError && error.status === 412);
+  }
+  assert.equal(reads, 5);
+  await assert.rejects(readConversation(scope, signal, null), error => error instanceof AccessError && error.status === 401);
+  assert.equal(reads, 5, 'an unbound controller cannot issue a protected HTTP read');
+});
 
 test('decimal cursors retain precision and bounded canonical integer representation', () => {
   assert.ok(compareCursors('9007199254740993', '9007199254740992') > 0);

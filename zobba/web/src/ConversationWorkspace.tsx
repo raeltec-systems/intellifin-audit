@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
-import type { Session } from './auth';
+import type { AccessError, Session } from './auth';
 import type { Engagement } from './engagements';
 import type { ConversationMessage, Task, TaskCommand } from './conversation';
 import { useConversation } from './conversation-state';
@@ -9,7 +9,8 @@ interface WorkspaceProps {
   engagement: Engagement;
   session: Session;
   accessReady: boolean;
-  onAccessFailure: () => void;
+  onAccessFailure: (error?: AccessError) => void;
+  onAccessStable: () => void;
   onProjectionUsable: (usable: boolean) => void;
 }
 
@@ -46,7 +47,7 @@ function targetKey(target: Target): string {
 }
 function cycleLabel(id: string): string { return id.slice(0, 8); }
 
-export function ConversationWorkspace({ engagement, session, accessReady, onAccessFailure, onProjectionUsable }: WorkspaceProps) {
+export function ConversationWorkspace({ engagement, session, accessReady, onAccessFailure, onAccessStable, onProjectionUsable }: WorkspaceProps) {
   const conversation = useConversation({ engagement, session, accessReady, onAccessFailure });
   const [draft, setDraft] = useState('');
   const [target, setTarget] = useState<Target>({ kind: 'create' });
@@ -76,6 +77,9 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
   const controlsReady = projectionReady;
 
   useLayoutEffect(() => { onProjectionUsable(accessReady && conversation.connection !== 'loading'); }, [accessReady, conversation.connection, onProjectionUsable]);
+  useLayoutEffect(() => {
+    if (accessReady && conversation.connection === 'connected') onAccessStable();
+  }, [accessReady, conversation.connection, onAccessStable]);
 
   useLayoutEffect(() => {
     if (focusInspection.current && accessReady && selectedId) {

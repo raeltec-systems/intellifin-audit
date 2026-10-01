@@ -1,3 +1,29 @@
+## 2026-10-01 — Foundation read binding and fixture setup
+
+Compose protected browser reads from one captured session, using its in-memory
+CSRF value as the optional `X-Expected-Session` refusal fence. The cookie remains
+the only identity authority. A mismatch returns412 `session_changed` without
+Set-Cookie; share one automatic recovery budget across engagement composition and
+conversation reads. Successful engagement reads alone cannot reset it while the
+conversation keeps returning412. Restore it only after a usable verified projection
+or explicit user recovery, and fail closed while exhausted. Generic401 must not
+expire a newer valid cookie through a delayed reply;
+explicit logout still expires it. Hold an actual completed old session response
+while another tab replaces the account to regress this race. Verify same-account
+session rotation retains the mounted draft/editor and focus after fresh bound
+reads, while another actor gets a new workspace even within the same engagement.
+
+Use `pnpm --filter @zobba/oidc-fixture run setup` explicitly. The shorter
+`pnpm ... setup` invokes pnpm's own shell setup and leaves the OIDC fixture absent.
+The workspace `pnpm fixture:setup` shortcut includes `run`. Set `ZOBBA_FIXTURE_DIR`
+to a new child path in a private temporary directory for isolated checks, then source
+that directory's `env.sh`; do not replace the development fixture. Repeating setup
+retains existing key/credential bytes and verifies certificate validity. CI keeps
+its fixture in runner temporary storage and exercises the root shortcut, checking
+the generated files before the fixture suite can create independent test material.
+Use `$RUNNER_TEMP` inside a workflow step; the `runner` expression context is not
+available in job-level `env`. The setup message names its configured `env.sh` path.
+
 ## 2026-09-30 — Story 20.4 conversation, delivery and recovery boundaries
 
 Final 20.4 gates: 81 Rust tests passed (one explicit helper exercised by its parent),

@@ -1,4 +1,4 @@
-import { readJson } from './auth.ts';
+import { readJson, readSessionJson } from './auth.ts';
 import type { Session } from './auth.ts';
 import { parseScope, sameScope } from './engagements.ts';
 import type { Scope } from './engagements.ts';
@@ -156,20 +156,20 @@ function route(scope: Scope, suffix: string, extra: Record<string, string> = {})
   parseScope(scope);
   return `/engagements/${encodeURIComponent(scope.engagement_id)}/${suffix}?${new URLSearchParams({ organisation_id: scope.organisation_id, client_id: scope.client_id, ...extra })}`;
 }
-export async function readConversation(scope: Scope, signal: AbortSignal): Promise<ConversationSnapshot> {
-  return parseSnapshot(await readJson(route(scope, 'conversation'), signal), scope);
+export async function readConversation(scope: Scope, signal: AbortSignal, session: Session | null): Promise<ConversationSnapshot> {
+  return parseSnapshot(await readSessionJson(route(scope, 'conversation'), session, signal), scope);
 }
-export async function readHistory(scope: Scope, through: string, before: string, signal: AbortSignal): Promise<ConversationHistory> {
-  return parseHistory(await readJson(route(scope, 'conversation/history', { through: cursor(through), before: cursor(before) }), signal), scope, through, before);
+export async function readHistory(scope: Scope, through: string, before: string, signal: AbortSignal, session: Session | null): Promise<ConversationHistory> {
+  return parseHistory(await readSessionJson(route(scope, 'conversation/history', { through: cursor(through), before: cursor(before) }), session, signal), scope, through, before);
 }
-export async function readEvents(scope: Scope, after: string, signal: AbortSignal): Promise<ConversationEvents> {
-  return parseEvents(await readJson(route(scope, 'conversation/events', { after: cursor(after) }), signal), scope, after);
+export async function readEvents(scope: Scope, after: string, signal: AbortSignal, session: Session | null): Promise<ConversationEvents> {
+  return parseEvents(await readSessionJson(route(scope, 'conversation/events', { after: cursor(after) }), session, signal), scope, after);
 }
-export async function readTasks(scope: Scope, after: string, signal: AbortSignal) {
-  return parseTaskPage(await readJson(route(scope, 'tasks', { after_task_id: identifier(after) }), signal), after);
+export async function readTasks(scope: Scope, after: string, signal: AbortSignal, session: Session | null) {
+  return parseTaskPage(await readSessionJson(route(scope, 'tasks', { after_task_id: identifier(after) }), session, signal), after);
 }
-export async function readTask(scope: Scope, id: string, signal: AbortSignal): Promise<Task> {
-  const task = parseTask(await readJson(route(scope, `tasks/${identifier(id)}`), signal));
+export async function readTask(scope: Scope, id: string, signal: AbortSignal, session: Session | null): Promise<Task> {
+  const task = parseTask(await readSessionJson(route(scope, `tasks/${identifier(id)}`), session, signal));
   if (task.id !== id) invalid();
   return task;
 }

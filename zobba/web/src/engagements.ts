@@ -1,5 +1,6 @@
 import type { paths } from './generated/api.ts';
-import { readJson } from './auth.ts';
+import { readSessionJson } from './auth.ts';
+import type { Session } from './auth.ts';
 
 export type Engagement = paths['/engagements']['get']['responses'][200]['content']['application/json']['engagements'][number];
 export type Scope = Pick<Engagement, 'organisation_id' | 'client_id' | 'engagement_id'>;
@@ -48,10 +49,10 @@ export function parseEngagementPage(value: unknown): EngagementPage {
   return { engagements, next_cursor };
 }
 
-export async function readEngagements(signal: AbortSignal, after: Scope | null = null): Promise<EngagementPage> {
+export async function readEngagements(session: Session, signal: AbortSignal, after: Scope | null = null): Promise<EngagementPage> {
   const query = after ? `?${new URLSearchParams({ after_organisation_id: after.organisation_id,
     after_client_id: after.client_id, after_engagement_id: after.engagement_id })}` : '';
-  return parseEngagementPage(await readJson(`/engagements${query}`, signal));
+  return parseEngagementPage(await readSessionJson(`/engagements${query}`, session, signal));
 }
 
 export function sameScope(left: Scope, right: Scope): boolean {
@@ -59,9 +60,9 @@ export function sameScope(left: Scope, right: Scope): boolean {
     left.engagement_id === right.engagement_id;
 }
 
-export async function readEngagement(scope: Scope, signal: AbortSignal): Promise<Engagement> {
+export async function readEngagement(scope: Scope, signal: AbortSignal, session: Session): Promise<Engagement> {
   const query = new URLSearchParams({ organisation_id: scope.organisation_id, client_id: scope.client_id });
-  const engagement = parseEngagement(await readJson(`/engagements/${encodeURIComponent(scope.engagement_id)}?${query}`, signal));
+  const engagement = parseEngagement(await readSessionJson(`/engagements/${encodeURIComponent(scope.engagement_id)}?${query}`, session, signal));
   if (engagement.organisation_id !== scope.organisation_id || engagement.client_id !== scope.client_id ||
     engagement.engagement_id !== scope.engagement_id) throw new Error('Engagement scope changed unexpectedly');
   return engagement;

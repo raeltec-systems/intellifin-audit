@@ -1,0 +1,47 @@
+$ playwright test tests/browser/account-binding.spec.ts
+
+Running 1 test using 1 worker
+
+(node:207870) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/browser/account-binding.spec.ts:47:1 › a completed old session response cannot re-expose another account draft in the same engagement (20.6s)
+
+
+  1) tests/browser/account-binding.spec.ts:47:1 › a completed old session response cannot re-expose another account draft in the same engagement
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('.identity')
+    Expected substring: "manager-a"
+    Received string:    "auditor-aSign out"
+    Timeout: 12000ms
+
+    Call log:
+      - Expect "toContainText" with timeout 12000ms
+      - waiting for locator('.identity')
+        25 × locator resolved to <div class="identity">…</div>
+           - unexpected value "auditor-aSign out"
+
+
+      79 |     }, privateDraft);
+      80 |     oldReply.release(); await expect.poll(() => delivered).toBe(true);
+    > 81 |     await expect(page.locator('.identity')).toContainText('manager-a');
+         |                                             ^
+      82 |     await expect(page.getByText('Conversation up to date', { exact: true })).toBeVisible();
+      83 |     await expect(page.getByLabel('Task objective', { exact: true })).toHaveValue('');
+      84 |     const leaks = await page.evaluate(() => {
+        at /workspace/intellifin-audit/zobba/web/tests/browser/account-binding.spec.ts:81:45
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-owner-account-prefixed/account-binding-a-complete-a4e8b-raft-in-the-same-engagement/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-owner-account-prefixed/account-binding-a-complete-a4e8b-raft-in-the-same-engagement/error-context.md
+
+    Error Context: ../../../../tmp/zobba-owner-account-prefixed/account-binding-a-complete-a4e8b-raft-in-the-same-engagement/error-context.md
+
+  1 failed
+    tests/browser/account-binding.spec.ts:47:1 › a completed old session response cannot re-expose another account draft in the same engagement
+/workspace/intellifin-audit/zobba/web:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @zobba/web@0.1.0 test:browser: `playwright test tests/browser/account-binding.spec.ts`
+Exit status 1

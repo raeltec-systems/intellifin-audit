@@ -104,6 +104,19 @@ impl AuthState {
         self.repository.session(&token).await
     }
 
+    pub(crate) async fn current_read(
+        &self,
+        headers: &HeaderMap,
+    ) -> Result<CurrentSession, IdentityError> {
+        let current = self.current(headers).await?;
+        // The cookie remains the authority. A browser composing several reads
+        // may only add this refusal precondition; it cannot select a session.
+        if !expected_session_matches(headers, &current.csrf_token) {
+            return Err(IdentityError::SessionChanged);
+        }
+        Ok(current)
+    }
+
     /// Reserved Task controls use the same identity rules through their own pool.
     pub(crate) fn with_repository(mut self, repository: IdentityRepository) -> Self {
         self.repository = repository;
@@ -156,6 +169,7 @@ pub struct ErrorResponse {
 pub(crate) fn failure(error: IdentityError) -> Response {
     let status = match error {
         IdentityError::Unauthenticated => StatusCode::UNAUTHORIZED,
+        IdentityError::SessionChanged => StatusCode::PRECONDITION_FAILED,
         IdentityError::Denied => StatusCode::FORBIDDEN,
         IdentityError::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
         IdentityError::InvalidResponse
@@ -163,17 +177,26 @@ pub(crate) fn failure(error: IdentityError) -> Response {
         | IdentityError::InvalidScope => StatusCode::BAD_REQUEST,
         IdentityError::Capacity => StatusCode::TOO_MANY_REQUESTS,
     };
-    let mut response = (
+    // A delayed unauthorized response may belong to an older cookie than the
+    // browser now holds. Only explicit logout expires the browser cookie.
+    (
         status,
         Json(ErrorResponse {
             error: error.code(),
         }),
     )
-        .into_response();
-    if error == IdentityError::Unauthenticated {
-        set_cookie(&mut response, SESSION_COOKIE, "", 0);
-    }
-    response
+        .into_response()
+}
+
+fn expected_session_matches(headers: &HeaderMap, csrf: &str) -> bool {
+    let mut expected = headers.get_all("x-expected-session").iter();
+    let Some(value) = expected.next() else {
+        return true;
+    };
+    expected.next().is_none()
+        && value.to_str().ok().is_some_and(|value| {
+            !value.is_empty() && value.len() <= 128 && secret_matches(csrf, value)
+        })
 }
 
 pub(crate) fn wants_html(headers: &HeaderMap) -> bool {
@@ -323,9 +346,9 @@ pub struct SessionResponse {
     pub csrf_token: String,
 }
 
-#[utoipa::path(get,path="/auth/session",security(("server_session"=[])),responses((status=200,body=SessionResponse),(status=401,body=ErrorResponse),(status=503,body=ErrorResponse)))]
+#[utoipa::path(get,path="/auth/session",security(("server_session"=[])),params(("X-Expected-Session"=Option<String>,Header,description="Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",min_length=1,max_length=128)),responses((status=412,description="Session changed; compose fresh reads without replacing the current cookie",body=ErrorResponse),(status=200,body=SessionResponse),(status=401,body=ErrorResponse),(status=503,body=ErrorResponse)))]
 async fn session(State(state): State<AuthState>, headers: HeaderMap) -> Response {
-    match state.current(&headers).await {
+    match state.current_read(&headers).await {
         Ok(current) => Json(SessionResponse {
             identity: IdentityResponse {
                 id: current.identity.id,
@@ -379,6 +402,56 @@ async fn logout(State(state): State<AuthState>, headers: HeaderMap) -> Response 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn read_session_preconditions_are_independent_of_mutation_csrf() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::ORIGIN,
+            HeaderValue::from_static("https://zobba.test"),
+        );
+        headers.insert("x-csrf-token", HeaderValue::from_static("current"));
+        headers.insert("x-expected-session", HeaderValue::from_static("obsolete"));
+        assert!(!expected_session_matches(&headers, "current"));
+        assert!(valid_mutation(&headers, "https://zobba.test", "current"));
+
+        headers.append("x-expected-session", HeaderValue::from_static("current"));
+        assert!(!expected_session_matches(&headers, "current"));
+        assert!(valid_mutation(&headers, "https://zobba.test", "current"));
+
+        headers.insert("x-expected-session", HeaderValue::from_static("current"));
+        headers.insert("x-csrf-token", HeaderValue::from_static("obsolete"));
+        assert!(expected_session_matches(&headers, "current"));
+        assert!(!valid_mutation(&headers, "https://zobba.test", "current"));
+    }
+    #[test]
+    fn composed_reads_refuse_changed_or_ambiguous_sessions_without_clearing_cookies() {
+        let mut headers = HeaderMap::new();
+        assert!(expected_session_matches(&headers, "current"));
+        headers.insert("x-expected-session", HeaderValue::from_static("current"));
+        assert!(expected_session_matches(&headers, "current"));
+        assert!(!expected_session_matches(&headers, "replacement"));
+        headers.append("x-expected-session", HeaderValue::from_static("current"));
+        assert!(!expected_session_matches(&headers, "current"));
+        for value in ["".to_owned(), "x".repeat(129)] {
+            headers.insert("x-expected-session", HeaderValue::from_str(&value).unwrap());
+            assert!(!expected_session_matches(&headers, &value));
+        }
+        for error in [
+            IdentityError::SessionChanged,
+            IdentityError::Unauthenticated,
+        ] {
+            let response = failure(error);
+            assert!(!response.headers().contains_key(header::SET_COOKIE));
+            assert_eq!(
+                response.status(),
+                if error == IdentityError::SessionChanged {
+                    StatusCode::PRECONDITION_FAILED
+                } else {
+                    StatusCode::UNAUTHORIZED
+                }
+            );
+        }
+    }
     #[test]
     fn mutations_require_exact_origin_and_session_csrf() {
         let mut headers = HeaderMap::new();

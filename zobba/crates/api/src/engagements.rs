@@ -114,18 +114,18 @@ pub(crate) fn router() -> Router<AuthState> {
 }
 
 #[utoipa::path(get,path="/engagements",security(("server_session"=[])),
-    params(
+    params(("X-Expected-Session"=Option<String>,Header,description="Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",min_length=1,max_length=128),
         ("after_organisation_id"=Option<String>,Query,description="Supply all three cursor fields together",min_length=1,max_length=128,pattern="^[A-Za-z0-9_-]+$"),
         ("after_client_id"=Option<String>,Query,min_length=1,max_length=128,pattern="^[A-Za-z0-9_-]+$"),
         ("after_engagement_id"=Option<String>,Query,min_length=1,max_length=128,pattern="^[A-Za-z0-9_-]+$")
     ),
-    responses((status=200,description="Freshly authorized page, ordered by complete scope identity",body=EngagementsResponse),(status=400,description="Incomplete or invalid cursor",body=ErrorResponse),(status=401,body=ErrorResponse),(status=503,body=ErrorResponse)))]
+    responses((status=412,description="Session changed; compose fresh reads without replacing the current cookie",body=ErrorResponse),(status=200,description="Freshly authorized page, ordered by complete scope identity",body=EngagementsResponse),(status=400,description="Incomplete or invalid cursor",body=ErrorResponse),(status=401,body=ErrorResponse),(status=503,body=ErrorResponse)))]
 pub(crate) async fn list(
     State(state): State<AuthState>,
     headers: HeaderMap,
     query: Result<Query<PageQuery>, axum::extract::rejection::QueryRejection>,
 ) -> Response {
-    let current = match state.current(&headers).await {
+    let current = match state.current_read(&headers).await {
         Ok(current) => current,
         Err(error) => return failure(error),
     };
@@ -157,18 +157,18 @@ pub(crate) struct ScopeQuery {
 }
 
 #[utoipa::path(get,path="/engagements/{engagement_id}",security(("server_session"=[])),
-    params(
+    params(("X-Expected-Session"=Option<String>,Header,description="Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",min_length=1,max_length=128),
         ("engagement_id"=String,Path,min_length=1,max_length=128,pattern="^[A-Za-z0-9_-]+$"),
         ("organisation_id"=String,Query,min_length=1,max_length=128,pattern="^[A-Za-z0-9_-]+$"),
         ("client_id"=String,Query,min_length=1,max_length=128,pattern="^[A-Za-z0-9_-]+$")
-    ),responses((status=200,description="Explicit scope opened independently of chooser page",body=EngagementResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=503,body=ErrorResponse)))]
+    ),responses((status=412,description="Session changed; compose fresh reads without replacing the current cookie",body=ErrorResponse),(status=200,description="Explicit scope opened independently of chooser page",body=EngagementResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=503,body=ErrorResponse)))]
 pub(crate) async fn open(
     State(state): State<AuthState>,
     headers: HeaderMap,
     Path(engagement_id): Path<String>,
     query: Result<Query<ScopeQuery>, axum::extract::rejection::QueryRejection>,
 ) -> Response {
-    let current = match state.current(&headers).await {
+    let current = match state.current_read(&headers).await {
         Ok(current) => current,
         Err(error) => return failure(error),
     };

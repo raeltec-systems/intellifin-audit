@@ -1,0 +1,38 @@
+$ playwright test tests/browser/account-binding.spec.ts --grep 'conversation mismatches after successful'
+
+Running 1 test using 1 worker
+
+(node:230355) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/browser/account-binding.spec.ts:235:1 › conversation mismatches after successful engagement reads share one bounded recovery budget (4.5s)
+
+
+  1) tests/browser/account-binding.spec.ts:235:1 › conversation mismatches after successful engagement reads share one bounded recovery budget
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 2
+    Received: 5
+
+      253 |   await page.getByRole('button', { name: 'Refresh access' }).click();
+      254 |   await expect(page.getByRole('heading', { name: 'Connection interrupted' })).toBeVisible();
+    > 255 |   expect(sessionReads).toBe(2); expect(scopeReads).toBe(2); expect(mismatches).toBe(2); expect(posts).toBe(0);
+          |                        ^
+      256 |   await expect(page.locator('.protected-workspace')).toHaveCount(0); await expect(page.locator('textarea')).toHaveCount(0);
+      257 |   // Automatic browser lifecycle events cannot replenish an exhausted budget.
+      258 |   await page.evaluate(() => { window.dispatchEvent(new Event('focus')); window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })); });
+        at /workspace/intellifin-audit/zobba/web/tests/browser/account-binding.spec.ts:255:24
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-account-budget-negative/account-binding-conversati-ba49c-one-bounded-recovery-budget/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-account-budget-negative/account-binding-conversati-ba49c-one-bounded-recovery-budget/error-context.md
+
+    Error Context: ../../../../tmp/zobba-account-budget-negative/account-binding-conversati-ba49c-one-bounded-recovery-budget/error-context.md
+
+  1 failed
+    tests/browser/account-binding.spec.ts:235:1 › conversation mismatches after successful engagement reads share one bounded recovery budget
+/workspace/intellifin-audit/zobba/web:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @zobba/web@0.1.0 test:browser: `playwright test tests/browser/account-binding.spec.ts --grep 'conversation mismatches after successful'`
+Exit status 1

@@ -74,7 +74,8 @@ async fn check_postgres(conn: &mut PgConnection) -> Result<(), BootstrapError> {
     supported_postgres(version)
 }
 
-/// Check all authority the named role can inherit OR acquire with SET ROLE.
+/// Conservatively close membership paths over INHERIT, SET and ADMIN authority.
+/// ADMIN can regrant membership options; mixed paths can expose inherited powers.
 /// Used for live sessions and for a migration's target before and after grants.
 async fn check_effective_role(
     conn: &mut PgConnection,
@@ -82,11 +83,14 @@ async fn check_effective_role(
     current_session: bool,
 ) -> Result<(), BootstrapError> {
     let unsafe_role: bool = sqlx::query_scalar(r#"
-        WITH target AS (SELECT oid, rolcanlogin FROM pg_catalog.pg_roles WHERE rolname=$1),
-        reachable AS (
-          SELECT r.* FROM pg_catalog.pg_roles r, target t
-          WHERE r.oid=t.oid OR pg_catalog.pg_has_role(t.oid,r.oid,'USAGE') OR pg_catalog.pg_has_role(t.oid,r.oid,'SET')
-        )
+        WITH RECURSIVE target AS (SELECT oid, rolcanlogin FROM pg_catalog.pg_roles WHERE rolname=$1),
+        authority(oid) AS (
+          SELECT oid FROM target
+          UNION
+          SELECT m.roleid FROM pg_catalog.pg_auth_members m JOIN authority a ON m.member=a.oid
+          WHERE m.inherit_option OR m.set_option OR m.admin_option
+        ),
+        reachable AS (SELECT r.* FROM pg_catalog.pg_roles r JOIN authority a ON r.oid=a.oid)
         SELECT NOT EXISTS (SELECT 1 FROM target WHERE rolcanlogin)
         OR ($2 AND (session_user <> current_user OR current_user::text <> $1))
         OR EXISTS (SELECT 1 FROM reachable r WHERE r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication
@@ -101,7 +105,7 @@ async fn check_effective_role(
           WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema')
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace, reachable r
           WHERE n.nspname='public' AND (c.relowner=r.oid OR (c.relkind IN ('r','p') AND (
-            pg_catalog.has_table_privilege(r.oid,c.oid,'TRUNCATE,REFERENCES,TRIGGER')
+            pg_catalog.has_table_privilege(r.oid,c.oid,'TRUNCATE,REFERENCES,TRIGGER,MAINTAIN')
             OR (c.relname NOT IN ('login_attempts','sessions','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations') AND pg_catalog.has_table_privilege(r.oid,c.oid,'INSERT'))
             OR (c.relname NOT IN ('login_attempts','sessions') AND pg_catalog.has_table_privilege(r.oid,c.oid,'DELETE'))
             OR pg_catalog.has_table_privilege(r.oid,c.oid,'UPDATE')
@@ -193,6 +197,17 @@ async fn inventory(conn: &mut PgConnection) -> Result<Vec<String>, BootstrapErro
     let foreign: bool = sqlx::query_scalar(r#"
         SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname !~ '^pg_' AND nspname NOT IN ('public','information_schema'))
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_extension WHERE extname <> 'plpgsql')
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_event_trigger)
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_statistic_ext o JOIN pg_catalog.pg_namespace n ON n.oid=o.stxnamespace WHERE n.nspname='public')
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_collation o JOIN pg_catalog.pg_namespace n ON n.oid=o.collnamespace WHERE n.nspname='public')
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_operator o JOIN pg_catalog.pg_namespace n ON n.oid=o.oprnamespace WHERE n.nspname='public')
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_opclass o JOIN pg_catalog.pg_namespace n ON n.oid=o.opcnamespace WHERE n.nspname='public')
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_opfamily o JOIN pg_catalog.pg_namespace n ON n.oid=o.opfnamespace WHERE n.nspname='public')
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_conversion o JOIN pg_catalog.pg_namespace n ON n.oid=o.connamespace WHERE n.nspname='public')
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_config o JOIN pg_catalog.pg_namespace n ON n.oid=o.cfgnamespace WHERE n.nspname='public')
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_dict o JOIN pg_catalog.pg_namespace n ON n.oid=o.dictnamespace WHERE n.nspname='public')
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_parser o JOIN pg_catalog.pg_namespace n ON n.oid=o.prsnamespace WHERE n.nspname='public')
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_template o JOIN pg_catalog.pg_namespace n ON n.oid=o.tmplnamespace WHERE n.nspname='public')
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public')
         OR EXISTS (
           SELECT 1 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace
