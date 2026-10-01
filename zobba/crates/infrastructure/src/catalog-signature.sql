@@ -15,6 +15,9 @@ WITH objects AS (
  SELECT 'trigger|' || c.relname || '|' || COALESCE(k.conname::text,'') || '|' || t.tgenabled::text || '|' || t.tgtype || '|' || t.tgdeferrable || '|' || t.tginitdeferred || '|' || t.tgfoid::pg_catalog.regproc::text || '|' || COALESCE(referenced.relname::text,'') || '|' || pg_catalog.encode(t.tgargs,'hex') || '|' || COALESCE(pg_catalog.left(pg_catalog.pg_get_expr(t.tgqual,t.tgrelid),2048),'')
  FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_catalog.pg_constraint k ON k.oid=t.tgconstraint LEFT JOIN pg_catalog.pg_class referenced ON referenced.oid=t.tgconstrrelid WHERE n.nspname='public' AND t.tgisinternal
  UNION ALL
+ SELECT 'user_trigger|' || c.relname || '|' || t.tgname || '|' || t.tgenabled::text || '|' || pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.pg_get_triggerdef(t.oid),'UTF8')),'hex')
+ FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND NOT t.tgisinternal
+ UNION ALL
  SELECT 'policy|' || c.relname || '|' || p.polname || '|' || p.polcmd::text || '|' || p.polpermissive || '|' || p.polroles::text || '|' || COALESCE(pg_catalog.left(pg_catalog.pg_get_expr(p.polqual,p.polrelid),8192),'') || '|' || COALESCE(pg_catalog.left(pg_catalog.pg_get_expr(p.polwithcheck,p.polrelid),8192),'')
  FROM pg_catalog.pg_policy p JOIN pg_catalog.pg_class c ON c.oid=p.polrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public'
  UNION ALL

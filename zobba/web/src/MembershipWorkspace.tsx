@@ -22,7 +22,8 @@ type MutationState = { kind: 'idle' } | { kind: 'working'; action: MembershipAct
 const roleOptions: MemberRole[] = ['auditor', 'audit_manager', 'admin'];
 
 function errorMessage(error: unknown): string {
-  if (error instanceof AccessError && error.status === 409) return 'This change conflicts with current membership, or would remove the last eligible Admin. Reload current state before editing again.';
+  if (error instanceof AccessError && error.status === 409 && error.code === 'last_admin') return 'This change would leave the organisation without an active, non-expiring Admin. Establish another active, non-expiring Admin with an active account first, then save this change again.';
+  if (error instanceof AccessError && error.status === 409) return 'This change conflicts with current membership. Reload current state before editing again.';
   if (error instanceof AccessError && error.status === 400) return 'This change was refused. Check the recipient, roles, assignments and expiry, then try again.';
   return 'Your current account cannot make this change. Refresh your access before continuing.';
 }

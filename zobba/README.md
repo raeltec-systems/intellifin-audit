@@ -52,7 +52,7 @@ membership or assignments.
 Membership changes use schema 5's narrow, inventoried SQL functions through the
 non-owner runtime pool. Forced audit RLS remains enabled. Writes lock organisation
 205 before sorted engagements, recheck current Admin/session authority, preserve
-the last eligible Admin, and retain immutable attribution. Narrowing advances
+the last active non-expiring Admin, and retain immutable attribution. Narrowing advances
 affected Task execution epochs, abandons unused claims and revokes affected
 delegation. Consumed effects and late factual receipts remain available for
 reconciliation. Regrant does not revive old execution, and unrelated organisations
@@ -88,6 +88,68 @@ seconds in `1..=253402300799`. An exceptional older row outside that business ra
 refuses the upgrade with `membership_expiry_out_of_range`; the transaction preserves
 its old schema and data. An operator must deliberately correct the invalid expiry
 before retrying. Migration never silently clears or clamps an existing expiry.
+
+Schema 7 requires **every organisation to retain an active Admin membership with
+no expiry, linked to an active application identity**. Additional temporary Admins
+remain eligible to administer while their membership is active and unexpired.
+Pending invitations, inactive identities/memberships and finite expiries do not
+satisfy continuity. Ordinary Save refuses an unsafe change with `last_admin`:
+establish another active non-expiring Admin first. Refusal rolls back membership,
+version, receipt and revocation changes together; no extra approval step is added.
+Owner SQL identifies the affected organisation in the error detail. HTTP exposes
+only the stable public `last_admin` code, also in `X-Zobba-Error-Code`, so the
+replacement guidance does not depend on error-body delivery.
+
+Before upgrading schema 6, run this read-only preflight through the authorised
+migration owner connection (ordinary runtime cannot enumerate this authority):
+
+```sql
+SELECT o.id AS organisation_requiring_explicit_remediation
+FROM public.organisations o
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.organisation_memberships m
+  JOIN public.identities i ON i.id = m.actor_id
+  WHERE m.organisation_id = o.id AND m.active AND i.active
+    AND m.expires_at IS NULL AND 'admin' = ANY(m.roles)
+)
+ORDER BY o.id;
+```
+
+Any rows require explicit, authorised remediation before retrying migration. Use
+an existing eligible Admin's ordinary Save to establish the permanent replacement
+where possible. If no eligible Admin remains, a separately authorised operator
+must establish the correct identity/membership through owner SQL; this document
+does not grant recovery authority. The migration reports `admin_continuity_required`
+and leaves schema, migration ledger and authority unchanged. It never promotes or
+reactivates anyone, removes an expiry, or assumes the synthetic development database
+may be reset. The migration freezes authority-table writes before its preflight;
+a concurrent schema-6 narrowing is checked after that write commits.
+
+Database triggers cover owner membership edits/removal, identity lifecycle changes,
+organisation provisioning and concurrent transactions. Create an organisation and
+its first qualifying Admin in one **READ COMMITTED** transaction; deferred checks
+also allow explicit replacement in one transaction. The CLI sets migration
+isolation to READ COMMITTED. Direct continuity mutations or direct migration 7
+under REPEATABLE READ/SERIALIZABLE refuse with SQLSTATE `0A000`; restart the whole
+transaction at READ COMMITTED. Authority-table TRUNCATE is refused, including
+TRUNCATE CASCADE. There is no audit-history cascade deletion.
+
+Identity deactivation/deletion remains an owner-only lifecycle operation; runtime
+has no such privilege and there is no identity-administration product route.
+An identity required by any organisation cannot be deactivated; multi-organisation
+changes refuse atomically. Referenced identities remain protected by existing
+NO ACTION foreign keys, preserving receipts and historical attribution. A harmless
+unreferenced identity can still be removed. External IdP account availability is
+outside this invariant, and no emergency recovery exception is introduced.
+
+Application operations lock organisation advisory key 205 before engagement and
+identity locks. Direct owner identity writes can acquire the identity row first
+and invert that order; PostgreSQL safely aborts a deadlock victim (`40P01`) or a
+bounded lock wait (`55P03`). Roll back and retry the complete transaction, then
+recheck authority. For planned owner lifecycle work, lock the affected organisation
+advisory keys in sorted organisation order before changing identity rows; concurrent
+new membership can still require a safe retry. A retry is never permission to
+ignore `last_admin` or a foreign-key refusal.
 
 Run every command below from `zobba/`. The historical repository-root Node
 application has its own workspace and database. Zobba does not import that
@@ -610,7 +672,7 @@ Both Rust processes expose:
 | Request | Healthy response | Dependency failure |
 |---|---|---|
 | `GET /health/live` | 200, `status: "live"`, `schema_version: null` | Remains live while the process can serve |
-| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 6` | 503, `status: "unavailable"`, `schema_version: null` |
+| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 7` | 503, `status: "unavailable"`, `schema_version: null` |
 
 Each response also identifies `service: "api"` or `service: "worker"`. Readiness
 checks the supported schema through the restricted runtime connection. Startup

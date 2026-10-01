@@ -3,22 +3,22 @@ import type { Page } from '@playwright/test';
 import type { Session } from '../../src/auth';
 import { startAuthRuntime } from './auth-runtime';
 import type { AuthRuntime } from './auth-runtime';
-import { restoreAndClose } from './cleanup';
+import { fixtureRestoration, restoreAndClose } from './cleanup';
 
 // Browser plugin is unavailable. The owned browser uses the real HTTPS OIDC
 // provider, cookie replacement, API and PostgreSQL; routes delay actual replies.
 test.use({ ignoreHTTPSErrors: true });
 let runtime: AuthRuntime;
-const restore = `
+const restore = fixtureRestoration(['actor-a', 'actor-manager'], `
 UPDATE public.identities SET active=true WHERE id IN ('actor-a','actor-manager');
 UPDATE public.organisation_memberships SET active=true,expires_at=NULL,roles=ARRAY['auditor'] WHERE actor_id='actor-a' AND organisation_id='org-a';
-UPDATE public.engagement_assignments SET active=true,expires_at=NULL WHERE actor_id='actor-a' AND organisation_id='org-a';`;
+UPDATE public.engagement_assignments SET active=true,expires_at=NULL WHERE actor_id='actor-a' AND organisation_id='org-a';`);
 test.beforeAll(async () => { runtime = await startAuthRuntime(); });
-test.beforeEach(() => runtime.sql(restore));
+test.beforeEach(async () => runtime.sqlAsync(restore()));
 test.afterEach(async ({ context }) => {
   for (const page of context.pages()) await page.getByLabel('Password', { exact: true }).fill('', { timeout: 250 }).catch(() => {});
 });
-test.afterAll(async () => { if (runtime) await restoreAndClose(runtime, restore); });
+test.afterAll(async () => { if (runtime) await restoreAndClose(runtime, restore()); });
 
 function gate() {
   let release!: () => void;

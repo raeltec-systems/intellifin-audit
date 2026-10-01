@@ -553,18 +553,6 @@ async fn fixture(config: &support::Configuration, admin: &mut PgConnection) {
         .to_owned();
     migrate(&config.migration, &role).await.unwrap();
     let mut tx = admin.begin().await.unwrap();
-    let tables = [
-        "organisations",
-        "clients",
-        "engagements",
-        "organisation_memberships",
-        "engagement_assignments",
-    ];
-    for table in tables {
-        tx.execute(format!("ALTER TABLE public.{table} DISABLE ROW LEVEL SECURITY").as_str())
-            .await
-            .unwrap();
-    }
     sqlx::query("INSERT INTO public.identities(id,issuer,subject,display_name) VALUES('identity-a',$1,'auditor-a','Alex'),('identity-admin',$1,'admin','Casey'),('identity-peer',$1,'auditor-peer','Peer')")
         .bind(ISSUER).execute(&mut *tx).await.unwrap();
     tx.execute("INSERT INTO public.organisations(id,name) VALUES('org-a','Northstar');
@@ -573,9 +561,6 @@ async fn fixture(config: &support::Configuration, admin: &mut PgConnection) {
         INSERT INTO public.organisation_memberships(organisation_id,actor_id,roles) VALUES('org-a','identity-a',ARRAY['auditor']),('org-a','identity-admin',ARRAY['admin']),('org-a','identity-peer',ARRAY['auditor']);
         INSERT INTO public.engagement_assignments(organisation_id,client_id,engagement_id,actor_id) VALUES('org-a','client-a','engagement-a','identity-a'),('org-a','client-a','engagement-a','identity-admin'),('org-a','client-a','engagement-a','identity-peer');")
         .await.unwrap();
-    for table in tables {
-        tx.execute(format!("ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY; ALTER TABLE public.{table} FORCE ROW LEVEL SECURITY").as_str()).await.unwrap();
-    }
     tx.commit().await.unwrap();
 }
 
@@ -860,7 +845,7 @@ async fn scoped_http_commands_reauthorize_retries_and_reserve_control_authentica
     );
 
     config.guard_connection(&mut admin).await;
-    admin.execute("ALTER TABLE public.organisation_memberships DISABLE ROW LEVEL SECURITY; UPDATE public.organisation_memberships SET roles=ARRAY['admin'] WHERE actor_id='identity-a'; ALTER TABLE public.organisation_memberships ENABLE ROW LEVEL SECURITY; ALTER TABLE public.organisation_memberships FORCE ROW LEVEL SECURITY;").await.unwrap();
+    admin.execute("UPDATE public.organisation_memberships SET roles=ARRAY['admin'] WHERE actor_id='identity-a'").await.unwrap();
     assert_eq!(
         browser.command("task-commands", &create).await.status(),
         StatusCode::FORBIDDEN,

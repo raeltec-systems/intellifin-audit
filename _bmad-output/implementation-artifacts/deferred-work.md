@@ -15,3 +15,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-21-1-preserve-evidence-unicode-values.md`
   summary: Provide an accessible display description for evidence filenames composed entirely of invisible Unicode characters while preserving immutable metadata.
   evidence: Existing filename rendering can appear blank for accepted U+200B and similar strings; U+FEFF-only values expose the same display limitation after this repair. Raw metadata, identity and byte access now work, but a labelled display representation is a separate presentational follow-up.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-20-6-admin-continuity-safeguard.md`
+  summary: Consider scoped read-only identity activity or a continuity indicator in membership administration.
+  evidence: The existing membership projection reports membership activity and expiry but does not expose application identity activity; an owner-deactivated identity can therefore retain a visibly active membership. The approved safeguard enforces the full predicate in the database, its refusal explicitly requires an active account, and operator preflight identifies invalid continuity. No identity-management UI or authority is added in this follow-up.

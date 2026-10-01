@@ -10,6 +10,8 @@ use zobba_infrastructure::{
 };
 #[path = "membership/acceptance_wait.rs"]
 mod acceptance_wait;
+#[path = "membership/admin_replacement.rs"]
+mod admin_replacement;
 #[path = "membership/legacy_upgrade.rs"]
 mod legacy_upgrade;
 #[path = "membership/revocation.rs"]
@@ -69,11 +71,11 @@ async fn postgres_membership_contract() {
     let mut admin = PgConnection::connect(&config.admin).await.unwrap();
     config.guard_connection(&mut admin).await;
     admin.execute(r#"
- INSERT INTO identities(id,issuer,subject,display_name) VALUES('admin','https://membership.fixture.invalid','admin','Admin'),('second','https://membership.fixture.invalid','second','Second'),('member','https://membership.fixture.invalid','member','Member'),('other','https://membership.fixture.invalid','other','Other');
+ INSERT INTO identities(id,issuer,subject,display_name) VALUES('admin','https://membership.fixture.invalid','admin','Admin'),('second','https://membership.fixture.invalid','second','Second'),('member','https://membership.fixture.invalid','member','Member'),('other','https://membership.fixture.invalid','other','Other'),('foreign-admin','https://membership.fixture.invalid','foreign-admin','Foreign Admin');
  INSERT INTO organisations VALUES('org','Organisation'),('foreign','Foreign');
  INSERT INTO clients VALUES('org','client','Client'),('foreign','client','Foreign Client');
  INSERT INTO engagements VALUES('org','client','engagement','Engagement'),('foreign','client','engagement','Foreign Engagement');
- INSERT INTO organisation_memberships(organisation_id,actor_id,roles) VALUES('org','admin',ARRAY['admin']),('org','second',ARRAY['admin']),('org','member',ARRAY['auditor']),('org','other',ARRAY['auditor']),('foreign','member',ARRAY['auditor']);
+ INSERT INTO organisation_memberships(organisation_id,actor_id,roles) VALUES('org','admin',ARRAY['admin']),('org','second',ARRAY['admin']),('org','member',ARRAY['auditor']),('org','other',ARRAY['auditor']),('foreign','member',ARRAY['auditor']),('foreign','foreign-admin',ARRAY['admin']);
  INSERT INTO engagement_assignments(organisation_id,client_id,engagement_id,actor_id) VALUES('org','client','engagement','member'),('org','client','engagement','other'),('foreign','client','engagement','member');
  "#).await.unwrap();
     let pool = PgPoolOptions::new()
@@ -381,8 +383,10 @@ async fn postgres_membership_contract() {
         .unwrap();
     let paged = MembershipRepository::new(pool.clone(), ISSUER.into())
         .with_session_hash(secret_hash(&page_token));
-    admin.execute("INSERT INTO identities(id,issuer,subject,display_name) SELECT 'page-'||lpad(g::text,3,'0'),'https://membership.fixture.invalid','page-'||g,'Paged member' FROM generate_series(1,60) g; INSERT INTO organisation_memberships(organisation_id,actor_id,roles) SELECT 'org','page-'||lpad(g::text,3,'0'),ARRAY['auditor'] FROM generate_series(1,60) g; INSERT INTO engagements SELECT 'org','client','page-'||lpad(g::text,3,'0'),'Paged engagement' FROM generate_series(1,60) g; INSERT INTO membership_invitations(id,organisation_id,recipient_issuer,recipient_email,secret_hash,roles,assignments,inviter_actor_id,expires_at,status) SELECT 'page-'||lpad(g::text,3,'0'),'org','https://membership.fixture.invalid','paged@example.com',encode(sha256(convert_to('page-'||g,'UTF8')),'hex'),ARRAY['auditor'],'[]'::jsonb,'admin',extract(epoch FROM clock_timestamp())::bigint+3600,'pending' FROM generate_series(1,60) g; INSERT INTO organisations SELECT 'page-'||lpad(g::text,3,'0'),'Paged organisation' FROM generate_series(1,60) g").await.unwrap();
-    sqlx::query("INSERT INTO organisation_memberships(organisation_id,actor_id,roles) SELECT 'page-'||lpad(g::text,3,'0'),$1,ARRAY['admin'] FROM generate_series(1,60) g").bind(remaining).execute(&mut admin).await.unwrap();
+    let mut provision = admin.begin().await.unwrap();
+    provision.execute("INSERT INTO identities(id,issuer,subject,display_name) SELECT 'page-'||lpad(g::text,3,'0'),'https://membership.fixture.invalid','page-'||g,'Paged member' FROM generate_series(1,60) g; INSERT INTO organisation_memberships(organisation_id,actor_id,roles) SELECT 'org','page-'||lpad(g::text,3,'0'),ARRAY['auditor'] FROM generate_series(1,60) g; INSERT INTO engagements SELECT 'org','client','page-'||lpad(g::text,3,'0'),'Paged engagement' FROM generate_series(1,60) g; INSERT INTO membership_invitations(id,organisation_id,recipient_issuer,recipient_email,secret_hash,roles,assignments,inviter_actor_id,expires_at,status) SELECT 'page-'||lpad(g::text,3,'0'),'org','https://membership.fixture.invalid','paged@example.com',encode(sha256(convert_to('page-'||g,'UTF8')),'hex'),ARRAY['auditor'],'[]'::jsonb,'admin',extract(epoch FROM clock_timestamp())::bigint+3600,'pending' FROM generate_series(1,60) g; INSERT INTO organisations SELECT 'page-'||lpad(g::text,3,'0'),'Paged organisation' FROM generate_series(1,60) g").await.unwrap();
+    sqlx::query("INSERT INTO organisation_memberships(organisation_id,actor_id,roles) SELECT 'page-'||lpad(g::text,3,'0'),$1,ARRAY['admin'] FROM generate_series(1,60) g").bind(remaining).execute(&mut *provision).await.unwrap();
+    provision.commit().await.unwrap();
     let first = paged
         .snapshot(remaining, "org", None, None, None)
         .await
@@ -417,5 +421,6 @@ async fn postgres_membership_contract() {
         .unwrap();
     assert_eq!(rest.organisations.len(), 11);
     assert!(rest.next_cursor.is_none());
+    admin_replacement::verify(&pool, &mut admin, ISSUER).await;
     pool.close().await;
 }

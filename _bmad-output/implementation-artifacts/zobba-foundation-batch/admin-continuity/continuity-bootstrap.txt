@@ -1,0 +1,22 @@
+   Compiling zobba-application v0.1.0 (/workspace/intellifin-audit/zobba/crates/application)
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.83s
+     Running tests/admin_continuity.rs (target/debug/deps/admin_continuity-35cff535afdb9b97)
+
+running 3 tests
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test postgres_admin_continuity_contract ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.57s
+
+     Running tests/bootstrap.rs (target/debug/deps/bootstrap-9feda0a66f09c75d)
+
+running 3 tests
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test bootstrap_contract has been running for over 60 seconds
+test bootstrap_contract ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 154.74s
+

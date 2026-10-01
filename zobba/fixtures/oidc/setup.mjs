@@ -54,7 +54,7 @@ export function setup(directory = fixtureDirectory) {
       account_password: randomBytes(24).toString('base64url'),
       cookie_keys: [randomBytes(32).toString('base64url'), randomBytes(32).toString('base64url')],
       keys,
-      accounts: ['auditor-a', 'manager-a', 'auditor-b', 'admin-only', 'unassigned'],
+      accounts: ['auditor-a', 'manager-a', 'auditor-b', 'admin-only', 'admin-b-only', 'unassigned'],
     };
     writeFileSync(path('fixture.json'), `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
     const variables = {

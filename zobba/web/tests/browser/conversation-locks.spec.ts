@@ -5,7 +5,7 @@ import type { ConversationSnapshot, Task, TaskCommand } from '../../src/conversa
 import type { OutboxItem } from '../../src/conversation-state';
 import { startAuthRuntime } from './auth-runtime';
 import type { AuthRuntime } from './auth-runtime';
-import { restoreAndClose } from './cleanup';
+import { fixtureRestoration, restoreAndClose } from './cleanup';
 
 // Browser plugin unavailable: use the owned Chromium, real HTTPS OIDC, restricted
 // PostgreSQL and real command handlers. A dropped acknowledgement is always
@@ -14,10 +14,10 @@ test.use({ ignoreHTTPSErrors: true });
 let runtime: AuthRuntime;
 const scope = 'organisation_id=org-a&client_id=client-a';
 let heldRecoveryPage: Page | null = null;
-const restore = `
+const restore = fixtureRestoration(['actor-a'], `
 UPDATE public.identities SET active=true WHERE id='actor-a';
 UPDATE public.organisation_memberships SET active=true,expires_at=NULL,roles=ARRAY['auditor'] WHERE actor_id='actor-a' AND organisation_id='org-a';
-UPDATE public.engagement_assignments SET active=true,expires_at=NULL WHERE actor_id='actor-a' AND organisation_id='org-a';`;
+UPDATE public.engagement_assignments SET active=true,expires_at=NULL WHERE actor_id='actor-a' AND organisation_id='org-a';`);
 
 // Optional expected-failure controls are confined to the module returned to this
 // test browser. They never edit source or bypass the API. Run each separately:
@@ -49,15 +49,15 @@ async function installMutation(context: BrowserContext): Promise<void> {
 test.beforeAll(async () => { runtime = await startAuthRuntime(); });
 test.beforeEach(async ({ context }) => {
   await runtime.stopWorker();
-  runtime.sql(`${restore} TRUNCATE public.tasks, public.task_counters CASCADE;`);
+  await runtime.sqlAsync(restore('TRUNCATE public.tasks, public.task_counters CASCADE;'));
   mutationApplications = 0;
   await installMutation(context);
 });
 test.afterEach(async ({ context }) => {
-  await runtime.stopWorker(); runtime.sql(restore);
+  await runtime.stopWorker(); await runtime.sqlAsync(restore());
   for (const page of context.pages()) await page.getByLabel('Password', { exact: true }).fill('', { timeout: 250 }).catch(() => {});
 });
-test.afterAll(async () => { if (runtime) await restoreAndClose(runtime, restore); });
+test.afterAll(async () => { if (runtime) await restoreAndClose(runtime, restore()); });
 
 function gate() {
   let release!: () => void;

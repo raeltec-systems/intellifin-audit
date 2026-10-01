@@ -100,23 +100,8 @@ async fn fixture(config: &support::Configuration, admin: &mut PgConnection) {
         .to_owned();
     migrate(&config.migration, &role).await.unwrap();
     let mut tx = admin.begin().await.unwrap();
-    let tables = [
-        "organisations",
-        "clients",
-        "engagements",
-        "organisation_memberships",
-        "engagement_assignments",
-    ];
-    for table in tables {
-        tx.execute(format!("ALTER TABLE public.{table} DISABLE ROW LEVEL SECURITY").as_str())
-            .await
-            .unwrap();
-    }
-    sqlx::query("INSERT INTO public.identities(id,issuer,subject,display_name) VALUES('identity-a',$1,'auditor-a','Alex'),('identity-peer',$1,'auditor-peer','Peer')").bind(ISSUER).execute(&mut *tx).await.unwrap();
-    tx.execute("INSERT INTO public.organisations(id,name) VALUES('org-a','Northstar'); INSERT INTO public.clients(organisation_id,id,name) VALUES('org-a','client-a','Alder'),('org-a','client-b','Birch'); INSERT INTO public.engagements(organisation_id,client_id,id,name) VALUES('org-a','client-a','engagement-a','Audit A'),('org-a','client-b','engagement-b','Audit B'); INSERT INTO public.organisation_memberships(organisation_id,actor_id,roles) VALUES('org-a','identity-a',ARRAY['auditor']),('org-a','identity-peer',ARRAY['auditor']); INSERT INTO public.engagement_assignments(organisation_id,client_id,engagement_id,actor_id) VALUES('org-a','client-a','engagement-a','identity-a'),('org-a','client-a','engagement-a','identity-peer');").await.unwrap();
-    for table in tables {
-        tx.execute(format!("ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY; ALTER TABLE public.{table} FORCE ROW LEVEL SECURITY").as_str()).await.unwrap();
-    }
+    sqlx::query("INSERT INTO public.identities(id,issuer,subject,display_name) VALUES('identity-a',$1,'auditor-a','Alex'),('identity-peer',$1,'auditor-peer','Peer'),('identity-admin',$1,'admin','Casey')").bind(ISSUER).execute(&mut *tx).await.unwrap();
+    tx.execute("INSERT INTO public.organisations(id,name) VALUES('org-a','Northstar'); INSERT INTO public.clients(organisation_id,id,name) VALUES('org-a','client-a','Alder'),('org-a','client-b','Birch'); INSERT INTO public.engagements(organisation_id,client_id,id,name) VALUES('org-a','client-a','engagement-a','Audit A'),('org-a','client-b','engagement-b','Audit B'); INSERT INTO public.organisation_memberships(organisation_id,actor_id,roles) VALUES('org-a','identity-a',ARRAY['auditor']),('org-a','identity-peer',ARRAY['auditor']),('org-a','identity-admin',ARRAY['admin']); INSERT INTO public.engagement_assignments(organisation_id,client_id,engagement_id,actor_id) VALUES('org-a','client-a','engagement-a','identity-a'),('org-a','client-a','engagement-a','identity-peer');").await.unwrap();
     tx.commit().await.unwrap();
 }
 

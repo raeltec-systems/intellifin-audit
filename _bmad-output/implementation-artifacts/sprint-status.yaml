@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-30-2026 16:09
-last_updated: 10-01-2026 20:07
+last_updated: 10-01-2026 22:32
 project: Zobba
 project_key: NOKEY
 tracking_system: file-system
@@ -46,7 +46,7 @@ development_status:
   epic-20-retrospective: optional
 
   epic-21: in-progress
-  21-1-acquire-and-inspect-immutable-scoped-evidence: review
+  21-1-acquire-and-inspect-immutable-scoped-evidence: done
   21-2-save-and-bind-applicable-firm-methodology: backlog
   21-3-install-and-select-trusted-skills: backlog
   21-4-remember-scoped-working-knowledge-with-its-basis: backlog

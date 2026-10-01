@@ -4,7 +4,7 @@ title: Zobba — continuing audit working environment
 status: final
 revision: 3-baseline
 created: 2026-09-01
-updated: 2026-09-30
+updated: 2026-10-01
 companions:
   - glossary.md
   - brownfield.md
@@ -36,7 +36,7 @@ Auditors need to delegate substantial work and keep directing it as evidence, qu
 
 - **CAP-17 — Identity and engagement scope**
   - **intent:** People access client work only through their current organisation, engagement assignment and audit role.
-  - **success:** Cross-tenant/client/engagement requests and object downloads fail; revocation stops new disclosure and dispatch; Admin configuration alone grants no audit sign-off. Membership changes preserve historical authorship.
+  - **success:** Cross-tenant/client/engagement requests and object downloads fail; revocation stops new disclosure and dispatch; Admin configuration alone grants no audit sign-off. Membership changes preserve historical authorship. Each organisation retains at least one active, non-expiring Admin membership linked to an active identity; additional temporary Admins remain allowed. Membership and identity changes enforce this atomically, including concurrent changes (owner-approved safeguard, 1 October 2026).
 - **CAP-18 — Coordinating conversation**
   - **intent:** An auditor coordinates several Tasks through one engagement conversation and opens each Task's history or output without losing that conversation.
   - **success:** A second objective creates one linked Task while the first continues; each guidance, answer and control has an exact target and attributable receipt. Ambiguous material direction waits for resolution; inspection stays pinned and returning users see supported changes since their last visit.

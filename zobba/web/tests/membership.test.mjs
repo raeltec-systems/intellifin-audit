@@ -122,6 +122,135 @@ test('obsolete-session retry sends no POST and a changed post-response session c
   assert.equal(posts, 1);
 });
 
+test('membership Save allowlists the last_admin header before its bounded conflict body', async context => {
+  const cases = [
+    { status: 409, body: JSON.stringify({ error: 'last_admin' }), code: 'last_admin' },
+    { status: 409, header: 'last_admin', body: '<html>Conflict</html>', code: 'last_admin' },
+    { status: 409, header: 'last_admin', body: JSON.stringify({ error: 'membership_conflict' }), code: 'last_admin' },
+    { status: 409, header: 'unknown', body: JSON.stringify({ error: 'last_admin' }), code: 'last_admin' },
+    { status: 409, header: 'LAST_ADMIN', body: '' },
+    { status: 409, header: 'last_admin, last_admin', body: '' },
+    { status: 409, header: 'untrusted server message', body: '' },
+    { status: 409, body: JSON.stringify({ error: 'membership_conflict' }) },
+    { status: 409, body: JSON.stringify({ error: 'untrusted server message' }) },
+    { status: 409, body: JSON.stringify({ error: ['last_admin'] }) },
+    { status: 409, body: JSON.stringify([{ error: 'last_admin' }]) },
+    { status: 409, body: JSON.stringify({ error: 'last_admin', padding: 'x'.repeat(4096) }) },
+    { status: 409, body: '<html>Conflict</html>' },
+    { status: 409, body: '' },
+    { status: 403, body: JSON.stringify({ error: 'last_admin' }) },
+    { status: 403, header: 'last_admin', body: JSON.stringify({ error: 'last_admin' }) },
+  ];
+  for (const { status, body, header, code } of cases) {
+    let posts = 0;
+    context.mock.method(globalThis, 'fetch', async (path, options) => {
+      if (path.endsWith('/auth/session')) return Response.json(session);
+      posts++;
+      assert.equal(options.method, 'POST');
+      return new Response(body, { status, headers: header ? { 'X-Zobba-Error-Code': header } : {} });
+    });
+    await assert.rejects(applyMembership(save, session, new AbortController().signal),
+      error => error instanceof AccessError && error.status === status && error.code === code);
+    assert.equal(posts, 1);
+    context.mock.restoreAll();
+  }
+});
+
+test('the last_admin header settles before stalled or delayed bodies despite cancellation never settling', { timeout: 2000 }, async context => {
+  for (const delayed of [false, true]) {
+    let cancelled = 0, delivered = false, delivery;
+    const stream = new ReadableStream({
+      start(controller) {
+        if (delayed) delivery = setTimeout(() => {
+          delivered = true;
+          controller.enqueue(new TextEncoder().encode('{"error":"last_admin"}'));
+          controller.close();
+        }, 1000);
+      },
+      cancel() { cancelled++; clearTimeout(delivery); return new Promise(() => {}); },
+    });
+    const reader = context.mock.method(stream, 'getReader');
+    context.mock.method(globalThis, 'fetch', async path => path.endsWith('/auth/session')
+      ? Response.json(session) : new Response(stream, { status: 409, headers: { 'X-Zobba-Error-Code': 'last_admin' } }));
+    try {
+      const result = await Promise.race([
+        applyMembership(save, session, new AbortController().signal).catch(error => error),
+        new Promise(resolve => setImmediate(() => resolve(undefined))),
+      ]);
+      assert.ok(result instanceof AccessError, 'The header must yield a refusal before waiting for any body timer');
+      assert.equal(result.status, 409);
+      assert.equal(result.code, 'last_admin');
+      assert.equal(reader.mock.callCount(), 0, 'The actionable header requires no body read');
+      assert.equal(delivered, false);
+      assert.equal(cancelled, 1);
+      assert.equal(stream.locked, false);
+    } finally {
+      clearTimeout(delivery);
+      context.mock.restoreAll();
+    }
+  }
+});
+
+test('a successful Save still decodes its receipt when an error-code header is present', async context => {
+  context.mock.method(globalThis, 'fetch', async path => path.endsWith('/auth/session')
+    ? Response.json(session) : Response.json(receipt, { headers: { 'X-Zobba-Error-Code': 'last_admin' } }));
+  assert.deepEqual(await applyMembership(save, session, new AbortController().signal), receipt);
+});
+
+test('a stalled or partial conflict body cannot hold Save open, even when cancellation stalls', { timeout: 5000 }, async context => {
+  for (const partial of ['', '{"error":"last_', '{"error":"last_admin"}']) {
+    let cancelled = 0;
+    const stream = new ReadableStream({
+      start(controller) { if (partial) controller.enqueue(new TextEncoder().encode(partial)); },
+      cancel() { cancelled++; return new Promise(() => {}); },
+    });
+    context.mock.method(globalThis, 'fetch', async path => path.endsWith('/auth/session')
+      ? Response.json(session) : new Response(stream, { status: 409 }));
+    const started = performance.now();
+    await assert.rejects(applyMembership(save, session, new AbortController().signal),
+      error => error instanceof AccessError && error.status === 409 && error.code === undefined);
+    assert.ok(performance.now() - started < 1500, 'A known conflict must settle without waiting for the body or its cancellation');
+    assert.equal(cancelled, 1);
+    assert.equal(stream.locked, false);
+    context.mock.restoreAll();
+  }
+});
+
+test('oversized conflict bodies cancel without waiting for cleanup, including dishonest lengths', { timeout: 2000 }, async context => {
+  for (const advertisedLength of [undefined, '1', '4097']) {
+    let cancelled = 0;
+    const stream = new ReadableStream({
+      start(controller) { controller.enqueue(new Uint8Array(4097)); },
+      cancel() { cancelled++; return new Promise(() => {}); },
+    });
+    context.mock.method(globalThis, 'fetch', async path => path.endsWith('/auth/session')
+      ? Response.json(session) : new Response(stream, { status: 409, headers: advertisedLength ? { 'Content-Length': advertisedLength } : {} }));
+    await assert.rejects(applyMembership(save, session, new AbortController().signal),
+      error => error instanceof AccessError && error.status === 409 && error.code === undefined);
+    assert.equal(cancelled, 1);
+    assert.equal(stream.locked, false);
+    context.mock.restoreAll();
+  }
+});
+
+test('a complete conflict body decodes once and releases its reader without cancelling the stream', async context => {
+  let cancelled = 0;
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('{"error":'));
+      controller.enqueue(new TextEncoder().encode('"last_admin"}'));
+      controller.close();
+    },
+    cancel() { cancelled++; },
+  });
+  context.mock.method(globalThis, 'fetch', async path => path.endsWith('/auth/session')
+    ? Response.json(session) : new Response(stream, { status: 409 }));
+  await assert.rejects(applyMembership(save, session, new AbortController().signal),
+    error => error instanceof AccessError && error.status === 409 && error.code === 'last_admin');
+  assert.equal(cancelled, 0);
+  assert.equal(stream.locked, false);
+});
+
 test('private invitations use random bounded fragment secrets and scrub even malformed input from history', () => {
   const secrets = Array.from({ length: 8 }, () => newInvitationSecret());
   assert.equal(new Set(secrets).size, secrets.length);

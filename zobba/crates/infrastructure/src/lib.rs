@@ -206,6 +206,7 @@ async fn check_runtime_grants(conn: &mut PgConnection, role: &str) -> Result<(),
     "#).bind(role).fetch_one(&mut *conn).await.map_err(|_| BootstrapError::UnsafeRuntimeRole)?;
     check_membership_functions(conn, Some(role)).await?;
     check_evidence_functions(conn, Some(role)).await?;
+    check_continuity_functions(conn, Some(role)).await?;
     if complete {
         Ok(())
     } else {
@@ -245,6 +246,27 @@ async fn check_evidence_functions(
     }
 }
 
+// These helpers are trigger-only owner authority, never runtime entry points.
+async fn check_continuity_functions(
+    conn: &mut PgConnection,
+    runtime: Option<&str>,
+) -> Result<(), BootstrapError> {
+    let safe: bool = sqlx::query_scalar(r#"
+      SELECT count(*)=4 AND bool_and(p.prosecdef
+       AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid IN ('public.organisations'::regclass,'public.organisation_memberships'::regclass,'public.identities'::regclass) AND c.relowner<>p.proowner)
+       AND p.proowner=(SELECT relowner FROM pg_catalog.pg_class WHERE oid='public.zobba_bootstrap'::regclass)
+       AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a WHERE a.grantee<>p.proowner)
+       AND ($1::text IS NULL OR NOT pg_catalog.has_function_privilege($1,p.oid,'EXECUTE')))
+      FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public' AND p.proname IN ('admin_continuity_assert','admin_continuity_lock','admin_continuity_check','admin_continuity_truncate')
+    "#).bind(runtime).fetch_one(conn).await.map_err(|_| BootstrapError::SchemaMismatch)?;
+    if safe {
+        Ok(())
+    } else {
+        Err(BootstrapError::SchemaMismatch)
+    }
+}
+
 async fn inventory(conn: &mut PgConnection) -> Result<Vec<String>, BootstrapError> {
     let foreign: bool = sqlx::query_scalar(r#"
         SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname !~ '^pg_' AND nspname NOT IN ('public','information_schema'))
@@ -260,7 +282,7 @@ async fn inventory(conn: &mut PgConnection) -> Result<Vec<String>, BootstrapErro
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_dict o JOIN pg_catalog.pg_namespace n ON n.oid=o.dictnamespace WHERE n.nspname='public')
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_parser o JOIN pg_catalog.pg_namespace n ON n.oid=o.prsnamespace WHERE n.nspname='public')
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_template o JOIN pg_catalog.pg_namespace n ON n.oid=o.tmplnamespace WHERE n.nspname='public')
-        OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname NOT IN ('membership_admin','membership_session','membership_validate','membership_fence','membership_read','membership_write','membership_accept','membership_preview','membership_assignments','evidence_session_locked'))
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname NOT IN ('membership_admin','membership_session','membership_validate','membership_fence','membership_read','membership_write','membership_accept','membership_preview','membership_assignments','evidence_session_locked','admin_continuity_assert','admin_continuity_lock','admin_continuity_check','admin_continuity_truncate'))
         OR EXISTS (
           SELECT 1 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace
           WHERE n.nspname='public' AND t.oid NOT IN (
@@ -285,7 +307,7 @@ async fn check_schema(
     allow_previous: bool,
 ) -> Result<i64, BootstrapError> {
     let tables = inventory(conn).await?;
-    let version = if tables == ["_sqlx_migrations", "zobba_bootstrap"] {
+    let mut version = if tables == ["_sqlx_migrations", "zobba_bootstrap"] {
         1
     } else if tables
         == [
@@ -444,7 +466,7 @@ async fn check_schema(
         return Err(BootstrapError::SchemaMismatch);
     };
     let altered_objects: bool = sqlx::query_scalar(r#"
-        SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND (NOT t.tgisinternal OR t.tgenabled <> 'O'))
+        SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND t.tgenabled <> 'O')
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_rewrite r JOIN pg_catalog.pg_class c ON c.oid=r.ev_class JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public')
     "#).fetch_one(&mut *conn).await.map_err(|_| BootstrapError::SchemaMismatch)?;
     if altered_objects {
@@ -454,6 +476,16 @@ async fn check_schema(
         .fetch_all(&mut *conn)
         .await
         .map_err(|_| BootstrapError::SchemaMismatch)?;
+    // Versions 6 and 7 have identical tables. Recognize revision 7 only by
+    // its exact catalog, before reading any public table or invoking a function.
+    if version == 6
+        && signature
+            .iter()
+            .map(String::as_str)
+            .eq(include_str!("schema-v7.catalog").lines())
+    {
+        version = 7;
+    }
     let expected = if version == 1 {
         include_str!("schema-v1.catalog")
     } else if version == 2 {
@@ -464,8 +496,10 @@ async fn check_schema(
         include_str!("schema-v4.catalog")
     } else if version == 5 {
         include_str!("schema-v5.catalog")
-    } else {
+    } else if version == 6 {
         include_str!("schema-v6.catalog")
+    } else {
+        include_str!("schema-v7.catalog")
     };
     if signature.len() >= 4097 || !signature.iter().map(String::as_str).eq(expected.lines()) {
         return Err(BootstrapError::SchemaMismatch);
@@ -476,9 +510,12 @@ async fn check_schema(
     if version >= 6 {
         check_evidence_functions(conn, None).await?;
     }
+    if version >= 7 {
+        check_continuity_functions(conn, None).await?;
+    }
     // Compare bounded booleans, never allocate untrusted metadata strings/blobs.
     let versions: Vec<i64> =
-        sqlx::query_scalar("SELECT version FROM public._sqlx_migrations ORDER BY version LIMIT 7")
+        sqlx::query_scalar("SELECT version FROM public._sqlx_migrations ORDER BY version LIMIT 8")
             .fetch_all(&mut *conn)
             .await
             .map_err(|_| BootstrapError::SchemaMismatch)?;
@@ -607,6 +644,8 @@ fn migration_error(error: sqlx::migrate::MigrateError) -> BootstrapError {
         )
     {
         BootstrapError::MembershipExpiryOutOfRange
+    } else if database.code().as_deref() == Some("Z0007") {
+        BootstrapError::AdminContinuityRequired
     } else {
         BootstrapError::MigrationFailed
     }
@@ -621,6 +660,12 @@ async fn migrate_locked(conn: &mut PgConnection, runtime_role: &str) -> Result<(
     // transaction makes ledger, bootstrap, grants and validation one atomic unit.
     let mut tx = conn
         .begin()
+        .await
+        .map_err(|_| BootstrapError::MigrationFailed)?;
+    // An operator's role/database default must not leave upgrade preflight on a
+    // stale snapshot after it waits for the authority-table write locks.
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+        .execute(&mut *tx)
         .await
         .map_err(|_| BootstrapError::MigrationFailed)?;
     // Omit pg_catalog here: PostgreSQL implicitly searches it FIRST, while DDL's

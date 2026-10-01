@@ -2,22 +2,22 @@ import { expect, test } from '@playwright/test';
 import type { Page, TestInfo } from '@playwright/test';
 import { startAuthRuntime } from './auth-runtime';
 import type { AuthRuntime } from './auth-runtime';
-import { restoreAndClose } from './cleanup';
+import { fixtureRestoration, restoreAndClose } from './cleanup';
 
 // Browser plugin not available. The repository-owned Playwright harness runs
 // actual HTTPS OIDC, restricted PostgreSQL, API and bounded worker processes.
 test.use({ ignoreHTTPSErrors: true });
 let runtime: AuthRuntime;
 const scope = 'organisation_id=org-a&client_id=client-a';
-const restore = "UPDATE public.identities SET active=true WHERE id='actor-a'; UPDATE public.organisation_memberships SET active=true,expires_at=NULL,roles=ARRAY['auditor'] WHERE actor_id='actor-a'; UPDATE public.engagement_assignments SET active=true,expires_at=NULL WHERE actor_id='actor-a';";
+const restore = fixtureRestoration(['actor-a'], "UPDATE public.identities SET active=true WHERE id='actor-a'; UPDATE public.organisation_memberships SET active=true,expires_at=NULL,roles=ARRAY['auditor'] WHERE actor_id='actor-a'; UPDATE public.engagement_assignments SET active=true,expires_at=NULL WHERE actor_id='actor-a';");
 const resetTasks = 'TRUNCATE public.tasks, public.task_counters CASCADE;';
 test.beforeAll(async () => { runtime = await startAuthRuntime(); });
-test.beforeEach(async () => { await runtime.stopWorker(); runtime.sql(restore + resetTasks); });
+test.beforeEach(async () => { await runtime.stopWorker(); await runtime.sqlAsync(restore(resetTasks)); });
 test.afterEach(async ({ page }) => {
   await runtime.stopWorker();
   await page.getByLabel('Password', { exact: true }).fill('', { timeout: 250 }).catch(() => {});
 });
-test.afterAll(async () => { if (runtime) await restoreAndClose(runtime, restore); });
+test.afterAll(async () => { if (runtime) await restoreAndClose(runtime, restore()); });
 
 async function signIn(page: Page, account = 'auditor-a') {
   await page.goto(runtime.url);

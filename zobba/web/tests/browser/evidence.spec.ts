@@ -1,27 +1,33 @@
 import { expect, test } from '@playwright/test';
 import { createHash } from 'node:crypto';
-import type { Page } from '@playwright/test';
+import type { Page, TestInfo } from '@playwright/test';
 import type { Session } from '../../src/auth';
 import type { Evidence, ReservationRequest } from '../../src/evidence';
 import { startAuthRuntime } from './auth-runtime';
 import type { AuthRuntime } from './auth-runtime';
+import { fixtureRestoration } from './cleanup';
 
 // No Browser plugin is available. This owned Playwright harness exercises real
 // HTTPS OIDC, restricted PostgreSQL and the API's numeric-loopback S3 transport.
 test.use({ ignoreHTTPSErrors: true });
 let runtime: AuthRuntime;
 const scope = 'organisation_id=org-a&client_id=client-a';
-const restore = `UPDATE public.identities SET active=true WHERE id IN ('actor-a','actor-b');
+const restore = fixtureRestoration(['actor-a', 'actor-b'], `UPDATE public.identities SET active=true WHERE id IN ('actor-a','actor-b');
 UPDATE public.organisation_memberships SET active=true,expires_at=NULL,roles=ARRAY['auditor'] WHERE actor_id='actor-a' AND organisation_id='org-a';
-UPDATE public.engagement_assignments SET active=true,expires_at=NULL WHERE actor_id='actor-a' AND organisation_id='org-a';`;
+UPDATE public.engagement_assignments SET active=true,expires_at=NULL WHERE actor_id='actor-a' AND organisation_id='org-a';`);
 test.beforeAll(async () => { runtime = await startAuthRuntime({ evidence: true }); });
-test.beforeEach(async () => runtime.sqlAsync(`${restore} TRUNCATE public.evidence_reservations,public.tasks,public.task_counters CASCADE;`));
+test.beforeEach(async () => runtime.sqlAsync(restore('TRUNCATE public.evidence_reservations,public.tasks,public.task_counters CASCADE;')));
 test.afterEach(async ({ context }) => {
-  await runtime.sqlAsync(restore);
+  await runtime.sqlAsync(restore());
   for (const page of context.pages()) await page.getByLabel('Password', { exact: true }).fill('', { timeout: 100 }).catch(() => {});
 });
-test.afterAll(async () => { if (runtime) { try { await runtime.sqlAsync(restore); } finally { await runtime.close(); } } });
+test.afterAll(async () => { if (runtime) { try { await runtime.sqlAsync(restore()); } finally { await runtime.close(); } } });
 function gate() { let release!: () => void; const held = new Promise<void>(resolve => { release = resolve; }); return { held, release }; }
+async function capture(page: Page, info: TestInfo, filename: string) {
+  const path = info.outputPath(filename);
+  await page.screenshot({ path, fullPage: true });
+  await info.attach(filename, { path, contentType: 'image/png' });
+}
 async function signIn(page: Page, account = 'auditor-a', replace = false) {
   if (replace) { await page.context().clearCookies({ domain: '127.0.0.1' }); await page.goto(`${runtime.url}/api/auth/login`); }
   else { await page.goto(runtime.url); await page.getByRole('link', { name: 'Sign in to Zobba' }).click(); }
@@ -60,7 +66,7 @@ async function retainUncertainDraft(page: Page) {
 }
 
 
-test('verified acquisition keeps source assertions distinct and preserves Task guidance, selection and return focus', async ({ page }) => {
+test('verified acquisition keeps source assertions distinct and preserves Task guidance, selection and return focus', async ({ page }, info) => {
   await signIn(page);
   await page.getByLabel('Task objective', { exact: true }).fill('Reconcile the asserted ledger');
   await page.getByRole('button', { name: 'Send', exact: false }).click();
@@ -78,11 +84,11 @@ test('verified acquisition keeps source assertions distinct and preserves Task g
   expect(item.reservation.request.source.source_version).toBe('User assertion v7');
   expect(runtime.evidence!.stats().objects).toBe(before + 1);
   await page.locator('.evidence-pane').evaluate(element => { element.scrollTop = 0; });
-  await page.screenshot({ path: '/tmp/zobba-21-1-evidence-overview-desktop.png', fullPage: true });
+  await capture(page, info, 'evidence-overview-desktop.png');
   await page.getByRole('button', { name: 'Read bounded preview' }).click();
   await expect(page.locator('.evidence-preview')).toHaveText(original.buffer.toString());
   await page.locator('.evidence-preview').evaluate(element => element.scrollIntoView({ block: 'end' }));
-  await page.screenshot({ path: '/tmp/zobba-21-1-evidence-desktop.png', fullPage: true });
+  await capture(page, info, 'evidence-desktop.png');
   const details = page.getByRole('region', { name: 'Evidence details' });
   await expect(details).toContainText('Direct upload by actor-a');
   const value = (label: string) => details.locator('dt').filter({ hasText: label }).locator('..').locator('dd');
@@ -158,7 +164,7 @@ test('lost upload acknowledgement retries the same registered original across AP
   expect(runtime.evidence!.stats().objects).toBe(before + 1);
 });
 
-test('narrow keyboard inspection caps plain text and keeps markup download-only', async ({ page }) => {
+test('narrow keyboard inspection caps plain text and keeps markup download-only', async ({ page }, info) => {
   await page.setViewportSize({ width: 390, height: 844 }); await signIn(page); await openEvidence(page);
   const long = { name: 'bounded.txt', mimeType: 'text/plain', buffer: Buffer.from('界'.repeat(1000).concat('\n').repeat(120)) };
   await acquire(page, long); await page.getByRole('button', { name: 'Read bounded preview' }).click();
@@ -170,7 +176,7 @@ test('narrow keyboard inspection caps plain text and keeps markup download-only'
   await expect(page.getByText('Download only. This original has no supported inert plain-text preview.', { exact: true })).toBeVisible();
   await expect(page.locator('.evidence-pane svg')).toHaveCount(0);
   await page.getByText('Download only. This original has no supported inert plain-text preview.', { exact: true }).evaluate(element => element.scrollIntoView({ block: 'end' }));
-  await page.screenshot({ path: '/tmp/zobba-21-1-evidence-narrow.png', fullPage: true });
+  await capture(page, info, 'evidence-narrow.png');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole('button', { name: 'Download verified original' }).focus(); await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Evidence', exact: true })).toBeFocused();
@@ -178,14 +184,14 @@ test('narrow keyboard inspection caps plain text and keeps markup download-only'
 });
 
 for (const account of ['auditor-a', 'manager-a', 'auditor-b']) {
-  test(`completed metadata is withheld after ${account === 'auditor-a' ? 'same-actor session' : account === 'manager-a' ? 'same-engagement actor' : 'foreign-scope account'} replacement`, async ({ page, context }) => {
+  test(`completed metadata is withheld after ${account === 'auditor-a' ? 'same-actor session' : account === 'manager-a' ? 'same-engagement actor' : 'foreign-scope account'} replacement`, async ({ page, context }, info) => {
     await signIn(page); await openEvidence(page); await acquire(page);
     if (account === 'auditor-a') {
       await page.locator('.evidence-inspection').evaluate(element => element.scrollIntoView({ block: 'start' }));
-      await page.screenshot({ path: '/tmp/zobba-21-1-evidence-top-desktop.png', fullPage: true });
+      await capture(page, info, 'evidence-top-desktop.png');
       await page.setViewportSize({ width: 390, height: 844 });
       await page.locator('.evidence-inspection').evaluate(element => element.scrollIntoView({ block: 'start' }));
-      await page.screenshot({ path: '/tmp/zobba-21-1-evidence-top-narrow.png', fullPage: true });
+      await capture(page, info, 'evidence-top-narrow.png');
       await page.setViewportSize({ width: 1280, height: 800 });
     }
     await retainUncertainDraft(page); const responseGate = gate(); let held = false;
@@ -230,7 +236,7 @@ test('revocation during object upload prevents registration and foreign scope di
     await expect(page.getByText('This engagement is no longer available to you.', { exact: false })).toBeVisible();
     const denied = await page.request.get(`${runtime.url}/api/engagements/engagement-a/evidence/${id}?${scope}`, { headers: { 'X-Expected-Session': current.csrf_token } });
     expect([403, 404]).toContain(denied.status());
-    await runtime.sqlAsync(restore);
+    await runtime.sqlAsync(restore());
     const registered = await page.request.get(`${runtime.url}/api/engagements/engagement-a/evidence?${scope}`);
     expect(registered.status()).toBe(200); expect((await registered.json()).items).toHaveLength(0);
     const foreign = await page.request.get(`${runtime.url}/api/engagements/engagement-a/evidence/${id}?organisation_id=org-b&client_id=client-b`);

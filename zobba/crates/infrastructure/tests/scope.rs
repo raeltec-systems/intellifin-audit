@@ -55,13 +55,14 @@ async fn scoped_authority_and_pool_contract() {
     admin.execute(r#"
       INSERT INTO public.identities(id,issuer,subject,display_name) VALUES
         ('alice','https://fixture.invalid','alice','Alice'), ('bob','https://fixture.invalid','bob','Bob'),
-        ('manager','https://fixture.invalid','manager','Manager'),('admin','https://fixture.invalid','admin','Admin');
+        ('manager','https://fixture.invalid','manager','Manager'),('admin','https://fixture.invalid','admin','Admin'),
+        ('admin-b','https://fixture.invalid','admin-b','Admin B');
       INSERT INTO public.organisations VALUES ('oa','Org A'),('ob','Org B');
       INSERT INTO public.clients VALUES ('oa','ca','Client A'),('oa','ca2','Client A2'),('ob','cb','Client B');
       INSERT INTO public.engagements VALUES ('oa','ca','ea','A engagement'),('oa','ca2','ea2','A second'),('ob','cb','eb','B engagement');
       INSERT INTO public.organisation_memberships(organisation_id,actor_id,roles) VALUES
         ('oa','alice',ARRAY['auditor']),('ob','bob',ARRAY['audit_manager']),
-        ('oa','manager',ARRAY['admin','audit_manager']),('oa','admin',ARRAY['admin']);
+        ('oa','manager',ARRAY['admin','audit_manager']),('oa','admin',ARRAY['admin']),('ob','admin-b',ARRAY['admin']);
       INSERT INTO public.engagement_assignments(organisation_id,client_id,engagement_id,actor_id) VALUES
         ('oa','ca','ea','alice'),('oa','ca2','ea2','alice'),('ob','cb','eb','bob'),
         ('oa','ca','ea','manager'),('oa','ca','ea','admin');
@@ -116,7 +117,13 @@ async fn scoped_authority_and_pool_contract() {
         tx.commit().await.unwrap();
         clean(&pool, pid).await;
     }
-    for (actor, scope) in [("alice", &b), ("bob", &a), ("admin", &a), ("unknown", &a)] {
+    for (actor, scope) in [
+        ("alice", &b),
+        ("bob", &a),
+        ("admin", &a),
+        ("admin-b", &b),
+        ("unknown", &a),
+    ] {
         assert!(matches!(
             scope::begin(&pool, actor, scope).await,
             Err(ScopeError::Denied)

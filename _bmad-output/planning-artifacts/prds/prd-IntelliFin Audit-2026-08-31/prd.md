@@ -3,7 +3,7 @@ title: "Product Requirements Document: Zobba"
 status: final
 revision: 5
 created: 2026-08-31
-updated: 2026-09-30
+updated: 2026-10-01
 baseline: "Owner-accepted Zobba product and architecture design, revision 3"
 supersedes: "PRD revision 4; all prior active PRD/addendum constraints"
 implementation_status: "Target contract; implementation and qualification pending"
@@ -56,7 +56,7 @@ Every Task, conversation, source, computer and work product has explicit ownersh
 
 #### FR-98 — Roles and membership
 
-Support Auditor, Audit manager and Admin with engagement assignments, invitations, role changes and removal. Protect the last active Admin. Removal ends current sessions and control/dispatch authority while preserving authorship. Only an eligible assigned Audit manager may review, approve or issue; an independent reviewer cannot have materially prepared the submitted version.
+Support Auditor, Audit manager and Admin with engagement assignments, invitations, role changes and removal. Each organisation must retain at least one active, non-expiring Admin membership linked to an active identity; additional temporary Admins remain allowed. Membership and identity deactivation/removal must enforce this atomically, including concurrent changes. Establishing a qualifying replacement permits ordinary Save without another approver. This safeguard was owner-approved on 1 October 2026. Removal ends current sessions and control/dispatch authority while preserving authorship. Only an eligible assigned Audit manager may review, approve or issue; an independent reviewer cannot have materially prepared the submitted version.
 
 #### FR-99 — Coordinating conversation and Task cards
 

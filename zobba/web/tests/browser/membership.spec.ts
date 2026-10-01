@@ -1,15 +1,15 @@
 import { expect, test } from '@playwright/test';
-import type { Browser, BrowserContext, Page } from '@playwright/test';
-import { copyFile, mkdir, writeFile } from 'node:fs/promises';
+import type { APIResponse, Browser, BrowserContext, Page } from '@playwright/test';
+import { writeFile } from 'node:fs/promises';
 import { startAuthRuntime } from './auth-runtime';
 import type { AuthRuntime } from './auth-runtime';
-import { restoreAndClose } from './cleanup';
+import { fixtureRestoration, restoreAndClose } from './cleanup';
 import type { Member, MembershipSnapshot, SaveMember } from '../../src/membership';
 import type { Session } from '../../src/auth';
 
 test.use({ ignoreHTTPSErrors: true });
 let runtime: AuthRuntime;
-const restore = `
+const restore = fixtureRestoration(['actor-a', 'actor-manager', 'actor-admin', 'actor-unassigned', 'actor-b'], `
 DELETE FROM public.engagement_assignments WHERE organisation_id='org-a' AND engagement_id LIKE 'ui20_6_%';
 DELETE FROM public.engagements WHERE organisation_id='org-a' AND id LIKE 'ui20_6_%';
 UPDATE public.identities SET active=true WHERE id IN ('actor-a','actor-manager','actor-admin','actor-unassigned','actor-b');
@@ -19,15 +19,15 @@ UPDATE public.organisation_memberships SET active=true,expires_at=NULL,roles=ARR
 UPDATE public.engagement_assignments SET active=true,expires_at=NULL WHERE actor_id IN ('actor-a','actor-manager','actor-b');
 DELETE FROM public.engagement_assignments WHERE actor_id='actor-unassigned';
 DELETE FROM public.organisation_memberships WHERE actor_id='actor-unassigned';
-`;
+`);
 test.beforeAll(async () => { runtime = await startAuthRuntime(); });
-test.beforeEach(() => runtime.sql(restore));
+test.beforeEach(async () => runtime.sqlAsync(restore()));
 test.afterEach(async ({ page }) => {
   await page.getByLabel('Password', { exact: true }).fill('', { timeout: 250 }).catch(() => {});
   // Failure screenshots of the administrator page must not retain a private link.
   await page.locator('.private-invitation').evaluateAll(elements => elements.forEach(element => element.remove())).catch(() => {});
 });
-test.afterAll(async () => { if (runtime) await restoreAndClose(runtime, restore); });
+test.afterAll(async () => { if (runtime) await restoreAndClose(runtime, restore()); });
 
 async function signIn(page: Page, account = 'admin-only', replacing = false) {
   if (replacing) await page.context().clearCookies({ domain: '127.0.0.1' });
@@ -128,16 +128,16 @@ test('Admin-only has separate keyboard-accessible membership, two current-versio
   await expect(page.getByRole('link', { name: 'Assigned engagements', exact: false })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const path = info.outputPath('membership-mobile.png'); await page.screenshot({ path, fullPage: true }); await info.attach('membership-mobile', { path, contentType: 'image/png' });
-  const evidenceDirectory = '/tmp/zobba-review-20-6/repaired-browser-evidence'; await mkdir(evidenceDirectory, { recursive: true });
-  await copyFile(desktop, `${evidenceDirectory}/membership-desktop.png`); await copyFile(path, `${evidenceDirectory}/membership-mobile.png`);
   const session = await currentSession(page);
   const denied = await page.request.get(`${runtime.url}/api/engagements/engagement-a?organisation_id=org-a&client_id=client-a`, { headers: { 'X-Expected-Session': session.csrf_token } });
   expect(denied.status()).toBe(403);
   await page.goto(`${runtime.url}/membership?organisation_id=org-b`);
   await expect(page.getByText('This organisation is no longer available', { exact: false })).toBeVisible();
   await expect(page.getByText('Beacon Services', { exact: false })).toHaveCount(0);
-  await writeFile(`${evidenceDirectory}/membership-ui-evidence.json`, JSON.stringify({ unexpected_console_errors: errors, mobile_width: 390,
+  const evidencePath = info.outputPath('membership-ui-evidence.json');
+  await writeFile(evidencePath, JSON.stringify({ unexpected_console_errors: errors, mobile_width: 390,
     no_horizontal_overflow: true, saved_member_focus_asserted: true, private_invitation_displayed_in_captures: false }, null, 2));
+  await info.attach('membership-ui-evidence', { path: evidencePath, contentType: 'application/json' });
   expect(errors).toEqual([]);
 });
 
@@ -239,6 +239,7 @@ test('stale Save and the last Admin are refused without automatic overwrite', as
   await saveMemberApi(page, { ...auditor, assignments: [] });
   await editor.getByRole('button', { name: 'Save membership' }).click();
   await expect(page.getByRole('alert')).toContainText('conflicts with current membership');
+  await expect(page.getByRole('alert')).not.toContainText('non-expiring Admin');
   expect((await snapshot(page)).members.find(item => item.actor_id === 'actor-a')?.roles).toEqual(['auditor']);
   await page.getByRole('button', { name: 'Reload current state' }).click();
   const manager = (await snapshot(page)).members.find(item => item.actor_id === 'actor-manager')!;
@@ -246,8 +247,91 @@ test('stale Save and the last Admin are refused without automatic overwrite', as
   await page.getByRole('button', { name: 'Refresh access' }).click();
   const self = await editMember(page, 'actor-admin'); await self.getByLabel('Active membership', { exact: true }).uncheck();
   await self.getByRole('button', { name: 'Save membership' }).click();
-  await expect(page.getByRole('alert')).toContainText('last eligible Admin');
+  await expect(page.getByRole('alert')).toContainText('Establish another active, non-expiring Admin with an active account first');
   expect((await snapshot(page)).members.find(item => item.actor_id === 'actor-admin')?.active).toBe(true);
+});
+
+test('ordinary Save refuses the last non-expiring Admin and permits temporary Admins after establishing a replacement', async ({ page }, info) => {
+  await signIn(page); await adminWorkspace(page);
+  const membershipPath = '/api/membership/organisations/org-a/members';
+  // Retain the real API responses for receipt assertions: Chromium may discard
+  // page response bodies, including the optional body cancelled after a 409 code
+  // header. Forward each original response unchanged; admission remains real.
+  const captured: APIResponse[] = [];
+  await page.route(`**${membershipPath}`, async route => {
+    if (route.request().method() !== 'POST') { await route.continue(); return; }
+    const response = await route.fetch();
+    captured.push(response);
+    await route.fulfill({ response });
+  });
+  const saved = async (actor: string) => {
+    const editor = await editMember(page, actor);
+    return { editor, submit: async () => {
+      const index = captured.length;
+      const response = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === membershipPath);
+      await editor.getByRole('button', { name: 'Save membership', exact: true }).click();
+      const observed = await response;
+      expect(captured).toHaveLength(index + 1);
+      const upstream = captured[index]!;
+      expect(observed.status()).toBe(upstream.status());
+      expect(observed.headers()['x-zobba-error-code']).toBe(upstream.headers()['x-zobba-error-code']);
+      return upstream;
+    } };
+  };
+  const expiry = '2099-01-01T00:00';
+  const expiresAt = Date.parse(`${expiry}Z`) / 1000;
+
+  // An additional temporary Admin keeps current access, but cannot replace the
+  // organisation's required active, non-expiring Admin.
+  const manager = await saved('actor-manager');
+  await manager.editor.getByLabel('Use a membership expiry', { exact: true }).check();
+  await manager.editor.getByLabel('Membership expiry (UTC)', { exact: true }).fill(expiry);
+  const temporaryResponse = await manager.submit(); expect(temporaryResponse.status()).toBe(200);
+  const temporaryReceipt = await temporaryResponse.json();
+  expect(temporaryReceipt).toMatchObject({ actor_id: 'actor-admin', subject_actor_id: 'actor-manager', kind: 'save_member' });
+  await expect(page.getByText('Change recorded.', { exact: false })).toBeVisible();
+  const before = await snapshot(page);
+  expect(before.members.find(item => item.actor_id === 'actor-manager')).toMatchObject({ active: true, roles: ['admin', 'audit_manager'], expires_at: expiresAt });
+
+  const lastAdmin = await saved('actor-admin');
+  await lastAdmin.editor.getByLabel('Use a membership expiry', { exact: true }).check();
+  await lastAdmin.editor.getByLabel('Membership expiry (UTC)', { exact: true }).fill(expiry);
+  const refused = await lastAdmin.submit(); expect(refused.status()).toBe(409);
+  expect(refused.headers()['x-zobba-error-code']).toBe('last_admin');
+  expect(await refused.json()).toEqual({ error: 'last_admin' });
+  await expect(page.getByRole('alert')).toContainText('Establish another active, non-expiring Admin with an active account first');
+  await expect(lastAdmin.editor.getByRole('button', { name: 'Save membership', exact: true })).toBeEnabled();
+  expect(await snapshot(page)).toEqual(before);
+  await expect(page.getByRole('button', { name: 'Retry exact request', exact: true })).toHaveCount(0);
+  const refusalCapture = info.outputPath('last-admin-refusal.png');
+  await page.screenshot({ path: refusalCapture, fullPage: true });
+  await info.attach('last-admin-refusal', { path: refusalCapture, contentType: 'image/png' });
+
+  await page.getByRole('button', { name: 'Reload current state', exact: true }).click();
+  const replacement = await saved('actor-manager');
+  await replacement.editor.getByLabel('Use a membership expiry', { exact: true }).uncheck();
+  const replacementResponse = await replacement.submit(); expect(replacementResponse.status()).toBe(200);
+  const replacementReceipt = await replacementResponse.json();
+  expect(replacementReceipt).toMatchObject({ actor_id: 'actor-admin', subject_actor_id: 'actor-manager', kind: 'save_member' });
+  expect(BigInt(replacementReceipt.version)).toBe(BigInt(before.version) + 1n);
+  await expect(page.getByText('Change recorded.', { exact: false })).toBeVisible();
+
+  const self = await saved('actor-admin');
+  await self.editor.getByLabel('Use a membership expiry', { exact: true }).check();
+  await self.editor.getByLabel('Membership expiry (UTC)', { exact: true }).fill(expiry);
+  const selfResponse = await self.submit(); expect(selfResponse.status()).toBe(200);
+  const selfReceipt = await selfResponse.json();
+  expect(selfReceipt).toMatchObject({ actor_id: 'actor-admin', subject_actor_id: 'actor-admin', kind: 'save_member' });
+  expect(BigInt(selfReceipt.version)).toBe(BigInt(replacementReceipt.version) + 1n);
+  expect(new Set([temporaryReceipt.event_id, replacementReceipt.event_id, selfReceipt.event_id]).size).toBe(3);
+  await expect(page.getByText('Change recorded.', { exact: false })).toBeVisible();
+  const after = await snapshot(page);
+  expect(after.members.find(item => item.actor_id === 'actor-admin')).toMatchObject({ active: true, roles: ['admin'], expires_at: expiresAt });
+  expect(after.members.find(item => item.actor_id === 'actor-manager')).toMatchObject({ active: true, roles: ['admin', 'audit_manager'], expires_at: null });
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const savedCapture = info.outputPath('temporary-admin-saved.png');
+  await page.screenshot({ path: savedCapture, fullPage: true });
+  await info.attach('temporary-admin-saved', { path: savedCapture, contentType: 'image/png' });
 });
 
 test('a combined role can narrow its own audit role while retaining only membership administration', async ({ page }) => {

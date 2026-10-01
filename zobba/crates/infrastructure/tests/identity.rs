@@ -26,31 +26,15 @@ async fn reset(config: &Configuration, connection: &mut PgConnection) {
 async fn seed(config: &Configuration, admin: &mut PgConnection) {
     config.guard_connection(admin).await;
     let mut tx = admin.begin().await.unwrap();
-    // Only this isolated fixture transaction may suspend policies. Restore them
-    // before commit so all repository calls run with the actual forced policies.
-    let tables = [
-        "organisations",
-        "clients",
-        "engagements",
-        "organisation_memberships",
-        "engagement_assignments",
-    ];
-    for table in tables {
-        tx.execute(format!("ALTER TABLE public.{table} DISABLE ROW LEVEL SECURITY").as_str())
-            .await
-            .unwrap();
-    }
-    sqlx::query("INSERT INTO public.identities(id,issuer,subject,display_name) VALUES ('identity-a',$1,'auditor-a','Alex'),('identity-b',$1,'auditor-b','Blair'),('identity-manager',$1,'manager','Morgan'),('identity-admin',$1,'admin','Casey'),('identity-unassigned',$1,'unassigned','Unassigned')")
+    // Guarded fixture administration uses the existing owner policies.
+    sqlx::query("INSERT INTO public.identities(id,issuer,subject,display_name) VALUES ('identity-a',$1,'auditor-a','Alex'),('identity-b',$1,'auditor-b','Blair'),('identity-manager',$1,'manager','Morgan'),('identity-admin',$1,'admin','Casey'),('identity-admin-b',$1,'admin-b','Drew'),('identity-unassigned',$1,'unassigned','Unassigned')")
         .bind(ISSUER).execute(&mut *tx).await.unwrap();
     tx.execute("INSERT INTO public.organisations(id,name) VALUES('org-a','Northstar'),('org-b','Meridian');
         INSERT INTO public.clients(organisation_id,id,name) VALUES('org-a','client-a','Alder'),('org-a','client-other','Other'),('org-b','client-b','Beacon');
         INSERT INTO public.engagements(organisation_id,client_id,id,name) VALUES('org-a','client-a','engagement-a','Audit A'),('org-a','client-other','engagement-other','Other audit'),('org-b','client-b','engagement-b','Audit B');
-        INSERT INTO public.organisation_memberships(organisation_id,actor_id,roles) VALUES('org-a','identity-a',ARRAY['auditor']),('org-b','identity-b',ARRAY['auditor']),('org-a','identity-manager',ARRAY['audit_manager','admin']),('org-a','identity-admin',ARRAY['admin']);
+        INSERT INTO public.organisation_memberships(organisation_id,actor_id,roles) VALUES('org-a','identity-a',ARRAY['auditor']),('org-b','identity-b',ARRAY['auditor']),('org-a','identity-manager',ARRAY['audit_manager','admin']),('org-a','identity-admin',ARRAY['admin']),('org-b','identity-admin-b',ARRAY['admin']);
         INSERT INTO public.engagement_assignments(organisation_id,client_id,engagement_id,actor_id) VALUES('org-a','client-a','engagement-a','identity-a'),('org-b','client-b','engagement-b','identity-b'),('org-a','client-a','engagement-a','identity-manager'),('org-a','client-a','engagement-a','identity-admin');")
         .await.unwrap();
-    for table in tables {
-        tx.execute(format!("ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY; ALTER TABLE public.{table} FORCE ROW LEVEL SECURITY").as_str()).await.unwrap();
-    }
     tx.commit().await.unwrap();
 }
 
@@ -556,6 +540,7 @@ async fn authority_contract(
             );
         }
         assert_no_authority(repository, "identity-admin", &a).await;
+        assert_no_authority(repository, "identity-admin-b", &b).await;
         assert_no_authority(repository, "identity-unassigned", &a).await;
         assert_eq!(
             repository.engagement("identity-a", &b).await.err(),
@@ -952,12 +937,24 @@ async fn stored_scope_bounds_contract(admin: &mut PgConnection) {
     }
     let id = "z".repeat(128);
     let label = "🦉".repeat(200);
+    let mut provision = admin.begin().await.unwrap();
+    sqlx::query("INSERT INTO public.identities(id,issuer,subject,display_name) VALUES('identity-bounds-admin',$1,'bounds-admin','Bounds Administrator')")
+        .bind(ISSUER)
+        .execute(&mut *provision)
+        .await
+        .unwrap();
     sqlx::query("INSERT INTO public.organisations(id,name) VALUES($1,$2)")
         .bind(&id)
         .bind(&label)
-        .execute(&mut *admin)
+        .execute(&mut *provision)
         .await
         .unwrap();
+    sqlx::query("INSERT INTO public.organisation_memberships(organisation_id,actor_id,roles) VALUES($1,'identity-bounds-admin',ARRAY['admin'])")
+        .bind(&id)
+        .execute(&mut *provision)
+        .await
+        .unwrap();
+    provision.commit().await.unwrap();
     for bad in [
         "".to_owned(),
         "x".repeat(201),

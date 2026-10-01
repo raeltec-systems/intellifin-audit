@@ -118,6 +118,9 @@ async fn document(response: Response, expected: StatusCode) -> Value {
         !response.headers().contains_key("set-cookie"),
         "membership responses cannot replace or clear the current session"
     );
+    if expected.is_success() {
+        assert!(!response.headers().contains_key("x-zobba-error-code"));
+    }
     let status = response.status();
     let text = response.text().await.unwrap();
     assert_eq!(status, expected, "{text}");
@@ -125,6 +128,21 @@ async fn document(response: Response, expected: StatusCode) -> Value {
 }
 
 async fn refused(response: Response, status: StatusCode, code: &str) {
+    let codes: Vec<_> = response
+        .headers()
+        .get_all("x-zobba-error-code")
+        .iter()
+        .map(|value| value.to_str().unwrap())
+        .collect();
+    assert_eq!(
+        codes,
+        if code == "last_admin" {
+            vec!["last_admin"]
+        } else {
+            vec![]
+        },
+        "only the public last-Admin refusal exposes a stable recovery header"
+    );
     assert_eq!(document(response, status).await, json!({"error":code}));
 }
 
@@ -207,18 +225,6 @@ async fn fixture(config: &support::Configuration, admin: &mut PgConnection, issu
         .to_owned();
     migrate(&config.migration, &runtime_role).await.unwrap();
     let mut tx = admin.begin().await.unwrap();
-    let tables = [
-        "organisations",
-        "clients",
-        "engagements",
-        "organisation_memberships",
-        "engagement_assignments",
-    ];
-    for table in tables {
-        tx.execute(format!("ALTER TABLE public.{table} DISABLE ROW LEVEL SECURITY").as_str())
-            .await
-            .unwrap();
-    }
     sqlx::query("INSERT INTO public.identities(id,issuer,subject,display_name) VALUES('identity-admin',$1,'admin','Casey'),('identity-combined',$1,'combined','Alex'),('identity-auditor',$1,'auditor','Robin'),('identity-foreign',$1,'foreign','Foreign')")
         .bind(issuer).execute(&mut *tx).await.unwrap();
     tx.execute("INSERT INTO public.organisations(id,name) VALUES('org-a','Northstar'),('org-b','Private foreign organisation');
@@ -227,9 +233,6 @@ async fn fixture(config: &support::Configuration, admin: &mut PgConnection, issu
         INSERT INTO public.organisation_memberships(organisation_id,actor_id,roles) VALUES('org-a','identity-admin',ARRAY['admin']),('org-a','identity-combined',ARRAY['admin','auditor']),('org-a','identity-auditor',ARRAY['auditor']),('org-b','identity-foreign',ARRAY['admin']);
         INSERT INTO public.engagement_assignments(organisation_id,client_id,engagement_id,actor_id) VALUES('org-a','client-a','engagement-a','identity-admin'),('org-a','client-a','engagement-a','identity-combined'),('org-a','client-a','engagement-a','identity-auditor');")
         .await.unwrap();
-    for table in tables {
-        tx.execute(format!("ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY; ALTER TABLE public.{table} FORCE ROW LEVEL SECURITY").as_str()).await.unwrap();
-    }
     tx.commit().await.unwrap();
 }
 

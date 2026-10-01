@@ -88,7 +88,44 @@ function resetSyntheticFixture(database: URL, host: string, port: number): void 
   const result = spawnSync('psql', ['-X', '-q', '-1', '-v', 'ON_ERROR_STOP=1'], {
     cwd: root,
     encoding: 'utf8',
-    input: 'TRUNCATE public.identities, public.organisations CASCADE; UPDATE public.zobba_bootstrap SET local_fixture_issuer=NULL WHERE singleton;',
+    // The caller has verified the isolated *_test database. Keep production
+    // TRUNCATE refusal intact: remove this synthetic fixture in dependency order
+    // within psql's single transaction, including the deferred Task-cycle and
+    // Admin-continuity checks. This is never an application lifecycle operation.
+    input: `
+DELETE FROM public.operation_receipts;
+DELETE FROM public.operation_receipt_slots;
+DELETE FROM public.operation_receipt_producers;
+DELETE FROM public.operation_claims;
+DELETE FROM public.operation_attempts;
+DELETE FROM public.operation_decisions;
+DELETE FROM public.operations;
+DELETE FROM public.task_observations;
+DELETE FROM public.task_receipt_slots;
+DELETE FROM public.task_claims;
+DELETE FROM public.task_deliveries;
+DELETE FROM public.task_wakeups;
+DELETE FROM public.task_events;
+DELETE FROM public.task_commands;
+DELETE FROM public.task_cycles;
+DELETE FROM public.tasks;
+DELETE FROM public.task_counters;
+DELETE FROM public.permission_heads;
+DELETE FROM public.permission_versions;
+DELETE FROM public.trusted_attachment_metadata;
+DELETE FROM public.evidence_originals;
+DELETE FROM public.evidence_reservations;
+DELETE FROM public.membership_events;
+DELETE FROM public.membership_invitations;
+DELETE FROM public.engagement_assignments;
+DELETE FROM public.organisation_memberships;
+DELETE FROM public.membership_versions;
+DELETE FROM public.engagements;
+DELETE FROM public.clients;
+DELETE FROM public.organisations;
+DELETE FROM public.sessions;
+DELETE FROM public.identities;
+UPDATE public.zobba_bootstrap SET local_fixture_issuer=NULL WHERE singleton;`,
     timeout: 10_000,
     env: {
       ...sanitizedRuntimeEnvironment(),
@@ -234,7 +271,7 @@ export async function startAuthRuntime(options: { evidence?: boolean } = {}): Pr
         if (api.exitCode !== null) throw new Error('Authentication API refused startup.');
         try {
           const response = await fetch(`${apiUrl}/health/ready`, { signal: AbortSignal.timeout(1000) });
-          if (response.status === 200 && (await response.json()).schema_version === 6) { healthy = true; break; }
+          if (response.status === 200 && (await response.json()).schema_version === 7) { healthy = true; break; }
         } catch { /* Startup is bounded; do not expose URLs or provider errors. */ }
         await delay(100);
       }

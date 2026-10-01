@@ -17,6 +17,7 @@ pub enum BootstrapError {
     SchemaMismatch,
     MigrationFailed,
     MembershipExpiryOutOfRange,
+    AdminContinuityRequired,
     ListenerUnavailable,
 }
 
@@ -30,6 +31,7 @@ impl BootstrapError {
             Self::SchemaMismatch => "schema_mismatch",
             Self::MigrationFailed => "migration_failed",
             Self::MembershipExpiryOutOfRange => "membership_expiry_out_of_range",
+            Self::AdminContinuityRequired => "admin_continuity_required",
             Self::ListenerUnavailable => "listener_unavailable",
         }
     }
@@ -64,6 +66,7 @@ mod tests {
             BootstrapError::SchemaMismatch,
             BootstrapError::MigrationFailed,
             BootstrapError::MembershipExpiryOutOfRange,
+            BootstrapError::AdminContinuityRequired,
             BootstrapError::ListenerUnavailable,
         ] {
             assert!(

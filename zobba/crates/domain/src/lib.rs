@@ -9,4 +9,4 @@ pub mod task;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SchemaVersion(pub u32);
 
-pub const SCHEMA_VERSION: SchemaVersion = SchemaVersion(6);
+pub const SCHEMA_VERSION: SchemaVersion = SchemaVersion(7);

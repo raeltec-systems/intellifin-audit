@@ -4,7 +4,7 @@ import type { Session } from '../../src/auth';
 import type { Task, TaskCommand } from '../../src/conversation';
 import { startAuthRuntime } from './auth-runtime';
 import type { AuthRuntime } from './auth-runtime';
-import { restoreAndClose } from './cleanup';
+import { fixtureRestoration, restoreAndClose } from './cleanup';
 
 // Browser plugin not available. These regressions use the owned Playwright
 // harness, actual HTTPS OIDC, restricted PostgreSQL and real HTTP admission.
@@ -12,19 +12,19 @@ import { restoreAndClose } from './cleanup';
 test.use({ ignoreHTTPSErrors: true });
 let runtime: AuthRuntime;
 const scope = 'organisation_id=org-a&client_id=client-a';
-const restore = `
+const restore = fixtureRestoration(['actor-a', 'actor-manager', 'actor-b'], `
 UPDATE public.identities SET active=true WHERE id IN ('actor-a','actor-manager','actor-b');
 UPDATE public.organisation_memberships SET active=true,expires_at=NULL,roles=ARRAY['auditor'] WHERE actor_id='actor-a' AND organisation_id='org-a';
 UPDATE public.engagement_assignments SET active=true,expires_at=NULL WHERE actor_id='actor-a' AND organisation_id='org-a';
 DELETE FROM public.engagement_assignments WHERE actor_id='actor-a' AND organisation_id='org-b';
-DELETE FROM public.organisation_memberships WHERE actor_id='actor-a' AND organisation_id='org-b';`;
+DELETE FROM public.organisation_memberships WHERE actor_id='actor-a' AND organisation_id='org-b';`);
 test.beforeAll(async () => { runtime = await startAuthRuntime(); });
-test.beforeEach(async () => { await runtime.stopWorker(); runtime.sql(`${restore} TRUNCATE public.tasks, public.task_counters CASCADE;`); });
+test.beforeEach(async () => { await runtime.stopWorker(); await runtime.sqlAsync(restore('TRUNCATE public.tasks, public.task_counters CASCADE;')); });
 test.afterEach(async ({ context }) => {
-  await runtime.stopWorker(); runtime.sql(restore);
+  await runtime.stopWorker(); await runtime.sqlAsync(restore());
   for (const page of context.pages()) await page.getByLabel('Password', { exact: true }).fill('', { timeout: 250 }).catch(() => {});
 });
-test.afterAll(async () => { if (runtime) await restoreAndClose(runtime, restore); });
+test.afterAll(async () => { if (runtime) await restoreAndClose(runtime, restore()); });
 
 function gate() {
   let release!: () => void;

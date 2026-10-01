@@ -3,26 +3,26 @@ import type { Page, TestInfo } from '@playwright/test';
 import { connect } from 'node:net';
 import { startAuthRuntime } from './auth-runtime';
 import type { AuthRuntime } from './auth-runtime';
-import { restoreAndClose } from './cleanup';
+import { fixtureRestoration, restoreAndClose } from './cleanup';
 
 // Certificate exceptions apply only to this explicitly local browser fixture.
 test.use({ ignoreHTTPSErrors: true });
 let runtime: AuthRuntime;
-const restoreAuthority = `
+const restoreAuthority = fixtureRestoration(['actor-a', 'actor-manager', 'actor-b', 'actor-admin', 'actor-unassigned'], `
 UPDATE public.identities SET active=true WHERE id IN ('actor-a','actor-manager','actor-b','actor-admin','actor-unassigned');
 UPDATE public.organisation_memberships SET active=true, expires_at=NULL, roles=ARRAY['auditor'] WHERE actor_id='actor-a';
 UPDATE public.engagement_assignments SET active=true, expires_at=NULL WHERE actor_id='actor-a';
-`;
+`);
 
 test.beforeAll(async () => { runtime = await startAuthRuntime(); });
-test.beforeEach(() => runtime.sql(restoreAuthority));
+test.beforeEach(async () => runtime.sqlAsync(restoreAuthority()));
 test.afterEach(async ({ page }) => {
   // Playwright's failure DOM snapshot includes password input values. Clear the
   // local fixture field before artifact collection, even when login fails.
   await page.getByLabel('Password', { exact: true }).fill('', { timeout: 250 }).catch(() => {});
 });
 test.afterAll(async () => {
-  if (runtime) await restoreAndClose(runtime, restoreAuthority);
+  if (runtime) await restoreAndClose(runtime, restoreAuthority());
 });
 
 async function signIn(page: Page, account = 'auditor-a') {
@@ -157,7 +157,7 @@ test('role demotion, membership expiry and session expiry clear previously opene
   await page.getByRole('button', { name: 'Refresh access' }).click();
   await expect(page.getByRole('heading', { name: 'No assigned engagements' })).toBeVisible();
   await expect(page.locator('.scope-panel > summary')).toHaveCount(0);
-  runtime.sql(restoreAuthority);
+  await runtime.sqlAsync(restoreAuthority());
   await page.getByRole('button', { name: 'Refresh access' }).click();
   await page.getByRole('button', { name: /FY2026 audit/ }).click();
   await expect(page.locator('.scope-panel > summary')).toBeVisible();
@@ -166,7 +166,7 @@ test('role demotion, membership expiry and session expiry clear previously opene
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await expect(page.getByRole('heading', { name: 'No assigned engagements' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Your engagements', exact: true })).toBeFocused();
-  runtime.sql(restoreAuthority);
+  await runtime.sqlAsync(restoreAuthority());
   await page.getByRole('button', { name: 'Refresh access' }).click();
   await page.getByRole('button', { name: /FY2026 audit/ }).click();
   await expect(page.locator('.scope-panel > summary')).toBeVisible();
@@ -384,22 +384,30 @@ test('a different organisation receives its own assignment only', async ({ page 
 
 test('more than 100 assignments paginate by full scope with fresh back navigation and direct opening', async ({ page }, info) => {
   const cleanup = `
+BEGIN;
 DELETE FROM public.engagement_assignments WHERE organisation_id IN ('org-pagination-a','org-pagination-b');
 DELETE FROM public.organisation_memberships WHERE organisation_id IN ('org-pagination-a','org-pagination-b');
 DELETE FROM public.engagements WHERE organisation_id IN ('org-pagination-a','org-pagination-b');
 DELETE FROM public.clients WHERE organisation_id IN ('org-pagination-a','org-pagination-b');
-DELETE FROM public.organisations WHERE id IN ('org-pagination-a','org-pagination-b');`;
-  runtime.sql(cleanup);
-  runtime.sql(`
+DELETE FROM public.organisations WHERE id IN ('org-pagination-a','org-pagination-b');
+DELETE FROM public.identities WHERE id='actor-pagination-admin';
+COMMIT;`;
+  await runtime.sqlAsync(cleanup);
+  await runtime.sqlAsync(`
+BEGIN;
+INSERT INTO public.identities(id,issuer,subject,display_name)
+SELECT 'actor-pagination-admin',issuer,'pagination-admin','Pagination Admin' FROM public.identities WHERE id='actor-admin';
 INSERT INTO public.organisations VALUES ('org-pagination-a','Pagination A'),('org-pagination-b','Pagination B');
 INSERT INTO public.clients VALUES ('org-pagination-a','client-shared','Shared local client A'),('org-pagination-b','client-shared','Shared local client B');
 INSERT INTO public.engagements (organisation_id,client_id,id,name)
 SELECT organisation_id,'client-shared','engagement-' || lpad(n::text,3,'0'),'Assignment ' || lpad(n::text,3,'0')
 FROM (VALUES ('org-pagination-a'),('org-pagination-b')) AS organisations(organisation_id),generate_series(1,60) AS n;
 INSERT INTO public.organisation_memberships (organisation_id,actor_id,roles)
-VALUES ('org-pagination-a','actor-a',ARRAY['auditor']),('org-pagination-b','actor-a',ARRAY['auditor']);
+VALUES ('org-pagination-a','actor-a',ARRAY['auditor']),('org-pagination-b','actor-a',ARRAY['auditor']),
+('org-pagination-a','actor-pagination-admin',ARRAY['admin']),('org-pagination-b','actor-pagination-admin',ARRAY['admin']);
 INSERT INTO public.engagement_assignments (organisation_id,client_id,engagement_id,actor_id)
-SELECT organisation_id,client_id,id,'actor-a' FROM public.engagements WHERE organisation_id IN ('org-pagination-a','org-pagination-b');`);
+SELECT organisation_id,client_id,id,'actor-a' FROM public.engagements WHERE organisation_id IN ('org-pagination-a','org-pagination-b');
+COMMIT;`);
   try {
     await signIn(page);
     const scopes: string[] = [];
@@ -438,7 +446,7 @@ SELECT organisation_id,client_id,id,'actor-a' FROM public.engagements WHERE orga
     await page.getByRole('button', { name: 'Next page' }).click();
     await expect(page.locator('.engagement-card')).toHaveCount(20);
     await expect(page.getByRole('button', { name: /Assignment 060/ })).toHaveCount(0);
-  } finally { runtime.sql(cleanup); }
+  } finally { await runtime.sqlAsync(cleanup); }
 });
 
 test('cold provider discovery failure bounds concurrent sign-in requests and recovers', async ({ page }) => {

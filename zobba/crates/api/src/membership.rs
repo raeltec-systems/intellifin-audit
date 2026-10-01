@@ -6,7 +6,7 @@ use axum::{
         DefaultBodyLimit, Path, Query, State,
         rejection::{JsonRejection, QueryRejection},
     },
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -78,13 +78,21 @@ fn failure(error: MembershipError) -> Response {
         MembershipError::Capacity => StatusCode::TOO_MANY_REQUESTS,
         MembershipError::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
     };
-    (
+    let mut response = (
         status,
         Json(ErrorResponse {
             error: error.code(),
         }),
     )
-        .into_response()
+        .into_response();
+    // Keep actionable recovery independent of optional response-body delivery.
+    // Only this public error is exposed here, never database diagnostic text.
+    if error == MembershipError::LastAdmin {
+        response
+            .headers_mut()
+            .insert("x-zobba-error-code", HeaderValue::from_static("last_admin"));
+    }
+    response
 }
 enum AuthenticationFailure {
     Identity(zobba_application::identity::IdentityError),

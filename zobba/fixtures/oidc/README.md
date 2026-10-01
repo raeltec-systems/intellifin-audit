@@ -46,11 +46,35 @@ processes, remove only the fixture's `.local/` directory and run setup again to
 regenerate it. No shared/system trust store is modified.
 
 The form has an **Account** selector, a **Password** field and a **Sign in** button.
-Synthetic account names are `auditor-a`, `manager-a`, `auditor-b`, `admin-only`,
-and `unassigned`. The password is the generated `account_password` field in
+New fixtures include `auditor-a`, `manager-a`, `auditor-b`, `admin-only`,
+`admin-b-only` and `unassigned`. The two Admin-only accounts are independently
+seeded for org-a and org-b; neither has an audit assignment. Existing fixture
+configurations retain their account lists on repeated setup, along with their
+credentials. The password is the generated `account_password` field in
 `.local/fixture.json`; browser tests read it directly without logging it.
 Application roles and assignments are independently seeded and read from the
 application database; the provider conveys no audit authority.
+
+To opt an older provider into the dedicated `admin-b-only` login, stop that
+provider process first and retain its existing fixture directory. Open
+`$ZOBBA_FIXTURE_DIR/fixture.json` locally (the default is
+`fixtures/oidc/.local/fixture.json`) and append the string `"admin-b-only"` once
+to its `accounts` array. Preserve every existing account and every other field,
+including `account_password`, client/admin credentials, cookie keys and signing
+keys. Keep the file mode 0600 and directory mode 0700. Do not print the file,
+remove the directory or regenerate any certificates or credentials. Restart the
+same provider with its existing environment; the new account uses the unchanged
+fixture password. Repeated setup remains non-destructive and deliberately does
+not perform this opt-in edit or recreate a deliberately removed account.
+
+This provider edit grants no application membership. A fresh synthetic seed
+creates the separate `actor-admin-b` / `admin-b-only` identity and org-b Admin
+membership. An already provisioned database keeps its existing authority on a
+seed rerun; apply the [database preflight and explicit remediation procedure](../../README.md)
+before upgrading invalid schema-6 data. Use the dedicated identity for the
+explicitly authorised membership; do not promote `auditor-b` or extend the
+existing org-a Admin's scope. Provider account availability and database
+authority must both be present before that account can administer org-b.
 
 Normal ID tokens also contain the signed `email` claim
 `<account>@example.test` and `email_verified: true`. Zobba binds that recipient

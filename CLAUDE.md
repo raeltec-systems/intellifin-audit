@@ -1,3 +1,29 @@
+## 2026-10-01 — Approved Admin continuity policy
+
+Implemented in migration/catalogue 7; see the [checkpoint](_bmad-output/implementation-artifacts/zobba-foundation-batch/ADMIN-CONTINUITY-CHECKPOINT.md). After this checkpoint, preserve the published migration/catalogue prefix 1–7. Migration and explicit synthetic seeding must select READ COMMITTED before their first transaction read. The public last_admin response header contains only a fixed code; owner SQL diagnostics must remain private. Browser tests observe that header because the client deliberately cancels the optional body.
+
+Every organisation must retain an active, non-expiring Admin membership linked
+to an active application identity. Additional temporary Admins remain allowed.
+This is an explicit owner-approved follow-up to accepted Story 20.6 and Unicode
+checkpoint `9a76c5c`, not an implicit part of the Unicode repair. Cover membership
+and identity lifecycle changes at the database boundary, including concurrency;
+do not grant the runtime new global identity-administration authority. Preflight
+legacy organisations and require explicit remediation; never silently promote,
+reactivate or clear expiry during migration. Ordinary Save needs no second
+approver. External IdP availability and emergency recovery remain separate.
+
+Continuity checks must include direct owner identity writes and membership
+removal, not only the application Save function. Deferred checks support atomic
+organisation provisioning and replacement; shared organisation locks retain
+serialisation through commit. Newly qualifying memberships must lock identities
+FOR SHARE: FOR KEY SHARE does not conflict with an active-only identity update.
+Continuity mutations require READ COMMITTED; advisory waits do not refresh a
+REPEATABLE READ snapshot. Direct owner row updates can invert the application's
+organisation-to-identity lock order, so deadlock/timeout recovery must retry the
+whole transaction. Refuse TRUNCATE rather than bypassing row guards. Fingerprint
+the exact triggers and owner-only function authority without changing published
+catalogues 1–6 or allowing arbitrary public triggers.
+
 ## 2026-10-01 — Evidence metadata Unicode compatibility
 
 Rust `str::trim` follows Unicode White_Space; JavaScript `trim()` also removes
@@ -6,8 +32,8 @@ metadata. Preserve immutable filename/source strings and recovery drafts exactly
 Use shared Rust/browser parity cases and API-created mixed-record browser tests;
 assert raw strings because browser text matchers can normalise the affected value.
 Download attachment sanitation is separate from stored metadata. Admin continuity
-through a non-expiring membership is a pending owner policy decision, not an
-implicit consequence of this compatibility repair.
+was pending during this compatibility repair and was subsequently approved as
+the separate change recorded above.
 
 ## 2026-10-01 — Story 21.1 immutable evidence custody
 

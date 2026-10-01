@@ -1,11 +1,13 @@
 # Zobba checkpoint: membership administration and immutable evidence
 
-**1 October 2026 (Africa/Lusaka). Implementation complete; ready for owner review.**
+**Original checkpoint, 1 October 2026 (Africa/Lusaka). Owner acceptance and subsequent repairs are recorded below.**
 
-**Owner-review follow-up:** Story 20.6 is now accepted. Story 21.1's Unicode
-compatibility repair is complete and independently reviewed; see the [repair checkpoint](STORY-21.1-UNICODE-REPAIR.md) and [specification](../spec-21-1-preserve-evidence-unicode-values.md).
-The [Admin-continuity proposal](ADMIN-EXPIRY-OWNER-DECISION.md) is separately pending
-owner approval. The verification counts below describe the original checkpoint.
+**Owner-review follow-up:** Story 20.6 and Story 21.1's Unicode compatibility
+repair at `9a76c5c` are now accepted; see the [repair checkpoint](STORY-21.1-UNICODE-REPAIR.md) and [specification](../spec-21-1-preserve-evidence-unicode-values.md).
+The [Admin-continuity safeguard](ADMIN-EXPIRY-OWNER-DECISION.md) was separately
+approved and implemented in the [Admin continuity checkpoint](ADMIN-CONTINUITY-CHECKPOINT.md); see its [scoped specification](../spec-20-6-admin-continuity-safeguard.md).
+The next batch, merge and deployment remain unauthorised. The verification counts
+below describe the original checkpoint.
 
 This is the authorised next batch after owner acceptance of Story 20.5. It keeps
 the Rust backend, fresh schema, continuing engagement conversation and standing

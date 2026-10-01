@@ -1,0 +1,10 @@
+$ pnpm --filter @zobba/web test:browser membership.spec.ts --grep 'ordinary Save refuses' --workers=1 --retries=0
+$ playwright test membership.spec.ts --grep 'ordinary Save refuses' --workers=1 --retries=0
+
+Running 1 test using 1 worker
+
+(node:634882) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/membership.spec.ts:254:1 › ordinary Save refuses the last non-expiring Admin and permits temporary Admins after establishing a replacement (4.8s)
+
+  1 passed (10.5s)

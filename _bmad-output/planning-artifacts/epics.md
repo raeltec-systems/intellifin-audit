@@ -313,13 +313,13 @@ So that the right people can work and departed members lose current authority.
 
 1. **Given** an Admin invites or changes a role, **when** Save succeeds, **then** the change is attributable and invitation acceptance rechecks current authority and verified identity.
 
-2. **Given** the last active Admin is targeted, **when** removal is attempted, **then** the product prevents an ownerless organisation.
+2. **Given** an organisation's last active, non-expiring Admin membership linked to an active identity is targeted, **when** expiry, demotion, deactivation or removal is attempted through membership or identity lifecycle changes, **then** the product atomically prevents an ownerless organisation, including concurrent changes. Additional temporary Admins remain allowed; a qualifying replacement permits ordinary Save without another approver. This safeguard was owner-approved on 1 October 2026.
 
 3. **Given** membership or an assignment is removed, **when** dependent sessions/leases/grants are used, **then** new access and dispatch are refused while historical authorship stays intact.
 
 4. **Given** one person holds several roles, **when** they open review/configuration, **then** capabilities stay explicit and Admin alone never supplies audit-review eligibility.
 
-**Validation:** Invitation replay/expiry, concurrent last-Admin removal and fresh-authority tests; browser role/assignment flow and dependent-token revocation contract tests.
+**Validation:** Invitation replay/expiry, concurrent last-Admin expiry/removal and identity deactivation/removal, atomic first-Admin provisioning, explicit upgrade remediation and fresh-authority tests; browser role/assignment flow and dependent-token revocation contract tests.
 
 ### Story 20.7: Deploy a recoverable qualification environment
 

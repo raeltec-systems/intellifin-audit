@@ -5,15 +5,15 @@ import { Worker } from 'node:worker_threads';
 import { expect, test } from '@playwright/test';
 import { startAuthRuntime } from './auth-runtime';
 import type { AuthRuntime } from './auth-runtime';
-import { restoreAndClose } from './cleanup';
+import { fixtureRestoration, restoreAndClose } from './cleanup';
 
 test.use({ ignoreHTTPSErrors: true });
 const root = fileURLToPath(new URL('../../..', import.meta.url));
 const databaseNames = ['ZOBBA_TEST_MIGRATION_DATABASE_URL', 'ZOBBA_TEST_RUNTIME_DATABASE_URL', 'ZOBBA_TEST_ADMIN_DATABASE_URL'] as const;
-const restoreAuthority = `
+const restoreAuthority = fixtureRestoration(['actor-a'], `
 UPDATE public.identities SET active=true WHERE id='actor-a';
 UPDATE public.organisation_memberships SET active=true,expires_at=NULL,roles=ARRAY['auditor'] WHERE actor_id='actor-a' AND organisation_id='org-a';
-UPDATE public.engagement_assignments SET active=true,expires_at=NULL WHERE actor_id='actor-a' AND organisation_id='org-a';`;
+UPDATE public.engagement_assignments SET active=true,expires_at=NULL WHERE actor_id='actor-a' AND organisation_id='org-a';`);
 
 test('portless PGPORT routes actual migration, admin SQL and authenticated recovery through an owned relay', async ({ page }) => {
   // Validate the original targets before a relay could hide a development alias.
@@ -68,7 +68,7 @@ test('portless PGPORT routes actual migration, admin SQL and authenticated recov
       'The disconnected relay must block the actual migration command.').toBe(true);
 
     runtime = await startAuthRuntime();
-    runtime.sql(restoreAuthority);
+    await runtime.sqlAsync(restoreAuthority());
     await exchange('disconnect');
     try { expect(() => runtime!.sql('SELECT 1;')).toThrow('Synthetic browser database mutation failed.'); }
     finally { await exchange('restore'); }
@@ -86,13 +86,13 @@ test('portless PGPORT routes actual migration, admin SQL and authenticated recov
     await page.getByRole('button', { name: 'Refresh access' }).click();
     await expect(page.getByRole('heading', { name: 'No assigned engagements' })).toBeVisible();
     await expect(page.locator('.scope-panel > summary')).toHaveCount(0);
-    runtime.sql(restoreAuthority);
+    await runtime.sqlAsync(restoreAuthority());
     await page.getByRole('button', { name: 'Refresh access' }).click();
     await page.getByRole('button', { name: /FY2026 audit/ }).click();
     await expect(page.locator('.scope-panel > summary')).toBeVisible();
   } finally {
     await page.getByLabel('Password', { exact: true }).fill('', { timeout: 250 }).catch(() => {});
-    try { if (runtime) await restoreAndClose(runtime, restoreAuthority); }
+    try { if (runtime) await restoreAndClose(runtime, restoreAuthority()); }
     finally {
       try { if (!relayExited) await exchange('close'); }
       finally {

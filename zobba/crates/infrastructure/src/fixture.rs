@@ -3,14 +3,6 @@ use crate::database_options;
 use sqlx::{Connection, PgConnection};
 use zobba_application::BootstrapError;
 
-const SCOPED_TABLES: [&str; 5] = [
-    "organisations",
-    "clients",
-    "engagements",
-    "organisation_memberships",
-    "engagement_assignments",
-];
-
 fn loopback(value: &str) -> bool {
     matches!(value, "localhost" | "127.0.0.1" | "[::1]" | "::1")
 }
@@ -44,9 +36,13 @@ pub async fn seed_local_configured(issuer: &str, database_url: &str) -> Result<(
         .begin()
         .await
         .map_err(|_| BootstrapError::DatabaseUnavailable)?;
-    // Catalog deparsing takes relation locks too. Serialize before the first
-    // schema read, otherwise two seed calls can deadlock a reader's catalog
-    // locks against the other's temporary, transaction-local RLS DDL.
+    // Provisioning must not inherit a stale-snapshot isolation default: the
+    // continuity guards require READ COMMITTED before any lock or metadata read.
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| BootstrapError::MigrationFailed)?;
+    // Serialize provisioning before schema validation and fixture metadata reads.
     sqlx::query("SELECT pg_advisory_xact_lock(20260930, 2002)")
         .execute(&mut *tx)
         .await
@@ -70,20 +66,13 @@ pub async fn seed_local_configured(issuer: &str, database_url: &str) -> Result<(
             Err(BootstrapError::InvalidConfiguration)
         };
     }
-    // Owner-only DDL is enclosed in this transaction. No committed state disables RLS.
-    for table in SCOPED_TABLES {
-        sqlx::raw_sql(&format!(
-            "ALTER TABLE public.{table} DISABLE ROW LEVEL SECURITY"
-        ))
-        .execute(&mut *tx)
-        .await
-        .map_err(|_| BootstrapError::MigrationFailed)?;
-    }
+    // The existing owner policies permit provisioning with FORCE RLS enabled.
     for (id, subject, name) in [
         ("actor-a", "auditor-a", "Alex Auditor"),
         ("actor-manager", "manager-a", "Morgan Manager"),
         ("actor-b", "auditor-b", "Blair Auditor"),
         ("actor-admin", "admin-only", "Casey Administrator"),
+        ("actor-admin-b", "admin-b-only", "Drew Administrator"),
         ("actor-unassigned", "unassigned", "Unassigned Auditor"),
     ] {
         let inserted=sqlx::query("INSERT INTO public.identities(id,issuer,subject,display_name) VALUES($1,$2,$3,$4) ON CONFLICT(id) DO UPDATE SET display_name=EXCLUDED.display_name WHERE identities.issuer=EXCLUDED.issuer AND identities.subject=EXCLUDED.subject")
@@ -95,13 +84,9 @@ pub async fn seed_local_configured(issuer: &str, database_url: &str) -> Result<(
     sqlx::raw_sql("INSERT INTO public.organisations(id,name) VALUES('org-a','Northstar'),('org-b','Meridian') ON CONFLICT DO NOTHING;
       INSERT INTO public.clients(organisation_id,id,name) VALUES('org-a','client-a','Alder Manufacturing'),('org-b','client-b','Beacon Services') ON CONFLICT DO NOTHING;
       INSERT INTO public.engagements(organisation_id,client_id,id,name) VALUES('org-a','client-a','engagement-a','FY2026 audit'),('org-b','client-b','engagement-b','FY2026 review') ON CONFLICT DO NOTHING;
-      INSERT INTO public.organisation_memberships(organisation_id,actor_id,roles) VALUES('org-a','actor-a',ARRAY['auditor']),('org-a','actor-manager',ARRAY['audit_manager','admin']),('org-b','actor-b',ARRAY['auditor']),('org-a','actor-admin',ARRAY['admin']) ON CONFLICT DO NOTHING;
+      INSERT INTO public.organisation_memberships(organisation_id,actor_id,roles) VALUES('org-a','actor-a',ARRAY['auditor']),('org-a','actor-manager',ARRAY['audit_manager','admin']),('org-b','actor-b',ARRAY['auditor']),('org-a','actor-admin',ARRAY['admin']),('org-b','actor-admin-b',ARRAY['admin']) ON CONFLICT DO NOTHING;
       INSERT INTO public.engagement_assignments(organisation_id,client_id,engagement_id,actor_id) VALUES('org-a','client-a','engagement-a','actor-a'),('org-a','client-a','engagement-a','actor-manager'),('org-b','client-b','engagement-b','actor-b') ON CONFLICT DO NOTHING;")
         .execute(&mut *tx).await.map_err(|_|BootstrapError::MigrationFailed)?;
-    for table in SCOPED_TABLES {
-        sqlx::raw_sql(&format!("ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY; ALTER TABLE public.{table} FORCE ROW LEVEL SECURITY"))
-            .execute(&mut *tx).await.map_err(|_|BootstrapError::MigrationFailed)?;
-    }
     sqlx::query("UPDATE public.zobba_bootstrap SET local_fixture_issuer=$1 WHERE singleton")
         .bind(issuer)
         .execute(&mut *tx)

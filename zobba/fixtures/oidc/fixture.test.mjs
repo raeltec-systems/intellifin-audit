@@ -21,6 +21,29 @@ async function freePort() {
   return port;
 }
 
+test('setup provisions the dedicated organisation Admin login and preserves existing material', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'zobba-oidc-setup-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const directory = join(root, '.local');
+  setup(directory);
+  const configPath = join(directory, 'fixture.json');
+  const config = JSON.parse(readFileSync(configPath, 'utf8'));
+  assert.deepEqual(config.accounts, ['auditor-a', 'manager-a', 'auditor-b', 'admin-only', 'admin-b-only', 'unassigned']);
+  const files = ['ca.pem', 'ca-key.pem', 'app-cert.pem', 'app-key.pem', 'idp-cert.pem', 'idp-key.pem', 'fixture.json', 'env.sh'];
+  const fingerprints = () => files.map((name) => createHash('sha256').update(readFileSync(join(directory, name))).digest('hex'));
+  const before = fingerprints();
+  setup(directory);
+  assert.deepEqual(fingerprints(), before, 'rerun must preserve every existing credential, certificate and setting');
+  assert.equal(statSync(directory).mode & 0o777, 0o700);
+  for (const name of files) assert.equal(statSync(join(directory, name)).mode & 0o777, 0o600);
+  // Older or deliberately customized account lists remain operator-owned.
+  config.accounts = config.accounts.filter((account) => account !== 'admin-b-only');
+  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+  const customized = fingerprints();
+  setup(directory);
+  assert.deepEqual(fingerprints(), customized, 'setup must not recreate a removed provider account');
+});
+
 test('independent HTTPS OIDC fixture uses real code, login, PKCE and controlled negative responses', async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'zobba-oidc-fixture-'));
   const directory = join(root, '.local');
@@ -135,6 +158,17 @@ test('independent HTTPS OIDC fixture uses real code, login, PKCE and controlled 
     const wrong = await issue();
     assert.equal((await exchange(wrong.code, 'wrong'.repeat(12))).status, 400);
     await assert.rejects(completeLogin(authorization('x'.repeat(43)), 'unknown-account', { directory }), /login_failed/);
+  });
+
+  await t.test('the dedicated second-organisation Admin signs in with its own subject', async () => {
+    const flow = await issue('admin-b-only');
+    const response = await exchange(flow.code, flow.verifier);
+    assert.equal(response.status, 200);
+    const jwks = JSON.parse((await request('/jwks')).body);
+    const { payload } = await jwtVerify(response.body.id_token, await importJWK(jwks.keys[0], 'RS256'), { issuer, audience: config.client_id, algorithms: ['RS256'] });
+    assert.equal(payload.sub, 'admin-b-only');
+    assert.equal(payload.email, 'admin-b-only@example.test');
+    assert.equal(payload.email_verified, true);
   });
 
   const claimScenarios = {
