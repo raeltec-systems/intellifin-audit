@@ -160,12 +160,12 @@ async fn bootstrap_contract() {
     .fetch_all(&mut admin)
     .await
     .unwrap();
-    assert_eq!(installed.len(), 7, "fresh migration ledger is incomplete");
+    assert_eq!(installed.len(), 8, "fresh migration ledger is incomplete");
     assert_eq!(installed, repeated, "repeat changed migration ledger");
     let database = RuntimeDatabase::connect(&runtime_url)
         .await
         .expect("nonowner runtime starts");
-    assert_eq!(database.check().await.unwrap().0, 7);
+    assert_eq!(database.check().await.unwrap().0, 8);
     refused_without_mutation(
         &mut admin,
         &migration_url,
@@ -212,6 +212,17 @@ async fn bootstrap_contract() {
         "SELECT public.admin_continuity_lock()",
         "SELECT public.admin_continuity_check()",
         "SELECT public.admin_continuity_truncate()",
+        "SELECT public.methodology_audit('org','client','engagement')",
+        "SELECT * FROM public.methodology_versions",
+        "SELECT * FROM public.methodology_events",
+        "SELECT * FROM public.methodology_assignments",
+        "SELECT * FROM public.methodology_recalls",
+        "SELECT * FROM public.task_methodology_bindings",
+        "SELECT * FROM public.task_methodology_heads",
+        "SELECT * FROM public.task_methodology_changes",
+        "UPDATE public.methodology_versions SET command='{}'",
+        "DELETE FROM public.methodology_events",
+        "UPDATE public.task_methodology_heads SET binding_id='substituted'",
     ] {
         assert!(
             restricted.execute(mutation).await.is_err(),
@@ -303,6 +314,14 @@ async fn bootstrap_contract() {
         "ALTER FUNCTION public.evidence_session_locked(text,text) SECURITY INVOKER",
         "DROP INDEX public.evidence_originals_scope; CREATE INDEX evidence_originals_scope ON public.evidence_originals(organisation_id,client_id,engagement_id,id)",
         "DROP INDEX public.evidence_reservations_owner; CREATE INDEX evidence_reservations_owner ON public.evidence_reservations(organisation_id,client_id,engagement_id,actor_id,id)",
+        "ALTER TABLE public.methodology_versions NO FORCE ROW LEVEL SECURITY",
+        "ALTER POLICY methodology_owner ON public.methodology_assignments USING (true) WITH CHECK (true)",
+        "ALTER TABLE public.methodology_versions DROP CONSTRAINT methodology_versions_revision_check",
+        "ALTER TABLE public.task_methodology_bindings DROP CONSTRAINT task_methodology_bindings_pkey CASCADE",
+        "ALTER FUNCTION public.methodology_read(text,text,text) SECURITY INVOKER",
+        "ALTER FUNCTION public.methodology_write(text,text,text,text,jsonb,text,text) SET search_path=public",
+        "CREATE OR REPLACE FUNCTION public.methodology_audit(org text,client text,engagement text) RETURNS boolean LANGUAGE sql VOLATILE SET search_path=pg_catalog,public AS 'SELECT true'",
+        "GRANT EXECUTE ON FUNCTION public.methodology_candidates(text,text,text,bigint) TO PUBLIC",
         "ALTER TABLE public.engagements DROP CONSTRAINT engagements_name_check",
         "ALTER TABLE public.organisations DROP CONSTRAINT organisations_id_check",
         "ALTER TABLE public.engagement_assignments DROP CONSTRAINT engagement_assignments_organisation_id_client_id_engagemen_fkey",
@@ -314,7 +333,7 @@ async fn bootstrap_contract() {
         "ALTER TABLE public.zobba_bootstrap ALTER COLUMN singleton SET DEFAULT false",
         "ALTER TABLE public._sqlx_migrations ALTER COLUMN installed_on SET DEFAULT '2000-01-01'::timestamptz",
         "CREATE RULE alien_rule AS ON DELETE TO public.zobba_bootstrap DO ALSO NOTHING",
-        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(8,1000) v",
+        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(9,1000) v",
         "UPDATE public._sqlx_migrations SET description=repeat('x',1048576),checksum=decode(repeat('ff',1048576),'hex')",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product='foreign'",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product=repeat('x',1048576)",
@@ -336,6 +355,7 @@ async fn bootstrap_contract() {
     }
 
     membership_function_authority(&config, &mut admin).await;
+    methodology_function_authority(&config, &mut admin).await;
     internal_trigger_contract(&config, &mut admin).await;
 
     // Column-level leases must not expand to routing identity, scheduling or
@@ -384,6 +404,15 @@ async fn bootstrap_contract() {
         "UPDATE(outcome) ON public.operation_receipts",
         "UPDATE ON public.operation_claims",
         "DELETE ON public.operation_receipts",
+        "SELECT ON public.methodology_versions",
+        "SELECT(command) ON public.methodology_versions",
+        "INSERT ON public.methodology_assignments",
+        "SELECT ON public.methodology_events",
+        "UPDATE(command) ON public.methodology_versions",
+        "DELETE ON public.methodology_recalls",
+        "INSERT ON public.task_methodology_bindings",
+        "UPDATE(binding_id) ON public.task_methodology_heads",
+        "SELECT ON public.task_methodology_changes",
     ] {
         admin
             .execute(format!("GRANT {privilege} TO \"{role}\"").as_str())
@@ -420,13 +449,14 @@ async fn bootstrap_contract() {
     reset(&config, &mut admin).await;
     upgrade_contract(&config, &mut admin).await;
     continuity_upgrade_contract(&config, &mut admin).await;
+    methodology_upgrade_contract(&config, &mut admin).await;
     no_foreign_code_runs(&config, &mut admin).await;
     foreign_catalog_objects(&config, &mut admin).await;
     authority_and_atomicity(&config, &mut admin).await;
     lock_and_blackhole(&config, &mut admin).await;
     reset(&config, &mut admin).await;
     println!(
-        "bootstrap contract: fresh/v1/v2/v3/v4/repeat/owner/privilege/foreign/marker/checksum/version refusals passed; test schema empty"
+        "bootstrap contract: fresh/v1-v7/repeat/owner/privilege/methodology/foreign/marker/checksum/version refusals passed; test schema empty"
     );
 }
 
@@ -565,7 +595,7 @@ async fn foreign_catalog_objects(config: &Configuration, conn: &mut PgConnection
                 .await
                 .expect("remove foreign catalog fixture");
             if let Some(running) = running {
-                assert_eq!(running.check().await.unwrap().0, 7);
+                assert_eq!(running.check().await.unwrap().0, 8);
             }
         }
     }
@@ -582,7 +612,7 @@ async fn foreign_catalog_objects(config: &Configuration, conn: &mut PgConnection
     refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
     assert_eq!(running.check().await, Err(BootstrapError::SchemaMismatch));
     admin.execute("DROP STATISTICS public.alien").await.unwrap();
-    assert_eq!(running.check().await.unwrap().0, 7);
+    assert_eq!(running.check().await.unwrap().0, 8);
     reset(config, conn).await;
 }
 
@@ -662,7 +692,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
             .execute(format!("REVOKE MAINTAIN ON public.{table} FROM \"{target}\"").as_str())
             .await
             .unwrap();
-        assert_eq!(running.check().await.unwrap().0, 7);
+        assert_eq!(running.check().await.unwrap().0, 8);
     }
     privileged.execute(format!("GRANT pg_read_server_files TO \"{parent}\" WITH INHERIT TRUE, SET FALSE; GRANT \"{parent}\" TO \"{target}\" WITH INHERIT FALSE, SET TRUE").as_str()).await.unwrap();
     let mut capable = PgConnection::connect(&target_url).await.unwrap();
@@ -689,7 +719,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         Err(BootstrapError::UnsafeRuntimeRole)
     );
     privileged.execute(format!("REVOKE \"{parent}\" FROM \"{target}\"; REVOKE pg_read_server_files FROM \"{parent}\"").as_str()).await.unwrap();
-    assert_eq!(running.check().await.unwrap().0, 7);
+    assert_eq!(running.check().await.unwrap().0, 8);
 
     for flags in [
         "REPLICATION",
@@ -841,7 +871,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         .execute(format!("REVOKE \"{migrator_role}\" FROM \"{target}\"").as_str())
         .await
         .unwrap();
-    assert_eq!(running.check().await.unwrap().0, 7);
+    assert_eq!(running.check().await.unwrap().0, 8);
 
     // Simulate interruption after SQLx creates its ledger but before bootstrap
     // finishes. The outer transaction must remove BOTH tables and all grants.
@@ -864,7 +894,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         .execute("DROP EVENT TRIGGER zobba_fixture_interrupt")
         .await
         .unwrap();
-    assert_eq!(running.check().await.unwrap().0, 7);
+    assert_eq!(running.check().await.unwrap().0, 8);
     reset(config, conn).await;
     privileged.execute(trigger).await.unwrap();
     migration_refused_without_mutation(conn, config, &target, BootstrapError::SchemaMismatch).await;
@@ -1067,9 +1097,10 @@ async fn upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
         include_str!("../../../migrations/0004_permissions_operations.sql"),
         include_str!("../../../migrations/0005_membership_administration.sql"),
         include_str!("../../../migrations/0006_evidence.sql"),
+        include_str!("../../../migrations/0007_admin_continuity.sql"),
     ];
     let migrator = sqlx::migrate!("../../migrations");
-    for prefix in [1_usize, 2, 3, 4, 5, 6] {
+    for prefix in [1_usize, 2, 3, 4, 5, 6, 7] {
         for corruption in [None, Some("checksum"), Some("catalog")] {
             reset(config, conn).await;
             // Execute the exact published bytes with their original SQLx ledger.
@@ -1129,9 +1160,9 @@ async fn upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
                 .fetch_all(&mut *conn)
                 .await
                 .unwrap();
-                assert_eq!(all.len(), 7, "upgrade did not reach the complete ledger");
+                assert_eq!(all.len(), 8, "upgrade did not reach the complete ledger");
                 let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-                assert_eq!(database.check().await.unwrap().0, 7);
+                assert_eq!(database.check().await.unwrap().0, 8);
                 migrate(&config.migration, &role)
                     .await
                     .expect("upgrade repeat is safe");
@@ -1378,6 +1409,227 @@ async fn membership_function_authority(config: &Configuration, conn: &mut PgConn
     }
 }
 
+async fn methodology_function_authority(config: &Configuration, conn: &mut PgConnection) {
+    let role = database_options(&config.runtime)
+        .unwrap()
+        .get_username()
+        .to_owned();
+    let mut privileged = PgConnection::connect(&config.admin).await.unwrap();
+    config.guard_connection(&mut privileged).await;
+    for mutation in [
+        format!("GRANT EXECUTE ON FUNCTION public.methodology_audit(text,text,text) TO \"{role}\""),
+        format!(
+            "GRANT EXECUTE ON FUNCTION public.methodology_write(text,text,text,text,jsonb,text,text) TO \"{role}\" WITH GRANT OPTION"
+        ),
+        format!("ALTER FUNCTION public.methodology_task(text,text,jsonb) OWNER TO \"{role}\""),
+        format!(
+            "REVOKE EXECUTE ON FUNCTION public.methodology_read(text,text,text) FROM \"{role}\""
+        ),
+        format!(
+            "REVOKE EXECUTE ON FUNCTION public.methodology_write(text,text,text,text,jsonb,text,text) FROM \"{role}\""
+        ),
+        format!(
+            "REVOKE EXECUTE ON FUNCTION public.methodology_candidates(text,text,text,bigint) FROM \"{role}\""
+        ),
+        format!(
+            "REVOKE EXECUTE ON FUNCTION public.methodology_task(text,text,jsonb) FROM \"{role}\""
+        ),
+    ] {
+        privileged.execute(mutation.as_str()).await.unwrap();
+        refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
+        if mutation.starts_with("REVOKE") {
+            migrate(&config.migration, &role)
+                .await
+                .expect("explicit migration restores missing methodology entry point");
+        } else {
+            migration_refused_without_mutation(conn, config, &role, BootstrapError::SchemaMismatch)
+                .await;
+            reset(config, conn).await;
+            migrate(&config.migration, &role).await.unwrap();
+        }
+        RuntimeDatabase::connect(&config.runtime)
+            .await
+            .unwrap()
+            .pool()
+            .close()
+            .await;
+    }
+}
+
+// A populated published schema 7 is upgraded by the restricted migration role.
+// Existing Task commands retain their bytes; bindings explicitly label their neutral legacy basis.
+async fn methodology_upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
+    let role = database_options(&config.runtime)
+        .unwrap()
+        .get_username()
+        .to_owned();
+    install_schema6(config, conn).await;
+    let migrator = sqlx::migrate!("../../migrations");
+    let migration = migrator.iter().nth(6).unwrap();
+    conn.execute(migration.sql.as_ref()).await.unwrap();
+    sqlx::query("INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) VALUES($1,$2,true,$3,0)")
+        .bind(migration.version).bind(migration.description.as_ref()).bind(migration.checksum.as_ref())
+        .execute(&mut *conn).await.unwrap();
+    let catalog: Vec<String> = sqlx::query_scalar(include_str!("../src/catalog-signature.sql"))
+        .fetch_all(&mut *conn)
+        .await
+        .unwrap();
+    assert!(
+        catalog
+            .iter()
+            .map(String::as_str)
+            .eq(include_str!("../src/schema-v7.catalog").lines()),
+        "upgrade must start from the published schema 7 catalog"
+    );
+    let ledger: Vec<String> = sqlx::query_scalar(
+        "SELECT to_jsonb(m)::text FROM public._sqlx_migrations m ORDER BY version",
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .unwrap();
+    let mut admin = PgConnection::connect(&config.admin).await.unwrap();
+    config.guard_connection(&mut admin).await;
+    let mut seed = admin.begin().await.unwrap();
+    seed.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+        .await
+        .unwrap();
+    seed.execute(r#"
+      INSERT INTO public.identities(id,issuer,subject,display_name) VALUES('methodology-upgrade','upgrade','methodology','Upgrade Auditor');
+      INSERT INTO public.organisations VALUES('methodology-upgrade','Upgrade');
+      INSERT INTO public.organisation_memberships(organisation_id,actor_id,roles) VALUES('methodology-upgrade','methodology-upgrade',ARRAY['admin','auditor']);
+      INSERT INTO public.clients VALUES('methodology-upgrade','client','Client');
+      INSERT INTO public.engagements(organisation_id,client_id,id,name) VALUES('methodology-upgrade','client','engagement','Engagement');
+      INSERT INTO public.engagement_assignments(organisation_id,client_id,engagement_id,actor_id) VALUES('methodology-upgrade','client','engagement','methodology-upgrade');
+      SELECT set_config('zobba.actor_id','methodology-upgrade',true),set_config('zobba.organisation_id','methodology-upgrade',true),set_config('zobba.client_id','client',true),set_config('zobba.engagement_id','engagement',true);
+      INSERT INTO public.tasks(organisation_id,client_id,engagement_id,id,cycle_id,accountable_actor,objective,working_brief,state,cessation) VALUES('methodology-upgrade','client','engagement','legacy-task','legacy-cycle','methodology-upgrade','Existing objective','Existing brief','ready','none');
+      INSERT INTO public.task_cycles VALUES('methodology-upgrade','client','engagement','legacy-task','legacy-cycle','active');
+      INSERT INTO public.task_commands(organisation_id,client_id,engagement_id,id,author_id,idempotency_key,kind,content,task_id,cycle_id,received_cursor,intent_revision) VALUES('methodology-upgrade','client','engagement','legacy-command','methodology-upgrade','legacy-key','create','Existing objective','legacy-task','legacy-cycle',1,1);
+    "#).await.unwrap();
+    seed.commit().await.unwrap();
+    let command_before: String = sqlx::query_scalar(
+        "SELECT to_jsonb(c)::text FROM public.task_commands c WHERE id='legacy-command'",
+    )
+    .fetch_one(&mut admin)
+    .await
+    .unwrap();
+    let task_before: String =
+        sqlx::query_scalar("SELECT to_jsonb(t)::text FROM public.tasks t WHERE id='legacy-task'")
+            .fetch_one(&mut admin)
+            .await
+            .unwrap();
+    migrate(&config.migration, &role)
+        .await
+        .expect("populated schema 7 upgrades through the migration connection");
+    let ledger_after: Vec<String> = sqlx::query_scalar(
+        "SELECT to_jsonb(m)::text FROM public._sqlx_migrations m WHERE version<=7 ORDER BY version",
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .unwrap();
+    assert_eq!(
+        ledger, ledger_after,
+        "upgrade changed published ledger rows"
+    );
+    let command_after: String = sqlx::query_scalar("SELECT (to_jsonb(c)-'methodology_context')::text FROM public.task_commands c WHERE id='legacy-command'")
+        .fetch_one(&mut admin).await.unwrap();
+    assert_eq!(
+        command_before, command_after,
+        "upgrade rewrote a retained Task command"
+    );
+    assert!(
+        sqlx::query_scalar::<_, bool>(
+            "SELECT methodology_context IS NULL FROM public.task_commands WHERE id='legacy-command'"
+        )
+        .fetch_one(&mut admin)
+        .await
+        .unwrap(),
+        "upgrade invented context for a legacy command"
+    );
+    let task_after: String =
+        sqlx::query_scalar("SELECT to_jsonb(t)::text FROM public.tasks t WHERE id='legacy-task'")
+            .fetch_one(&mut admin)
+            .await
+            .unwrap();
+    assert_eq!(task_before, task_after, "upgrade rewrote a retained Task");
+    for table in [
+        "methodology_versions",
+        "methodology_assignments",
+        "methodology_events",
+        "methodology_recalls",
+        "task_methodology_changes",
+    ] {
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>(&format!("SELECT count(*) FROM public.{table}"))
+                .fetch_one(&mut admin)
+                .await
+                .unwrap(),
+            0,
+            "upgrade invented configured methodology"
+        );
+    }
+    let (binding, context): (serde_json::Value, serde_json::Value) = sqlx::query_as("SELECT b.document,h.context FROM public.task_methodology_heads h JOIN public.task_methodology_bindings b ON (b.organisation_id,b.task_id,b.id)=(h.organisation_id,h.task_id,h.binding_id) WHERE h.task_id='legacy-task'")
+        .fetch_one(&mut admin).await.expect("restricted migration must backfill each legacy Task");
+    assert_eq!(
+        binding["execution_epoch"], 0,
+        "legacy work retains an explicit unknown neutral epoch"
+    );
+    assert_eq!(binding["resolution"]["status"], "neutral");
+    assert_eq!(
+        binding["resolution"]["neutral_source_version_ids"],
+        serde_json::json!(["builtin_neutral_v1"])
+    );
+    assert_eq!(binding["resolution"]["version_ids"], serde_json::json!([]));
+    assert_eq!(binding["resolution"]["requirements"], serde_json::json!([]));
+    assert_eq!(binding["resolution"]["templates"], serde_json::json!([]));
+    assert_eq!(
+        context,
+        serde_json::json!({"audit_area":null,"period_start":null,"period_end":null})
+    );
+    assert_eq!(binding["actor_id"], "methodology-upgrade");
+    assert!(
+        binding["resolution"]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("neutral")
+    );
+    let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
+    assert_eq!(database.check().await.unwrap().0, 8);
+    let selected = zobba_domain::identity::Scope {
+        organisation_id: "methodology-upgrade".into(),
+        client_id: "client".into(),
+        engagement_id: "engagement".into(),
+    };
+    let mut proof =
+        zobba_infrastructure::scope::begin(database.pool(), "methodology-upgrade", &selected)
+            .await
+            .unwrap();
+    for epoch in [0, 1] {
+        let original: serde_json::Value =
+            sqlx::query_scalar("SELECT public.methodology_task('legacy-task','basis',$1)")
+                .bind(serde_json::json!({"execution_epoch":epoch}))
+                .fetch_one(&mut *proof)
+                .await
+                .unwrap();
+        assert_eq!(
+            original, binding["id"],
+            "legacy producing epochs map to explicit neutral basis"
+        );
+    }
+    proof.commit().await.unwrap();
+    database.pool().close().await;
+    migrate(&config.migration, &role)
+        .await
+        .expect("populated schema 8 migration is repeatable");
+    let repeated: serde_json::Value = sqlx::query_scalar(
+        "SELECT document FROM public.task_methodology_bindings WHERE task_id='legacy-task'",
+    )
+    .fetch_one(&mut admin)
+    .await
+    .unwrap();
+    assert_eq!(binding, repeated, "repeat rewrote the legacy binding");
+    reset(config, conn).await;
+}
+
 async fn install_schema6(config: &Configuration, conn: &mut PgConnection) {
     reset(config, conn).await;
     conn.execute("CREATE TABLE public._sqlx_migrations(version bigint PRIMARY KEY,description text NOT NULL,installed_on timestamptz NOT NULL DEFAULT now(),success boolean NOT NULL,checksum bytea NOT NULL,execution_time bigint NOT NULL)").await.unwrap();
@@ -1449,7 +1701,7 @@ async fn continuity_upgrade_contract(config: &Configuration, conn: &mut PgConnec
             .expect("valid/remediated schema 6 upgrades");
         assert_eq!(authority_snapshot(conn).await, authorised);
         let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-        assert_eq!(database.check().await.unwrap().0, 7);
+        assert_eq!(database.check().await.unwrap().0, 8);
         database.pool().close().await;
     }
 
@@ -1482,7 +1734,7 @@ async fn continuity_upgrade_contract(config: &Configuration, conn: &mut PgConnec
             "upgrade changed authority"
         );
         let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-        assert_eq!(database.check().await.unwrap().0, 7);
+        assert_eq!(database.check().await.unwrap().0, 8);
         database.pool().close().await;
     }
 

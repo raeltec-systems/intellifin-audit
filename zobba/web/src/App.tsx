@@ -6,6 +6,8 @@ import type { Engagement, EngagementPage, Scope } from './engagements';
 import { HealthPage } from './HealthPage';
 import { ConversationWorkspace } from './ConversationWorkspace';
 import { EvidenceWorkspace } from './EvidenceWorkspace';
+import { MethodologyWorkspace } from './MethodologyWorkspace';
+import { discardMethodologyAction } from './methodology';
 import { discardAcquisitionDraft } from './evidence';
 import { sameScope } from './engagements';
 import { captureIncomingInvitation, hasIncomingInvitation, MembershipWorkspace } from './MembershipWorkspace';
@@ -23,6 +25,8 @@ function OpenArrow() {
 }
 
 function PairWorkspace() {
+  const [methodologyOpen, setMethodologyOpen] = useState(location.pathname === '/methodology');
+  const methodologyOpener = useRef<HTMLAnchorElement>(null);
   const [view, setView] = useState<View>({ kind: 'loading' });
   const [busy, setBusy] = useState(false);
   const [projectionUsable, setProjectionUsable] = useState(false);
@@ -196,6 +200,7 @@ function PairWorkspace() {
   }, [refresh, rememberFocus]);
 
   async function signOut(session?: Session) {
+    discardMethodologyAction();
     if (logoutRequest.current) return;
     logoutIntent.current = true;
     discardAcquisitionDraft();
@@ -248,7 +253,7 @@ function PairWorkspace() {
     <a className="skip-link" href="#workspace">Skip to workspace</a>
     <aside className="sidebar" aria-label="Workspace navigation">
       <img className="brand-lockup" src="/assets/zobba-lockup-color.svg" alt="Zobba" width="132" height="32" />
-      <nav aria-label="Main"><a href="/" aria-current="page" onClick={(event) => { event.preventDefault(); select(null); }}><span aria-hidden="true">▦</span> Engagements</a><a href="/membership"><span aria-hidden="true">⚙</span> Membership</a></nav>
+      <nav aria-label="Main"><a href="/" aria-current={methodologyOpen ? undefined : 'page'} onClick={(event) => { event.preventDefault(); setMethodologyOpen(false); select(null); }}><span aria-hidden="true">▦</span> Engagements</a><a href="/membership"><span aria-hidden="true">⚙</span> Membership</a><a ref={methodologyOpener} href="/methodology" aria-current={methodologyOpen ? 'page' : undefined} onClick={event => { event.preventDefault(); setMethodologyOpen(true); }}><span aria-hidden="true">≡</span> Methodology and skills</a></nav>
       <div className="sidebar-note"><span className="pair-label">Pair</span><p>Your engagement workspace</p><a href="/status">Connection status</a></div>
     </aside>
     <div className="workspace">
@@ -277,6 +282,8 @@ function PairWorkspace() {
         {view.kind === 'ready' && busy ? <div className="intro" role="status">Checking current access…</div> : null}
         {view.kind === 'ready' ? <div className="protected-workspace" hidden={busy}>
           {view.message ? <p className="notice" role="status">{view.message}</p> : null}
+          <MethodologyWorkspace active={methodologyOpen} key={`${view.session.identity.id}/${view.session.csrf_token}`} session={view.session} accessReady={!busy && methodologyOpen} onAccessFailure={accessFailure} onClose={() => { setMethodologyOpen(false); requestAnimationFrame(() => methodologyOpener.current?.focus()); }} />
+          <div className="retained-workspace" hidden={methodologyOpen}>
           {view.selected ? <>
             <div className="engagement-heading-row">
             <button className="back-button" data-focus="all-engagements" type="button" onClick={() => select(null)}>← All engagements</button>
@@ -318,7 +325,8 @@ function PairWorkspace() {
               {view.page.next_cursor ? <button className="quiet-button" data-focus="next-page" type="button" onClick={() => changePage(view.page.next_cursor)}>Next page</button> : null}
             </nav> : null}
           </>}
-          <div className="access-footer"><span>Showing your current access</span><a href="/membership">Membership administration</a><button type="button" className="quiet-button" data-focus="refresh-access" aria-disabled={busy} onClick={() => void refresh(false, true)}>Refresh access</button></div>
+          </div>
+          <div className="access-footer"><span>Showing your current access</span><a href="/membership">Membership administration</a><button type="button" className="text-button" onClick={() => setMethodologyOpen(true)}>Methodology settings</button><button type="button" className="quiet-button" data-focus="refresh-access" aria-disabled={busy} onClick={() => void refresh(false, true)}>Refresh access</button></div>
         </div> : null}
       </main>
     </div>

@@ -15,6 +15,8 @@ use zobba_infrastructure::{
     database_options, dispatcher::Dispatcher, fixture::seed_local_configured, migrate,
     task::TaskRepository,
 };
+#[path = "task/methodology_cutoff.rs"]
+mod methodology_cutoff;
 mod support;
 use support::Configuration;
 
@@ -27,6 +29,7 @@ fn selected(suffix: &str) -> Scope {
 }
 fn create(key: &str, content: &str) -> TaskCommand {
     TaskCommand {
+        context: None,
         key: key.into(),
         kind: CommandKind::Create,
         task_id: None,
@@ -36,6 +39,7 @@ fn create(key: &str, content: &str) -> TaskCommand {
 }
 fn command(key: &str, kind: CommandKind, receipt: &CommandReceipt) -> TaskCommand {
     TaskCommand {
+        context: None,
         key: key.into(),
         kind,
         task_id: Some(receipt.task_id.clone()),
@@ -103,6 +107,12 @@ async fn durable_state(admin: &mut PgConnection) -> Vec<String> {
         "task_wakeups",
         "task_deliveries",
         "task_counters",
+        "task_claims",
+        "task_receipt_slots",
+        "task_observations",
+        "task_methodology_bindings",
+        "task_methodology_heads",
+        "task_methodology_changes",
     ] {
         rows.push(sqlx::query_scalar(&format!("SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text FROM public.{table} t"))
             .fetch_one(&mut *admin).await.unwrap());
@@ -464,6 +474,17 @@ async fn retained_history_contract(
     sqlx::query("INSERT INTO public.task_cycles(organisation_id,client_id,engagement_id,task_id,id,status)
         SELECT 'org-b','client-b','engagement-b','stopped-history-'||n,'stopped-cycle-'||n,'stopped' FROM generate_series(1,$1::bigint) n")
         .bind(HISTORY).execute(&mut *fixture).await.unwrap();
+    // These synthetic rows represent migrated history. Preserve the explicit
+    // neutral epoch-zero basis supplied by schema 8 for every historical Task.
+    sqlx::query("INSERT INTO public.task_methodology_bindings(organisation_id,client_id,engagement_id,task_id,id,document)
+        SELECT 'org-b','client-b','engagement-b','stopped-history-'||n,'stopped-methodology-'||n,
+        jsonb_set(jsonb_set(b.document,'{id}',to_jsonb('stopped-methodology-'||n)),'{execution_epoch}','0'::jsonb)
+        FROM generate_series(1,$1::bigint) n CROSS JOIN public.task_methodology_bindings b WHERE b.organisation_id='org-b' AND b.task_id=$2")
+        .bind(HISTORY).bind(&receipt.task_id).execute(&mut *fixture).await.unwrap();
+    sqlx::query("INSERT INTO public.task_methodology_heads(organisation_id,task_id,binding_id,context,pending_context_command,pending_context_at)
+        SELECT organisation_id,task_id,id,document->'resolution'->'context',NULL,NULL FROM public.task_methodology_bindings
+        WHERE organisation_id='org-b' AND task_id LIKE 'stopped-history-%'")
+        .execute(&mut *fixture).await.unwrap();
     fixture.commit().await.unwrap();
     admin
         .execute("ANALYZE public.tasks; ANALYZE public.task_commands; ANALYZE public.task_events")
@@ -591,6 +612,7 @@ async fn retained_history_contract(
         .await
         .unwrap();
     let continuation = TaskCommand {
+        context: None,
         key: "continue-large-stopped-history".into(),
         kind: CommandKind::Continue,
         task_id: Some("stopped-history-1".into()),
@@ -652,6 +674,19 @@ async fn durable_task_commands_and_fencing_contract() {
         count, 1,
         "concurrent identical commands duplicated acceptance"
     );
+    let before_context_conflict = durable_state(&mut admin).await;
+    let mut changed_context = original.clone();
+    changed_context.context = Some(zobba_domain::methodology::TaskContext {
+        audit_area: Some("revenue".into()),
+        period_start: Some("2025-01-01".into()),
+        period_end: Some("2025-12-31".into()),
+    });
+    assert_eq!(
+        repository.admit("actor-a", &a, &changed_context).await,
+        Err(TaskError::Conflict),
+        "changed audit context under an accepted key must not rebind the Task"
+    );
+    assert_eq!(durable_state(&mut admin).await, before_context_conflict);
     let changed_left = create("changed-race", "Left meaning");
     let changed_right = create("changed-race", "Right meaning");
     let (left, right) = tokio::join!(
@@ -1297,6 +1332,7 @@ async fn durable_task_commands_and_fencing_contract() {
     // Historical stopped Tasks remain discoverable beyond the active-work cap.
     for (index, task) in full.tasks.iter().take(5).enumerate() {
         let stop = TaskCommand {
+            context: None,
             key: format!("history-stop-{index}"),
             kind: CommandKind::Stop,
             task_id: Some(task.id.clone()),
@@ -1318,6 +1354,7 @@ async fn durable_task_commands_and_fencing_contract() {
     }
     let stopped_at_capacity = &full.tasks[0];
     let blocked_continuation = TaskCommand {
+        context: None,
         key: "capacity-continue".into(),
         kind: CommandKind::Continue,
         task_id: Some(stopped_at_capacity.id.clone()),
@@ -1375,4 +1412,5 @@ async fn durable_task_commands_and_fencing_contract() {
     retained_history_contract(&config, &mut admin, &repository, &single_pool).await;
     single_pool.close().await;
     owner.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public; REVOKE CREATE ON SCHEMA public FROM PUBLIC").await.unwrap();
+    methodology_cutoff::verify(&config).await;
 }

@@ -1,3 +1,74 @@
+## 2026-10-02 — Story 21.2 methodology binding boundaries
+
+Methodology Save and Task admission share organisation advisory205, then ordered
+engagement/Task locks. Capture and recheck the exact browser session after waits;
+configuration Admin authority never provides audit scope. Preserve published
+migration/catalogue prefix1–7; schema8 stores immutable configuration and Task
+binding history through owner-mediated scoped functions.
+
+Keep method availability distinct from business applicability, using floor of the
+UTC epoch for second-granularity activation (a bigint cast rounds). Optional
+Create/Guide context is exact retry meaning; echo it in conversation receipts so
+browser recovery compares the full command. Guide context is an explicit full
+replacement staged through immutable command attribution at a safe boundary;
+omission means no change. Freeze resolved context against later default changes.
+Each immutable binding retains eligible candidate IDs separately from selected
+version IDs, including Missing/Outside candidates for later context correction.
+Apply only explicit active-change candidates to existing pinned bindings—reading
+all current assignments would silently import intervening new-only Saves. Retain
+new-only notices separately. Pending active changes fence unused claims/new
+operations while consumed current()/receipt custody retains the original basis.
+Switch only after actual inert/external reconciliation; Pause/Stop persist.
+Keep future activation wakeups durable when the coordinator becomes idle, and
+enqueue scheduled active changes for Tasks created after Save before activation.
+Continue uses that same bounded enrollment for stopped Tasks resumed before the
+cutoff; it does not import missed activations or new-only Saves. Resolve and
+acknowledge with one captured cutoff, retaining later pending events and wakeups.
+Finish deferred writes before the final new-use check for inert consumption as
+well as operation dispatch, so crossing a cutoff rolls back receipt creation.
+Each immutable method binding owns its effective-from execution epoch, assigned
+by the database. Resolve an operation/attempt's recorded producing epoch to the
+greatest binding epoch not after it; never infer association from timestamps or
+current catalogue versions. Legacy migrated work remains labelled neutral at
+epoch zero. Operation and paginated attempt inspection retain the exact binding
+ID across Task controls, rebinding and recall; receipt capabilities remain private.
+
+Requirements retain stable IDs, mandatory standing and per-field source versions.
+Template references resolve exact stored content; missing/conflicting references
+remain incomplete/ambiguous. Neutral templates are visibly labelled. Missing
+criteria gates future dependent conclusions, not all conversation or inert work.
+Historical exact templates retain their separately scoped immutable source and
+its recall restriction without reimporting predecessor criteria. Derive neutral
+standing from contributing field/template sources, including mixed content;
+empty adopted overrides cannot relabel inherited starter criteria. Follow exact
+supersedes links for editor recovery and Undo, never matching scope/date fields.
+Template prose preserves exact multiline whitespace and Rust-accepted Unicode;
+never let browser trim semantics make a saved record unreadable. Configuration
+changes record impact facts but do not implement evaluation/review consumers.
+
+Browser fixtures must use native `datetime-local` strings with zero seconds
+omitted; preserve the intended epoch when normalizing the input. Count deliberately
+held requests by an explicit test marker while keeping all ordinary reads blocked:
+additional legitimate panel reads must not invalidate a reserved-control proof.
+If CDP cannot retain a response body, prove actual UI completion and correlate the
+exact request key through the current scoped canonical projection, retaining
+custody, metadata and original-download assertions. Do not replace these proofs
+with synthetic success or repeated mutations.
+
+Before paging browser history, await the exact canonical latest command in the
+rendered page; an older full page can already satisfy a row-count assertion.
+Choose the intended disclosure by its own summary when nested panels introduce
+additional details. Release held request gates and drain owned route handlers
+with `unrouteAll({ behavior: 'wait' })` before changing interception phases or
+teardown; keep callback errors visible instead of swallowing them.
+
+Intentional read cancellation must relinquish request ownership before aborting,
+so its rejection cannot destroy hidden same-owner inspection DOM during access
+revalidation or tab-away. Keep exact owner/session withdrawal and current-read
+failure or deadline handling distinct: genuine failures still remove stale
+content. Prove retention with the same marked inner disclosure, open state and
+focus; an unchanged outer panel alone does not prove its children survived.
+
 ## 2026-10-01 — Approved Admin continuity policy
 
 Implemented in migration/catalogue 7; see the [checkpoint](_bmad-output/implementation-artifacts/zobba-foundation-batch/ADMIN-CONTINUITY-CHECKPOINT.md). After this checkpoint, preserve the published migration/catalogue prefix 1–7. Migration and explicit synthetic seeding must select READ COMMITTED before their first transaction read. The public last_admin response header contains only a fixed code; owner SQL diagnostics must remain private. Browser tests observe that header because the client deliberately cancels the optional body.

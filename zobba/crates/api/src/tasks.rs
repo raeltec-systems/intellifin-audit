@@ -149,6 +149,10 @@ pub struct TaskCommandRequest {
     /// Must contain non-whitespace; control characters other than LF, CR and tab are refused.
     #[schema(min_length = 1, max_length = 4000)]
     pub content: Option<String>,
+    /// Optional methodology context for Create or Guide. Guide supplies a full
+    /// replacement; omitted/null leaves the current context unchanged. Create
+    /// does not require a methodology picker before accepting the Task.
+    pub context: Option<crate::methodology::MethodologyTaskContext>,
 }
 
 impl From<TaskCommandRequest> for TaskCommand {
@@ -159,6 +163,7 @@ impl From<TaskCommandRequest> for TaskCommand {
             task_id: value.task_id,
             cycle_id: value.cycle_id,
             content: value.content,
+            context: value.context.map(Into::into),
         }
     }
 }
@@ -430,8 +435,12 @@ async fn command(
     if !command.is_valid() || command.kind.is_control() != state.control {
         return failure(TaskError::Invalid);
     }
+    let Some(token) = crate::auth::cookie(&headers, crate::auth::SESSION_COOKIE) else {
+        return failure(TaskError::Denied);
+    };
     match state
         .repository
+        .with_session_hash(zobba_infrastructure::identity::secret_hash(&token))
         .admit(&current.identity.id, &scope, &command)
         .await
     {

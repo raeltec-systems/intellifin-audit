@@ -1,0 +1,49 @@
+$ pnpm --filter @zobba/web test:browser tests/browser/conversation-review.spec.ts -g 'inner methodology disclosure' --workers=1 --retries=0
+$ playwright test tests/browser/conversation-review.spec.ts -g 'inner methodology disclosure' --workers=1 --retries=0
+
+Running 1 test using 1 worker
+
+(node:817621) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/browser/conversation-review.spec.ts:201:1 › inner methodology disclosure survives cancelled reads and tab-away but withdraws on current failure (16.4s)
+
+
+  1) tests/browser/conversation-review.spec.ts:201:1 › inner methodology disclosure survives cancelled reads and tab-away but withdraws on current failure 
+
+    Error: expect(locator).toHaveCount(expected) failed
+
+    Locator:  locator('[data-original-template="retained"]')
+    Expected: 1
+    Received: 0
+    Timeout:  12000ms
+
+    Call log:
+      - Expect "toHaveCount" with timeout 12000ms
+      - waiting for locator('[data-original-template="retained"]')
+        28 × locator resolved to 0 elements
+           - unexpected value "0"
+
+
+      253 |       basis.release(); authority.release();
+      254 |       await expect.poll(() => projectionHeld).toBe(true);
+    > 255 |       await expect(retained).toHaveCount(1); await expect(retained).toHaveAttribute('open', '');
+          |                              ^
+      256 |       await expect(summary).toBeHidden();
+      257 |       projection.release();
+      258 |       await expect(page.getByText('Conversation up to date', { exact: true })).toBeVisible();
+        at /workspace/intellifin-audit/zobba/web/tests/browser/conversation-review.spec.ts:255:30
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-story-21-2/repair-2/browser-negative-results/conversation-review-inner--f3f30-ithdraws-on-current-failure/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-story-21-2/repair-2/browser-negative-results/conversation-review-inner--f3f30-ithdraws-on-current-failure/error-context.md
+
+    Error Context: ../../../../tmp/zobba-story-21-2/repair-2/browser-negative-results/conversation-review-inner--f3f30-ithdraws-on-current-failure/error-context.md
+
+  1 failed
+    tests/browser/conversation-review.spec.ts:201:1 › inner methodology disclosure survives cancelled reads and tab-away but withdraws on current failure 
+/workspace/intellifin-audit/zobba/web:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @zobba/web@0.1.0 test:browser: `playwright test tests/browser/conversation-review.spec.ts -g 'inner methodology disclosure' --workers=1 --retries=0`
+Exit status 1
+[ELIFECYCLE] Command failed with exit code 1.

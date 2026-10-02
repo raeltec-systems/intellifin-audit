@@ -1,9 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
-import type { AccessError, Session } from './auth';
+import { AccessError } from './auth';
+import type { Session } from './auth';
 import type { Engagement } from './engagements';
 import type { ConversationMessage, Task, TaskCommand } from './conversation';
+import { parseTaskContext } from './conversation';
 import { useConversation } from './conversation-state';
+import { TaskMethodology } from './TaskMethodology';
+import { readTaskBasis } from './methodology';
 
 interface WorkspaceProps {
   engagement: Engagement;
@@ -17,6 +21,7 @@ interface WorkspaceProps {
 
 type Target = { kind: 'create' } | { kind: 'guide'; task_id: string; cycle_id: string; objective: string };
 type Control = 'pause' | 'resume' | 'stop' | 'continue';
+type AuditContextDraft = { audit_area: string; period_start: string; period_end: string };
 
 export function taskStateLabel(task: Task): string {
   if (task.cessation === 'reconciliation_required') return 'Activity unresolved';
@@ -51,6 +56,13 @@ function cycleLabel(id: string): string { return id.slice(0, 8); }
 export function ConversationWorkspace({ engagement, session, accessReady, onAccessFailure, onAccessStable, onProjectionUsable, onOpenTask }: WorkspaceProps) {
   const conversation = useConversation({ engagement, session, accessReady, onAccessFailure });
   const [draft, setDraft] = useState('');
+  const [auditContext, setAuditContext] = useState({ audit_area: '', period_start: '', period_end: '' });
+  const [guideContext, setGuideContext] = useState<AuditContextDraft | null>(null);
+  const [contextRequested, setContextRequested] = useState(false);
+  const [contextLoading, setContextLoading] = useState(false);
+  const [contextError, setContextError] = useState('');
+  const [contextFromPending, setContextFromPending] = useState(false);
+  const contextRequest = useRef<AbortController | null>(null);
   const [target, setTarget] = useState<Target>({ kind: 'create' });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspected, setInspected] = useState<Task | null>(null);
@@ -76,6 +88,50 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
   const targetIsCurrent = target.kind === 'create' || !targetTask || targetTask.cycle_id === target.cycle_id;
   const staleTargetError = !targetIsCurrent ? 'This target belongs to an earlier work cycle. Choose the current Task and cycle before sending.' : null;
   const controlsReady = projectionReady;
+  const contextOwner = JSON.stringify([session.identity.id, session.csrf_token, engagement.organisation_id, engagement.client_id, engagement.engagement_id, targetKey(target)]);
+  const latestContextOwner = useRef({ owner: contextOwner, accessReady }); latestContextOwner.current = { owner: contextOwner, accessReady };
+  const previousContextOwner = useRef(contextOwner);
+  useEffect(() => () => { contextRequest.current?.abort(); contextRequest.current = null; }, []);
+  useEffect(() => {
+    if (previousContextOwner.current !== contextOwner) {
+      contextRequest.current?.abort(); contextRequest.current = null;
+      setGuideContext(null); setContextRequested(false); setContextLoading(false); setContextError('');
+      previousContextOwner.current = contextOwner;
+    } else if (!accessReady && contextRequest.current) {
+      contextRequest.current.abort(); contextRequest.current = null;
+      setContextLoading(false); setContextError('Access is being checked. Reload Task context after access returns.');
+    }
+  }, [contextOwner, accessReady]);
+
+  function chooseTarget(next: Target) {
+    contextRequest.current?.abort(); contextRequest.current = null;
+    setGuideContext(null); setContextRequested(false); setContextLoading(false); setContextError('');
+    setTarget(next);
+  }
+
+  async function editGuideContext(enabled: boolean) {
+    draftGeneration.current += 1;
+    contextRequest.current?.abort(); contextRequest.current = null;
+    setGuideContext(null); setContextRequested(enabled); setContextError(''); setContextLoading(false);
+    if (!enabled || target.kind !== 'guide' || !accessReady) return;
+    const request = new AbortController(); contextRequest.current = request;
+    setContextLoading(true);
+    const deadline = setTimeout(() => request.abort(), 8000);
+    try {
+      const basis = await readTaskBasis(engagement, target.task_id, session, request.signal);
+      if (contextRequest.current !== request || request.signal.aborted || latestContextOwner.current.owner !== contextOwner || !latestContextOwner.current.accessReady) return;
+      const value = (basis.pending?.resolution ?? basis.current.resolution).context;
+      setContextFromPending(basis.pending !== null);
+      setGuideContext({ audit_area: value.audit_area ?? '', period_start: value.period_start ?? '', period_end: value.period_end ?? '' });
+    } catch (reason) {
+      if (contextRequest.current !== request || latestContextOwner.current.owner !== contextOwner || !latestContextOwner.current.accessReady) return;
+      setContextError('Task context could not be loaded. Try updating the context again.');
+      if (reason instanceof AccessError && [401, 403, 404, 412].includes(reason.status)) onAccessFailure(reason);
+    } finally {
+      clearTimeout(deadline);
+      if (contextRequest.current === request) { contextRequest.current = null; setContextLoading(false); }
+    }
+  }
 
   useLayoutEffect(() => { onProjectionUsable(accessReady && conversation.connection !== 'loading'); }, [accessReady, conversation.connection, onProjectionUsable]);
   useLayoutEffect(() => {
@@ -150,16 +206,21 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
   }
 
   async function send() {
-    if (!accessReady || conversation.sending || submittingDraft.current || !draft.trim()) return;
+    if (!accessReady || conversation.sending || submittingDraft.current || contextRequested && !guideContext || !draft.trim()) return;
     if (!targetIsCurrent) { setLocalError('This target belongs to an earlier work cycle. Choose the current Task and cycle before sending.'); return; }
     const content = draft;
     const generation = draftGeneration.current;
+    const editedContext = target.kind === 'create' ? Object.values(auditContext).some(Boolean) ? auditContext : null : guideContext;
+    if (editedContext) {
+      try { parseTaskContext({ audit_area: editedContext.audit_area || null, period_start: editedContext.period_start || null, period_end: editedContext.period_end || null }); }
+      catch { setLocalError('Use an audit area without surrounding spaces, and enter both business period dates in order or leave both blank.'); return; }
+    }
     const command: Omit<TaskCommand, 'key'> = target.kind === 'create'
-      ? { kind: 'create', task_id: null, cycle_id: null, content }
-      : { kind: 'guide', task_id: target.task_id, cycle_id: target.cycle_id, content };
+      ? { kind: 'create', task_id: null, cycle_id: null, content, ...(Object.values(auditContext).some(Boolean) ? { context: { audit_area: auditContext.audit_area || null, period_start: auditContext.period_start || null, period_end: auditContext.period_end || null } } : {}) }
+      : { kind: 'guide', task_id: target.task_id, cycle_id: target.cycle_id, content, ...(guideContext ? { context: { audit_area: guideContext.audit_area || null, period_start: guideContext.period_start || null, period_end: guideContext.period_end || null } } : {}) };
     setLocalError(null); submittingDraft.current = true;
     try {
-      if (await conversation.submit(command, key => { pendingScroll.current = key; }) && draftGeneration.current === generation) setDraft('');
+      if (await conversation.submit(command, key => { pendingScroll.current = key; }) && draftGeneration.current === generation) { setDraft(''); setGuideContext(null); setContextRequested(false); }
       // Sending never retargets the next draft, even when its acknowledgement
       // creates a new card or returns after the user chooses another target.
     } finally { submittingDraft.current = false; }
@@ -211,6 +272,7 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
                       <div><dt>Author</dt><dd>{message.author_label} · {message.author_id}</dd></div>
                       <div><dt>Task</dt><dd>{message.task_id}</dd></div><div><dt>Work cycle</dt><dd>{message.cycle_id}</dd></div>
                       <div><dt>Command</dt><dd>{message.command_id}</dd></div><div><dt>Receipt</dt><dd>{message.received_cursor}</dd></div>
+                      {message.context != null ? <><div><dt>Submitted audit area</dt><dd>{message.context.audit_area ?? 'Not specified'}</dd></div><div><dt>Submitted business period</dt><dd>{message.context.period_start ? `${message.context.period_start} to ${message.context.period_end}` : 'Not specified'}</dd></div></> : null}
                     </dl></details>
                   </article>
                   {message.kind === 'create' ? <article className="task-card" aria-label={`Task: ${message.content}`}>
@@ -237,10 +299,10 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
             <label htmlFor="composer-target">Send to</label>
             <select id="composer-target" data-focus="composer-target" value={targetKey(target)} onChange={(event) => {
               draftGeneration.current += 1;
-              if (event.currentTarget.value === 'create') setTarget({ kind: 'create' });
+              if (event.currentTarget.value === 'create') chooseTarget({ kind: 'create' });
               else {
                 const task = conversation.tasks.find((item) => `${item.id}:${item.cycle_id}` === event.currentTarget.value);
-                if (task) setTarget({ kind: 'guide', task_id: task.id, cycle_id: task.cycle_id, objective: task.objective });
+                if (task) chooseTarget({ kind: 'guide', task_id: task.id, cycle_id: task.cycle_id, objective: task.objective });
               }
               setLocalError(null);
             }}>
@@ -251,7 +313,13 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
             <label className="composer-input-label" htmlFor="conversation-draft">{target.kind === 'create' ? 'Task objective' : 'Guidance'}</label>
             <textarea ref={textarea} id="conversation-draft" data-focus="conversation-draft" rows={3} value={draft} onChange={(event) => { draftGeneration.current += 1; setDraft(event.currentTarget.value); }} onKeyDown={composeKey}
               placeholder={target.kind === 'create' ? 'What would you like to work on?' : 'Add guidance to this Task…'} aria-describedby="composer-audience composer-delivery" />
-            <div className="composer-bottom"><p id="composer-audience">{engagement.client_name} · Current assigned members</p><button type="submit" disabled={!accessReady || conversation.sending || !draft.trim() || !targetIsCurrent}>Send <span aria-hidden="true">↑</span></button></div>
+            {target.kind === 'create' ? <details className="methodology-context"><summary>Audit context (optional)</summary><p>Leave blank to use applicable firm defaults. Missing context is recorded without blocking Task creation.</p><label>Task audit area<input maxLength={200} value={auditContext.audit_area} onChange={event => { draftGeneration.current += 1; setAuditContext({ ...auditContext, audit_area: event.target.value }); }} /></label><label>Task period start<input type="date" value={auditContext.period_start} onChange={event => { draftGeneration.current += 1; setAuditContext({ ...auditContext, period_start: event.target.value }); }} /></label><label>Task period end<input type="date" value={auditContext.period_end} onChange={event => { draftGeneration.current += 1; setAuditContext({ ...auditContext, period_end: event.target.value }); }} /></label></details> : null}
+            {target.kind === 'guide' ? <div className="methodology-context"><label><input type="checkbox" checked={contextRequested} onChange={event => { void editGuideContext(event.target.checked); }} />Update Task audit context</label>
+              {contextLoading ? <p role="status">Loading this Task’s current context…</p> : null}
+              {contextError ? <><p role="alert">{contextError}</p><button type="button" className="text-button" onClick={() => { void editGuideContext(true); }}>Retry loading Task context</button></> : null}
+              {guideContext ? <><p>{contextFromPending ? 'Prefilled from the pending change. ' : ''}These values replace this Task’s audit context. Explain the correction in your guidance. Any changed methodology takes effect after consumed activity reaches a safe boundary.</p><label>Task audit area<input maxLength={200} value={guideContext.audit_area} onChange={event => { draftGeneration.current += 1; setGuideContext({ ...guideContext, audit_area: event.target.value }); }} /></label><label>Task period start<input type="date" value={guideContext.period_start} onChange={event => { draftGeneration.current += 1; setGuideContext({ ...guideContext, period_start: event.target.value }); }} /></label><label>Task period end<input type="date" value={guideContext.period_end} onChange={event => { draftGeneration.current += 1; setGuideContext({ ...guideContext, period_end: event.target.value }); }} /></label></> : null}
+            </div> : null}
+            <div className="composer-bottom"><p id="composer-audience">{engagement.client_name} · Current assigned members</p><button type="submit" disabled={!accessReady || conversation.sending || contextRequested && !guideContext || !draft.trim() || !targetIsCurrent}>Send <span aria-hidden="true">↑</span></button></div>
             {target.kind === 'guide' ? <p className="composer-cycle">Guide {target.objective} · cycle <abbr title={target.cycle_id}>{cycleLabel(target.cycle_id)}</abbr></p> : null}
             <p id="composer-delivery" className="composer-help">{draft ? 'Not sent · ' : ''}Enter to send · Shift+Enter for a new line</p>
             {staleTargetError || localError || conversation.error ? <p className="composer-error" role="alert">{staleTargetError ?? localError ?? conversation.error}</p> : null}
@@ -270,12 +338,13 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
               <div className="task-state"><span className="status-label">{taskStateLabel(selected)}</span><p>{stateExplanation(selected)}</p></div>
               <section className="brief-section"><h3>Original objective</h3><p className="retained-text">{selected.objective}</p></section>
               <section className="brief-section"><h3>Working brief</h3><p className="brief-caption">Plain retained direction. Applied means added here; it does not mean model understanding.</p><p className="retained-text">{selected.working_brief}</p></section>
+              <TaskMethodology scope={engagement} taskId={selected.id} taskRevision={selected.revision} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} />
               <details className="message-binding"><summary>Task and current cycle</summary><dl><div><dt>Task</dt><dd>{selected.id}</dd></div><div><dt>Work cycle</dt><dd>{selected.cycle_id}</dd></div><div><dt>Revision</dt><dd>{selected.revision}</dd></div></dl></details>
             </div>
               <div className="task-controls" aria-label={`Controls for ${selected.objective}`}><p>Controls apply only to this Task and cycle.</p>
                 <div>{(['pause', 'stop', 'resume', 'continue'] as Control[]).filter((kind) => kind === 'pause' ? !['paused', 'stopped'].includes(selected.state) : kind === 'stop' ? selected.state !== 'stopped' : kind === 'resume' ? selected.state === 'paused' && selected.cessation === 'confirmed' : selected.state === 'stopped' && selected.cessation === 'confirmed').map((kind) => <button key={kind} type="button" className="quiet-button" disabled={!controlsReady}
                   aria-label={`${kind.charAt(0).toUpperCase()}${kind.slice(1)} ${selected.objective} · current cycle ${cycleLabel(selected.cycle_id)}`} onClick={() => void conversation.control(selected, kind)}>{kind === 'continue' ? 'Continue in new cycle' : `${kind.charAt(0).toUpperCase()}${kind.slice(1)} task`}</button>)}</div>
-                <button type="button" className="text-button" onClick={() => { draftGeneration.current += 1; setTarget({ kind: 'guide', task_id: selected.id, cycle_id: selected.cycle_id, objective: selected.objective }); setView('conversation'); requestAnimationFrame(() => textarea.current?.focus()); }}>Guide this Task</button>
+                <button type="button" className="text-button" onClick={() => { draftGeneration.current += 1; chooseTarget({ kind: 'guide', task_id: selected.id, cycle_id: selected.cycle_id, objective: selected.objective }); setView('conversation'); requestAnimationFrame(() => textarea.current?.focus()); }}>Guide this Task</button>
               </div>
             </> : <p className="empty-work-note" role="status">Current Task details are unavailable. Reconnect to inspect them.</p>}
           </> : <div className="companion-panel"><h2>Active work</h2><p className="shelf-description">Open a Task to inspect its objective, working brief and controls.</p>

@@ -336,6 +336,7 @@ async fn fixture(
             "actor-a",
             &scope(),
             &TaskCommand {
+                context: None,
                 key: key.into(),
                 kind: CommandKind::Create,
                 task_id: None,
@@ -655,6 +656,7 @@ async fn owned_gateway_process_recovery_preserves_source_facts_and_fences_late_s
             "actor-a",
             &scope(),
             &TaskCommand {
+                context: None,
                 key: "stop_before_dispatch".into(),
                 kind: CommandKind::Stop,
                 task_id: Some(basis.task_id.clone()),
@@ -1247,6 +1249,7 @@ async fn owned_gateway_process_recovery_preserves_source_facts_and_fences_late_s
             "actor-a",
             &scope(),
             &TaskCommand {
+                context: None,
                 key: "stop_after_consumption".into(),
                 kind: CommandKind::Stop,
                 task_id: Some(basis.task_id.clone()),

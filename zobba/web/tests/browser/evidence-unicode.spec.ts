@@ -291,9 +291,16 @@ test('new source entry trims Rust whitespace and preserves FEFF in all five asse
   const request: ReservationRequest = response.request().postDataJSON();
   expect(request.filename).toBe('\uFEFFnew-unicode-assertions.txt');
   expect(request.source).toEqual(expected);
-  const reservation: Reservation = await response.json();
-  expect(reservation.request).toEqual(request);
   await expect(page.getByText('Original verified and registered.', { exact: true })).toBeVisible();
+  // The real UI must consume the receipt before inspecting canonical custody;
+  // avoid Chromium's transient response-body cache for this observation.
+  const registry = await page.request.get(`${runtime.url}/api/engagements/engagement-a/evidence?${scope}`);
+  expect(registry.status()).toBe(200);
+  const persisted: Evidence[] = (await registry.json()).items;
+  const matching = persisted.filter(item => item.reservation.request.key === request.key);
+  expect(matching).toHaveLength(1);
+  const reservation = matching[0]!.reservation;
+  expect(reservation.request).toEqual(request);
   await exactRegistry(page, [reservation]);
   await inspectAndDownload(page, reservation, file, '_new-unicode-assertions.txt');
   expect(await draft(page)).toBeNull();

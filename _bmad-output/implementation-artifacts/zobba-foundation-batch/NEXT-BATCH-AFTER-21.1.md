@@ -1,10 +1,10 @@
 # Next dependency-ready batch after Stories 20.6 and 21.1
 
-**1 October 2026 (Africa/Lusaka). Recommendation, not additional implementation claimed.**
+**Recommended 1 October; authorised 2 October 2026 (Africa/Lusaka), following acceptance of Admin safeguard `38d76b019db1e5cb637f8c66e6cde3947c3415b2`. Stories 21.2–21.4 are the active batch; external qualification remains separately gated.**
 
 Continue with **21.2 → 21.3 and 21.4**, using the accepted design and canonical
-[stories](../../planning-artifacts/epics.md). Record owner acceptance of the
-20.6/21.1 checkpoint before advancing their sprint status from review to done.
+[stories](../../planning-artifacts/epics.md). Stories 20.6/21.1 and their repairs are owner-accepted and marked done.
+Complete and verify 21.2 before admitting its consumer stories.
 
 | Sequence | Story | Dependency now supplied / next proof |
 | --- | --- | --- |

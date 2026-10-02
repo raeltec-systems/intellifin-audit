@@ -1,0 +1,212 @@
+$ pnpm --filter @zobba/web test:browser tests/browser/methodology.spec.ts tests/browser/methodology-review.spec.ts --workers=1 --retries=0
+$ playwright test tests/browser/methodology.spec.ts tests/browser/methodology-review.spec.ts --workers=1 --retries=0
+
+Running 7 tests using 1 worker
+
+(node:768011) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/browser/methodology-review.spec.ts:95:1 › explicit Create overrides firm defaults and a real active-task Save applies at the owned worker boundary (1.5m)
+(node:769041) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  2 tests/browser/methodology-review.spec.ts:160:1 › Undo and conflict recovery keep independent overlapping lineages separate and historical Edit opens the current head (14.4s)
+(node:769310) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  3 tests/browser/methodology-review.spec.ts:193:1 › field controls distinguish clear from inherit while mandatory inherited text and references remain in force (1.5m)
+(node:769691) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  4 tests/browser/methodology-review.spec.ts:245:1 › later organisation pages and verified names survive quiet refresh, and revoked selection returns to the authorised chooser (18.2s)
+  ✘  5 tests/browser/methodology.spec.ts:51:1 › Guide supplies missing Task context with exact attribution and stages a binding without replacing the original (2.5s)
+(node:770072) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  6 tests/browser/methodology.spec.ts:109:1 › Admin Save, frozen lost-receipt retry, Undo, exact Task templates, new-only notice, recall and draft withdrawal (3.0m)
+(node:770513) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  7 tests/browser/methodology.spec.ts:294:1 › a real saved incomplete methodology retains more than 100 limitations in Task inspection (18.1s)
+
+
+  1) tests/browser/methodology-review.spec.ts:95:1 › explicit Create overrides firm defaults and a real active-task Save applies at the owned worker boundary 
+
+    Test timeout of 90000ms exceeded.
+
+    Error: locator.selectOption: Test timeout of 90000ms exceeded.
+    Call log:
+      - waiting for getByRole('form', { name: 'Edit methodology', exact: true }).getByLabel('Apply change to', { exact: true })
+
+
+      132 |     await page.getByRole('button', { name: `Edit version ${initial.revision}`, exact: true }).click();
+      133 |     await form.getByLabel('Criteria', { exact: true }).fill('Active Task replacement criterion');
+    > 134 |     await form.getByLabel('Apply change to', { exact: true }).selectOption('active_tasks');
+          |                                                               ^
+      135 |     const successor = await saveForm(page);
+      136 |     expect(successor.command.activation.mode).toBe('active_tasks'); expect(successor.command.supersedes).toBe(initial.id);
+      137 |     const staged = await task.read();
+        at /workspace/intellifin-audit/zobba/web/tests/browser/methodology-review.spec.ts:134:63
+
+    attachment #1: methodology-explicit-context-neutral-attribution.png (image/png) ────────────────
+    ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-review-explici-63878-t-the-owned-worker-boundary/attachments/methodology-explicit-context-neutral-attribution-png-fae987d3842b9c0bacc29c83ba7dc1944c909766.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-review-explici-63878-t-the-owned-worker-boundary/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-review-explici-63878-t-the-owned-worker-boundary/test-failed-2.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-review-explici-63878-t-the-owned-worker-boundary/error-context.md
+
+    Error Context: ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-review-explici-63878-t-the-owned-worker-boundary/error-context.md
+
+  2) tests/browser/methodology-review.spec.ts:160:1 › Undo and conflict recovery keep independent overlapping lineages separate and historical Edit opens the current head 
+
+    Error: expect(locator).toBeDisabled() failed
+
+    Locator: getByRole('form', { name: 'Edit methodology', exact: true }).getByLabel('Assignment scope', { exact: true })
+    Expected: disabled
+    Timeout: 12000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeDisabled" with timeout 12000ms
+      - waiting for getByRole('form', { name: 'Edit methodology', exact: true }).getByLabel('Assignment scope', { exact: true })
+
+
+      168 |   await page.getByRole('button', { name: `Undo to version ${a1.revision}`, exact: true }).click();
+      169 |   await expect(form.getByLabel('Package name', { exact: true })).toHaveValue('Lineage A original');
+    > 170 |   for (const label of ['Assignment scope', 'Applicable audit area', 'Business period start', 'Business period end']) await expect(form.getByLabel(label, { exact: true })).toBeDisabled();
+          |                                                                                                                                                                            ^
+      171 |   const undone = await saveForm(page);
+      172 |   expect(undone.command.supersedes).toBe(a2.id); expect(undone.command.undo_of).toBe(a1.id);
+      173 |   expect(undone.command.definition).toEqual(a1.command.definition);
+        at /workspace/intellifin-audit/zobba/web/tests/browser/methodology-review.spec.ts:170:172
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-review-Undo-an-6a9e2-Edit-opens-the-current-head/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-review-Undo-an-6a9e2-Edit-opens-the-current-head/error-context.md
+
+    Error Context: ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-review-Undo-an-6a9e2-Edit-opens-the-current-head/error-context.md
+
+  3) tests/browser/methodology-review.spec.ts:193:1 › field controls distinguish clear from inherit while mandatory inherited text and references remain in force 
+
+    Test timeout of 90000ms exceeded.
+
+    Error: locator.selectOption: Test timeout of 90000ms exceeded.
+    Call log:
+      - waiting for getByRole('form', { name: 'Edit methodology', exact: true }).getByLabel('Assignment scope', { exact: true })
+
+
+      202 |   const form = page.getByRole('form', { name: 'Edit methodology', exact: true });
+      203 |   await form.getByLabel('Package name', { exact: true }).fill('Narrow optional clearing');
+    > 204 |   await form.getByLabel('Assignment scope', { exact: true }).selectOption('engagement');
+          |                                                              ^
+      205 |   await form.getByLabel('Client', { exact: true }).selectOption('client-a');
+      206 |   await form.getByLabel('Engagement', { exact: true }).selectOption('engagement-a');
+      207 |   await form.getByLabel('Applicable audit area', { exact: true }).fill('Inheritance proof');
+        at /workspace/intellifin-audit/zobba/web/tests/browser/methodology-review.spec.ts:204:62
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-review-field-c-81167--references-remain-in-force/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-review-field-c-81167--references-remain-in-force/error-context.md
+
+    Error Context: ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-review-field-c-81167--references-remain-in-force/error-context.md
+
+  4) tests/browser/methodology.spec.ts:51:1 › Guide supplies missing Task context with exact attribution and stages a binding without replacing the original 
+
+    Error: response.json: Protocol error (Network.getResponseBody): No data found for resource with given identifier
+    Response body is not available for a response that was navigated away from. Read response.body() before triggering any navigation.
+
+      58 |   const created = page.waitForResponse(response => response.url().includes('/task-commands?') && response.request().method() === 'POST');
+      59 |   await page.getByRole('button', { name: 'Send', exact: false }).click();
+    > 60 |   const receipt = await (await created).json();
+         |                                         ^
+      61 |   await page.getByRole('button', { name: 'Open Discover audit context before evaluation', exact: true }).click();
+      62 |   const basis = page.getByRole('region', { name: 'What Zobba is using', exact: true });
+      63 |   await expect(basis.getByText('Not yet specified', { exact: true })).toHaveCount(2);
+        at /workspace/intellifin-audit/zobba/web/tests/browser/methodology.spec.ts:60:41
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-Guide-supplies-dfbda-hout-replacing-the-original/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-Guide-supplies-dfbda-hout-replacing-the-original/error-context.md
+
+    Error Context: ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-Guide-supplies-dfbda-hout-replacing-the-original/error-context.md
+
+  5) tests/browser/methodology.spec.ts:109:1 › Admin Save, frozen lost-receipt retry, Undo, exact Task templates, new-only notice, recall and draft withdrawal 
+
+    Test timeout of 180000ms exceeded.
+
+    Error: locator.selectOption: Test timeout of 180000ms exceeded.
+    Call log:
+      - waiting for getByRole('form', { name: 'Edit methodology', exact: true }).getByLabel('Population and sampling conventions behavior', { exact: true })
+
+
+      155 |   for (const [label, original] of authoringFields) {
+      156 |     if (original) await form.getByLabel(label, { exact: true }).fill(original);
+    > 157 |     else await form.getByLabel(`${label} behavior`, { exact: true }).selectOption('inherit');
+          |                                                                      ^
+      158 |   }
+      159 |   // A transport refusal admits no command. Its first-attempt editor behavior
+      160 |   // is distinct from the uncertain committed request exercised below.
+        at /workspace/intellifin-audit/zobba/web/tests/browser/methodology.spec.ts:157:70
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-Admin-Save-fro-6246c-recall-and-draft-withdrawal/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-Admin-Save-fro-6246c-recall-and-draft-withdrawal/error-context.md
+
+    Error Context: ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-Admin-Save-fro-6246c-recall-and-draft-withdrawal/error-context.md
+
+  6) tests/browser/methodology.spec.ts:294:1 › a real saved incomplete methodology retains more than 100 limitations in Task inspection 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('region', { name: 'What Zobba is using', exact: true }).getByText('Incomplete methodology basis', { exact: true })
+    Expected: visible
+    Timeout: 12000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 12000ms
+      - waiting for getByRole('region', { name: 'What Zobba is using', exact: true }).getByText('Incomplete methodology basis', { exact: true })
+
+
+      338 |     await manager.getByRole('button', { name: 'Open Inspect every recorded methodology limitation', exact: true }).click();
+      339 |     const basis = manager.getByRole('region', { name: 'What Zobba is using', exact: true });
+    > 340 |     await expect(basis.getByText('Incomplete methodology basis', { exact: true })).toBeVisible();
+          |                                                                                    ^
+      341 |     const response = await manager.request.get(`${runtime.url}/api/engagements/engagement-a/tasks/${receipt.task_id}/methodology?organisation_id=org-a&client_id=client-a`);
+      342 |     expect(response.status()).toBe(200);
+      343 |     const actual: TaskBasis = await response.json();
+        at /workspace/intellifin-audit/zobba/web/tests/browser/methodology.spec.ts:340:84
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-a-real-saved-i-bb80a-itations-in-Task-inspection/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-a-real-saved-i-bb80a-itations-in-Task-inspection/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-a-real-saved-i-bb80a-itations-in-Task-inspection/error-context.md
+
+    Error Context: ../../../../tmp/zobba-story-21-2/repair-1/browser-focused-results/methodology-a-real-saved-i-bb80a-itations-in-Task-inspection/error-context.md
+
+  6 failed
+    tests/browser/methodology-review.spec.ts:95:1 › explicit Create overrides firm defaults and a real active-task Save applies at the owned worker boundary 
+    tests/browser/methodology-review.spec.ts:160:1 › Undo and conflict recovery keep independent overlapping lineages separate and historical Edit opens the current head 
+    tests/browser/methodology-review.spec.ts:193:1 › field controls distinguish clear from inherit while mandatory inherited text and references remain in force 
+    tests/browser/methodology.spec.ts:51:1 › Guide supplies missing Task context with exact attribution and stages a binding without replacing the original 
+    tests/browser/methodology.spec.ts:109:1 › Admin Save, frozen lost-receipt retry, Undo, exact Task templates, new-only notice, recall and draft withdrawal 
+    tests/browser/methodology.spec.ts:294:1 › a real saved incomplete methodology retains more than 100 limitations in Task inspection 
+  1 passed (7.6m)
+/workspace/intellifin-audit/zobba/web:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @zobba/web@0.1.0 test:browser: `playwright test tests/browser/methodology.spec.ts tests/browser/methodology-review.spec.ts --workers=1 --retries=0`
+Exit status 1
+[ELIFECYCLE] Command failed with exit code 1.

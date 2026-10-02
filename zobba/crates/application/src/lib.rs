@@ -3,6 +3,7 @@ pub mod conversation;
 pub mod evidence;
 pub mod identity;
 pub mod membership;
+pub mod methodology;
 pub mod operation;
 pub mod task;
 use std::{fmt, future::Future};

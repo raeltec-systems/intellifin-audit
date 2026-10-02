@@ -34,7 +34,7 @@ fn unavailable(_: impl std::fmt::Debug) -> TaskError {
 // The visible anchor prevents a concurrent revocation between scope::begin and
 // the projection statement from masquerading as an authorised empty response.
 const ANCHOR: &str = "WITH visible AS (SELECT id FROM public.engagements WHERE organisation_id=$1 AND client_id=$2 AND id=$3), head AS (SELECT COALESCE((SELECT cursor FROM public.task_counters),0)::bigint AS watermark)";
-const MESSAGES: &str = "SELECT c.id AS command_id,c.idempotency_key AS key,c.author_id,left(i.display_name,200) AS author_label,c.kind,c.task_id,c.cycle_id,c.target_task_id,c.target_cycle_id,c.content,c.received_cursor::text AS received_cursor,CASE WHEN a.cursor <= COALESCE($4::bigint,(SELECT watermark FROM head)) THEN a.cursor::text END AS applied_cursor FROM (SELECT e.command_id FROM public.task_events e WHERE e.kind='received' AND e.cursor<=COALESCE($4::bigint,(SELECT watermark FROM head)) AND ($5::bigint IS NULL OR e.cursor<$5) AND ($6::text IS NULL OR e.task_id=$6) ORDER BY e.cursor DESC LIMIT 101) p JOIN public.task_commands c ON c.id=p.command_id JOIN public.identities i ON i.id=c.author_id LEFT JOIN public.task_events a ON a.command_id=c.id AND a.kind='applied' ORDER BY c.received_cursor DESC";
+const MESSAGES: &str = "SELECT c.id AS command_id,c.idempotency_key AS key,c.author_id,left(i.display_name,200) AS author_label,c.kind,c.task_id,c.cycle_id,c.target_task_id,c.target_cycle_id,c.content,c.methodology_context AS context,c.received_cursor::text AS received_cursor,CASE WHEN a.cursor <= COALESCE($4::bigint,(SELECT watermark FROM head)) THEN a.cursor::text END AS applied_cursor FROM (SELECT e.command_id FROM public.task_events e WHERE e.kind='received' AND e.cursor<=COALESCE($4::bigint,(SELECT watermark FROM head)) AND ($5::bigint IS NULL OR e.cursor<$5) AND ($6::text IS NULL OR e.task_id=$6) ORDER BY e.cursor DESC LIMIT 101) p JOIN public.task_commands c ON c.id=p.command_id JOIN public.identities i ON i.id=c.author_id LEFT JOIN public.task_events a ON a.command_id=c.id AND a.kind='applied' ORDER BY c.received_cursor DESC";
 
 #[derive(Deserialize)]
 struct MessageRow {
@@ -48,6 +48,7 @@ struct MessageRow {
     target_task_id: Option<String>,
     target_cycle_id: Option<String>,
     content: Option<String>,
+    context: Option<zobba_application::methodology::TaskContext>,
     received_cursor: String,
     applied_cursor: Option<String>,
 }
@@ -64,6 +65,7 @@ impl MessageRow {
             target_task_id: self.target_task_id,
             target_cycle_id: self.target_cycle_id,
             content: self.content,
+            context: self.context.map(|context| context.to_domain()),
             received_cursor: self.received_cursor,
             applied_cursor: self.applied_cursor,
         })

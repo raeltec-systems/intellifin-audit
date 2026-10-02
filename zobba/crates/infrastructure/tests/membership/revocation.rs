@@ -72,6 +72,7 @@ async fn claimed(
             actor,
             selected,
             &TaskCommand {
+                context: None,
                 key: key.into(),
                 kind: CommandKind::Create,
                 task_id: None,

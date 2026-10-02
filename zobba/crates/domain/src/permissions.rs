@@ -532,6 +532,9 @@ pub struct Operation {
     pub task_id: String,
     pub cycle_id: String,
     pub actor_id: String,
+    /// Immutable producer epoch and the exact method binding effective for it.
+    pub execution_epoch: u64,
+    pub methodology_binding_id: String,
     pub request: CanonicalOperation,
     pub request_digest: String,
     pub revision: u64,

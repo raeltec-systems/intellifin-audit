@@ -400,6 +400,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/engagements/{engagement_id}/tasks/{task_id}/methodology": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["task_methodology"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -560,6 +576,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/methodology/organisations/{organisation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["methodology_snapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/methodology/organisations/{organisation_id}/recall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["recall_methodology"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/methodology/organisations/{organisation_id}/save": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["save_methodology"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -578,9 +642,12 @@ export interface components {
             id: string;
         };
         AttemptHistoryResponse: {
+            execution_epoch: string;
             id: string;
             /** @description Non-secret source ledger identity bound when this attempt was admitted. */
             ledger_id: string | null;
+            /** @description Exact immutable binding effective when this attempt was admitted. */
+            methodology_binding_id: string;
             number: string;
             operation_id: string;
             recorded_at: string;
@@ -663,6 +730,7 @@ export interface components {
             author_label: string;
             command_id: string;
             content: string | null;
+            context?: null | components["schemas"]["MethodologyTaskContext"];
             /** @description Resulting cycle. Continue preserves its old addressed cycle separately below. */
             cycle_id: string;
             key: string;
@@ -933,6 +1001,189 @@ export interface components {
         };
         /** @description Canonical nonnegative decimal through 9223372036854775807; no signs or leading zeros. */
         MembershipVersion: string;
+        MethodologyActivation: {
+            /**
+             * Format: int64
+             * @description Availability in Unix seconds, independent of business applicability dates.
+             */
+            available_at: number;
+            mode: components["schemas"]["MethodologyActivationMode"];
+        };
+        /** @enum {string} */
+        MethodologyActivationMode: "new_tasks" | "active_tasks";
+        MethodologyApplicability: {
+            audit_area?: string | null;
+            period_end?: string | null;
+            period_start?: string | null;
+        };
+        /** @enum {string} */
+        MethodologyAssignmentKind: "firm" | "client" | "engagement";
+        MethodologyAssignmentScope: {
+            client_id?: string | null;
+            engagement_id?: string | null;
+            kind: components["schemas"]["MethodologyAssignmentKind"];
+        };
+        MethodologyBinding: {
+            actor_id: string;
+            /** Format: int64 */
+            bound_at: number;
+            /** @description Exact version candidates retained for subsequent Task context discovery. */
+            candidate_version_ids: string[];
+            /** @description Exact Guide command supplying this context, retained through later bindings. */
+            context_command_id: string | null;
+            /** @description Task execution epoch from which this exact binding applies. */
+            execution_epoch: string;
+            id: string;
+            resolution: components["schemas"]["MethodologyResolution"];
+        };
+        MethodologyBindingChange: {
+            actor_id: string;
+            id: string;
+            reason: string;
+            /** Format: int64 */
+            requested_at: number;
+            resolution: components["schemas"]["MethodologyResolution"];
+        };
+        MethodologyBindingNotice: {
+            actor_id: string;
+            id: string;
+            impact: components["schemas"]["MethodologyImpact"];
+            /** Format: int64 */
+            requested_at: number;
+            version_id: string;
+        };
+        MethodologyDefinition: {
+            default_context?: components["schemas"]["MethodologyTaskContext"];
+            name: string;
+            neutral_starter: boolean;
+            requirements: components["schemas"]["MethodologyRequirement"][];
+            templates?: components["schemas"]["MethodologyTemplateDefinition"][];
+        };
+        MethodologyFieldSource: {
+            field: string;
+            version_ids: string[];
+        };
+        MethodologyImpact: {
+            activation_mode: components["schemas"]["MethodologyActivationMode"];
+            affected_tasks: string;
+            diff: string[];
+            id: string;
+            pending_tasks: string;
+            /** @description Unknown or changed semantics are potentially material. */
+            potentially_material: boolean;
+            retained_tasks: string;
+            version_id: string;
+        };
+        MethodologyReceipt: {
+            actor_id: string;
+            event_id: string;
+            impact: components["schemas"]["MethodologyImpact"];
+            kind: string;
+            organisation_id: string;
+            revision: string;
+            version_id: string;
+        };
+        MethodologyRequirement: {
+            /** @description Absent fields inherit. Empty arrays cannot erase inherited mandatory controls. */
+            criteria?: components["schemas"]["MethodologyText"][] | null;
+            evidence_checks?: components["schemas"]["MethodologyText"][] | null;
+            id: string;
+            label?: string | null;
+            mandatory: boolean;
+            populations?: components["schemas"]["MethodologyText"][] | null;
+            ratings?: components["schemas"]["MethodologyText"][] | null;
+            review_rules?: components["schemas"]["MethodologyText"][] | null;
+            suitable_skills?: components["schemas"]["MethodologyVersionReference"][] | null;
+            templates?: components["schemas"]["MethodologyVersionReference"][] | null;
+        };
+        MethodologyResolution: {
+            context: components["schemas"]["MethodologyTaskContext"];
+            issues: string[];
+            /**
+             * @description Up to 128 saved neutral contributors plus the built-in fallback, joined to
+             *     requirement field and template source IDs.
+             */
+            neutral_source_version_ids: string[];
+            reason: string;
+            requirements: components["schemas"]["MethodologyResolvedRequirement"][];
+            status: components["schemas"]["MethodologyResolutionStatus"];
+            templates: components["schemas"]["MethodologyResolvedTemplate"][];
+            version_ids: string[];
+        };
+        /** @enum {string} */
+        MethodologyResolutionStatus: "resolved" | "neutral" | "incomplete" | "ambiguous" | "recalled";
+        MethodologyResolvedRequirement: {
+            field_sources: components["schemas"]["MethodologyFieldSource"][];
+            requirement: components["schemas"]["MethodologyResolvedRequirementFields"];
+            source_version_ids: string[];
+        };
+        MethodologyResolvedRequirementFields: {
+            /** @description Resolved inherited values can combine up to 128 saved versions. */
+            criteria?: components["schemas"]["MethodologyText"][] | null;
+            evidence_checks?: components["schemas"]["MethodologyText"][] | null;
+            id: string;
+            label?: string | null;
+            mandatory: boolean;
+            populations?: components["schemas"]["MethodologyText"][] | null;
+            ratings?: components["schemas"]["MethodologyText"][] | null;
+            review_rules?: components["schemas"]["MethodologyText"][] | null;
+            suitable_skills?: components["schemas"]["MethodologyVersionReference"][] | null;
+            templates?: components["schemas"]["MethodologyVersionReference"][] | null;
+        };
+        MethodologyResolvedTemplate: {
+            source_version_id: string;
+            template: components["schemas"]["MethodologyTemplateDefinition"];
+        };
+        MethodologySnapshot: {
+            /** @description Assignment metadata for current Admins; grants no access to audit work. */
+            engagements: components["schemas"]["MembershipAssignmentOption"][];
+            impacts: components["schemas"]["MethodologyImpact"][];
+            organisation_id: string;
+            revision: string;
+            versions: components["schemas"]["MethodologyVersionRecord"][];
+        };
+        MethodologySource: {
+            kind: components["schemas"]["MethodologySourceKind"];
+            note?: null | components["schemas"]["MethodologyText"];
+            reference?: null | components["schemas"]["MethodologyText"];
+        };
+        /** @enum {string} */
+        MethodologySourceKind: "authored" | "imported_proposal" | "neutral_starter";
+        MethodologyTaskContext: {
+            audit_area?: string | null;
+            period_end?: string | null;
+            /** @description Inclusive business date, YYYY-MM-DD. Both period dates are required together. */
+            period_start?: string | null;
+        };
+        MethodologyTemplateDefinition: {
+            id: string;
+            name: string;
+            sections: components["schemas"]["MethodologyTemplateSection"][];
+            version: string;
+        };
+        /** @description Preserved Unicode prose containing at least one character outside Unicode White_Space; at most 2000 Unicode characters. LF, CR and tab are allowed; all other control characters are refused. Indentation, line endings, trailing whitespace and U+FEFF are preserved exactly. */
+        MethodologyTemplateProse: string;
+        MethodologyTemplateSection: {
+            content: components["schemas"]["MethodologyTemplateProse"];
+            id: string;
+            required: boolean;
+            title: string;
+        };
+        /** @description Nonempty, already-trimmed Unicode text without control characters; at most 2000 Unicode characters. */
+        MethodologyText: string;
+        MethodologyVersionRecord: {
+            actor_id: string;
+            command: components["schemas"]["SaveMethodologyRequest"];
+            id: string;
+            recalled: boolean;
+            revision: string;
+            /** Format: int64 */
+            saved_at: number;
+        };
+        MethodologyVersionReference: {
+            id: string;
+            version: string;
+        };
         ObservationHistoryResponse: {
             attempt_id: string;
             /** @description A recorded source fact. Unknown or Accepted proves neither completion nor absence. */
@@ -979,7 +1230,11 @@ export interface components {
             /** @description Immutable producing actor; the reading or deciding actor does not replace it. */
             actor_id: string;
             cycle_id: string;
+            /** @description Immutable producing Task epoch; methodology history identifies its exact criteria. */
+            execution_epoch: string;
             id: string;
+            /** @description Exact immutable Task methodology binding used by the producer. */
+            methodology_binding_id: string;
             request: components["schemas"]["CanonicalOperationRequest"];
             request_digest: string;
             revision: string;
@@ -1011,6 +1266,12 @@ export interface components {
         };
         /** @enum {string} */
         PurposeRequest: "live_inspection" | "test_workflows" | "audit_coordination";
+        RecallMethodologyRequest: {
+            expected_revision: string;
+            key: string;
+            reason: components["schemas"]["MethodologyText"];
+            version_id: string;
+        };
         /** @enum {string} */
         ReceiptStatusResponse: "received";
         RevokeInvitationRequest: {
@@ -1034,6 +1295,18 @@ export interface components {
             /** @description Unique application roles; an active membership must have at least one. */
             roles: components["schemas"]["MembershipRole"][];
         };
+        SaveMethodologyRequest: {
+            activation: components["schemas"]["MethodologyActivation"];
+            applicability: components["schemas"]["MethodologyApplicability"];
+            assignment: components["schemas"]["MethodologyAssignmentScope"];
+            definition: components["schemas"]["MethodologyDefinition"];
+            /** @description Canonical decimal revision, bounded by 9223372036854775806 so a successor fits. */
+            expected_revision: string;
+            key: string;
+            source: components["schemas"]["MethodologySource"];
+            supersedes?: string | null;
+            undo_of?: string | null;
+        };
         ScopeResponse: {
             client_id: string;
             engagement_id: string;
@@ -1053,6 +1326,7 @@ export interface components {
              *     Must contain non-whitespace; control characters other than LF, CR and tab are refused.
              */
             content?: string | null;
+            context?: null | components["schemas"]["MethodologyTaskContext"];
             cycle_id?: string | null;
             /** @description Author and composite scope bind this key. Identical retries return the original receipt. */
             key: string;
@@ -1072,6 +1346,14 @@ export interface components {
             events: components["schemas"]["TaskEventResponse"][];
             /** @description Last returned cursor, or the input cursor on an empty page. Poll again from this value. */
             next_cursor: string;
+        };
+        TaskMethodologyResponse: {
+            current: components["schemas"]["MethodologyBinding"];
+            history: components["schemas"]["MethodologyBinding"][];
+            notices: components["schemas"]["MethodologyBindingNotice"][];
+            pending?: null | components["schemas"]["MethodologyBindingChange"];
+            recalled: boolean;
+            task_id: string;
         };
         TaskResponse: {
             /** @description Accountable human identity, distinct from worker ownership. */
@@ -2965,6 +3247,73 @@ export interface operations {
             };
         };
     };
+    task_methodology: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header?: {
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskMethodologyResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     live: {
         parameters: {
             query?: never;
@@ -3650,6 +3999,244 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    methodology_snapshot: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Additional current session refusal fence */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                organisation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MethodologySnapshot"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    recall_methodology: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Expected-Session"?: string | null;
+                Origin: string;
+                "X-CSRF-Token": string;
+                /** @description Required exact current actor refusal fence */
+                "X-Expected-Actor": string;
+            };
+            path: {
+                organisation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecallMethodologyRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MethodologyReceipt"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    save_methodology: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Expected-Session"?: string | null;
+                Origin: string;
+                "X-CSRF-Token": string;
+                /** @description Required exact current actor refusal fence */
+                "X-Expected-Actor": string;
+            };
+            path: {
+                organisation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveMethodologyRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MethodologyReceipt"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

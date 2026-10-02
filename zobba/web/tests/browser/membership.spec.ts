@@ -522,7 +522,7 @@ test('expired membership is shown honestly and can be renewed or have its expiry
   await expect(row).toContainText('Expired');
   const editor = await editMember(page); await expect(editor.getByLabel('Use a membership expiry', { exact: true })).toBeChecked();
   const future = Math.floor(Date.now() / 1000) + 86400;
-  await editor.getByLabel('Membership expiry (UTC)', { exact: true }).fill(new Date(future * 1000).toISOString().slice(0, 19));
+  await editor.getByLabel('Membership expiry (UTC)', { exact: true }).fill(new Date(future * 1000).toISOString().slice(0, 19).replace(/:00$/, ''));
   await editor.getByRole('button', { name: 'Save membership' }).click(); await expect(row).toContainText('Active');
   expect((await snapshot(page)).members.find(member => member.actor_id === 'actor-a')?.expires_at).toBe(future);
   const renewed = await editMember(page); await renewed.getByLabel('Use a membership expiry', { exact: true }).uncheck();

@@ -195,7 +195,7 @@ for (const account of ['auditor-a', 'manager-a', 'auditor-b']) {
       await page.setViewportSize({ width: 1280, height: 800 });
     }
     await retainUncertainDraft(page); const responseGate = gate(); let held = false;
-    await page.route('**/api/engagements/engagement-a/evidence?*', async route => { const response = await route.fetch(); held = true; await responseGate.held; await route.fulfill({ response }).catch(() => {}); });
+    await page.route('**/api/engagements/engagement-a/evidence?*', async route => { const response = await route.fetch(); held = true; await responseGate.held; await route.fulfill({ response }); });
     try {
       await page.getByRole('button', { name: 'Refresh evidence' }).click(); await expect.poll(() => held).toBe(true);
       const other = await context.newPage(); await signIn(other, account, true); responseGate.release(); await page.bringToFront();
@@ -204,13 +204,13 @@ for (const account of ['auditor-a', 'manager-a', 'auditor-b']) {
       await expect(page.getByRole('region', { name: 'Evidence details' })).toHaveCount(0);
       await expect(page.getByRole('heading', { name: 'Finish reserved acquisition' })).toHaveCount(0);
       await expect.poll(() => page.evaluate(() => sessionStorage.getItem('zobba.evidence-draft.v1'))).toBeNull();
-    } finally { responseGate.release(); }
+    } finally { responseGate.release(); await page.unrouteAll({ behavior: 'wait' }); }
   });
   test(`completed download creates no Blob URL after ${account === 'auditor-a' ? 'same-actor session' : account === 'manager-a' ? 'same-engagement actor' : 'foreign-scope account'} replacement`, async ({ page, context }) => {
     await signIn(page); await openEvidence(page); await acquire(page); await retainUncertainDraft(page);
     await page.evaluate(() => { const originalCreate = URL.createObjectURL; Object.assign(window, { evidenceBlobCalls: 0 }); URL.createObjectURL = function (blob) { (window as unknown as { evidenceBlobCalls: number }).evidenceBlobCalls++; return originalCreate.call(URL, blob); }; });
     const responseGate = gate(); let held = false, delivered = false;
-    await page.route('**/api/engagements/engagement-a/evidence/*/download?*', async route => { const response = await route.fetch(); expect(response.status()).toBe(200); held = true; await responseGate.held; await route.fulfill({ response }).catch(() => {}); delivered = true; });
+    await page.route('**/api/engagements/engagement-a/evidence/*/download?*', async route => { const response = await route.fetch(); expect(response.status()).toBe(200); held = true; await responseGate.held; await route.fulfill({ response }); delivered = true; });
     try {
       await page.getByRole('button', { name: 'Download verified original' }).click(); await expect.poll(() => held).toBe(true);
       const other = await context.newPage(); await signIn(other, account, true); responseGate.release(); await page.bringToFront(); await expect.poll(() => delivered).toBe(true);
@@ -219,7 +219,7 @@ for (const account of ['auditor-a', 'manager-a', 'auditor-b']) {
       await expect(page.getByRole('heading', { name: 'Finish reserved acquisition' })).toHaveCount(0);
       await expect.poll(() => page.evaluate(() => sessionStorage.getItem('zobba.evidence-draft.v1'))).toBeNull();
       expect(await page.evaluate(() => (window as unknown as { evidenceBlobCalls: number }).evidenceBlobCalls)).toBe(0);
-    } finally { responseGate.release(); }
+    } finally { responseGate.release(); await page.unrouteAll({ behavior: 'wait' }); }
   });
 }
 

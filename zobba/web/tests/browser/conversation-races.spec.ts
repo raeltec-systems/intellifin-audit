@@ -254,7 +254,9 @@ test('reserved control and same-key receipt recovery do not wait on held ordinar
   await signIn(page); const task = await create(page, 'Reserved control through ordinary read outage');
   await page.getByRole('button', { name: `Open ${task.objective}`, exact: true }).click();
   const ordinary = gate(), events = gate(); let heldReads = 0; let eventsHeld = false;
-  const holdRead = async (route: Route) => { const response = await route.fetch(); expect(response.status()).toBe(200); heldReads++; await ordinary.held; await route.fulfill({ response }); };
+  // Every ordinary read remains blocked, including methodology verification.
+  // Count only the two deliberate reads so independent inspection is allowed.
+  const holdRead = async (route: Route) => { const response = await route.fetch(); expect(response.status()).toBe(200); if (route.request().headers()['x-zobba-test-held-read'] === 'reserved-control') heldReads++; await ordinary.held; await route.fulfill({ response }); };
   await page.route('**/api/auth/session', holdRead);
   await page.route('**/api/engagements/engagement-a?*', holdRead);
   await page.route('**/api/engagements/engagement-a/conversation/events?*', async route => { eventsHeld = true; await events.held; await route.continue(); });
@@ -267,7 +269,8 @@ test('reserved control and same-key receipt recovery do not wait on held ordinar
   try {
     await page.evaluate(selected => {
       document.documentElement.dataset.ordinaryReads = 'pending';
-      void Promise.all([fetch('/api/auth/session'), fetch(`/api/engagements/engagement-a?${selected}`)])
+      const options = { headers: { 'X-Zobba-Test-Held-Read': 'reserved-control' } };
+      void Promise.all([fetch('/api/auth/session', options), fetch(`/api/engagements/engagement-a?${selected}`, options)])
         .then(() => { document.documentElement.dataset.ordinaryReads = 'settled'; });
     }, scope);
     await expect.poll(() => heldReads).toBe(2); await expect.poll(() => eventsHeld).toBe(true);

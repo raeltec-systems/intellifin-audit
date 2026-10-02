@@ -672,7 +672,7 @@ Both Rust processes expose:
 | Request | Healthy response | Dependency failure |
 |---|---|---|
 | `GET /health/live` | 200, `status: "live"`, `schema_version: null` | Remains live while the process can serve |
-| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 7` | 503, `status: "unavailable"`, `schema_version: null` |
+| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 8` | 503, `status: "unavailable"`, `schema_version: null` |
 
 Each response also identifies `service: "api"` or `service: "worker"`. Readiness
 checks the supported schema through the restricted runtime connection. Startup
@@ -881,3 +881,102 @@ checks require the explicit `ZOBBA_TEST_ADMIN_DATABASE_URL` for that same guarde
 throwaway database. New evidence authority mutations use bounded asynchronous
 admin SQL so the Node database proxy can continue forwarding API transactions. The full
 verification commands above cover these targets, schema 5→6 and browser continuity.
+
+## Firm methodology and Task bindings (Story 21.2)
+
+Schema 8 adds immutable methodology versions, scoped assignments, source attribution,
+Save/recall receipts, impact records and Task binding history. The published
+migration and catalogue prefix 1–7 remains unchanged. Settings → Methodology and
+skills uses ordinary Admin Save, with no second approver. Admin configuration
+access does not grant access to client audit work or audit sign-off.
+
+A Save binds its complete meaning to the organisation, current actor and retry
+key, and checks the expected organisation configuration revision. The same command
+returns the same committed receipt even after a later Save; changed meaning under
+that key conflicts. Invalid or stale Saves roll back all state. A successor names
+the version it replaces. Undo copies a selected prior definition into a new
+attributed successor; it never edits historical versions. Source interpretations
+remain entered proposals until the explicit Save.
+
+Assignments select firm, client or engagement scope and optional audit area and
+business period. Availability is an independent UTC timestamp. Resolution uses
+scope and applicability, preserves incomplete or overlapping applicability as an
+explicit issue, and never selects a policy merely because it was saved most
+recently. Only unconditional assignments provide default context; explicit Create
+context wins. Requirements have stable IDs and mandatory standing. An omitted
+field inherits; an explicitly empty optional field clears that field. Narrower
+assignments retain inherited mandatory fields. The binding records exact versions,
+per-field contributors, resolved criteria and exact template content/version.
+Missing criteria or templates produce a labelled incomplete/neutral basis for
+future dependent conclusions; they do not prevent conversation or inert work.
+There is no audit evaluation or model invocation in this story.
+
+Create accepts optional `context` with `audit_area`, `period_start` and
+`period_end`; omitted context requires no picker. The Task and its binding commit
+atomically, and context is part of exact retry meaning. Attributed Guide commands
+may later replace the Task's explicit context; omission leaves context unchanged.
+Context changes stage an inspectable binding change and wait for the same safe
+boundary as active configuration changes. The resulting binding retains the exact
+Guide command ID, even after later configuration changes. A resolved period remains
+fixed when later firm defaults change. Each binding retains its immutable eligible candidate
+pool separately from versions that actually supply requirements, so later area or
+period corrections preserve originally available mandatory policies without
+importing unrelated new-only Saves. Task inspection shows the current basis,
+its reason, history, pending change and retained-work notices.
+
+The default activation is new Tasks only: existing Tasks retain their bindings
+and receive an attributable update notice. Applying to active Tasks stages a
+change and fences unused claims and new operation dispatch. Consumed work retains
+its original basis and exact receipt rights. The coordinator incorporates consumed
+inert and external facts before switching the binding and execution epoch at a
+safe boundary. It applies only explicit active changes, preserving unrelated
+new-only changes outside that Task's binding. Pause and Stop remain in effect.
+Scheduled changes include Tasks created between Save and availability and retain
+durable wakeups until availability. Recall blocks affected
+new use regardless of pinning without rewriting original bindings or outcomes.
+Each binding records the first execution epoch it governs. Existing operation
+and paginated attempt-history inspections expose their immutable producing epoch
+and exact methodology binding ID; Task controls and later rebinding cannot change
+that association. Migrated pre-methodology work resolves to its labelled neutral
+epoch-zero binding, without implying that later criteria governed it.
+Durable impact facts support later evaluation/review consumers; this story does
+not implement their draft-recomputation or issuance workflows.
+
+Protected routes require the current cookie session. Reads support the
+`X-Expected-Session` refusal fence; mutations additionally require Origin, CSRF and
+`X-Expected-Actor`. Exact session and current authority are checked after the
+shared organisation/engagement lock waits. New configuration tables are owner-only
+with forced RLS, accessed through narrow inventoried functions; the runtime gains
+no direct table reads or writes.
+
+| Route | Purpose |
+| --- | --- |
+| `GET /methodology/organisations/{organisation_id}` | Current Admin configuration and assignment metadata |
+| `POST /methodology/organisations/{organisation_id}/save` | Validated immutable Save, successor or Undo |
+| `POST /methodology/organisations/{organisation_id}/recall` | Attributable current-use restriction |
+| `GET /engagements/{engagement_id}/tasks/{task_id}/methodology` | Current scoped audit reader's exact Task basis and history; query includes `organisation_id` and `client_id` |
+
+Definitions are bounded to 100 requirements, 32 values per field, 32 templates and
+32 sections per template. Labels use at most 200 Unicode scalar values; text and
+template prose use at most 2,000. Template content retains exact whitespace and
+supports multiline prose. Stable IDs use the existing bounded ASCII identifier
+contract. The stored command envelope and cumulative configuration/history budgets
+add durable capacity limits: 128 versions and 512 KiB of saved commands per
+organisation, with a 1 MiB Task binding-history reservation and an explicit
+capacity refusal above 512 engagement assignment options. Exact replay and
+recall remain available at capacity. The
+browser retains a frozen request for explicit retry and keeps private editor
+state bound to its verified actor, organisation and exact session.
+
+To prevent an accepted transition from failing later for space, each pending
+binding reserves 4,096 bytes plus 16 times the organisation's aggregate saved
+configuration bytes. This conservative admission reservation can refuse a Save or
+context Guide before actual binding-history occupancy reaches 1 MiB. Refusal rolls
+back the command and its effects; ordinary guidance without context, original
+receipt recovery and recall remain available.
+
+Run the workspace gates listed above. The methodology database contract covers
+Admin/session isolation, atomic versions and retries, and concurrent Save/Create
+orders. The operation contract includes real consumed-effect reconciliation,
+new-only isolation, recall and durable scheduled activation; the browser contract
+uses the actual API, PostgreSQL and OIDC fixtures for Save, Undo and inspection.

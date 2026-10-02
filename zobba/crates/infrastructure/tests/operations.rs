@@ -20,6 +20,8 @@ use zobba_infrastructure::{
     database_options, fixture::seed_local_configured, migrate, operation::OperationRepository,
     scope as scoped, task::TaskRepository,
 };
+#[path = "operations/methodology_execution.rs"]
+mod methodology_execution;
 #[path = "operations/policy_revisions.rs"]
 mod policy_revisions;
 #[path = "operations/review_repairs.rs"]
@@ -133,6 +135,7 @@ fn authority() -> AuthoritySnapshot {
 }
 fn command(key: &str, kind: CommandKind, receipt: &CommandReceipt) -> TaskCommand {
     TaskCommand {
+        context: None,
         key: key.into(),
         kind,
         task_id: Some(receipt.task_id.clone()),
@@ -217,6 +220,7 @@ impl Fixture {
                 "actor-a",
                 &selected("a"),
                 &TaskCommand {
+                    context: None,
                     key: name.into(),
                     kind: CommandKind::Create,
                     task_id: None,
@@ -1465,5 +1469,6 @@ async fn standing_permissions_exact_operations_and_transaction_cutoffs() {
     review_repairs::verify(&mut fixture, &mut admin, &mut holder).await;
     task_reconciliation::verify(&fixture).await;
     late_receipts_scope_and_cessation(&fixture, &config, &mut admin).await;
+    methodology_execution::verify(&fixture, &mut admin).await;
     fixture.pool.close().await;
 }

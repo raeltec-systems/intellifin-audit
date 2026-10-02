@@ -1,0 +1,25 @@
+{
+  "fault_installed": true,
+  "reads": [
+    {
+      "id": 1,
+      "path": "/api/engagements/engagement-a/conversation",
+      "observed_ms": 863,
+      "aborted_ms": 867,
+      "failed_ms": 875,
+      "error": "net::ERR_CONNECTION_RESET"
+    }
+  ],
+  "traffic": [
+    {
+      "path": "/api/engagements/engagement-a/conversation",
+      "origin_matches": true,
+      "stage": "request",
+      "elapsed_ms": 862
+    }
+  ],
+  "click_observed": 1,
+  "task_details": 0,
+  "original_control": 0,
+  "original_methodology": 0
+}

@@ -7,13 +7,13 @@ export type HealthKind = 'live' | 'ready';
 export function parseHealth(value: unknown, kind: HealthKind, status: number): Health {
   if (typeof value !== 'object' || value === null ||
     !('service' in value) || value.service !== 'api' ||
-    !('schema_version' in value) || (value.schema_version !== 7 && value.schema_version !== null) ||
+    !('schema_version' in value) || (value.schema_version !== 8 && value.schema_version !== null) ||
     !('status' in value)) {
     throw new Error('Invalid service response');
   }
 
   const healthy = status === 200 && value.status === kind &&
-    value.schema_version === (kind === 'live' ? null : 7);
+    value.schema_version === (kind === 'live' ? null : 8);
   const unavailable = kind === 'ready' && status === 503 &&
     value.status === 'unavailable' && value.schema_version === null;
   if (!healthy && !unavailable) throw new Error('Invalid service response');

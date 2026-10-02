@@ -1,0 +1,13 @@
+$ pnpm --filter @zobba/web test:browser tests/browser/conversation-review.spec.ts --workers=1 --retries=0
+$ playwright test tests/browser/conversation-review.spec.ts --workers=1 --retries=0
+
+Running 4 tests using 1 worker
+
+(node:818239) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/conversation-review.spec.ts:73:1 › same-scope checks hide every protected surface and restore mounted Task controls, disclosure and focus (5.9s)
+  ✓  2 tests/browser/conversation-review.spec.ts:137:1 › Follow uses current activity while reading older history without retargeting or stealing focus (14.7s)
+  ✓  3 tests/browser/conversation-review.spec.ts:163:1 › an unresolved exact send scrolls once and never pulls deliberately opened history to the bottom (9.5s)
+  ✓  4 tests/browser/conversation-review.spec.ts:201:1 › inner methodology disclosure survives cancelled reads and tab-away but withdraws on current failure (15.4s)
+
+  4 passed (50.6s)

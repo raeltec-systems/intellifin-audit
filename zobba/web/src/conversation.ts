@@ -48,7 +48,29 @@ export function parseCommand(value: unknown): TaskCommand {
   const content = v.content == null ? null : commandContent(v.content);
   if (kind === 'create' ? task_id !== null || cycle_id !== null || content === null
     : task_id === null || cycle_id === null || (kind === 'guide' ? content === null : content !== null)) invalid();
-  return { key, kind, task_id, cycle_id, content };
+  if (v.context != null && kind !== 'create' && kind !== 'guide') invalid();
+  // Omitted context retains the historic command shape; supplied context is part
+  // of exact recovery meaning and must never be silently discarded.
+  if (v.context == null) return { key, kind, task_id, cycle_id, content };
+  return { key, kind, task_id, cycle_id, content, context: parseTaskContext(v.context) };
+}
+export function parseTaskContext(value: unknown): NonNullable<TaskCommand['context']> {
+  const context = record(value);
+  if (Object.keys(context).some(key => !['audit_area', 'period_start', 'period_end'].includes(key))) invalid();
+  const audit_area = context.audit_area == null ? null : context.audit_area;
+  if (audit_area !== null && (typeof audit_area !== 'string' || !audit_area || [...audit_area].length > 200 || /^[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]|[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]$/.test(audit_area) || /[\u0000-\u001f\u007f-\u009f]/.test(audit_area))) invalid();
+  const day = (value: unknown): string | null => {
+    if (value == null) return null;
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || value < '0001-01-01' || Number.isNaN(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value) invalid();
+    return value;
+  };
+  const period_start = day(context.period_start), period_end = day(context.period_end);
+  if ((period_start === null) !== (period_end === null) || period_start !== null && period_end !== null && period_start > period_end) invalid();
+  return { audit_area: audit_area as string | null, period_start, period_end };
+}
+export function sameTaskContext(left: TaskCommand['context'], right: TaskCommand['context']): boolean {
+  if (left == null || right == null) return left == null && right == null;
+  return (left.audit_area ?? null) === (right.audit_area ?? null) && (left.period_start ?? null) === (right.period_start ?? null) && (left.period_end ?? null) === (right.period_end ?? null);
 }
 function label(value: unknown): string {
   if (typeof value !== 'string' || !value || [...value].length > 200 || /[\u0000-\u001f\u007f-\u009f]/.test(value)) invalid();
@@ -66,7 +88,7 @@ export function parseTask(value: unknown): Task {
 export function parseMessage(value: unknown, watermark: string): ConversationMessage {
   const v = record(value);
   if (!('target_task_id' in v) || !('target_cycle_id' in v) || !('content' in v)) invalid();
-  const command = parseCommand({ key: v.key, kind: v.kind, task_id: v.target_task_id, cycle_id: v.target_cycle_id, content: v.content });
+  const command = parseCommand({ key: v.key, kind: v.kind, task_id: v.target_task_id, cycle_id: v.target_cycle_id, content: v.content, context: v.context });
   if (typeof v.author_label !== 'string' || !v.author_label || [...v.author_label].length > 200 || /[\u0000-\u001f\u007f-\u009f]/.test(v.author_label)) invalid();
   const received_cursor = cursor(v.received_cursor);
   const applied_cursor = v.applied_cursor === null ? null : cursor(v.applied_cursor);
@@ -77,7 +99,7 @@ export function parseMessage(value: unknown, watermark: string): ConversationMes
     !['create', 'continue'].includes(command.kind) && cycle_id !== command.cycle_id) invalid();
   return { command_id: identifier(v.command_id), key: command.key, author_id: identifier(v.author_id), author_label: v.author_label,
     kind: command.kind, task_id, cycle_id, target_task_id: command.task_id ?? null, target_cycle_id: command.cycle_id ?? null,
-    content: command.content ?? null, received_cursor, applied_cursor };
+    content: command.content ?? null, ...(command.context != null ? { context: command.context } : {}), received_cursor, applied_cursor };
 }
 function envelope(value: unknown, scope: Scope): Record<string, unknown> {
   const v = record(value);

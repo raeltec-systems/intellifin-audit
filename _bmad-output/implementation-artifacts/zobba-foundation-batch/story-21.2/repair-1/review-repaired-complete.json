@@ -1,0 +1,30 @@
+{
+  "baseline": "38d76b019db1e5cb637f8c66e6cde3947c3415b2",
+  "head": "38d76b019db1e5cb637f8c66e6cde3947c3415b2",
+  "path": "/tmp/zobba-story-21-2/repair-1/review-repaired-complete.patch",
+  "bytes": 990341,
+  "sha256": "020b31f38931c5bccce617aa1e05f7ebb28b9c811741376fc89b8f5edc6179ab",
+  "untracked": [
+    "_bmad-output/implementation-artifacts/batch-21-2-21-4-build-context.md",
+    "_bmad-output/implementation-artifacts/spec-21-2-save-and-bind-firm-methodology.md",
+    "zobba/crates/api/src/methodology.rs",
+    "zobba/crates/api/tests/methodology_contract.rs",
+    "zobba/crates/api/tests/methodology_http.rs",
+    "zobba/crates/application/src/methodology.rs",
+    "zobba/crates/domain/src/methodology.rs",
+    "zobba/crates/infrastructure/src/methodology.rs",
+    "zobba/crates/infrastructure/src/schema-v8.catalog",
+    "zobba/crates/infrastructure/tests/methodology.rs",
+    "zobba/crates/infrastructure/tests/operations/methodology_execution.rs",
+    "zobba/crates/infrastructure/tests/task/methodology_cutoff.rs",
+    "zobba/migrations/0008_methodology.sql",
+    "zobba/web/src/MethodologyWorkspace.tsx",
+    "zobba/web/src/TaskMethodology.tsx",
+    "zobba/web/src/methodology.ts",
+    "zobba/web/tests/browser/methodology-review.spec.ts",
+    "zobba/web/tests/browser/methodology.spec.ts",
+    "zobba/web/tests/methodology.test.mjs"
+  ],
+  "source_manifest": "/tmp/zobba-story-21-2/repair-1/source-start.json",
+  "review_manifest": "/tmp/zobba-story-21-2/repair-1/review-source-start.json"
+}

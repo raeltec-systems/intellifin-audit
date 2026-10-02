@@ -19,6 +19,8 @@ pub struct ConversationMessage {
     pub target_task_id: Option<String>,
     pub target_cycle_id: Option<String>,
     pub content: Option<String>,
+    /// Exact optional Create context, echoed for durable command recovery.
+    pub context: Option<crate::methodology::TaskContext>,
     pub received_cursor: String,
     pub applied_cursor: Option<String>,
 }

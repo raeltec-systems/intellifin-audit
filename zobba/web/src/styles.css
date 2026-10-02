@@ -517,3 +517,45 @@ textarea:focus-visible, select:focus-visible, summary:focus-visible, [tabindex='
   .evidence-acquisition .membership-actions { display: grid; }
   .evidence-inspection dl > div, .evidence-reserved-details dl > div { grid-template-columns: 1fr; gap: 4px; }
 }
+
+/* Firm configuration and recorded Task methodology share the existing workspace. */
+.retained-workspace { display: contents; }
+.retained-workspace[hidden] { display: none; }
+.methodology-workspace { width: 100%; max-width: 1060px; margin: 0 auto; padding: 28px 32px 64px; }
+.methodology-heading, .methodology-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.methodology-heading { margin-bottom: 20px; }
+.methodology-heading h1, .methodology-heading h2 { margin: 4px 0; }
+.methodology-workspace h1 { font-size: clamp(1.75rem, 3vw, 2.6rem); letter-spacing: -.04em; }
+.methodology-editor { margin: 28px 0; }
+.methodology-editor fieldset { border: 1px solid var(--line, #d9dfdc); padding: 20px; margin: 20px 0; min-width: 0; border-radius: 8px; }
+.methodology-editor legend { padding: 0 8px; font-weight: 650; }
+.methodology-editor label, .methodology-context label { display: flex; flex-direction: column; gap: 7px; margin: 14px 0; font-size: .875rem; font-weight: 550; }
+.methodology-editor input:not([type="checkbox"]), .methodology-editor select, .methodology-editor textarea, .methodology-context input:not([type="checkbox"]) { box-sizing: border-box; width: 100%; min-height: 42px; border: 1px solid var(--line, #ccd5d0); border-radius: 6px; padding: 9px 11px; font: inherit; color: inherit; background: var(--surface, #fff); }
+.methodology-context label:has(input[type="checkbox"]) { flex-direction: row; align-items: center; }
+.methodology-context input[type="checkbox"] { width: 18px; height: 18px; }
+.methodology-editor textarea { resize: vertical; font-weight: 400; line-height: 1.55; }
+.methodology-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 16px; }
+.methodology-editor .methodology-check { flex-direction: row; align-items: center; }
+.methodology-check input { width: 18px; height: 18px; }
+.methodology-editor p, .methodology-version p, .methodology-impact p { font-size: .875rem; line-height: 1.65; }
+.methodology-requirement, .methodology-version, .methodology-impacts article { margin: 16px 0; padding: 20px; border: 1px solid var(--line, #d9dfdc); border-radius: 8px; }
+.methodology-requirement summary { font-weight: 650; }
+.methodology-impact { padding: 16px 18px; margin: 20px 0; background: #f0f5f2; border-left: 3px solid #537967; }
+.methodology-impact h3 { margin-top: 0; }
+.methodology-actions { justify-content: flex-start; margin-top: 16px; }
+.methodology-version h4 { margin: 0 0 8px; font-size: 1rem; }
+.methodology-workspace pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem; line-height: 1.6; max-height: 380px; overflow: auto; padding: 12px; background: #f4f6f4; }
+.methodology-editor .methodology-template-json { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .8rem; }
+.task-methodology { overflow-wrap: anywhere; }
+.task-methodology dl { font-size: .8rem; }
+.task-methodology dl div { margin: 12px 0; }
+.task-methodology dt { color: #52625a; }
+.task-methodology dd { margin: 4px 0 0; }
+.task-methodology details { padding: 12px 0; border-bottom: 1px solid var(--line, #d9dfdc); }
+.task-methodology h5 { margin: 16px 0 4px; font-size: .85rem; }
+.task-methodology ul { padding-left: 20px; font-size: .85rem; line-height: 1.65; }
+.methodology-context { margin: 12px 0; font-size: .85rem; }
+.methodology-context p { color: #52625a; }
+.methodology-pending { border-left: 3px solid #ad853c; padding-left: 12px !important; }
+@media (max-width: 720px) { .methodology-workspace { padding: 24px 16px 48px; } .methodology-editor fieldset, .methodology-requirement { padding: 14px; } .methodology-heading { align-items: flex-start; } }
+@media (max-width: 620px) { .engagement-main .access-footer { flex-wrap: wrap; } }

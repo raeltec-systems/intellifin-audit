@@ -35,6 +35,8 @@ pub struct AttemptHistoryEntry {
     pub id: String,
     pub operation_id: String,
     pub number: u64,
+    pub execution_epoch: u64,
+    pub methodology_binding_id: String,
     pub request_digest: String,
     pub recorded_at: i64,
     /// Non-secret logical source identities; never URLs or capability handles.

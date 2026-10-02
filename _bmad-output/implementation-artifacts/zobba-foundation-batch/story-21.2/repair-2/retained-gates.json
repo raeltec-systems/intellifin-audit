@@ -1,0 +1,52 @@
+{
+  "source_before": "source-before.json",
+  "source_before_matches": "../repair-1/source-final.json",
+  "retained": [
+    {
+      "gate": "rust-tests",
+      "exit": 0,
+      "receipt": "../repair-1/rust-tests.exit"
+    },
+    {
+      "gate": "frozen-clippy",
+      "exit": 0,
+      "receipt": "../repair-1/frozen-clippy.exit"
+    },
+    {
+      "gate": "frozen-rust-build",
+      "exit": 0,
+      "receipt": "../repair-1/frozen-rust-build.exit"
+    },
+    {
+      "gate": "frozen-fmt",
+      "exit": 0,
+      "receipt": "../repair-1/frozen-fmt.exit"
+    },
+    {
+      "gate": "frozen-python",
+      "exit": 0,
+      "receipt": "../repair-1/frozen-python.exit"
+    },
+    {
+      "gate": "frozen-boundaries",
+      "exit": 0,
+      "receipt": "../repair-1/frozen-boundaries.exit"
+    },
+    {
+      "gate": "frozen-fixtures",
+      "exit": 0,
+      "receipt": "../repair-1/frozen-fixtures.exit"
+    },
+    {
+      "gate": "frozen-smoke",
+      "exit": 0,
+      "receipt": "../repair-1/frozen-smoke.exit"
+    },
+    {
+      "gate": "web-api-generate",
+      "exit": 0,
+      "receipt": "../repair-1/web-api-generate.exit"
+    }
+  ],
+  "condition": "Final source delta must prove all backend/schema/API/generated contract and associated tests unchanged; fresh web check/build and full Chromium are required for P16."
+}

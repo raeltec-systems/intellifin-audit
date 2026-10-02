@@ -28,6 +28,7 @@ fn scope() -> Scope {
 
 fn create(key: &str) -> TaskCommand {
     TaskCommand {
+        context: None,
         key: key.into(),
         kind: CommandKind::Create,
         task_id: None,
@@ -38,6 +39,7 @@ fn create(key: &str) -> TaskCommand {
 
 fn control(key: &str, kind: CommandKind, receipt: &CommandReceipt) -> TaskCommand {
     TaskCommand {
+        context: None,
         key: key.into(),
         kind,
         task_id: Some(receipt.task_id.clone()),

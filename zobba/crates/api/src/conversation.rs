@@ -85,6 +85,8 @@ pub struct ConversationMessageResponse {
     pub target_cycle_id: Option<String>,
     #[schema(required = true, max_length = 4000)]
     pub content: Option<String>,
+    /// Exact optional Create or Guide context retained for durable command recovery.
+    pub context: Option<crate::methodology::MethodologyTaskContext>,
     #[schema(pattern = "^[0-9]+$")]
     pub received_cursor: String,
     /// Applied means retained plain text reached a work boundary, not model understanding.
@@ -111,6 +113,7 @@ impl From<ConversationMessage> for ConversationMessageResponse {
             target_task_id: m.target_task_id,
             target_cycle_id: m.target_cycle_id,
             content: m.content,
+            context: m.context.map(Into::into),
             received_cursor: m.received_cursor,
             applied_cursor: m.applied_cursor,
         }

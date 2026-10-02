@@ -282,17 +282,35 @@ test('held ordinary projection does not block named reserved control and failure
   await expect(page.locator('.task-detail')).toBeVisible();
 });
 
-test('bounded burst/history and second actor/foreign scope preserve exact attributed audience', async ({ page, browser }) => {
+test('bounded burst/history and second actor/foreign scope preserve exact attributed audience', async ({ page, browser }, info) => {
   await signIn(page); const task = await create(page, 'Bounded shared conversation');
   for (let index = 0; index < 105; index++) {
     const response = await post(page, { key: `page-guide-${index}`, kind: 'guide', task_id: task.id, cycle_id: task.cycle_id, content: `Retained guide ${index}` });
     expect(response.status()).toBe(202);
   }
+  const canonical = await snapshot(page);
+  expect(canonical.messages.map((message: { key: string }) => message.key)).toEqual(Array.from({ length: 100 }, (_, index) => `page-guide-${index + 5}`));
+  const tip = canonical.messages.at(-1)!;
   await page.getByRole('button', { name: 'Latest messages', exact: true }).click();
+  // The old displayed page can already contain 100 messages while this refresh
+  // is in flight. Confirm its exact final receipt before following its cursor.
+  await expect(page.locator('.conversation-entry').last()).toHaveAttribute('data-command-id', tip.command_id);
+  await expect(page.locator('.message-content').last()).toHaveText('Retained guide 104');
   await expect(page.locator('.conversation-message')).toHaveCount(100);
+  const lastVisibleCommandId = await page.locator('.conversation-entry').last().getAttribute('data-command-id');
+  const historyRequest = page.waitForRequest(request => new URL(request.url()).pathname.endsWith('/conversation/history'));
   await page.getByRole('button', { name: 'Earlier messages', exact: true }).click();
+  const query = new URL((await historyRequest).url()).searchParams;
+  const actual = { through: query.get('through'), before: query.get('before') };
+  const expected = { through: canonical.watermark, before: canonical.before_cursor };
+  await info.attach('conversation-history-cursors.json', { contentType: 'application/json', body: JSON.stringify({
+    canonical_tip: { key: tip.key, command_id: tip.command_id, received_cursor: tip.received_cursor },
+    last_visible_command_id: lastVisibleCommandId, expected, actual,
+  }, null, 2) });
+  expect(actual).toEqual(expected);
   await expect(page.locator('.conversation-message')).toHaveCount(6);
   await expect(page.locator('.conversation-message').first()).toContainText('Bounded shared conversation');
+  expect(await page.locator('.message-content').allTextContents()).toEqual(['Bounded shared conversation', ...Array.from({ length: 5 }, (_, index) => `Retained guide ${index}`)]);
   const context = await browser.newContext({ ignoreHTTPSErrors: true, storageState: { cookies: [], origins: [] } });
   try {
     const manager = await context.newPage(); await signIn(manager, 'manager-a');

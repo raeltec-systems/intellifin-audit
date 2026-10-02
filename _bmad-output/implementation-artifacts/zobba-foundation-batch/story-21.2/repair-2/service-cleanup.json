@@ -1,0 +1,30 @@
+{
+  "checked_at": "2026-10-02T11:31:57.520225+00:00",
+  "browser_run_exit": 0,
+  "owned_browser_database": "zobba_story_20_test",
+  "browser_ownership_released": true,
+  "owned_idp_port": 9444,
+  "owned_port_listening": false,
+  "owned_live_services": [],
+  "preexisting_ports_preserved": {
+    "4310": true,
+    "9443": true,
+    "9445": true
+  },
+  "preexisting_services_preserved": [
+    {
+      "pid": 60393,
+      "service": "oidc"
+    },
+    {
+      "pid": 130968,
+      "service": "oidc"
+    },
+    {
+      "pid": 174351,
+      "service": "zobba-api"
+    }
+  ],
+  "shared_postgres_and_development_state": "preserved; no cleanup mutation outside owned disposable fixture",
+  "source_unchanged_during_run": true
+}

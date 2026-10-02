@@ -448,8 +448,13 @@ async fn conversation_http_pages(browser: &Browser, admin: &mut PgConnection, ta
         assert_eq!(message["author_label"], "Alex");
         assert!(message["applied_cursor"].is_null());
         assert_eq!(
+            message.get("context"),
+            Some(&Value::Null),
+            "commands without explicit audit context retain the owned null field"
+        );
+        assert_eq!(
             message.as_object().unwrap().len(),
-            12,
+            13,
             "only the owned message contract is disclosed"
         );
     }

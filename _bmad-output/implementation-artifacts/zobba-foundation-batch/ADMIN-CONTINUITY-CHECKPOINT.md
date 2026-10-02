@@ -1,5 +1,7 @@
 # Approved Admin continuity checkpoint
 
+**Owner accepted on 2 October 2026 (Africa/Lusaka): `38d76b019db1e5cb637f8c66e6cde3947c3415b2`. The next dependency-ready batch, Stories 21.2–21.4, is authorised.**
+
 1 October 2026 (Africa/Lusaka). Follow-up to owner-accepted Stories 20.6 and 21.1 with accepted baseline `9a76c5c8aa38f8e7c16ab95bb1f47b7d70f4057a`, on `codex/zobba-foundation-batch`.
 
 Every organisation now requires an active, non-expiring Admin membership linked to an active application identity. Additional temporary Admins remain allowed. Ordinary Save explains a refusal and succeeds after a qualifying replacement exists; no second approver or new identity-administration authority is introduced.

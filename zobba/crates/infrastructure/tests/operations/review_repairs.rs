@@ -129,6 +129,7 @@ async fn delegation_cannot_change_accountable_owner(f: &Fixture, admin: &mut PgC
             "actor-b",
             &selected("a"),
             &TaskCommand {
+                context: None,
                 key: "review-delegation-other".into(),
                 kind: CommandKind::Create,
                 task_id: None,

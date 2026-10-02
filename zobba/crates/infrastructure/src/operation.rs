@@ -278,6 +278,9 @@ async fn project(tx: &mut Tx, row: &PgRow) -> Result<Operation, Error> {
     ) || field::<String>(&task, "cycle_id")? != producing.0.cycle_id
         || field::<i64>(&task, "intent_revision")? != producing.0.intent_revision
         || field::<i64>(&task, "execution_epoch")? != producing.0.execution_epoch
+        || !crate::methodology::new_use_allowed(tx, &producing.0.task_id)
+            .await
+            .map_err(from_task)?
     {
         state = OperationState::Revoked;
     }
@@ -300,6 +303,14 @@ async fn project(tx: &mut Tx, row: &PgRow) -> Result<Operation, Error> {
         task_id: field(row, "task_id")?,
         cycle_id: field(row, "cycle_id")?,
         actor_id: field(row, "actor_id")?,
+        execution_epoch: producing.0.execution_epoch as u64,
+        methodology_binding_id: crate::methodology::binding_at_execution_epoch(
+            tx,
+            &producing.0.task_id,
+            producing.0.execution_epoch,
+        )
+        .await
+        .map_err(from_task)?,
         request: request.0,
         request_digest: field(row, "request_digest")?,
         revision: 1,
@@ -308,7 +319,11 @@ async fn project(tx: &mut Tx, row: &PgRow) -> Result<Operation, Error> {
 }
 async fn verify_basis(tx: &mut Tx, b: &ClaimBasis) -> Result<(), Error> {
     let row = task::task(tx, &b.task_id).await.map_err(from_task)?;
-    if !task::valid_basis(&row, b).map_err(from_task)? {
+    if !task::valid_basis(&row, b).map_err(from_task)?
+        || !crate::methodology::new_use_allowed(tx, &b.task_id)
+            .await
+            .map_err(from_task)?
+    {
         return Err(Error::Fenced);
     }
     let claim = sqlx::query("SELECT * FROM public.task_claims WHERE id=$1 AND state IN ('admitted','consumed') AND NOT EXISTS(SELECT 1 FROM public.task_observations o WHERE o.claim_id=task_claims.id)")
@@ -458,6 +473,28 @@ impl OperationStore for OperationRepository {
                 Ok(None)
             }
         }
+        let mut attempt_entries = Vec::new();
+        for r in attempts.iter().take(OPERATION_HISTORY_PAGE_SIZE) {
+            let source: StoredSource = decode(&field::<String>(r, "source_binding")?)?;
+            let basis: StoredBasis = decode(&field::<String>(r, "basis")?)?;
+            attempt_entries.push(AttemptHistoryEntry {
+                id: field(r, "id")?,
+                operation_id: operation_id.into(),
+                number: field::<i64>(r, "attempt_number")? as u64,
+                execution_epoch: basis.0.execution_epoch as u64,
+                methodology_binding_id: crate::methodology::binding_at_execution_epoch(
+                    &mut tx,
+                    &basis.0.task_id,
+                    basis.0.execution_epoch,
+                )
+                .await
+                .map_err(from_task)?,
+                request_digest: field(&operation, "request_digest")?,
+                recorded_at: field(r, "recorded_at")?,
+                source_id: Some(source.0.source_id),
+                ledger_id: Some(source.0.ledger_id),
+            });
+        }
         let result = OperationHistory {
             operation_id: operation_id.into(),
             decision_next_cursor: next(&decisions)?,
@@ -474,22 +511,7 @@ impl OperationStore for OperationRepository {
                     })
                 })
                 .collect::<Result<_, Error>>()?,
-            attempts: attempts
-                .iter()
-                .take(OPERATION_HISTORY_PAGE_SIZE)
-                .map(|r| {
-                    let source: StoredSource = decode(&field::<String>(r, "source_binding")?)?;
-                    Ok(AttemptHistoryEntry {
-                        id: field(r, "id")?,
-                        operation_id: operation_id.into(),
-                        number: field::<i64>(r, "attempt_number")? as u64,
-                        request_digest: field(&operation, "request_digest")?,
-                        recorded_at: field(r, "recorded_at")?,
-                        source_id: Some(source.0.source_id),
-                        ledger_id: Some(source.0.ledger_id),
-                    })
-                })
-                .collect::<Result<_, Error>>()?,
+            attempts: attempt_entries,
             observations: observations
                 .iter()
                 .take(OPERATION_HISTORY_PAGE_SIZE)

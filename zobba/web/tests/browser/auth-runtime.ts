@@ -93,6 +93,13 @@ function resetSyntheticFixture(database: URL, host: string, port: number): void 
     // within psql's single transaction, including the deferred Task-cycle and
     // Admin-continuity checks. This is never an application lifecycle operation.
     input: `
+DELETE FROM public.task_methodology_changes;
+DELETE FROM public.task_methodology_heads;
+DELETE FROM public.task_methodology_bindings;
+DELETE FROM public.methodology_recalls;
+DELETE FROM public.methodology_assignments;
+DELETE FROM public.methodology_versions;
+DELETE FROM public.methodology_events;
 DELETE FROM public.operation_receipts;
 DELETE FROM public.operation_receipt_slots;
 DELETE FROM public.operation_receipt_producers;
@@ -271,7 +278,7 @@ export async function startAuthRuntime(options: { evidence?: boolean } = {}): Pr
         if (api.exitCode !== null) throw new Error('Authentication API refused startup.');
         try {
           const response = await fetch(`${apiUrl}/health/ready`, { signal: AbortSignal.timeout(1000) });
-          if (response.status === 200 && (await response.json()).schema_version === 7) { healthy = true; break; }
+          if (response.status === 200 && (await response.json()).schema_version === 8) { healthy = true; break; }
         } catch { /* Startup is bounded; do not expose URLs or provider errors. */ }
         await delay(100);
       }

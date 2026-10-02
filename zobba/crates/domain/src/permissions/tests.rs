@@ -106,6 +106,8 @@ fn operation(request: CanonicalOperation) -> Operation {
         task_id: "task".into(),
         cycle_id: "cycle".into(),
         actor_id: "actor".into(),
+        execution_epoch: 1,
+        methodology_binding_id: "binding".into(),
         request,
         request_digest: "b".repeat(64),
         revision: 1,

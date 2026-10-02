@@ -1,0 +1,13 @@
+# Final browser screenshot inspection
+
+Final run: 106 passed, zero retries, 11.7m, exit 0. Screenshot allowlist is `screenshots-final-allowlist.json`; only the eight individually inspected PNGs are selected. No fixture configuration, traces, credentials, private invitation links, or broad result directories are selected for publication.
+
+Page identity: the methodology tests assert title `Zobba · Pair`, exact fixture application origin, and no Vite error overlay on sign-in. The selected Task inspection images visibly identify FY2026 audit / Alder Manufacturing and the intended Task; the explicit-context and field-control shots are deliberately scrolled to the relevant product content. All eight images show meaningful rendered UI without an error overlay, blank page, login form, or credentials.
+
+Visual findings: desktop template inspection (1280x800) and compact inspection (390x844) retain readable exact multiline content, indentation, Task controls and surrounding workspace. The Guide pair shows the attributed pending context reason and Revenue / 2025 dates. The differing Create image shows Inventory / 2024 and the qualified mixed-neutral heading. Active Save pending state and explicit field inheritance/clear controls are readable. The >100 limitations case shows human-readable requirement labels; the test verifies the full actual issue count, while the screenshot intentionally shows the visible portion of its scrolling inspection. No layout blocker observed in these captures.
+
+Interaction proof: the passing tests exercise real Save, exact lost-acknowledgement recovery, Undo, template expansion with keyboard focus retained across routine refresh, narrow workspace navigation, attributed Guide, explicit Create context, active-task Save applied by an owned worker at a safe boundary, independent lineage recovery, inheritance/clear/mandatory semantics, and a revoked selected organisation returning to the authorised chooser.
+
+Console health: the Admin Save / template test watches both browser page errors and console errors and asserts none outside its explicit intentional HTTP-refusal/outage allowlist. The Guide, explicit-context/active-boundary, and >100-limitations cases assert no captured page errors. No blanket claim is made that every selected case independently records every console level. Expected outage proxy logs occur in the unrelated evidence outage tests.
+
+Cleanup: final suite exit 0. Port 9444 has no listener after completion; no owned live API, worker or Vite process remains. Pre-existing development services were preserved. Production/test sources were not edited during the final run.

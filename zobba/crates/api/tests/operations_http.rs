@@ -85,6 +85,20 @@ async fn document(response: Response, expected: StatusCode) -> Value {
     assert_eq!(status, expected, "{text}");
     serde_json::from_str(&text).unwrap()
 }
+fn assert_producing_methodology(value: &Value, basis: &ClaimBasis, binding: &Value) {
+    assert_eq!(value["execution_epoch"], basis.execution_epoch.to_string());
+    assert_eq!(value["methodology_binding_id"], binding["id"]);
+    assert!(binding["id"].as_str().is_some_and(|id| !id.is_empty()));
+    assert!(
+        binding["execution_epoch"]
+            .as_str()
+            .unwrap()
+            .parse::<i64>()
+            .unwrap()
+            <= basis.execution_epoch,
+        "the recorded producer must use a binding already effective at its epoch"
+    );
+}
 async fn headers(stream: &mut TcpStream) -> Vec<u8> {
     let mut result = Vec::new();
     while !result.ends_with(b"\r\n\r\n") {
@@ -254,6 +268,7 @@ fn authority(task: &str, request: &CanonicalOperation) -> AuthoritySnapshot {
 async fn create_operation(database: &RuntimeDatabase) -> (Operation, CommandReceipt, ClaimBasis) {
     let tasks = TaskRepository::new(database.pool().clone());
     let command = TaskCommand {
+        context: None,
         key: "http-operation-task".into(),
         kind: CommandKind::Create,
         task_id: None,
@@ -314,6 +329,17 @@ async fn history_evidence(
 ) -> Operation {
     let operations = OperationRepository::new(database.pool().clone());
     let tasks = TaskRepository::new(database.pool().clone());
+    let methodology = document(
+        browser
+            .read(&format!("tasks/{}/methodology", operation.task_id))
+            .await,
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(
+        methodology["current"]["id"],
+        operation.methodology_binding_id
+    );
     assert!(tasks.current(basis).await.unwrap());
     let unconsumed = operations
         .admit(
@@ -470,11 +496,12 @@ async fn history_evidence(
             assert!(!text.contains(secret.as_str()));
         }
         for value in page["attempts"].as_array().unwrap() {
-            assert_eq!(value.as_object().unwrap().len(), 7);
+            assert_eq!(value.as_object().unwrap().len(), 9);
             assert!(value["number"].is_string());
             assert!(value["recorded_at"].is_string());
             assert_eq!(value["source_id"], "http-source");
             assert_eq!(value["ledger_id"], "http-ledger");
+            assert_producing_methodology(value, basis, &methodology["current"]);
         }
     }
     unconsumed
@@ -628,6 +655,9 @@ async fn exact_operation_http_decisions_revocation_and_fresh_projections() {
     let (operation, receipt, basis) = create_operation(&database).await;
     let route = format!("operations/{}", operation.id);
     let decision_route = format!("{route}/decisions");
+    let methodology_route = format!("tasks/{}/methodology", receipt.task_id);
+    let methodology = document(browser.read(&methodology_route).await, StatusCode::OK).await;
+    assert_eq!(methodology["history"], json!([]));
     let view = document(browser.read(&route).await, StatusCode::OK).await;
     assert_eq!(view["state"], "needs_decision");
     assert_eq!(view["actor_id"], "identity-a");
@@ -635,9 +665,10 @@ async fn exact_operation_http_decisions_revocation_and_fresh_projections() {
     assert_eq!(view["request"]["attachments"][0]["id"], "attachment-a");
     assert!(view["revision"].is_string());
     assert!(view["request"]["expires_at"].is_string());
+    assert_producing_methodology(&view, &basis, &methodology["current"]);
     assert_eq!(
         view.as_object().unwrap().len(),
-        8,
+        10,
         "only the explicit secret-free projection is public"
     );
     let page = document(
@@ -1016,6 +1047,56 @@ async fn exact_operation_http_decisions_revocation_and_fresh_projections() {
     );
 
     independent_control_capacity(&browser, &database, &receipt, &decision_route, &decision).await;
+    // Guidance and subsequent controls change current Task intent/epochs, while
+    // operation inspection continues to identify the original producing basis.
+    let guided = document(browser.read(&methodology_route).await, StatusCode::OK).await;
+    assert_eq!(guided, methodology);
+    let controlled_history = document(browser.read(&history_route).await, StatusCode::OK).await;
+    let continued_history_route = format!(
+        "{history_route}?after_attempt_id={}",
+        controlled_history["attempt_next_cursor"].as_str().unwrap()
+    );
+    let controlled_history_tail =
+        document(browser.read(&continued_history_route).await, StatusCode::OK).await;
+    for (offset, kind, state) in [(1, "pause", "paused"), (2, "stop", "stopped")] {
+        let control = json!({
+            "key": format!("http-methodology-{kind}"),
+            "kind": kind,
+            "task_id": receipt.task_id,
+            "cycle_id": receipt.cycle_id,
+        });
+        document(
+            browser.command("task-controls", &control).await,
+            StatusCode::ACCEPTED,
+        )
+        .await;
+        let task = document(
+            browser.read(&format!("tasks/{}", receipt.task_id)).await,
+            StatusCode::OK,
+        )
+        .await;
+        assert_eq!(task["state"], state);
+        assert_eq!(
+            task["execution_epoch"],
+            (basis.execution_epoch + offset).to_string()
+        );
+        let retained = document(browser.read(&route).await, StatusCode::OK).await;
+        assert_producing_methodology(&retained, &basis, &methodology["current"]);
+        assert_eq!(
+            document(browser.read(&methodology_route).await, StatusCode::OK).await,
+            methodology
+        );
+        assert_eq!(
+            document(browser.read(&history_route).await, StatusCode::OK).await,
+            controlled_history,
+            "controls preserve original attempt associations on the first page"
+        );
+        assert_eq!(
+            document(browser.read(&continued_history_route).await, StatusCode::OK).await,
+            controlled_history_tail,
+            "controls preserve original attempt associations on the remaining page"
+        );
+    }
     config.guard_connection(&mut admin).await;
     admin.execute("UPDATE public.organisation_memberships SET roles=ARRAY['admin'] WHERE actor_id='identity-a'").await.unwrap();
     assert_eq!(

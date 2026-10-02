@@ -49,6 +49,7 @@ fn scope() -> Scope {
 
 fn create(key: &str) -> TaskCommand {
     TaskCommand {
+        context: None,
         key: key.into(),
         kind: CommandKind::Create,
         task_id: None,

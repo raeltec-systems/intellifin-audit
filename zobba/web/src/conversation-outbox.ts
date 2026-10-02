@@ -1,4 +1,4 @@
-import { identifier, parseCommand } from './conversation.ts';
+import { identifier, parseCommand, sameTaskContext } from './conversation.ts';
 import type { ConversationMessage, TaskCommand } from './conversation.ts';
 import { parseScope, sameScope } from './engagements.ts';
 import type { Scope } from './engagements.ts';
@@ -24,7 +24,7 @@ function isControl(command: TaskCommand): boolean { return command.kind === 'pau
 export function sameMeaning(command: TaskCommand, message: ConversationMessage): boolean {
   return command.key === message.key && command.kind === message.kind &&
     (command.task_id ?? null) === message.target_task_id && (command.cycle_id ?? null) === message.target_cycle_id &&
-    (command.content ?? null) === message.content;
+    (command.content ?? null) === message.content && sameTaskContext(command.context, message.context);
 }
 function unchanged(a: TaskCommand, b: TaskCommand): boolean { return JSON.stringify(a) === JSON.stringify(b); }
 export class LegacyRecoveryError extends Error {

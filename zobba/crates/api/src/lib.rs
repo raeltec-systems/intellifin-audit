@@ -4,6 +4,7 @@ pub mod conversation;
 pub mod engagements;
 pub mod evidence;
 pub mod membership;
+pub mod methodology;
 pub mod operations;
 pub mod tasks;
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
@@ -100,11 +101,13 @@ pub fn authenticated_router_with_evidence(
 ) -> Router {
     let task_routes = tasks::router(&database, identity.clone());
     let membership_routes = membership::router(database.pool().clone(), identity.clone());
+    let methodology_routes = methodology::router(database.pool().clone(), identity.clone());
     let evidence_routes = evidence::router(database.pool().clone(), identity.clone(), objects);
     router(database)
         .merge(auth::router(identity))
         .merge(task_routes)
         .merge(membership_routes)
+        .merge(methodology_routes)
         .merge(evidence_routes)
         .layer(axum::middleware::from_fn(
             |request: axum::extract::Request, next: axum::middleware::Next| async move {
@@ -185,6 +188,10 @@ pub fn authenticated_router_with_evidence(
         membership::revoke_invitation,
         membership::preview,
         membership::accept,
+        methodology::snapshot,
+        methodology::save,
+        methodology::recall,
+        methodology::task_basis,
         evidence::reserve,
         evidence::recover,
         evidence::upload,
@@ -263,6 +270,37 @@ pub fn authenticated_router_with_evidence(
         membership::AcceptInvitationRequest
         ,membership::PreviewInvitationRequest,
         membership::InvitationPreviewResponse,
+        methodology::MethodologyTaskContext,
+        methodology::MethodologyAssignmentKind,
+        methodology::MethodologyAssignmentScope,
+        methodology::MethodologyApplicability,
+        methodology::MethodologyActivationMode,
+        methodology::MethodologyActivation,
+        methodology::MethodologyVersionReference,
+        methodology::MethodologyRequirement,
+        methodology::MethodologyDefinition,
+        methodology::MethodologyTemplateDefinition,
+        methodology::MethodologyTemplateSection,
+        methodology::MethodologySourceKind,
+        methodology::MethodologySource,
+        methodology::MethodologyText,
+        methodology::MethodologyTemplateProse,
+        methodology::SaveMethodologyRequest,
+        methodology::RecallMethodologyRequest,
+        methodology::MethodologyVersionRecord,
+        methodology::MethodologyImpact,
+        methodology::MethodologySnapshot,
+        methodology::MethodologyReceipt,
+        methodology::MethodologyResolutionStatus,
+        methodology::MethodologyResolvedRequirement,
+        methodology::MethodologyResolvedRequirementFields,
+        methodology::MethodologyFieldSource,
+        methodology::MethodologyResolvedTemplate,
+        methodology::MethodologyResolution,
+        methodology::MethodologyBinding,
+        methodology::MethodologyBindingChange,
+        methodology::MethodologyBindingNotice,
+        methodology::TaskMethodologyResponse,
         evidence::EvidenceContentIdentity,
         evidence::EvidenceSourceAssertions,
         evidence::EvidenceReservationRequest,

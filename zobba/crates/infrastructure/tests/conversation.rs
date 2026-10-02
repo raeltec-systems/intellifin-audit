@@ -26,6 +26,7 @@ fn scope(suffix: &str) -> Scope {
 }
 fn create(key: &str, content: &str) -> TaskCommand {
     TaskCommand {
+        context: None,
         key: key.into(),
         kind: CommandKind::Create,
         task_id: None,
@@ -35,6 +36,7 @@ fn create(key: &str, content: &str) -> TaskCommand {
 }
 fn guide(key: &str, target: &CommandReceipt) -> TaskCommand {
     TaskCommand {
+        context: None,
         key: key.into(),
         kind: CommandKind::Guide,
         task_id: Some(target.task_id.clone()),
@@ -85,10 +87,13 @@ async fn scoped_consistent_conversation_history_and_bounded_recovery() {
             .next_cursor,
         "0"
     );
-    let first = commands
-        .admit("actor-a", &a, &create("a", "Original A objective"))
-        .await
-        .unwrap();
+    let mut first_command = create("a", "Original A objective");
+    first_command.context = Some(zobba_domain::methodology::TaskContext {
+        audit_area: Some("Revenue".into()),
+        period_start: Some("2025-01-01".into()),
+        period_end: Some("2025-12-31".into()),
+    });
+    let first = commands.admit("actor-a", &a, &first_command).await.unwrap();
     let second = commands
         .admit("actor-manager", &a, &create("b", "Original B objective"))
         .await
@@ -124,6 +129,8 @@ async fn scoped_consistent_conversation_history_and_bounded_recovery() {
     assert_eq!(snap.messages.len(), 3);
     assert_eq!(snap.messages[0].author_id, "actor-a");
     assert_eq!(snap.messages[0].author_label, "Alex Auditor");
+    assert_eq!(snap.messages[0].context, first_command.context);
+    assert!(snap.messages[1].context.is_none());
     assert_eq!(snap.messages[1].author_id, "actor-manager");
     assert_eq!(snap.messages[2].author_label, "Morgan Manager");
     assert_eq!(snap.messages[2].task_id, first.task_id);

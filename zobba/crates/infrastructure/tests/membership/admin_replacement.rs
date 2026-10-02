@@ -78,6 +78,7 @@ async fn live_claim(
             actor,
             selected,
             &TaskCommand {
+                context: None,
                 key: "continuity-live-task".into(),
                 kind: CommandKind::Create,
                 task_id: None,

@@ -1,4 +1,4 @@
-//! A valid populated schema 4 must remain administrable after migration 5.
+//! A valid populated schema 4 remains administrable after upgrading to the current schema.
 use super::{ISSUER, support::Configuration};
 use serde_json::{Value, json};
 use sqlx::{Connection, Executor, PgConnection, postgres::PgPoolOptions};
@@ -139,6 +139,13 @@ pub async fn verify(config: &Configuration) {
     migrate(&config.migration, options.get_username())
         .await
         .unwrap();
+    let current: (i64, i64) = sqlx::query_as("SELECT schema_version,(SELECT count(*) FROM public._sqlx_migrations) FROM public.zobba_bootstrap")
+        .fetch_one(&mut admin).await.unwrap();
+    assert_eq!(
+        current,
+        (8, 8),
+        "legacy authority must reach the complete schema and ledger"
+    );
     let pool = PgPoolOptions::new()
         .max_connections(4)
         .connect_with(options)

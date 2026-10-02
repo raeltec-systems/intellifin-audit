@@ -284,6 +284,8 @@ struct OperationWire {
     task_id: String,
     cycle_id: String,
     actor_id: String,
+    execution_epoch: u64,
+    methodology_binding_id: String,
     #[serde(with = "CanonicalOperationWire")]
     request: CanonicalOperation,
     request_digest: String,

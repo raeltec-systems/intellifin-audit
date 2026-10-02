@@ -749,3 +749,35 @@ test('replacement disposes the old controller without allowing its late acknowle
   assert.deepEqual(replacement.client.getSnapshot().pending[0].command, command);
   assert.deepEqual((await replacement.store.read())[0].command, command);
 });
+
+
+for (const kind of ['create', 'guide']) test(`${kind} reconciliation compares exact supplied context including absent versus explicitly empty context`, async context => {
+  const supplied = { audit_area: 'Revenue', period_start: '2025-01-01', period_end: '2025-12-31' };
+  const create = { key: 'context-recovery', kind, task_id: kind === 'guide' ? 'task-a' : null, cycle_id: kind === 'guide' ? 'cycle-a' : null, content: 'Review revenue', context: supplied };
+  const echo = { ...message, key: create.key, kind, target_task_id: create.task_id, target_cycle_id: create.cycle_id, content: create.content, context: supplied };
+  for (const changedContext of [undefined, null, {}, { ...supplied, audit_area: 'Expenses' }, { ...supplied, period_end: '2025-11-30' }, supplied]) {
+    const storage = memory(), store = new OutboxStore('actor-a', scope, () => storage);
+    await store.reserve(create);
+    const { client } = controller(context, { snapshot: async () => ({ ...empty, watermark: '1', messages: [{ ...echo, context: changedContext }], tasks: [task] }) }, storage);
+    client.setAccess(true); await flush();
+    assert.equal((await store.read()).length, changedContext === supplied ? 0 : 1);
+    client.setAccess(false);
+  }
+  const storage = memory(), store = new OutboxStore('actor-a', scope, () => storage);
+  await store.reserve({ ...create, context: {} });
+  const { client } = controller(context, { snapshot: async () => ({ ...empty, watermark: '1', messages: [{ ...echo, context: null }], tasks: [task] }) }, storage);
+  client.setAccess(true); await flush(); assert.equal((await store.read()).length, 1);
+  client.setAccess(false);
+});
+
+test('Guide recovery retries the full frozen context after reload without inferring current defaults', async context => {
+  const original = { ...command, context: { audit_area: 'Revenue', period_start: '2025-01-01', period_end: '2025-12-31' } };
+  const storage = memory(), store = new OutboxStore('actor-a', scope, () => storage);
+  await store.reserve(original);
+  let posts = 0;
+  const { client } = controller(context, { post: async (_scope, _session, sent) => { posts++; assert.deepEqual(sent, original); return receipt; } }, storage);
+  client.setAccess(true); await flush();
+  assert.equal(posts, 0, 'reload does not automatically transmit retained guidance');
+  assert.equal(await client.retry(original.key), true);
+  assert.equal(posts, 1); assert.equal((await store.read()).length, 0);
+});

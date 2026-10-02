@@ -1,0 +1,76 @@
+--- /tmp/zobba-story-21-2/repair-1/conversation-review-before-access-repair.ts	2026-10-02 10:28:42.327018140 +0000
++++ web/tests/browser/conversation-review.spec.ts	2026-10-02 10:29:58.731665695 +0000
+@@ -84,14 +84,19 @@
+     await expect.poll(() => authorityHeld).toBe(true);
+     await expect(page.getByText('Checking current access…', { exact: true })).toBeVisible();
+     expect(await page.locator('body').innerText()).not.toMatch(/auditor-a|Northstar|Alder Manufacturing|FY2026 audit|Auditor/);
+-    authority.release(); await expect.poll(() => authorityDelivered).toBe(true); await page.unroute('**/api/auth/session');
++    authority.release(); await expect.poll(() => authorityDelivered).toBe(true);
++    await page.unrouteAll({ behavior: 'wait' });
+     await expect(picker).toBeFocused(); await picker.click();
+     await expect(page.getByText('Conversation up to date', { exact: true })).toBeVisible();
+-  } finally { authority.release(); }
++  } finally { authority.release(); await page.unrouteAll({ behavior: 'wait' }); }
+   const task = await create(page, 'Retain focused control and disclosure');
+   await page.getByRole('button', { name: `Open ${task.objective}`, exact: true }).click();
+-  const disclosure = page.locator('.task-detail details');
+-  await disclosure.locator('summary').click();
++  const methodology = page.locator('.task-methodology');
++  const recordedBasis = methodology.getByText('Neutral starter', { exact: true });
++  await expect(recordedBasis).toBeVisible();
++  await methodology.evaluate(element => { element.setAttribute('data-original-methodology', 'retained'); });
++  const disclosure = page.locator('.task-detail > details.message-binding');
++  await disclosure.getByText('Task and current cycle', { exact: true }).click();
+   const pause = page.getByRole('button', { name: new RegExp(`^Pause ${task.objective}`) });
+   await pause.evaluate(element => { element.setAttribute('data-original-control', 'retained'); });
+   await pause.focus();
+@@ -109,24 +114,35 @@
+     access.release(); await expect.poll(() => projectionHeld).toBe(true);
+     await expect(page.locator('[data-original-control="retained"]')).toHaveCount(1);
+     await expect(disclosure).toHaveAttribute('open', '');
++    await expect(page.locator('[data-original-methodology="retained"]')).toHaveCount(1);
++    await expect(recordedBasis).toBeHidden();
+     await expect(pause).toBeHidden();
+     projection.release();
+     await expect(page.getByText('Conversation up to date', { exact: true })).toBeVisible();
+     await expect(pause).toHaveAttribute('data-original-control', 'retained');
+     await expect(pause).toBeFocused(); await expect(disclosure).toHaveAttribute('open', '');
+-    await page.unroute('**/api/auth/session'); await page.unroute('**/api/engagements/engagement-a/conversation?*');
++    await expect(methodology).toHaveAttribute('data-original-methodology', 'retained');
++    await expect(recordedBasis).toBeVisible();
++    // Release and settle every legitimate session/panel read before replacing
++    // the interception phase; unroute alone leaves active handlers running.
++    await page.unrouteAll({ behavior: 'wait' });
+     await page.route('**/api/engagements/engagement-a/conversation**', route => route.abort('connectionreset'));
+     await page.getByRole('button', { name: 'Latest messages' }).click();
+     await expect(page.getByRole('region', { name: 'Task details', exact: true })).toHaveCount(0);
+     await expect(page.locator('[data-original-control="retained"]')).toHaveCount(0);
+-  } finally { access.release(); projection.release(); }
++    await expect(page.locator('[data-original-methodology="retained"]')).toHaveCount(0);
++  } finally { access.release(); projection.release(); await page.unrouteAll({ behavior: 'wait' }); }
+ });
+ 
+ test('Follow uses current activity while reading older history without retargeting or stealing focus', async ({ page }) => {
+   await signIn(page); const a = await create(page, 'History follow Task A'); const b = await create(page, 'History follow Task B');
+   const verified = await session(page);
+   for (let index = 0; index < 105; index++) expect((await post(page, { key: `history-follow-${index}`, kind: 'guide', task_id: a.id, cycle_id: a.cycle_id, content: `Historical guidance ${index}` }, verified)).status()).toBe(202);
++  const latest = (await snapshot(page)).messages.at(-1);
++  expect(latest.key).toBe('history-follow-104');
+   await page.getByRole('button', { name: 'Latest messages' }).click();
++  await expect(page.locator('.conversation-entry').last()).toHaveAttribute('data-command-id', latest.command_id);
++  await expect(page.locator('.message-content').last()).toHaveText('Historical guidance 104');
+   await expect(page.locator('.conversation-message')).toHaveCount(100);
+   await page.getByLabel('Send to', { exact: true }).selectOption(`${a.id}:${a.cycle_id}`);
+   const draft = page.getByLabel('Guidance', { exact: true }); await draft.fill('Independently targeted draft');
+@@ -148,7 +164,11 @@
+   await signIn(page); const task = await create(page, 'History position survives uncertainty');
+   const verified = await session(page);
+   for (let index = 0; index < 105; index++) expect((await post(page, { key: `scroll-guide-${index}`, kind: 'guide', task_id: task.id, cycle_id: task.cycle_id, content: `Earlier scroll guidance ${index}` }, verified)).status()).toBe(202);
++  const latest = (await snapshot(page)).messages.at(-1);
++  expect(latest.key).toBe('scroll-guide-104');
+   await page.getByRole('button', { name: 'Latest messages' }).click();
++  await expect(page.locator('.conversation-entry').last()).toHaveAttribute('data-command-id', latest.command_id);
++  await expect(page.locator('.message-content').last()).toHaveText('Earlier scroll guidance 104');
+   await expect(page.locator('.conversation-message')).toHaveCount(100);
+   const ack = gate(), events = gate();
+   await page.route('**/api/engagements/engagement-a/conversation/events?*', async route => { await events.held; await route.continue(); });

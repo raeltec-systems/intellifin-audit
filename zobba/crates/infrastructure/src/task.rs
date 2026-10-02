@@ -20,10 +20,20 @@ const COMMAND_BATCH: i64 = 32;
 #[derive(Clone)]
 pub struct TaskRepository {
     pool: PgPool,
+    session_hash: Option<String>,
 }
 impl TaskRepository {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            session_hash: None,
+        }
+    }
+    /// Browser admission retains the captured exact session across authority waits.
+    /// Worker calls retain their separately fenced durable actor authority.
+    pub fn with_session_hash(mut self, hash: String) -> Self {
+        self.session_hash = Some(hash);
+        self
     }
 }
 fn unavailable(_: sqlx::Error) -> TaskError {
@@ -153,6 +163,24 @@ impl TaskCommands for TaskRepository {
             return Err(TaskError::Invalid);
         }
         let mut tx = lock(&self.pool, actor, s).await?;
+        if let Some(hash) = &self.session_hash {
+            let current: bool = sqlx::query_scalar("SELECT public.evidence_session_locked($1,$2)")
+                .bind(actor)
+                .bind(hash)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(unavailable)?;
+            if !current {
+                return Err(TaskError::Denied);
+            }
+        }
+        let context = c.context.as_ref().map(|context| {
+            serde_json::json!({
+                "audit_area": context.audit_area,
+                "period_start": context.period_start,
+                "period_end": context.period_end,
+            })
+        });
         if let Some(existing) = sqlx::query(
             "SELECT * FROM public.task_commands WHERE author_id=$1 AND idempotency_key=$2",
         )
@@ -166,6 +194,7 @@ impl TaskCommands for TaskRepository {
                 || get::<Option<String>>(&existing, "target_task_id")? != c.task_id
                 || get::<Option<String>>(&existing, "target_cycle_id")? != c.cycle_id
                 || get::<Option<String>>(&existing, "content")? != c.content
+                || get::<Option<serde_json::Value>>(&existing, "methodology_context")? != context
             {
                 return Err(TaskError::Conflict);
             }
@@ -187,6 +216,7 @@ impl TaskCommands for TaskRepository {
             sqlx::query("INSERT INTO public.tasks(organisation_id,client_id,engagement_id,id,cycle_id,accountable_actor,objective,working_brief,state,cessation) VALUES($1,$2,$3,$4,$5,$6,$7,$7,'ready','none')")
                 .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id).bind(&id).bind(&cycle).bind(actor).bind(&c.content).execute(&mut *tx).await.map_err(unavailable)?;
             insert_cycle(&mut tx, s, &id, &cycle).await?;
+            crate::methodology::bind_new_task(&mut tx, s, &id, c.context.as_ref()).await?;
         } else {
             let row = task(&mut tx, &id).await?;
             let before = snapshot(&row)?;
@@ -245,8 +275,16 @@ impl TaskCommands for TaskRepository {
         let after = task(&mut tx, &id).await?;
         let command_id = token();
         let next = cursor(&mut tx, s).await?;
-        sqlx::query("INSERT INTO public.task_commands(organisation_id,client_id,engagement_id,id,author_id,idempotency_key,kind,target_task_id,target_cycle_id,content,task_id,cycle_id,received_cursor,intent_revision) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)")
-            .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id).bind(&command_id).bind(actor).bind(&c.key).bind(c.kind.as_str()).bind(&c.task_id).bind(&c.cycle_id).bind(&c.content).bind(&id).bind(&cycle).bind(next).bind(get::<i64>(&after,"intent_revision")?).execute(&mut *tx).await.map_err(unavailable)?;
+        sqlx::query("INSERT INTO public.task_commands(organisation_id,client_id,engagement_id,id,author_id,idempotency_key,kind,target_task_id,target_cycle_id,content,task_id,cycle_id,received_cursor,intent_revision,methodology_context) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)")
+            .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id).bind(&command_id).bind(actor).bind(&c.key).bind(c.kind.as_str()).bind(&c.task_id).bind(&c.cycle_id).bind(&c.content).bind(&id).bind(&cycle).bind(next).bind(get::<i64>(&after,"intent_revision")?).bind(context).execute(&mut *tx).await.map_err(unavailable)?;
+        if c.kind == CommandKind::Guide
+            && let Some(context) = &c.context
+        {
+            crate::methodology::stage_context(&mut tx, s, &id, &command_id, actor, context).await?;
+        }
+        if c.kind == CommandKind::Continue {
+            crate::methodology::enroll_future(&mut tx, s, &id).await?;
+        }
         put_event(&mut tx, s, &id, &cycle, Some(&command_id), "received", next).await?;
         wake(
             &mut tx,
@@ -539,6 +577,21 @@ impl TaskRepository {
                 .await?;
             }
         }
+        // A configuration change is applied only after all consumed inert and
+        // external effects above have their original facts reconciled. A staged
+        // change fences unused work without cancelling this receipt authority.
+        if crate::methodology::apply_pending(&mut tx, &route.scope, &route.task_id).await? {
+            now = snapshot(&task(&mut tx, &route.task_id).await?)?;
+            event(
+                &mut tx,
+                &route.scope,
+                &route.task_id,
+                &now.cycle_id,
+                None,
+                "applied",
+            )
+            .await?;
+        }
         let row = task(&mut tx, &route.task_id).await?;
         if commands.len() == COMMAND_BATCH as usize
             || get::<i64>(&row, "applied_intent")? != get::<i64>(&row, "intent_revision")?
@@ -547,13 +600,34 @@ impl TaskRepository {
             return Ok(Decision::Idle);
         }
         if !matches!(now.state, TaskState::Ready | TaskState::Running) {
-            sqlx::query("UPDATE public.task_wakeups SET pending=false WHERE id=$1")
+            let activation =
+                crate::methodology::pending_activation(&mut tx, &route.task_id).await?;
+            sqlx::query("UPDATE public.task_wakeups SET pending=($2::bigint IS NOT NULL),available_at=COALESCE(to_timestamp($2::bigint),available_at) WHERE id=$1")
                 .bind(&route.id)
+                .bind(activation)
                 .execute(&mut *tx)
                 .await
                 .map_err(unavailable)?;
             tx.commit().await.map_err(unavailable)?;
             return Ok(Decision::Idle);
+        }
+        if !crate::methodology::new_use_allowed(&mut tx, &route.task_id).await? {
+            sqlx::query("UPDATE public.tasks SET state='waiting',cessation='confirmed',revision=revision+1 WHERE id=$1")
+                .bind(&route.task_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(unavailable)?;
+            event(
+                &mut tx,
+                &route.scope,
+                &route.task_id,
+                &now.cycle_id,
+                None,
+                "waiting",
+            )
+            .await?;
+            tx.commit().await.map_err(unavailable)?;
+            return Ok(Decision::Waiting);
         }
         // Unconsumed abandoned owner/intent claims are safe to replace; consumed
         // claims took the possible-dispatch cutoff and were handled above.
@@ -593,7 +667,9 @@ impl TaskRepository {
     pub async fn consume(&self, basis: &ClaimBasis) -> Result<ConsumedAttempt, TaskError> {
         let mut tx = lock(&self.pool, &basis.actor_id, &basis.scope).await?;
         let row = task(&mut tx, &basis.task_id).await?;
-        if !valid_basis(&row, basis)? {
+        if !valid_basis(&row, basis)?
+            || !crate::methodology::new_use_allowed(&mut tx, &basis.task_id).await?
+        {
             return Err(TaskError::Fenced);
         }
         let claim = sqlx::query(
@@ -625,6 +701,19 @@ impl TaskRepository {
             "consumed",
         )
         .await?;
+        // Deferred effects must complete before the final fresh cutoff check,
+        // exactly as for operation dispatch. A newly due methodology change
+        // rolls back the consumed claim, receipt capability and event together.
+        sqlx::query("SET CONSTRAINTS ALL IMMEDIATE")
+            .execute(&mut *tx)
+            .await
+            .map_err(unavailable)?;
+        let current = task(&mut tx, &basis.task_id).await?;
+        if !valid_basis(&current, basis)?
+            || !crate::methodology::new_use_allowed(&mut tx, &basis.task_id).await?
+        {
+            return Err(TaskError::Fenced);
+        }
         tx.commit().await.map_err(unavailable)?;
         Ok(ConsumedAttempt {
             basis: basis.clone(),

@@ -55,11 +55,21 @@ pub struct TaskCommand {
     pub task_id: Option<String>,
     pub cycle_id: Option<String>,
     pub content: Option<String>,
+    /// Optional explicit audit context belongs to Create/Guide exact meaning.
+    /// Guide replaces context at a safe boundary; omission leaves it unchanged.
+    pub context: Option<crate::methodology::TaskContext>,
 }
 
 impl TaskCommand {
     pub fn is_valid(&self) -> bool {
-        if !valid_scope_id(&self.key) {
+        if !valid_scope_id(&self.key)
+            || self
+                .context
+                .as_ref()
+                .is_some_and(|context| !context.is_valid())
+            || (!matches!(self.kind, CommandKind::Create | CommandKind::Guide)
+                && self.context.is_some())
+        {
             return false;
         }
         let target = match (&self.task_id, &self.cycle_id) {
@@ -294,6 +304,7 @@ mod tests {
 
     fn command(kind: CommandKind) -> TaskCommand {
         TaskCommand {
+            context: None,
             key: "retry_key".into(),
             kind,
             task_id: (kind != CommandKind::Create).then(|| "task".into()),
@@ -352,6 +363,38 @@ mod tests {
         let mut changed = input.clone();
         changed.content = Some("meaningful exact text".into());
         assert_ne!(input, changed);
+    }
+
+    #[test]
+    fn explicit_create_and_guide_context_is_exact_meaning_and_never_chat_policy() {
+        let mut create = command(CommandKind::Create);
+        create.context = Some(crate::methodology::TaskContext {
+            audit_area: Some("revenue".into()),
+            period_start: Some("2025-01-01".into()),
+            period_end: Some("2025-12-31".into()),
+        });
+        assert!(create.is_valid());
+        let mut changed = create.clone();
+        changed.context.as_mut().unwrap().audit_area = Some("inventory".into());
+        assert_ne!(create, changed);
+        let mut guide = command(CommandKind::Guide);
+        guide.context = create.context.clone();
+        assert!(guide.is_valid());
+        let mut changed_guide = guide.clone();
+        changed_guide.context = changed.context;
+        assert_ne!(guide, changed_guide);
+        for kind in [
+            CommandKind::Pause,
+            CommandKind::Resume,
+            CommandKind::Stop,
+            CommandKind::Continue,
+        ] {
+            let mut control = command(kind);
+            control.context = create.context.clone();
+            assert!(!control.is_valid());
+        }
+        create.context.as_mut().unwrap().period_end = Some("2024-12-31".into());
+        assert!(!create.is_valid());
     }
 
     #[test]

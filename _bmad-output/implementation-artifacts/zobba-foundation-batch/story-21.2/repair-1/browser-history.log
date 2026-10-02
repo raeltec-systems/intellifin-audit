@@ -1,0 +1,10 @@
+$ pnpm --filter @zobba/web test:browser tests/browser/conversation.spec.ts -g 'bounded burst/history' --workers=1 --retries=0
+$ playwright test tests/browser/conversation.spec.ts -g 'bounded burst/history' --workers=1 --retries=0
+
+Running 1 test using 1 worker
+
+(node:795985) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/conversation.spec.ts:285:1 › bounded burst/history and second actor/foreign scope preserve exact attributed audience (19.3s)
+
+  1 passed (26.0s)

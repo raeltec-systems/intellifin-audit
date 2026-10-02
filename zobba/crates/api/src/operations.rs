@@ -308,6 +308,11 @@ pub struct OperationResponse {
     pub cycle_id: String,
     /// Immutable producing actor; the reading or deciding actor does not replace it.
     pub actor_id: String,
+    /// Immutable producing Task epoch; methodology history identifies its exact criteria.
+    #[schema(pattern = "^(0|[1-9][0-9]{0,18})$", max_length = 19)]
+    pub execution_epoch: String,
+    /// Exact immutable Task methodology binding used by the producer.
+    pub methodology_binding_id: String,
     pub request: CanonicalOperationRequest,
     #[schema(min_length = 64, max_length = 64, pattern = "^[a-f0-9]{64}$")]
     pub request_digest: String,
@@ -323,6 +328,8 @@ impl From<Operation> for OperationResponse {
             task_id: v.task_id,
             cycle_id: v.cycle_id,
             actor_id: v.actor_id,
+            execution_epoch: v.execution_epoch.to_string(),
+            methodology_binding_id: v.methodology_binding_id,
             request: v.request.into(),
             request_digest: v.request_digest,
             revision: v.revision.to_string(),
@@ -449,6 +456,10 @@ pub struct AttemptHistoryResponse {
     pub operation_id: String,
     #[schema(pattern = "^[1-9][0-9]{0,18}$", max_length = 19)]
     pub number: String,
+    #[schema(pattern = "^(0|[1-9][0-9]{0,18})$", max_length = 19)]
+    pub execution_epoch: String,
+    /// Exact immutable binding effective when this attempt was admitted.
+    pub methodology_binding_id: String,
     #[schema(min_length = 64, max_length = 64, pattern = "^[a-f0-9]{64}$")]
     pub request_digest: String,
     #[schema(pattern = "^[1-9][0-9]{0,18}$", max_length = 19)]
@@ -466,6 +477,8 @@ impl From<AttemptHistoryEntry> for AttemptHistoryResponse {
             id: v.id,
             operation_id: v.operation_id,
             number: v.number.to_string(),
+            execution_epoch: v.execution_epoch.to_string(),
+            methodology_binding_id: v.methodology_binding_id,
             request_digest: v.request_digest,
             recorded_at: v.recorded_at.to_string(),
             source_id: v.source_id,

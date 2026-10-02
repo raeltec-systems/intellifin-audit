@@ -3323,6 +3323,126 @@
         ]
       }
     },
+    "/engagements/{engagement_id}/tasks/{task_id}/methodology": {
+      "get": {
+        "tags": [
+          "methodology"
+        ],
+        "operationId": "task_methodology",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskMethodologyResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
     "/health/live": {
       "get": {
         "tags": [],
@@ -4556,6 +4676,405 @@
           }
         ]
       }
+    },
+    "/methodology/organisations/{organisation_id}": {
+      "get": {
+        "tags": [
+          "methodology"
+        ],
+        "operationId": "methodology_snapshot",
+        "parameters": [
+          {
+            "name": "organisation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Additional current session refusal fence",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MethodologySnapshot"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/methodology/organisations/{organisation_id}/recall": {
+      "post": {
+        "tags": [
+          "methodology"
+        ],
+        "operationId": "recall_methodology",
+        "parameters": [
+          {
+            "name": "organisation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Actor",
+            "in": "header",
+            "description": "Required exact current actor refusal fence",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecallMethodologyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MethodologyReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/methodology/organisations/{organisation_id}/save": {
+      "post": {
+        "tags": [
+          "methodology"
+        ],
+        "operationId": "save_methodology",
+        "parameters": [
+          {
+            "name": "organisation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Actor",
+            "in": "header",
+            "description": "Required exact current actor refusal fence",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveMethodologyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MethodologyReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -4621,12 +5140,19 @@
           "id",
           "operation_id",
           "number",
+          "execution_epoch",
+          "methodology_binding_id",
           "request_digest",
           "recorded_at",
           "source_id",
           "ledger_id"
         ],
         "properties": {
+          "execution_epoch": {
+            "type": "string",
+            "maxLength": 19,
+            "pattern": "^(0|[1-9][0-9]{0,18})$"
+          },
           "id": {
             "type": "string"
           },
@@ -4636,6 +5162,10 @@
               "null"
             ],
             "description": "Non-secret source ledger identity bound when this attempt was admitted."
+          },
+          "methodology_binding_id": {
+            "type": "string",
+            "description": "Exact immutable binding effective when this attempt was admitted."
           },
           "number": {
             "type": "string",
@@ -4963,6 +5493,17 @@
               "null"
             ],
             "maxLength": 4000
+          },
+          "context": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MethodologyTaskContext",
+                "description": "Exact optional Create or Guide context retained for durable command recovery."
+              }
+            ]
           },
           "cycle_id": {
             "type": "string",
@@ -6076,6 +6617,886 @@
         "minLength": 1,
         "pattern": "^(0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[01][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$(?![\\s\\S])"
       },
+      "MethodologyActivation": {
+        "type": "object",
+        "required": [
+          "mode",
+          "available_at"
+        ],
+        "properties": {
+          "available_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Availability in Unix seconds, independent of business applicability dates.",
+            "maximum": 253402300799,
+            "minimum": 0
+          },
+          "mode": {
+            "$ref": "#/components/schemas/MethodologyActivationMode"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MethodologyActivationMode": {
+        "type": "string",
+        "enum": [
+          "new_tasks",
+          "active_tasks"
+        ]
+      },
+      "MethodologyApplicability": {
+        "type": "object",
+        "properties": {
+          "audit_area": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "period_end": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "period_start": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MethodologyAssignmentKind": {
+        "type": "string",
+        "enum": [
+          "firm",
+          "client",
+          "engagement"
+        ]
+      },
+      "MethodologyAssignmentScope": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "client_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "engagement_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MethodologyAssignmentKind"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MethodologyBinding": {
+        "type": "object",
+        "required": [
+          "id",
+          "context_command_id",
+          "candidate_version_ids",
+          "bound_at",
+          "actor_id",
+          "execution_epoch",
+          "resolution"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": "string"
+          },
+          "bound_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "candidate_version_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact version candidates retained for subsequent Task context discovery."
+          },
+          "context_command_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Exact Guide command supplying this context, retained through later bindings."
+          },
+          "execution_epoch": {
+            "type": "string",
+            "description": "Task execution epoch from which this exact binding applies.",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "id": {
+            "type": "string"
+          },
+          "resolution": {
+            "$ref": "#/components/schemas/MethodologyResolution"
+          }
+        }
+      },
+      "MethodologyBindingChange": {
+        "type": "object",
+        "required": [
+          "id",
+          "actor_id",
+          "requested_at",
+          "resolution",
+          "reason"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "requested_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "resolution": {
+            "$ref": "#/components/schemas/MethodologyResolution"
+          }
+        }
+      },
+      "MethodologyBindingNotice": {
+        "type": "object",
+        "required": [
+          "id",
+          "version_id",
+          "actor_id",
+          "requested_at",
+          "impact"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "impact": {
+            "$ref": "#/components/schemas/MethodologyImpact"
+          },
+          "requested_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "version_id": {
+            "type": "string"
+          }
+        }
+      },
+      "MethodologyDefinition": {
+        "type": "object",
+        "required": [
+          "name",
+          "neutral_starter",
+          "requirements"
+        ],
+        "properties": {
+          "default_context": {
+            "$ref": "#/components/schemas/MethodologyTaskContext"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "neutral_starter": {
+            "type": "boolean"
+          },
+          "requirements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MethodologyRequirement"
+            },
+            "maxItems": 100
+          },
+          "templates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MethodologyTemplateDefinition"
+            },
+            "maxItems": 32
+          }
+        },
+        "additionalProperties": false
+      },
+      "MethodologyFieldSource": {
+        "type": "object",
+        "required": [
+          "field",
+          "version_ids"
+        ],
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "version_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 128
+          }
+        }
+      },
+      "MethodologyImpact": {
+        "type": "object",
+        "required": [
+          "id",
+          "version_id",
+          "activation_mode",
+          "affected_tasks",
+          "pending_tasks",
+          "retained_tasks",
+          "potentially_material",
+          "diff"
+        ],
+        "properties": {
+          "activation_mode": {
+            "$ref": "#/components/schemas/MethodologyActivationMode"
+          },
+          "affected_tasks": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "diff": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "pending_tasks": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "potentially_material": {
+            "type": "boolean",
+            "description": "Unknown or changed semantics are potentially material."
+          },
+          "retained_tasks": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "version_id": {
+            "type": "string"
+          }
+        }
+      },
+      "MethodologyReceipt": {
+        "type": "object",
+        "required": [
+          "event_id",
+          "organisation_id",
+          "actor_id",
+          "version_id",
+          "revision",
+          "kind",
+          "impact"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": "string"
+          },
+          "event_id": {
+            "type": "string"
+          },
+          "impact": {
+            "$ref": "#/components/schemas/MethodologyImpact"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "organisation_id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "version_id": {
+            "type": "string"
+          }
+        }
+      },
+      "MethodologyRequirement": {
+        "type": "object",
+        "required": [
+          "id",
+          "mandatory"
+        ],
+        "properties": {
+          "criteria": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MethodologyText"
+            },
+            "description": "Absent fields inherit. Empty arrays cannot erase inherited mandatory controls.",
+            "maxItems": 32
+          },
+          "evidence_checks": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MethodologyText"
+            },
+            "maxItems": 32
+          },
+          "id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "mandatory": {
+            "type": "boolean"
+          },
+          "populations": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MethodologyText"
+            },
+            "maxItems": 32
+          },
+          "ratings": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MethodologyText"
+            },
+            "maxItems": 32
+          },
+          "review_rules": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MethodologyText"
+            },
+            "maxItems": 32
+          },
+          "suitable_skills": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MethodologyVersionReference"
+            },
+            "maxItems": 32
+          },
+          "templates": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MethodologyVersionReference"
+            },
+            "maxItems": 32
+          }
+        },
+        "additionalProperties": false
+      },
+      "MethodologyResolution": {
+        "type": "object",
+        "required": [
+          "status",
+          "context",
+          "version_ids",
+          "requirements",
+          "templates",
+          "neutral_source_version_ids",
+          "issues",
+          "reason"
+        ],
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/MethodologyTaskContext"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32768
+          },
+          "neutral_source_version_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Up to 128 saved neutral contributors plus the built-in fallback, joined to\nrequirement field and template source IDs.",
+            "maxItems": 129
+          },
+          "reason": {
+            "type": "string"
+          },
+          "requirements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MethodologyResolvedRequirement"
+            },
+            "maxItems": 12800
+          },
+          "status": {
+            "$ref": "#/components/schemas/MethodologyResolutionStatus"
+          },
+          "templates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MethodologyResolvedTemplate"
+            },
+            "maxItems": 4096
+          },
+          "version_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 128
+          }
+        }
+      },
+      "MethodologyResolutionStatus": {
+        "type": "string",
+        "enum": [
+          "resolved",
+          "neutral",
+          "incomplete",
+          "ambiguous",
+          "recalled"
+        ]
+      },
+      "MethodologyResolvedRequirement": {
+        "type": "object",
+        "required": [
+          "requirement",
+          "source_version_ids",
+          "field_sources"
+        ],
+        "properties": {
+          "field_sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MethodologyFieldSource"
+            }
+          },
+          "requirement": {
+            "$ref": "#/components/schemas/MethodologyResolvedRequirementFields"
+          },
+          "source_version_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 128
+          }
+        }
+      },
+      "MethodologyResolvedRequirementFields": {
+        "type": "object",
+        "required": [
+          "id",
+          "mandatory"
+        ],
+        "properties": {
+          "criteria": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MethodologyText"
+            },
+            "description": "Resolved inherited values can combine up to 128 saved versions.",
+            "maxItems": 4096
+          },
+          "evidence_checks": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MethodologyText"
+            },
+            "maxItems": 4096
+          },
+          "id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "mandatory": {
+            "type": "boolean"
+          },
+          "populations": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MethodologyText"
+            },
+            "maxItems": 4096
+          },
+          "ratings": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MethodologyText"
+            },
+            "maxItems": 4096
+          },
+          "review_rules": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MethodologyText"
+            },
+            "maxItems": 4096
+          },
+          "suitable_skills": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MethodologyVersionReference"
+            },
+            "maxItems": 4096
+          },
+          "templates": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MethodologyVersionReference"
+            },
+            "maxItems": 4096
+          }
+        }
+      },
+      "MethodologyResolvedTemplate": {
+        "type": "object",
+        "required": [
+          "template",
+          "source_version_id"
+        ],
+        "properties": {
+          "source_version_id": {
+            "type": "string"
+          },
+          "template": {
+            "$ref": "#/components/schemas/MethodologyTemplateDefinition"
+          }
+        }
+      },
+      "MethodologySnapshot": {
+        "type": "object",
+        "required": [
+          "organisation_id",
+          "revision",
+          "versions",
+          "impacts",
+          "engagements"
+        ],
+        "properties": {
+          "engagements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipAssignmentOption"
+            },
+            "description": "Assignment metadata for current Admins; grants no access to audit work.",
+            "maxItems": 512
+          },
+          "impacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MethodologyImpact"
+            },
+            "maxItems": 256
+          },
+          "organisation_id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MethodologyVersionRecord"
+            }
+          }
+        }
+      },
+      "MethodologySource": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/MethodologySourceKind"
+          },
+          "note": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MethodologyText"
+              }
+            ]
+          },
+          "reference": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MethodologyText"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "MethodologySourceKind": {
+        "type": "string",
+        "enum": [
+          "authored",
+          "imported_proposal",
+          "neutral_starter"
+        ]
+      },
+      "MethodologyTaskContext": {
+        "type": "object",
+        "properties": {
+          "audit_area": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "period_end": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "period_start": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Inclusive business date, YYYY-MM-DD. Both period dates are required together.",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MethodologyTemplateDefinition": {
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "name",
+          "sections"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MethodologyTemplateSection"
+            },
+            "maxItems": 32,
+            "minItems": 1
+          },
+          "version": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MethodologyTemplateProse": {
+        "type": "string",
+        "description": "Preserved Unicode prose containing at least one character outside Unicode White_Space; at most 2000 Unicode characters. LF, CR and tab are allowed; all other control characters are refused. Indentation, line endings, trailing whitespace and U+FEFF are preserved exactly.",
+        "maxLength": 2000,
+        "minLength": 1
+      },
+      "MethodologyTemplateSection": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "content",
+          "required"
+        ],
+        "properties": {
+          "content": {
+            "$ref": "#/components/schemas/MethodologyTemplateProse"
+          },
+          "id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "MethodologyText": {
+        "type": "string",
+        "description": "Nonempty, already-trimmed Unicode text without control characters; at most 2000 Unicode characters.",
+        "maxLength": 2000,
+        "minLength": 1
+      },
+      "MethodologyVersionRecord": {
+        "type": "object",
+        "required": [
+          "id",
+          "actor_id",
+          "saved_at",
+          "revision",
+          "command",
+          "recalled"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": "string"
+          },
+          "command": {
+            "$ref": "#/components/schemas/SaveMethodologyRequest"
+          },
+          "id": {
+            "type": "string"
+          },
+          "recalled": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "saved_at": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "MethodologyVersionReference": {
+        "type": "object",
+        "required": [
+          "id",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "version": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          }
+        },
+        "additionalProperties": false
+      },
       "ObservationHistoryResponse": {
         "type": "object",
         "required": [
@@ -6260,6 +7681,8 @@
           "task_id",
           "cycle_id",
           "actor_id",
+          "execution_epoch",
+          "methodology_binding_id",
           "request",
           "request_digest",
           "revision",
@@ -6273,8 +7696,18 @@
           "cycle_id": {
             "type": "string"
           },
+          "execution_epoch": {
+            "type": "string",
+            "description": "Immutable producing Task epoch; methodology history identifies its exact criteria.",
+            "maxLength": 19,
+            "pattern": "^(0|[1-9][0-9]{0,18})$"
+          },
           "id": {
             "type": "string"
+          },
+          "methodology_binding_id": {
+            "type": "string",
+            "description": "Exact immutable Task methodology binding used by the producer."
           },
           "request": {
             "$ref": "#/components/schemas/CanonicalOperationRequest"
@@ -6411,6 +7844,36 @@
           "audit_coordination"
         ]
       },
+      "RecallMethodologyRequest": {
+        "type": "object",
+        "required": [
+          "key",
+          "expected_revision",
+          "version_id",
+          "reason"
+        ],
+        "properties": {
+          "expected_revision": {
+            "type": "string",
+            "maxLength": 19,
+            "minLength": 1,
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/MethodologyText"
+          },
+          "version_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "ReceiptStatusResponse": {
         "type": "string",
         "enum": [
@@ -6497,6 +7960,61 @@
         },
         "additionalProperties": false
       },
+      "SaveMethodologyRequest": {
+        "type": "object",
+        "required": [
+          "key",
+          "expected_revision",
+          "assignment",
+          "applicability",
+          "activation",
+          "definition",
+          "source"
+        ],
+        "properties": {
+          "activation": {
+            "$ref": "#/components/schemas/MethodologyActivation"
+          },
+          "applicability": {
+            "$ref": "#/components/schemas/MethodologyApplicability"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/MethodologyAssignmentScope"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/MethodologyDefinition"
+          },
+          "expected_revision": {
+            "type": "string",
+            "description": "Canonical decimal revision, bounded by 9223372036854775806 so a successor fits.",
+            "maxLength": 19,
+            "minLength": 1,
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "source": {
+            "$ref": "#/components/schemas/MethodologySource"
+          },
+          "supersedes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "undo_of": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "ScopeResponse": {
         "type": "object",
         "required": [
@@ -6571,6 +8089,17 @@
             "description": "Exact retained text, at most 4000 UTF-8 bytes. Required only for Create and Guide.\nMust contain non-whitespace; control characters other than LF, CR and tab are refused.",
             "maxLength": 4000,
             "minLength": 1
+          },
+          "context": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MethodologyTaskContext",
+                "description": "Optional methodology context for Create or Guide. Guide supplies a full\nreplacement; omitted/null leaves the current context unchanged. Create\ndoes not require a methodology picker before accepting the Task."
+              }
+            ]
           },
           "cycle_id": {
             "type": [
@@ -6654,6 +8183,51 @@
             "type": "string",
             "description": "Last returned cursor, or the input cursor on an empty page. Poll again from this value.",
             "pattern": "^[0-9]+$"
+          }
+        }
+      },
+      "TaskMethodologyResponse": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "current",
+          "history",
+          "recalled",
+          "notices"
+        ],
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/MethodologyBinding"
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MethodologyBinding"
+            },
+            "maxItems": 4096
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MethodologyBindingNotice"
+            },
+            "maxItems": 256
+          },
+          "pending": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MethodologyBindingChange"
+              }
+            ]
+          },
+          "recalled": {
+            "type": "boolean"
+          },
+          "task_id": {
+            "type": "string"
           }
         }
       },

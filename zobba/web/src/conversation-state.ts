@@ -3,7 +3,7 @@ import { AccessError, readSession } from './auth.ts';
 import type { Session } from './auth.ts';
 import { parseScope, readEngagement, sameScope } from './engagements.ts';
 import type { Engagement, Scope } from './engagements.ts';
-import { identifier, parseCommand, postCommand, readConversation, readEvents, readHistory, readTask, readTasks } from './conversation.ts';
+import { identifier, parseCommand, sameTaskContext, postCommand, readConversation, readEvents, readHistory, readTask, readTasks } from './conversation.ts';
 import type { ConversationMessage, ConversationSnapshot, Task, TaskCommand } from './conversation.ts';
 
 import { LegacyRecoveryError, OutboxStore } from './conversation-outbox.ts';
@@ -14,7 +14,7 @@ function isControl(command: TaskCommand): boolean { return command.kind === 'pau
 export function sameMeaning(command: TaskCommand, message: ConversationMessage): boolean {
   return command.key === message.key && command.kind === message.kind &&
     (command.task_id ?? null) === message.target_task_id && (command.cycle_id ?? null) === message.target_cycle_id &&
-    (command.content ?? null) === message.content;
+    (command.content ?? null) === message.content && sameTaskContext(command.context, message.context);
 }
 
 export type ConversationState = {
