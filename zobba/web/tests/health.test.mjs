@@ -4,14 +4,14 @@ import { parseHealth } from '../src/health.ts';
 
 test('the real API contract distinguishes live, ready, and unavailable', () => {
   assert.equal(parseHealth({ service: 'api', status: 'live', schema_version: null }, 'live', 200).status, 'live');
-  assert.equal(parseHealth({ service: 'api', status: 'ready', schema_version: 8 }, 'ready', 200).status, 'ready');
+  assert.equal(parseHealth({ service: 'api', status: 'ready', schema_version: 9 }, 'ready', 200).status, 'ready');
   assert.equal(parseHealth({ service: 'api', status: 'unavailable', schema_version: null }, 'ready', 503).status, 'unavailable');
 });
 
 test('bad HTTP status, schema, service, or payload can never become ready', () => {
-  const ready = { service: 'api', status: 'ready', schema_version: 8 };
+  const ready = { service: 'api', status: 'ready', schema_version: 9 };
   for (const payload of [null, [], {}, '<html>Error</html>', { ...ready, service: 'worker' },
-    { ...ready, schema_version: null }, { ...ready, schema_version: 2 }, { ...ready, schema_version: 3 }, { ...ready, schema_version: 4 }, { ...ready, schema_version: 5 }, { ...ready, schema_version: 6 }, { ...ready, schema_version: 7 }, { ...ready, schema_version: 9 },
+    { ...ready, schema_version: null }, { ...ready, schema_version: 2 }, { ...ready, schema_version: 3 }, { ...ready, schema_version: 4 }, { ...ready, schema_version: 5 }, { ...ready, schema_version: 6 }, { ...ready, schema_version: 7 }, { ...ready, schema_version: 8 }, { ...ready, schema_version: 10 },
     { ...ready, status: 'live' }]) {
     assert.throws(() => parseHealth(payload, 'ready', 200));
   }

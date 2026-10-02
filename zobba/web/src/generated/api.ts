@@ -320,6 +320,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/engagements/{engagement_id}/skills/impacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["skills_selection_impact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/engagements/{engagement_id}/task-commands": {
         parameters: {
             query?: never;
@@ -408,6 +424,54 @@ export interface paths {
             cookie?: never;
         };
         get: operations["task_methodology"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/tasks/{task_id}/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["skills_discover"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/tasks/{task_id}/skills/select": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["skills_select"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/tasks/{task_id}/skills/selections/{selection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["skills_current_use"];
         put?: never;
         post?: never;
         delete?: never;
@@ -624,6 +688,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/skills/organisations/{organisation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["skills_catalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/organisations/{organisation_id}/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["skills_assignment_options"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/organisations/{organisation_id}/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["skills_install"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/organisations/{organisation_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["skills_set_status"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/organisations/{organisation_id}/versions/{version_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["skills_status_history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -681,6 +825,13 @@ export interface components {
         };
         /** @enum {string} */
         CessationResponse: "none" | "pending" | "confirmed" | "reconciliation_required";
+        ChangeSkillStatusRequest: {
+            expected_revision: string;
+            key: string;
+            reason: string;
+            status: components["schemas"]["SkillStatus"];
+            version_id: string;
+        };
         /** @enum {string} */
         CommandKindRequest: "create" | "guide" | "pause" | "resume" | "stop" | "continue";
         CommandReceiptResponse: {
@@ -857,6 +1008,14 @@ export interface components {
         IdentityResponse: {
             display_name: string;
             id: string;
+        };
+        InstallSkillRequest: {
+            applicability: components["schemas"]["MethodologyApplicability"];
+            assignment: components["schemas"]["MethodologyAssignmentScope"];
+            enabled: boolean;
+            expected_revision: string;
+            key: string;
+            manifest: components["schemas"]["SkillManifest"];
         };
         InvitationPreviewResponse: {
             assignments: components["schemas"]["MembershipAssignmentOption"][];
@@ -1312,11 +1471,220 @@ export interface components {
             engagement_id: string;
             organisation_id: string;
         };
+        SelectSkillRequest: {
+            expected_catalog_revision: string;
+            expected_execution_epoch: string;
+            expected_methodology_binding_id: string;
+            expected_selection_revision: string;
+            key: string;
+            reason: string;
+            version_id: string;
+        };
         /** @enum {string} */
         Service: "api" | "worker";
         SessionResponse: {
             csrf_token: string;
             identity: components["schemas"]["IdentityResponse"];
+        };
+        /** @enum {string} */
+        SkillAssignmentKind: "client" | "engagement";
+        SkillAssignmentPage: {
+            clients: components["schemas"]["SkillClientAssignmentOption"][];
+            engagements: components["schemas"]["MembershipAssignmentOption"][];
+            next_after?: string | null;
+        };
+        SkillCandidate: {
+            inspection: components["schemas"]["SkillInspection"];
+            version: components["schemas"]["SkillVersion"];
+        };
+        SkillCapabilityBound: {
+            accepted: boolean;
+            delegation_depth?: number | null;
+            kind: components["schemas"]["SkillCapabilityBoundKind"];
+        };
+        /** @enum {string} */
+        SkillCapabilityBoundKind: "organisation" | "engagement" | "member" | "account" | "task" | "delegation";
+        /** @enum {string} */
+        SkillCapabilityStatus: "unavailable" | "forbidden" | "compatible_needs_exact_details";
+        SkillCatalogReceipt: {
+            actor_id: string;
+            affected_selections: string;
+            event_id: string;
+            organisation_id: string;
+            revision: string;
+            status: components["schemas"]["SkillStatus"];
+            version_id: string;
+        };
+        SkillCatalogSnapshot: {
+            organisation_id: string;
+            revision: string;
+            versions: components["schemas"]["SkillVersion"][];
+        };
+        SkillClientAssignmentOption: {
+            client_id: string;
+            client_name: string;
+        };
+        /** @enum {string} */
+        SkillEligibilityStatus: "eligible" | "unavailable" | "forbidden" | "disabled" | "recalled" | "inapplicable" | "methodology_blocked" | "task_blocked";
+        SkillImpactCursor: {
+            revision: string;
+            task_id: string;
+        };
+        SkillInput: {
+            id: string;
+            label: string;
+            required: boolean;
+        };
+        SkillInspection: {
+            authority_actor_id?: string | null;
+            catalog_revision: string;
+            dependency_fingerprint: string;
+            digest: string;
+            execution_epoch: string;
+            methodology_binding_id: string;
+            needs: components["schemas"]["SkillNeedInspection"][];
+            /** Format: int64 */
+            observed_at: number;
+            /** @description Server-owned explanation, at most 256 UTF-8 bytes. */
+            reason: string;
+            skill_id: string;
+            skill_version: string;
+            status: components["schemas"]["SkillEligibilityStatus"];
+            version_id: string;
+        };
+        SkillManifest: {
+            description: string;
+            id: string;
+            inputs: components["schemas"]["SkillInput"][];
+            method_version_ids: string[];
+            name: string;
+            needs: components["schemas"]["SkillNeed"][];
+            outputs: string[];
+            resources: components["schemas"]["SkillResource"][];
+            /** Format: int32 */
+            schema_version: number;
+            source: components["schemas"]["SkillSource"];
+            version: string;
+        };
+        SkillNeed: {
+            account_id?: string | null;
+            attachment_classifications: string[];
+            destination?: string | null;
+            environment_id?: string | null;
+            id: string;
+            recipients: string[];
+            requires_attachments: boolean;
+            resource_id?: string | null;
+            tool: components["schemas"]["SkillTool"];
+        };
+        SkillNeedInspection: {
+            blocking_bound?: null | components["schemas"]["SkillCapabilityBound"];
+            id: string;
+            /** @description Server-owned explanation, at most 256 UTF-8 bytes. */
+            reason: string;
+            /** Format: int64 */
+            refresh_at?: number | null;
+            status: components["schemas"]["SkillCapabilityStatus"];
+            tool: components["schemas"]["SkillTool"];
+        };
+        SkillResource: {
+            /**
+             * @description Exact UTF-8 resource bytes: 32 KiB per resource and 128 KiB in aggregate.
+             *     Nonempty under Unicode White_Space; only LF, CR and tab controls allowed.
+             *     U+FEFF, indentation and line endings are preserved; scripts remain inert.
+             */
+            content: string;
+            id: string;
+            kind: components["schemas"]["SkillResourceKind"];
+        };
+        SkillResourceDigest: {
+            digest: string;
+            id: string;
+        };
+        /** @enum {string} */
+        SkillResourceKind: "text" | "script";
+        SkillSelection: {
+            authority_actor_id?: string | null;
+            catalog_revision: string;
+            dependency_fingerprint: string;
+            digest: string;
+            execution_epoch: string;
+            id: string;
+            methodology: components["schemas"]["MethodologyBinding"];
+            reason: string;
+            revision: string;
+            /** Format: int64 */
+            selected_at: number;
+            selector_id: string;
+            skill_id: string;
+            skill_version: string;
+            task_id: string;
+            version_id: string;
+        };
+        SkillSelectionImpact: {
+            catalog_revision: string;
+            digest: string;
+            execution_epoch: string;
+            methodology_binding_id: string;
+            /** Format: int64 */
+            selected_at: number;
+            selection_id: string;
+            selection_revision: string;
+            selector_id: string;
+            skill_id: string;
+            skill_version: string;
+            status: components["schemas"]["SkillStatus"];
+            status_revision: string;
+            task_id: string;
+            version_id: string;
+        };
+        SkillSelectionImpactPage: {
+            client_id: string;
+            engagement_id: string;
+            next_after?: null | components["schemas"]["SkillImpactCursor"];
+            organisation_id: string;
+            selections: components["schemas"]["SkillSelectionImpact"][];
+            version_id?: string | null;
+        };
+        SkillSelectionView: {
+            current: components["schemas"]["SkillInspection"];
+            selection: components["schemas"]["SkillSelection"];
+        };
+        SkillSource: {
+            license: string;
+            reference: string;
+            revision: string;
+        };
+        /** @enum {string} */
+        SkillStatus: "enabled" | "disabled" | "recalled";
+        SkillStatusEvent: {
+            actor_id: string;
+            event_id: string;
+            reason?: string | null;
+            /** Format: int64 */
+            recorded_at: number;
+            revision: string;
+            status: components["schemas"]["SkillStatus"];
+        };
+        SkillStatusHistory: {
+            events: components["schemas"]["SkillStatusEvent"][];
+            next_before_revision?: string | null;
+            version_id: string;
+        };
+        /** @enum {string} */
+        SkillTool: "live_read_v1" | "test_read_v1" | "test_write_v1" | "test_send_v1" | "audit_read_v1" | "audit_write_v1" | "audit_send_v1" | "analysis_v1";
+        SkillVersion: {
+            actor_id: string;
+            command: components["schemas"]["InstallSkillRequest"];
+            digest: string;
+            id: string;
+            /** Format: int64 */
+            installed_at: number;
+            resource_digests: components["schemas"]["SkillResourceDigest"][];
+            revision: string;
+            status: components["schemas"]["SkillStatus"];
+            status_event: components["schemas"]["SkillStatusEvent"];
+            status_revision: string;
         };
         /** @enum {string} */
         SourceFactResponse: "unknown" | "accepted" | "completed" | "authoritatively_absent";
@@ -1371,6 +1739,17 @@ export interface components {
             state: components["schemas"]["TaskStateResponse"];
             /** @description Retained plain text; no model understanding or audit result is asserted. */
             working_brief: string;
+        };
+        TaskSkillsResponse: {
+            candidates: components["schemas"]["SkillCandidate"][];
+            catalog_revision: string;
+            execution_epoch: string;
+            methodology_binding_id: string;
+            /** Format: int64 */
+            observed_at: number;
+            selection_revision: string;
+            selections: components["schemas"]["SkillSelectionView"][];
+            task_id: string;
         };
         /** @enum {string} */
         TaskStateResponse: "ready" | "running" | "paused" | "stopped" | "waiting";
@@ -2861,6 +3240,93 @@ export interface operations {
             };
         };
     };
+    skills_selection_impact: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+                /** @description Omit to list selections of currently disabled or recalled versions */
+                version_id?: string;
+                /** @description Cursor pair: both task and revision are required */
+                after_task_id?: string;
+                after_revision?: string;
+            };
+            header?: {
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillSelectionImpactPage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     admit_task_command: {
         parameters: {
             query: {
@@ -3281,6 +3747,264 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    skills_discover: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header?: {
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSkillsResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    skills_select: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header: {
+                "X-Expected-Session"?: string | null;
+                Origin: string;
+                "X-CSRF-Token": string;
+                /** @description Required exact current actor refusal fence */
+                "X-Expected-Actor": string;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectSkillRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillSelectionView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    skills_current_use: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header?: {
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+                selection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillSelectionView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4210,6 +4934,425 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MethodologyReceipt"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    skills_catalog: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                organisation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillCatalogSnapshot"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    skills_assignment_options: {
+        parameters: {
+            query: {
+                kind: components["schemas"]["SkillAssignmentKind"];
+                /** @description Required for engagement choices; absent for client choices */
+                client_id?: string;
+                after?: string;
+            };
+            header?: {
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                organisation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillAssignmentPage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    skills_install: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Expected-Session"?: string | null;
+                Origin: string;
+                "X-CSRF-Token": string;
+                /** @description Required exact current actor refusal fence */
+                "X-Expected-Actor": string;
+            };
+            path: {
+                organisation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstallSkillRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillCatalogReceipt"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    skills_set_status: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Expected-Session"?: string | null;
+                Origin: string;
+                "X-CSRF-Token": string;
+                /** @description Required exact current actor refusal fence */
+                "X-Expected-Actor": string;
+            };
+            path: {
+                organisation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeSkillStatusRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillCatalogReceipt"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    skills_status_history: {
+        parameters: {
+            query?: {
+                before_revision?: string;
+            };
+            header?: {
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                organisation_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillStatusHistory"];
                 };
             };
             400: {

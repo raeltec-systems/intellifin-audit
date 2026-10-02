@@ -217,6 +217,35 @@ async fn current(tx: &mut Tx, accepted: &AuthoritySnapshot) -> Result<AuthorityS
     }
     Ok(now)
 }
+
+/// Read-only authority inspection in the caller's existing organisation →
+/// engagement → Task transaction. The accepted actor is never replaced by the
+/// viewer. No operation, decision, claim or wakeup is created by this query.
+pub(crate) async fn skill_authority(
+    tx: &mut Tx,
+    s: &Scope,
+    task_id: &str,
+) -> Result<Option<(AuthoritySnapshot, Result<AuthoritySnapshot, Error>, String)>, Error> {
+    let value: Option<String> = sqlx::query_scalar("SELECT v.accepted_snapshot FROM public.permission_heads h JOIN public.permission_versions v ON (v.organisation_id,v.policy_key,v.version)=(h.organisation_id,h.policy_key,h.current_version) WHERE h.organisation_id=$1 AND h.policy_key=$2")
+        .bind(&s.organisation_id)
+        .bind(policy_key(s, PolicyKind::Task, task_id))
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(unavailable)?
+        .flatten();
+    let Some(value) = value else { return Ok(None) };
+    let accepted: StoredAuthority = decode(&value)?;
+    if !accepted.0.is_valid() || accepted.0.scope != *s || accepted.0.task_id != task_id {
+        return Err(Error::Unavailable);
+    }
+    let current = current(tx, &accepted.0).await;
+    let fingerprint = match &current {
+        Ok(now) => hash(format!("{}:{}", value, encode(&StoredAuthority(now.clone()))?).as_bytes()),
+        Err(Error::Denied) => hash(format!("{value}:current-authority-missing").as_bytes()),
+        Err(_) => return Err(Error::Unavailable),
+    };
+    Ok(Some((accepted.0, current, fingerprint)))
+}
 async fn operation_row(tx: &mut Tx, id: &str) -> Result<PgRow, Error> {
     sqlx::query("SELECT * FROM public.operations WHERE id=$1")
         .bind(id)

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AccessError } from './auth';
+import { SkillCatalog } from './SkillCatalog';
+import { discardSkillCatalogActions, recoverSkillOrganisation } from './skills';
 import type { Session } from './auth';
 import { readAdminOrganisations } from './membership';
 import type { OrganisationPage } from './membership';
@@ -17,7 +19,7 @@ const referenceFields = { templates: 'Template versions', suitable_skills: 'Suit
 
 export function MethodologyWorkspace({ active, session, accessReady, onAccessFailure, onClose }: Props) {
   const [organisations, setOrganisations] = useState<OrganisationPage | null>(null);
-  const [organisation, setOrganisation] = useState<string | null>(() => recoverMethodologyAction(session)?.organisation_id ?? null);
+  const [organisation, setOrganisation] = useState<string | null>(() => recoverMethodologyAction(session)?.organisation_id ?? recoverSkillOrganisation(session));
   const [selectedOrganisation, setSelectedOrganisation] = useState<OrganisationPage['organisations'][number] | null>(null);
   const organisationCursor = useRef<string | null>(null);
   const [snapshot, setSnapshot] = useState<MethodologySnapshot | null>(null);
@@ -29,6 +31,7 @@ export function MethodologyWorkspace({ active, session, accessReady, onAccessFai
   const [ready, setReady] = useState(false);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
+  const [readError, setReadError] = useState('');
   const mounted = useRef(true);
   const request = useRef<AbortController | null>(null);
   const action = useRef<AbortController | null>(null);
@@ -40,15 +43,22 @@ export function MethodologyWorkspace({ active, session, accessReady, onAccessFai
   const visible = ready && accessReady;
   const org = selectedOrganisation?.organisation_id === organisation ? selectedOrganisation : organisations?.organisations.find(item => item.organisation_id === organisation);
   const clearPrivate = useCallback(() => { discardMethodologyAction(); setDraft(null); setPending(null); setReceipt(null); setRecalling(null); setRecallReason(''); }, []);
-  const fail = useCallback((reason: unknown, recovering = false) => {
-    setReady(false); setSnapshot(null); setError(methodologyFailure(reason, recovering));
+  const fail = useCallback((reason: unknown, recovering = false, currentRead = false) => {
+    const message = methodologyFailure(reason, recovering);
+    setReady(false); setSnapshot(null);
+    if (currentRead) setReadError(message);
+    else setError(message);
     if (reason instanceof AccessError && [401, 403, 404, 412].includes(reason.status)) {
-      clearPrivate(); setOrganisations(null);
+      clearPrivate();
+      setError(''); setReadError(message);
+      if (current.current.organisation) discardSkillCatalogActions(current.current.organisation);
+      setOrganisations(null);
       setSelectedOrganisation(null); organisationCursor.current = null;
       if (reason.status === 403 || reason.status === 404) setOrganisation(null);
       if (reason.status !== 403 && reason.status !== 404) onAccessFailure(reason);
     }
   }, [clearPrivate, onAccessFailure]);
+  const readFailure = useCallback((reason?: AccessError) => fail(reason, false, true), [fail]);
   const refresh = useCallback(async (after: string | null = organisationCursor.current, withdraw = true) => {
     if (!mounted.current || !current.current.accessReady || action.current) return;
     request.current?.abort();
@@ -58,16 +68,24 @@ export function MethodologyWorkspace({ active, session, accessReady, onAccessFai
     const deadline = setTimeout(() => controller.abort(), 8000);
     try {
       const selected = current.current.organisation;
-      const [page, data] = await Promise.all([
+      const [pageResult, methodResult] = await Promise.allSettled([
         readAdminOrganisations(current.current.session, controller.signal, after),
         selected ? readMethodology(selected, current.current.session, controller.signal) : Promise.resolve(null),
       ]);
       if (!mounted.current || request.current !== controller || liveOwner.current !== expected || !current.current.accessReady) return;
+      if (pageResult.status === 'rejected') throw pageResult.reason;
+      const page = pageResult.value;
+      // Methodology storage/response limits do not decide whether the current
+      // Admin can inspect and restrict independently installed skill versions.
+      if (methodResult.status === 'rejected' && methodResult.reason instanceof AccessError && [401, 403, 404, 412].includes(methodResult.reason.status)) throw methodResult.reason;
+      const data = methodResult.status === 'fulfilled' ? methodResult.value : null;
       organisationCursor.current = after;
       setOrganisations(page); setSnapshot(data); setReady(true);
+      if (methodResult.status === 'rejected') setReadError('Current methodology settings are unavailable. Installed skills have their own current access check below.');
+      else setReadError('');
       const selectedMetadata = page.organisations.find(item => item.organisation_id === selected);
       if (selectedMetadata) setSelectedOrganisation(selectedMetadata);
-    } catch (reason) { if (mounted.current && request.current === controller && liveOwner.current === expected) fail(reason); }
+    } catch (reason) { if (mounted.current && request.current === controller && liveOwner.current === expected) fail(reason, false, true); }
     finally { clearTimeout(deadline); if (request.current === controller) request.current = null; }
   }, [fail]);
   useLayoutEffect(() => { if (active) heading.current?.focus(); }, [active]);
@@ -83,7 +101,7 @@ export function MethodologyWorkspace({ active, session, accessReady, onAccessFai
 
   function select(id: string | null) {
     setSelectedOrganisation(id ? organisations?.organisations.find(item => item.organisation_id === id) ?? null : null);
-    request.current?.abort(); clearPrivate(); setError(''); setReady(false); setSnapshot(null); setOrganisation(id);
+    request.current?.abort(); clearPrivate(); setError(''); setReadError(''); setReady(false); setSnapshot(null); setOrganisation(id);
   }
   function edit(version?: Version, undo = false) {
     if (!snapshot) return;
@@ -141,17 +159,18 @@ export function MethodologyWorkspace({ active, session, accessReady, onAccessFai
   const potentialChange = !!command && draft?.baseline !== JSON.stringify(command.definition);
   return <section className="methodology-workspace" aria-label="Methodology settings" hidden={!active}>
     <div className="methodology-heading"><div><p className="eyebrow">Settings</p><h1 ref={heading} tabIndex={-1}>Methodology and skills</h1></div><button type="button" className="quiet-button" onClick={onClose}>Return to workspace</button></div>
-    <p className="scope-note">Admin saves firm requirements and templates. Configuration grants no access to client audit work or audit sign-off. Skill installation is not available here yet.</p>
-    {!visible ? <p role="status">{error || 'Checking current methodology access…'}</p> : null}
+    <p className="scope-note">Admin saves firm requirements and templates. Configuration grants no access to client audit work or audit sign-off. Admin can explicitly install attributable skill versions below.</p>
+    {!visible ? <p role="status">{readError || error || 'Checking current methodology access…'}</p> : null}
+    {readError && visible ? <p className="notice" role="alert">{readError}</p> : null}
     {error && visible ? <p className="notice" role="alert">{error}</p> : null}
     <button type="button" className="text-button" disabled={!accessReady || working} onClick={() => void refresh()}>Refresh methodology access</button>
     <div hidden={!visible}>
       {!organisation ? <><h2>Your organisations</h2>{organisations?.organisations.length ? <ul className="engagement-list">{organisations.organisations.map(item => <li key={item.organisation_id}><button className="engagement-card" type="button" onClick={() => select(item.organisation_id)}><span>{item.organisation_name}</span><span>Manage methodology →</span></button></li>)}</ul> : <p>No current Admin organisations are available.</p>}
         {organisationCursor.current ? <button type="button" className="quiet-button" onClick={() => void refresh(null)}>First organisations</button> : null}
         {organisations?.next_cursor ? <button type="button" className="quiet-button" onClick={() => void refresh(organisations.next_cursor)}>More organisations</button> : null}</> : null}
+      {organisation ? <div className="methodology-heading"><div><button type="button" className="text-button" disabled={working || !!pending} onClick={() => select(null)}>← Organisations</button><h2>{org?.organisation_name ?? organisation}</h2>{snapshot ? <p>Settings revision {snapshot.revision}</p> : null}</div>
+        <button type="button" disabled={!snapshot || working || !!pending} onClick={() => edit()}>New methodology</button></div> : null}
       {organisation && snapshot ? <>
-        <div className="methodology-heading"><div><button type="button" className="text-button" disabled={working || !!pending} onClick={() => select(null)}>← Organisations</button><h2>{org?.organisation_name ?? organisation}</h2><p>Settings revision {snapshot.revision}</p></div>
-          <button type="button" disabled={working || !!pending} onClick={() => edit()}>New methodology</button></div>
         {receipt ? <section className="notice" role="status"><strong>{receipt.kind === 'recall' ? 'Recall recorded.' : 'Methodology saved.'}</strong><p>Version {receipt.version_id} · revision {receipt.revision} · attributed to {receipt.actor_id}</p><p>{receipt.impact.affected_tasks} affected Tasks · {receipt.impact.pending_tasks} pending changes · {receipt.impact.retained_tasks} retained bindings.</p><ul>{receipt.impact.diff.map((line, index) => <li key={index}>{line}</li>)}</ul></section> : null}
         {pending ? <section className="notice" aria-label="Unconfirmed methodology request"><h3>{working ? 'Saving…' : 'Delivery unconfirmed'}</h3><p>The exact {pending.kind} request, dates and key are retained. Retry checks its original receipt.</p><button type="button" className="quiet-button" disabled={working} onClick={() => void apply(pending)}>Retry exact methodology request</button></section> : null}
         {command && draft ? <form className="methodology-editor" aria-label="Edit methodology" onSubmit={event => { event.preventDefault(); save(); }}>
@@ -201,6 +220,7 @@ export function MethodologyWorkspace({ active, session, accessReady, onAccessFai
         <section aria-label="Saved methodology versions"><h3>Saved versions</h3>{snapshot.versions.length === 0 ? <p>No firm methodology saved. New Tasks use an explicitly incomplete neutral basis.</p> : snapshot.versions.map(version => { const head = methodologyLineageHead(snapshot.versions, version.id); return <article className="methodology-version" key={version.id}><h4>{version.command.definition.name}{version.command.definition.neutral_starter ? ' · Neutral starter' : ''}{version.recalled ? ' · Recalled' : ''}</h4><p>Version {version.id} · revision {version.revision} · saved by {version.actor_id} on {dateTime(version.saved_at)}</p><p>{version.command.assignment.kind} assignment · available {dateTime(version.command.activation.available_at)} · {version.command.applicability.period_start ? `${version.command.applicability.period_start} to ${version.command.applicability.period_end}` : 'All business periods'}</p><details><summary>Inspect exact saved definition and source</summary><pre tabIndex={0}>{JSON.stringify(version.command, null, 2)}</pre></details><div className="methodology-actions"><button type="button" className="quiet-button" disabled={working || !!pending || !head || head.recalled} onClick={() => edit(version)}>{head && head.id !== version.id ? `Edit current version ${head.revision} for this lineage` : `Edit version ${version.revision}`}</button><button type="button" className="quiet-button" disabled={working || !!pending || !head} onClick={() => edit(version, true)}>Undo to version {version.revision}</button><button type="button" className="text-button" disabled={working || !!pending || version.recalled} onClick={() => { setDraft(null); setRecalling(version); setRecallReason(''); setReceipt(null); }}>Recall version {version.revision}</button></div></article>; })}</section>
         {snapshot.impacts.length ? <details className="methodology-impacts"><summary>Recorded change impacts</summary>{snapshot.impacts.map(impact => <article key={impact.id}><h4>Version {impact.version_id}</h4><p>{impact.activation_mode === 'new_tasks' ? 'New Tasks only' : 'Also active Tasks'} · {impact.affected_tasks} affected · {impact.pending_tasks} pending · {impact.retained_tasks} retained</p><ul>{impact.diff.map((line, index) => <li key={index}>{line}</li>)}</ul></article>)}</details> : null}
       </> : null}
+      {organisation ? <SkillCatalog key={`${owner}/skills`} organisation={organisation} session={session} accessReady={visible} onAccessFailure={readFailure} /> : null}
     </div>
   </section>;
 }

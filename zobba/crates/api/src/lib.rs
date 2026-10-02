@@ -6,6 +6,7 @@ pub mod evidence;
 pub mod membership;
 pub mod methodology;
 pub mod operations;
+pub mod skills;
 pub mod tasks;
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
 use serde::Serialize;
@@ -101,6 +102,7 @@ pub fn authenticated_router_with_evidence(
 ) -> Router {
     let task_routes = tasks::router(&database, identity.clone());
     let membership_routes = membership::router(database.pool().clone(), identity.clone());
+    let skills_routes = skills::router(database.pool().clone(), identity.clone());
     let methodology_routes = methodology::router(database.pool().clone(), identity.clone());
     let evidence_routes = evidence::router(database.pool().clone(), identity.clone(), objects);
     router(database)
@@ -108,6 +110,7 @@ pub fn authenticated_router_with_evidence(
         .merge(task_routes)
         .merge(membership_routes)
         .merge(methodology_routes)
+        .merge(skills_routes)
         .merge(evidence_routes)
         .layer(axum::middleware::from_fn(
             |request: axum::extract::Request, next: axum::middleware::Next| async move {
@@ -188,6 +191,15 @@ pub fn authenticated_router_with_evidence(
         membership::revoke_invitation,
         membership::preview,
         membership::accept,
+        skills::catalog,
+        skills::assignment_options,
+        skills::status_history,
+        skills::selection_impact,
+        skills::install,
+        skills::set_status,
+        skills::discover,
+        skills::select,
+        skills::current_use,
         methodology::snapshot,
         methodology::save,
         methodology::recall,
@@ -270,6 +282,39 @@ pub fn authenticated_router_with_evidence(
         membership::AcceptInvitationRequest
         ,membership::PreviewInvitationRequest,
         membership::InvitationPreviewResponse,
+        skills::SkillStatus,
+        skills::SkillResourceKind,
+        skills::SkillTool,
+        skills::SkillCapabilityStatus,
+        skills::SkillCapabilityBoundKind,
+        skills::SkillCapabilityBound,
+        skills::SkillEligibilityStatus,
+        skills::SkillSource,
+        skills::SkillInput,
+        skills::SkillNeed,
+        skills::SkillResource,
+        skills::SkillManifest,
+        skills::InstallSkillRequest,
+        skills::ChangeSkillStatusRequest,
+        skills::SkillResourceDigest,
+        skills::SkillVersion,
+        skills::SkillCatalogSnapshot,
+        skills::SkillAssignmentKind,
+        skills::SkillClientAssignmentOption,
+        skills::SkillAssignmentPage,
+        skills::SkillStatusEvent,
+        skills::SkillStatusHistory,
+        skills::SkillImpactCursor,
+        skills::SkillSelectionImpact,
+        skills::SkillSelectionImpactPage,
+        skills::SkillCatalogReceipt,
+        skills::SkillNeedInspection,
+        skills::SkillInspection,
+        skills::SkillSelection,
+        skills::SelectSkillRequest,
+        skills::SkillSelectionView,
+        skills::SkillCandidate,
+        skills::TaskSkillsResponse,
         methodology::MethodologyTaskContext,
         methodology::MethodologyAssignmentKind,
         methodology::MethodologyAssignmentScope,

@@ -7,6 +7,7 @@ import type { ConversationMessage, Task, TaskCommand } from './conversation';
 import { parseTaskContext } from './conversation';
 import { useConversation } from './conversation-state';
 import { TaskMethodology } from './TaskMethodology';
+import { AffectedSkillSelections, TaskSkills } from './TaskSkills';
 import { readTaskBasis } from './methodology';
 
 interface WorkspaceProps {
@@ -294,6 +295,7 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
                   : <button type="button" className="quiet-button" onClick={() => conversation.acknowledgeRefusal(item.key)}>Dismiss refusal</button>}
               </article>)}
             </section> : null}
+            <AffectedSkillSelections key={`${session.identity.id}/${session.csrf_token}`} scope={engagement} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} onOpenTask={openTask} />
           </div>
           <form className="conversation-composer" onSubmit={(event) => { event.preventDefault(); void send(); }}>
             <label htmlFor="composer-target">Send to</label>
@@ -339,6 +341,7 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
               <section className="brief-section"><h3>Original objective</h3><p className="retained-text">{selected.objective}</p></section>
               <section className="brief-section"><h3>Working brief</h3><p className="brief-caption">Plain retained direction. Applied means added here; it does not mean model understanding.</p><p className="retained-text">{selected.working_brief}</p></section>
               <TaskMethodology scope={engagement} taskId={selected.id} taskRevision={selected.revision} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} />
+              <TaskSkills key={`${session.identity.id}/${session.csrf_token}/${selected.id}`} scope={engagement} taskId={selected.id} taskRevision={selected.revision} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} />
               <details className="message-binding"><summary>Task and current cycle</summary><dl><div><dt>Task</dt><dd>{selected.id}</dd></div><div><dt>Work cycle</dt><dd>{selected.cycle_id}</dd></div><div><dt>Revision</dt><dd>{selected.revision}</dd></div></dl></details>
             </div>
               <div className="task-controls" aria-label={`Controls for ${selected.objective}`}><p>Controls apply only to this Task and cycle.</p>

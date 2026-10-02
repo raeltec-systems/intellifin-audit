@@ -1,3 +1,80 @@
+## 2026-10-02 — Story 21.3 installed technique boundaries
+
+Skills use explicit Admin installation of immutable manifest/resource bytes and
+SHA-256 digests; acquired instruction-like evidence never installs itself. A
+selection records the actual selector separately from the Task's accepted
+Permissions actor. Inspect the exact current methodology binding, including
+requirement-field and historical-template sources, never today's assignments.
+Catalogue status, Permissions changes and selection share organisation advisory205
+before engagement/Task locks. Flush staged/deferred writes before the final joint
+methodology, accepted-actor, viewer/session and server-time fence. Exact replay is
+the original selection receipt with separately refreshed current eligibility.
+
+Capability inspection intersects whole correlated hard-rule regions and uses the
+same structural/account predicates as exact Permissions evaluation. Empty standing
+coverage is not denial; compatibility still needs exact operation admission and
+any decision. An accepted source binding does not prove adapter availability. The
+default API has no qualified operation/analysis tool runtime; pure techniques can
+be selected, while unqualified required tools are unavailable (proven hard denials
+remain forbidden). Only explicit server-owned loopback qualification configuration
+supports the synthetic positive contract. No model calls, resource execution,
+claims, decisions, operations or wakeups are created by selection.
+
+Capture PostgreSQL catalogue signatures as raw bytes. Existing Unicode CHECK
+definitions contain literal carriage returns; text-mode subprocess decoding and
+read_text/write_text silently normalize them. Use byte-preserving psql capture
+and write_bytes, and compare rows using byte newline or Rust lines semantics
+rather than Python splitlines (which also splits other Unicode whitespace).
+
+Cursor IDs use the same explicit byte/ASCII ordering in SQL and browser validation.
+Apply COLLATE "C" to text cursor predicates, row and aggregate ordering, and the
+supporting indexes; database-default collation can reorder valid mixed-case,
+hyphen and underscore IDs. Prove complete pages on a disposable non-C locale
+database as well as ordinary fixtures, rather than assuming the test default.
+
+Separate catalogue availability from independently paged assignment choices and
+status history. More clients/engagements or transition events must not hide
+restriction controls. Impact navigation is an explicitly current-audit-scoped
+engagement read; configuration Admin counts never grant Task access. Keep current
+status attribution with each version and immutable events in bounded pages.
+
+A retained skills subtree needs its own fresh authorization when reactivated.
+Parent readiness permits a new read; it does not authorize cached contents. Keep
+cached data and actual hidden DOM separate from a verified activation generation,
+withdraw verification before rendering a new activation, and bind each request's
+completion to that generation. A paged organisation list omitting the selected
+organisation is not a scoped denial, and a Methodology transport failure cannot
+reauthorize an old skills editor. Test held fresh success and held real refusal,
+including a late response from the cancelled earlier activation.
+
+Skill drafts need custody above the authenticated App subtree because an actual
+transient session read unmounts it. Retain exact unsent text and expected basis in
+bounded memory only, hide until same actor/session/scope reauthorization, and
+clear denial/replacement/logout/cancel/success. Never evict uncertain submitted
+commands to admit a new draft. Scalar-bounded prose must not use HTML UTF-16
+maxlength; validate install/status/selection before freezing or sending, retaining
+invalid text with associated field errors. These repairs do not claim the separate
+methodology unsent-draft follow-up.
+
+Populated controlled textareas can contribute their initial text to Playwright's
+exact label-text matching. Use the textbox role with its accessible name for
+multiline authoring controls, including Edit forms and reusable fill helpers;
+verify the populated value instead of waiting for an exact enclosing label.
+
+Keep current-read errors separate from command delivery errors: a successful
+background refresh must not erase an unconfirmed command's retry explanation.
+Browser recovery-budget proofs should count unbound App session bootstrap reads
+separately from projection-owned bound session verification, using header presence
+only. Preserve exact recovery counts and observe the required bound postcheck.
+Opaque identifiers can exceed narrow receipt width depending on their random
+glyphs. Wrap complete skills text instead of clipping it; retain page-width
+assertions and a labelled local layout stress fixture alongside real receipts.
+Measure actual long-ID action buttons too: a scroll container can hide their
+overflow while document width still passes, and global nowrap overrides text
+wrapping. Run web checks/builds before browser suites sharing Vite's workspace
+cache; persist sanitized bootstrap paths/status/categories on failure, without
+callback queries or credentials, instead of labelling an unexplained blank page.
+
 ## 2026-10-02 — Story 21.2 methodology binding boundaries
 
 Methodology Save and Task admission share organisation advisory205, then ordered

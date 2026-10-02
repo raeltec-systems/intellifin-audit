@@ -1,0 +1,51 @@
+{
+  "observed_at": "2026-10-02T16:30:25.931818+00:00",
+  "source": "Final complete browser invocation on freeze 9; screenshot directory cleared before invocation.",
+  "screenshots": [
+    {
+      "path": "screenshots/skills-narrow.png",
+      "sha256": "0bdf14aacbc6174948e99733aa4842a99d75389c958a636372f7b3e7b572ab56",
+      "bytes": 45929,
+      "width": 390,
+      "height": 844,
+      "visual_inspection": "At 390 pixels wide, the visible inert resource, digest, disclosure and restriction controls wrap and remain readable without visible clipping. The screenshot is a viewport view; the test and geometry records provide the document and stress-fixture assertions.",
+      "publication_review": "Synthetic fixture UI only; no credential, cookie, session/header value, callback query or private fixture configuration is visible."
+    },
+    {
+      "path": "screenshots/skills-edit-successor.png",
+      "sha256": "59c071411c98ccb0a505f966d16522bc6a4943a77777283f3b2d2f835932d4cb",
+      "bytes": 71022,
+      "width": 1280,
+      "height": 800,
+      "visual_inspection": "The viewport shows separate v2 and v3 catalogue cards and their status/action controls. Immutable content and old-selection equality are proved by the corresponding executed test, not inferred from this image.",
+      "publication_review": "Synthetic fixture UI only; no credential, cookie, session/header value, callback query or private fixture configuration is visible."
+    },
+    {
+      "path": "screenshots/skills-scalar-authoring.png",
+      "sha256": "1b7b7b701329efda677fed8462de1278fe5fe85e8d34fec3352fa71f38b6d754",
+      "bytes": 63498,
+      "width": 1280,
+      "height": 800,
+      "visual_inspection": "The accepted supplementary-character input label wraps across the card, with the output, tool-need and resource sections visible. Exact scalar count and round-trip equality are asserted by the test.",
+      "publication_review": "Synthetic fixture UI only; no credential, cookie, session/header value, callback query or private fixture configuration is visible."
+    },
+    {
+      "path": "screenshots/skills-capacity-restrictions.png",
+      "sha256": "3e2ce2165eb0f55dc375ddc8cc6d8b0804b1c1b009fea08f857dc052a2b68278",
+      "bytes": 67204,
+      "width": 1280,
+      "height": 800,
+      "visual_inspection": "The Admin settings view displays a current Methodology-unavailable message while the installed-skills section and Install skill action remain visible. Paging and disable/recall behavior are asserted by the executed scenario outside this viewport.",
+      "publication_review": "Synthetic fixture UI only; no credential, cookie, session/header value, callback query or private fixture configuration is visible."
+    },
+    {
+      "path": "screenshots/skills-scoped-impact-history.png",
+      "sha256": "b39275da0a7ff87bd43b7d1544565eebebe9ebac142103efb4daff5fee43fe36",
+      "bytes": 61380,
+      "width": 390,
+      "height": 844,
+      "visual_inspection": "The 390-pixel viewport shows the affected Task opened with its recalled historical technique selection and Pause/Stop/Guide controls. Navigation-button geometry was measured before navigation in the test; this image shows the resulting Task view.",
+      "publication_review": "Synthetic fixture UI only; no credential, cookie, session/header value, callback query or private fixture configuration is visible."
+    }
+  ]
+}

@@ -19,3 +19,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-20-6-admin-continuity-safeguard.md`
   summary: Consider scoped read-only identity activity or a continuity indicator in membership administration.
   evidence: The existing membership projection reports membership activity and expiry but does not expose application identity activity; an owner-deactivated identity can therefore retain a visibly active membership. The approved safeguard enforces the full predicate in the database, its refusal explicitly requires an active account, and operator preflight identifies invalid continuity. No identity-management UI or authority is added in this follow-up.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-21-3-install-and-select-trusted-skills.md`
+  summary: Existing Story21.2 unsent methodology edits are lost after a transient session-check outage unmounts the workspace; retain exact-session draft custody in a focused batch follow-up.
+  evidence: `zobba/web/src/MethodologyWorkspace.tsx` keeps `draft`, recall reason and selected organisation only in component state, while `App.tsx:149–159` switches a failed session read to an unavailable view that unmounts it. `methodology.ts:265–276` retains only submitted uncertain actions. Independent source inspection confirmed this predates Story21.3; the existing browser recovery proof covers submitted delivery, not unsent edits.

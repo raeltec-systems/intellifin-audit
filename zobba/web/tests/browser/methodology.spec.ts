@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
-import type { Page, TestInfo } from '@playwright/test';
+import type { ConsoleMessage, Page, Request, Response, TestInfo } from '@playwright/test';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { startAuthRuntime } from './auth-runtime';
 import type { AuthRuntime } from './auth-runtime';
 import { fixtureRestoration, restoreAndClose } from './cleanup';
@@ -18,15 +20,41 @@ test.beforeAll(async () => { runtime = await startAuthRuntime(); await runtime.s
 test.afterAll(async () => { if (runtime) await restoreAndClose(runtime, restore()); });
 
 async function signIn(page: Page, account: string) {
-  await page.goto(`${runtime.url}/api/auth/login`);
-  await page.getByLabel('Account', { exact: true }).selectOption(account);
-  await page.getByLabel('Password', { exact: true }).fill(runtime.password);
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Your engagements', exact: true })).toBeVisible().catch(async error => {
-    // Diagnose bootstrap failures without recording callback query parameters.
-    const documentState = await page.evaluate(() => ({ title: document.title, ready: document.readyState }));
-    throw new Error(`Sign-in did not open the workspace: ${JSON.stringify({ path: new URL(page.url()).pathname, ...documentState })}`, { cause: error });
-  });
+  const started = Date.now(), events: Record<string, unknown>[] = [];
+  // Keep bootstrap evidence without callback queries, headers, response bodies,
+  // console text, passwords or session values. Unknown paths are classified only.
+  const safePath = (value: string) => {
+    try { const path = new URL(value).pathname; return /^(?:\/$|\/(?:src|node_modules|assets)\/|\/@|\/api\/(?:auth\/session|engagements)$)/.test(path) ? path : '[other]'; }
+    catch { return '[unavailable]'; }
+  };
+  const record = (event: Record<string, unknown>) => { if (events.length < 400) events.push({ elapsedMs: Date.now() - started, ...event }); };
+  const category = (message: string) => /does not provide an export named/.test(message) ? 'missing-module-export'
+    : /Failed to fetch dynamically imported module|Failed to load module script/.test(message) ? 'module-load'
+    : /Outdated Optimize Dep|optimized dependenc/i.test(message) ? 'dependency-optimization'
+    : /Failed to load resource/.test(message) ? 'resource-load' : 'other';
+  const onRequest = (request: Request) => record({ kind: 'request', path: safePath(request.url()), resource: request.resourceType() });
+  const onResponse = (response: Response) => record({ kind: 'response', path: safePath(response.url()), resource: response.request().resourceType(), status: response.status() });
+  const onFailed = (request: Request) => record({ kind: 'request-failed', path: safePath(request.url()), resource: request.resourceType(), code: request.failure()?.errorText.match(/net::[A-Z_]+/)?.[0] ?? 'other' });
+  const onConsole = (message: ConsoleMessage) => { if (message.type() === 'error') record({ kind: 'console-error', category: category(message.text()), path: safePath(message.location().url), line: message.location().lineNumber }); };
+  const onError = (error: Error) => record({ kind: 'page-error', name: /^[A-Za-z]+Error$/.test(error.name) ? error.name : 'Error', category: category(error.message), frames: (error.stack?.match(/https?:\/\/[^\s)]+/g) ?? []).slice(0, 8).map(safePath) });
+  page.on('request', onRequest); page.on('response', onResponse); page.on('requestfailed', onFailed); page.on('console', onConsole); page.on('pageerror', onError);
+  try {
+    await page.goto(`${runtime.url}/api/auth/login`);
+    await page.getByLabel('Account', { exact: true }).selectOption(account);
+    await page.getByLabel('Password', { exact: true }).fill(runtime.password);
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Your engagements', exact: true })).toBeVisible().catch(async error => {
+      const documentState = await page.evaluate(() => ({ title: document.title, ready: document.readyState,
+        rootChildren: document.getElementById('root')?.childElementCount ?? null, rootTextLength: document.getElementById('root')?.textContent?.length ?? null,
+        bodyTextLength: document.body.textContent?.length ?? 0, scriptCount: document.scripts.length, stylesheetCount: document.styleSheets.length }));
+      const info = test.info(), name = `methodology-bootstrap-${account}.json`, path = info.outputPath(name);
+      await mkdir(dirname(path), { recursive: true }); await writeFile(path, JSON.stringify({ path: safePath(page.url()), ...documentState, events }, null, 2));
+      await info.attach(name, { path, contentType: 'application/json' });
+      throw new Error(`Sign-in did not open the workspace: ${JSON.stringify({ path: safePath(page.url()), ...documentState })}`, { cause: error });
+    });
+  } finally {
+    page.off('request', onRequest); page.off('response', onResponse); page.off('requestfailed', onFailed); page.off('console', onConsole); page.off('pageerror', onError);
+  }
   await expect(page).toHaveTitle('Zobba · Pair');
   expect(new URL(page.url()).origin).toBe(runtime.url);
   await expect(page.locator('vite-error-overlay')).toHaveCount(0);

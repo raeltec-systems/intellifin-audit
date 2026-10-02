@@ -206,7 +206,7 @@ def health(port: int, route: str) -> tuple[int, dict]:
 
 def wait_health(process: subprocess.Popen, service: str, port: int, *, ready: bool) -> None:
     deadline = time.monotonic() + 20
-    expected = (200, {"service": service, "status": "ready", "schema_version": 8}) if ready else (
+    expected = (200, {"service": service, "status": "ready", "schema_version": 9}) if ready else (
         503, {"service": service, "status": "unavailable", "schema_version": None}
     )
     while time.monotonic() < deadline:

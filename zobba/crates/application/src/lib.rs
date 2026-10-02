@@ -5,6 +5,7 @@ pub mod identity;
 pub mod membership;
 pub mod methodology;
 pub mod operation;
+pub mod skills;
 pub mod task;
 use std::{fmt, future::Future};
 use zobba_domain::SchemaVersion;

@@ -359,6 +359,13 @@ pub(crate) async fn new_use_allowed(tx: &mut Tx, id: &str) -> Result<bool, TaskE
     )
     .map_err(task_error)
 }
+
+/// Exact immutable current binding for an already scoped/fenced consumer. This
+/// deliberately does not resolve today's assignments or substitute candidates.
+pub(crate) async fn current_binding(tx: &mut Tx, id: &str) -> Result<Binding, MethodologyError> {
+    let value = task_document(tx, id, "read", Value::Null).await?;
+    decode(value["current"].clone())
+}
 pub(crate) async fn pending_activation(tx: &mut Tx, id: &str) -> Result<Option<i64>, TaskError> {
     decode(
         task_document(tx, id, "next", Value::Null)

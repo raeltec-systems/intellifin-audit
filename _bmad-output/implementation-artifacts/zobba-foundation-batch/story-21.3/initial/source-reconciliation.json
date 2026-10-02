@@ -1,0 +1,17 @@
+{
+  "baseline": "643ed095314d42f576106effd287703824003c73",
+  "final_file_count": 220,
+  "comparisons": [
+    {
+      "source_manifest": "source-rust-full2-start.json",
+      "changed_files_to_final": [
+        "zobba/web/tests/browser/skills.spec.ts"
+      ]
+    },
+    {
+      "source_manifest": "source-browser-full-start.json",
+      "changed_files_to_final": []
+    }
+  ],
+  "explanation": "All Rust/product implementation bytes match the full Rust invocation. Later changes affected only the new browser test. Final web TypeScript/contracts/build include these tests and passed; full Chromium uses the identical final source."
+}

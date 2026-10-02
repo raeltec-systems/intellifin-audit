@@ -1,0 +1,11 @@
+$ pnpm --filter @zobba/web test:browser --workers=1 --retries=0 tests/browser/skills.spec.ts --grep 'Edit as new skill version|authoring preserves supplementary scalars'
+$ playwright test --workers=1 --retries=0 tests/browser/skills.spec.ts --grep 'Edit as new skill version|authoring preserves supplementary scalars'
+
+Running 2 tests using 1 worker
+
+(node:910707) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/skills.spec.ts:654:1 › repair P2 P11: Edit as new skill version preserves complete content, stale draft custody and original selections (14.8s)
+  ✓  2 tests/browser/skills.spec.ts:741:1 › repair P8 P9: authoring preserves supplementary scalars and gives actionable errors at the exact invalid fields (19.2s)
+
+  2 passed (46.2s)

@@ -132,13 +132,32 @@ test('R06 durable reservation saturation explains finishing existing custody and
     await reserve(page, current, { key: `repair-quota-${index}`, filename: `quota-${index}.txt`, identity: identity(), source: emptySource });
   }
   await openEvidence(page);
-  const refusal = page.waitForResponse(response => response.request().method() === 'POST' && response.url().includes('/evidence-reservations?'));
-  await page.getByLabel('Original file (up to 10 MiB)', { exact: true }).setInputFiles(original);
-  await page.getByRole('button', { name: 'Acquire and verify original', exact: true }).click();
-  const response = await refusal;
-  expect(response.status()).toBe(409); expect(response.headers()['retry-after']).toBeUndefined();
-  expect(await response.json()).toEqual({ error: 'evidence_reservation_limit' });
-  await expect(page.locator('.evidence-pane').getByRole('alert')).toHaveText('You have 100 incomplete acquisitions in this engagement. Finish an existing reservation before starting another. Waiting alone does not free a place.');
+  const reservationPattern = '**/api/engagements/engagement-a/evidence-reservations?*';
+  let actualRequestBody: string | undefined, actualRefusalBody: unknown;
+  await page.route(reservationPattern, async route => {
+    if (route.request().method() !== 'POST' || actualRequestBody !== undefined) { await route.continue(); return; }
+    actualRequestBody = route.request().postData()!;
+    // Read the real first UI response before delivering it unchanged. Chromium
+    // may no longer retain its body for a later Network.getResponseBody lookup.
+    const response = await route.fetch();
+    expect(response.status()).toBe(409); expect(response.headers()['retry-after']).toBeUndefined();
+    actualRefusalBody = await response.json();
+    await route.fulfill({ response });
+  });
+  try {
+    const refusal = page.waitForResponse(response => response.request().method() === 'POST' && response.url().includes('/evidence-reservations?'));
+    await page.getByLabel('Original file (up to 10 MiB)', { exact: true }).setInputFiles(original);
+    await page.getByRole('button', { name: 'Acquire and verify original', exact: true }).click();
+    const response = await refusal;
+    expect(response.status()).toBe(409); expect(response.headers()['retry-after']).toBeUndefined();
+    expect(response.request().postData()).toBe(actualRequestBody);
+    expect(actualRefusalBody).toEqual({ error: 'evidence_reservation_limit' });
+    await expect(page.locator('.evidence-pane').getByRole('alert')).toHaveText('You have 100 incomplete acquisitions in this engagement. Finish an existing reservation before starting another. Waiting alone does not free a place.');
+    const request: ReservationRequest = JSON.parse(actualRequestBody!);
+    expect(request).toMatchObject({ filename: original.name, identity: identity(), source: emptySource });
+    expect(request.key).toMatch(/^[A-Za-z0-9_-]{1,128}$/);
+    expect(JSON.parse((await draft(page))!).request).toEqual(request);
+  } finally { await page.unrouteAll({ behavior: 'wait' }); }
   await page.locator('.evidence-recovery summary').click();
   const row = page.locator('.evidence-recovery li').first(); const filename = await row.locator('span').innerText();
   await row.getByRole('button', { name: 'Recover reservation' }).click();

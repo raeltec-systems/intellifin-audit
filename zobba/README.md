@@ -240,7 +240,7 @@ cargo run -p zobba-cli --locked -- migrate --runtime-role zobba_app
 
 This command reads `ZOBBA_MIGRATION_DATABASE_URL`; repeating it is safe against
 the same valid schema. It accepts empty databases, exactly verified published
-schema 1–4 prefixes, or current schema 5. Physical catalog checks precede metadata
+schema 1–8 prefixes, or current schema 9. Physical catalog checks precede metadata
 reads; migration checksums, changes and restricted grants are validated atomically.
 Foreign, altered and newer states refuse without mutation. API and worker read
 only `ZOBBA_RUNTIME_DATABASE_URL` and
@@ -672,7 +672,7 @@ Both Rust processes expose:
 | Request | Healthy response | Dependency failure |
 |---|---|---|
 | `GET /health/live` | 200, `status: "live"`, `schema_version: null` | Remains live while the process can serve |
-| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 8` | 503, `status: "unavailable"`, `schema_version: null` |
+| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 9` | 503, `status: "unavailable"`, `schema_version: null` |
 
 Each response also identifies `service: "api"` or `service: "worker"`. Readiness
 checks the supported schema through the restricted runtime connection. Startup
@@ -980,3 +980,102 @@ Admin/session isolation, atomic versions and retries, and concurrent Save/Create
 orders. The operation contract includes real consumed-effect reconciliation,
 new-only isolation, recall and durable scheduled activation; the browser contract
 uses the actual API, PostgreSQL and OIDC fixtures for Save, Undo and inspection.
+
+## Installed skills and technique selection (Story 21.3)
+
+Schema 9 adds explicitly installed skill versions, immutable installation/status
+receipts and scoped Task selection history. Published migrations and catalogue
+snapshots 1–8 remain unchanged. Settings → Methodology and skills lets a current
+Admin install a structured package, save an edited package under a new exact
+version, enable/disable it, and recall faulty versions. Installation records its
+actor, exact source/revision/license, purpose, inputs/outputs, applicability,
+method compatibility, declared capabilities and SHA-256 manifest/resource digests.
+Structural validation and an Admin installation are not independent content
+certification. Script resources remain inert UTF-8 data; no resource is launched.
+An acquired file named `SKILL.md`, a hostile document or an archive stays evidence
+and never installs itself or grants source access.
+
+Task discovery reads the immutable current methodology binding, its execution
+basis and exact field/template source dependencies. It does not select today's
+latest assignments. Optional techniques cannot erase mandatory methodology or
+turn suitable-skill advice into obligatory invocation. Pure techniques may be
+selected without an accepted operation authority when their exact applicability
+is satisfied, including under an otherwise neutral or incomplete method.
+
+Every declared capability is required. Permissions intersects whole correlated
+rule regions across the Task's accepted and current hard bounds, including every
+delegation ancestor and account/source restriction. The selector's policy never
+substitutes for the Task's accepted actor. Hard denial is `forbidden`; missing
+authority, unreadable state, unsupported tools and bounded-query exhaustion are
+`unavailable`. Surviving possibilities are `compatible_needs_exact_details`:
+the future exact operation must still pass current admission, any decision and
+consumption. Empty standing coverage does not deny a capability.
+
+The default API has no qualified operation or analysis adapter for skill use.
+Pure techniques are selectable; required unqualified tools remain unavailable
+even when their policy possibilities are compatible. The optional
+`SkillsRepository::with_qualification_source` constructor is server-owned,
+loopback-only synthetic qualification configuration. It requires the exact
+source, ledger, endpoint digest and contract version; neither browser nor
+manifest can supply qualification. This story invokes no model, analysis worker
+or resource, and creates no operation, decision, claim or wakeup.
+
+Selection records the actual selector, exact version/digest, reason, catalogue
+revision, full methodology binding, current execution epoch and an opaque
+dependency fingerprint. Discovery is advisory. Selection serializes fresh
+checks with Admin restrictions, Permissions and methodology changes; stale
+expected revisions refuse without mutation. Exact lost-response retry returns
+the original receipt with freshly evaluated eligibility alongside it. Disable
+blocks new selection/use; recall identifies affected selections and permanently
+blocks that version. Historical selections and already-consumed receipts remain
+inspectable. A changed Task basis requires explicit reselection. Selection never
+resumes a paused or stopped Task.
+
+`SkillsStore::current_use` independently rechecks current technique eligibility;
+it performs no invocation and is not an operation permission. Future invocation
+must pass this gate and the existing exact-operation gates. Catalogue/selection
+transactions finish deferred writes before their final current-time session,
+actor and methodology checks. Admin catalogue access grants no audit access.
+
+Limits are explicit: 128 installed versions and 2 MiB stored installation
+commands per organisation; 128 selections and 1 MiB retained selection receipts
+per Task. A manifest permits 32 inputs, 32 outputs, 16 conjunctive needs, 32 exact
+method versions and 16 resources. Each resource is at most 32 KiB of UTF-8; all
+resources total at most 128 KiB and the canonical manifest at most 200,000 bytes.
+Permissions projection retains at most 256 regions and performs at most 65,536
+comparisons per need, with 1,048,576 comparisons shared by one scoped inspection.
+Identical needs and version inspections are reused only within that immutable
+Task/authority/time read; each historical selection still checks its own method
+and epoch. Exhausted needs remain explicitly unavailable alongside inspectable
+catalogue metadata and retained receipts. Exact selection/current-use assesses
+only the requested version with a fresh budget. Disable/recall and exact
+retry remain available at capacity. Revisions/epochs use canonical decimal
+strings on the API; resource bytes preserve Unicode and multiline layout.
+Skills responses have a separate 8 MiB browser read bound; ordinary JSON reads
+retain their 4 MiB bound. Current inspection explanations are bounded to 256
+UTF-8 bytes. The response-envelope contract includes duplicated
+current inspections, redacted blocking bounds, resource digests, receipt wrappers
+and current status provenance; assignment labels are independently paginated.
+An explicit need outside the Task's single accepted account is forbidden even
+when other declared needs fit that account; the inspector never searches another
+account for authority. Missing Task acceptance is unavailable.
+
+
+Admin assignment choices use separate pages of 50 clients or engagements, so a
+large organisation or a failing Methodology read cannot hide installed skills or
+restriction controls. Each installed version exposes its current status event's
+actor, server time, revision and exact reason; transition history is separately
+paged newest-first, 50 events at a time. Catalogue reads remain bounded as events
+grow. Audit users can locate disabled/recalled selections from the selected
+engagement and open their exact Tasks. This impact read filters current audit
+scope before disclosure and pages 50 historical references at a time; Admin-only
+configuration still exposes counts without Task access.
+
+Skill authoring uses Unicode scalar and UTF-8 byte limits, preserves invalid
+input, and associates actionable errors with its controls. Unsent installation,
+edit, status and selection drafts survive transient session-check unmounts in
+bounded memory under their exact actor/session and organisation/scope/Task owner.
+They remain hidden until that owner is freshly authorised; replacement, denial,
+logout, cancellation and success discard them. Recovery preserves original basis
+and never submits automatically. This is skill-specific custody; methodology
+unsent-draft recovery remains a separately tracked follow-up.

@@ -1,3 +1,4 @@
+import { discardSkillActions, discardSkillScopeActions, withdrawReplacedSkillSession } from './skills';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AccessError, logout, readSession } from './auth';
 import type { Session } from './auth';
@@ -112,6 +113,7 @@ function PairWorkspace() {
         try {
           const session = await readSession(controller.signal);
           if (request.current !== controller) return;
+          withdrawReplacedSkillSession(session);
           if (previous.kind === 'ready' && previous.session.identity.id !== session.identity.id) pageCursors.current = [null];
           let page = await readEngagements(session, controller.signal, pageCursors.current.at(-1));
           // Deleted assignments may leave a later page empty. Start again using a
@@ -127,6 +129,7 @@ function PairWorkspace() {
             catch (error) {
               if (request.current !== controller) return;
               if (error instanceof AccessError && [403, 404].includes(error.status)) {
+                if (scope.current) discardSkillScopeActions(scope.current);
                 discardAcquisitionDraft();
                 scope.current = null;
                 showScope(null);
@@ -146,12 +149,14 @@ function PairWorkspace() {
     } catch (error) {
       if (request.current !== controller) return;
       if (error instanceof AccessError && error.status === 401) {
+        discardSkillActions();
         discardAcquisitionDraft();
         scope.current = null;
         showScope(null);
         setView({ kind: 'signed-out', message: signInFailed
           ? 'Sign-in could not be completed. Please try again.' : undefined });
       } else {
+        if (error instanceof AccessError && [403, 404, 412].includes(error.status)) discardSkillActions();
         setView({ kind: 'unavailable', action: 'read', message: 'We could not verify your access. Check your connection and try again.' });
       }
     } finally {
@@ -163,6 +168,7 @@ function PairWorkspace() {
   }, [rememberFocus, accessStable, recoverSession]);
 
   const accessFailure = useCallback((error?: AccessError) => {
+    if (error?.status === 412) discardSkillActions();
     if (error?.status === 412 && !recoverSession()) {
       rememberFocus();
       request.current?.abort(); request.current = null;
@@ -201,6 +207,7 @@ function PairWorkspace() {
 
   async function signOut(session?: Session) {
     discardMethodologyAction();
+    discardSkillActions();
     if (logoutRequest.current) return;
     logoutIntent.current = true;
     discardAcquisitionDraft();

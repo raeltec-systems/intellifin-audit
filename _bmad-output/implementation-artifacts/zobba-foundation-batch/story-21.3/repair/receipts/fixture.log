@@ -1,0 +1,68 @@
+$ pnpm --filter @zobba/oidc-fixture test
+$ node --test fixture.test.mjs
+oidc-provider WARNING: a quick start development-only in-memory adapter is used, you MUST change it in order to not lose all stateful provider data upon restart and to be able to share these between processes
+✔ setup provisions the dedicated organisation Admin login and preserves existing material (1305.720034ms)
+▶ independent HTTPS OIDC fixture uses real code, login, PKCE and controlled negative responses
+  ✔ malformed private configuration produces only a fixed setup diagnostic (77.793032ms)
+  ✔ requires explicit configuration and validates local CA (45.425794ms)
+  ✔ malformed request target receives a fixed refusal and the HTTPS server stays usable (11.270028ms)
+  ✔ discovery registers exact callback, RS256 and S256 (16.899441ms)
+  ✔ password authentication and PKCE produce a signed ID token; replay refuses (80.446986ms)
+  ✔ the dedicated second-organisation Admin signs in with its own subject (20.765911ms)
+  ✔ real code exchange exposes bad_issuer fixture (27.813781ms)
+  ✔ real code exchange exposes bad_audience fixture (19.996964ms)
+  ✔ real code exchange exposes multi_audience fixture (31.020333ms)
+  ✔ real code exchange exposes missing_azp fixture (21.132706ms)
+  ✔ real code exchange exposes bad_azp fixture (23.158608ms)
+  ✔ real code exchange exposes bad_nonce fixture (21.752926ms)
+  ✔ real code exchange exposes no_nonce fixture (22.822816ms)
+  ✔ real code exchange exposes bad_at_hash fixture (16.218849ms)
+  ✔ real code exchange exposes missing_email fixture (18.079684ms)
+  ✔ real code exchange exposes unverified_email fixture (21.318923ms)
+  ✔ real code exchange exposes missing_email_verified fixture (39.306313ms)
+  ✔ real code exchange exposes invalid_email fixture (20.195929ms)
+  ✔ real code exchange exposes malformed_email_type fixture (25.920509ms)
+  ✔ real code exchange exposes malformed_email_verified_type fixture (35.938935ms)
+  ✔ real code exchange exposes mixed_case_email fixture (18.692395ms)
+  ✔ real code exchange exposes old_auth_time fixture (30.509469ms)
+  ✔ real code exchange exposes expired fixture (21.805426ms)
+  ✔ real code exchange exposes old_iat fixture (17.113836ms)
+  ✔ real code exchange exposes future_iat fixture (20.66969ms)
+  ✔ real code exchange exposes bad_expiry fixture (20.783741ms)
+  ✔ real code exchange exposes bad_signature fixture (20.27792ms)
+  ✔ real code exchange exposes bad_algorithm fixture (14.02979ms)
+  ✔ real code exchange exposes no_signature fixture (20.058406ms)
+  ✔ real code exchange exposes unknown_key fixture (23.89907ms)
+  ✔ real code exchange exposes untrusted_jku fixture (15.087022ms)
+  ✔ real code exchange exposes untrusted_x5u fixture (13.792515ms)
+  ✔ rotation publishes a new signing key only after a real token exchange (26.081856ms)
+  ✔ same-kid rotation replaces key material and retains the original key identifier (48.509558ms)
+  ✔ retired_key emits an otherwise valid token signed by the retired original key (28.355067ms)
+  ✔ retired_key_unavailable emits an otherwise valid token signed by the retired original key (17.979042ms)
+  ✔ oversized_token retains a valid protocol response with independently checked body length (42.477281ms)
+  ✔ oversized_chunked_token retains a valid protocol response with independently checked body length (30.228153ms)
+  ✔ padded_token retains a valid protocol response with independently checked body length (14.497534ms)
+  ✔ padded_chunked_token retains a valid protocol response with independently checked body length (14.520387ms)
+  ✔ oversized_jwks retains a valid protocol response with independently checked body length (37.129383ms)
+  ✔ oversized_chunked_jwks retains a valid protocol response with independently checked body length (23.772968ms)
+  ✔ padded_jwks retains a valid protocol response with independently checked body length (15.436393ms)
+  ✔ padded_chunked_jwks retains a valid protocol response with independently checked body length (48.846396ms)
+  ✔ oversized_discovery retains a valid protocol response with independently checked body length (23.892299ms)
+  ✔ oversized_chunked_discovery retains a valid protocol response with independently checked body length (27.906742ms)
+  ✔ padded_discovery retains a valid protocol response with independently checked body length (6.727777ms)
+  ✔ padded_chunked_discovery retains a valid protocol response with independently checked body length (15.58794ms)
+  ✔ padded token fixtures still require real client, code and PKCE verification (50.367791ms)
+  ✔ redirect fixtures remain isolated behind authenticated controls (4.957824ms)
+  ✔ discovery exposes untrusted_token_endpoint fixture (2.464654ms)
+  ✔ discovery exposes untrusted_authorization_endpoint fixture (2.640126ms)
+  ✔ discovery exposes untrusted_jwks_uri fixture (3.761826ms)
+  ✔ discovery exposes bad_discovery_issuer fixture (3.564231ms)
+✔ independent HTTPS OIDC fixture uses real code, login, PKCE and controlled negative responses (2152.99989ms)
+ℹ tests 56
+ℹ suites 0
+ℹ pass 56
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3947.198897

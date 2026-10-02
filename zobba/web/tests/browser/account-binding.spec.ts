@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import type { Page } from '@playwright/test';
 import type { Session } from '../../src/auth';
 import { startAuthRuntime } from './auth-runtime';
@@ -24,6 +26,10 @@ function gate() {
   let release!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
   return { held, release };
+}
+async function settleInitialImpact(page: Page) {
+  await expect(page.getByRole('region', { name: 'Affected skill selections', exact: true })
+    .getByText('No matching affected selections in this engagement.', { exact: true })).toBeVisible();
 }
 async function signIn(page: Page, account = 'auditor-a', replacing = false) {
   if (replacing) {
@@ -52,7 +58,7 @@ async function savedOutbox(page: Page): Promise<string> {
 }
 
 test('a completed old session response cannot re-expose another account draft in the same engagement', async ({ page, context }, info) => {
-  await signIn(page);
+  await signIn(page); await settleInitialImpact(page);
   const uncertainContent = 'Auditor A private retained uncertain request';
   // Exercise actual UI persistence and transmission failure, without accepting
   // a shared conversation message that the manager would legitimately see.
@@ -69,6 +75,7 @@ test('a completed old session response cannot re-expose another account draft in
   const oldReply = gate(); let held = false, delivered = false, sessionReads = 0, posts = 0;
   page.on('request', request => { if (request.method() === 'POST' && request.url().includes('/task-')) posts++; });
   await page.route('**/api/auth/session', async route => {
+    if (Object.hasOwn(route.request().headers(), 'x-expected-session')) { await route.continue(); return; }
     sessionReads++;
     const response = await route.fetch();
     if (held) { await route.fulfill({ response }); return; }
@@ -113,17 +120,18 @@ test('a completed old session response cannot re-expose another account draft in
     await page.screenshot({ path: screenshot, fullPage: true });
     await info.attach('account-binding-fixed', { path: screenshot, contentType: 'image/png' });
     await info.attach('account-binding-evidence', { body: JSON.stringify({ held_actor: 'actor-a', replacement_actor: 'actor-manager', same_engagement: true, sessionReads, posts, leaks }), contentType: 'application/json' });
-  } finally { oldReply.release(); await replacement.close(); }
+  } finally { oldReply.release(); try { await page.unrouteAll({ behavior: 'wait' }); } finally { await replacement.close(); } }
 });
 
 test('same-account session rotation retains the hidden draft, mounted editor and focus after verification', async ({ page, context }) => {
-  await signIn(page);
+  await signIn(page); await settleInitialImpact(page);
   const original = await session(page);
   const editor = page.getByLabel('Task objective', { exact: true });
   await editor.fill('Same actor private draft survives verified session rotation');
   await editor.evaluate(element => { element.dataset.retainedEditor = 'yes'; element.focus(); (element as HTMLTextAreaElement).setSelectionRange(5, 12); });
   const oldReply = gate(); let held = false;
   await page.route('**/api/auth/session', async route => {
+    if (Object.hasOwn(route.request().headers(), 'x-expected-session')) { await route.continue(); return; }
     const response = await route.fetch();
     if (!held) { held = true; await oldReply.held; }
     await route.fulfill({ response });
@@ -140,7 +148,7 @@ test('same-account session rotation retains the hidden draft, mounted editor and
     await expect(editor).toHaveValue('Same actor private draft survives verified session rotation');
     await expect(editor).toHaveAttribute('data-retained-editor', 'yes'); await expect(editor).toBeFocused();
     expect(await editor.evaluate(element => [(element as HTMLTextAreaElement).selectionStart, (element as HTMLTextAreaElement).selectionEnd])).toEqual([5, 12]);
-  } finally { oldReply.release(); await replacement.close(); }
+  } finally { oldReply.release(); try { await page.unrouteAll({ behavior: 'wait' }); } finally { await replacement.close(); } }
 });
 
 test('every protected GET refuses an obsolete session without expiring the replacement cookie', async ({ page, context }) => {
@@ -183,10 +191,12 @@ test('a delayed real unauthorized response cannot delete the newer manager sessi
 });
 
 test('repeated real session mismatches stop after one retry and withdraw the private workspace', async ({ page }) => {
-  await signIn(page); await page.getByLabel('Task objective', { exact: true }).fill('Never reveal an unstable session draft');
+  await signIn(page); await settleInitialImpact(page); await page.getByLabel('Task objective', { exact: true }).fill('Never reveal an unstable session draft');
   let sessionReads = 0, mismatches = 0, posts = 0;
   page.on('request', request => { if (request.method() === 'POST' && request.url().includes('/task-')) posts++; });
+  try {
   await page.route('**/api/auth/session', async route => {
+    if (Object.hasOwn(route.request().headers(), 'x-expected-session')) { await route.continue(); return; }
     const response = await route.fetch(); sessionReads++;
     // Rotate only the test session after its actual response was completed.
     runtime.sql(`UPDATE public.sessions SET csrf_token='rotation-${sessionReads}' WHERE actor_id='actor-a';`);
@@ -200,10 +210,11 @@ test('repeated real session mismatches stop after one retry and withdraw the pri
   await expect(page.getByRole('heading', { name: 'Connection interrupted' })).toBeVisible();
   expect(sessionReads).toBe(2); expect(mismatches).toBe(2); expect(posts).toBe(0);
   await expect(page.locator('.protected-workspace')).toHaveCount(0); await expect(page.locator('textarea')).toHaveCount(0);
+  } finally { await page.unrouteAll({ behavior: 'wait' }); }
 });
 
 test('live conversation polling withdraws the old actor before recovering a replacement session', async ({ page, context }) => {
-  await signIn(page);
+  await signIn(page); await settleInitialImpact(page);
   await page.getByLabel('Task objective', { exact: true }).fill('Live poll private draft');
   const pollGate = gate(), sessionGate = gate(); let pollHeld = false, sessionHeld = false, mismatch = false, posts = 0;
   page.on('request', request => { if (request.method() === 'POST' && request.url().includes('/task-')) posts++; });
@@ -220,6 +231,7 @@ test('live conversation polling withdraws the old actor before recovering a repl
     await route.fulfill({ response });
   });
   await page.route('**/api/auth/session', async route => {
+    if (Object.hasOwn(route.request().headers(), 'x-expected-session')) { await route.continue(); return; }
     const response = await route.fetch();
     if (!sessionHeld) { sessionHeld = true; await sessionGate.held; }
     await route.fulfill({ response });
@@ -235,14 +247,25 @@ test('live conversation polling withdraws the old actor before recovering a repl
     await expect(page.locator('.identity')).toContainText('manager-a');
     await expect(page.getByText('Conversation up to date', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Task objective', { exact: true })).toHaveValue(''); expect(posts).toBe(0);
-  } finally { pollGate.release(); sessionGate.release(); await replacement.close(); }
+  } finally { pollGate.release(); sessionGate.release(); try { await page.unrouteAll({ behavior: 'wait' }); } finally { await replacement.close(); } }
 });
 
 test('conversation mismatches after successful engagement reads share one bounded recovery budget', async ({ page }) => {
   await signIn(page); await page.getByLabel('Task objective', { exact: true }).fill('Do not loop or expose this unstable draft');
-  let sessionReads = 0, scopeReads = 0, mismatches = 0, posts = 0;
+  const impacts = page.getByRole('region', { name: 'Affected skill selections', exact: true });
+  // Settle the initial projection, including its bound session verification,
+  // before counting this deliberately unstable App recovery composition.
+  await expect(impacts.getByText('No matching affected selections in this engagement.', { exact: true })).toBeVisible();
+  let sessionReads = 0, boundVerifications = 0, scopeReads = 0, mismatches = 0, posts = 0;
+  let conversationInjectionArmed = false;
   page.on('request', request => { if (request.method() === 'POST' && request.url().includes('/task-')) posts++; });
-  await page.route('**/api/auth/session', async route => { sessionReads++; await route.continue(); });
+  await page.route('**/api/auth/session', async route => {
+    // App bootstrap reads are unbound; current projection postchecks carry the
+    // expected-session header. Count presence only, never record its value.
+    if (Object.hasOwn(route.request().headers(), 'x-expected-session')) boundVerifications++;
+    else sessionReads++;
+    await route.continue();
+  });
   await page.route('**/api/engagements/engagement-a?*', async route => {
     scopeReads++;
     // A finite fuse makes the negative-control run fail safely if the old
@@ -250,15 +273,18 @@ test('conversation mismatches after successful engagement reads share one bounde
     if (scopeReads > 4) { await route.abort('connectionreset'); return; }
     const response = await route.fetch(); expect(response.status()).toBe(200);
     runtime.sql(`UPDATE public.sessions SET csrf_token='post-scope-rotation-${scopeReads}' WHERE actor_id='actor-a';`);
+    conversationInjectionArmed = true;
     await route.fulfill({ response });
   });
   await page.route('**/api/engagements/engagement-a/conversation?*', async route => {
-    const response = await route.fetch(); expect(response.status()).toBe(412); mismatches++;
+    const injected = conversationInjectionArmed;
+    const response = await route.fetch();
+    if (injected) { expect(response.status()).toBe(412); mismatches++; }
     await route.fulfill({ response });
   });
   await page.getByRole('button', { name: 'Refresh access' }).click();
   await expect(page.getByRole('heading', { name: 'Connection interrupted' })).toBeVisible();
-  expect(sessionReads).toBe(2); expect(scopeReads).toBe(2); expect(mismatches).toBe(2); expect(posts).toBe(0);
+  expect(sessionReads).toBe(2); expect(boundVerifications).toBe(0); expect(scopeReads).toBe(2); expect(mismatches).toBe(2); expect(posts).toBe(0);
   await expect(page.locator('.protected-workspace')).toHaveCount(0); await expect(page.locator('textarea')).toHaveCount(0);
   // Automatic browser lifecycle events cannot replenish an exhausted budget.
   await page.evaluate(() => {
@@ -269,12 +295,14 @@ test('conversation mismatches after successful engagement reads share one bounde
     }
     Reflect.deleteProperty(document, 'visibilityState');
   });
-  expect(sessionReads).toBe(2);
+  expect(sessionReads).toBe(2); expect(boundVerifications).toBe(0);
   await expect(page.getByRole('button', { name: 'Try again', exact: true })).toBeEnabled();
   await page.unroute('**/api/engagements/engagement-a?*'); await page.unroute('**/api/engagements/engagement-a/conversation?*');
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
   await expect(page.getByText('Conversation up to date', { exact: true })).toBeVisible();
   expect(sessionReads).toBe(3); await expect(page.getByLabel('Task objective', { exact: true })).toHaveValue('');
+  await expect(impacts.getByText('No matching affected selections in this engagement.', { exact: true })).toBeVisible();
+  expect(sessionReads).toBe(3); expect(boundVerifications).toBe(1); expect(posts).toBe(0);
 });
 
 test('read preconditions cannot change ordinary command, reserved control or logout CSRF contracts', async ({ page }) => {
@@ -293,30 +321,97 @@ test('read preconditions cannot change ordinary command, reserved control or log
   expect((await page.request.get(`${runtime.url}/api/auth/session`)).status()).toBe(401);
 });
 
-test('an engagement mismatch and a later conversation mismatch consume the same recovery allowance', async ({ page }) => {
-  await signIn(page);
-  let sessionReads = 0, scopeReads = 0, refusals = 0;
+test('an engagement mismatch and a later conversation mismatch consume the same recovery allowance', async ({ page }, info) => {
+  const started = Date.now(), chronology: Record<string, unknown>[] = [];
+  let phase = 'sign-in';
+  const record = (event: string, detail: Record<string, unknown> = {}) => {
+    if (chronology.length < 200) chronology.push({ sequence: chronology.length + 1, elapsedMs: Date.now() - started, phase, event, ...detail });
+  };
+  let sessionReads = 0, boundSessionReads = 0, scopeReads = 0, refusals = 0, engagementMismatches = 0, conversationMismatches = 0, posts = 0;
+  let conversationInjectionArmed = false, ordinaryConversationReads = 0;
+  const initialImpact = gate(); let impactHeld = false, boundSessionCompleted = false;
+  page.on('request', request => { if (request.method() === 'POST' && request.url().includes('/task-')) posts++; });
+  try {
+  // Deliberately deliver the real initial impact response after installing the
+  // App fault gate. Its bound postcheck must complete without consuming that
+  // gate's first unbound read or rotating the session before Refresh access.
+  await page.route('**/api/engagements/engagement-a/skills/impacts?*', async route => {
+    const response = await route.fetch(); record('initial-impact-response', { status: response.status() }); expect(response.status()).toBe(200);
+    impactHeld = true; await initialImpact.held; await route.fulfill({ response }); record('initial-impact-delivered');
+  });
+  await signIn(page); phase = 'installing-routes'; record('sign-in-complete');
+  await expect.poll(() => impactHeld).toBe(true);
   await page.route('**/api/auth/session', async route => {
-    const response = await route.fetch(); sessionReads++;
-    if (sessionReads === 1) runtime.sql("UPDATE public.sessions SET csrf_token='mixed-scope-rotation' WHERE actor_id='actor-a';");
+    const bound = Object.hasOwn(route.request().headers(), 'x-expected-session');
+    record('session-request', { bound });
+    const response = await route.fetch(); record('session-response', { bound, status: response.status() });
+    if (bound) {
+      boundSessionReads++; expect(response.status()).toBe(200); await route.fulfill({ response });
+      boundSessionCompleted = true; record('bound-session-delivered', { boundSessionReads }); return;
+    }
+    sessionReads++;
+    record('session-count', { bound, sessionReads });
+    if (sessionReads === 1) {
+      record('scope-rotation-before', { bound, sessionReads });
+      runtime.sql("UPDATE public.sessions SET csrf_token='mixed-scope-rotation' WHERE actor_id='actor-a';");
+      record('scope-rotation-after', { bound, sessionReads });
+    }
     await route.fulfill({ response });
   });
   await page.route('**/api/engagements', async route => {
+    record('engagements-request', { bound: Object.hasOwn(route.request().headers(), 'x-expected-session') });
     const response = await route.fetch();
-    if (response.status() === 412) refusals++;
+    record('engagements-response', { status: response.status() });
+    if (response.status() === 412) { refusals++; engagementMismatches++; }
     await route.fulfill({ response });
   });
   await page.route('**/api/engagements/engagement-a?*', async route => {
-    const response = await route.fetch(); expect(response.status()).toBe(200); scopeReads++;
+    record('scope-request', { bound: Object.hasOwn(route.request().headers(), 'x-expected-session') });
+    const response = await route.fetch(); record('scope-response', { status: response.status() }); expect(response.status()).toBe(200); scopeReads++;
+    record('conversation-rotation-before', { scopeReads });
     runtime.sql("UPDATE public.sessions SET csrf_token='mixed-conversation-rotation' WHERE actor_id='actor-a';");
+    conversationInjectionArmed = true;
+    record('conversation-rotation-after', { scopeReads });
     await route.fulfill({ response });
   });
   await page.route('**/api/engagements/engagement-a/conversation?*', async route => {
-    const response = await route.fetch(); expect(response.status()).toBe(412); refusals++;
+    // Capture causality at entry: a normal poll already in flight cannot become
+    // an injected refusal merely because a later scoped response rotates access.
+    const injected = conversationInjectionArmed;
+    record('conversation-request', { bound: Object.hasOwn(route.request().headers(), 'x-expected-session'), injected });
+    const response = await route.fetch(); record('conversation-response', { status: response.status(), injected });
+    if (injected) { expect(response.status()).toBe(412); refusals++; conversationMismatches++; }
+    else if (response.status() === 200) ordinaryConversationReads++;
     await route.fulfill({ response });
   });
+  phase = 'releasing-initial-impact'; initialImpact.release();
+  await expect.poll(() => boundSessionCompleted).toBe(true);
+  expect(boundSessionReads).toBe(1); expect(sessionReads).toBe(0); expect(scopeReads).toBe(0); expect(refusals).toBe(0);
+  // Exercise the real UI's ordinary controller poll before the App injection.
+  // This genuine200 must pass through the same handler without consuming412s.
+  phase = 'ordinary-conversation-poll'; const ordinaryReadsBefore = ordinaryConversationReads;
+  await page.getByRole('button', { name: 'Latest messages', exact: true }).click();
+  await expect.poll(() => ordinaryConversationReads).toBeGreaterThan(ordinaryReadsBefore);
+  await expect(page.getByText('Conversation up to date', { exact: true })).toBeVisible();
+  expect(boundSessionReads).toBe(1); expect(sessionReads).toBe(0); expect(scopeReads).toBe(0); expect(refusals).toBe(0);
+  phase = 'refresh'; record('refresh-click-before');
   await page.getByRole('button', { name: 'Refresh access' }).click();
+  phase = 'waiting-for-interruption'; record('refresh-click-after');
   await expect(page.getByRole('heading', { name: 'Connection interrupted' })).toBeVisible();
   expect(sessionReads).toBe(2); expect(scopeReads).toBe(1); expect(refusals).toBe(2);
+  expect(boundSessionReads).toBe(1); expect(engagementMismatches).toBe(1); expect(conversationMismatches).toBe(1); expect(posts).toBe(0);
   await expect(page.locator('.protected-workspace')).toHaveCount(0);
+  } finally {
+    phase = 'cleanup'; record('cleanup-before', { sessionReads, boundSessionReads, scopeReads, refusals, engagementMismatches, conversationMismatches, ordinaryConversationReads, posts });
+    initialImpact.release();
+    try { await page.unrouteAll({ behavior: 'wait' }); }
+    finally {
+      record('cleanup-after', { sessionReads, boundSessionReads, scopeReads, refusals, engagementMismatches, conversationMismatches, ordinaryConversationReads, posts });
+      // Endpoint categories, header presence and status only: no header values,
+      // query strings, cookies, response bodies or session material is retained.
+      const name = 'mixed-recovery-chronology.json', path = info.outputPath(name);
+      await mkdir(dirname(path), { recursive: true }); await writeFile(path, JSON.stringify(chronology, null, 2));
+      await info.attach(name, { path, contentType: 'application/json' });
+    }
+  }
 });

@@ -143,7 +143,10 @@ pub async fn verify(config: &Configuration) {
         .fetch_one(&mut admin).await.unwrap();
     assert_eq!(
         current,
-        (8, 8),
+        (
+            i64::from(zobba_domain::SCHEMA_VERSION.0),
+            i64::from(zobba_domain::SCHEMA_VERSION.0),
+        ),
         "legacy authority must reach the complete schema and ledger"
     );
     let pool = PgPoolOptions::new()

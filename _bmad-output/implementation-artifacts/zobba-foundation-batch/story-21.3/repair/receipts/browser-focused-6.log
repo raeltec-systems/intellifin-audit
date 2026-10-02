@@ -1,0 +1,11 @@
+$ pnpm --filter @zobba/web test:browser --workers=1 --retries=0 tests/browser/skills.spec.ts --grep 'structured Admin installation|repair P4 P5:'
+$ playwright test --workers=1 --retries=0 tests/browser/skills.spec.ts --grep 'structured Admin installation|repair P4 P5:'
+
+Running 2 tests using 1 worker
+
+(node:932538) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/skills.spec.ts:257:1 › structured Admin installation preserves exact provenance and inert resources through frozen lost-receipt recovery (18.6s)
+  ✓  2 tests/browser/skills.spec.ts:869:1 › repair P4 P5: persisted status provenance and paged history lead only current audit users to scoped affected Tasks (13.1s)
+
+  2 passed (38.4s)

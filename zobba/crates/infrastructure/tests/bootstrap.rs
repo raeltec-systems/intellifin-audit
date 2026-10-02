@@ -160,12 +160,12 @@ async fn bootstrap_contract() {
     .fetch_all(&mut admin)
     .await
     .unwrap();
-    assert_eq!(installed.len(), 8, "fresh migration ledger is incomplete");
+    assert_eq!(installed.len(), 9, "fresh migration ledger is incomplete");
     assert_eq!(installed, repeated, "repeat changed migration ledger");
     let database = RuntimeDatabase::connect(&runtime_url)
         .await
         .expect("nonowner runtime starts");
-    assert_eq!(database.check().await.unwrap().0, 8);
+    assert_eq!(database.check().await.unwrap().0, 9);
     refused_without_mutation(
         &mut admin,
         &migration_url,
@@ -223,6 +223,14 @@ async fn bootstrap_contract() {
         "UPDATE public.methodology_versions SET command='{}'",
         "DELETE FROM public.methodology_events",
         "UPDATE public.task_methodology_heads SET binding_id='substituted'",
+        "SELECT * FROM public.skill_versions",
+        "SELECT * FROM public.skill_events",
+        "SELECT * FROM public.skill_status",
+        "SELECT * FROM public.task_skill_selections",
+        "UPDATE public.skill_versions SET digest=repeat('b',64)",
+        "DELETE FROM public.skill_events",
+        "UPDATE public.skill_status SET status='enabled'",
+        "UPDATE public.task_skill_selections SET receipt='{}'",
     ] {
         assert!(
             restricted.execute(mutation).await.is_err(),
@@ -322,6 +330,21 @@ async fn bootstrap_contract() {
         "ALTER FUNCTION public.methodology_write(text,text,text,text,jsonb,text,text) SET search_path=public",
         "CREATE OR REPLACE FUNCTION public.methodology_audit(org text,client text,engagement text) RETURNS boolean LANGUAGE sql VOLATILE SET search_path=pg_catalog,public AS 'SELECT true'",
         "GRANT EXECUTE ON FUNCTION public.methodology_candidates(text,text,text,bigint) TO PUBLIC",
+        "ALTER TABLE public.skill_versions NO FORCE ROW LEVEL SECURITY",
+        "ALTER POLICY skills_owner ON public.task_skill_selections USING (true) WITH CHECK (true)",
+        "DROP INDEX public.skill_versions_manifest_identity",
+        "DROP INDEX public.skill_events_version_history",
+        "DROP INDEX public.task_skill_selections_version",
+        "DROP INDEX public.task_skill_selections_scope; CREATE INDEX task_skill_selections_scope ON public.task_skill_selections(organisation_id,client_id,engagement_id,task_id,revision,version_id)",
+        "DROP INDEX public.skills_client_choices; CREATE INDEX skills_client_choices ON public.clients(organisation_id,id)",
+        "DROP INDEX public.skills_engagement_choices",
+        "ALTER TABLE public.skill_events DROP CONSTRAINT skill_events_check",
+        "ALTER TABLE public.skill_status DROP CONSTRAINT skill_status_status_check",
+        "ALTER FUNCTION public.skills_read(text,text,text) SECURITY INVOKER",
+        "ALTER FUNCTION public.skills_admin(text,text,text,text,jsonb) SECURITY INVOKER",
+        "GRANT EXECUTE ON FUNCTION public.skills_impact(text,jsonb) TO PUBLIC",
+        "ALTER FUNCTION public.skills_write(text,text,text,text,jsonb,text,text,text,jsonb) SET search_path=public",
+        "GRANT EXECUTE ON FUNCTION public.skills_task(text,text,jsonb) TO PUBLIC",
         "ALTER TABLE public.engagements DROP CONSTRAINT engagements_name_check",
         "ALTER TABLE public.organisations DROP CONSTRAINT organisations_id_check",
         "ALTER TABLE public.engagement_assignments DROP CONSTRAINT engagement_assignments_organisation_id_client_id_engagemen_fkey",
@@ -333,7 +356,7 @@ async fn bootstrap_contract() {
         "ALTER TABLE public.zobba_bootstrap ALTER COLUMN singleton SET DEFAULT false",
         "ALTER TABLE public._sqlx_migrations ALTER COLUMN installed_on SET DEFAULT '2000-01-01'::timestamptz",
         "CREATE RULE alien_rule AS ON DELETE TO public.zobba_bootstrap DO ALSO NOTHING",
-        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(9,1000) v",
+        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(10,1000) v",
         "UPDATE public._sqlx_migrations SET description=repeat('x',1048576),checksum=decode(repeat('ff',1048576),'hex')",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product='foreign'",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product=repeat('x',1048576)",
@@ -356,6 +379,7 @@ async fn bootstrap_contract() {
 
     membership_function_authority(&config, &mut admin).await;
     methodology_function_authority(&config, &mut admin).await;
+    skills_function_authority(&config, &mut admin).await;
     internal_trigger_contract(&config, &mut admin).await;
 
     // Column-level leases must not expand to routing identity, scheduling or
@@ -413,6 +437,12 @@ async fn bootstrap_contract() {
         "INSERT ON public.task_methodology_bindings",
         "UPDATE(binding_id) ON public.task_methodology_heads",
         "SELECT ON public.task_methodology_changes",
+        "SELECT ON public.skill_versions",
+        "SELECT(command) ON public.skill_versions",
+        "INSERT ON public.skill_events",
+        "UPDATE(status) ON public.skill_status",
+        "DELETE ON public.task_skill_selections",
+        "SELECT(receipt) ON public.task_skill_selections",
     ] {
         admin
             .execute(format!("GRANT {privilege} TO \"{role}\"").as_str())
@@ -450,13 +480,14 @@ async fn bootstrap_contract() {
     upgrade_contract(&config, &mut admin).await;
     continuity_upgrade_contract(&config, &mut admin).await;
     methodology_upgrade_contract(&config, &mut admin).await;
+    skills_upgrade_contract(&config, &mut admin).await;
     no_foreign_code_runs(&config, &mut admin).await;
     foreign_catalog_objects(&config, &mut admin).await;
     authority_and_atomicity(&config, &mut admin).await;
     lock_and_blackhole(&config, &mut admin).await;
     reset(&config, &mut admin).await;
     println!(
-        "bootstrap contract: fresh/v1-v7/repeat/owner/privilege/methodology/foreign/marker/checksum/version refusals passed; test schema empty"
+        "bootstrap contract: fresh/v1-v8/repeat/owner/privilege/methodology/skills/foreign/marker/checksum/version refusals passed; test schema empty"
     );
 }
 
@@ -595,7 +626,7 @@ async fn foreign_catalog_objects(config: &Configuration, conn: &mut PgConnection
                 .await
                 .expect("remove foreign catalog fixture");
             if let Some(running) = running {
-                assert_eq!(running.check().await.unwrap().0, 8);
+                assert_eq!(running.check().await.unwrap().0, 9);
             }
         }
     }
@@ -612,7 +643,7 @@ async fn foreign_catalog_objects(config: &Configuration, conn: &mut PgConnection
     refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
     assert_eq!(running.check().await, Err(BootstrapError::SchemaMismatch));
     admin.execute("DROP STATISTICS public.alien").await.unwrap();
-    assert_eq!(running.check().await.unwrap().0, 8);
+    assert_eq!(running.check().await.unwrap().0, 9);
     reset(config, conn).await;
 }
 
@@ -692,7 +723,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
             .execute(format!("REVOKE MAINTAIN ON public.{table} FROM \"{target}\"").as_str())
             .await
             .unwrap();
-        assert_eq!(running.check().await.unwrap().0, 8);
+        assert_eq!(running.check().await.unwrap().0, 9);
     }
     privileged.execute(format!("GRANT pg_read_server_files TO \"{parent}\" WITH INHERIT TRUE, SET FALSE; GRANT \"{parent}\" TO \"{target}\" WITH INHERIT FALSE, SET TRUE").as_str()).await.unwrap();
     let mut capable = PgConnection::connect(&target_url).await.unwrap();
@@ -719,7 +750,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         Err(BootstrapError::UnsafeRuntimeRole)
     );
     privileged.execute(format!("REVOKE \"{parent}\" FROM \"{target}\"; REVOKE pg_read_server_files FROM \"{parent}\"").as_str()).await.unwrap();
-    assert_eq!(running.check().await.unwrap().0, 8);
+    assert_eq!(running.check().await.unwrap().0, 9);
 
     for flags in [
         "REPLICATION",
@@ -871,7 +902,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         .execute(format!("REVOKE \"{migrator_role}\" FROM \"{target}\"").as_str())
         .await
         .unwrap();
-    assert_eq!(running.check().await.unwrap().0, 8);
+    assert_eq!(running.check().await.unwrap().0, 9);
 
     // Simulate interruption after SQLx creates its ledger but before bootstrap
     // finishes. The outer transaction must remove BOTH tables and all grants.
@@ -894,7 +925,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         .execute("DROP EVENT TRIGGER zobba_fixture_interrupt")
         .await
         .unwrap();
-    assert_eq!(running.check().await.unwrap().0, 8);
+    assert_eq!(running.check().await.unwrap().0, 9);
     reset(config, conn).await;
     privileged.execute(trigger).await.unwrap();
     migration_refused_without_mutation(conn, config, &target, BootstrapError::SchemaMismatch).await;
@@ -1160,9 +1191,9 @@ async fn upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
                 .fetch_all(&mut *conn)
                 .await
                 .unwrap();
-                assert_eq!(all.len(), 8, "upgrade did not reach the complete ledger");
+                assert_eq!(all.len(), 9, "upgrade did not reach the complete ledger");
                 let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-                assert_eq!(database.check().await.unwrap().0, 8);
+                assert_eq!(database.check().await.unwrap().0, 9);
                 migrate(&config.migration, &role)
                     .await
                     .expect("upgrade repeat is safe");
@@ -1456,6 +1487,49 @@ async fn methodology_function_authority(config: &Configuration, conn: &mut PgCon
     }
 }
 
+async fn skills_function_authority(config: &Configuration, conn: &mut PgConnection) {
+    let role = database_options(&config.runtime)
+        .unwrap()
+        .get_username()
+        .to_owned();
+    let mut privileged = PgConnection::connect(&config.admin).await.unwrap();
+    config.guard_connection(&mut privileged).await;
+    for mutation in [
+        format!(
+            "GRANT EXECUTE ON FUNCTION public.skills_write(text,text,text,text,jsonb,text,text,text,jsonb) TO \"{role}\" WITH GRANT OPTION"
+        ),
+        format!("ALTER FUNCTION public.skills_task(text,text,jsonb) OWNER TO \"{role}\""),
+        format!("REVOKE EXECUTE ON FUNCTION public.skills_read(text,text,text) FROM \"{role}\""),
+        format!(
+            "REVOKE EXECUTE ON FUNCTION public.skills_admin(text,text,text,text,jsonb) FROM \"{role}\""
+        ),
+        format!("REVOKE EXECUTE ON FUNCTION public.skills_impact(text,jsonb) FROM \"{role}\""),
+        format!(
+            "REVOKE EXECUTE ON FUNCTION public.skills_write(text,text,text,text,jsonb,text,text,text,jsonb) FROM \"{role}\""
+        ),
+        format!("REVOKE EXECUTE ON FUNCTION public.skills_task(text,text,jsonb) FROM \"{role}\""),
+    ] {
+        privileged.execute(mutation.as_str()).await.unwrap();
+        refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
+        if mutation.starts_with("REVOKE") {
+            migrate(&config.migration, &role)
+                .await
+                .expect("explicit migration restores missing skills entry point");
+        } else {
+            migration_refused_without_mutation(conn, config, &role, BootstrapError::SchemaMismatch)
+                .await;
+            reset(config, conn).await;
+            migrate(&config.migration, &role).await.unwrap();
+        }
+        RuntimeDatabase::connect(&config.runtime)
+            .await
+            .unwrap()
+            .pool()
+            .close()
+            .await;
+    }
+}
+
 // A populated published schema 7 is upgraded by the restricted migration role.
 // Existing Task commands retain their bytes; bindings explicitly label their neutral legacy basis.
 async fn methodology_upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
@@ -1593,7 +1667,7 @@ async fn methodology_upgrade_contract(config: &Configuration, conn: &mut PgConne
             .contains("neutral")
     );
     let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-    assert_eq!(database.check().await.unwrap().0, 8);
+    assert_eq!(database.check().await.unwrap().0, 9);
     let selected = zobba_domain::identity::Scope {
         organisation_id: "methodology-upgrade".into(),
         client_id: "client".into(),
@@ -1701,7 +1775,7 @@ async fn continuity_upgrade_contract(config: &Configuration, conn: &mut PgConnec
             .expect("valid/remediated schema 6 upgrades");
         assert_eq!(authority_snapshot(conn).await, authorised);
         let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-        assert_eq!(database.check().await.unwrap().0, 8);
+        assert_eq!(database.check().await.unwrap().0, 9);
         database.pool().close().await;
     }
 
@@ -1734,7 +1808,7 @@ async fn continuity_upgrade_contract(config: &Configuration, conn: &mut PgConnec
             "upgrade changed authority"
         );
         let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-        assert_eq!(database.check().await.unwrap().0, 8);
+        assert_eq!(database.check().await.unwrap().0, 9);
         database.pool().close().await;
     }
 
@@ -1807,4 +1881,106 @@ async fn continuity_upgrade_contract(config: &Configuration, conn: &mut PgConnec
     assert_eq!(version, 6);
     reset(config, conn).await;
     migrate(&config.migration, &role).await.unwrap();
+}
+
+// Schema 9 adds catalogue storage without rewriting any published work or basis.
+async fn skills_upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
+    let role = database_options(&config.runtime)
+        .unwrap()
+        .get_username()
+        .to_owned();
+    install_schema6(config, conn).await;
+    let migrator = sqlx::migrate!("../../migrations");
+    for migration in migrator.iter().skip(6).take(2) {
+        conn.execute(migration.sql.as_ref()).await.unwrap();
+        sqlx::query("INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) VALUES($1,$2,true,$3,0)")
+            .bind(migration.version).bind(migration.description.as_ref()).bind(migration.checksum.as_ref())
+            .execute(&mut *conn).await.unwrap();
+    }
+    let catalog: Vec<String> = sqlx::query_scalar(include_str!("../src/catalog-signature.sql"))
+        .fetch_all(&mut *conn)
+        .await
+        .unwrap();
+    assert!(
+        catalog
+            .iter()
+            .map(String::as_str)
+            .eq(include_str!("../src/schema-v8.catalog").lines()),
+        "skills upgrade must start from the exact published schema 8"
+    );
+    let mut admin = PgConnection::connect(&config.admin).await.unwrap();
+    config.guard_connection(&mut admin).await;
+    let mut seed = admin.begin().await.unwrap();
+    seed.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+        .await
+        .unwrap();
+    seed.execute(r#"
+      INSERT INTO public.identities(id,issuer,subject,display_name) VALUES('skills-upgrade','upgrade','skills','Upgrade Auditor');
+      INSERT INTO public.organisations VALUES('skills-upgrade','Upgrade');
+      INSERT INTO public.organisation_memberships(organisation_id,actor_id,roles) VALUES('skills-upgrade','skills-upgrade',ARRAY['admin','auditor']);
+      INSERT INTO public.clients VALUES('skills-upgrade','client','Client');
+      INSERT INTO public.engagements(organisation_id,client_id,id,name) VALUES('skills-upgrade','client','engagement','Engagement');
+      INSERT INTO public.engagement_assignments(organisation_id,client_id,engagement_id,actor_id) VALUES('skills-upgrade','client','engagement','skills-upgrade');
+      SELECT set_config('zobba.actor_id','skills-upgrade',true),set_config('zobba.organisation_id','skills-upgrade',true),set_config('zobba.client_id','client',true),set_config('zobba.engagement_id','engagement',true);
+      INSERT INTO public.tasks(organisation_id,client_id,engagement_id,id,cycle_id,accountable_actor,objective,working_brief,state,cessation) VALUES('skills-upgrade','client','engagement','skills-upgrade-task','skills-upgrade-cycle','skills-upgrade','Retained objective','Retained brief','ready','none');
+      INSERT INTO public.task_cycles VALUES('skills-upgrade','client','engagement','skills-upgrade-task','skills-upgrade-cycle','active');
+      INSERT INTO public.task_commands(organisation_id,client_id,engagement_id,id,author_id,idempotency_key,kind,content,task_id,cycle_id,received_cursor,intent_revision,methodology_context) VALUES('skills-upgrade','client','engagement','skills-upgrade-command','skills-upgrade','skills-upgrade-key','create','Retained objective','skills-upgrade-task','skills-upgrade-cycle',1,1,'{"audit_area":"Revenue","period_start":"2026-01-01","period_end":"2026-12-31"}');
+      INSERT INTO public.methodology_versions VALUES('skills-upgrade','skills-upgrade-method','skills-upgrade',1,1,'{"definition":{"name":"Retained firm method","requirements":[{"id":"retained","mandatory":true,"criteria":["Original criterion"]}]}}');
+      INSERT INTO public.methodology_assignments VALUES('skills-upgrade','skills-upgrade-method','client','engagement',1,NULL);
+      INSERT INTO public.methodology_events VALUES('skills-upgrade','skills-upgrade-event','skills-upgrade','skills-method-key',1,'save','{"key":"skills-method-key"}','{"version_id":"skills-upgrade-method","revision":1}',1);
+      INSERT INTO public.task_methodology_bindings VALUES('skills-upgrade','client','engagement','skills-upgrade-task','skills-upgrade-binding','{"id":"skills-upgrade-binding","execution_epoch":1,"actor_id":"skills-upgrade","bound_at":1,"candidate_version_ids":["skills-upgrade-method"],"context_command_id":"skills-upgrade-command","resolution":{"status":"bound","context":{"audit_area":"Revenue","period_start":"2026-01-01","period_end":"2026-12-31"},"version_ids":["skills-upgrade-method"],"requirements":[{"id":"retained","mandatory":true,"criteria":["Original criterion"],"field_sources":[{"field":"criteria","source_version_ids":["skills-upgrade-method"]}]}],"templates":[],"neutral_source_version_ids":[],"issues":[],"reason":"Explicit retained basis"}}');
+      INSERT INTO public.task_methodology_heads VALUES('skills-upgrade','skills-upgrade-task','skills-upgrade-binding','{"audit_area":"Revenue","period_start":"2026-01-01","period_end":"2026-12-31"}',NULL,NULL);
+    "#).await.unwrap();
+    seed.commit().await.unwrap();
+    let tables: Vec<String> = sqlx::query_scalar("SELECT tablename::text FROM pg_catalog.pg_tables WHERE schemaname='public' AND tablename<>'zobba_bootstrap' AND tablename<>'_sqlx_migrations' ORDER BY tablename")
+        .fetch_all(&mut admin).await.unwrap();
+    let mut before = Vec::new();
+    for table in &tables {
+        let rows: serde_json::Value = sqlx::query_scalar(&format!("SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) FROM public.\"{table}\" t"))
+            .fetch_one(&mut admin).await.unwrap();
+        before.push(rows);
+    }
+    let ledger: Vec<String> = sqlx::query_scalar(
+        "SELECT to_jsonb(m)::text FROM public._sqlx_migrations m ORDER BY version",
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .unwrap();
+    migrate(&config.migration, &role)
+        .await
+        .expect("restricted owner upgrades populated schema 8");
+    for (table, original) in tables.iter().zip(before) {
+        let after: serde_json::Value = sqlx::query_scalar(&format!("SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) FROM public.\"{table}\" t"))
+            .fetch_one(&mut admin).await.unwrap();
+        assert_eq!(original, after, "skills migration rewrote {table}");
+    }
+    let ledger_after: Vec<String> = sqlx::query_scalar(
+        "SELECT to_jsonb(m)::text FROM public._sqlx_migrations m WHERE version<=8 ORDER BY version",
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .unwrap();
+    assert_eq!(
+        ledger, ledger_after,
+        "skills migration rewrote prefix ledger"
+    );
+    for table in [
+        "skill_versions",
+        "skill_events",
+        "skill_status",
+        "task_skill_selections",
+    ] {
+        let count: i64 = sqlx::query_scalar(&format!("SELECT count(*) FROM public.{table}"))
+            .fetch_one(&mut admin)
+            .await
+            .unwrap();
+        assert_eq!(count, 0, "upgrade invented a skill or selection");
+    }
+    let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
+    assert_eq!(database.check().await.unwrap().0, 9);
+    database.pool().close().await;
+    migrate(&config.migration, &role)
+        .await
+        .expect("schema 9 repeat migration");
+    reset(config, conn).await;
 }

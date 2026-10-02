@@ -1,0 +1,126 @@
+{
+  "viewport": 390,
+  "documentWidth": 630,
+  "elements": [
+    {
+      "tag": "div",
+      "classes": "",
+      "left": 0,
+      "right": 390,
+      "width": 390,
+      "clientWidth": 390,
+      "scrollWidth": 630,
+      "textLength": 2926
+    },
+    {
+      "tag": "div",
+      "classes": "app-shell",
+      "left": 0,
+      "right": 390,
+      "width": 390,
+      "clientWidth": 390,
+      "scrollWidth": 630,
+      "textLength": 2926
+    },
+    {
+      "tag": "div",
+      "classes": "workspace",
+      "left": 0,
+      "right": 390,
+      "width": 390,
+      "clientWidth": 390,
+      "scrollWidth": 630,
+      "textLength": 2814
+    },
+    {
+      "tag": "main",
+      "classes": "",
+      "left": 0,
+      "right": 390,
+      "width": 390,
+      "clientWidth": 390,
+      "scrollWidth": 630,
+      "textLength": 2787
+    },
+    {
+      "tag": "section",
+      "classes": "methodology-workspace",
+      "left": 20,
+      "right": 370,
+      "width": 350,
+      "clientWidth": 350,
+      "scrollWidth": 610,
+      "textLength": 2468
+    },
+    {
+      "tag": "div",
+      "classes": "",
+      "left": 36,
+      "right": 354,
+      "width": 318,
+      "clientWidth": 318,
+      "scrollWidth": 594,
+      "textLength": 2214
+    },
+    {
+      "tag": "section",
+      "classes": "skill-catalog",
+      "left": 36,
+      "right": 354,
+      "width": 318,
+      "clientWidth": 318,
+      "scrollWidth": 594,
+      "textLength": 2062
+    },
+    {
+      "tag": "div",
+      "classes": "",
+      "left": 36,
+      "right": 354,
+      "width": 318,
+      "clientWidth": 318,
+      "scrollWidth": 594,
+      "textLength": 1902
+    },
+    {
+      "tag": "section",
+      "classes": "notice",
+      "left": 36,
+      "right": 354,
+      "width": 318,
+      "clientWidth": 314,
+      "scrollWidth": 591,
+      "textLength": 324
+    },
+    {
+      "tag": "p",
+      "classes": "",
+      "left": 57,
+      "right": 335,
+      "width": 278,
+      "clientWidth": 278,
+      "scrollWidth": 278,
+      "textLength": 103
+    },
+    {
+      "tag": "p",
+      "classes": "",
+      "left": 57,
+      "right": 335,
+      "width": 278,
+      "clientWidth": 278,
+      "scrollWidth": 278,
+      "textLength": 95
+    },
+    {
+      "tag": "p",
+      "classes": "skill-opaque-id-layout-fixture",
+      "left": 57,
+      "right": 335,
+      "width": 278,
+      "clientWidth": 278,
+      "scrollWidth": 573,
+      "textLength": 96
+    }
+  ]
+}

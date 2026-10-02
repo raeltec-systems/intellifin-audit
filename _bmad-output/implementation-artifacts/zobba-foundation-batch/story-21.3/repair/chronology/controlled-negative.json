@@ -1,0 +1,254 @@
+[
+  {
+    "sequence": 1,
+    "elapsedMs": 2663,
+    "phase": "installing-routes",
+    "event": "sign-in-complete"
+  },
+  {
+    "sequence": 2,
+    "elapsedMs": 2701,
+    "phase": "installing-routes",
+    "event": "initial-impact-response",
+    "status": 200
+  },
+  {
+    "sequence": 3,
+    "elapsedMs": 2782,
+    "phase": "releasing-initial-impact",
+    "event": "initial-impact-delivered"
+  },
+  {
+    "sequence": 4,
+    "elapsedMs": 2786,
+    "phase": "releasing-initial-impact",
+    "event": "session-request",
+    "bound": true
+  },
+  {
+    "sequence": 5,
+    "elapsedMs": 2800,
+    "phase": "releasing-initial-impact",
+    "event": "session-response",
+    "bound": true,
+    "status": 200
+  },
+  {
+    "sequence": 6,
+    "elapsedMs": 2800,
+    "phase": "releasing-initial-impact",
+    "event": "session-count",
+    "bound": true,
+    "sessionReads": 1
+  },
+  {
+    "sequence": 7,
+    "elapsedMs": 2800,
+    "phase": "releasing-initial-impact",
+    "event": "scope-rotation-before",
+    "bound": true,
+    "sessionReads": 1
+  },
+  {
+    "sequence": 8,
+    "elapsedMs": 2835,
+    "phase": "releasing-initial-impact",
+    "event": "scope-rotation-after",
+    "bound": true,
+    "sessionReads": 1
+  },
+  {
+    "sequence": 9,
+    "elapsedMs": 2838,
+    "phase": "releasing-initial-impact",
+    "event": "bound-session-delivered"
+  },
+  {
+    "sequence": 10,
+    "elapsedMs": 2881,
+    "phase": "refresh",
+    "event": "refresh-click-before"
+  },
+  {
+    "sequence": 11,
+    "elapsedMs": 2964,
+    "phase": "refresh",
+    "event": "session-request",
+    "bound": false
+  },
+  {
+    "sequence": 12,
+    "elapsedMs": 2978,
+    "phase": "waiting-for-interruption",
+    "event": "refresh-click-after"
+  },
+  {
+    "sequence": 13,
+    "elapsedMs": 2988,
+    "phase": "waiting-for-interruption",
+    "event": "session-response",
+    "bound": false,
+    "status": 200
+  },
+  {
+    "sequence": 14,
+    "elapsedMs": 2988,
+    "phase": "waiting-for-interruption",
+    "event": "session-count",
+    "bound": false,
+    "sessionReads": 2
+  },
+  {
+    "sequence": 15,
+    "elapsedMs": 2996,
+    "phase": "waiting-for-interruption",
+    "event": "engagements-request",
+    "bound": true
+  },
+  {
+    "sequence": 16,
+    "elapsedMs": 3023,
+    "phase": "waiting-for-interruption",
+    "event": "engagements-response",
+    "status": 200
+  },
+  {
+    "sequence": 17,
+    "elapsedMs": 3033,
+    "phase": "waiting-for-interruption",
+    "event": "scope-request",
+    "bound": true
+  },
+  {
+    "sequence": 18,
+    "elapsedMs": 3059,
+    "phase": "waiting-for-interruption",
+    "event": "scope-response",
+    "status": 200
+  },
+  {
+    "sequence": 19,
+    "elapsedMs": 3060,
+    "phase": "waiting-for-interruption",
+    "event": "conversation-rotation-before",
+    "scopeReads": 1
+  },
+  {
+    "sequence": 20,
+    "elapsedMs": 3087,
+    "phase": "waiting-for-interruption",
+    "event": "conversation-rotation-after",
+    "scopeReads": 1
+  },
+  {
+    "sequence": 21,
+    "elapsedMs": 3141,
+    "phase": "waiting-for-interruption",
+    "event": "conversation-request",
+    "bound": true
+  },
+  {
+    "sequence": 22,
+    "elapsedMs": 3156,
+    "phase": "waiting-for-interruption",
+    "event": "conversation-response",
+    "status": 412
+  },
+  {
+    "sequence": 23,
+    "elapsedMs": 3189,
+    "phase": "waiting-for-interruption",
+    "event": "session-request",
+    "bound": false
+  },
+  {
+    "sequence": 24,
+    "elapsedMs": 3208,
+    "phase": "waiting-for-interruption",
+    "event": "session-response",
+    "bound": false,
+    "status": 200
+  },
+  {
+    "sequence": 25,
+    "elapsedMs": 3208,
+    "phase": "waiting-for-interruption",
+    "event": "session-count",
+    "bound": false,
+    "sessionReads": 3
+  },
+  {
+    "sequence": 26,
+    "elapsedMs": 3217,
+    "phase": "waiting-for-interruption",
+    "event": "engagements-request",
+    "bound": true
+  },
+  {
+    "sequence": 27,
+    "elapsedMs": 3240,
+    "phase": "waiting-for-interruption",
+    "event": "engagements-response",
+    "status": 200
+  },
+  {
+    "sequence": 28,
+    "elapsedMs": 3247,
+    "phase": "waiting-for-interruption",
+    "event": "scope-request",
+    "bound": true
+  },
+  {
+    "sequence": 29,
+    "elapsedMs": 3272,
+    "phase": "waiting-for-interruption",
+    "event": "scope-response",
+    "status": 200
+  },
+  {
+    "sequence": 30,
+    "elapsedMs": 3274,
+    "phase": "waiting-for-interruption",
+    "event": "conversation-rotation-before",
+    "scopeReads": 2
+  },
+  {
+    "sequence": 31,
+    "elapsedMs": 3296,
+    "phase": "waiting-for-interruption",
+    "event": "conversation-rotation-after",
+    "scopeReads": 2
+  },
+  {
+    "sequence": 32,
+    "elapsedMs": 3345,
+    "phase": "waiting-for-interruption",
+    "event": "conversation-request",
+    "bound": true
+  },
+  {
+    "sequence": 33,
+    "elapsedMs": 3414,
+    "phase": "waiting-for-interruption",
+    "event": "conversation-response",
+    "status": 200
+  },
+  {
+    "sequence": 34,
+    "elapsedMs": 3775,
+    "phase": "cleanup",
+    "event": "cleanup-before",
+    "sessionReads": 3,
+    "scopeReads": 2,
+    "refusals": 1
+  },
+  {
+    "sequence": 35,
+    "elapsedMs": 3778,
+    "phase": "cleanup",
+    "event": "cleanup-after",
+    "sessionReads": 3,
+    "scopeReads": 2,
+    "refusals": 1
+  }
+]

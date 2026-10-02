@@ -53,7 +53,7 @@ async function readConflictCode(response: Response): Promise<string | undefined>
   return undefined;
 }
 
-export async function readJson(path: string, signal?: AbortSignal, init?: RequestInit): Promise<unknown> {
+export async function readJson(path: string, signal?: AbortSignal, init?: RequestInit, limit = MAX_JSON_BYTES): Promise<unknown> {
   const response = await fetch(`/api${path}`, {
     ...init, signal, cache: 'no-store', credentials: 'same-origin',
     headers: { Accept: 'application/json', ...init?.headers },
@@ -64,7 +64,7 @@ export async function readJson(path: string, signal?: AbortSignal, init?: Reques
     const code = response.status === 409 ? await readConflictCode(response) : undefined;
     throw new AccessError(response.status, code);
   }
-  return readJsonBody(response);
+  return readJsonBody(response, limit);
 }
 
 export async function readJsonBody(response: Response, limit = MAX_JSON_BYTES): Promise<unknown> {
@@ -108,10 +108,10 @@ export async function readSession(signal: AbortSignal): Promise<Session> {
   return parseSession(await readJson('/auth/session', signal));
 }
 
-export function readSessionJson(path: string, session: Session | null, signal: AbortSignal): Promise<unknown> {
+export function readSessionJson(path: string, session: Session | null, signal: AbortSignal, limit = MAX_JSON_BYTES): Promise<unknown> {
   // In-memory refusal fence only: cookie-derived identity remains authoritative.
   if (!session) throw new AccessError(401);
-  return readJson(path, signal, { headers: { 'X-Expected-Session': session.csrf_token } });
+  return readJson(path, signal, { headers: { 'X-Expected-Session': session.csrf_token } }, limit);
 }
 
 export async function logout(session: Session, signal: AbortSignal): Promise<void> {
