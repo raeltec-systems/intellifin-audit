@@ -48,7 +48,7 @@ pub(crate) struct EvidenceHttpState {
 pub(crate) fn router(
     pool: PgPool,
     identity: AuthState,
-    objects: Option<S3EvidenceObjects>,
+    objects: Option<Arc<S3EvidenceObjects>>,
 ) -> Router {
     let lane = Arc::new(Semaphore::new(2));
     let io = Router::new()
@@ -80,7 +80,7 @@ pub(crate) fn router(
         .with_state(EvidenceHttpState {
             identity,
             pool,
-            objects: objects.map(Arc::new),
+            objects,
         })
 }
 
@@ -99,7 +99,9 @@ async fn admitted_io(State(lane): State<Arc<Semaphore>>, request: Request, next:
 /// The global ordinary deadline must not cut short this separately bounded lane.
 pub(crate) fn is_io_request(request: &Request) -> bool {
     let parts: Vec<_> = request.uri().path().split('/').collect();
-    matches!(parts.as_slice(), ["", "engagements", _, "evidence-reservations", _, "upload"] if request.method() == Method::PUT)
+    matches!(parts.as_slice(), ["", "engagements", _, "knowledge", "excerpts"] if request.method() == Method::POST)
+        || matches!(parts.as_slice(), ["", "engagements", _, "knowledge", "evidence", _, "recover"] if request.method() == Method::POST)
+        || matches!(parts.as_slice(), ["", "engagements", _, "evidence-reservations", _, "upload"] if request.method() == Method::PUT)
         || matches!(parts.as_slice(), ["", "engagements", _, "evidence", _, "preview" | "download"] if request.method() == Method::GET || request.method() == Method::HEAD)
 }
 

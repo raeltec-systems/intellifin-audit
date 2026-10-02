@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import type { Page, Request } from '@playwright/test';
+import type { Page, Request, Route } from '@playwright/test';
 import type { Session } from '../../src/auth';
 import type { Task, TaskCommand } from '../../src/conversation';
 import { startAuthRuntime } from './auth-runtime';
@@ -141,12 +141,21 @@ test('same-scope checks hide every protected surface and restore mounted Task co
     // the interception phase; unroute alone leaves active handlers running.
     await page.unrouteAll({ behavior: 'wait' });
     page.on('request', recordRequest); page.on('requestfailed', recordFailure);
-    await page.route(url => url.origin === runtime.url && [snapshotPath, `${snapshotPath}/events`].includes(url.pathname), async route => {
+    const abortScopedConversation = async (route: Route) => {
       const request = route.request();
-      const entry: typeof faultReads[number] = { id: faultReads.length + 1, path: new URL(request.url()).pathname, observed_ms: Date.now() - faultStarted };
+      const url = new URL(request.url());
+      expect(request.method()).toBe('GET');
+      expect(url.searchParams.get('organisation_id')).toBe('org-a');
+      expect(url.searchParams.get('client_id')).toBe('client-a');
+      const entry: typeof faultReads[number] = { id: faultReads.length + 1, path: url.pathname, observed_ms: Date.now() - faultStarted };
       faultReads.push(entry); faultRequests.set(request, entry);
       await route.abort('connectionreset'); entry.aborted_ms = Date.now() - faultStarted;
-    });
+    };
+    // Use explicit scoped snapshot/event matchers, matching the working snapshot
+    // hold phase. Require actual abort + requestfailed before withdrawal proof;
+    // the earlier predicate-miss cause remains unproven.
+    await page.route('**/api/engagements/engagement-a/conversation?*', abortScopedConversation);
+    await page.route('**/api/engagements/engagement-a/conversation/events?*', abortScopedConversation);
     faultInstalled = true;
     const latestMessages = page.getByRole('button', { name: 'Latest messages' });
     await latestMessages.evaluate(button => { button.addEventListener('click', () => button.setAttribute('data-observed-fault-click', 'yes'), { once: true }); });

@@ -3,6 +3,7 @@ pub mod auth;
 pub mod conversation;
 pub mod engagements;
 pub mod evidence;
+pub mod knowledge;
 pub mod membership;
 pub mod methodology;
 pub mod operations;
@@ -104,6 +105,9 @@ pub fn authenticated_router_with_evidence(
     let membership_routes = membership::router(database.pool().clone(), identity.clone());
     let skills_routes = skills::router(database.pool().clone(), identity.clone());
     let methodology_routes = methodology::router(database.pool().clone(), identity.clone());
+    let objects = objects.map(std::sync::Arc::new);
+    let knowledge_routes =
+        knowledge::router(database.pool().clone(), identity.clone(), objects.clone());
     let evidence_routes = evidence::router(database.pool().clone(), identity.clone(), objects);
     router(database)
         .merge(auth::router(identity))
@@ -111,6 +115,7 @@ pub fn authenticated_router_with_evidence(
         .merge(membership_routes)
         .merge(methodology_routes)
         .merge(skills_routes)
+        .merge(knowledge_routes)
         .merge(evidence_routes)
         .layer(axum::middleware::from_fn(
             |request: axum::extract::Request, next: axum::middleware::Next| async move {
@@ -155,7 +160,7 @@ pub fn authenticated_router_with_evidence(
 
 #[derive(OpenApi)]
 #[openapi(
-    modifiers(&AuthenticationContract),
+    modifiers(&AuthenticationContract, &KnowledgeQueryContract),
     info(
         title = "Zobba owned HTTP interface",
         version = "1.0.0",
@@ -204,6 +209,18 @@ pub fn authenticated_router_with_evidence(
         methodology::save,
         methodology::recall,
         methodology::task_basis,
+        knowledge::inspect,
+        knowledge::exact,
+        knowledge::mutate,
+        knowledge::preference,
+        knowledge::mutate_preference,
+        knowledge::observe_layout,
+        knowledge::excerpt,
+        knowledge::recover,
+        knowledge::source_status,
+        knowledge::verify,
+        knowledge::verify_preference,
+        knowledge::verify_source,
         evidence::reserve,
         evidence::recover,
         evidence::upload,
@@ -346,6 +363,39 @@ pub fn authenticated_router_with_evidence(
         methodology::MethodologyBindingChange,
         methodology::MethodologyBindingNotice,
         methodology::TaskMethodologyResponse,
+        knowledge::KnowledgeScopeKind,
+        knowledge::KnowledgeScope,
+        knowledge::KnowledgePeriod,
+        knowledge::KnowledgeKind,
+        knowledge::Certainty,
+        knowledge::KnowledgeRecordStatus,
+        knowledge::KnowledgeRecordReference,
+        knowledge::KnowledgeDependency,
+        knowledge::KnowledgeSourceLocation,
+        knowledge::KnowledgeDirectionBasis,
+        knowledge::KnowledgeInspectionLayout,
+        knowledge::KnowledgePreferenceBasis,
+        knowledge::KnowledgeRecord,
+        knowledge::KnowledgeView,
+        knowledge::KnowledgeOmission,
+        knowledge::KnowledgeQuery,
+        knowledge::KnowledgePage,
+        knowledge::KnowledgeAssertion,
+        knowledge::KnowledgeAction,
+        knowledge::KnowledgeCommand,
+        knowledge::KnowledgeReceipt,
+        knowledge::KnowledgeObserveLayout,
+        knowledge::KnowledgePreferenceAction,
+        knowledge::KnowledgePreferenceCommand,
+        knowledge::KnowledgePreferenceSnapshot,
+        knowledge::KnowledgeCaptureExcerpt,
+        knowledge::KnowledgeRecoveryRequest,
+        knowledge::KnowledgeSourceStatus,
+        knowledge::KnowledgeVerificationItem,
+        knowledge::KnowledgeVerificationRequest,
+        knowledge::KnowledgeVerificationResponse,
+        knowledge::KnowledgePreferenceVerificationRequest,
+        knowledge::KnowledgeSourceVerificationRequest,
         evidence::EvidenceContentIdentity,
         evidence::EvidenceSourceAssertions,
         evidence::EvidenceReservationRequest,
@@ -359,6 +409,31 @@ pub fn authenticated_router_with_evidence(
     ))
 )]
 pub struct ApiDocument;
+
+/// The pinned path-parameter macro does not accept schema defaults. Keep the
+/// optional inspection boolean's actual parser default explicit in the contract.
+struct KnowledgeQueryContract;
+impl utoipa::Modify for KnowledgeQueryContract {
+    fn modify(&self, document: &mut utoipa::openapi::OpenApi) {
+        use utoipa::openapi::{RefOr, schema::Schema};
+        let parameter = document
+            .paths
+            .paths
+            .get_mut("/engagements/{engagement_id}/tasks/{task_id}/knowledge")
+            .and_then(|path| path.get.as_mut())
+            .and_then(|operation| operation.parameters.as_mut())
+            .and_then(|parameters| {
+                parameters
+                    .iter_mut()
+                    .find(|parameter| parameter.name == "include_inactive")
+            });
+        if let Some(parameter) = parameter
+            && let Some(RefOr::T(Schema::Object(schema))) = &mut parameter.schema
+        {
+            schema.default = Some(serde_json::json!(false));
+        }
+    }
+}
 
 struct AuthenticationContract;
 impl utoipa::Modify for AuthenticationContract {

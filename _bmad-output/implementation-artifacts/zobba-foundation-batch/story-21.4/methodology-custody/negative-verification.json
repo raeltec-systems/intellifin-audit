@@ -1,0 +1,22 @@
+{
+  "valid_negative_control": true,
+  "selected_tests": 1,
+  "passed": 0,
+  "expected_failure": 1,
+  "test_duration_seconds": 20.5,
+  "failed_assertion": "restored exact unsent Edit methodology form must be visible after actual auth/session 503 unmount and successful current scoped Admin read",
+  "source_changes_during_negative": [],
+  "substitution": {
+    "baseline_commit": "d38e1daed736415ef13e7606345dac71bd1d9f01",
+    "path": "zobba/web/src/MethodologyWorkspace.tsx",
+    "baseline_sha256": "c5b2b3f943cafc9c7b29f7f1c196e73df71c6458943c7a3e737ca777c84b304b",
+    "repaired_sha256": "0ba509698ea541e5288adf566cb34dcea78f27f415df8c6843f49372a4cdcde6",
+    "substitution_performed": true,
+    "installed_sha256": "c5b2b3f943cafc9c7b29f7f1c196e73df71c6458943c7a3e737ca777c84b304b",
+    "installed_at": "2026-10-02T17:51:43.279088+00:00",
+    "restored_sha256": "0ba509698ea541e5288adf566cb34dcea78f27f415df8c6843f49372a4cdcde6",
+    "restored_at": "2026-10-02T17:52:12.815825+00:00",
+    "negative_process_exit": 1,
+    "restoration_exact": true
+  }
+}

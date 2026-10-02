@@ -1,0 +1,10 @@
+$ pnpm --filter @zobba/web test:browser --workers=1 --retries=0 --reporter=list,json evidence.spec.ts --grep 'asynchronous administration'
+$ playwright test --workers=1 --retries=0 --reporter=list,json evidence.spec.ts --grep 'asynchronous administration'
+
+Running 1 test using 1 worker
+
+(node:1058034) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/evidence.spec.ts:389:1 › asynchronous administration allows a blocked evidence transaction to commit through the database proxy (7.1s)
+
+  1 passed (12.4s)

@@ -250,35 +250,64 @@ test('live conversation polling withdraws the old actor before recovering a repl
   } finally { pollGate.release(); sessionGate.release(); try { await page.unrouteAll({ behavior: 'wait' }); } finally { await replacement.close(); } }
 });
 
-test('conversation mismatches after successful engagement reads share one bounded recovery budget', async ({ page }) => {
+test('conversation mismatches after successful engagement reads share one bounded recovery budget', async ({ page }, info) => {
+  const started = Date.now(), chronology: Record<string, unknown>[] = [];
+  let phase = 'initial-projections';
+  const record = (event: string, detail: Record<string, unknown> = {}) => {
+    if (chronology.length < 200) chronology.push({ sequence: chronology.length + 1, elapsedMs: Date.now() - started, phase, event, ...detail });
+  };
+  const initialPreference = gate(), recoveredPreference = gate();
+  let initialPreferenceHeld = false, recoveredPreferenceHeld = false, initialPreferenceSettled = false, settlingRecoveredPreference = false, preferenceVerifications = 0;
+  try {
+  // Keep the new preference verifier separate from the impact postcheck whose
+  // exact count this recovery-budget regression already asserts.
+  await page.route('**/api/knowledge/organisations/org-a/preference/verify', async route => {
+    const initial = !initialPreferenceSettled;
+    const response = await route.fetch(); expect(response.status()).toBe(200);
+    record('preference-verification-held', { initial, status: response.status() });
+    if (initial) { initialPreferenceHeld = true; await initialPreference.held; }
+    else { recoveredPreferenceHeld = true; await recoveredPreference.held; }
+    await route.fulfill({ response }); record('preference-verification-delivered', { initial });
+  });
   await signIn(page); await page.getByLabel('Task objective', { exact: true }).fill('Do not loop or expose this unstable draft');
   const impacts = page.getByRole('region', { name: 'Affected skill selections', exact: true });
   // Settle the initial projection, including its bound session verification,
   // before counting this deliberately unstable App recovery composition.
   await expect(impacts.getByText('No matching affected selections in this engagement.', { exact: true })).toBeVisible();
+  await expect.poll(() => initialPreferenceHeld).toBe(true);
+  const initialPreferenceSession = page.waitForResponse(response => new URL(response.url()).pathname === '/api/auth/session' && Object.hasOwn(response.request().headers(), 'x-expected-session'));
+  phase = 'settling-initial-preference'; initialPreference.release();
+  expect((await initialPreferenceSession).status()).toBe(200);
+  record('initial-preference-session-completed'); initialPreferenceSettled = true;
+  phase = 'fault-injection';
   let sessionReads = 0, boundVerifications = 0, scopeReads = 0, mismatches = 0, posts = 0;
   let conversationInjectionArmed = false;
   page.on('request', request => { if (request.method() === 'POST' && request.url().includes('/task-')) posts++; });
   await page.route('**/api/auth/session', async route => {
     // App bootstrap reads are unbound; current projection postchecks carry the
     // expected-session header. Count presence only, never record its value.
-    if (Object.hasOwn(route.request().headers(), 'x-expected-session')) boundVerifications++;
+    const bound = Object.hasOwn(route.request().headers(), 'x-expected-session');
+    const owner = bound ? settlingRecoveredPreference ? 'preference' : 'impact' : 'app';
+    if (bound) { if (settlingRecoveredPreference) preferenceVerifications++; else boundVerifications++; }
     else sessionReads++;
-    await route.continue();
+    record('session-request', { bound, owner, sessionReads, boundVerifications, preferenceVerifications });
+    const response = await route.fetch(); record('session-response', { bound, owner, status: response.status() });
+    await route.fulfill({ response });
   });
   await page.route('**/api/engagements/engagement-a?*', async route => {
-    scopeReads++;
+    scopeReads++; record('scope-request', { scopeReads });
     // A finite fuse makes the negative-control run fail safely if the old
     // cross-layer loop returns; successful repair never reaches this cutoff.
     if (scopeReads > 4) { await route.abort('connectionreset'); return; }
-    const response = await route.fetch(); expect(response.status()).toBe(200);
+    const response = await route.fetch(); record('scope-response', { status: response.status(), scopeReads }); expect(response.status()).toBe(200);
     runtime.sql(`UPDATE public.sessions SET csrf_token='post-scope-rotation-${scopeReads}' WHERE actor_id='actor-a';`);
     conversationInjectionArmed = true;
     await route.fulfill({ response });
   });
   await page.route('**/api/engagements/engagement-a/conversation?*', async route => {
     const injected = conversationInjectionArmed;
-    const response = await route.fetch();
+    record('conversation-request', { injected });
+    const response = await route.fetch(); record('conversation-response', { status: response.status(), injected });
     if (injected) { expect(response.status()).toBe(412); mismatches++; }
     await route.fulfill({ response });
   });
@@ -298,11 +327,27 @@ test('conversation mismatches after successful engagement reads share one bounde
   expect(sessionReads).toBe(2); expect(boundVerifications).toBe(0);
   await expect(page.getByRole('button', { name: 'Try again', exact: true })).toBeEnabled();
   await page.unroute('**/api/engagements/engagement-a?*'); await page.unroute('**/api/engagements/engagement-a/conversation?*');
+  phase = 'explicit-recovery';
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
   await expect(page.getByText('Conversation up to date', { exact: true })).toBeVisible();
   expect(sessionReads).toBe(3); await expect(page.getByLabel('Task objective', { exact: true })).toHaveValue('');
   await expect(impacts.getByText('No matching affected selections in this engagement.', { exact: true })).toBeVisible();
   expect(sessionReads).toBe(3); expect(boundVerifications).toBe(1); expect(posts).toBe(0);
+  await expect.poll(() => recoveredPreferenceHeld).toBe(true);
+  expect(preferenceVerifications).toBe(0);
+  phase = 'settling-recovered-preference'; settlingRecoveredPreference = true;
+  const recoveredPreferenceSession = page.waitForResponse(response => new URL(response.url()).pathname === '/api/auth/session' && Object.hasOwn(response.request().headers(), 'x-expected-session'));
+  recoveredPreference.release(); expect((await recoveredPreferenceSession).status()).toBe(200);
+  expect(preferenceVerifications).toBe(1); expect(sessionReads).toBe(3); expect(boundVerifications).toBe(1); expect(posts).toBe(0);
+  } finally {
+    initialPreference.release(); recoveredPreference.release();
+    try { await page.unrouteAll({ behavior: 'wait' }); }
+    finally {
+      const name = 'conversation-recovery-chronology.json', path = info.outputPath(name);
+      await mkdir(dirname(path), { recursive: true }); await writeFile(path, JSON.stringify(chronology, null, 2));
+      await info.attach(name, { path, contentType: 'application/json' });
+    }
+  }
 });
 
 test('read preconditions cannot change ordinary command, reserved control or logout CSRF contracts', async ({ page }) => {
@@ -329,7 +374,7 @@ test('an engagement mismatch and a later conversation mismatch consume the same 
   };
   let sessionReads = 0, boundSessionReads = 0, scopeReads = 0, refusals = 0, engagementMismatches = 0, conversationMismatches = 0, posts = 0;
   let conversationInjectionArmed = false, ordinaryConversationReads = 0;
-  const initialImpact = gate(); let impactHeld = false, boundSessionCompleted = false;
+  const initialImpact = gate(), initialPreference = gate(); let impactHeld = false, preferenceHeld = false, boundSessionCompleted = false, preferenceSessionCompleted = false, settlingPreference = false, preferenceSessionReads = 0;
   page.on('request', request => { if (request.method() === 'POST' && request.url().includes('/task-')) posts++; });
   try {
   // Deliberately deliver the real initial impact response after installing the
@@ -339,12 +384,20 @@ test('an engagement mismatch and a later conversation mismatch consume the same 
     const response = await route.fetch(); record('initial-impact-response', { status: response.status() }); expect(response.status()).toBe(200);
     impactHeld = true; await initialImpact.held; await route.fulfill({ response }); record('initial-impact-delivered');
   });
+  await page.route('**/api/knowledge/organisations/org-a/preference/verify', async route => {
+    const response = await route.fetch(); record('initial-preference-verification-response', { status: response.status() }); expect(response.status()).toBe(200);
+    preferenceHeld = true; await initialPreference.held; await route.fulfill({ response }); record('initial-preference-verification-delivered');
+  });
   await signIn(page); phase = 'installing-routes'; record('sign-in-complete');
-  await expect.poll(() => impactHeld).toBe(true);
+  await expect.poll(() => impactHeld && preferenceHeld).toBe(true);
   await page.route('**/api/auth/session', async route => {
     const bound = Object.hasOwn(route.request().headers(), 'x-expected-session');
     record('session-request', { bound });
     const response = await route.fetch(); record('session-response', { bound, status: response.status() });
+    if (bound && settlingPreference) {
+      preferenceSessionReads++; expect(response.status()).toBe(200); await route.fulfill({ response });
+      preferenceSessionCompleted = true; record('preference-session-delivered', { preferenceSessionReads }); return;
+    }
     if (bound) {
       boundSessionReads++; expect(response.status()).toBe(200); await route.fulfill({ response });
       boundSessionCompleted = true; record('bound-session-delivered', { boundSessionReads }); return;
@@ -384,6 +437,12 @@ test('an engagement mismatch and a later conversation mismatch consume the same 
     else if (response.status() === 200) ordinaryConversationReads++;
     await route.fulfill({ response });
   });
+  // Settle the real preference verifier and its bound session postcheck while
+  // the impact reply is still held; neither can consume the App bootstrap gate.
+  phase = 'settling-initial-preference'; settlingPreference = true; initialPreference.release();
+  await expect.poll(() => preferenceSessionCompleted).toBe(true);
+  expect(preferenceSessionReads).toBe(1); expect(boundSessionReads).toBe(0); expect(sessionReads).toBe(0); expect(scopeReads).toBe(0); expect(refusals).toBe(0);
+  settlingPreference = false;
   phase = 'releasing-initial-impact'; initialImpact.release();
   await expect.poll(() => boundSessionCompleted).toBe(true);
   expect(boundSessionReads).toBe(1); expect(sessionReads).toBe(0); expect(scopeReads).toBe(0); expect(refusals).toBe(0);
@@ -399,14 +458,14 @@ test('an engagement mismatch and a later conversation mismatch consume the same 
   phase = 'waiting-for-interruption'; record('refresh-click-after');
   await expect(page.getByRole('heading', { name: 'Connection interrupted' })).toBeVisible();
   expect(sessionReads).toBe(2); expect(scopeReads).toBe(1); expect(refusals).toBe(2);
-  expect(boundSessionReads).toBe(1); expect(engagementMismatches).toBe(1); expect(conversationMismatches).toBe(1); expect(posts).toBe(0);
+  expect(preferenceSessionReads).toBe(1); expect(boundSessionReads).toBe(1); expect(engagementMismatches).toBe(1); expect(conversationMismatches).toBe(1); expect(posts).toBe(0);
   await expect(page.locator('.protected-workspace')).toHaveCount(0);
   } finally {
-    phase = 'cleanup'; record('cleanup-before', { sessionReads, boundSessionReads, scopeReads, refusals, engagementMismatches, conversationMismatches, ordinaryConversationReads, posts });
-    initialImpact.release();
+    phase = 'cleanup'; record('cleanup-before', { sessionReads, boundSessionReads, preferenceSessionReads, scopeReads, refusals, engagementMismatches, conversationMismatches, ordinaryConversationReads, posts });
+    initialImpact.release(); initialPreference.release();
     try { await page.unrouteAll({ behavior: 'wait' }); }
     finally {
-      record('cleanup-after', { sessionReads, boundSessionReads, scopeReads, refusals, engagementMismatches, conversationMismatches, ordinaryConversationReads, posts });
+      record('cleanup-after', { sessionReads, boundSessionReads, preferenceSessionReads, scopeReads, refusals, engagementMismatches, conversationMismatches, ordinaryConversationReads, posts });
       // Endpoint categories, header presence and status only: no header values,
       // query strings, cookies, response bodies or session material is retained.
       const name = 'mixed-recovery-chronology.json', path = info.outputPath(name);

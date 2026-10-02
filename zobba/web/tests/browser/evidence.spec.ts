@@ -386,19 +386,38 @@ test('failed current-authority recheck hides all evidence while retaining same-s
   expect(await page.evaluate(() => sessionStorage.getItem('zobba.evidence-draft.v1'))).toBe(before);
 });
 
-test('asynchronous administration allows a blocked evidence transaction to commit through the database proxy', async ({ page }) => {
+test('asynchronous administration allows a blocked evidence transaction to commit through the database proxy', async ({ page }, info) => {
   await signIn(page); const session = await currentSession(page);
-  const barrier = runtime.sqlAsync("BEGIN; SET LOCAL application_name='zobba_evidence_browser_session_barrier'; SELECT token_hash FROM public.sessions WHERE actor_id='actor-a' FOR UPDATE; SELECT pg_sleep(4); COMMIT;");
-  let metadata: Promise<import('@playwright/test').APIResponse> | undefined;
-  let mutation: Promise<void> | undefined;
-  const waitFor = (predicate: string) => runtime.sqlAsync(`DO $$ DECLARE deadline timestamptz:=clock_timestamp()+interval '2 seconds'; BEGIN LOOP PERFORM pg_stat_clear_snapshot(); IF EXISTS(SELECT 1 FROM pg_catalog.pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND ${predicate}) THEN RETURN; END IF; IF clock_timestamp()>deadline THEN RAISE EXCEPTION 'Owned evidence lock observation timed out'; END IF; PERFORM pg_sleep(0.01); END LOOP; END $$;`);
+  // Retire App polling after real OIDC; this context retains its authenticated
+  // cookie for the one explicit metadata request through the same API proxy.
+  await page.goto('about:blank');
+  const barrier = runtime.evidenceSessionBarrier();
+  let metadata: Promise<{ response: import('@playwright/test').APIResponse } | { error: unknown }> | undefined;
+  let metadataStatus: number | null = null, metadataConsumed = false;
+  const errors: unknown[] = [];
   try {
-    await waitFor("application_name='zobba_evidence_browser_session_barrier' AND wait_event='PgSleep'");
-    metadata = page.request.get(`${runtime.url}/api/engagements/engagement-a/evidence?${scope}`, { headers: { 'X-Expected-Session': session.csrf_token } });
-    await waitFor("query LIKE 'SELECT public.evidence_session_locked(%' AND wait_event_type='Lock'");
-    mutation = runtime.sqlAsync("BEGIN; SET LOCAL application_name='zobba_evidence_browser_waiting_admin'; UPDATE public.identities SET display_name=display_name WHERE id='actor-a'; COMMIT;");
-    await waitFor("application_name='zobba_evidence_browser_waiting_admin' AND wait_event_type='Lock'");
-    const [, response] = await Promise.all([barrier, metadata, mutation]);
-    expect(response.status()).toBe(200); expect((await response.json()).items).toEqual([]);
-  } finally { await Promise.allSettled([barrier, ...(metadata ? [metadata] : []), ...(mutation ? [mutation] : [])]); }
+    await barrier.prepare();
+    metadata = page.request.get(`${runtime.url}/api/engagements/engagement-a/evidence?${scope}`, { headers: { 'X-Expected-Session': session.csrf_token } }).then(
+      response => { metadataStatus = response.status(); return { response }; }, error => ({ error }),
+    );
+    await barrier.observeMetadata(); await barrier.startAdmin(); await barrier.observeChain();
+    expect(metadataStatus).toBeNull();
+    await barrier.commit();
+    const result = await metadata; metadataConsumed = true;
+    if ('error' in result) throw result.error;
+    expect(result.response.status()).toBe(200); expect((await result.response.json()).items).toEqual([]);
+    expect(barrier.proof.holder_completed).toBe(true); expect(barrier.proof.admin_completed).toBe(true);
+  } catch (error) { errors.push(error); }
+  finally {
+    try { await barrier.close(); } catch (error) { if (!errors.includes(error)) errors.push(error); }
+    if (metadata && !metadataConsumed) { const result = await metadata; if ('error' in result && !errors.includes(result.error)) errors.push(result.error); }
+    try {
+      await info.attach('evidence-owned-blocker-chain.json', {
+        body: Buffer.from(JSON.stringify({ child_deadline_ms: 10000, observation_deadline_ms: 2000, metadata_status: metadataStatus, ...barrier.proof }, null, 2)),
+        contentType: 'application/json',
+      });
+    } catch (error) { errors.push(error); }
+  }
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) throw new AggregateError(errors, 'Evidence barrier retained the primary and cleanup failures.');
 });

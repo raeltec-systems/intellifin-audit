@@ -1,0 +1,44 @@
+$ pnpm --filter @zobba/web test:browser --workers=1 --retries=0 --reporter=list,json evidence.spec.ts knowledge.spec.ts --grep 'asynchronous administration|named same-client reuse'
+$ playwright test --workers=1 --retries=0 --reporter=list,json evidence.spec.ts knowledge.spec.ts --grep 'asynchronous administration|named same-client reuse'
+
+Running 2 tests using 1 worker
+
+(node:1056924) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/browser/evidence.spec.ts:389:1 › asynchronous administration allows a blocked evidence transaction to commit through the database proxy (7.1s)
+(node:1057176) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  2 tests/browser/knowledge.spec.ts:370:1 › named same-client reuse serves the destination and independently checks reader and accountable Task owner (7.9s)
+
+
+  1) tests/browser/evidence.spec.ts:389:1 › asynchronous administration allows a blocked evidence transaction to commit through the database proxy 
+
+    Error: Synthetic browser database mutation failed. {"phase":"evidence-observe-metadata-lock","source":"close","sqlstate":"P0001","exit_code":3,"signal":null}
+
+       at auth-runtime.ts:84
+
+      82 |     });
+      83 |     const failure = (source: 'spawn' | 'stdin' | 'close' | 'deadline', exit_code: number | null = null, signal: NodeJS.Signals | null = null) =>
+    > 84 |       new Error(`Synthetic browser database mutation failed. ${JSON.stringify({ phase: phase ?? 'unlabelled', source, sqlstate, exit_code, signal })}`);
+         |       ^
+      85 |     const finish = (error?: Error) => {
+      86 |       if (settled) return;
+      87 |       settled = true;
+        at failure (/workspace/intellifin-audit/zobba/web/tests/browser/auth-runtime.ts:84:7)
+        at ChildProcess.<anonymous> (/workspace/intellifin-audit/zobba/web/tests/browser/auth-runtime.ts:98:19)
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-story-21-4/repair-full-failures-diagnostic-1-results/evidence-asynchronous-admi-74647--through-the-database-proxy/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-story-21-4/repair-full-failures-diagnostic-1-results/evidence-asynchronous-admi-74647--through-the-database-proxy/error-context.md
+
+    Error Context: ../../../../tmp/zobba-story-21-4/repair-full-failures-diagnostic-1-results/evidence-asynchronous-admi-74647--through-the-database-proxy/error-context.md
+
+  1 failed
+    tests/browser/evidence.spec.ts:389:1 › asynchronous administration allows a blocked evidence transaction to commit through the database proxy 
+  1 passed (25.7s)
+/workspace/intellifin-audit/zobba/web:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @zobba/web@0.1.0 test:browser: `playwright test --workers=1 --retries=0 --reporter=list,json evidence.spec.ts knowledge.spec.ts --grep 'asynchronous administration|named same-client reuse'`
+Exit status 1
+[ELIFECYCLE] Command failed with exit code 1.

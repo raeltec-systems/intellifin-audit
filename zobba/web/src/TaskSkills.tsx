@@ -6,12 +6,13 @@ import { discardSkillActions, discardSkillPending, freezeSkillAction, readTaskSk
 import type { SelectionAction, SelectSkill, SkillSelectionView, TaskSkills as Discovery, SkillSelectionImpactPage } from './skills';
 import { SkillDetails, SkillEligibility } from './SkillDetails';
 import { useSkillInspection } from './useSkillInspection';
+import type { SkillContext } from './knowledge-context';
 
-interface Props { scope: Scope; taskId: string; taskRevision: string; session: Session; accessReady: boolean; onAccessFailure: (error?: AccessError) => void }
+interface Props { scope: Scope; taskId: string; taskRevision: string; session: Session; accessReady: boolean; onAccessFailure: (error?: AccessError) => void; onContext?: (context: SkillContext | null) => void }
 const basisChanged = (draft: SelectSkill, value: Discovery) => draft.expected_catalog_revision !== value.catalog_revision || draft.expected_methodology_binding_id !== value.methodology_binding_id || draft.expected_execution_epoch !== value.execution_epoch || draft.expected_selection_revision !== value.selection_revision;
 const freshBasis = (draft: SelectSkill, value: Discovery): SelectSkill => ({ ...draft, key: crypto.randomUUID(), expected_catalog_revision: value.catalog_revision, expected_methodology_binding_id: value.methodology_binding_id, expected_execution_epoch: value.execution_epoch, expected_selection_revision: value.selection_revision });
 
-export function TaskSkills({ scope, taskId, taskRevision, session, accessReady, onAccessFailure }: Props) {
+export function TaskSkills({ scope, taskId, taskRevision, session, accessReady, onAccessFailure, onContext }: Props) {
   const owner = skillAudience(session, scope.organisation_id, scope, taskId);
   const [draft, updateDraft] = useState<SelectSkill | null>(() => { const saved = recoverSkillDraft(owner, session); return saved?.kind === 'selection-draft' ? saved.body : null; });
   const [reasonError, setReasonError] = useState<string | null>(null);
@@ -29,6 +30,8 @@ export function TaskSkills({ scope, taskId, taskRevision, session, accessReady, 
   const read = useCallback((signal: AbortSignal) => readTaskSkills(scope, taskId, session, signal), [scope.organisation_id, scope.client_id, scope.engagement_id, taskId, session.identity.id, session.csrf_token]);
   const inspection = useSkillInspection(owner, accessReady, taskRevision, read, withdrawPrivate);
   const value = inspection.value, visible = inspection.verified;
+  useEffect(() => { onContext?.(visible && value ? { task_id: taskId, methodology_binding_id: value.methodology_binding_id, execution_epoch: value.execution_epoch, observed_at: value.observed_at,
+    selections: value.selections.map(({ selection, current }) => ({ id: selection.id, version_id: selection.version_id, digest: selection.digest, status: current.status })) } : null); }, [visible, value, taskId, onContext]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; action.current?.abort(); }; }, []);
   async function apply(command: SelectionAction) {
     if (!visible || action.current) return;

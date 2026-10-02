@@ -7,6 +7,7 @@ import { discardAcquisitionDraft, downloadEvidence, evidenceAudience, liveEviden
   measureFile, previewEvidence, recoverAcquisitionDraft, reserveEvidence, safeFilename, saveAcquisitionDraft, uploadEvidence, verifyEvidenceAudience } from './evidence';
 import { MAX_ORIGINAL_BYTES, parseReservationRequest, ReservationLimitError, trimEvidenceWhitespace } from './evidence';
 import type { AcquisitionDraft, Evidence, EvidencePage, Preview, Reservation, ReservationPage, ReservationRequest } from './evidence';
+import { EvidenceKnowledge } from './EvidenceKnowledge';
 
 interface Props {
   engagement: Engagement;
@@ -328,6 +329,7 @@ export function EvidenceWorkspace({ engagement, session, accessReady, onAccessFa
             <div><dt>Reserved</dt><dd>{acquiredAt(selected.reservation.reserved_at)}</dd></div></dl>
             <h4>Attributed source assertions</h4><dl>{(Object.keys(sourceLabels) as (keyof typeof sourceLabels)[]).map(key => <div key={key}><dt>{sourceLabels[key]}</dt><dd>{selected.reservation.request.source[key] ?? 'Unknown'}</dd></div>)}</dl>
             <p className="field-help">Source version is asserted separately from the verified storage version. Byte identity establishes neither source truth nor completeness.</p>
+            <EvidenceKnowledge key={`${audience}/${selected.reservation.id}`} evidence={selected} scope={engagement} session={session} accessReady={usable && open} onAccessFailure={onAccessFailure} onReturnToTask={close} />
             <button className="quiet-button" type="button" disabled={working || !page?.storage_configured} onClick={() => void download()}>Download verified original</button>
             {preview?.kind === 'plain_text' ? <><h4>Bounded plain-text preview</h4><p className="field-help">Up to 64 KiB and 100 lines. {preview.truncated ? 'Truncated; download the original for all bytes.' : 'Original text fits this preview.'}</p><pre className="evidence-preview" tabIndex={0}>{preview.text}</pre></> : preview?.kind === 'download_only' ? <p role="status">Download only. This original has no supported inert plain-text preview.</p> : <button className="text-button" type="button" disabled={working || !page?.storage_configured} onClick={() => void inspect(selected.reservation.id)}>Read bounded preview</button>}
           </section> : null}

@@ -14,6 +14,11 @@ export type MethodologyReceipt = components['schemas']['MethodologyReceipt'];
 export type TaskBasis = components['schemas']['TaskMethodologyResponse'];
 export type Requirement = Definition['requirements'][number];
 export type MethodologyVersion = MethodologySnapshot['versions'][number];
+export type MethodologyEditDraft = { command: SaveMethodology; availableAt: string; baseline: string | null };
+export type MethodologyRecallDraft = { version: MethodologyVersion; reason: string; expected_revision: string; key: string };
+export type MethodologyDraft =
+  | { kind: 'edit'; organisation_id: string; body: MethodologyEditDraft }
+  | { kind: 'recall'; organisation_id: string; body: MethodologyRecallDraft };
 export type InheritanceMode = 'inherit' | 'value' | 'clear';
 export type MethodologyAction =
   | { kind: 'save'; organisation_id: string; body: SaveMethodology }
@@ -262,15 +267,53 @@ export function methodologyFailure(error: unknown, recovering = false): string {
     : 'Delivery could not be confirmed. Check current access, then retry the exact request.';
 }
 
-// Uncertain delivery survives a temporary App access outage without persisting
-// configuration or session material to browser storage. A new audience discards it.
-let retainedAction: { actor: string; session: string; action: MethodologyAction } | null = null;
-export function retainMethodologyAction(action: MethodologyAction, session: Session): void {
-  retainedAction = { actor: session.identity.id, session: session.csrf_token, action: freezeMethodologyAction(action) };
+// Memory-only custody above the authenticated subtree. Recovery is data, never
+// authority: the editor waits for its own fresh current-Admin read before display.
+const retained = new Map<string, { actor: string; session: string; action: MethodologyAction | null; draft: MethodologyDraft | null }>();
+export const METHODOLOGY_CUSTODY_BYTES = 8 * 1024 * 1024;
+export const methodologyCustodyFailure = 'Methodology draft recovery is full (16 audiences or 8 MiB). This change was not accepted or sent. Finish or cancel an existing methodology draft, or recover a pending receipt, before trying again.';
+function storeMethodologyCustody(organisation: string, session: Session, patch: { action?: MethodologyAction | null; draft?: MethodologyDraft | null }): boolean {
+  withdrawReplacedMethodologySession(session);
+  const owner = methodologyAudience(session, organisation);
+  const entry = { actor: session.identity.id, session: session.csrf_token, action: null, draft: null, ...retained.get(owner), ...patch };
+  if (!entry.action && !entry.draft) { retained.delete(owner); return true; }
+  const size = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
+  if (size(entry) > METHODOLOGY_CUSTODY_BYTES) return false;
+  const next = new Map(retained); next.delete(owner); next.set(owner, entry);
+  if (next.size > 16 || [...next.values()].reduce((total, value) => total + size(value), 0) > METHODOLOGY_CUSTODY_BYTES) return false;
+  retained.clear(); for (const [key, value] of next) retained.set(key, value);
+  return true;
 }
-export function recoverMethodologyAction(session: Session): MethodologyAction | null {
-  if (!retainedAction) return null;
-  if (retainedAction.actor !== session.identity.id || retainedAction.session !== session.csrf_token) { retainedAction = null; return null; }
-  return retainedAction.action;
+export function withdrawReplacedMethodologySession(session: Session): void {
+  for (const [key, value] of retained) if (value.actor !== session.identity.id || value.session !== session.csrf_token) retained.delete(key);
 }
-export function discardMethodologyAction(): void { retainedAction = null; }
+export function retainMethodologyAction(action: MethodologyAction, session: Session): boolean {
+  return storeMethodologyCustody(action.organisation_id, session, { action: freezeMethodologyAction(action) });
+}
+export function recoverMethodologyOrganisation(session: Session): string | null {
+  withdrawReplacedMethodologySession(session);
+  for (const value of [...retained.values()].reverse()) { const entry = value.action ?? value.draft; if (entry) return entry.organisation_id; }
+  return null;
+}
+export function recoverMethodologyAction(session: Session, organisation = recoverMethodologyOrganisation(session)): MethodologyAction | null {
+  withdrawReplacedMethodologySession(session);
+  return organisation ? retained.get(methodologyAudience(session, organisation))?.action ?? null : null;
+}
+export function retainMethodologyDraft(organisation: string, session: Session, draft: MethodologyDraft | null): boolean {
+  if (draft && draft.organisation_id !== organisation) return false;
+  return storeMethodologyCustody(organisation, session, { draft: draft && structuredClone(draft) });
+}
+export function recoverMethodologyDraft(organisation: string | null, session: Session): MethodologyDraft | null {
+  withdrawReplacedMethodologySession(session);
+  const draft = organisation ? retained.get(methodologyAudience(session, organisation))?.draft : null;
+  return draft ? structuredClone(draft) : null;
+}
+export function discardMethodologyPending(organisation: string, session: Session): void {
+  const owner = methodologyAudience(session, organisation), entry = retained.get(owner);
+  if (entry) { entry.action = null; if (!entry.draft) retained.delete(owner); }
+}
+/** Clear all custody on logout/replacement, or only the definitely refused org. */
+export function discardMethodologyAction(organisation?: string): void {
+  if (!organisation) retained.clear();
+  else for (const [key, value] of retained) if ((value.action ?? value.draft)?.organisation_id === organisation) retained.delete(key);
+}

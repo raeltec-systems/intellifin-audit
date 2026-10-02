@@ -240,7 +240,7 @@ cargo run -p zobba-cli --locked -- migrate --runtime-role zobba_app
 
 This command reads `ZOBBA_MIGRATION_DATABASE_URL`; repeating it is safe against
 the same valid schema. It accepts empty databases, exactly verified published
-schema 1–8 prefixes, or current schema 9. Physical catalog checks precede metadata
+schema 1–9 prefixes, or current schema 10. Physical catalog checks precede metadata
 reads; migration checksums, changes and restricted grants are validated atomically.
 Foreign, altered and newer states refuse without mutation. API and worker read
 only `ZOBBA_RUNTIME_DATABASE_URL` and
@@ -672,7 +672,7 @@ Both Rust processes expose:
 | Request | Healthy response | Dependency failure |
 |---|---|---|
 | `GET /health/live` | 200, `status: "live"`, `schema_version: null` | Remains live while the process can serve |
-| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 9` | 503, `status: "unavailable"`, `schema_version: null` |
+| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 10` | 503, `status: "unavailable"`, `schema_version: null` |
 
 Each response also identifies `service: "api"` or `service: "worker"`. Readiness
 checks the supported schema through the restricted runtime connection. Startup
@@ -1077,5 +1077,90 @@ edit, status and selection drafts survive transient session-check unmounts in
 bounded memory under their exact actor/session and organisation/scope/Task owner.
 They remain hidden until that owner is freshly authorised; replacement, denial,
 logout, cancellation and success discard them. Recovery preserves original basis
-and never submits automatically. This is skill-specific custody; methodology
-unsent-draft recovery remains a separately tracked follow-up.
+and never submits automatically. Methodology unsent-draft custody follows the
+same ownership boundary in Story 21.4 below.
+
+
+## Scoped working knowledge (Story 21.4)
+
+The Task inspector’s **What Zobba is using** combines independently authorised
+methodology, selected technique references and working knowledge. Each fragment
+identifies its exact Task epoch and method binding. A changed or unavailable basis
+withholds that fragment. This inspection prepares later work; it does not claim
+that a model consumed the records or that a skill executed.
+
+Accepted Guide commands automatically produce attributable historical decisions,
+including the original Task/cycle and Received/Applied standing. They remain local
+directions, not universal engagement instructions. Changes to live direction still
+use Guide. Supported UTF-8 acquisitions automatically record a bounded exact source
+excerpt and separate assertions from populated acquisition metadata. Source text
+means “this source states this”; supplied interpretations remain assertions. Source
+identity includes registered original, immutable storage version, digest and byte
+range. BOM, CRLF and Unicode bytes are preserved. Unsupported binary formats retain
+an explicit extraction omission. Capture neither evaluates truth nor proves full
+coverage or a business period.
+
+The inspector supports attributable assertions and corrections, destination-local
+exclusion/forgetting, exact historical inspection, and explicit reuse in a named
+same-client engagement and Task. Reuse requires current source and destination
+access separately for the human viewer and the Task’s existing accountable actor.
+It retains source ACLs and does not widen the Task’s scope or grant an operation.
+An explicit source correction links two registered originals in the same scope,
+retains both, checks the expected correction revision and invalidates dependent
+context. Equal filenames, digests or supplied version labels never infer replacement.
+
+Two matching explicit Expand/Reduce choices on distinct inspection openings can
+learn the owner-private `task_inspection_layout` setting. Later openings apply it
+where screen width permits; automatic resets do not train it. Inspection identifies
+the deterministic rule and events. Undo consumes the observed history, removes the
+future default and withdraws active publications of that exact revision. A captured
+preference revision also fences delayed observations after Undo or an explicit Save.
+Explicit settings take precedence over learned defaults.
+
+The owner may release only that exact typed presentation value to an assigned
+engagement. Recipients see the optional setting without receiving private source
+events or other personal text. Editing a private preference does not replace a
+previous publication. Publications can be withdrawn; retained receipts remain audit
+history. Arbitrary prose cannot use this release path. Firm context continues to
+come from saved Admin methodology, with its existing ownership and provenance.
+
+Knowledge reads filter current source access and dependency validity before search
+or disclosure. Period-limited records require a compatible known Task period;
+unknown periods and partial retrieval stay explicit. Before browser disclosure,
+non-text verification rechecks the exact shown references and current Task basis
+in one transaction. Preference and source inspectors have their own current-read
+verification. These bounded POSTs are reads, not automatic commands. Pages contain
+at most 50 records with byte/ASCII keyset ordering across knowledge and released
+preferences. Each request examines at most 1,024 combined candidates. Reaching
+that ceiling reports a scan-limit omission; a partial page can continue from its
+last eligible record. If none is eligible, no safe cursor is exposed and later
+records may remain omitted. Text filtering runs after current source checks and
+does not bypass that scan limit. Exact record/revision lookup and exact
+original capture recovery remain available beyond the search page. Ordinary JSON
+responses retain the 4 MiB reader bound. Individual stored records and commands
+have a conservative 60,000-byte JSON admission bound; dependency traversal is
+bounded to 256 exact revisions. Preferences retain at most 50 publications.
+Restrictions and exact retry use their existing identities rather than creating
+new source records. Durable command receipts retain bounded event facts and exact
+record references; each response rebuilds the record view with current status and
+access checks. This keeps maximum-length restriction reasons usable for already
+accepted records without duplicating their full text into receipt storage. Empty
+results never establish absence.
+
+Schema 10 is an additive migration. The published migration/catalogue prefix 1–9
+is preserved. New Guide commands receive a server timestamp; earlier commands keep
+an explicit unknown (`NULL`) time and are not presented as newly captured timed
+decisions. Registered originals without a completed derivative can be recovered
+from **Source working knowledge**, using a freshly authorised pinned object read.
+Acquisition and exact Guide retries revisit their owned derivative path. No object
+read holds a database transaction. Original evidence and command receipts survive
+correction, withdrawal and future-context exclusion.
+An exact knowledge-command retry preserves the accepted event identity when a
+separate supporting source becomes inaccessible, withholding the protected record.
+Current session and originating/destination Task scope remain required.
+
+The focused methodology follow-up also retains unsent edits and recall reasons in
+bounded memory across a transient session-check outage. Recovery waits for the same
+actor/session and that editor’s own fresh Admin read. Replacement, denial, sign-out,
+cancel and successful completion discard the draft. It is never stored in browser
+storage or automatically submitted.

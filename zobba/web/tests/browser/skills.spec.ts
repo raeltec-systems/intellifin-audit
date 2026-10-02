@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { expect, test } from '@playwright/test';
-import type { Locator, Page, TestInfo } from '@playwright/test';
+import type { Locator, Page, Request as PlaywrightRequest, Response as PlaywrightResponse, Route, TestInfo } from '@playwright/test';
 import type { Session } from '../../src/auth';
 import type { Scope } from '../../src/engagements';
 import type { Evidence } from '../../src/evidence';
@@ -598,9 +598,93 @@ test('late Task skill and session reads cannot disclose or replay the previous s
   } finally { await page.unrouteAll({ behavior: 'wait' }); await replacement.close(); }
 });
 
-test('actual inner skill disclosures retain open state and focus across cancelled reads, but current failures withdraw them', async ({ page, browser }) => {
+test('actual inner skill disclosures retain open state and focus across cancelled reads, but current failures withdraw them', async ({ page, browser }, info) => {
   await signIn(page); const version = await install(page, authored('lifecycle-technique'));
   const auditorContext = await browser.newContext({ ignoreHTTPSErrors: true, storageState: { cookies: [], origins: [] } }); const auditor = await auditorContext.newPage();
+  type RouteKind = 'skills' | 'session' | 'conversation';
+  type RouteCycle = 'setup' | 'focus' | 'visibility' | 'transport-failure' | 'timeout';
+  type EventValue = string | number | boolean | null;
+  const lifecycle: { events: Array<Record<string, EventValue>>; overflow: number } = { events: [], overflow: 0 };
+  let cycle: RouteCycle = 'setup', sequence = 0, requestSequence = 0;
+  const append = (event: string, detail: Record<string, EventValue> = {}) => {
+    if (lifecycle.events.length < 256) lifecycle.events.push({ sequence: ++sequence, cycle, event, ...detail });
+    else lifecycle.overflow++;
+  };
+  const category = (error: unknown) => {
+    const message = error instanceof Error ? error.message : '';
+    if (message.includes('Route is already handled')) return 'route-already-handled';
+    if (/Target .*closed|TargetClosedError|has been closed/.test(message)) return 'target-closed';
+    if (/timeout|timed out/i.test(message)) return 'timeout';
+    return error instanceof Error && error.name === 'AssertionError' ? 'assertion' : 'other';
+  };
+  const requests = new WeakMap<PlaywrightRequest, { id: number; kind: RouteKind; bound: boolean; request_cycle: RouteCycle }>();
+  const requestRecord = (request: PlaywrightRequest, kind: RouteKind) => {
+    let record = requests.get(request);
+    if (!record) {
+      record = { id: ++requestSequence, kind, bound: Object.hasOwn(request.headers(), 'x-expected-session'), request_cycle: cycle };
+      requests.set(request, record);
+      append('exact-request-registered', record);
+    }
+    return record;
+  };
+  const failedRequest = (request: PlaywrightRequest) => {
+    const record = requests.get(request);
+    if (!record) return;
+    const failure = request.failure()?.errorText;
+    append('exact-request-failed', { ...record, failure: failure && /^net::ERR_[A-Z_]+$/.test(failure) ? failure : 'other' });
+  };
+  const finishedRequest = (request: PlaywrightRequest) => { const record = requests.get(request); if (record) append('exact-request-finished', record); };
+  const responseReceived = (response: PlaywrightResponse) => { const record = requests.get(response.request()); if (record) append('exact-response', { ...record, status: response.status() }); };
+  const recorded = async (phase: string, operation: () => Promise<void>) => {
+    append(`${phase}-started`);
+    try { await operation(); append(`${phase}-completed`); }
+    catch (error) { append(`${phase}-failed`, { category: category(error) }); throw error; }
+  };
+  const preserveFailures = async (phase: string, body: () => Promise<void>, cleanup: () => Promise<void>) => {
+    const failures: unknown[] = [];
+    try { await body(); }
+    catch (error) { append(`${phase}-body-failed`, { category: category(error) }); failures.push(error); }
+    try { await cleanup(); }
+    catch (error) { append(`${phase}-cleanup-failed`, { category: category(error) }); failures.push(error); }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) throw new AggregateError(failures, `Skill disclosure ${phase} retained body and cleanup failures.`);
+  };
+  // Each intercepted handler remains owned until settlement, before removing
+  // interception. Keep its rejection alongside any body or cleanup failure.
+  const handlers = new Set<Promise<void>>();
+  const ownRoute = (handle: (route: Route) => Promise<void>) => (route: Route) => {
+    const pending = handle(route); handlers.add(pending); return pending;
+  };
+  const settleHandlers = async () => {
+    const errors: unknown[] = [];
+    while (handlers.size) {
+      const pending = [...handlers], results = await Promise.allSettled(pending);
+      pending.forEach(handler => handlers.delete(handler));
+      for (const result of results) if (result.status === 'rejected') errors.push(result.reason);
+    }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) throw new AggregateError(errors, 'Skill disclosure owned handlers failed.');
+  };
+  const unrouteOwned = () => preserveFailures('owned-route-cleanup', () => recorded('handlers-settlement', settleHandlers), () => auditor.unrouteAll({ behavior: 'wait' }));
+  const heldRoute = (kind: RouteKind, controller: ReturnType<typeof gate>, held: () => void) => ownRoute(async (route: Route) => {
+    const record = requestRecord(route.request(), kind);
+    let stage = 'fetch';
+    append('handler-started', record);
+    try {
+      // Only the unbound App read owns the authority gate. Current fragment
+      // postchecks continue normally and cannot satisfy authorityHeld.
+      if (kind === 'session' && record.bound) {
+        stage = 'continue'; await route.continue(); append('bound-postcheck-continued', record); return;
+      }
+      const response = await route.fetch(); append('upstream-response', { ...record, status: response.status() }); expect(response.status()).toBe(200);
+      held(); stage = 'gate'; append('response-held', record); await controller.held;
+      stage = 'fulfill'; append('held-gate-released', record); append('fulfill-started', record);
+      await route.fulfill({ response }); append('fulfill-completed', record);
+    } catch (error) { append('handler-failed', { ...record, stage, category: category(error) }); throw error; }
+    finally { append('handler-settled', record); }
+  });
+  auditor.on('requestfailed', failedRequest); auditor.on('requestfinished', finishedRequest); auditor.on('response', responseReceived);
+  let bodyFailed = false, bodyFailure: unknown;
   try {
     await signIn(auditor, 'auditor-a'); const task = await createTask(auditor, 'Retain the inspected skill resource');
     const panel = auditor.getByRole('region', { name: 'Task skills', exact: true }), card = candidate(auditor, version);
@@ -611,12 +695,14 @@ test('actual inner skill disclosures retain open state and focus across cancelle
     const pattern = `**/api/engagements/engagement-a/tasks/${task}/skills?*`;
     const refresh = panel.getByRole('button', { name: 'Refresh task skills', exact: true });
     for (const tabAway of [false, true]) {
+      cycle = tabAway ? 'visibility' : 'focus'; append('cycle-started');
       const skills = gate(), authority = gate(), projection = gate(); let skillHeld = false, authorityHeld = false, projectionHeld = false;
-      await auditor.route(pattern, async route => { const response = await route.fetch(); expect(response.status()).toBe(200); skillHeld = true; await skills.held; await route.fulfill({ response }); });
-      await auditor.route('**/api/auth/session', async route => { const response = await route.fetch(); expect(response.status()).toBe(200); authorityHeld = true; await authority.held; await route.fulfill({ response }); });
-      await auditor.route('**/api/engagements/engagement-a/conversation?*', async route => { const response = await route.fetch(); expect(response.status()).toBe(200); projectionHeld = true; await projection.held; await route.fulfill({ response }); });
-      try {
+      await preserveFailures('cycle', async () => {
+        await auditor.route(pattern, heldRoute('skills', skills, () => { skillHeld = true; }));
+        await auditor.route('**/api/auth/session', heldRoute('session', authority, () => { authorityHeld = true; }));
+        await auditor.route('**/api/engagements/engagement-a/conversation?*', heldRoute('conversation', projection, () => { projectionHeld = true; }));
         await refresh.click(); await expect.poll(() => skillHeld).toBe(true); await summary.focus();
+        append('focus-or-visibility-trigger');
         if (tabAway) {
           await auditor.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' }); Object.defineProperty(document, 'hidden', { configurable: true, value: true }); document.dispatchEvent(new Event('visibilitychange')); });
           await expect(auditor.locator('.protected-workspace')).toBeHidden(); await expect(retained).toHaveCount(1); await expect(retained).toHaveAttribute('open', '');
@@ -624,25 +710,51 @@ test('actual inner skill disclosures retain open state and focus across cancelle
         } else await auditor.evaluate(() => window.dispatchEvent(new Event('focus')));
         await expect.poll(() => authorityHeld).toBe(true); await expect(auditor.locator('.protected-workspace')).toBeHidden();
         expect(await auditor.locator('body').innerText()).not.toContain('Retain the inspected skill resource');
-        skills.release(); authority.release(); await expect.poll(() => projectionHeld).toBe(true);
+        append('skills-and-authority-gates-release'); skills.release(); authority.release(); await expect.poll(() => projectionHeld).toBe(true);
         await expect(retained).toHaveCount(1); await expect(retained).toHaveAttribute('open', ''); await expect(summary).toBeHidden();
-        projection.release(); await expect(auditor.getByText('Conversation up to date', { exact: true })).toBeVisible(); await expect(refresh).toBeEnabled();
-        await auditor.unrouteAll({ behavior: 'wait' }); await expect(retained).toHaveCount(1); await expect(retained).toHaveAttribute('open', ''); await expect(summary).toBeFocused();
-      } finally {
-        skills.release(); authority.release(); projection.release();
-        if (tabAway) await auditor.evaluate(() => { Reflect.deleteProperty(document, 'visibilityState'); Reflect.deleteProperty(document, 'hidden'); document.dispatchEvent(new Event('visibilitychange')); });
-        await auditor.unrouteAll({ behavior: 'wait' });
-      }
+        append('projection-gate-release'); projection.release(); await expect(auditor.getByText('Conversation up to date', { exact: true })).toBeVisible(); await expect(refresh).toBeEnabled();
+        await recorded('cycle-success-unroute', unrouteOwned); await expect(retained).toHaveCount(1); await expect(retained).toHaveAttribute('open', ''); await expect(summary).toBeFocused();
+      }, async () => {
+        append('cycle-cleanup-gates-release'); skills.release(); authority.release(); projection.release();
+        await preserveFailures('cycle-cleanup', async () => {
+          if (tabAway) await recorded('visibility-override-restoration', () => auditor.evaluate(() => { Reflect.deleteProperty(document, 'visibilityState'); Reflect.deleteProperty(document, 'hidden'); document.dispatchEvent(new Event('visibilitychange')); }));
+        }, () => recorded('cycle-cleanup-unroute', unrouteOwned));
+      });
     }
-    await auditor.route(pattern, route => route.abort('connectionreset'));
+    cycle = 'transport-failure'; append('cycle-started');
+    await auditor.route(pattern, ownRoute(async route => {
+      const record = requestRecord(route.request(), 'skills'); append('abort-started', record);
+      try { await route.abort('connectionreset'); append('abort-completed', record); }
+      catch (error) { append('abort-failed', { ...record, category: category(error) }); throw error; }
+      finally { append('handler-settled', record); }
+    }));
     await refresh.click(); await expect(panel.getByText('Current skill information is unavailable. Refresh to check it again.', { exact: true })).toBeVisible(); await expect(retained).toHaveCount(0); await expect(card).toHaveCount(0);
-    await auditor.unrouteAll({ behavior: 'wait' }); await refresh.click(); await expect(card).toBeVisible();
+    await recorded('transport-unroute', unrouteOwned); await refresh.click(); await expect(card).toBeVisible();
     await card.getByText(`Inspect ${version.command.manifest.name} inputs, provenance and resources`, { exact: true }).click(); await summary.click();
+    cycle = 'timeout'; append('cycle-started');
     const timeout = gate(); let held = false;
-    await auditor.route(pattern, async route => { const response = await route.fetch(); expect(response.status()).toBe(200); held = true; await timeout.held; await route.fulfill({ response }); });
-    try { await refresh.click(); await expect.poll(() => held).toBe(true); await expect(panel.getByText('Current skill information is unavailable. Refresh to check it again.', { exact: true })).toBeVisible(); await expect(card).toHaveCount(0); }
-    finally { timeout.release(); await auditor.unrouteAll({ behavior: 'wait' }); }
-  } finally { await auditor.unrouteAll({ behavior: 'wait' }); await auditorContext.close(); }
+    await preserveFailures('timeout', async () => { await auditor.route(pattern, heldRoute('skills', timeout, () => { held = true; })); await refresh.click(); await expect.poll(() => held).toBe(true); await expect(panel.getByText('Current skill information is unavailable. Refresh to check it again.', { exact: true })).toBeVisible(); await expect(card).toHaveCount(0); },
+      async () => { append('timeout-gate-release'); timeout.release(); await recorded('timeout-unroute', unrouteOwned); });
+  } catch (error) { bodyFailed = true; bodyFailure = error; append('test-body-failed', { category: category(error) }); }
+  finally {
+    const cleanupFailures: unknown[] = [];
+    try { await recorded('outer-cleanup-unroute', unrouteOwned); }
+    catch (error) { cleanupFailures.push(error); }
+    try { await recorded('auditor-context-close', () => auditorContext.close()); }
+    catch (error) { cleanupFailures.push(error); }
+    auditor.off('requestfailed', failedRequest); auditor.off('requestfinished', finishedRequest); auditor.off('response', responseReceived);
+    // Retain the body failure separately from cleanup failures. All are rethrown;
+    // no route error is suppressed and no cleanup failure replaces its cause.
+    const errors = [...(bodyFailed ? [bodyFailure] : []), ...cleanupFailures];
+    try {
+      const path = info.outputPath('skills-route-lifecycle.json');
+      await writeFile(path, JSON.stringify(lifecycle, null, 2));
+      await info.attach('skills-route-lifecycle', { path, contentType: 'application/json' });
+      expect(lifecycle.overflow).toBe(0);
+    } catch (error) { errors.push(error); }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) throw new AggregateError(errors, 'Skill disclosure retained the body and cleanup failures.');
+  }
 });
 
 test('repair P2: unsent install and status drafts survive an actual same-owner auth failure remount without submission', async ({ page }) => {

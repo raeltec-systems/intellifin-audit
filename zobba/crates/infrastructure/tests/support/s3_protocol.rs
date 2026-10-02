@@ -158,11 +158,26 @@ impl Fixture {
 }
 
 pub fn build_fixture_store(endpoint: &str) -> Result<object_store::aws::AmazonS3, ObjectError> {
+    build_fixture_store_with_timeout(endpoint, Duration::from_secs(3))
+}
+
+/// Browser source-I/O proofs use the production transport's 20-second request
+/// ceiling; short protocol fault tests retain their existing three-second bound.
+pub fn build_browser_fixture_store(
+    endpoint: &str,
+) -> Result<object_store::aws::AmazonS3, ObjectError> {
+    build_fixture_store_with_timeout(endpoint, Duration::from_secs(20))
+}
+
+fn build_fixture_store_with_timeout(
+    endpoint: &str,
+    timeout: Duration,
+) -> Result<object_store::aws::AmazonS3, ObjectError> {
     let endpoint = validate_fixture_endpoint(endpoint)?;
     let client = reqwest::Client::builder()
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
-        .timeout(Duration::from_secs(3))
+        .timeout(timeout)
         .build()
         .map_err(|_| ObjectError::Unavailable)?;
     AmazonS3Builder::new()

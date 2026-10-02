@@ -1,0 +1,12 @@
+$ pnpm --filter @zobba/web test:browser --workers=1 --retries=0 --reporter=list,json evidence.spec.ts knowledge.spec.ts skills.spec.ts --grep 'asynchronous administration|named same-client reuse|actual inner skill disclosures'
+$ playwright test --workers=1 --retries=0 --reporter=list,json evidence.spec.ts knowledge.spec.ts skills.spec.ts --grep 'asynchronous administration|named same-client reuse|actual inner skill disclosures'
+
+Running 3 tests using 1 worker
+
+(node:1060138) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/evidence.spec.ts:389:1 › asynchronous administration allows a blocked evidence transaction to commit through the database proxy (2.9s)
+  ✓  2 tests/browser/knowledge.spec.ts:370:1 › named same-client reuse serves the destination and independently checks reader and accountable Task owner (6.1s)
+  ✓  3 tests/browser/skills.spec.ts:601:1 › actual inner skill disclosures retain open state and focus across cancelled reads, but current failures withdraw them (20.3s)
+
+  3 passed (40.2s)

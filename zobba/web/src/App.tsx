@@ -1,3 +1,4 @@
+import { discardUnsubmittedKnowledgeDrafts, discardKnowledgeCustody, withdrawReplacedKnowledgeSession } from './knowledge';
 import { discardSkillActions, discardSkillScopeActions, withdrawReplacedSkillSession } from './skills';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AccessError, logout, readSession } from './auth';
@@ -8,7 +9,7 @@ import { HealthPage } from './HealthPage';
 import { ConversationWorkspace } from './ConversationWorkspace';
 import { EvidenceWorkspace } from './EvidenceWorkspace';
 import { MethodologyWorkspace } from './MethodologyWorkspace';
-import { discardMethodologyAction } from './methodology';
+import { discardMethodologyAction, withdrawReplacedMethodologySession } from './methodology';
 import { discardAcquisitionDraft } from './evidence';
 import { sameScope } from './engagements';
 import { captureIncomingInvitation, hasIncomingInvitation, MembershipWorkspace } from './MembershipWorkspace';
@@ -114,6 +115,8 @@ function PairWorkspace() {
           const session = await readSession(controller.signal);
           if (request.current !== controller) return;
           withdrawReplacedSkillSession(session);
+          withdrawReplacedMethodologySession(session);
+          withdrawReplacedKnowledgeSession(session);
           if (previous.kind === 'ready' && previous.session.identity.id !== session.identity.id) pageCursors.current = [null];
           let page = await readEngagements(session, controller.signal, pageCursors.current.at(-1));
           // Deleted assignments may leave a later page empty. Start again using a
@@ -129,7 +132,7 @@ function PairWorkspace() {
             catch (error) {
               if (request.current !== controller) return;
               if (error instanceof AccessError && [403, 404].includes(error.status)) {
-                if (scope.current) discardSkillScopeActions(scope.current);
+                if (scope.current) { discardSkillScopeActions(scope.current); discardKnowledgeCustody(scope.current); }
                 discardAcquisitionDraft();
                 scope.current = null;
                 showScope(null);
@@ -149,14 +152,14 @@ function PairWorkspace() {
     } catch (error) {
       if (request.current !== controller) return;
       if (error instanceof AccessError && error.status === 401) {
-        discardSkillActions();
+        discardSkillActions(); discardMethodologyAction(); discardKnowledgeCustody();
         discardAcquisitionDraft();
         scope.current = null;
         showScope(null);
         setView({ kind: 'signed-out', message: signInFailed
           ? 'Sign-in could not be completed. Please try again.' : undefined });
       } else {
-        if (error instanceof AccessError && [403, 404, 412].includes(error.status)) discardSkillActions();
+        if (error instanceof AccessError && [403, 404, 412].includes(error.status)) { discardSkillActions(); discardMethodologyAction(); discardKnowledgeCustody(); }
         setView({ kind: 'unavailable', action: 'read', message: 'We could not verify your access. Check your connection and try again.' });
       }
     } finally {
@@ -168,7 +171,7 @@ function PairWorkspace() {
   }, [rememberFocus, accessStable, recoverSession]);
 
   const accessFailure = useCallback((error?: AccessError) => {
-    if (error?.status === 412) discardSkillActions();
+    if (error?.status === 412) { discardSkillActions(); discardMethodologyAction(); discardKnowledgeCustody(); }
     if (error?.status === 412 && !recoverSession()) {
       rememberFocus();
       request.current?.abort(); request.current = null;
@@ -207,7 +210,7 @@ function PairWorkspace() {
 
   async function signOut(session?: Session) {
     discardMethodologyAction();
-    discardSkillActions();
+    discardSkillActions(); discardKnowledgeCustody();
     if (logoutRequest.current) return;
     logoutIntent.current = true;
     discardAcquisitionDraft();
@@ -242,7 +245,7 @@ function PairWorkspace() {
 
   function select(next: Scope | null) {
     if (logoutIntent.current) return;
-    if (!next || !scope.current || !sameScope(scope.current, next)) discardAcquisitionDraft();
+    if (!next || !scope.current || !sameScope(scope.current, next)) { discardAcquisitionDraft(); if (scope.current) discardUnsubmittedKnowledgeDrafts(scope.current); }
     scope.current = next;
     showScope(next);
     void refresh(true, true);

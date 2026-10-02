@@ -1,0 +1,16 @@
+{
+  "baseline": "d38e1daed736415ef13e7606345dac71bd1d9f01",
+  "api": {
+    "path": "/tmp/zobba-story-21-4/schema9-evidence-api",
+    "bytes": 151556192,
+    "sha256": "792408ae5b38c696803b3b07bdc78a1ab00f601b2ab638ba390f6d059c8c0099"
+  },
+  "cli": {
+    "path": "/tmp/zobba-story-21-4/schema9-public-cli",
+    "bytes": 110120920,
+    "sha256": "ef24b7e8f91bc41b2dba2bb254481af2b0e5610329dbc8572facf4f3bc95b902",
+    "build_exit": 0
+  },
+  "source": "Exact git archive of baseline zobba; no source substitution or modification",
+  "build_exit": 0
+}

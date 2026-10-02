@@ -149,11 +149,19 @@ test('manager with combined roles sees current audit authority', async ({ page }
   await expect(page.locator('.scope-panel dd').last()).toHaveText(/Admin/);
 });
 
-test('role demotion, membership expiry and session expiry clear previously opened scope', async ({ page }) => {
+test('role demotion, membership expiry and session expiry clear previously opened scope', async ({ page }, info) => {
+  let phase = 'initial-role-demotion';
+  const events: { phase: string; event: string; path?: string; status?: number }[] = [];
+  page.on('response', response => {
+    const path = new URL(response.url()).pathname;
+    if (response.request().method() === 'GET' && (path === '/api/auth/session' || path.startsWith('/api/engagements'))) {
+      events.push({ phase, event: 'actual-response', path, status: response.status() });
+    }
+  });
   await signIn(page);
   await page.getByRole('button', { name: /FY2026 audit/ }).click();
   await expect(page.locator('.scope-panel > summary')).toBeVisible();
-  runtime.sql("UPDATE public.organisation_memberships SET roles=ARRAY['admin'] WHERE actor_id='actor-a';");
+  await runtime.sqlAsync("UPDATE public.organisation_memberships SET roles=ARRAY['admin'] WHERE actor_id='actor-a';");
   await page.getByRole('button', { name: 'Refresh access' }).click();
   await expect(page.getByRole('heading', { name: 'No assigned engagements' })).toBeVisible();
   await expect(page.locator('.scope-panel > summary')).toHaveCount(0);
@@ -161,16 +169,29 @@ test('role demotion, membership expiry and session expiry clear previously opene
   await page.getByRole('button', { name: 'Refresh access' }).click();
   await page.getByRole('button', { name: /FY2026 audit/ }).click();
   await expect(page.locator('.scope-panel > summary')).toBeVisible();
-  runtime.sql("UPDATE public.organisation_memberships SET expires_at=1 WHERE actor_id='actor-a';");
-  await page.getByRole('button', { name: 'All engagements' }).focus();
+  const previouslyFocused = page.getByRole('button', { name: '← All engagements', exact: true });
+  await previouslyFocused.evaluate(element => element.setAttribute('data-before-membership-expiry', 'focused'));
+  await previouslyFocused.focus();
+  await expect(previouslyFocused).toBeFocused();
+  phase = 'membership-expiry';
+  events.push({ phase, event: 'protected-node-focused-before-expiry' });
+  // Live API authority reads share this fixture's Node database proxy. Await
+  // admin writes so that their lock holders can finish through that proxy.
+  await runtime.sqlAsync("UPDATE public.organisation_memberships SET expires_at=1 WHERE actor_id='actor-a';");
+  events.push({ phase, event: 'membership-expiry-committed' });
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  events.push({ phase, event: 'window-focus-dispatched' });
   await expect(page.getByRole('heading', { name: 'No assigned engagements' })).toBeVisible();
+  await expect(page.locator('[data-before-membership-expiry="focused"]')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Your engagements', exact: true })).toBeFocused();
+  events.push({ phase, event: 'marked-node-withdrawn-and-current-heading-focused' });
   await runtime.sqlAsync(restoreAuthority());
   await page.getByRole('button', { name: 'Refresh access' }).click();
   await page.getByRole('button', { name: /FY2026 audit/ }).click();
   await expect(page.locator('.scope-panel > summary')).toBeVisible();
-  runtime.sql("UPDATE public.sessions SET expires_at=1 WHERE actor_id='actor-a';");
+  phase = 'session-expiry';
+  await runtime.sqlAsync("UPDATE public.sessions SET expires_at=1 WHERE actor_id='actor-a';");
+  events.push({ phase, event: 'session-expiry-committed' });
   // Conversation polling can already withdraw the expired session and remove
   // Refresh access. A focus refresh exercises the same current-authority read
   // without requiring an obsolete protected control to survive the revocation.
@@ -182,6 +203,8 @@ test('role demotion, membership expiry and session expiry clear previously opene
   expect((await page.context().cookies(runtime.url)).some((cookie) => cookie.name === '__Host-zobba-session')).toBe(true);
   expect((await page.request.get(`${runtime.url}/api/auth/session`)).status()).toBe(401);
   expect((await page.request.get(`${runtime.url}/api/engagements`)).status()).toBe(401);
+  events.push({ phase, event: 'signed-out-focus-private-scope-withdrawal-and-both-401-refusals-confirmed' });
+  await info.attach('authority-expiry-focus-proof', { contentType: 'application/json', body: JSON.stringify(events, null, 2) });
 });
 
 test('pending logout survives focus, periodic refresh, visibility changes and navigation', async ({ page }) => {

@@ -240,6 +240,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/engagements/{engagement_id}/knowledge/evidence/{evidence_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["knowledge_source_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/knowledge/evidence/{evidence_id}/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["knowledge_recover"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/knowledge/evidence/{evidence_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["knowledge_verify_source"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/knowledge/excerpts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["knowledge_excerpt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/engagements/{engagement_id}/operations": {
         parameters: {
             query?: never;
@@ -416,6 +480,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/engagements/{engagement_id}/tasks/{task_id}/knowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Returns at most 50 currently authorized views in C-ordered ID order after checking applicability and support. At most 1024 candidates are examined; scan_limit reports a partial scan, not absence. Exact record/revision lookup remains independent of page reachability. */
+        get: operations["knowledge_inspect"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/tasks/{task_id}/knowledge/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["knowledge_mutate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/tasks/{task_id}/knowledge/records/{record_id}/revisions/{revision}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["knowledge_exact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/tasks/{task_id}/knowledge/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A bounded read carried by POST to keep exact source references out of URLs.
+         *     This is disclosure verification, not command admission or an execution grant.
+         */
+        post: operations["knowledge_verify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/engagements/{engagement_id}/tasks/{task_id}/methodology": {
         parameters: {
             query?: never;
@@ -506,6 +639,54 @@ export interface paths {
         get: operations["ready"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledge/organisations/{organisation_id}/preference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["knowledge_preference"];
+        put?: never;
+        post: operations["knowledge_mutate_preference"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledge/organisations/{organisation_id}/preference/observations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["knowledge_observe_layout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledge/organisations/{organisation_id}/preference/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["knowledge_verify_preference"];
         delete?: never;
         options?: never;
         head?: never;
@@ -824,6 +1005,8 @@ export interface components {
             version: number;
         };
         /** @enum {string} */
+        Certainty: "user_directed" | "source_states" | "asserted" | "learned" | "explicit_preference";
+        /** @enum {string} */
         CessationResponse: "none" | "pending" | "confirmed" | "reconciliation_required";
         ChangeSkillStatusRequest: {
             expected_revision: string;
@@ -1037,6 +1220,271 @@ export interface components {
             roles: components["schemas"]["MembershipRole"][];
             /** @description Private random 32-byte base64url invitation value. POST bodies only; never a query, log or projection. */
             secret: components["schemas"]["MembershipInvitationSecret"];
+        };
+        KnowledgeAction: {
+            assertion: components["schemas"]["KnowledgeAssertion"];
+            /** @enum {string} */
+            kind: "assert";
+        } | {
+            assertion: components["schemas"]["KnowledgeAssertion"];
+            /** @enum {string} */
+            kind: "correct";
+            reason: string;
+            target: components["schemas"]["KnowledgeRecordReference"];
+        } | {
+            /** @enum {string} */
+            kind: "exclude";
+            reason: string;
+            target: components["schemas"]["KnowledgeRecordReference"];
+        } | {
+            /** @enum {string} */
+            kind: "forget";
+            reason: string;
+            target: components["schemas"]["KnowledgeRecordReference"];
+        } | {
+            destination_engagement_id: string;
+            destination_task_id: string;
+            /** @enum {string} */
+            kind: "reuse";
+            reason: string;
+            target: components["schemas"]["KnowledgeRecordReference"];
+        } | {
+            expected_source_revision: string;
+            /** @enum {string} */
+            kind: "correct_source";
+            predecessor_id: string;
+            reason: string;
+            replacement_id: string;
+        };
+        KnowledgeAssertion: {
+            dependencies: components["schemas"]["KnowledgeDependency"][];
+            period: components["schemas"]["KnowledgePeriod"];
+            text: string;
+            uncertainty?: string | null;
+        };
+        KnowledgeCaptureExcerpt: {
+            /** Format: int64 */
+            byte_end: number;
+            /** Format: int64 */
+            byte_start: number;
+            evidence_id: string;
+            key: string;
+        };
+        KnowledgeCommand: {
+            action: components["schemas"]["KnowledgeAction"];
+            expected_revision: string;
+            key: string;
+        };
+        KnowledgeDependency: {
+            digest: string;
+            evidence_id: string;
+            /** @enum {string} */
+            kind: "evidence";
+            scope: components["schemas"]["KnowledgeScope"];
+            storage_version: string;
+        } | {
+            command_id: string;
+            cycle_id: string;
+            /** @enum {string} */
+            kind: "guide";
+            scope: components["schemas"]["KnowledgeScope"];
+            task_id: string;
+        } | {
+            id: string;
+            /** @enum {string} */
+            kind: "knowledge";
+            revision: string;
+            scope: components["schemas"]["KnowledgeScope"];
+        } | {
+            /** @enum {string} */
+            kind: "methodology";
+            version_id: string;
+        } | {
+            /** @enum {string} */
+            kind: "skill";
+            selection_id: string;
+            task_id: string;
+        };
+        KnowledgeDirectionBasis: {
+            command_id: string;
+            cycle_id: string;
+            standing: string;
+            task_id: string;
+        };
+        /** @enum {string} */
+        KnowledgeInspectionLayout: "standard" | "expanded";
+        /** @enum {string} */
+        KnowledgeKind: "decision" | "observation" | "assertion" | "preference" | "published_preference";
+        KnowledgeObserveLayout: {
+            expected_revision: string;
+            key: string;
+            opening_id: string;
+            value: components["schemas"]["KnowledgeInspectionLayout"];
+        };
+        /** @enum {string} */
+        KnowledgeOmission: "unsupported_format" | "unknown_period" | "outside_period" | "invalidated_support" | "capture_capacity" | "legacy_not_captured" | "partial_source" | "bounded_page" | "scan_limit" | "unavailable_support";
+        KnowledgePage: {
+            execution_epoch: string;
+            items: components["schemas"]["KnowledgeView"][];
+            methodology_binding_id: string;
+            next_after?: string | null;
+            omissions: components["schemas"]["KnowledgeOmission"][];
+            revision: string;
+            task_id: string;
+        };
+        KnowledgePeriod: {
+            end?: string | null;
+            start?: string | null;
+        };
+        KnowledgePreferenceAction: {
+            /** @enum {string} */
+            kind: "save";
+            value: components["schemas"]["KnowledgeInspectionLayout"];
+        } | {
+            /** @enum {string} */
+            kind: "undo";
+            target: components["schemas"]["KnowledgeRecordReference"];
+        } | {
+            client_id: string;
+            engagement_id: string;
+            /** @enum {string} */
+            kind: "publish";
+            target: components["schemas"]["KnowledgeRecordReference"];
+        } | {
+            /** @enum {string} */
+            kind: "withdraw";
+            publication_id: string;
+        };
+        KnowledgePreferenceBasis: {
+            inferred: boolean;
+            name: string;
+            observation_ids: string[];
+            rule?: string | null;
+            value: components["schemas"]["KnowledgeInspectionLayout"];
+        };
+        KnowledgePreferenceCommand: {
+            action: components["schemas"]["KnowledgePreferenceAction"];
+            expected_revision: string;
+            key: string;
+        };
+        KnowledgePreferenceSnapshot: {
+            consumed_through: string;
+            current?: null | components["schemas"]["KnowledgeView"];
+            organisation_id: string;
+            owner_id: string;
+            publications: components["schemas"]["KnowledgeView"][];
+            revision: string;
+        };
+        KnowledgePreferenceVerificationRequest: {
+            expected_revision: string;
+        };
+        KnowledgeQuery: {
+            /** @description Exclusive last-disclosed record or publication ID in C order; omitted starts at the first candidate. Use next_after unchanged. No cursor is disclosed when no eligible item is returned. */
+            after?: string | null;
+            /**
+             * @description False by default. True includes authorized inactive history; it never bypasses current source authority or period applicability.
+             * @default false
+             */
+            include_inactive: boolean;
+            /** @description Case-insensitive Unicode lowercase substring match on authorized, applicable record text, without trimming. Empty text matches any eligible record. At most 200 Unicode scalar values; C0/C1 controls are refused. */
+            text?: string | null;
+        };
+        KnowledgeReceipt: {
+            affected_destinations: string[];
+            affected_ids: string[];
+            event_id: string;
+            record?: null | components["schemas"]["KnowledgeView"];
+            revision: string;
+        };
+        KnowledgeRecord: {
+            actor_id: string;
+            certainty: components["schemas"]["Certainty"];
+            dependencies: components["schemas"]["KnowledgeDependency"][];
+            direction?: null | components["schemas"]["KnowledgeDirectionBasis"];
+            id: string;
+            kind: components["schemas"]["KnowledgeKind"];
+            period: components["schemas"]["KnowledgePeriod"];
+            preference?: null | components["schemas"]["KnowledgePreferenceBasis"];
+            /** Format: int64 */
+            recorded_at: number;
+            revision: string;
+            scope: components["schemas"]["KnowledgeScope"];
+            source?: null | components["schemas"]["KnowledgeSourceLocation"];
+            supersedes?: null | components["schemas"]["KnowledgeRecordReference"];
+            text: string;
+            uncertainty?: string | null;
+        };
+        KnowledgeRecordReference: {
+            id: string;
+            revision: string;
+        };
+        /** @enum {string} */
+        KnowledgeRecordStatus: "current" | "corrected" | "excluded" | "forgotten" | "invalidated" | "withdrawn";
+        KnowledgeRecoveryRequest: {
+            key: string;
+        };
+        KnowledgeScope: {
+            client_id?: string | null;
+            engagement_id?: string | null;
+            kind: components["schemas"]["KnowledgeScopeKind"];
+            organisation_id: string;
+            owner_id?: string | null;
+        };
+        /** @enum {string} */
+        KnowledgeScopeKind: "personal" | "firm" | "client" | "engagement";
+        KnowledgeSourceLocation: {
+            /** Format: int64 */
+            byte_end: number;
+            /** Format: int64 */
+            byte_start: number;
+            digest: string;
+            evidence_id: string;
+            field_path?: string | null;
+            /** Format: int64 */
+            original_size: number;
+            partial: boolean;
+            storage_version: string;
+        };
+        KnowledgeSourceStatus: {
+            capture_revision: string;
+            correction_actor_id?: string | null;
+            correction_reason?: string | null;
+            /** Format: int64 */
+            correction_recorded_at?: number | null;
+            evidence_id: string;
+            omissions: components["schemas"]["KnowledgeOmission"][];
+            replacement_id?: string | null;
+            source_revision: string;
+        };
+        KnowledgeSourceVerificationRequest: {
+            expected_capture_revision: string;
+            expected_source_revision: string;
+        };
+        KnowledgeVerificationItem: {
+            id: string;
+            revision: string;
+            status: components["schemas"]["KnowledgeRecordStatus"];
+        };
+        KnowledgeVerificationRequest: {
+            /** @description Read-only exact historical inspection; at most one exact revision. */
+            exact?: boolean;
+            expected_execution_epoch: string;
+            expected_methodology_binding_id: string;
+            items: components["schemas"]["KnowledgeVerificationItem"][];
+            query: components["schemas"]["KnowledgeQuery"];
+        };
+        KnowledgeVerificationResponse: {
+            verified: boolean;
+        };
+        KnowledgeView: {
+            can_correct: boolean;
+            can_exclude: boolean;
+            can_forget: boolean;
+            can_reuse: boolean;
+            can_undo: boolean;
+            record: components["schemas"]["KnowledgeRecord"];
+            status: components["schemas"]["KnowledgeRecordStatus"];
+            status_reason?: string | null;
         };
         MembershipAssignment: {
             client_id: components["schemas"]["MembershipIdentifier"];
@@ -2815,6 +3263,358 @@ export interface operations {
             };
         };
     };
+    knowledge_source_status: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header?: {
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                evidence_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeSourceStatus"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    knowledge_recover: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header: {
+                "X-Expected-Session"?: string | null;
+                Origin: string;
+                "X-CSRF-Token": string;
+                "X-Expected-Actor": string;
+            };
+            path: {
+                engagement_id: string;
+                evidence_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeRecoveryRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeReceipt"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    knowledge_verify_source: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header: {
+                "X-Expected-Session"?: string | null;
+                Origin: string;
+                "X-CSRF-Token": string;
+                "X-Expected-Actor": string;
+            };
+            path: {
+                engagement_id: string;
+                evidence_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeSourceVerificationRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeVerificationResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    knowledge_excerpt: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header: {
+                "X-Expected-Session"?: string | null;
+                Origin: string;
+                "X-CSRF-Token": string;
+                "X-Expected-Actor": string;
+            };
+            path: {
+                engagement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeCaptureExcerpt"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeReceipt"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_operations: {
         parameters: {
             query: {
@@ -3713,6 +4513,360 @@ export interface operations {
             };
         };
     };
+    knowledge_inspect: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+                /** @description Exclusive last-disclosed record or publication ID in C order; omitted starts at the first candidate. Use next_after unchanged. No cursor is disclosed when no eligible item is returned. */
+                after?: string;
+                /** @description Case-insensitive Unicode lowercase substring match on authorized, applicable record text, without trimming. Empty text matches any eligible record. At most 200 Unicode scalar values; C0/C1 controls are refused. */
+                text?: string;
+                /** @description False by default. True includes authorized inactive history; it never bypasses current source authority or period applicability. */
+                include_inactive?: boolean;
+            };
+            header?: {
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgePage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    knowledge_mutate: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header: {
+                "X-Expected-Session"?: string | null;
+                Origin: string;
+                "X-CSRF-Token": string;
+                "X-Expected-Actor": string;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeCommand"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeReceipt"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    knowledge_exact: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header?: {
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+                record_id: string;
+                revision: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    knowledge_verify: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header: {
+                "X-Expected-Session"?: string | null;
+                Origin: string;
+                "X-CSRF-Token": string;
+                "X-Expected-Actor": string;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeVerificationRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeVerificationResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     task_methodology: {
         parameters: {
             query: {
@@ -4083,6 +5237,343 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    knowledge_preference: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                organisation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgePreferenceSnapshot"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    knowledge_mutate_preference: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Expected-Session"?: string | null;
+                Origin: string;
+                "X-CSRF-Token": string;
+                "X-Expected-Actor": string;
+            };
+            path: {
+                organisation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgePreferenceCommand"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeReceipt"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    knowledge_observe_layout: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Expected-Session"?: string | null;
+                Origin: string;
+                "X-CSRF-Token": string;
+                "X-Expected-Actor": string;
+            };
+            path: {
+                organisation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeObserveLayout"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgePreferenceSnapshot"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    knowledge_verify_preference: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Expected-Session"?: string | null;
+                Origin: string;
+                "X-CSRF-Token": string;
+                "X-Expected-Actor": string;
+            };
+            path: {
+                organisation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgePreferenceVerificationRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeVerificationResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

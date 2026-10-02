@@ -160,12 +160,12 @@ async fn bootstrap_contract() {
     .fetch_all(&mut admin)
     .await
     .unwrap();
-    assert_eq!(installed.len(), 9, "fresh migration ledger is incomplete");
+    assert_eq!(installed.len(), 10, "fresh migration ledger is incomplete");
     assert_eq!(installed, repeated, "repeat changed migration ledger");
     let database = RuntimeDatabase::connect(&runtime_url)
         .await
         .expect("nonowner runtime starts");
-    assert_eq!(database.check().await.unwrap().0, 9);
+    assert_eq!(database.check().await.unwrap().0, 10);
     refused_without_mutation(
         &mut admin,
         &migration_url,
@@ -231,6 +231,14 @@ async fn bootstrap_contract() {
         "DELETE FROM public.skill_events",
         "UPDATE public.skill_status SET status='enabled'",
         "UPDATE public.task_skill_selections SET receipt='{}'",
+        "UPDATE public.knowledge_records SET document='{}'",
+        "DELETE FROM public.knowledge_events",
+        "UPDATE public.knowledge_invalidations SET document='{}'",
+        "DELETE FROM public.knowledge_publications",
+        "DELETE FROM public.knowledge_withdrawals",
+        "UPDATE public.knowledge_layout_events SET document='{}'",
+        "DELETE FROM public.knowledge_source_corrections",
+        "UPDATE public.knowledge_captures SET document='{}'",
     ] {
         assert!(
             restricted.execute(mutation).await.is_err(),
@@ -345,6 +353,20 @@ async fn bootstrap_contract() {
         "GRANT EXECUTE ON FUNCTION public.skills_impact(text,jsonb) TO PUBLIC",
         "ALTER FUNCTION public.skills_write(text,text,text,text,jsonb,text,text,text,jsonb) SET search_path=public",
         "GRANT EXECUTE ON FUNCTION public.skills_task(text,text,jsonb) TO PUBLIC",
+        "ALTER TABLE public.knowledge_records NO FORCE ROW LEVEL SECURITY",
+        "ALTER TABLE public.knowledge_events NO FORCE ROW LEVEL SECURITY",
+        "ALTER TABLE public.knowledge_invalidations NO FORCE ROW LEVEL SECURITY",
+        "ALTER TABLE public.knowledge_publications NO FORCE ROW LEVEL SECURITY",
+        "ALTER TABLE public.knowledge_withdrawals NO FORCE ROW LEVEL SECURITY",
+        "ALTER TABLE public.knowledge_layout_events NO FORCE ROW LEVEL SECURITY",
+        "ALTER TABLE public.knowledge_source_corrections NO FORCE ROW LEVEL SECURITY",
+        "ALTER TABLE public.knowledge_captures NO FORCE ROW LEVEL SECURITY",
+        "ALTER POLICY knowledge_read ON public.knowledge_records USING (true)",
+        "ALTER POLICY knowledge_insert ON public.knowledge_publications WITH CHECK (true)",
+        "DROP INDEX public.knowledge_records_page; CREATE INDEX knowledge_records_page ON public.knowledge_records(organisation_id,id,revision DESC)",
+        "ALTER FUNCTION public.knowledge_audit(text,text,text,text) SECURITY INVOKER",
+        "ALTER FUNCTION public.knowledge_release_active(text,text) SET search_path=public",
+        "GRANT EXECUTE ON FUNCTION public.knowledge_release_active(text,text) TO PUBLIC",
         "ALTER TABLE public.engagements DROP CONSTRAINT engagements_name_check",
         "ALTER TABLE public.organisations DROP CONSTRAINT organisations_id_check",
         "ALTER TABLE public.engagement_assignments DROP CONSTRAINT engagement_assignments_organisation_id_client_id_engagemen_fkey",
@@ -356,7 +378,7 @@ async fn bootstrap_contract() {
         "ALTER TABLE public.zobba_bootstrap ALTER COLUMN singleton SET DEFAULT false",
         "ALTER TABLE public._sqlx_migrations ALTER COLUMN installed_on SET DEFAULT '2000-01-01'::timestamptz",
         "CREATE RULE alien_rule AS ON DELETE TO public.zobba_bootstrap DO ALSO NOTHING",
-        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(10,1000) v",
+        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(11,1000) v",
         "UPDATE public._sqlx_migrations SET description=repeat('x',1048576),checksum=decode(repeat('ff',1048576),'hex')",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product='foreign'",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product=repeat('x',1048576)",
@@ -380,6 +402,7 @@ async fn bootstrap_contract() {
     membership_function_authority(&config, &mut admin).await;
     methodology_function_authority(&config, &mut admin).await;
     skills_function_authority(&config, &mut admin).await;
+    knowledge_function_authority(&config, &mut admin).await;
     internal_trigger_contract(&config, &mut admin).await;
 
     // Column-level leases must not expand to routing identity, scheduling or
@@ -443,6 +466,14 @@ async fn bootstrap_contract() {
         "UPDATE(status) ON public.skill_status",
         "DELETE ON public.task_skill_selections",
         "SELECT(receipt) ON public.task_skill_selections",
+        "UPDATE(document) ON public.knowledge_records",
+        "DELETE ON public.knowledge_events",
+        "UPDATE(document) ON public.knowledge_invalidations",
+        "DELETE ON public.knowledge_publications",
+        "DELETE ON public.knowledge_withdrawals",
+        "UPDATE(document) ON public.knowledge_layout_events",
+        "DELETE ON public.knowledge_source_corrections",
+        "UPDATE(document) ON public.knowledge_captures",
     ] {
         admin
             .execute(format!("GRANT {privilege} TO \"{role}\"").as_str())
@@ -481,6 +512,7 @@ async fn bootstrap_contract() {
     continuity_upgrade_contract(&config, &mut admin).await;
     methodology_upgrade_contract(&config, &mut admin).await;
     skills_upgrade_contract(&config, &mut admin).await;
+    knowledge_upgrade_contract(&config, &mut admin).await;
     no_foreign_code_runs(&config, &mut admin).await;
     foreign_catalog_objects(&config, &mut admin).await;
     authority_and_atomicity(&config, &mut admin).await;
@@ -626,7 +658,7 @@ async fn foreign_catalog_objects(config: &Configuration, conn: &mut PgConnection
                 .await
                 .expect("remove foreign catalog fixture");
             if let Some(running) = running {
-                assert_eq!(running.check().await.unwrap().0, 9);
+                assert_eq!(running.check().await.unwrap().0, 10);
             }
         }
     }
@@ -643,7 +675,7 @@ async fn foreign_catalog_objects(config: &Configuration, conn: &mut PgConnection
     refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
     assert_eq!(running.check().await, Err(BootstrapError::SchemaMismatch));
     admin.execute("DROP STATISTICS public.alien").await.unwrap();
-    assert_eq!(running.check().await.unwrap().0, 9);
+    assert_eq!(running.check().await.unwrap().0, 10);
     reset(config, conn).await;
 }
 
@@ -723,7 +755,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
             .execute(format!("REVOKE MAINTAIN ON public.{table} FROM \"{target}\"").as_str())
             .await
             .unwrap();
-        assert_eq!(running.check().await.unwrap().0, 9);
+        assert_eq!(running.check().await.unwrap().0, 10);
     }
     privileged.execute(format!("GRANT pg_read_server_files TO \"{parent}\" WITH INHERIT TRUE, SET FALSE; GRANT \"{parent}\" TO \"{target}\" WITH INHERIT FALSE, SET TRUE").as_str()).await.unwrap();
     let mut capable = PgConnection::connect(&target_url).await.unwrap();
@@ -750,7 +782,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         Err(BootstrapError::UnsafeRuntimeRole)
     );
     privileged.execute(format!("REVOKE \"{parent}\" FROM \"{target}\"; REVOKE pg_read_server_files FROM \"{parent}\"").as_str()).await.unwrap();
-    assert_eq!(running.check().await.unwrap().0, 9);
+    assert_eq!(running.check().await.unwrap().0, 10);
 
     for flags in [
         "REPLICATION",
@@ -902,7 +934,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         .execute(format!("REVOKE \"{migrator_role}\" FROM \"{target}\"").as_str())
         .await
         .unwrap();
-    assert_eq!(running.check().await.unwrap().0, 9);
+    assert_eq!(running.check().await.unwrap().0, 10);
 
     // Simulate interruption after SQLx creates its ledger but before bootstrap
     // finishes. The outer transaction must remove BOTH tables and all grants.
@@ -925,7 +957,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         .execute("DROP EVENT TRIGGER zobba_fixture_interrupt")
         .await
         .unwrap();
-    assert_eq!(running.check().await.unwrap().0, 9);
+    assert_eq!(running.check().await.unwrap().0, 10);
     reset(config, conn).await;
     privileged.execute(trigger).await.unwrap();
     migration_refused_without_mutation(conn, config, &target, BootstrapError::SchemaMismatch).await;
@@ -1191,9 +1223,9 @@ async fn upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
                 .fetch_all(&mut *conn)
                 .await
                 .unwrap();
-                assert_eq!(all.len(), 9, "upgrade did not reach the complete ledger");
+                assert_eq!(all.len(), 10, "upgrade did not reach the complete ledger");
                 let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-                assert_eq!(database.check().await.unwrap().0, 9);
+                assert_eq!(database.check().await.unwrap().0, 10);
                 migrate(&config.migration, &role)
                     .await
                     .expect("upgrade repeat is safe");
@@ -1530,6 +1562,46 @@ async fn skills_function_authority(config: &Configuration, conn: &mut PgConnecti
     }
 }
 
+async fn knowledge_function_authority(config: &Configuration, conn: &mut PgConnection) {
+    let role = database_options(&config.runtime)
+        .unwrap()
+        .get_username()
+        .to_owned();
+    let mut privileged = PgConnection::connect(&config.admin).await.unwrap();
+    config.guard_connection(&mut privileged).await;
+    for mutation in [
+        format!(
+            "GRANT EXECUTE ON FUNCTION public.knowledge_audit(text,text,text,text) TO \"{role}\" WITH GRANT OPTION"
+        ),
+        format!("ALTER FUNCTION public.knowledge_release_active(text,text) OWNER TO \"{role}\""),
+        format!(
+            "REVOKE EXECUTE ON FUNCTION public.knowledge_audit(text,text,text,text) FROM \"{role}\""
+        ),
+        format!(
+            "REVOKE EXECUTE ON FUNCTION public.knowledge_release_active(text,text) FROM \"{role}\""
+        ),
+    ] {
+        privileged.execute(mutation.as_str()).await.unwrap();
+        refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
+        if mutation.starts_with("REVOKE") {
+            migrate(&config.migration, &role)
+                .await
+                .expect("explicit migration restores missing narrow knowledge authority function");
+        } else {
+            migration_refused_without_mutation(conn, config, &role, BootstrapError::SchemaMismatch)
+                .await;
+            reset(config, conn).await;
+            migrate(&config.migration, &role).await.unwrap();
+        }
+        RuntimeDatabase::connect(&config.runtime)
+            .await
+            .unwrap()
+            .pool()
+            .close()
+            .await;
+    }
+}
+
 // A populated published schema 7 is upgraded by the restricted migration role.
 // Existing Task commands retain their bytes; bindings explicitly label their neutral legacy basis.
 async fn methodology_upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
@@ -1604,12 +1676,13 @@ async fn methodology_upgrade_contract(config: &Configuration, conn: &mut PgConne
         ledger, ledger_after,
         "upgrade changed published ledger rows"
     );
-    let command_after: String = sqlx::query_scalar("SELECT (to_jsonb(c)-'methodology_context')::text FROM public.task_commands c WHERE id='legacy-command'")
+    let command_after: String = sqlx::query_scalar("SELECT (to_jsonb(c)-'methodology_context'-'received_at')::text FROM public.task_commands c WHERE id='legacy-command'")
         .fetch_one(&mut admin).await.unwrap();
     assert_eq!(
         command_before, command_after,
         "upgrade rewrote a retained Task command"
     );
+    assert_legacy_command_timestamps_unknown(&mut admin).await;
     assert!(
         sqlx::query_scalar::<_, bool>(
             "SELECT methodology_context IS NULL FROM public.task_commands WHERE id='legacy-command'"
@@ -1667,7 +1740,7 @@ async fn methodology_upgrade_contract(config: &Configuration, conn: &mut PgConne
             .contains("neutral")
     );
     let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-    assert_eq!(database.check().await.unwrap().0, 9);
+    assert_eq!(database.check().await.unwrap().0, 10);
     let selected = zobba_domain::identity::Scope {
         organisation_id: "methodology-upgrade".into(),
         client_id: "client".into(),
@@ -1775,7 +1848,7 @@ async fn continuity_upgrade_contract(config: &Configuration, conn: &mut PgConnec
             .expect("valid/remediated schema 6 upgrades");
         assert_eq!(authority_snapshot(conn).await, authorised);
         let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-        assert_eq!(database.check().await.unwrap().0, 9);
+        assert_eq!(database.check().await.unwrap().0, 10);
         database.pool().close().await;
     }
 
@@ -1808,7 +1881,7 @@ async fn continuity_upgrade_contract(config: &Configuration, conn: &mut PgConnec
             "upgrade changed authority"
         );
         let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-        assert_eq!(database.check().await.unwrap().0, 9);
+        assert_eq!(database.check().await.unwrap().0, 10);
         database.pool().close().await;
     }
 
@@ -1950,10 +2023,16 @@ async fn skills_upgrade_contract(config: &Configuration, conn: &mut PgConnection
         .await
         .expect("restricted owner upgrades populated schema 8");
     for (table, original) in tables.iter().zip(before) {
-        let after: serde_json::Value = sqlx::query_scalar(&format!("SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) FROM public.\"{table}\" t"))
+        let row = if table == "task_commands" {
+            "to_jsonb(t)-'received_at'"
+        } else {
+            "to_jsonb(t)"
+        };
+        let after: serde_json::Value = sqlx::query_scalar(&format!("SELECT coalesce(jsonb_agg({row} ORDER BY ({row})::text),'[]'::jsonb) FROM public.\"{table}\" t"))
             .fetch_one(&mut admin).await.unwrap();
         assert_eq!(original, after, "skills migration rewrote {table}");
     }
+    assert_legacy_command_timestamps_unknown(&mut admin).await;
     let ledger_after: Vec<String> = sqlx::query_scalar(
         "SELECT to_jsonb(m)::text FROM public._sqlx_migrations m WHERE version<=8 ORDER BY version",
     )
@@ -1977,10 +2056,169 @@ async fn skills_upgrade_contract(config: &Configuration, conn: &mut PgConnection
         assert_eq!(count, 0, "upgrade invented a skill or selection");
     }
     let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-    assert_eq!(database.check().await.unwrap().0, 9);
+    assert_eq!(database.check().await.unwrap().0, 10);
     database.pool().close().await;
     migrate(&config.migration, &role)
         .await
         .expect("schema 9 repeat migration");
     reset(config, conn).await;
+}
+
+/// Install the exact published prefix, then prove the additive knowledge upgrade
+/// preserves existing evidence, admitted direction and their configuration basis.
+async fn knowledge_upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
+    let role = database_options(&config.runtime)
+        .unwrap()
+        .get_username()
+        .to_owned();
+    install_schema6(config, conn).await;
+    let migrator = sqlx::migrate!("../../migrations");
+    for migration in migrator.iter().skip(6).take(3) {
+        conn.execute(migration.sql.as_ref()).await.unwrap();
+        sqlx::query("INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) VALUES($1,$2,true,$3,0)")
+            .bind(migration.version).bind(migration.description.as_ref()).bind(migration.checksum.as_ref())
+            .execute(&mut *conn).await.unwrap();
+    }
+    let catalog: Vec<String> = sqlx::query_scalar(include_str!("../src/catalog-signature.sql"))
+        .fetch_all(&mut *conn)
+        .await
+        .unwrap();
+    assert!(
+        catalog
+            .iter()
+            .map(String::as_str)
+            .eq(include_str!("../src/schema-v9.catalog").lines()),
+        "knowledge upgrade must begin with the exact published schema 9"
+    );
+    let mut admin = PgConnection::connect(&config.admin).await.unwrap();
+    config.guard_connection(&mut admin).await;
+    let mut seed = admin.begin().await.unwrap();
+    seed.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+        .await
+        .unwrap();
+    seed.execute(r#"
+      INSERT INTO public.identities(id,issuer,subject,display_name) VALUES('knowledge-upgrade','upgrade','knowledge','Upgrade Auditor');
+      INSERT INTO public.organisations VALUES('knowledge-upgrade','Upgrade');
+      INSERT INTO public.organisation_memberships(organisation_id,actor_id,roles) VALUES('knowledge-upgrade','knowledge-upgrade',ARRAY['admin','auditor']);
+      INSERT INTO public.clients VALUES('knowledge-upgrade','client','Client');
+      INSERT INTO public.engagements(organisation_id,client_id,id,name) VALUES('knowledge-upgrade','client','engagement','Engagement');
+      INSERT INTO public.engagement_assignments(organisation_id,client_id,engagement_id,actor_id) VALUES('knowledge-upgrade','client','engagement','knowledge-upgrade');
+      SELECT set_config('zobba.actor_id','knowledge-upgrade',true),set_config('zobba.organisation_id','knowledge-upgrade',true),set_config('zobba.client_id','client',true),set_config('zobba.engagement_id','engagement',true);
+      INSERT INTO public.tasks(organisation_id,client_id,engagement_id,id,cycle_id,accountable_actor,objective,working_brief,state,cessation,intent_revision,applied_intent,applied_command_cursor) VALUES('knowledge-upgrade','client','engagement','knowledge-upgrade-task','knowledge-upgrade-cycle','knowledge-upgrade','Retained objective','Keep this exact direction','ready','none',2,2,2);
+      INSERT INTO public.task_cycles VALUES('knowledge-upgrade','client','engagement','knowledge-upgrade-task','knowledge-upgrade-cycle','active');
+      INSERT INTO public.task_commands(organisation_id,client_id,engagement_id,id,author_id,idempotency_key,kind,content,task_id,cycle_id,received_cursor,intent_revision,methodology_context) VALUES('knowledge-upgrade','client','engagement','knowledge-create','knowledge-upgrade','create-key','create','Retained objective','knowledge-upgrade-task','knowledge-upgrade-cycle',1,1,'{"audit_area":"Revenue","period_start":"2026-01-01","period_end":"2026-12-31"}');
+      INSERT INTO public.task_commands(organisation_id,client_id,engagement_id,id,author_id,idempotency_key,kind,target_task_id,target_cycle_id,content,task_id,cycle_id,received_cursor,intent_revision) VALUES('knowledge-upgrade','client','engagement','knowledge-guide','knowledge-upgrade','guide-key','guide','knowledge-upgrade-task','knowledge-upgrade-cycle','Keep this exact direction','knowledge-upgrade-task','knowledge-upgrade-cycle',2,2);
+      INSERT INTO public.task_events VALUES('knowledge-upgrade','client','engagement',1,'knowledge-upgrade-task','knowledge-upgrade-cycle','knowledge-create','received'),('knowledge-upgrade','client','engagement',2,'knowledge-upgrade-task','knowledge-upgrade-cycle','knowledge-guide','received'),('knowledge-upgrade','client','engagement',3,'knowledge-upgrade-task','knowledge-upgrade-cycle','knowledge-guide','applied');
+      INSERT INTO public.methodology_versions VALUES('knowledge-upgrade','knowledge-method','knowledge-upgrade',1,1,'{"definition":{"name":"Retained firm method","requirements":[{"id":"retained","mandatory":true,"criteria":["Original criterion"]}]}}');
+      INSERT INTO public.methodology_assignments VALUES('knowledge-upgrade','knowledge-method','client','engagement',1,NULL);
+      INSERT INTO public.methodology_events VALUES('knowledge-upgrade','knowledge-method-event','knowledge-upgrade','method-key',1,'save','{"key":"method-key"}','{"version_id":"knowledge-method","revision":1}',1);
+      INSERT INTO public.task_methodology_bindings VALUES('knowledge-upgrade','client','engagement','knowledge-upgrade-task','knowledge-binding','{"id":"knowledge-binding","execution_epoch":1,"actor_id":"knowledge-upgrade","bound_at":1,"candidate_version_ids":["knowledge-method"],"context_command_id":"knowledge-create","resolution":{"status":"resolved","context":{"audit_area":"Revenue","period_start":"2026-01-01","period_end":"2026-12-31"},"version_ids":["knowledge-method"],"requirements":[{"id":"retained","mandatory":true,"criteria":["Original criterion"]}],"templates":[],"neutral_source_version_ids":[],"issues":[],"reason":"Explicit retained basis"}}');
+      INSERT INTO public.task_methodology_heads VALUES('knowledge-upgrade','knowledge-upgrade-task','knowledge-binding','{"audit_area":"Revenue","period_start":"2026-01-01","period_end":"2026-12-31"}',NULL,NULL);
+      INSERT INTO public.skill_versions VALUES('knowledge-upgrade','knowledge-skill','knowledge-upgrade',1,1,'{"manifest":{"id":"retained-technique","version":"1","purpose":"Retained inert technique","resources":[{"id":"notes","kind":"text","content":"Preserve exact technique notes"}]}}',repeat('a',64),'[]','client','engagement');
+      INSERT INTO public.skill_events VALUES('knowledge-upgrade','knowledge-skill-event','knowledge-upgrade','skill-key',1,'install','{"key":"skill-key"}','{"version_id":"knowledge-skill","revision":1,"status":"enabled"}',1);
+      INSERT INTO public.skill_status VALUES('knowledge-upgrade','knowledge-skill','enabled',1,'knowledge-skill-event');
+      INSERT INTO public.task_skill_selections VALUES('knowledge-upgrade','client','engagement','knowledge-upgrade-task','knowledge-selection','knowledge-upgrade','selection-key',1,'knowledge-skill','{"version_id":"knowledge-skill","reason":"Exact retained technique"}','{"id":"knowledge-selection","version_id":"knowledge-skill","methodology_binding_id":"knowledge-binding","execution_epoch":1,"reason":"Exact retained technique"}');
+      INSERT INTO public.evidence_reservations(id,organisation_id,client_id,engagement_id,actor_id,key,request,digest,size,namespace,reserved_at) VALUES('knowledge-original','knowledge-upgrade','client','engagement','knowledge-upgrade','original-key','{"key":"original-key","filename":"retained.txt","source":{"system":"Asserted source","coverage":"Claimed partial"}}',repeat('b',64),12,repeat('c',64),1);
+      INSERT INTO public.evidence_originals SELECT r.*, 'retained-storage-version',2 FROM public.evidence_reservations r WHERE id='knowledge-original';
+    "#).await.unwrap();
+    seed.commit().await.unwrap();
+    let tables: Vec<String> = sqlx::query_scalar("SELECT tablename::text FROM pg_catalog.pg_tables WHERE schemaname='public' AND tablename NOT IN ('zobba_bootstrap','_sqlx_migrations') ORDER BY tablename")
+        .fetch_all(&mut admin).await.unwrap();
+    let mut before = Vec::new();
+    for table in &tables {
+        let rows: serde_json::Value = sqlx::query_scalar(&format!("SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) FROM public.\"{table}\" t"))
+            .fetch_one(&mut admin).await.unwrap();
+        before.push(rows);
+    }
+    let ledger: Vec<String> = sqlx::query_scalar(
+        "SELECT to_jsonb(m)::text FROM public._sqlx_migrations m ORDER BY version",
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .unwrap();
+    assert_eq!(ledger.len(), 9);
+    migrate(&config.migration, &role)
+        .await
+        .expect("restricted owner upgrades populated schema 9");
+    for (table, original) in tables.iter().zip(before) {
+        let row = if table == "task_commands" {
+            "to_jsonb(t)-'received_at'"
+        } else {
+            "to_jsonb(t)"
+        };
+        let after: serde_json::Value = sqlx::query_scalar(&format!("SELECT coalesce(jsonb_agg({row} ORDER BY ({row})::text),'[]'::jsonb) FROM public.\"{table}\" t"))
+            .fetch_one(&mut admin).await.unwrap();
+        assert_eq!(original, after, "knowledge migration rewrote {table}");
+    }
+    assert_legacy_command_timestamps_unknown(&mut admin).await;
+    let retained_ledger: Vec<String> = sqlx::query_scalar(
+        "SELECT to_jsonb(m)::text FROM public._sqlx_migrations m WHERE version<=9 ORDER BY version",
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .unwrap();
+    assert_eq!(
+        ledger, retained_ledger,
+        "knowledge migration rewrote published prefix ledger"
+    );
+    for table in [
+        "knowledge_records",
+        "knowledge_events",
+        "knowledge_invalidations",
+        "knowledge_publications",
+        "knowledge_withdrawals",
+        "knowledge_layout_events",
+        "knowledge_source_corrections",
+        "knowledge_captures",
+    ] {
+        let count: i64 = sqlx::query_scalar(&format!("SELECT count(*) FROM public.{table}"))
+            .fetch_one(&mut admin)
+            .await
+            .unwrap();
+        assert_eq!(
+            count, 0,
+            "schema upgrade invented capture, assertions or preferences without a verified producer"
+        );
+    }
+    let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
+    assert_eq!(database.check().await.unwrap().0, 10);
+    database.pool().close().await;
+    let installed: Vec<String> = sqlx::query_scalar(
+        "SELECT to_jsonb(m)::text FROM public._sqlx_migrations m ORDER BY version",
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .unwrap();
+    assert_eq!(installed.len(), 10);
+    migrate(&config.migration, &role)
+        .await
+        .expect("knowledge upgrade repeat is idempotent");
+    let repeated: Vec<String> = sqlx::query_scalar(
+        "SELECT to_jsonb(m)::text FROM public._sqlx_migrations m ORDER BY version",
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .unwrap();
+    assert_eq!(
+        installed, repeated,
+        "repeated knowledge upgrade changed ledger facts"
+    );
+    reset(config, conn).await;
+}
+
+async fn assert_legacy_command_timestamps_unknown(conn: &mut PgConnection) {
+    let (commands, invented): (i64, i64) = sqlx::query_as(
+        "SELECT count(*),count(*) FILTER (WHERE received_at IS NOT NULL) FROM public.task_commands",
+    )
+    .fetch_one(conn)
+    .await
+    .unwrap();
+    assert!(
+        commands > 0,
+        "timestamp preservation requires retained commands"
+    );
+    assert_eq!(
+        invented, 0,
+        "upgrade invented a receipt timestamp for legacy commands"
+    );
 }

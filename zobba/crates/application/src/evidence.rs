@@ -1,4 +1,7 @@
 //! Custody sequencing. No database transaction spans immutable object I/O.
+use crate::knowledge::{
+    CapturedAssertion, CapturedExcerpt, EvidenceCapture, MAX_EXCERPT_BYTES, Omission,
+};
 use std::future::Future;
 use zobba_domain::{evidence::*, identity::Scope};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -107,6 +110,19 @@ pub trait EvidenceMetadata: Send + Sync {
         version: &str,
         identity: &ContentIdentity,
     ) -> impl Future<Output = Result<RegisteredEvidence, EvidenceError>> + Send;
+    /// Atomically register the original and exact capture or a durable explicit
+    /// omission. Every production adapter implements this owned boundary.
+    #[allow(clippy::too_many_arguments)]
+    fn register_captured(
+        &self,
+        actor: &str,
+        scope: &Scope,
+        id: &str,
+        namespace: &str,
+        version: &str,
+        identity: &ContentIdentity,
+        capture: &EvidenceCapture,
+    ) -> impl Future<Output = Result<RegisteredEvidence, EvidenceError>> + Send;
     fn authorize(
         &self,
         actor: &str,
@@ -175,14 +191,16 @@ pub async fn acquire<M: EvidenceMetadata, O: EvidenceObjects>(
     if original.identity != measured || original.bytes != bytes {
         return Err(EvidenceError::Integrity);
     }
+    let capture = capture_evidence(&original.bytes, &reservation.reservation.request.source);
     let evidence = metadata
-        .register(
+        .register_captured(
             actor,
             scope,
             id,
             &reservation.namespace,
             &version,
             &original.identity,
+            &capture,
         )
         .await?;
     metadata.authorize(actor, scope).await?;
@@ -210,4 +228,150 @@ pub async fn read_original<M: EvidenceMetadata, O: EvidenceObjects>(
     }
     metadata.authorize(actor, scope).await?;
     Ok((stored.evidence, original.bytes))
+}
+
+/// Eligibility matches the inert text preview, but offsets and content are
+/// derived directly from the immutable original bytes, never display previews.
+/// Populated acquisition metadata stays explicitly attributed assertions.
+pub fn capture_evidence(bytes: &[u8], assertions: &SourceAssertions) -> EvidenceCapture {
+    let assertions = [
+        ("source.system", &assertions.system),
+        ("source.account", &assertions.account),
+        ("source.source_version", &assertions.source_version),
+        ("source.selection", &assertions.selection),
+        ("source.coverage", &assertions.coverage),
+    ]
+    .into_iter()
+    .filter_map(|(path, value)| {
+        value.as_ref().map(|text| CapturedAssertion {
+            field_path: path.into(),
+            text: text.clone(),
+        })
+    })
+    .collect();
+    let excerpt = if bytes.len() <= MAX_ORIGINAL_BYTES && plain_preview(bytes).is_some() {
+        // plain_preview has already validated UTF-8 and inert-text eligibility.
+        let text = std::str::from_utf8(bytes).expect("validated UTF-8 original");
+        let mut end = bytes.len().min(MAX_EXCERPT_BYTES);
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        Some(CapturedExcerpt {
+            text: text[..end].into(),
+            byte_start: 0,
+            byte_end: end as u64,
+            original_size: bytes.len() as u64,
+            partial: end < bytes.len(),
+        })
+    } else {
+        None
+    };
+    let omission = if excerpt.is_none() {
+        Some(Omission::UnsupportedFormat)
+    } else if excerpt.as_ref().is_some_and(|value| value.partial) {
+        Some(Omission::PartialSource)
+    } else {
+        None
+    };
+    EvidenceCapture {
+        excerpt,
+        assertions,
+        omission,
+    }
+}
+
+/// Server-side exact range recorder. Refuses invalid UTF-8 boundaries and never
+/// accepts browser-supplied excerpt prose as validated support.
+pub fn capture_range(bytes: &[u8], start: u64, end: u64) -> Result<CapturedExcerpt, EvidenceError> {
+    let start = usize::try_from(start).map_err(|_| EvidenceError::Invalid)?;
+    let end = usize::try_from(end).map_err(|_| EvidenceError::Invalid)?;
+    if bytes.len() > MAX_ORIGINAL_BYTES
+        || start >= end
+        || end > bytes.len()
+        || end - start > MAX_EXCERPT_BYTES
+        || plain_preview(bytes).is_none()
+    {
+        return Err(EvidenceError::Invalid);
+    }
+    let text = std::str::from_utf8(&bytes[start..end]).map_err(|_| EvidenceError::Invalid)?;
+    Ok(CapturedExcerpt {
+        text: text.into(),
+        byte_start: start as u64,
+        byte_end: end as u64,
+        original_size: bytes.len() as u64,
+        partial: start != 0 || end != bytes.len(),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn automatic_capture_preserves_exact_bytes_and_separates_assertions() {
+        let bytes = "\u{feff}Statement\r\n界🙂".as_bytes();
+        let captured = capture_evidence(
+            bytes,
+            &SourceAssertions {
+                system: Some("Asserted ledger".into()),
+                ..Default::default()
+            },
+        );
+        let excerpt = captured.excerpt.unwrap();
+        assert_eq!(excerpt.text.as_bytes(), bytes);
+        assert_eq!(excerpt.byte_end, bytes.len() as u64);
+        assert!(!excerpt.partial);
+        assert_eq!(
+            captured.assertions,
+            vec![CapturedAssertion {
+                field_path: "source.system".into(),
+                text: "Asserted ledger".into()
+            }]
+        );
+        assert_eq!(captured.omission, None);
+    }
+    #[test]
+    fn prefix_bound_is_on_original_bytes_and_a_unicode_boundary() {
+        let bytes = format!("{}🙂tail", "x".repeat(MAX_EXCERPT_BYTES - 1));
+        let captured = capture_evidence(bytes.as_bytes(), &SourceAssertions::default());
+        let excerpt = captured.excerpt.unwrap();
+        assert_eq!(excerpt.text.len(), MAX_EXCERPT_BYTES - 1);
+        assert_eq!(
+            excerpt.text.as_bytes(),
+            &bytes.as_bytes()[..MAX_EXCERPT_BYTES - 1]
+        );
+        assert_eq!(captured.omission, Some(Omission::PartialSource));
+        assert!(excerpt.partial);
+    }
+    #[test]
+    fn unsupported_original_retains_assertions_with_an_explicit_omission() {
+        for bytes in [
+            &b"<svg>untrusted markup</svg>"[..],
+            &[0xff][..],
+            &b"a\0b"[..],
+        ] {
+            let captured = capture_evidence(
+                bytes,
+                &SourceAssertions {
+                    coverage: Some("Claimed complete".into()),
+                    ..Default::default()
+                },
+            );
+            assert_eq!(captured.excerpt, None);
+            assert_eq!(captured.omission, Some(Omission::UnsupportedFormat));
+            assert_eq!(captured.assertions.len(), 1);
+        }
+    }
+    #[test]
+    fn selected_ranges_preserve_bom_and_refuse_non_boundaries() {
+        let bytes = "\u{feff}🙂\r\ntext".as_bytes();
+        assert_eq!(capture_range(bytes, 0, 3).unwrap().text, "\u{feff}");
+        assert_eq!(capture_range(bytes, 3, 7).unwrap().text, "🙂");
+        assert_eq!(capture_range(bytes, 1, 7), Err(EvidenceError::Invalid));
+        assert_eq!(capture_range(bytes, 0, 4), Err(EvidenceError::Invalid));
+        assert_eq!(capture_range(bytes, 3, 3), Err(EvidenceError::Invalid));
+        assert_eq!(
+            capture_range(bytes, 0, bytes.len() as u64 + 1),
+            Err(EvidenceError::Invalid)
+        );
+    }
 }

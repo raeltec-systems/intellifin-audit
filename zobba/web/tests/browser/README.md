@@ -175,3 +175,24 @@ failures, skips or retries. The independent repair run passed 15 focused cases p
 an additional real abort-after-request-success proof; the web check passed 71
 unit tests. Quiescent Pause/Stop metadata is retained by the final JSON reporter,
 with viewport captures and exact log paths in the implementation evidence report.
+
+Story 21.4 additionally retains an isolated historical acquisition proof in
+`tests/upgrade/knowledge.spec.ts`. Build the CLI and `evidence_fixture` API test
+executable from the exact Story 21.3 commit
+`d38e1daed736415ef13e7606345dac71bd1d9f01` in a separate checkout/target directory,
+then set `ZOBBA_TEST_SCHEMA9_CLI` and `ZOBBA_TEST_SCHEMA9_API` to those executables.
+Warm the current CLI, worker and evidence harness before browser startup, as for
+the ordinary suite. With the same guarded disposable database configuration, run:
+
+```sh
+pnpm --filter @zobba/web exec playwright test --config playwright.knowledge-upgrade.config.ts --workers=1 --retries=0
+```
+
+This invocation owns and resets the disposable schema. It acquires an original
+through the actual schema9 public API and real object fixture, stops that API,
+applies current migrations and starts the current API against the same original.
+It requires the honest legacy capture omission, recovers through the current UI,
+restarts again, and compares exact retries, capture identities, original receipt
+and downloaded bytes. No knowledge rows are seeded or deleted to imitate a
+missing capture. Run it separately from the ordinary browser suite; both own the
+same fixture database and identity listener.

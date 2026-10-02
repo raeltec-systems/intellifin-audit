@@ -326,11 +326,19 @@ test('Admin Save, frozen lost-receipt retry, Undo, exact Task templates, new-onl
 
   await page.getByRole('button', { name: 'New methodology', exact: true }).click();
   await form.getByLabel('Package name', { exact: true }).fill('Private unsaved Admin draft');
+  const deniedMethodology = page.waitForResponse(response => new URL(response.url()).pathname === '/api/methodology/organisations/org-a' && response.status() === 403);
   await runtime.sqlAsync(restore("UPDATE public.organisation_memberships SET active=false WHERE organisation_id='org-a' AND actor_id='actor-admin';"));
   await page.getByRole('button', { name: 'Refresh methodology access', exact: true }).click();
-  await expect(page.getByText('Private drafts have been cleared.', { exact: false })).toBeVisible();
+  await deniedMethodology;
+  await expect(page.getByRole('heading', { name: 'Your organisations', exact: true })).toBeVisible();
+  await expect(page.getByText('No current Admin organisations are available.', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Package name', { exact: true })).toHaveCount(0);
   await runtime.sqlAsync(restore());
+  await page.getByRole('button', { name: 'Refresh methodology access', exact: true }).click();
+  await page.getByRole('button', { name: /Northstar.*Manage methodology/ }).click();
+  await expect(page.getByRole('button', { name: 'New methodology', exact: true })).toBeEnabled();
+  await expect(page.getByLabel('Package name', { exact: true })).toHaveCount(0);
+  await expect(form).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

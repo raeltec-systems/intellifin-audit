@@ -152,6 +152,24 @@ fn receipt(row: &PgRow) -> Result<CommandReceipt, TaskError> {
     })
 }
 
+async fn admission_fence(
+    tx: &mut Tx,
+    actor: &str,
+    s: &Scope,
+    session: Option<&str>,
+) -> Result<(), TaskError> {
+    sqlx::query("SET CONSTRAINTS ALL IMMEDIATE")
+        .execute(&mut **tx)
+        .await
+        .map_err(unavailable)?;
+    let allowed:bool=sqlx::query_scalar("SELECT public.knowledge_audit($1,$2,$3,$4) AND ($5::text IS NULL OR public.evidence_session_locked($1,$5))").bind(actor).bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id).bind(session).fetch_one(&mut **tx).await.map_err(unavailable)?;
+    if allowed {
+        Ok(())
+    } else {
+        Err(TaskError::Denied)
+    }
+}
+
 impl TaskCommands for TaskRepository {
     async fn admit(
         &self,
@@ -199,6 +217,10 @@ impl TaskCommands for TaskRepository {
                 return Err(TaskError::Conflict);
             }
             let original = receipt(&existing)?;
+            crate::knowledge::project_guide(&mut tx, s, actor, &original.command_id)
+                .await
+                .map_err(|_| TaskError::Unavailable)?;
+            admission_fence(&mut tx, actor, s, self.session_hash.as_deref()).await?;
             tx.commit().await.map_err(unavailable)?;
             return Ok(original);
         }
@@ -286,6 +308,11 @@ impl TaskCommands for TaskRepository {
             crate::methodology::enroll_future(&mut tx, s, &id).await?;
         }
         put_event(&mut tx, s, &id, &cycle, Some(&command_id), "received", next).await?;
+        if c.kind == CommandKind::Guide {
+            crate::knowledge::project_guide(&mut tx, s, actor, &command_id)
+                .await
+                .map_err(|_| TaskError::Unavailable)?;
+        }
         wake(
             &mut tx,
             s,
@@ -293,6 +320,7 @@ impl TaskCommands for TaskRepository {
             &get::<String>(&after, "accountable_actor")?,
         )
         .await?;
+        admission_fence(&mut tx, actor, s, self.session_hash.as_deref()).await?;
         tx.commit().await.map_err(unavailable)?;
         Ok(CommandReceipt {
             command_id,

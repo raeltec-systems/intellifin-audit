@@ -136,6 +136,22 @@ impl EvidenceMetadata for Metadata {
     async fn authorize(&self, _: &str, _: &Scope) -> Result<(), EvidenceError> {
         Ok(())
     }
+    async fn register_captured(
+        &self,
+        actor: &str,
+        scope: &Scope,
+        id: &str,
+        namespace: &str,
+        version: &str,
+        identity: &ContentIdentity,
+        capture: &zobba_application::knowledge::EvidenceCapture,
+    ) -> Result<RegisteredEvidence, EvidenceError> {
+        // This object-custody fixture acknowledges the explicit producer payload;
+        // durable projection is exercised by the real knowledge repository suite.
+        assert!(capture.excerpt.is_some() || capture.omission.is_some());
+        self.register(actor, scope, id, namespace, version, identity)
+            .await
+    }
 }
 
 fn scope() -> Scope {

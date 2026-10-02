@@ -1,0 +1,17 @@
+{
+  "invocation": "repair-preference-outcome-focused-1",
+  "exit": 0,
+  "workers": 1,
+  "retries": 0,
+  "passed": 1,
+  "failed": 0,
+  "skipped": 0,
+  "flaky": 0,
+  "duration_ms": 47758.151,
+  "started_at": "2026-10-02T21:46:30.588Z",
+  "source_files": 245,
+  "source_unchanged": true,
+  "source_start": "source-repair-preference-outcome-focused-1-start.json",
+  "source_end": "source-repair-preference-outcome-focused-1-end.json",
+  "log": "repair-preference-outcome-focused-1.log"
+}

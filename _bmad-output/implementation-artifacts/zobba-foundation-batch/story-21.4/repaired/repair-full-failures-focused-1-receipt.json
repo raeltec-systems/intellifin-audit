@@ -1,0 +1,17 @@
+{
+  "invocation": "repair-full-failures-focused-1",
+  "exit": 0,
+  "workers": 1,
+  "retries": 0,
+  "passed": 3,
+  "failed": 0,
+  "skipped": 0,
+  "flaky": 0,
+  "duration_ms": 40240.818,
+  "started_at": "2026-10-02T21:25:28.826Z",
+  "source_files": 245,
+  "source_unchanged": true,
+  "source_start": "source-repair-full-failures-focused-1-start.json",
+  "source_end": "source-repair-full-failures-focused-1-end.json",
+  "log": "repair-full-failures-focused-1.log"
+}

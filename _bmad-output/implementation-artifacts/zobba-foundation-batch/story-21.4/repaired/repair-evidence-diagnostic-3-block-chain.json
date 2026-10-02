@@ -1,0 +1,59 @@
+{
+  "observer_sha256": "af7e173ce7b6865afb984dc605ed80cb4ea9320f984e981144a4c9f9df45acf4",
+  "scope": "Read-only fixed-query disposable browser DB activity; no query text/values/session identifiers; only representative distinct states containing the owned evidence barrier/admin. This observation is not a single atomic transaction snapshot.",
+  "observed_run": "repair-full-failures-diagnostic-3",
+  "run_result": "passed, not an explanation for BF1/diagnostic1 failed observer",
+  "late_observer_start": false,
+  "graphs": [
+    {
+      "at": "2026-10-02T21:12:38.459977+00:00",
+      "rows": [
+        {
+          "pid": 1059031,
+          "owner": "owned-session-barrier",
+          "state": "active",
+          "wait_event_type": "Timeout",
+          "wait_event": "PgSleep",
+          "blockers": [],
+          "query_kind": "owned-session-barrier"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-02T21:12:38.560054+00:00",
+      "rows": [
+        {
+          "pid": 1059028,
+          "owner": "runtime-or-fixture",
+          "state": "active",
+          "wait_event_type": "Lock",
+          "wait_event": "transactionid",
+          "blockers": [
+            1059031
+          ],
+          "query_kind": "exact-evidence-session-lock"
+        },
+        {
+          "pid": 1059031,
+          "owner": "owned-session-barrier",
+          "state": "active",
+          "wait_event_type": "Timeout",
+          "wait_event": "PgSleep",
+          "blockers": [],
+          "query_kind": "owned-session-barrier"
+        },
+        {
+          "pid": 1059037,
+          "owner": "owned-waiting-admin",
+          "state": "active",
+          "wait_event_type": "Lock",
+          "wait_event": "transactionid",
+          "blockers": [
+            1059028
+          ],
+          "query_kind": "owned-waiting-admin"
+        }
+      ]
+    }
+  ]
+}

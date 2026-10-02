@@ -1,3 +1,65 @@
+## 2026-10-02 — Story 21.4 scoped context and derivative custody
+
+Keep immutable source facts distinct from current eligibility. Guide projection
+is keyed by the accepted command and retains its original Task/cycle; it cannot
+become a second Task writer. Exact retries and explicit original recovery revisit
+missing derivatives after their source receipt already exists. Acquired UTF-8
+excerpts preserve original byte ranges, BOM and CRLF; populated source metadata
+remains actor assertions. Source correction is an explicit same-scope relation,
+never inferred from filenames or digests. Unknown source times/periods stay unknown.
+
+Current viewer authority and the existing Task accountable actor independently
+qualify every source and named same-client destination. Check dependencies before
+ranking/disclosure and again after staged work; source time expiry matters even
+while organisation locks exclude concurrent membership writers. Exact-reference
+verification must check references/status and the Task binding/epoch within one
+repository transaction. Separate exact and basis reads can straddle a correction
+or origin revocation. Browser disclosure verifies the shown bounded manifest;
+these POSTs are read verification, not commands, and return no protected text. Typed private
+layout releases disclose only the exact optional setting. They do not disclose
+private observations, rewrite a prior publication or grant Task execution scope.
+
+Preference Undo consumes observations and withdraws that exact revision’s active
+publications. Observe requests carry their captured preference revision: old
+requests delivered after Undo or Save cannot become new learning. Exact event
+replay returns current inspection without recreating the old inference. Bound the
+actual serialized response, including statuses and numeric strings, separately
+from per-record storage and per-field maxima. Keep exact lookup/recovery outside
+search pagination, and preserve source admission when optional capture is omitted.
+Page across one C-ordered candidate stream when combining source kinds. Filtering
+two separately limited lists and merging afterward can skip eligible records or
+hide filtered publications. A scan ceiling needs an explicit coverage omission;
+only a disclosed, fully examined prefix can supply a cursor. Exact lookup stays
+available when no access-safe continuation exists. Safe event receipt recovery
+must survive loss of separate supporting-source access by withholding the record,
+while current session and Task scope remain mandatory.
+
+Store accepted-command receipts as bounded event facts and exact immutable record
+references, then rebuild their disclosure view with current eligibility. Copying
+a large admitted record plus a valid restriction reason into its receipt can exceed
+the separate durable JSONB cap even when the HTTP envelope is safe. Bound and test
+the stored JSONB representation independently of both record and response sizes;
+restrictions and exact recovery must remain usable for already accepted records.
+Omission categories are sets: combine and deduplicate all producer causes before
+the strict response/parser boundary, including partial source capture.
+
+Methodology unsent edit/recall custody now follows the skills repair: bounded,
+exact actor/session/organisation memory survives App unmount, but disclosure waits
+for the editor’s own generation-bound scoped Admin read. Intentional cancellation
+relinquishes request ownership before aborting; actual denial clears custody even
+if a concurrent organisation-list read fails. Reserve memory before accepting a
+field change or transmitting, never evict uncertain submitted commands, and do not
+persist private drafts to browser storage or submit them on recovery.
+When an asynchronous source-status read supplies a draft's initial revision, merge
+only that revision into the latest custody-owned draft. A captured render can be
+older than a user's field edit; guard owner, activation and source identity so a
+late read cannot replace typed fields or initialize a cancelled/reopened editor.
+TypeScript's Scope annotation does not strip fields from a wider Engagement
+object at runtime. Spreading it into a strict wire scope also sends labels and
+roles, so a supported assertion can receive a real 400. Construct canonical
+wire scopes through `parseScope` before serialization, and verify the actual
+posted key set as well as the accepted response and retained support history.
+
 ## 2026-10-02 — Story 21.3 installed technique boundaries
 
 Skills use explicit Admin installation of immutable manifest/resource bytes and
@@ -207,6 +269,10 @@ Browser evidence fixtures must await real asynchronous admin SQL whenever it can
 contend with API authority locks: synchronous psql blocks the Node database proxy
 that must forward the API commit, creating a harness deadlock. Keep the same
 disposable-target guards and bounded child-process deadlines.
+For lock fixtures, own and correlate the holder, API and admin backend PIDs;
+release the barrier only after observing the intended blocking chain, then await
+actual child closure. Classify unbound App session checks separately from bound
+projection verification, and await owned route-handler settlement before cleanup.
 Opaque evidence cursor IDs use explicit PostgreSQL `COLLATE "C"` in predicates,
 ordering and supporting indexes so a locale-specific database cannot disagree
 with browser ASCII ordering. Test with a non-C database, not only the default

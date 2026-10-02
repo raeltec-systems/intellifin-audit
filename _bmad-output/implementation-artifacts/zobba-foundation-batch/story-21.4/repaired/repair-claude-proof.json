@@ -1,0 +1,6 @@
+{
+  "path": "CLAUDE.md",
+  "bytes": 682353,
+  "sha256": "90549caf01a3ecbbfa53aacca436ef368c4ee67a446fde8aa6b83d4ec4f83b36",
+  "scope": "Documentation-only changes outside the application manifest: canonical wire scopes strip wider Engagement fields; own/correlate blocker PIDs and await child closure; distinguish unbound App reads from bound projection checks and settle route handlers before cleanup. Existing async fixture SQL guidance retained."
+}

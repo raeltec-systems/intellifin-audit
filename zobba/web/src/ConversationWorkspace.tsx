@@ -9,6 +9,9 @@ import { useConversation } from './conversation-state';
 import { TaskMethodology } from './TaskMethodology';
 import { AffectedSkillSelections, TaskSkills } from './TaskSkills';
 import { readTaskBasis } from './methodology';
+import { TaskKnowledge } from './TaskKnowledge';
+import { InspectionPreference, useInspectionPreference } from './InspectionPreference';
+import type { MethodContext, SkillContext } from './knowledge-context';
 
 interface WorkspaceProps {
   engagement: Engagement;
@@ -71,6 +74,11 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
   const [following, setFollowing] = useState(true);
   const [view, setView] = useState<'conversation' | 'workspace'>('conversation');
   const [expanded, setExpanded] = useState(false);
+  const [opening, setOpening] = useState<string | null>(null);
+  const explicitLayoutOpening = useRef<string | null>(null);
+  const appliedLayoutOpening = useRef<string | null>(null);
+  const [methodContext, setMethodContext] = useState<MethodContext | null>(null);
+  const [skillContext, setSkillContext] = useState<SkillContext | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const historyPane = useRef<HTMLDivElement>(null);
@@ -82,6 +90,7 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
   const focusInspection = useRef(false);
   const pendingScroll = useRef<string | null>(null);
   const projectionReady = accessReady && !['loading', 'reconnecting', 'unavailable'].includes(conversation.connection);
+  const preference = useInspectionPreference(engagement.organisation_id, session, projectionReady, onAccessFailure);
   const retainingProjection = !accessReady || conversation.connection === 'loading';
   const selected = retainingProjection || projectionReady ? conversation.tasks.find((task) => task.id === selectedId) ?? inspected : null;
   const scopeLabel = `${engagement.organisation_name} / ${engagement.client_name} / ${engagement.engagement_name}`;
@@ -92,6 +101,14 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
   const contextOwner = JSON.stringify([session.identity.id, session.csrf_token, engagement.organisation_id, engagement.client_id, engagement.engagement_id, targetKey(target)]);
   const latestContextOwner = useRef({ owner: contextOwner, accessReady }); latestContextOwner.current = { owner: contextOwner, accessReady };
   const previousContextOwner = useRef(contextOwner);
+  useEffect(() => {
+    if (!opening || !preference.inspection.verified || appliedLayoutOpening.current === opening || explicitLayoutOpening.current === opening) return;
+    appliedLayoutOpening.current = opening;
+    // The responsive workspace hides this control on narrow viewports. Learning
+    // changes only the later-opening default; it never overrides this opening's
+    // explicit action, pin/follow choice, source authority or Task controls.
+    setExpanded(preference.inspection.value?.current?.record.preference?.value === 'expanded' && window.matchMedia('(min-width: 1001px)').matches);
+  }, [opening, preference.inspection.verified, preference.inspection.value]);
   useEffect(() => () => { contextRequest.current?.abort(); contextRequest.current = null; }, []);
   useEffect(() => {
     if (previousContextOwner.current !== contextOwner) {
@@ -152,7 +169,7 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
     // a history page. It changes inspected work without changing keyboard focus
     // or the independently chosen composer target.
     if (projectionReady && following && selectedId && activity && activity.task_id !== selectedId) {
-      setInspected(null); setSelectedId(activity.task_id);
+      setInspected(null); setSelectedId(activity.task_id); setOpening(crypto.randomUUID()); setExpanded(false); setMethodContext(null); setSkillContext(null);
     }
   }, [projectionReady, conversation.latestActivity, following, selectedId]);
 
@@ -191,7 +208,7 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
     openGeneration.current += 1;
     opener.current = source ?? document.activeElement as HTMLElement;
     focusInspection.current = true;
-    setSelectedId(id); setPinned(false); setFollowing(false); setView('workspace'); setExpanded(false);
+    setSelectedId(id); setPinned(false); setFollowing(false); setView('workspace'); setExpanded(false); setOpening(crypto.randomUUID()); setMethodContext(null); setSkillContext(null);
     const known = conversation.tasks.find((task) => task.id === id);
     setInspected(known ?? null);
     if (selectedId === id) requestAnimationFrame(() => inspectionHeading.current?.focus());
@@ -199,7 +216,7 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
 
   function closeInspection() {
     openGeneration.current += 1;
-    setSelectedId(null); setInspected(null); setPinned(false); setFollowing(true); setExpanded(false); setView('conversation');
+    setSelectedId(null); setInspected(null); setPinned(false); setFollowing(true); setExpanded(false); setOpening(null); setView('conversation'); setMethodContext(null); setSkillContext(null);
     requestAnimationFrame(() => {
       if (opener.current?.isConnected && opener.current.getClientRects().length) opener.current.focus();
       else textarea.current?.focus();
@@ -329,27 +346,34 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
         </div>
         <aside className="inspection-pane" aria-label="Workspace">
           {selectedId ? <>
+            <div className="inspection-reading" tabIndex={0} role="region" aria-label="Task inspection reading area">
             <header className="inspection-header"><div><p className="eyebrow">From Task</p><h2 ref={inspectionHeading} tabIndex={-1}>{selected?.objective ?? 'Loading Task…'}</h2></div>
               <div className="inspection-actions"><button type="button" className="text-button" aria-pressed={pinned} onClick={() => { setPinned(!pinned); setFollowing(false); }}>{pinned ? 'Pinned' : 'Pin'}</button>
-                <button type="button" className="text-button expand-inspection" aria-pressed={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? 'Reduce' : 'Expand'}</button>
+                <button type="button" className="text-button expand-inspection" aria-pressed={expanded} onClick={() => { const next = !expanded; setExpanded(next); if (opening) { explicitLayoutOpening.current = opening; if (!preference.mutation.working && !preference.mutation.pending) void preference.observe(opening, next ? 'expanded' : 'standard'); } }}>{expanded ? 'Reduce' : 'Expand'}</button>
                 <button type="button" className="text-button" aria-label="Close inspection" onClick={closeInspection}>Close</button></div></header>
             <div className="inspection-follow"><span>{following ? 'Following Zobba · latest Task receipt' : pinned ? 'Pinned · inspection retained' : 'Inspecting · your selection is retained'}</span>
               {!following ? <button type="button" className="text-button" onClick={() => { setFollowing(true); setPinned(false); }}>Follow Zobba</button> : null}</div>
-            {selected ? <><div className="task-detail" role="region" aria-label="Task details" tabIndex={0}>
+            <InspectionPreference key={`${session.identity.id}/${session.csrf_token}/${engagement.organisation_id}`} state={preference} organisation={engagement.organisation_id} scope={engagement} session={session} onUndo={() => { explicitLayoutOpening.current = opening; setExpanded(false); }} />
+            {selected ? <div className="task-detail" role="region" aria-label="Task details" tabIndex={0}>
               <p className="task-detail-scope">{scopeLabel}</p><p className="task-owner">Accountable human · {owner(selected)}</p>
               <div className="task-state"><span className="status-label">{taskStateLabel(selected)}</span><p>{stateExplanation(selected)}</p></div>
               <section className="brief-section"><h3>Original objective</h3><p className="retained-text">{selected.objective}</p></section>
               <section className="brief-section"><h3>Working brief</h3><p className="brief-caption">Plain retained direction. Applied means added here; it does not mean model understanding.</p><p className="retained-text">{selected.working_brief}</p></section>
-              <TaskMethodology scope={engagement} taskId={selected.id} taskRevision={selected.revision} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} />
-              <TaskSkills key={`${session.identity.id}/${session.csrf_token}/${selected.id}`} scope={engagement} taskId={selected.id} taskRevision={selected.revision} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} />
+              <section key={`${selected.id}/${opening ?? ''}`} className="working-context" aria-label="What Zobba is using"><h3>What Zobba is using</h3>
+                <TaskKnowledge key={`${session.identity.id}/${session.csrf_token}/${selected.id}/knowledge`} scope={engagement} task={selected} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} method={methodContext} skills={skillContext} onApplyLayout={layout => { explicitLayoutOpening.current = opening; setExpanded(layout === 'expanded' && window.matchMedia('(min-width: 1001px)').matches); }} onGuide={() => { draftGeneration.current += 1; chooseTarget({ kind: 'guide', task_id: selected.id, cycle_id: selected.cycle_id, objective: selected.objective }); setView('conversation'); requestAnimationFrame(() => textarea.current?.focus()); }} />
+                <TaskMethodology scope={engagement} taskId={selected.id} taskRevision={selected.revision} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} onContext={setMethodContext} />
+                <TaskSkills key={`${session.identity.id}/${session.csrf_token}/${selected.id}`} scope={engagement} taskId={selected.id} taskRevision={selected.revision} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} onContext={setSkillContext} />
+              </section>
               <details className="message-binding"><summary>Task and current cycle</summary><dl><div><dt>Task</dt><dd>{selected.id}</dd></div><div><dt>Work cycle</dt><dd>{selected.cycle_id}</dd></div><div><dt>Revision</dt><dd>{selected.revision}</dd></div></dl></details>
+            </div> : <p className="empty-work-note" role="status">Current Task details are unavailable. Reconnect to inspect them.</p>}
             </div>
+            {selected ?
               <div className="task-controls" aria-label={`Controls for ${selected.objective}`}><p>Controls apply only to this Task and cycle.</p>
                 <div>{(['pause', 'stop', 'resume', 'continue'] as Control[]).filter((kind) => kind === 'pause' ? !['paused', 'stopped'].includes(selected.state) : kind === 'stop' ? selected.state !== 'stopped' : kind === 'resume' ? selected.state === 'paused' && selected.cessation === 'confirmed' : selected.state === 'stopped' && selected.cessation === 'confirmed').map((kind) => <button key={kind} type="button" className="quiet-button" disabled={!controlsReady}
                   aria-label={`${kind.charAt(0).toUpperCase()}${kind.slice(1)} ${selected.objective} · current cycle ${cycleLabel(selected.cycle_id)}`} onClick={() => void conversation.control(selected, kind)}>{kind === 'continue' ? 'Continue in new cycle' : `${kind.charAt(0).toUpperCase()}${kind.slice(1)} task`}</button>)}</div>
                 <button type="button" className="text-button" onClick={() => { draftGeneration.current += 1; chooseTarget({ kind: 'guide', task_id: selected.id, cycle_id: selected.cycle_id, objective: selected.objective }); setView('conversation'); requestAnimationFrame(() => textarea.current?.focus()); }}>Guide this Task</button>
               </div>
-            </> : <p className="empty-work-note" role="status">Current Task details are unavailable. Reconnect to inspect them.</p>}
+            : null}
           </> : <div className="companion-panel"><h2>Active work</h2><p className="shelf-description">Open a Task to inspect its objective, working brief and controls.</p>
             {conversation.tasks.length ? <ul className="active-task-list">{conversation.tasks.map((task) => <li key={task.id}><button type="button" className="task-list-open" onClick={(event) => void openTask(task.id, event.currentTarget)}><span>{task.objective}</span><small>{taskStateLabel(task)} · {owner(task)}</small><span className="open-label">Open</span></button></li>)}</ul> : <p className="empty-work-note">{conversation.connection === 'connected' ? 'No Tasks yet.' : 'Tasks are unavailable until the conversation loads.'}</p>}
             {conversation.hasMoreTasks ? <button type="button" className="text-button" onClick={() => void conversation.loadTaskPage()}>More Tasks</button> : null}

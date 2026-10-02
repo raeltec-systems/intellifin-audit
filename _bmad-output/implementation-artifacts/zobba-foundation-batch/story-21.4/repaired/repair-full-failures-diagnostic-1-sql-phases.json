@@ -1,0 +1,10 @@
+{
+  "barrier_sleep_ms": 4000,
+  "observation_deadline_ms": 2000,
+  "child_deadline_ms": 10000,
+  "phases": {
+    "evidence-barrier-completion": "passed",
+    "evidence-observe-session-barrier": "passed",
+    "evidence-observe-metadata-lock": "failed"
+  }
+}

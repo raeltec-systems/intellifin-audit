@@ -48,43 +48,230 @@ function databaseMutationEnvironment(environment: NodeJS.ProcessEnv, database: U
   };
 }
 
-function runSqlAsync(statement: string, environment: NodeJS.ProcessEnv): Promise<void> {
+const sqlAsyncPhases = [
+  'evidence-barrier-completion',
+  'evidence-observe-session-barrier',
+  'evidence-observe-metadata-lock',
+  'evidence-admin-completion',
+  'evidence-observe-admin-lock',
+] as const;
+export type SqlAsyncPhase = typeof sqlAsyncPhases[number];
+
+function runSqlAsync(statement: string, environment: NodeJS.ProcessEnv, phase?: SqlAsyncPhase): Promise<void> {
+  if (phase !== undefined && !sqlAsyncPhases.includes(phase)) {
+    return Promise.reject(new Error('Synthetic browser database mutation failed. Invalid diagnostic phase.'));
+  }
   return new Promise<void>((resolveSql, rejectSql) => {
     let settled = false;
     let timeout: NodeJS.Timeout | undefined;
     let forceKill: NodeJS.Timeout | undefined;
-    const child = spawn('psql', ['-X', '-q', '-v', 'ON_ERROR_STOP=1'], {
-      cwd: root, env: environment, stdio: ['pipe', 'ignore', 'ignore'],
+    let sqlstate: string | null = null;
+    let diagnosticPrefix = '';
+    let diagnosticBytes = 0;
+    const child = spawn('psql', ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=sqlstate'], {
+      cwd: root, env: environment, stdio: ['pipe', 'ignore', 'pipe'],
     });
+    // Never persist or emit raw stderr. Parse only a SQLSTATE from a bounded
+    // prefix; connection errors without a server SQLSTATE remain unclassified.
+    child.stderr.on('data', (chunk: Buffer) => {
+      if (settled || sqlstate !== null || diagnosticBytes >= 4096) return;
+      const prefix = chunk.subarray(0, 4096 - diagnosticBytes); diagnosticBytes += prefix.length;
+      diagnosticPrefix += prefix.toString('utf8');
+      const match = /\b(?:ERROR|FATAL|PANIC):[ \t]+([0-9A-Z]{5})(?=[\r\n]|$)/.exec(diagnosticPrefix);
+      if (match?.[1]) { sqlstate = match[1]; diagnosticPrefix = ''; }
+    });
+    const failure = (source: 'spawn' | 'stdin' | 'close' | 'deadline', exit_code: number | null = null, signal: NodeJS.Signals | null = null) =>
+      new Error(`Synthetic browser database mutation failed. ${JSON.stringify({ phase: phase ?? 'unlabelled', source, sqlstate, exit_code, signal })}`);
     const finish = (error?: Error) => {
       if (settled) return;
       settled = true;
+      diagnosticPrefix = '';
       if (timeout) clearTimeout(timeout);
       if (error) rejectSql(error);
       else resolveSql();
     };
-    child.once('error', () => finish(new Error('Synthetic browser database mutation failed.')));
-    child.stdin.on('error', () => finish(new Error('Synthetic browser database mutation failed.')));
-    child.once('close', (code) => {
+    child.once('error', () => finish(failure('spawn')));
+    child.stdin.on('error', () => finish(failure('stdin')));
+    child.once('close', (code, signal) => {
       if (forceKill) clearTimeout(forceKill);
       if (code === 0) finish();
-      else finish(new Error('Synthetic browser database mutation failed.'));
+      else finish(failure('close', code, signal));
     });
     timeout = setTimeout(() => {
       child.kill('SIGTERM');
       forceKill = setTimeout(() => child.kill('SIGKILL'), 500);
-      finish(new Error('Synthetic browser database mutation failed.'));
+      finish(failure('deadline'));
     }, 10_000);
     try {
       child.stdin.end(statement);
     } catch {
-      finish(new Error('Synthetic browser database mutation failed.'));
+      finish(failure('stdin'));
       child.kill('SIGTERM');
     }
   });
 }
 
-function resetSyntheticFixture(database: URL, host: string, port: number): void {
+type EvidenceLockSnapshot = {
+  api_connections: number; api_unsettled: number;
+  metadata: Array<{ pid: number; blockers: number[] }>;
+  admin_waiting: boolean; admin_blockers: number[];
+};
+export interface EvidenceSessionBarrier {
+  proof: {
+    holder_pid: number | null; metadata_pid: number | null; admin_pid: number | null;
+    idle: EvidenceLockSnapshot | null; metadata: EvidenceLockSnapshot | null; chain: EvidenceLockSnapshot | null;
+    holder_completed: boolean; admin_completed: boolean; release: 'none' | 'commit' | 'rollback';
+    phases: string[];
+  };
+  prepare: () => Promise<void>;
+  observeMetadata: () => Promise<void>;
+  startAdmin: () => Promise<void>;
+  observeChain: () => Promise<void>;
+  commit: () => Promise<void>;
+  close: () => Promise<void>;
+}
+
+/** One owned interactive child; only fixed fixture SQL enters its stdin. */
+function evidenceSqlChild(environment: NodeJS.ProcessEnv, role: 'holder' | 'admin', deadline: number) {
+  let ended = false, exited = false, error: Error | null = null, sqlstate: string | null = null;
+  let stdout = '', stderr = '', stderrBytes = 0;
+  let pending: { resolve: (line: string) => void; reject: (error: Error) => void } | null = null;
+  let forceKill: NodeJS.Timeout | undefined;
+  let markClosed!: () => void;
+  const closed = new Promise<void>(resolveClosed => { markClosed = resolveClosed; });
+  const child = spawn('psql', ['-X', '-q', '-t', '-A', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=sqlstate'], {
+    cwd: root, env: environment, stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  const fail = (source: 'spawn' | 'stdin' | 'frame' | 'close' | 'deadline', code: number | null = null, signal: NodeJS.Signals | null = null) => {
+    error ??= new Error(`Synthetic browser database mutation failed. ${JSON.stringify({ phase: `evidence-owned-${role}`, source, sqlstate, code, signal })}`);
+    pending?.reject(error); pending = null;
+  };
+  const terminate = () => {
+    if (exited) return;
+    child.kill('SIGTERM'); forceKill ??= setTimeout(() => child.kill('SIGKILL'), 500);
+  };
+  const timeout = setTimeout(() => { fail('deadline'); terminate(); }, Math.max(0, deadline - Date.now()));
+  child.once('error', () => { fail('spawn'); terminate(); });
+  child.stdin.on('error', () => { fail('stdin'); terminate(); });
+  child.stderr.on('data', (chunk: Buffer) => {
+    if (sqlstate || stderrBytes >= 4096) return;
+    const prefix = chunk.subarray(0, 4096 - stderrBytes); stderrBytes += prefix.length; stderr += prefix.toString('utf8');
+    const match = /\b(?:ERROR|FATAL|PANIC):[ \t]+([0-9A-Z]{5})(?=[\r\n]|$)/.exec(stderr);
+    if (match?.[1]) { sqlstate = match[1]; stderr = ''; }
+  });
+  child.stdout.on('data', (chunk: Buffer) => {
+    // Each fixed command emits exactly one short frame. Never expose raw output.
+    if (Buffer.byteLength(stdout) + chunk.length > 4096) { fail('frame'); terminate(); return; }
+    stdout += chunk.toString('utf8');
+    for (let newline = stdout.indexOf('\n'); newline >= 0; newline = stdout.indexOf('\n')) {
+      const line = stdout.slice(0, newline); stdout = stdout.slice(newline + 1);
+      if (!pending) { fail('frame'); terminate(); return; }
+      const receiver = pending; pending = null; receiver.resolve(line);
+    }
+  });
+  child.once('close', (code, signal) => {
+    exited = true; clearTimeout(timeout); if (forceKill) clearTimeout(forceKill);
+    if (code !== 0 || !ended || pending) fail('close', code, signal);
+    stderr = ''; stdout = ''; markClosed();
+  });
+  return {
+    exchange(statement: string): Promise<string> {
+      if (error) return Promise.reject(error);
+      if (ended || exited || pending) return Promise.reject(new Error('Owned evidence SQL phase is invalid.'));
+      const reply = new Promise<string>((resolveLine, rejectLine) => { pending = { resolve: resolveLine, reject: rejectLine }; });
+      try { child.stdin.write(`${statement}\n`); } catch { fail('stdin'); terminate(); }
+      return reply;
+    },
+    end(statement: 'COMMIT;' | 'ROLLBACK;') {
+      if (ended || exited) return;
+      ended = true;
+      try { child.stdin.end(`${statement}\n`); } catch { fail('stdin'); terminate(); }
+    },
+    async complete() { await closed; if (error) throw error; },
+  };
+}
+
+function ownedEvidenceSessionBarrier(environment: NodeJS.ProcessEnv, apiName: string): EvidenceSessionBarrier {
+  if (!/^zobba-browser-api-[0-9]+-[0-9]+$/.test(apiName)) throw new Error('Invalid owned API identity.');
+  const proof: EvidenceSessionBarrier['proof'] = { holder_pid: null, metadata_pid: null, admin_pid: null,
+    idle: null, metadata: null, chain: null, holder_completed: false, admin_completed: false, release: 'none', phases: [] };
+  let holder: ReturnType<typeof evidenceSqlChild> | undefined, admin: ReturnType<typeof evidenceSqlChild> | undefined;
+  let deadline = 0, phase: 'new' | 'held' | 'metadata' | 'admin' | 'chain' | 'committed' | 'closed' = 'new';
+  const requirePhase = (expected: typeof phase) => { if (phase !== expected) throw new Error('Owned evidence barrier phase is invalid.'); };
+  const pid = (line: string) => { const match = /^ready:([1-9][0-9]{0,9})$/.exec(line), value = Number(match?.[1]); if (!Number.isSafeInteger(value) || value < 1 || value > 2147483647) throw new Error('Owned evidence SQL readiness was invalid.'); return value; };
+  const readSnapshot = async (): Promise<EvidenceLockSnapshot> => {
+    const line = await holder!.exchange(`DO $$ BEGIN PERFORM pg_stat_clear_snapshot(); END $$;
+WITH api AS MATERIALIZED (SELECT pid,state,xact_start,wait_event_type,query FROM pg_catalog.pg_stat_activity WHERE datname=current_database() AND application_name='${apiName}'),
+metadata AS MATERIALIZED (SELECT pid,pg_blocking_pids(pid) AS blockers FROM api WHERE state='active' AND wait_event_type='Lock' AND query='SELECT public.evidence_session_locked($1,$2)' AND ${proof.holder_pid ?? 0}=ANY(pg_blocking_pids(pid)))
+SELECT 'snapshot:'||json_build_object('api_connections',(SELECT count(*) FROM api),'api_unsettled',(SELECT count(*) FROM api WHERE state<>'idle' OR xact_start IS NOT NULL),
+'metadata',coalesce((SELECT json_agg(json_build_object('pid',pid,'blockers',blockers) ORDER BY pid) FROM metadata),'[]'::json),
+'admin_waiting',EXISTS(SELECT 1 FROM pg_catalog.pg_stat_activity WHERE datname=current_database() AND pid=${proof.admin_pid ?? 0} AND application_name='${apiName}-admin' AND state='active' AND wait_event_type='Lock' AND query='UPDATE public.identities SET display_name=display_name WHERE id=''actor-a'';'),
+'admin_blockers',pg_blocking_pids(${proof.admin_pid ?? 0}))::text;`);
+    let value: unknown;
+    try { if (!line.startsWith('snapshot:')) throw new Error(); value = JSON.parse(line.slice(9)); } catch { throw new Error('Owned evidence lock snapshot was invalid.'); }
+    const validPid = (value: unknown): value is number => Number.isSafeInteger(value) && typeof value === 'number' && value > 0 && value <= 2147483647;
+    const validPids = (value: unknown): value is number[] => Array.isArray(value) && value.length <= 32 && value.every(validPid);
+    if (!value || typeof value !== 'object') throw new Error('Owned evidence lock snapshot was invalid.');
+    const row = value as Record<string, unknown>;
+    if (typeof row.api_connections !== 'number' || !Number.isInteger(row.api_connections) || row.api_connections < 1 || row.api_connections > 32 ||
+      typeof row.api_unsettled !== 'number' || !Number.isInteger(row.api_unsettled) || row.api_unsettled < 0 || row.api_unsettled > row.api_connections ||
+      !Array.isArray(row.metadata) || row.metadata.length > 32 || !row.metadata.every(item => item && typeof item === 'object' && validPid(item.pid) && validPids(item.blockers)) ||
+      typeof row.admin_waiting !== 'boolean' || !validPids(row.admin_blockers)) throw new Error('Owned evidence lock snapshot was invalid.');
+    return { api_connections: row.api_connections, api_unsettled: row.api_unsettled,
+      metadata: row.metadata.map(item => ({ pid: item.pid as number, blockers: item.blockers as number[] })), admin_waiting: row.admin_waiting, admin_blockers: row.admin_blockers };
+  };
+  const observe = async (name: 'idle' | 'metadata' | 'chain', accepted: (snapshot: EvidenceLockSnapshot) => boolean) => {
+    let expired = false, timer: NodeJS.Timeout | undefined;
+    const limit = new Promise<never>((_, reject) => { timer = setTimeout(() => { expired = true; reject(new Error(`Owned evidence ${name} observation timed out.`)); }, Math.max(0, Math.min(2000, deadline - Date.now()))); });
+    const observations = async () => {
+      while (!expired) { const snapshot = await readSnapshot(); if (!expired && accepted(snapshot)) { proof[name] = snapshot; proof.phases.push(`${name}-observed`); return snapshot; } }
+      throw new Error(`Owned evidence ${name} observation timed out.`);
+    };
+    try { return await Promise.race([observations(), limit]); } finally { expired = true; if (timer) clearTimeout(timer); }
+  };
+  const metadataOwned = (snapshot: EvidenceLockSnapshot) => snapshot.api_unsettled === 1 && snapshot.metadata.length === 1 &&
+    snapshot.metadata[0]!.blockers.length === 1 && snapshot.metadata[0]!.blockers[0] === proof.holder_pid;
+  const completeChildren = async () => {
+    const results = await Promise.allSettled([
+      ...(holder ? [holder.complete().then(() => { proof.holder_completed = true; })] : []),
+      ...(admin ? [admin.complete().then(() => { proof.admin_completed = true; })] : []),
+    ]);
+    const errors = results.flatMap(result => result.status === 'rejected' ? [result.reason as unknown] : []);
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) throw new AggregateError(errors, 'Owned evidence SQL children failed.');
+  };
+  return {
+    proof,
+    async prepare() {
+      requirePhase('new'); deadline = Date.now() + 10_000;
+      holder = evidenceSqlChild(environment, 'holder', deadline);
+      await observe('idle', snapshot => snapshot.api_unsettled === 0);
+      proof.holder_pid = pid(await holder.exchange(`BEGIN; SET LOCAL application_name='${apiName}-holder'; DO $$ BEGIN PERFORM 1 FROM public.sessions WHERE actor_id='actor-a' FOR UPDATE; IF NOT FOUND THEN RAISE EXCEPTION 'Owned session is missing'; END IF; END $$; SELECT 'ready:'||pg_backend_pid();`));
+      phase = 'held'; proof.phases.push('session-lock-ready');
+    },
+    async observeMetadata() { requirePhase('held'); const snapshot = await observe('metadata', metadataOwned); proof.metadata_pid = snapshot.metadata[0]!.pid; phase = 'metadata'; },
+    async startAdmin() {
+      requirePhase('metadata'); admin = evidenceSqlChild(environment, 'admin', deadline);
+      proof.admin_pid = pid(await admin.exchange(`BEGIN; SET LOCAL application_name='${apiName}-admin'; SELECT 'ready:'||pg_backend_pid();\nUPDATE public.identities SET display_name=display_name WHERE id='actor-a';`));
+      phase = 'admin'; proof.phases.push('admin-started');
+    },
+    async observeChain() {
+      requirePhase('admin'); await observe('chain', snapshot => metadataOwned(snapshot) && snapshot.metadata[0]!.pid === proof.metadata_pid && snapshot.admin_waiting && snapshot.admin_blockers.length === 1 && snapshot.admin_blockers[0] === proof.metadata_pid);
+      phase = 'chain';
+    },
+    async commit() {
+      requirePhase('chain'); proof.release = 'commit'; proof.phases.push('owned-chain-commit');
+      holder!.end('COMMIT;'); admin!.end('COMMIT;'); await completeChildren(); phase = 'committed';
+    },
+    async close() {
+      if (phase === 'closed') return;
+      if (proof.release === 'none') { proof.release = 'rollback'; proof.phases.push('cleanup-rollback'); holder?.end('ROLLBACK;'); admin?.end('ROLLBACK;'); }
+      try { await completeChildren(); } finally { phase = 'closed'; }
+    },
+  };
+}
+
+function resetSyntheticFixture(database: URL, host: string, port: number, schemaVersion = 10): void {
   const result = spawnSync('psql', ['-X', '-q', '-1', '-v', 'ON_ERROR_STOP=1'], {
     cwd: root,
     encoding: 'utf8',
@@ -93,6 +280,14 @@ function resetSyntheticFixture(database: URL, host: string, port: number): void 
     // within psql's single transaction, including the deferred Task-cycle and
     // Admin-continuity checks. This is never an application lifecycle operation.
     input: `
+DELETE FROM public.knowledge_withdrawals;
+DELETE FROM public.knowledge_publications;
+DELETE FROM public.knowledge_invalidations;
+DELETE FROM public.knowledge_source_corrections;
+DELETE FROM public.knowledge_captures;
+DELETE FROM public.knowledge_layout_events;
+DELETE FROM public.knowledge_events;
+DELETE FROM public.knowledge_records;
 DELETE FROM public.task_skill_selections;
 DELETE FROM public.skill_status;
 DELETE FROM public.skill_events;
@@ -136,7 +331,7 @@ DELETE FROM public.clients;
 DELETE FROM public.organisations;
 DELETE FROM public.sessions;
 DELETE FROM public.identities;
-UPDATE public.zobba_bootstrap SET local_fixture_issuer=NULL WHERE singleton;`,
+UPDATE public.zobba_bootstrap SET local_fixture_issuer=NULL WHERE singleton;`.split("\n").filter(line => schemaVersion >= 10 || !line.startsWith("DELETE FROM public.knowledge_")).join("\n"),
     timeout: 10_000,
     env: {
       ...sanitizedRuntimeEnvironment(),
@@ -168,12 +363,16 @@ export interface AuthRuntime {
   issuer: string;
   listeners: { host: string; port: number }[];
   password: string;
+  processStatus: () => { api: number | null | undefined; provider: number | null | undefined; worker: number | null | undefined };
+  readKnowledgeEvent: (scope: { organisation_id: string; client_id: string; engagement_id: string }, actor: string, key: string) => unknown;
   sql: (statement: string) => void;
-  sqlAsync: (statement: string) => Promise<void>;
+  sqlAsync: (statement: string, phase?: SqlAsyncPhase) => Promise<void>;
+  evidenceSessionBarrier: () => EvidenceSessionBarrier;
   disconnectDatabase: () => void;
   restoreDatabase: () => void;
   captureCallback: () => Promise<string>;
   restartApi: (options?: { evidence?: boolean }) => Promise<void>;
+  upgradeKnowledgeSchema: () => Promise<void>;
   startWorker: (duration?: number) => Promise<void>;
   stopWorker: () => Promise<void>;
   freezeWorker: () => Promise<{ process_id: number; application_name: string; state: string; connections: number; unsettled_transactions: number; granted_locks: number; live_children: number }>;
@@ -184,7 +383,7 @@ export interface AuthRuntime {
   close: () => Promise<void>;
 }
 
-export async function startAuthRuntime(options: { evidence?: boolean } = {}): Promise<AuthRuntime> {
+export async function startAuthRuntime(options: { evidence?: boolean; schema9?: { cli: string; api: string } } = {}): Promise<AuthRuntime> {
   // Share the smoke suite's complete alias/role/development-target guard before
   // provisioning or changing rows. Keep inherited development bindings visible
   // to this check; child credential stripping happens only afterward.
@@ -197,9 +396,11 @@ export async function startAuthRuntime(options: { evidence?: boolean } = {}): Pr
   }
   // Resolve inherited PGPORT before child environments remove PostgreSQL bindings.
   migrationDatabase.port = String(databaseEndpoint(migrationDatabase).port);
+  const migrationEndpoint = databaseEndpoint(migrationDatabase);
   const adminEndpoint = databaseEndpoint(adminDatabase);
   run('cargo', ['build', '--quiet', '--locked', '-p', 'zobba-cli', '-p', 'zobba-worker'], sanitizedRuntimeEnvironment());
   const apiExecutable = buildEvidenceApiHarness();
+  let schemaVersion = options.schema9 ? 9 : 10;
   const metadata = JSON.parse(run('cargo', ['metadata', '--locked', '--no-deps', '--format-version', '1'], sanitizedRuntimeEnvironment()));
   const fixtureDirectory = resolve(process.env.ZOBBA_FIXTURE_DIR ?? resolve(fixtureRoot, '.local'));
   run('node', [resolve(fixtureRoot, 'setup.mjs')], { ...sanitizedRuntimeEnvironment(), ZOBBA_FIXTURE_DIR: fixtureDirectory });
@@ -255,20 +456,29 @@ export async function startAuthRuntime(options: { evidence?: boolean } = {}): Pr
       await delay(100);
     }
     if (!serving) throw new Error('Synthetic OIDC fixture did not become ready.');
-    run(resolve(metadata.target_directory, 'debug/zobba-cli'), ['migrate', '--runtime-role', decodeURIComponent(runtimeDatabase.username)], {
+    if (options.schema9) {
+      // Historical upgrade proof owns this already guard-checked disposable DB.
+      await runSqlAsync('DROP SCHEMA public CASCADE; CREATE SCHEMA public; REVOKE CREATE ON SCHEMA public FROM PUBLIC;',
+        databaseMutationEnvironment(environment, migrationDatabase, migrationEndpoint.host, migrationEndpoint.port));
+    }
+    const initialCli = options.schema9?.cli ?? resolve(metadata.target_directory, 'debug/zobba-cli');
+    run(initialCli, ['migrate', '--runtime-role', decodeURIComponent(runtimeDatabase.username)], {
       ...environment, ZOBBA_MIGRATION_DATABASE_URL: migrationDatabase.toString(),
     });
     // The earlier issuer marker is deliberately cleared only after the complete
     // smoke/test-database guard above has verified every configured endpoint.
-    resetSyntheticFixture(adminDatabase, adminEndpoint.host, adminEndpoint.port);
-    run(resolve(metadata.target_directory, 'debug/zobba-cli'), ['seed-local'], {
+    resetSyntheticFixture(adminDatabase, adminEndpoint.host, adminEndpoint.port, schemaVersion);
+    run(initialCli, ['seed-local'], {
       ...environment, ...auth, ZOBBA_MIGRATION_DATABASE_URL: migrationDatabase.toString(),
     });
-    const databaseUrl = await database.start();
+    const apiApplicationName = `zobba-browser-api-${process.pid}-${apiPort}`;
+    const proxyDatabase = new URL(await database.start());
+    proxyDatabase.searchParams.set('application_name', apiApplicationName);
+    const databaseUrl = proxyDatabase.toString();
     if (evidenceEnabled) evidence = await startEvidenceS3Fixture();
     const apiUrl = `http://127.0.0.1:${apiPort}`;
     const startApi = async () => {
-      api = spawn(apiExecutable, ['--serve'], {
+      api = spawn(schemaVersion === 9 ? options.schema9!.api : apiExecutable, ['--serve'], {
         cwd: root,
         env: {
           ...environment, ...auth, ZOBBA_RUNTIME_DATABASE_URL: databaseUrl, ZOBBA_API_BIND: `127.0.0.1:${apiPort}`,
@@ -282,7 +492,7 @@ export async function startAuthRuntime(options: { evidence?: boolean } = {}): Pr
         if (api.exitCode !== null) throw new Error('Authentication API refused startup.');
         try {
           const response = await fetch(`${apiUrl}/health/ready`, { signal: AbortSignal.timeout(1000) });
-          if (response.status === 200 && (await response.json()).schema_version === 9) { healthy = true; break; }
+          if (response.status === 200 && (await response.json()).schema_version === schemaVersion) { healthy = true; break; }
         } catch { /* Startup is bounded; do not expose URLs or provider errors. */ }
         await delay(100);
       }
@@ -310,6 +520,7 @@ export async function startAuthRuntime(options: { evidence?: boolean } = {}): Pr
     if (!vite.httpServer || port(vite.httpServer) !== appPort) throw new Error('Unexpected browser fixture origin.');
     return {
       url: origin, issuer, password: config.account_password,
+      processStatus: () => ({ api: api?.exitCode, provider: provider?.exitCode, worker: worker?.exitCode }),
       listeners: [{ host: 'localhost', port: appPort }, { host: '127.0.0.1', port: apiPort },
         { host: '127.0.0.1', port: 9444 }, { host: '127.0.0.1', port: Number(new URL(databaseUrl).port) },
         ...(evidence ? [{ host: '127.0.0.1', port: Number(new URL(evidence.endpoint).port) }] : [])],
@@ -326,9 +537,25 @@ export async function startAuthRuntime(options: { evidence?: boolean } = {}): Pr
         });
         if (result.error || result.status !== 0) throw new Error('Synthetic browser database mutation failed.');
       },
-      sqlAsync(statement) {
+      sqlAsync(statement, phase) {
         return runSqlAsync(statement,
-          databaseMutationEnvironment(environment, adminDatabase, adminEndpoint.host, adminEndpoint.port));
+          databaseMutationEnvironment(environment, adminDatabase, adminEndpoint.host, adminEndpoint.port), phase);
+      },
+      evidenceSessionBarrier: () => ownedEvidenceSessionBarrier(
+        databaseMutationEnvironment(environment, adminDatabase, adminEndpoint.host, adminEndpoint.port), apiApplicationName),
+      readKnowledgeEvent(scope, actor, key) {
+        // Exact read-only correlation in the already guard-checked disposable
+        // fixture. This never resubmits a command or lends database visibility
+        // to the browser: tests must separately verify the current scoped API.
+        const values = [scope.organisation_id, scope.client_id, scope.engagement_id, actor, key];
+        if (values.some(value => !/^[A-Za-z0-9_-]{1,128}$/.test(value))) throw new Error('Invalid synthetic knowledge event identity.');
+        const result = spawnSync('psql', ['-X', '-q', '-t', '-A', '-v', 'ON_ERROR_STOP=1'], {
+          cwd: root, encoding: 'utf8', timeout: 10_000,
+          env: databaseMutationEnvironment(environment, adminDatabase, adminEndpoint.host, adminEndpoint.port),
+          input: `BEGIN READ ONLY; SELECT json_build_object('event_id',id,'command',command,'receipt',receipt)::text FROM public.knowledge_events WHERE organisation_id='${values[0]}' AND client_id='${values[1]}' AND engagement_id='${values[2]}' AND actor_id='${values[3]}' AND key='${values[4]}' AND owner_id IS NULL; COMMIT;`,
+        });
+        if (result.error || result.status !== 0) throw new Error('Synthetic knowledge receipt lookup failed.');
+        return result.stdout.trim() ? JSON.parse(result.stdout) : null;
       },
       disconnectDatabase: () => database.disconnect(), restoreDatabase: () => database.restore(),
       captureCallback() {
@@ -347,6 +574,16 @@ export async function startAuthRuntime(options: { evidence?: boolean } = {}): Pr
           evidenceEnabled = previousEvidenceEnabled;
           throw error;
         }
+      },
+      async upgradeKnowledgeSchema() {
+        if (schemaVersion !== 9 || !options.schema9) throw new Error('No historical knowledge upgrade is active.');
+        if (worker) await stop(worker);
+        if (api) await stop(api);
+        run(resolve(metadata.target_directory, 'debug/zobba-cli'), ['migrate', '--runtime-role', decodeURIComponent(runtimeDatabase.username)], {
+          ...environment, ZOBBA_MIGRATION_DATABASE_URL: migrationDatabase.toString(),
+        });
+        schemaVersion = 10;
+        await startApi();
       },
       async startWorker(duration = 30_000) {
         if (worker && worker.exitCode === null && worker.signalCode === null) throw new Error('Owned worker is already running.');

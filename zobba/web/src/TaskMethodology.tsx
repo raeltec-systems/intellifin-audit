@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import { AccessError } from './auth';
 import type { Session } from './auth';
 import type { Scope } from './engagements';
 import { methodologyIssueLabel, readTaskBasis } from './methodology';
 import type { TaskBasis } from './methodology';
+import { useSkillInspection } from './useSkillInspection';
+import type { MethodContext } from './knowledge-context';
 
-interface Props { scope: Scope; taskId: string; taskRevision: string; session: Session; accessReady: boolean; onAccessFailure: (error?: AccessError) => void }
+interface Props { scope: Scope; taskId: string; taskRevision: string; session: Session; accessReady: boolean; onAccessFailure: (error?: AccessError) => void; onContext?: (context: MethodContext | null) => void }
 const statusLabels = { resolved: 'Applicable firm methodology', neutral: 'Neutral starter', incomplete: 'Incomplete methodology basis', ambiguous: 'Applicability needs clarification', recalled: 'Recalled methodology basis' };
 const fields = { criteria: 'Criteria', populations: 'Population and sampling', evidence_checks: 'Evidence checks', ratings: 'Ratings', review_rules: 'Review and issuance rules' } as const;
 
@@ -29,51 +31,26 @@ function Resolution({ resolution }: { resolution: TaskBasis['current']['resoluti
 function BindingAttribution({ binding }: { binding: TaskBasis['current'] }) {
   return <details><summary>Binding attribution</summary><p className="scope-note">Binding {binding.id} · applies from execution epoch {binding.execution_epoch} · recorded by {binding.actor_id} · {new Date(binding.bound_at * 1000).toLocaleString()}</p>{binding.context_command_id ? <p className="scope-note">Audit context supplied by Guide {binding.context_command_id}</p> : null}</details>;
 }
-export function TaskMethodology({ scope, taskId, taskRevision, session, accessReady, onAccessFailure }: Props) {
-  const [basis, setBasis] = useState<{ owner: string; value: TaskBasis } | null>(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+export function TaskMethodology({ scope, taskId, taskRevision, session, accessReady, onAccessFailure, onContext }: Props) {
   const owner = JSON.stringify([session.identity.id, session.csrf_token, scope.organisation_id, scope.client_id, scope.engagement_id, taskId]);
-  const latest = useRef({ owner, accessReady }); latest.current = { owner, accessReady };
-  const request = useRef<AbortController | null>(null);
-  const cancelRead = useCallback(() => {
-    // Intentional lifecycle cancellation relinquishes ownership before abort:
-    // its catch must not withdraw this same-owner mounted inspection.
-    const cancelled = request.current; request.current = null; cancelled?.abort();
-  }, []);
-  const refresh = useCallback(async () => {
-    if (!latest.current.accessReady) return;
-    cancelRead(); const controller = new AbortController(); request.current = controller;
-    setLoading(true); setError('');
-    // A deadline remains an owned failure and must clear the stale basis.
-    const deadline = setTimeout(() => controller.abort(), 8000);
-    try {
-      const value = await readTaskBasis(scope, taskId, session, controller.signal);
-      if (request.current === controller && latest.current.owner === owner && latest.current.accessReady) setBasis({ owner, value });
-    } catch (reason) {
-      if (request.current !== controller || latest.current.owner !== owner) return;
-      setBasis(null); setError('Current methodology basis is unavailable. Refresh to inspect it.');
-      if (reason instanceof AccessError && [401, 403, 404, 412].includes(reason.status)) onAccessFailure(reason);
-    } finally { clearTimeout(deadline); if (request.current === controller) { request.current = null; setLoading(false); } }
-  }, [owner, scope.organisation_id, scope.client_id, scope.engagement_id, taskId, session.csrf_token, session.identity.id, onAccessFailure, cancelRead]);
+  const read = useCallback((signal: AbortSignal) => readTaskBasis(scope, taskId, session, signal), [owner]);
+  const inspection = useSkillInspection(owner, accessReady, taskRevision, read, onAccessFailure);
+  const current = inspection.value;
   useEffect(() => {
-    if (!accessReady) { cancelRead(); return; }
-    void refresh();
-    const wake = () => { if (!document.hidden) void refresh(); else cancelRead(); };
-    const timer = setInterval(() => { if (!document.hidden) void refresh(); }, 15000);
-    window.addEventListener('focus', wake); document.addEventListener('visibilitychange', wake);
-    return () => { clearInterval(timer); cancelRead(); window.removeEventListener('focus', wake); document.removeEventListener('visibilitychange', wake); };
-  }, [accessReady, taskRevision, refresh, cancelRead]);
-  const current = basis?.owner === owner ? basis.value : null;
-  return <section className="brief-section task-methodology" aria-label="What Zobba is using"><h3>What Zobba is using</h3><div hidden={!accessReady}>
-    {!current ? <p role="status">{error || 'Checking the recorded methodology basis…'}</p> : <>
+    const binding = inspection.verified && current?.current;
+    onContext?.(binding ? { task_id: taskId, binding_id: binding.id, status: binding.resolution.status, checked_at: Date.now(),
+      source_version_ids: [...new Set([...binding.resolution.version_ids, ...binding.resolution.neutral_source_version_ids, ...binding.resolution.requirements.flatMap(r => [...r.source_version_ids, ...r.field_sources.flatMap(f => f.version_ids)]), ...binding.resolution.templates.map(t => t.source_version_id)])].sort() } : null);
+  }, [inspection.verified, current, taskId, onContext]);
+  return <section ref={inspection.panel} className="brief-section task-methodology" aria-label="Methodology basis"><h4>Methodology basis</h4>
+    {!inspection.verified ? <p role="status">{inspection.error ? 'Current methodology basis is unavailable. Refresh to inspect it.' : 'Checking the recorded methodology basis…'}</p> : null}<div hidden={!inspection.verified}>
+    {current ? <>
       {current.recalled ? <p className="notice" role="alert">This basis includes a recalled version. New affected use is blocked; original activity and receipts are retained.</p> : null}
       <Resolution resolution={current.current.resolution} />
       <BindingAttribution binding={current.current} />
       {current.notices.some(notice => notice.impact.activation_mode === 'new_tasks') ? <section className="methodology-update-notices" aria-label="Methodology update notices"><h4>Updates available for new Tasks</h4>{current.notices.filter(notice => notice.impact.activation_mode === 'new_tasks').map(notice => <article key={notice.id}><p>Version {notice.version_id} saved by {notice.actor_id} on {new Date(notice.requested_at * 1000).toLocaleString()}. This Task retains its original binding.</p><ul>{notice.impact.diff.map((line, index) => <li key={index}>{line}</li>)}</ul></article>)}</section> : null}
       {current.pending ? <details open className="methodology-pending"><summary>Pending methodology change</summary><p className="retained-text">{current.pending.reason}</p><p>Requested by {current.pending.actor_id} on {new Date(current.pending.requested_at * 1000).toLocaleString()} · request {current.pending.id}. The original basis stays in force for consumed work until reconciliation reaches a safe boundary.</p><Resolution resolution={current.pending.resolution} /></details> : null}
       {current.history.some(binding => binding.id !== current.current.id) ? <details><summary>Prior recorded bindings</summary>{current.history.filter(binding => binding.id !== current.current.id).map(binding => <article key={binding.id}><Resolution resolution={binding.resolution} /><BindingAttribution binding={binding} /></article>)}</details> : null}
-    </>}
-    </div><button type="button" className="text-button" disabled={!accessReady || loading} onClick={() => void refresh()}>Refresh methodology basis</button>
+    </> : null}
+    </div><button type="button" className="text-button" disabled={!accessReady || inspection.loading} onClick={() => void inspection.refresh()}>Refresh methodology basis</button>
   </section>;
 }

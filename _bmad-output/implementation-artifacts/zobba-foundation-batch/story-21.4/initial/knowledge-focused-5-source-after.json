@@ -1,0 +1,1207 @@
+[
+  {
+    "path": ".env.example",
+    "sha256": "53ed5f96b256a27e5e0427bd4e80ddcb5c786a7029854415d0aaea6f07af9345",
+    "bytes": 2079
+  },
+  {
+    "path": ".nvmrc",
+    "sha256": "5b9d0e73029969ae9000117cb877f17bb9841c1279bfe8024e294acfcf017800",
+    "bytes": 8
+  },
+  {
+    "path": "Cargo.lock",
+    "sha256": "6ad00d6f5a27d759c5dc0427fe2265953a6522197be0ff59b5b74a93da54aba8",
+    "bytes": 89437
+  },
+  {
+    "path": "Cargo.toml",
+    "sha256": "5c873a031d42b1eb386037b304ac88e567e0a8ea70c228de4443923823997fcf",
+    "bytes": 1258
+  },
+  {
+    "path": "README.md",
+    "sha256": "a168818c3168a9053b9d9e00de6cbf7c0368fd093895510325bc21eaf229f1e0",
+    "bytes": 74182
+  },
+  {
+    "path": "REUSE.md",
+    "sha256": "2d3ba0ab0c7e45f9f28e09d6e9bd68856d383a4a30938512a0b3fe7eeb1f41e1",
+    "bytes": 6050
+  },
+  {
+    "path": "crates/api/Cargo.toml",
+    "sha256": "7e58b3d34523266ef8a68cbdf4f093329fbe78606283551cf7d2488b383a937c",
+    "bytes": 1094
+  },
+  {
+    "path": "crates/api/src/auth.rs",
+    "sha256": "f5a311781d54230819ff4e3222c404b647d05e9f768d6af5bc6b887129bfb2ff",
+    "bytes": 20908
+  },
+  {
+    "path": "crates/api/src/conversation.rs",
+    "sha256": "03f9f6337bf3314bd97026bbfd983cc87eeca224c6894b5dc7392dfd348cc2b8",
+    "bytes": 15973
+  },
+  {
+    "path": "crates/api/src/engagements.rs",
+    "sha256": "15579b79a3fc6ec7b30644dfa7ee64fd61cd9de29bfd7fdd6292b632d96f4c1a",
+    "bytes": 9055
+  },
+  {
+    "path": "crates/api/src/evidence.rs",
+    "sha256": "dd4ce96842f9fec9c3a6f164f68275cb4544a7007ef73bf30760729fe7e9340f",
+    "bytes": 36514
+  },
+  {
+    "path": "crates/api/src/knowledge.rs",
+    "sha256": "b3761da17db9dc053b4d68fb2ff959048d2290c7a269340edf9765f3aa234b78",
+    "bytes": 54765
+  },
+  {
+    "path": "crates/api/src/lib.rs",
+    "sha256": "2c8cf8e6f76ce1b2b0455fd45cf8bf6c8dc50b8c8a01df6564055b081bda64b9",
+    "bytes": 16429
+  },
+  {
+    "path": "crates/api/src/main.rs",
+    "sha256": "e70295bd6b663a3a86ccf0e07ecc398cb5575c9ad9184877ef196aa15cffc69b",
+    "bytes": 1573
+  },
+  {
+    "path": "crates/api/src/membership.rs",
+    "sha256": "895d059413f25254c97ed97155dda3ef359304b6c43e4e569fcae001c0c4a5d6",
+    "bytes": 36536
+  },
+  {
+    "path": "crates/api/src/methodology.rs",
+    "sha256": "9a8ba1c409c0c15ad40ec92d863740c11ce1ce3dc4ec8dac9a2d60b1e1afc156",
+    "bytes": 42197
+  },
+  {
+    "path": "crates/api/src/operations.rs",
+    "sha256": "cb1600019ab0931f752acf9b824bf84f8cb970aea0050c708659743af6f5242a",
+    "bytes": 35317
+  },
+  {
+    "path": "crates/api/src/skills.rs",
+    "sha256": "698fcf623f11e589fc80db45475df26a7137dd4b342b64ce44286c842d0e62b8",
+    "bytes": 54779
+  },
+  {
+    "path": "crates/api/src/tasks.rs",
+    "sha256": "486d7a88e3edf85d675b9e394faff1b9dd03f5e33043a9f67905bf7917089878",
+    "bytes": 26641
+  },
+  {
+    "path": "crates/api/tests/evidence_contract.rs",
+    "sha256": "161eecf99a5675f622088ee2fde968ff2606fb00b0c42c80fa2f06714210b2dd",
+    "bytes": 7352
+  },
+  {
+    "path": "crates/api/tests/evidence_fixture.rs",
+    "sha256": "62bceebd068aeb28e104a08a9d6bd679d72c163c0207dc19eba9649496b03c22",
+    "bytes": 2315
+  },
+  {
+    "path": "crates/api/tests/evidence_http.rs",
+    "sha256": "f199b1fa9b2bb817df099f951fffec31373a09c24fa89d3f36bb72396ab1099b",
+    "bytes": 27705
+  },
+  {
+    "path": "crates/api/tests/evidence_http/composition.rs",
+    "sha256": "1773ab3d4a8f42168e6165423815475ce7383225edb1350eda7b415cb60dd728",
+    "bytes": 11466
+  },
+  {
+    "path": "crates/api/tests/knowledge_contract.rs",
+    "sha256": "9dc83f28199ac5b392182e1b001b2d395cff0ec8a2e956d0c35c8b2c5ece9042",
+    "bytes": 4313
+  },
+  {
+    "path": "crates/api/tests/knowledge_http.rs",
+    "sha256": "7eb76d2d6fab16f43fafeb6ed2c642593c4ba7dbf259407a96d084a8e00e5c9f",
+    "bytes": 33100
+  },
+  {
+    "path": "crates/api/tests/membership_contract.rs",
+    "sha256": "3eba74a7a9b8964762c75522f156557465165c3b80edfabd4486aa5e9d7c807e",
+    "bytes": 10067
+  },
+  {
+    "path": "crates/api/tests/membership_http.rs",
+    "sha256": "1f649d2eedeeca3a20e2fea51ba8128c161eb5e3b48992b39e92571f44108689",
+    "bytes": 39428
+  },
+  {
+    "path": "crates/api/tests/methodology_contract.rs",
+    "sha256": "cf6ef03694698e2b6a35b706fca398db1765ffa0dba93d0a4e13b6acc89e56be",
+    "bytes": 24903
+  },
+  {
+    "path": "crates/api/tests/methodology_http.rs",
+    "sha256": "3528340ced760cfc01437f3d86668f171a1daebc6c26cc9abc08d2dc4bd75b42",
+    "bytes": 25742
+  },
+  {
+    "path": "crates/api/tests/operations_http.rs",
+    "sha256": "7db8aa5539d87377e428ec1050bbec18de8dbf6236d8bf99fc2bd69c3b38bee0",
+    "bytes": 45121
+  },
+  {
+    "path": "crates/api/tests/skills.rs",
+    "sha256": "c3ec09409f1a2ffc8a844b1565fd68430a7a5426ffbf13f86c482ceddeef7143",
+    "bytes": 63511
+  },
+  {
+    "path": "crates/api/tests/skills_contract.rs",
+    "sha256": "56776cabbc9e2f26fab45e21a0ceb288ccf6a7142208325a88c59d86ad57e54b",
+    "bytes": 13021
+  },
+  {
+    "path": "crates/api/tests/tasks_http.rs",
+    "sha256": "61b3af4554369516ff4b165b3b9dc91cb851cd01f7df8caf7fe057629b6d0f4f",
+    "bytes": 35744
+  },
+  {
+    "path": "crates/application/Cargo.toml",
+    "sha256": "5697f29d957d825858c3f17b2e44fe0b68d02bb9d848ac08295f0f14e6fa1c61",
+    "bytes": 237
+  },
+  {
+    "path": "crates/application/src/conversation.rs",
+    "sha256": "a45aae176c52b417f8444ca6ffadafe410c0d11516fcbc069bd0897a34175f2c",
+    "bytes": 864
+  },
+  {
+    "path": "crates/application/src/evidence.rs",
+    "sha256": "c77b793928ea32f70eb589730236a092774ba58c24f41100ac5c9bbc51b1f119",
+    "bytes": 12859
+  },
+  {
+    "path": "crates/application/src/identity.rs",
+    "sha256": "3e409ca771dcd53dc8aff733c7b27170df5e63770a925d683d1d65c1b7dec173",
+    "bytes": 1972
+  },
+  {
+    "path": "crates/application/src/knowledge.rs",
+    "sha256": "9e00dcb7f4414c137b687f098a18e2876018817d98d135195fb55cd8fe3736c5",
+    "bytes": 24856
+  },
+  {
+    "path": "crates/application/src/lib.rs",
+    "sha256": "4669e02f56437f785b40a121057148f96bdb58d00554568b7c1f2f8236b41ab7",
+    "bytes": 2530
+  },
+  {
+    "path": "crates/application/src/membership.rs",
+    "sha256": "3c228a579a52aca8061c71d7e19707fae26bc0aee5d22a76db8829b1b33e6bc0",
+    "bytes": 9625
+  },
+  {
+    "path": "crates/application/src/methodology.rs",
+    "sha256": "d2bb0fc91f79940596ce9c92e45fb04cd5efb2b52a43a86f1b2f79d294bbe5eb",
+    "bytes": 28137
+  },
+  {
+    "path": "crates/application/src/operation.rs",
+    "sha256": "85c60dcd64fbbfcba9b2ae6520ee01d5a9502c4e19758081808706316a4e88c3",
+    "bytes": 6112
+  },
+  {
+    "path": "crates/application/src/operation/wire.rs",
+    "sha256": "7bca567a6d76563c81ffeea0a7128f26496e0967dd504e2c868fa3c61e7cc9bc",
+    "bytes": 12199
+  },
+  {
+    "path": "crates/application/src/skills.rs",
+    "sha256": "1990191ffa44ca49733205cbe6ba2ebb7c63e9e4b9d956ca54393b56750d9d20",
+    "bytes": 22925
+  },
+  {
+    "path": "crates/application/src/task.rs",
+    "sha256": "49fb1c97a2074d79176ab32dd824324204926188c8ba2f074b051ec0922655c2",
+    "bytes": 5154
+  },
+  {
+    "path": "crates/cli/Cargo.toml",
+    "sha256": "71b41676806b02db3515c1c155c252cc885aa37b0a9fa772aabe0c33673a5ff4",
+    "bytes": 328
+  },
+  {
+    "path": "crates/cli/src/main.rs",
+    "sha256": "d889a362784231cf108dc1180b3d1a7f714b70a12064f3cc2bea9c9c2dad19f8",
+    "bytes": 1347
+  },
+  {
+    "path": "crates/domain/Cargo.toml",
+    "sha256": "aa054534030e4a6bd0f7fd97f7df6793b52e0f1c00cd87d0d8e81fc077b7c1f8",
+    "bytes": 163
+  },
+  {
+    "path": "crates/domain/src/conversation.rs",
+    "sha256": "3751dc42e788b19cbd210581e86090318b19e6ff9c5e7074df4ce0c79edf75e6",
+    "bytes": 2226
+  },
+  {
+    "path": "crates/domain/src/evidence.rs",
+    "sha256": "c88070d43eac3ebacfd034432a73229549fddeb2b62baea452ed4a11cebe7013",
+    "bytes": 4648
+  },
+  {
+    "path": "crates/domain/src/identity.rs",
+    "sha256": "c1853eea4fa80dd94782f89f8d3d03e1654bbfa224b41c97af7c791d7a23356c",
+    "bytes": 3571
+  },
+  {
+    "path": "crates/domain/src/knowledge.rs",
+    "sha256": "22eccc53230e94ec52a975220008767eb9a3c60718b50fcd082b68e2f1b2c720",
+    "bytes": 11386
+  },
+  {
+    "path": "crates/domain/src/lib.rs",
+    "sha256": "de9ad5b2340979ec9476dd81c3a819312186cf646ae61c7aa8e470138080b56f",
+    "bytes": 394
+  },
+  {
+    "path": "crates/domain/src/membership.rs",
+    "sha256": "f268cd3d65f5572ffdbd827c6c6fd3f97a7ed227b06ff39679e990018ab10b0c",
+    "bytes": 5246
+  },
+  {
+    "path": "crates/domain/src/methodology.rs",
+    "sha256": "e895bdd91b638d7830a21db4899fe3c31882051e7e8e2c254dcb19e064608393",
+    "bytes": 59801
+  },
+  {
+    "path": "crates/domain/src/permissions.rs",
+    "sha256": "fc7c0602973e4520dfd18bce52256ba680ac06dcea3246ff2b1024dd25007217",
+    "bytes": 37945
+  },
+  {
+    "path": "crates/domain/src/permissions/capability_tests.rs",
+    "sha256": "cea525c48348e853e7752c4fbe98d8264430b845819769910cf0cf934fd43af1",
+    "bytes": 41970
+  },
+  {
+    "path": "crates/domain/src/permissions/history.rs",
+    "sha256": "4927f2c7caf3b9db1147c9c944f10b63aa6ee1666ff57b2f233a2a63bcca5e03",
+    "bytes": 2334
+  },
+  {
+    "path": "crates/domain/src/permissions/tests.rs",
+    "sha256": "0b8437ce09a5a6ec027bd0bd53adbee75d6b86a3ab248a1e3f65a0d03a7b56b5",
+    "bytes": 16633
+  },
+  {
+    "path": "crates/domain/src/skills.rs",
+    "sha256": "c615427240fb5f26a9ea2d23c06265c99a987b80e0af0161b0f8b61ada8f8f8e",
+    "bytes": 13659
+  },
+  {
+    "path": "crates/domain/src/skills/tests.rs",
+    "sha256": "299d17a1fc5206429f07fded8decbb6e9afa2fa6b60071cf6df800aea7896a1b",
+    "bytes": 11736
+  },
+  {
+    "path": "crates/domain/src/task.rs",
+    "sha256": "0246345401e8c02fcdcee4f3ce37ae10d6968d5a5b4bcc1db8e32a8f940dbc9f",
+    "bytes": 13837
+  },
+  {
+    "path": "crates/infrastructure/Cargo.toml",
+    "sha256": "7240c2a25c9b69bbe9599699247d58f89124e09a7b9f1ee8ca35b2ee55251ee4",
+    "bytes": 994
+  },
+  {
+    "path": "crates/infrastructure/src/catalog-signature.sql",
+    "sha256": "2877b4bc73cff33d3c9710f51547826920d97cfa9bb238514852d54b0587d567",
+    "bytes": 3605
+  },
+  {
+    "path": "crates/infrastructure/src/conversation.rs",
+    "sha256": "8d94c18171161a03659a8621d90e1b1a38170d5f35adde79a67bda0ebf700eab",
+    "bytes": 13494
+  },
+  {
+    "path": "crates/infrastructure/src/dispatcher.rs",
+    "sha256": "9fdd367de4b9c868f1f3a0117ecead439d8218c72d8664f55ed01b404dd1cb1b",
+    "bytes": 4933
+  },
+  {
+    "path": "crates/infrastructure/src/evidence/mod.rs",
+    "sha256": "62a0373951737544c8b41c73c55da7f23b2145f2aa8c54207b1d9097ea01d796",
+    "bytes": 16004
+  },
+  {
+    "path": "crates/infrastructure/src/evidence/s3.rs",
+    "sha256": "a72c46d6cb4644272ad948ba0fdcb09252e877dbdea14ac8a03316005a4ab590",
+    "bytes": 23955
+  },
+  {
+    "path": "crates/infrastructure/src/fixture.rs",
+    "sha256": "e58b7b131b4f30024da3c76406c41719bc862d592a7ad4635b65cd7f495c07e5",
+    "bytes": 5552
+  },
+  {
+    "path": "crates/infrastructure/src/identity.rs",
+    "sha256": "268cced4ba1121acb5062ffa773e30660908b4c43545517df20d34b40c1ad10e",
+    "bytes": 15418
+  },
+  {
+    "path": "crates/infrastructure/src/knowledge.rs",
+    "sha256": "a9a2fcf77a53ad9eb779a2c3d5f30f7b9c0eae5e22becdd938b8acee18bc702b",
+    "bytes": 87417
+  },
+  {
+    "path": "crates/infrastructure/src/lib.rs",
+    "sha256": "6a2375c96369bc3f8ca279895e352f8d5b469b48eb60e6d89a6bdbbe9eaf3fe0",
+    "bytes": 54407
+  },
+  {
+    "path": "crates/infrastructure/src/membership.rs",
+    "sha256": "58212cc0379955ca8eff0a66cb32281c2a7eae0d0cdd9a2a86bc0a5d7af50370",
+    "bytes": 9952
+  },
+  {
+    "path": "crates/infrastructure/src/methodology.rs",
+    "sha256": "09a320a97c1156f54046b726f5eb18a36edb391ce3d67a57d86da735c4f4ceee",
+    "bytes": 14620
+  },
+  {
+    "path": "crates/infrastructure/src/oidc.rs",
+    "sha256": "65d8948cbebdcf098c72294eb00c6cfb831a742669e707023f825f162f637981",
+    "bytes": 25382
+  },
+  {
+    "path": "crates/infrastructure/src/oidc_tests.rs",
+    "sha256": "a2238d3f4b6d2eecbdbc0c9ba6dc126ab873d83a9d9938f9ecd3d54b5962886e",
+    "bytes": 7841
+  },
+  {
+    "path": "crates/infrastructure/src/operation.rs",
+    "sha256": "3a8365dfd51fe4a0422ce286bc1a70536cc326753c58c772d9de0fe34ad359c7",
+    "bytes": 53935
+  },
+  {
+    "path": "crates/infrastructure/src/schema-v1.catalog",
+    "sha256": "335d96414f519b262a984a85d2c993295a0d57d1263b8c5e827b0262ae6e64c9",
+    "bytes": 2044
+  },
+  {
+    "path": "crates/infrastructure/src/schema-v10.catalog",
+    "sha256": "9ee195604f4e31403c6fc64a1f2d2506fc930f2c07d4dcd2474948c237dc3ab7",
+    "bytes": 235566
+  },
+  {
+    "path": "crates/infrastructure/src/schema-v2.catalog",
+    "sha256": "7d980560b6964ce22ca8f288ae964e3363dd3cd1aa84c14b917b8142f1e57de8",
+    "bytes": 17174
+  },
+  {
+    "path": "crates/infrastructure/src/schema-v3.catalog",
+    "sha256": "c021d6c2de75d220a44b987437f459f683855da7ae50201851c5450d2b83ff49",
+    "bytes": 56988
+  },
+  {
+    "path": "crates/infrastructure/src/schema-v4.catalog",
+    "sha256": "2fe738a7acd4f7abc2caafbdbc2b2dc6e43435e7b4b960dfc41f0298ce6038bb",
+    "bytes": 109729
+  },
+  {
+    "path": "crates/infrastructure/src/schema-v5.catalog",
+    "sha256": "b23577d5beda191b0d2cae44dd742d9655ed75d732218f1d4ccdaf3cd0c48fc8",
+    "bytes": 132422
+  },
+  {
+    "path": "crates/infrastructure/src/schema-v6.catalog",
+    "sha256": "caeb0540199e401f1ee4c111472d3c13a95fc13b648f14474ffed4f4e32dcb0a",
+    "bytes": 146071
+  },
+  {
+    "path": "crates/infrastructure/src/schema-v7.catalog",
+    "sha256": "a7ab606747ab5b31f5d66319895b5df2835e863f9d2d2ef5800770ba18722878",
+    "bytes": 148011
+  },
+  {
+    "path": "crates/infrastructure/src/schema-v8.catalog",
+    "sha256": "cc04764ecbaa941be118f10ac63d6205a4b99d92c73fced4eb1cc55afac8a973",
+    "bytes": 174938
+  },
+  {
+    "path": "crates/infrastructure/src/schema-v9.catalog",
+    "sha256": "6285a6d96fa4633be14d8b24a7c41a5358d745adc0ba4ce9be3e95b30bac733c",
+    "bytes": 195343
+  },
+  {
+    "path": "crates/infrastructure/src/scope.rs",
+    "sha256": "f7e997a6f3329d99c8e65919ad2ef616596a707a5f5b94a162800fd82dd29428",
+    "bytes": 2887
+  },
+  {
+    "path": "crates/infrastructure/src/skills.rs",
+    "sha256": "4d78cf95db8db4feae8be629e776ab36436cf01371f8996dc80b90589debe9ae",
+    "bytes": 31858
+  },
+  {
+    "path": "crates/infrastructure/src/skills/tests.rs",
+    "sha256": "220063838f3c8ab6926bba38487834c5abb6c74cfe2b59c21ffb43d87ccb4c3e",
+    "bytes": 17483
+  },
+  {
+    "path": "crates/infrastructure/src/task.rs",
+    "sha256": "6f81cc6f23b50141bbf80e00bceb35336dc237b08b944e63da9943e801f18219",
+    "bytes": 43703
+  },
+  {
+    "path": "crates/infrastructure/tests/admin_continuity.rs",
+    "sha256": "e2808692a3bbd7990ecf9d7819e93e4a417b94eba4eb22f09b0e481364f6e41c",
+    "bytes": 37322
+  },
+  {
+    "path": "crates/infrastructure/tests/bootstrap.rs",
+    "sha256": "8182e6c8007253670c4d3f50c37a888ebdefe8fc05b836722f7848b08643c25f",
+    "bytes": 124378
+  },
+  {
+    "path": "crates/infrastructure/tests/conversation.rs",
+    "sha256": "4a0f88b16cf3384a109616eb8b9fee86b1431445e942638ea0b28bb00254af64",
+    "bytes": 19646
+  },
+  {
+    "path": "crates/infrastructure/tests/evidence.rs",
+    "sha256": "3ef62ee948d4f8c63f5b043f23c007f0077bd3b6a1b482d85943d2ccdaf4d2b5",
+    "bytes": 25135
+  },
+  {
+    "path": "crates/infrastructure/tests/evidence_s3.rs",
+    "sha256": "282a9724d198a56c4298add888b1dc973e8cca850420c1b14ac70dc186382094",
+    "bytes": 26110
+  },
+  {
+    "path": "crates/infrastructure/tests/fixture.rs",
+    "sha256": "f76db0827c692ad9fe4ff64a86f4a61167b7b85e7d26cd700fc5f9ad91962c87",
+    "bytes": 9943
+  },
+  {
+    "path": "crates/infrastructure/tests/identity.rs",
+    "sha256": "1a52487af561d8c1b98c42fe1f5e3e5f64d7f7fa57e9448034f324db03baca49",
+    "bytes": 40788
+  },
+  {
+    "path": "crates/infrastructure/tests/knowledge.rs",
+    "sha256": "16fde2a12fce1a96fefa0ec32248f6f50a5e5c9c8a421b8ee972d1a85f3b503e",
+    "bytes": 109996
+  },
+  {
+    "path": "crates/infrastructure/tests/membership.rs",
+    "sha256": "e148e798af4926e20eac9edb01e9c0e1814ce351f648c410692789886a74b20d",
+    "bytes": 17567
+  },
+  {
+    "path": "crates/infrastructure/tests/membership/acceptance_wait.rs",
+    "sha256": "542343533e43a99658e40a9965a14a52c4344c85128df6f13d5d70611e89b764",
+    "bytes": 5055
+  },
+  {
+    "path": "crates/infrastructure/tests/membership/admin_replacement.rs",
+    "sha256": "9d02490e289d07b815b5f8977bced34fccd414cb1bc5638e2f28e59595876835",
+    "bytes": 23637
+  },
+  {
+    "path": "crates/infrastructure/tests/membership/expiry_split.rs",
+    "sha256": "aad6d63b04d0ef636ffb0abce4403d1becd5b4dfe89d1f1cb1038b83a4ffdf7d",
+    "bytes": 13309
+  },
+  {
+    "path": "crates/infrastructure/tests/membership/legacy_upgrade.rs",
+    "sha256": "9723b8fb9dbb352c18212dadee65c8761fecc3ac8a66cc7528d3e2bde236c2e1",
+    "bytes": 21980
+  },
+  {
+    "path": "crates/infrastructure/tests/membership/operation_revocation.rs",
+    "sha256": "b787c14a8a0ba3c5b7125c08f5755ebfbb212cb73d918706200b9e4ca814c8ca",
+    "bytes": 18390
+  },
+  {
+    "path": "crates/infrastructure/tests/membership/renewal_and_remove.rs",
+    "sha256": "4f3d483a868b0064cdbd534b0e2fc3980fb02f46a9f555d60dc20319874e74b9",
+    "bytes": 11113
+  },
+  {
+    "path": "crates/infrastructure/tests/membership/revocation.rs",
+    "sha256": "411a8ada275c810bc0d768efbe8711845c8cd1f92501a88931fc45e19043450f",
+    "bytes": 18169
+  },
+  {
+    "path": "crates/infrastructure/tests/methodology.rs",
+    "sha256": "84b50c2e6fd8a5905bafa708d4822059acea6c1dba5fb814a217b08f60965414",
+    "bytes": 67635
+  },
+  {
+    "path": "crates/infrastructure/tests/oidc_protocol.rs",
+    "sha256": "cd6b1e9d8a1bc0618434ac6a1fe2cccaa05ea680172e9f57e24e393b52589de3",
+    "bytes": 23421
+  },
+  {
+    "path": "crates/infrastructure/tests/operations.rs",
+    "sha256": "ddaf1b534a0caf35da4494b5f17b0407d62b99f3a1837b5f82c9ac6e83da3bde",
+    "bytes": 51783
+  },
+  {
+    "path": "crates/infrastructure/tests/operations/methodology_execution.rs",
+    "sha256": "c42b6d9931006324734fae1746a651e5e26e9153327dc25ae19fb730584e7d50",
+    "bytes": 23206
+  },
+  {
+    "path": "crates/infrastructure/tests/operations/policy_revisions.rs",
+    "sha256": "9bec44374137ad2ff0cb1383012eee90b79862dc993205c08357fc8f18a58160",
+    "bytes": 6645
+  },
+  {
+    "path": "crates/infrastructure/tests/operations/review_repairs.rs",
+    "sha256": "c15e84482b2f283cd1ba3afa7f76cb3ba333d1b74ee9bae29adf01e19b6a9ff6",
+    "bytes": 13274
+  },
+  {
+    "path": "crates/infrastructure/tests/operations/task_reconciliation.rs",
+    "sha256": "a29a9b67dfc6021ca9a4e3bb4f3c1d6d5e29385bea23ffb6c6e6083c5fad45d3",
+    "bytes": 9862
+  },
+  {
+    "path": "crates/infrastructure/tests/scope.rs",
+    "sha256": "e668fc68c878df90abc08d836624c000872c18e997b131b80a09feba6c0bae54",
+    "bytes": 12792
+  },
+  {
+    "path": "crates/infrastructure/tests/skills.rs",
+    "sha256": "a2d0af5a3d48a554c868fe0d3b1d788725e5c0f636378537691e35d8a7a2e261",
+    "bytes": 87431
+  },
+  {
+    "path": "crates/infrastructure/tests/support/isolation.rs",
+    "sha256": "74663e8cfa914ac1cd33eeeebecdfd82f83eec40e16bd86ddbed9d3a3053ca1f",
+    "bytes": 2874
+  },
+  {
+    "path": "crates/infrastructure/tests/support/mod.rs",
+    "sha256": "73961e5f2c56db72d88856a47cc51f4ff00ba00782d40046890447cf25240bf9",
+    "bytes": 6481
+  },
+  {
+    "path": "crates/infrastructure/tests/support/s3_protocol.rs",
+    "sha256": "7cea228de0996247a673bebae0e3e1eadd39da3ae082b40727071781b1650d30",
+    "bytes": 16317
+  },
+  {
+    "path": "crates/infrastructure/tests/task.rs",
+    "sha256": "fd4df4bdaaf2eb0f19a6e8c3f7363cfd5b05b6712bf77b701d552088273d4a08",
+    "bytes": 54984
+  },
+  {
+    "path": "crates/infrastructure/tests/task/methodology_cutoff.rs",
+    "sha256": "1e8bb84c7adf97e5019eaad50d0ef7b782dff7eecd0327a7115cae8ce5e3aca3",
+    "bytes": 5899
+  },
+  {
+    "path": "crates/worker/Cargo.toml",
+    "sha256": "747e8c46557685a445b9581c4be493625332ad2f4bc9efeb8ae68e6cf8b64552",
+    "bytes": 513
+  },
+  {
+    "path": "crates/worker/src/diagnostics.rs",
+    "sha256": "750c651322b4629cb97a560520a5a8f9019792ca7eaf6e9e566d500a308a68a3",
+    "bytes": 3596
+  },
+  {
+    "path": "crates/worker/src/executor.rs",
+    "sha256": "92ea8b7dc274b31026318b07cfa53ddd76c7df6c4b0629f64a22cce56db95647",
+    "bytes": 5055
+  },
+  {
+    "path": "crates/worker/src/gateway.rs",
+    "sha256": "dd2567a1c6fe86382fa13a71412eb8eb1dea1256639afa7851e2dac9e24ed5ad",
+    "bytes": 15183
+  },
+  {
+    "path": "crates/worker/src/lib.rs",
+    "sha256": "c4db348d9e9fa6fc772974c8f437ef32ab4663b9c9df7cff3bba0775d3aa8731",
+    "bytes": 7491
+  },
+  {
+    "path": "crates/worker/src/main.rs",
+    "sha256": "c10dcc26e5d0f6cfd3050278f2c148f05cdf80d7c97ca798a95c5a6a58954d6d",
+    "bytes": 4641
+  },
+  {
+    "path": "crates/worker/src/supervision.rs",
+    "sha256": "d9f786fac6a870afdbcea912bb2f414464bbdb36c8f7b468090fa0d7635e1c32",
+    "bytes": 6586
+  },
+  {
+    "path": "crates/worker/tests/durable_process.rs",
+    "sha256": "b8763328d4c9b9dae30edb869401dd2f2e57de32f898d10e5023b26679445f28",
+    "bytes": 18720
+  },
+  {
+    "path": "crates/worker/tests/gateway_process.rs",
+    "sha256": "589876191ebbdc841baf3879b09d7ee8608b5977b0e8a9d8f74114190caa26c1",
+    "bytes": 43772
+  },
+  {
+    "path": "crates/worker/tests/inert_process.rs",
+    "sha256": "95cbd7582e1e47725767cc0b7bf850a363d12faae12578f1a6eaf78360eaa11d",
+    "bytes": 12886
+  },
+  {
+    "path": "crates/worker/tests/reliability_process.rs",
+    "sha256": "a76043c1939a2f063e011be275ef4479503edee74e18201a2f345d8a0ce96cd6",
+    "bytes": 26175
+  },
+  {
+    "path": "crates/worker/tests/support/fault_endpoint.rs",
+    "sha256": "a32472eca0166d84a6c0c32d577bc99ebd75e0dcd4c6d42c986d4025de772497",
+    "bytes": 14504
+  },
+  {
+    "path": "fixtures/oidc/.gitignore",
+    "sha256": "bcd0d571fcad28d33c24636281a44329c94c9b9691f483fb2da4f36635d2d5f8",
+    "bytes": 36
+  },
+  {
+    "path": "fixtures/oidc/README.md",
+    "sha256": "cd75635150ed8138c181237e9e7186d3006cee3eb84acb7d0755301dc3c18e76",
+    "bytes": 11396
+  },
+  {
+    "path": "fixtures/oidc/fixture.test.mjs",
+    "sha256": "ad0852631cdb54d409c14eb47824abd75da2ccdafbd0634973548fe89222e0fb",
+    "bytes": 22694
+  },
+  {
+    "path": "fixtures/oidc/flow.mjs",
+    "sha256": "a925b243d2fa76fca5b148ff507eba20437dd6416febcc223a6f7857fd44c6fc",
+    "bytes": 4621
+  },
+  {
+    "path": "fixtures/oidc/package.json",
+    "sha256": "c49df153b17a67eb3dc601fb8bea30a331192f241cdf156847956aa6b3609b16",
+    "bytes": 299
+  },
+  {
+    "path": "fixtures/oidc/server.mjs",
+    "sha256": "2ce1d74744b5c7648c5d4db072a01f2906e360959dd6167aacf41da1b67c0de7",
+    "bytes": 17019
+  },
+  {
+    "path": "fixtures/oidc/setup.mjs",
+    "sha256": "b1744e014424ac2fa0cc8fffa1a433513418dd5da1006beb2509d04e2963d802",
+    "bytes": 5781
+  },
+  {
+    "path": "migrations/0001_bootstrap.sql",
+    "sha256": "71b93f78c9a1e955c065ef33ece4f88a1e1d600940f554af3cfd80eae4115a02",
+    "bytes": 423
+  },
+  {
+    "path": "migrations/0002_identity_scope.sql",
+    "sha256": "5705f9272b239da2139b72c62ac3d2876e31a949ed6c5ebff9250d0a73361881",
+    "bytes": 7566
+  },
+  {
+    "path": "migrations/0003_tasks.sql",
+    "sha256": "210e6634d586b16b9e67b0a7b8393d3bef8499979810cec3aded272b213cb8e4",
+    "bytes": 18568
+  },
+  {
+    "path": "migrations/0004_permissions_operations.sql",
+    "sha256": "f420bbbb4f211d3554fd8a1599ec310cb27cc174e11d2508da6b9212c0515731",
+    "bytes": 25515
+  },
+  {
+    "path": "migrations/0005_membership_administration.sql",
+    "sha256": "72c4f45e71c99609550b838cb714979623827d7daf86d528789137cbf2dd9dde",
+    "bytes": 37196
+  },
+  {
+    "path": "migrations/0006_evidence.sql",
+    "sha256": "a55288f59fa4a89935c3cfb5ab9032b7f3ae4cf91de100964c9fc6fb93d6a86d",
+    "bytes": 6912
+  },
+  {
+    "path": "migrations/0007_admin_continuity.sql",
+    "sha256": "626ced0ff54fc43860babddc730bc75ef7e52fbe452529fe82ae02677cb79f2d",
+    "bytes": 7279
+  },
+  {
+    "path": "migrations/0008_methodology.sql",
+    "sha256": "8b589278bd54d21c841defa2c8acc0819011cb97c941851c66007624ffddb3f1",
+    "bytes": 39524
+  },
+  {
+    "path": "migrations/0009_skills.sql",
+    "sha256": "0729dc983091c43354fc5aea38a4c9c740ed6b50b091099119687a062ecf416a",
+    "bytes": 28062
+  },
+  {
+    "path": "migrations/0010_knowledge.sql",
+    "sha256": "243ba8519afadf46867aab40e98b8e7fa8cc3b66da25d2508f3fae400a8f3707",
+    "bytes": 15975
+  },
+  {
+    "path": "openapi.json",
+    "sha256": "d4c7447abfc33e581b88f5bb27d4770f50c67142ad5de654887dfe2565b1dba0",
+    "bytes": 363764
+  },
+  {
+    "path": "package.json",
+    "sha256": "45b6200b5fdfd1f6cd9669e22dd205d45ad23dd2aa4d6e674c2346603132e3a0",
+    "bytes": 646
+  },
+  {
+    "path": "pnpm-lock.yaml",
+    "sha256": "44f2df778ebda4fe0aeaee79609847dc9e284b92818248f80509e10ec8bbe081",
+    "bytes": 34890
+  },
+  {
+    "path": "pnpm-workspace.yaml",
+    "sha256": "08e9f8a466b2bb9c241f2416e64344779da9cd1d95bebae43c07155b56f91567",
+    "bytes": 140
+  },
+  {
+    "path": "rust-toolchain.toml",
+    "sha256": "887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167",
+    "bytes": 86
+  },
+  {
+    "path": "scripts/check-boundaries.py",
+    "sha256": "99fb1dac0267d1656795cce72ffcb95221730a751ca147f8224c414aead66c27",
+    "bytes": 22476
+  },
+  {
+    "path": "scripts/smoke.py",
+    "sha256": "f9a15f1560711c155dca76ebcfb736898af5c46e25a7648028c422500a25f60d",
+    "bytes": 16575
+  },
+  {
+    "path": "scripts/test_script_guards.py",
+    "sha256": "a2c4dd507be6f104f92994de3854a850de6d13ca57f0266db1afe8020f25bd91",
+    "bytes": 30575
+  },
+  {
+    "path": "tests/fixtures/evidence-metadata-parity.json",
+    "sha256": "460a69e81b8cfb1c7a64240fcde9b7800090c06d016d07c68241b51e3d0767b3",
+    "bytes": 2700
+  },
+  {
+    "path": "web/index.html",
+    "sha256": "2aed5febb0b6fdb3677faa78bca16e03d0e60eea7f13b58d7ac9c9264cfff755",
+    "bytes": 501
+  },
+  {
+    "path": "web/package.json",
+    "sha256": "81e250747d17d7a119fb658c2bfa9faf65b5c25531b1c9dee92571d15a0df6ae",
+    "bytes": 713
+  },
+  {
+    "path": "web/playwright.config.ts",
+    "sha256": "b2d54fd6637fc49a0e03b3a922ad8ed2ee1fd6a17926e3695b6789f0c4c5d230",
+    "bytes": 673
+  },
+  {
+    "path": "web/proxy-errors.ts",
+    "sha256": "ff9f26366c5af99bb5a9c57c1448a49b62e0ea990e8ad4c061b43b0ab98543bd",
+    "bytes": 538
+  },
+  {
+    "path": "web/public/assets/favicon.svg",
+    "sha256": "0c79bcd4be4b180e0b1fa117306721f870796e64f5992bddef92d93ad4838d4b",
+    "bytes": 8088
+  },
+  {
+    "path": "web/public/assets/fonts/HankenGrotesk-wght.ttf",
+    "sha256": "813b3f8fa0965405669a89b38e51bbefd95eef6b8e20d1cb2d8c10cce062662f",
+    "bytes": 132892
+  },
+  {
+    "path": "web/public/assets/fonts/OFL-HankenGrotesk.txt",
+    "sha256": "e02ccb89a86839b22feff7872ff5cc355cc0f58318d29eee20e2cf83a612f16d",
+    "bytes": 4402
+  },
+  {
+    "path": "web/public/assets/zobba-lockup-color.svg",
+    "sha256": "4d7ac4d7fc0f236b3c76ec2884977ea83984cfe642327bdb86d8ef802360a8b5",
+    "bytes": 10632
+  },
+  {
+    "path": "web/public/assets/zobba-symbol-color.svg",
+    "sha256": "b55dc95bb95fa4570ab718af6f46d7d0f82df9fe5e7e85fee060b4a9103951a9",
+    "bytes": 8064
+  },
+  {
+    "path": "web/scripts/generate-api.mjs",
+    "sha256": "2cd6622b54cc8b6e092dfdb178ce96169bfa44d83dc6b68bd67db3216bcb1853",
+    "bytes": 1443
+  },
+  {
+    "path": "web/src/App.tsx",
+    "sha256": "1485ba79e1462a6eb1e9bc929668433222f782b92942c1f4f089f2931d055b7c",
+    "bytes": 22335
+  },
+  {
+    "path": "web/src/ConversationWorkspace.tsx",
+    "sha256": "a6f6cd8d6ade4d031b4e163b77bf5024d06f06ceeb31ae365054a1166d776c5b",
+    "bytes": 35991
+  },
+  {
+    "path": "web/src/EvidenceKnowledge.tsx",
+    "sha256": "fcf26fe1b9614357b90ef7c7fa8626138a373218454838da8b1bedbc8ae11c73",
+    "bytes": 5352
+  },
+  {
+    "path": "web/src/EvidenceWorkspace.tsx",
+    "sha256": "835748e6c9e816abea7580e55157e28e3144f8e737cb02e7ec0bff7eb8c3dc66",
+    "bytes": 28989
+  },
+  {
+    "path": "web/src/HealthPage.tsx",
+    "sha256": "d251382a1062c78a87d7066c5f61a33c2f150262973dd9c7ada686ba57775602",
+    "bytes": 5065
+  },
+  {
+    "path": "web/src/InspectionPreference.tsx",
+    "sha256": "9fee24eb3c7d322e531514ce16bcd8a7356a71fbd16158d3848aca5e53e11704",
+    "bytes": 9434
+  },
+  {
+    "path": "web/src/KnowledgeSource.tsx",
+    "sha256": "b29c554a366bf9152aece5bdd210abad6486942c38153eb1ab5bcb1360d25d29",
+    "bytes": 3360
+  },
+  {
+    "path": "web/src/MembershipWorkspace.tsx",
+    "sha256": "a8218be19a4880dce3ff50b1f4a28206ca688df63e49a132b829e10aacb3a93d",
+    "bytes": 45357
+  },
+  {
+    "path": "web/src/MethodologyWorkspace.tsx",
+    "sha256": "0ba509698ea541e5288adf566cb34dcea78f27f415df8c6843f49372a4cdcde6",
+    "bytes": 37039
+  },
+  {
+    "path": "web/src/SkillCatalog.tsx",
+    "sha256": "ae2f36b9d2cc49bc559e0a8518ffc8dcdc4ed484e1c959cc3ddc4f7578e31845",
+    "bytes": 30608
+  },
+  {
+    "path": "web/src/SkillDetails.tsx",
+    "sha256": "a237b39ffadca1f348aa323d943aafdf7cae7ddeac0e7de539ded9003982f3a1",
+    "bytes": 5633
+  },
+  {
+    "path": "web/src/TaskKnowledge.tsx",
+    "sha256": "f8682403f81bc095d09b1e4c7c9b64dbc71bfd0cf78f7931c4f60821bb77b89b",
+    "bytes": 26859
+  },
+  {
+    "path": "web/src/TaskMethodology.tsx",
+    "sha256": "41eef04d5f0e7cf3d0793f97c3cbbdb6f6358eb167811781482e13a9030aaf4a",
+    "bytes": 8367
+  },
+  {
+    "path": "web/src/TaskSkills.tsx",
+    "sha256": "5c2eb5574917919f97904ec6f953f838bebba43ef0fd885552cb37c749e32bde",
+    "bytes": 15713
+  },
+  {
+    "path": "web/src/auth.ts",
+    "sha256": "844a625456b9b6fed59b66d25691383f25fc0aed46207f761dd99e93713c7f90",
+    "bytes": 5948
+  },
+  {
+    "path": "web/src/conversation-outbox.ts",
+    "sha256": "e864e49d2c6ebe87726f0fff0181c663ff50d1b759afa53eab10d93ae4d0cc18",
+    "bytes": 15261
+  },
+  {
+    "path": "web/src/conversation-state.ts",
+    "sha256": "f9845d870c88b47a665b80f3c753096c77e2175b88594086899eb3dc6a66387c",
+    "bytes": 24867
+  },
+  {
+    "path": "web/src/conversation.ts",
+    "sha256": "8913cf4f83de94bd92bf24c097ae10261a336267c6ab8edc9ca018657e80f327",
+    "bytes": 14363
+  },
+  {
+    "path": "web/src/design/zobba-tokens.json",
+    "sha256": "feafa32ea4f50171df702578e3f35489b6782715287192b0def872e7dabb69ff",
+    "bytes": 21929
+  },
+  {
+    "path": "web/src/engagements.ts",
+    "sha256": "3dda06b9a676d8155c48e9c990229a4156039480c5c49a9d2f264826a1fcfdf8",
+    "bytes": 5147
+  },
+  {
+    "path": "web/src/evidence.ts",
+    "sha256": "69812276f1ad4a74195379e149ffe5f76a1b88974435af0f8375f6d9b94e16af",
+    "bytes": 13578
+  },
+  {
+    "path": "web/src/generated/api.ts",
+    "sha256": "b2127f728457e38a7691d7c1a5103bdedb543102d700e1ad9d818d2ba2f1884f",
+    "bytes": 229528
+  },
+  {
+    "path": "web/src/health.ts",
+    "sha256": "e7a0cc12869b75c085793e7caae1232535a9680b5d8fae2fca96a00ea27467a2",
+    "bytes": 1322
+  },
+  {
+    "path": "web/src/knowledge-context.ts",
+    "sha256": "d1fd705e61be00e841f322f479a66a7c4675fb0356660a90d84e4b3d5cb2e613",
+    "bytes": 343
+  },
+  {
+    "path": "web/src/knowledge.ts",
+    "sha256": "c92944d1e5a1a5ba81013b9c3c15af7613f5131b56757b174c30919d517e180e",
+    "bytes": 24697
+  },
+  {
+    "path": "web/src/main.tsx",
+    "sha256": "7bc1ba66885c1fb063d6cd79beda0d464031d0b2eae1d761f41f8c25bff7ed2a",
+    "bytes": 228
+  },
+  {
+    "path": "web/src/membership.ts",
+    "sha256": "d9871ad043c57840bd34c63f7e3cf5f81de45c7c2eaccf2db52ce30f51a1f65e",
+    "bytes": 16311
+  },
+  {
+    "path": "web/src/methodology.ts",
+    "sha256": "15ffeb91a8178664f0a55b816f61fc29c8d3224c7531b87e12d6228b12065e59",
+    "bytes": 24344
+  },
+  {
+    "path": "web/src/skills.ts",
+    "sha256": "b71044858a695794661faa5c69dde5715a03224e2ecf945b89c97d50a69264c2",
+    "bytes": 38375
+  },
+  {
+    "path": "web/src/styles.css",
+    "sha256": "87eabf8f4759a9e8c56cb836edb926a34dabfb993c20cb3564a957747698d5d1",
+    "bytes": 47819
+  },
+  {
+    "path": "web/src/useKnowledgeCommands.ts",
+    "sha256": "e472ff7211da68cbd3d4f816ab8c4b11582ec9c931516cd6b7dae87de4f58d66",
+    "bytes": 2881
+  },
+  {
+    "path": "web/src/useSkillInspection.ts",
+    "sha256": "23026772b24f065ebe0c07a937ae578f6e1263569301c2b1d7db69b01cc8fc87",
+    "bytes": 4733
+  },
+  {
+    "path": "web/tests/access.test.mjs",
+    "sha256": "0ce00634069e2f515a126aac4c6592c15cf69debe6bfffdcff2a895c7ef4fdbe",
+    "bytes": 6517
+  },
+  {
+    "path": "web/tests/browser/README.md",
+    "sha256": "aca274412000cf2eb75c58db64ab9dafacda1c1b584ced3da320f8a1b5b59ea1",
+    "bytes": 10624
+  },
+  {
+    "path": "web/tests/browser/account-binding.spec.ts",
+    "sha256": "a8a878b6767679d6066fe17b879a3dd51146657eb49d170d7649b818ebd47331",
+    "bytes": 28333
+  },
+  {
+    "path": "web/tests/browser/auth-database-endpoint.spec.ts",
+    "sha256": "9252e4288bc1a88c8d475e39897831aa5503563753daa61325e07a02e199d712",
+    "bytes": 5950
+  },
+  {
+    "path": "web/tests/browser/auth-database-relay.ts",
+    "sha256": "3be9f97e867956a83d7f23273d531815578c0c7864f52556b4fb6d1fe2580929",
+    "bytes": 920
+  },
+  {
+    "path": "web/tests/browser/auth-runtime.ts",
+    "sha256": "5cfe4fc06428765f5936a881c301f0757ee93480cb4830f54dd5ea3db269d254",
+    "bytes": 26787
+  },
+  {
+    "path": "web/tests/browser/auth.spec.ts",
+    "sha256": "fae35e77a26f9437c55159604bc61deb0a23be9e419e9fe59ef479da8e782381",
+    "bytes": 33889
+  },
+  {
+    "path": "web/tests/browser/cleanup.ts",
+    "sha256": "14ec6ee2aee22dc853d6687dfa2e33ad4494c9056dbccbe97b07fa0d22b643fb",
+    "bytes": 1264
+  },
+  {
+    "path": "web/tests/browser/conversation-locks.spec.ts",
+    "sha256": "6169922c765d9983dd3dab098334f55a460cc0f07921137aca0f3f03df712c0f",
+    "bytes": 26155
+  },
+  {
+    "path": "web/tests/browser/conversation-races.spec.ts",
+    "sha256": "367733cb15ffc4c69e6e56a357b0365f0383bf963afd533204d10efe1a76f6e6",
+    "bytes": 23783
+  },
+  {
+    "path": "web/tests/browser/conversation-review.spec.ts",
+    "sha256": "ea4098a35a3065e143e9f347d7b2333d6318445e9c67a9993f162e9dbdc1ad84",
+    "bytes": 23156
+  },
+  {
+    "path": "web/tests/browser/conversation.spec.ts",
+    "sha256": "621b33c7c22d788a4344067a1adfc2e43b7c40e89d27314a6e0270523acdb9ff",
+    "bytes": 24084
+  },
+  {
+    "path": "web/tests/browser/database-endpoint.ts",
+    "sha256": "a39f534a47be5bd23a01f5b86fdd55b6a075c11332618e74e10296e3c18ed5c4",
+    "bytes": 550
+  },
+  {
+    "path": "web/tests/browser/database-proxy.ts",
+    "sha256": "5bd27321ffeec74ebb5ecc7587f327b998052406d320b4579468f30cb1cfe93a",
+    "bytes": 2174
+  },
+  {
+    "path": "web/tests/browser/evidence-repairs.spec.ts",
+    "sha256": "14876043d556f8307d8777c6cffb8f9a3a8ec12e6ee32ca6b3ef93bb1b50274e",
+    "bytes": 16645
+  },
+  {
+    "path": "web/tests/browser/evidence-s3.ts",
+    "sha256": "fe6389cd6882c95e6a575b637d69d680ce81b43db86399e8a89e3b6af16bb1be",
+    "bytes": 10697
+  },
+  {
+    "path": "web/tests/browser/evidence-unicode.spec.ts",
+    "sha256": "4f80590ca2094a166f7b7ed76b9b49252e944c54bf6404eff4b6b774eec01a7a",
+    "bytes": 18263
+  },
+  {
+    "path": "web/tests/browser/evidence.spec.ts",
+    "sha256": "e7267a670538f3de10006afdaf338ca0456aca6e5207ad665513d0c538b1a967",
+    "bytes": 34882
+  },
+  {
+    "path": "web/tests/browser/health.spec.ts",
+    "sha256": "44bfff781e99f79740cffd4a64ed71f028e92568c1c71c03d961817869961afa",
+    "bytes": 3622
+  },
+  {
+    "path": "web/tests/browser/knowledge.spec.ts",
+    "sha256": "aaa7300144add421ab60c05015f9f18261f5f4c8e183b03cae1774d92252ce43",
+    "bytes": 43825
+  },
+  {
+    "path": "web/tests/browser/membership.spec.ts",
+    "sha256": "83300b1d71f5177aa8c48d37cc6a1aeb652376025c8b236c408d0f6656901332",
+    "bytes": 52529
+  },
+  {
+    "path": "web/tests/browser/methodology-custody.spec.ts",
+    "sha256": "e1c89897d87dc687279164d47cab9d2347497166e7ea19c09278fe267c5d0657",
+    "bytes": 20432
+  },
+  {
+    "path": "web/tests/browser/methodology-review.spec.ts",
+    "sha256": "73440331223b85d51f7ddb5f37b23e566ea7a73f1a7d1c33e7784733607d1109",
+    "bytes": 23581
+  },
+  {
+    "path": "web/tests/browser/methodology.spec.ts",
+    "sha256": "bef4acbd79d45bbc092838e8d810b3945e1ae7e113eb794694039eac3c47fabc",
+    "bytes": 34104
+  },
+  {
+    "path": "web/tests/browser/runtime.ts",
+    "sha256": "1419bf1845d225bf24e4d1c0dd17c1c4b0c455fe44d456932a84e79eab5d0d2c",
+    "bytes": 8034
+  },
+  {
+    "path": "web/tests/browser/skills.spec.ts",
+    "sha256": "694b1257098a323b1424409b52977564852fa61589397b2d914965d5de698004",
+    "bytes": 121944
+  },
+  {
+    "path": "web/tests/conversation-state.test.mjs",
+    "sha256": "3939ef4c5bb7df97d210517327d1ebd4ae38862ede38c1215779bf93635bc542",
+    "bytes": 53071
+  },
+  {
+    "path": "web/tests/conversation.test.mjs",
+    "sha256": "fcdee88d2e58bdd35bb2b0fa0e6bc66dbbcffc59b17109d3ff66507146fa2df3",
+    "bytes": 10438
+  },
+  {
+    "path": "web/tests/database-endpoint.test.mjs",
+    "sha256": "61c7a6672c85b85a004cbf2dcceabf4a69c756c670a5cbcab789adf38fa3ddd2",
+    "bytes": 5369
+  },
+  {
+    "path": "web/tests/evidence.test.mjs",
+    "sha256": "2ed5fc67cfd85364ce21720ea565cdee6ab0f1ad00b13553dbd29dd30c91130a",
+    "bytes": 14594
+  },
+  {
+    "path": "web/tests/fixtures/knowledge-omissions-wire.json",
+    "sha256": "daccb64d27893356a29e677b85e57803e6455bc3f245cf844798a8dcc202fb86",
+    "bytes": 563
+  },
+  {
+    "path": "web/tests/health.test.mjs",
+    "sha256": "ac82cce110cf0fa286931f9852ded57d6569f647076147c517f38dd168eec73f",
+    "bytes": 1793
+  },
+  {
+    "path": "web/tests/knowledge.test.mjs",
+    "sha256": "ae8ab3f202834e38cf9f89e3a7a489c0fd6cd0d1f17e161ad043250b40c150b3",
+    "bytes": 16849
+  },
+  {
+    "path": "web/tests/membership.test.mjs",
+    "sha256": "b527b3f55933405c56d73dd721f780ba1e7f486e33e3dd9e43eefb0327c45866",
+    "bytes": 21932
+  },
+  {
+    "path": "web/tests/methodology-custody.test.mjs",
+    "sha256": "5d37e8a37df2594dac9257320b4544e820c39d1c77dea4fb2d99d01024e853ba",
+    "bytes": 5944
+  },
+  {
+    "path": "web/tests/methodology.test.mjs",
+    "sha256": "0a8267e4b4f3bb5297216572ac93ee4176efa5cf371223f981fa22fcaf6cbbd5",
+    "bytes": 20035
+  },
+  {
+    "path": "web/tests/proxy-errors.test.mjs",
+    "sha256": "2e200d373b77423b34626f78558e3521571bbe31a947cd7c827c18892e0f5e6a",
+    "bytes": 2124
+  },
+  {
+    "path": "web/tests/skills.test.mjs",
+    "sha256": "05fe6090c213a3f29f675e2b8a4db4e9acd9112e002a51b04d9ea7b90f65cc6b",
+    "bytes": 39945
+  },
+  {
+    "path": "web/tsconfig.json",
+    "sha256": "0464a82578ae50493507283bf2396f1e9b38dd236c51424b7aead26517c5f125",
+    "bytes": 614
+  },
+  {
+    "path": "web/vite.config.ts",
+    "sha256": "91870bc0901df7903e979048509cc2a6bd734f708d7daa57e280d371be6bd1ab",
+    "bytes": 754
+  }
+]

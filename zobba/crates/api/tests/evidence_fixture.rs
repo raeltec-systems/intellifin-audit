@@ -42,7 +42,7 @@ async fn serve() -> Result<(), ()> {
     }
     let objects = match std::env::var("ZOBBA_TEST_EVIDENCE_S3_ENDPOINT") {
         Ok(endpoint) => {
-            let store = s3_protocol::build_fixture_store(&endpoint).map_err(|_| ())?;
+            let store = s3_protocol::build_browser_fixture_store(&endpoint).map_err(|_| ())?;
             let namespace = storage_namespace(&endpoint, "fixture-bucket");
             Some(S3EvidenceObjects::new(store, namespace).map_err(|_| ())?)
         }

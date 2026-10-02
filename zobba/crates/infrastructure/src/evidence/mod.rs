@@ -295,6 +295,41 @@ impl EvidenceMetadata for EvidenceRepository {
         version: &str,
         identity: &ContentIdentity,
     ) -> Result<RegisteredEvidence, EvidenceError> {
+        self.register_impl(actor, s, id, namespace, version, identity, None)
+            .await
+    }
+    #[allow(clippy::too_many_arguments)]
+    async fn register_captured(
+        &self,
+        actor: &str,
+        s: &Scope,
+        id: &str,
+        namespace: &str,
+        version: &str,
+        identity: &ContentIdentity,
+        capture: &zobba_application::knowledge::EvidenceCapture,
+    ) -> Result<RegisteredEvidence, EvidenceError> {
+        self.register_impl(actor, s, id, namespace, version, identity, Some(capture))
+            .await
+    }
+    async fn authorize(&self, actor: &str, s: &Scope) -> Result<(), EvidenceError> {
+        let tx = self.begin(actor, s).await?;
+        tx.commit().await.map_err(unavailable)
+    }
+}
+
+impl EvidenceRepository {
+    #[allow(clippy::too_many_arguments)]
+    async fn register_impl(
+        &self,
+        actor: &str,
+        s: &Scope,
+        id: &str,
+        namespace: &str,
+        version: &str,
+        identity: &ContentIdentity,
+        capture: Option<&zobba_application::knowledge::EvidenceCapture>,
+    ) -> Result<RegisteredEvidence, EvidenceError> {
         if version.is_empty()
             || version == "null"
             || version.len() > 512
@@ -311,6 +346,15 @@ impl EvidenceMetadata for EvidenceRepository {
             if previous.version != version {
                 return Err(EvidenceError::Conflict);
             }
+            if let Some(capture) = capture {
+                crate::knowledge::capture_registered(&mut tx, actor, &previous, capture)
+                    .await
+                    .map_err(|_| EvidenceError::Unavailable)?;
+            } else {
+                crate::knowledge::pending_capture(&mut tx, actor, &previous)
+                    .await
+                    .map_err(|_| EvidenceError::Unavailable)?;
+            }
             self.current(&mut tx, actor, s).await?;
             tx.commit().await.map_err(unavailable)?;
             return Ok(previous);
@@ -322,12 +366,17 @@ impl EvidenceMetadata for EvidenceRepository {
             .await
             .map_err(unavailable)?;
         let result = evidence_row(&row)?;
+        if let Some(capture) = capture {
+            crate::knowledge::capture_registered(&mut tx, actor, &result, capture)
+                .await
+                .map_err(|_| EvidenceError::Unavailable)?;
+        } else {
+            crate::knowledge::pending_capture(&mut tx, actor, &result)
+                .await
+                .map_err(|_| EvidenceError::Unavailable)?;
+        }
         self.current(&mut tx, actor, s).await?;
         tx.commit().await.map_err(unavailable)?;
         Ok(result)
-    }
-    async fn authorize(&self, actor: &str, s: &Scope) -> Result<(), EvidenceError> {
-        let tx = self.begin(actor, s).await?;
-        tx.commit().await.map_err(unavailable)
     }
 }

@@ -1,0 +1,18 @@
+{
+  "completed_at": "2026-10-02T19:25:12.745559+00:00",
+  "run": "browser-final-knowledge-1",
+  "passed": 131,
+  "failed": 5,
+  "duration": "20.0m",
+  "workers": 1,
+  "retries": 0,
+  "exit": 1,
+  "source_manifests_identical": true,
+  "source_files": 241,
+  "source_manifest_sha256": "2afda6dd4a61dd189405a0ca57717dac75de6f6c62ba3b52ea8bdd42330d5aec",
+  "idp_9444_listener_present": false,
+  "named_runtime_processes": [],
+  "runtime_ownership_released": true,
+  "source_edits_on_hold": true,
+  "unreaped_inactive_worker_count": 58
+}
