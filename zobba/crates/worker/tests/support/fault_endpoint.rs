@@ -45,6 +45,7 @@ pub struct Event {
 
 #[derive(Default)]
 struct State {
+    connections: usize,
     operations: HashMap<String, Entry>,
     events: Vec<Event>,
     faults: VecDeque<Fault>,
@@ -114,6 +115,9 @@ impl Endpoint {
                 tokio::select! {
                     accepted = listener.accept() => {
                         let Ok((stream, _)) = accepted else { break };
+                        // Count wire entry before capacity, HTTP parsing or
+                        // canonical-request validation can reject the request.
+                        shared.lock().unwrap().connections += 1;
                         let Ok(permit) = permits.clone().try_acquire_owned() else { continue };
                         let state = shared.clone();
                         let notify = notify.clone();
@@ -146,6 +150,10 @@ impl Endpoint {
 
     pub fn events(&self) -> Vec<Event> {
         self.state.lock().unwrap().events.clone()
+    }
+
+    pub fn connections(&self) -> usize {
+        self.state.lock().unwrap().connections
     }
 
     pub fn effects(&self, operation_id: &str) -> usize {

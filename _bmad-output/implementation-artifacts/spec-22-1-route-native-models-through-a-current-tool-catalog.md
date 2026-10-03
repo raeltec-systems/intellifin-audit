@@ -83,6 +83,13 @@ Executed local verification is recorded in the [checkpoint and evidence](zobba-f
 
 Local implementation is verified. The final qualification task remains unchecked because both live-provider calls require specific account, credential, destination and spending approval. Story 22.2 remains queued; fixtures and dry runs cannot close this gate.
 
+The owner's subsequent final-dispatch expiry repair is recorded separately in
+the [repair specification](spec-22-1-final-dispatch-expiry-repair.md) and
+[repair evidence](zobba-foundation-batch/story-22.1-expiry-repair/README.md).
+Model/history validation precedes the final authority fence; later policy reads
+cannot leave recorded source access, the lease or permission time stale.
+The repair does not close live qualification or advance Story 22.2.
+
 ## Suggested Review Order
 
 **Invocation ownership**

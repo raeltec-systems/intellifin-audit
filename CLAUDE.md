@@ -1,3 +1,14 @@
+## 2026-10-03 — Final operation expiry checks follow validation
+
+Finish bounded model/history validation and flush deferred dispatch writes before
+the final fresh lease and Permissions checks. Either step can cross an expiry
+boundary while organisation/Task locks remain held. Lease, canonical request and
+required exact approval expiry must roll back all staged dispatch facts before
+the gateway can send; a gateway timeout is not proof of an authority refusal.
+Finish policy/material/decision reads before the final database fence as well.
+That fence refreshes the lease, permission time and all recorded knowledge-source
+scopes, including assignments in other engagements that may expire during reads.
+
 ## 2026-10-03 — Story 22.1 native model boundaries
 
 Model configuration is Admin-owned history; an Admin-only identity needs a narrow

@@ -1,0 +1,22 @@
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+   Compiling zobba-worker v0.1.0 (/workspace/intellifin-audit/zobba/crates/worker)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.24s
+     Running tests/gateway_process.rs (target/debug/deps/gateway_process-2fcfa9679d184157)
+
+running 1 test
+
+thread 'final_validation_expiry::source_assignment_expiry_during_final_policy_reads_refuses_gateway_dispatch' (1196675) panicked at crates/worker/tests/support/final_validation_expiry.rs:842:5:
+assertion `left == right` failed
+  left: Ok(Completed)
+ right: Err(Denied)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test final_validation_expiry::source_assignment_expiry_during_final_policy_reads_refuses_gateway_dispatch ... FAILED
+
+failures:
+
+failures:
+    final_validation_expiry::source_assignment_expiry_during_final_policy_reads_refuses_gateway_dispatch
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 5.28s
+
+error: test failed, to rerun pass `-p zobba-worker --test gateway_process`

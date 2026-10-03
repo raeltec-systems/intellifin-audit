@@ -35,12 +35,16 @@ use zobba_worker::gateway::Gateway;
 
 #[path = "support/fault_endpoint.rs"]
 mod fault_endpoint;
+#[path = "support/final_validation_expiry.rs"]
+mod final_validation_expiry;
 #[path = "../../infrastructure/tests/support/mod.rs"]
 mod support;
 use fault_endpoint::{Endpoint, Fault};
 
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(1);
 const WAIT: Duration = Duration::from_secs(15);
+// All schema-owning cases in this executable share the guarded disposable DB.
+static DATABASE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 fn scope() -> Scope {
     Scope {
@@ -488,6 +492,7 @@ async fn fresh_basis(pool: &PgPool, previous: &ClaimBasis) -> ClaimBasis {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn owned_gateway_process_recovery_preserves_source_facts_and_fences_late_sends() {
+    let _database = DATABASE.lock().await;
     let configuration = support::Configuration::from_environment();
     let mut owner = PgConnection::connect(&configuration.migration)
         .await

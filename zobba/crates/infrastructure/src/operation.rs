@@ -457,6 +457,7 @@ async fn verify_material(
 }
 async fn dispatch_authority(
     tx: &mut Tx,
+    b: &ClaimBasis,
     id: &str,
     request: &CanonicalOperation,
     accepted: &AuthoritySnapshot,
@@ -477,8 +478,36 @@ async fn dispatch_authority(
         return Err(Error::Denied);
     }
     verify_material(tx, &accepted.scope, source, request).await?;
-    let now = clock(tx).await?;
     let decision = decision_row(tx, id).await?;
+    // Policy/material/decision reads can cross time boundaries too. Finish
+    // them before sampling the final lease and permission time, and recheck
+    // every source scope visited by model/history validation. Structural
+    // authority remains locked by verify_basis and the organisation lock.
+    let fence = sqlx::query(
+        "WITH sources AS MATERIALIZED (
+            SELECT NOT EXISTS(
+                SELECT 1 FROM jsonb_array_elements(
+                    coalesce(nullif(current_setting('zobba.knowledge_checks',true),''),'[]')::jsonb
+                ) c WHERE NOT public.knowledge_audit(c->>0,c->>1,c->>2,c->>3)
+            ) AS sources_current
+        ), fence AS MATERIALIZED (
+            SELECT sources_current,clock_timestamp() AS checked_at FROM sources
+        )
+        SELECT sources_current,floor(extract(epoch FROM checked_at))::bigint AS permission_time,
+            coalesce((SELECT owner_until>checked_at FROM public.tasks WHERE id=$1),false) AS owner_live
+        FROM fence",
+    )
+    .bind(&b.task_id)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(unavailable)?;
+    if !field::<bool>(&fence, "owner_live")? {
+        return Err(Error::Fenced);
+    }
+    if !field::<bool>(&fence, "sources_current")? {
+        return Err(Error::Denied);
+    }
+    let now = field::<i64>(&fence, "permission_time")?;
     if decision
         .as_ref()
         .map(|d| field::<bool>(d, "allow"))
@@ -1085,7 +1114,7 @@ impl OperationStore for OperationRepository {
         let accepted: StoredAuthority = decode(&field::<String>(&row, "authority_snapshot")?)?;
         let request: StoredCanonical = decode(&field::<String>(&row, "request")?)?;
         let source: StoredSource = decode(&field::<String>(&row, "source_binding")?)?;
-        dispatch_authority(&mut tx, operation_id, &request.0, &accepted.0, &source.0).await?;
+        dispatch_authority(&mut tx, b, operation_id, &request.0, &accepted.0, &source.0).await?;
         Box::pin(crate::model::check_bound_operation(
             &mut tx,
             operation_id,
@@ -1131,14 +1160,13 @@ impl OperationStore for OperationRepository {
         task::wake(&mut tx, &b.scope, &b.task_id, &b.actor_id)
             .await
             .map_err(from_task)?;
-        // Execute deferred write/commit barriers before the final fresh clock
-        // check. Expiry rolls back every staged attempt/cutoff/capability write.
+        // Flush deferred writes and finish bounded model/history validation
+        // before the last fresh lease and Permissions checks. Either can cross
+        // an expiry boundary; refusal must roll back every staged dispatch fact.
         sqlx::query("SET CONSTRAINTS ALL IMMEDIATE")
             .execute(&mut *tx)
             .await
             .map_err(unavailable)?;
-        verify_basis(&mut tx, b).await?;
-        dispatch_authority(&mut tx, operation_id, &request.0, &accepted.0, &source.0).await?;
         Box::pin(crate::model::check_bound_operation(
             &mut tx,
             operation_id,
@@ -1147,6 +1175,8 @@ impl OperationStore for OperationRepository {
             self.model_qualifications.as_deref(),
         ))
         .await?;
+        verify_basis(&mut tx, b).await?;
+        dispatch_authority(&mut tx, b, operation_id, &request.0, &accepted.0, &source.0).await?;
         tx.commit().await.map_err(unavailable)?;
         Ok(ConsumedOperation {
             source: source.0,
