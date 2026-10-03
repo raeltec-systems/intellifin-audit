@@ -1,0 +1,18 @@
+{
+  "requested_url": "https://developers.openai.com/api/docs/pricing.md",
+  "effective_url": "https://developers.openai.com/api/docs/pricing.md",
+  "retrieved_at_utc": "2026-10-03T04:30:50.262032+00:00",
+  "completed_at_utc": "2026-10-03T04:30:50.484971+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/markdown; charset=utf-8",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "openai-pricing-markdown.md",
+  "bytes": 22631,
+  "sha256": "0d9fb6b240209bb7b5a05d1d6ce0b8a796e0924b7e34c5ab183a3f1f890febe6",
+  "stderr": "",
+  "raw_body_in_checkpoint": false
+}

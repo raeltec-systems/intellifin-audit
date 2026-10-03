@@ -41,6 +41,14 @@ impl fmt::Display for OperationError {
 }
 impl std::error::Error for OperationError {}
 
+/// Exact immutable native model proposal identity. It supplies provenance only;
+/// both admission and consumption recheck the current catalogue and Permissions.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModelToolBinding {
+    pub invocation_id: String,
+    pub call_id: String,
+}
+
 /// Every scoped call reauthorizes current membership. Mutations use the shared
 /// engagement/Task fences and a single short transaction. No DB connection spans
 /// gateway I/O. Scope and policy lookups are trusted, never operation-supplied.
@@ -72,6 +80,18 @@ pub trait OperationStore: Send + Sync {
         operation_key: &str,
         request: &CanonicalOperation,
     ) -> impl Future<Output = Result<Operation, OperationError>> + Send;
+    fn admit_model_tool(
+        &self,
+        actor: &str,
+        scope: &Scope,
+        basis: &ClaimBasis,
+        operation_key: &str,
+        request: &CanonicalOperation,
+        binding: &ModelToolBinding,
+    ) -> impl Future<Output = Result<Operation, OperationError>> + Send {
+        let _ = (actor, scope, basis, operation_key, request, binding);
+        async { Err(OperationError::Unavailable) }
+    }
     fn decide(
         &self,
         actor: &str,

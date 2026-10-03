@@ -22,6 +22,8 @@ use zobba_infrastructure::{
 mod composition;
 #[path = "../../infrastructure/tests/support/s3_protocol.rs"]
 mod s3_protocol;
+#[path = "evidence_http/search.rs"]
+mod search;
 #[path = "../../infrastructure/tests/support/mod.rs"]
 mod support;
 
@@ -434,6 +436,8 @@ async fn evidence_http_proves_custody_replay_limits_and_authority_after_io() {
         document(peer.read(&format!("evidence/{id}")).await, StatusCode::OK).await,
         evidence
     );
+    search::bounded_metadata_search(&browser, &peer, &mut admin, &id).await;
+    search::revocation_while_search_waits(&browser, &identities, &mut admin).await;
     let denied = document(
         browser.read("evidence/missing").await,
         StatusCode::FORBIDDEN,
@@ -653,6 +657,16 @@ async fn evidence_http_proves_custody_replay_limits_and_authority_after_io() {
         .unwrap();
     document(download.await.unwrap(), StatusCode::FORBIDDEN).await;
     document(browser.read("evidence").await, StatusCode::FORBIDDEN).await;
+    document(
+        browser
+            .request(Method::GET, "evidence")
+            .query(&[("q", "original")])
+            .send()
+            .await
+            .unwrap(),
+        StatusCode::FORBIDDEN,
+    )
+    .await;
 
     // Missing configuration preserves scoped metadata; a changed namespace
     // cannot silently retarget a historical original to the new object store.

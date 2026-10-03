@@ -114,6 +114,8 @@ jobs:
           cargo test --workspace --locked
       - name: Build Rust processes
         run: cargo build --workspace --locked
+      - name: Test synthetic qualification approval guards without provider access
+        run: cargo test --locked -p zobba-infrastructure --example model_qualification
       - name: Check owned web types and generated interface
         run: pnpm check
       - name: Build Pair web shell

@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://developers.openai.com/api/docs/models",
+  "effective_url": "https://developers.openai.com/api/docs/models",
+  "retrieved_at_utc": "2026-10-03T04:26:50.202329+00:00",
+  "completed_at_utc": "2026-10-03T04:26:50.734040+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "openai-models.html",
+  "bytes": 379462,
+  "sha256": "f67d25aba18df1639fa04c9f56d4c06a22bc374a1b2251b5a7d6506ee4197edc",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/openai-models.txt",
+  "readable_extraction_sha256": "99f9f0ec31ca0fb937f9e90edab630b3c95cc4035afdba57486a20f8995ea899",
+  "raw_body_in_checkpoint": false
+}

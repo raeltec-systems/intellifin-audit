@@ -2,6 +2,8 @@
 use crate::identity::{Scope, valid_scope_id};
 pub const MAX_ORIGINAL_BYTES: usize = 10 * 1024 * 1024;
 pub const EVIDENCE_PAGE_SIZE: usize = 50;
+pub const EVIDENCE_SEARCH_CANDIDATES: usize = 256;
+pub const EVIDENCE_SEARCH_QUERY_BYTES: usize = 200;
 pub const PREVIEW_BYTES: usize = 64 * 1024;
 pub const PREVIEW_LINES: usize = 100;
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -88,6 +90,48 @@ pub struct EvidencePage<T> {
     pub items: Vec<T>,
     pub next_cursor: Option<String>,
 }
+/// Literal metadata search. No extracted content, ranking or business assertion
+/// is inferred from a match. Empty text browses the same registered originals.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EvidenceSearchQuery {
+    pub query: String,
+    pub after: Option<String>,
+}
+impl EvidenceSearchQuery {
+    pub fn new(query: &str, after: Option<String>) -> Option<Self> {
+        // Refuse controls before trimming, preserving the same Unicode rules as
+        // attributed metadata (including accepted format and private-use text).
+        if query.chars().any(char::is_control) {
+            return None;
+        }
+        let value = Self {
+            query: query.trim().to_owned(),
+            after,
+        };
+        value.is_valid().then_some(value)
+    }
+    pub fn is_valid(&self) -> bool {
+        self.query.len() <= EVIDENCE_SEARCH_QUERY_BYTES
+            && self.query.trim() == self.query
+            && !self.query.chars().any(char::is_control)
+            && self.after.as_deref().is_none_or(valid_scope_id)
+    }
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EvidenceSearchCoverage {
+    pub examined_count: usize,
+    pub candidate_limit: usize,
+    /// The remaining C-ordered candidates were exhausted for this read. This
+    /// does not claim absence before the cursor, document meaning or completeness.
+    pub complete: bool,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EvidenceSearchPage {
+    pub items: Vec<RegisteredEvidence>,
+    /// Last examined candidate, which need not be a returned match.
+    pub next_cursor: Option<String>,
+    pub coverage: EvidenceSearchCoverage,
+}
 /// Only inert, valid plain text. Markup remains a download-only original.
 pub fn plain_preview(bytes: &[u8]) -> Option<(String, bool)> {
     let text = std::str::from_utf8(bytes).ok()?;
@@ -124,6 +168,24 @@ pub fn plain_preview(bytes: &[u8]) -> Option<(String, bool)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn search_query_is_byte_bounded_and_preserves_metadata_unicode() {
+        let value = EvidenceSearchQuery::new("\u{2003}Résumé 界🙂\u{a0}", None).unwrap();
+        assert_eq!(value.query, "Résumé 界🙂");
+        assert_eq!(
+            EvidenceSearchQuery::new(" \u{2003}", None).unwrap().query,
+            ""
+        );
+        for value in ["\u{feff}source", "source\u{200d}name", "\u{e000}"] {
+            assert_eq!(EvidenceSearchQuery::new(value, None).unwrap().query, value);
+        }
+        assert!(EvidenceSearchQuery::new(&"🙂".repeat(50), None).is_some());
+        assert!(EvidenceSearchQuery::new(&"🙂".repeat(51), None).is_none());
+        for value in ["\nname", "name\r", "a\0b", "\u{85}name"] {
+            assert!(EvidenceSearchQuery::new(value, None).is_none());
+        }
+        assert!(EvidenceSearchQuery::new("name", Some("../scope".into())).is_none());
+    }
     #[test]
     fn preview_is_inert_bounded_and_utf8_safe() {
         assert!(plain_preview(b"<svg onload='x'>").is_none());

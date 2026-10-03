@@ -1,0 +1,20 @@
+{
+  "gate": "web-check-final-clean",
+  "command": [
+    "pnpm",
+    "--filter",
+    "@zobba/web",
+    "check"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T06:20:50.369643+00:00",
+  "ended_at": "2026-10-03T06:21:11.876704+00:00",
+  "duration_seconds": 21.507,
+  "exit": 0,
+  "source_before": "web-check-final-clean-source-before.json",
+  "source_after": "web-check-final-clean-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "web-check-final-clean.log",
+  "log_sha256": "f0814cfcfa17224bd9b348414f1513d1b96fa0d5addd8a2d27e9e0e45ad1b11d"
+}

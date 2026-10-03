@@ -11,6 +11,8 @@ export type EvidencePage = components['schemas']['EvidencePageResponse'];
 export type ReservationPage = components['schemas']['EvidenceReservationPageResponse'];
 export type Preview = components['schemas']['EvidencePreviewResponse'];
 export const MAX_ORIGINAL_BYTES = 10 * 1024 * 1024;
+export const EVIDENCE_SEARCH_BYTES = 200;
+export const EVIDENCE_SEARCH_CANDIDATES = 256;
 const DRAFT_KEY = 'zobba.evidence-draft.v1';
 // The 32 KiB reservation envelope plus the bounded session binding and ID.
 const MAX_DRAFT_BYTES = 40 * 1024;
@@ -39,6 +41,13 @@ function text(value: unknown, max: number): string {
 // Match Rust str::trim: Unicode White_Space excludes the accepted U+FEFF.
 export function trimEvidenceWhitespace(value: string): string {
   return value.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, '');
+}
+export function evidenceSearchQuery(value: string): string {
+  const query = trimEvidenceWhitespace(value);
+  if (new TextEncoder().encode(query).length > EVIDENCE_SEARCH_BYTES || /[\u0000-\u001f\u007f-\u009f]/.test(value)) {
+    throw new Error('Enter a search of at most 200 UTF-8 bytes without control characters.');
+  }
+  return query;
 }
 export function parseReservationRequest(value: unknown): ReservationRequest {
   const row = record(value), identity = record(row.identity), source = record(row.source);
@@ -110,10 +119,23 @@ async function protectedJson(path: string, scope: Scope, session: Session, signa
   await verifyEvidenceAudience(session, scope, signal);
   return result;
 }
-export async function listEvidence(scope: Scope, session: Session, signal: AbortSignal, after?: string): Promise<EvidencePage> {
-  const value = record(await protectedJson(route(scope, 'evidence', after), scope, session, signal));
-  if (typeof value.storage_configured !== 'boolean') invalid();
-  return { ...parsePage(value, value => parseEvidence(value, scope), value => value.reservation.id, after), storage_configured: value.storage_configured };
+export async function listEvidence(scope: Scope, session: Session, signal: AbortSignal, after?: string, search = ''): Promise<EvidencePage> {
+  const query = evidenceSearchQuery(search);
+  const value = record(await protectedJson(`${route(scope, 'evidence', after)}&${new URLSearchParams({ q: query })}`, scope, session, signal));
+  const coverage = record(value.coverage);
+  if (typeof value.storage_configured !== 'boolean' || value.query !== query || !Array.isArray(value.items) || value.items.length > 50 ||
+    coverage.candidate_limit !== EVIDENCE_SEARCH_CANDIDATES || typeof coverage.complete !== 'boolean' ||
+    !Number.isSafeInteger(coverage.examined_count) || (coverage.examined_count as number) < value.items.length || (coverage.examined_count as number) > EVIDENCE_SEARCH_CANDIDATES) invalid();
+  const items = value.items.map(value => parseEvidence(value, scope));
+  const next_cursor = value.next_cursor === null ? null : identifier(value.next_cursor);
+  if (coverage.complete !== (next_cursor === null) || next_cursor !== null && ((coverage.examined_count as number) === 0 || after && next_cursor <= after)) invalid();
+  if (next_cursor !== null && (items.length < 50 && coverage.examined_count !== EVIDENCE_SEARCH_CANDIDATES || items.length === 50 && next_cursor !== items.at(-1)!.reservation.id)) invalid();
+  items.forEach((item, index) => {
+    const id = item.reservation.id;
+    if (index && items[index - 1]!.reservation.id >= id || after && id <= after || next_cursor !== null && id > next_cursor) invalid();
+  });
+  return { items, next_cursor, query, storage_configured: value.storage_configured,
+    coverage: { examined_count: coverage.examined_count as number, candidate_limit: EVIDENCE_SEARCH_CANDIDATES, complete: coverage.complete } };
 }
 export async function listReservations(scope: Scope, session: Session, signal: AbortSignal, after?: string): Promise<ReservationPage> {
   return parsePage(await protectedJson(route(scope, 'evidence-reservations', after), scope, session, signal), value => {

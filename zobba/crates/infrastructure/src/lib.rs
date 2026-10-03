@@ -7,6 +7,7 @@ pub mod identity;
 pub mod knowledge;
 pub mod membership;
 pub mod methodology;
+pub mod model;
 pub mod oidc;
 pub mod operation;
 pub mod scope;
@@ -112,14 +113,14 @@ async fn check_effective_role(
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace, reachable r
           WHERE n.nspname='public' AND (c.relowner=r.oid OR (c.relkind IN ('r','p') AND (
             pg_catalog.has_table_privilege(r.oid,c.oid,'TRUNCATE,REFERENCES,TRIGGER,MAINTAIN')
-            OR (c.relname NOT IN ('login_attempts','sessions','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers','evidence_reservations','evidence_originals','knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals') AND pg_catalog.has_table_privilege(r.oid,c.oid,'INSERT'))
+            OR (c.relname NOT IN ('login_attempts','sessions','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers','evidence_reservations','evidence_originals','knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals','model_profiles','model_catalogues','model_invocations','model_results','model_tool_bindings') AND pg_catalog.has_table_privilege(r.oid,c.oid,'INSERT'))
             OR (c.relname NOT IN ('login_attempts','sessions') AND pg_catalog.has_table_privilege(r.oid,c.oid,'DELETE'))
             OR pg_catalog.has_table_privilege(r.oid,c.oid,'UPDATE')
             OR (c.relname IN ('task_wakeups','task_deliveries','membership_events','membership_invitations','membership_versions','methodology_versions','methodology_assignments','methodology_events','methodology_recalls','task_methodology_bindings','task_methodology_heads','task_methodology_changes','skill_versions','skill_events','skill_status','task_skill_selections') AND pg_catalog.has_table_privilege(r.oid,c.oid,'SELECT'))
             OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped AND (
               pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'REFERENCES')
               OR (c.relname IN ('membership_events','membership_invitations','membership_versions','methodology_versions','methodology_assignments','methodology_events','methodology_recalls','task_methodology_bindings','task_methodology_heads','task_methodology_changes','skill_versions','skill_events','skill_status','task_skill_selections') AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'SELECT'))
-              OR (NOT (c.relname IN ('login_attempts','sessions','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers','evidence_reservations','evidence_originals','knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals') OR (c.relname='identities' AND a.attname IN ('id','issuer','subject','display_name')) OR (c.relname='task_deliveries' AND a.attname='wakeup_id')) AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'INSERT'))
+              OR (NOT (c.relname IN ('login_attempts','sessions','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers','evidence_reservations','evidence_originals','knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals','model_profiles','model_catalogues','model_invocations','model_results','model_tool_bindings') OR (c.relname='identities' AND a.attname IN ('id','issuer','subject','display_name')) OR (c.relname='task_deliveries' AND a.attname='wakeup_id')) AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'INSERT'))
               OR (NOT ((c.relname IN ('identities','engagements') AND a.attname IN ('display_name','name')) OR (c.relname='task_counters' AND a.attname='cursor') OR (c.relname='tasks' AND a.attname IN ('cycle_id','working_brief','state','cessation','intent_revision','applied_intent','applied_command_cursor','revision','execution_epoch','owner_id','owner_until','owner_epoch')) OR (c.relname='task_cycles' AND a.attname='status') OR (c.relname='task_claims' AND a.attname='state') OR (c.relname='permission_heads' AND a.attname='current_version') OR (c.relname='operation_claims' AND a.attname IN ('state','consumed_at')) OR (c.relname='task_wakeups' AND a.attname IN ('pending','available_at')) OR (c.relname='task_deliveries' AND a.attname IN ('delivery_owner','delivery_until'))) AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'UPDATE'))
             ))))))
     "#).bind(role).bind(current_session).fetch_one(conn).await.map_err(|_| BootstrapError::DatabaseUnavailable)?;
@@ -142,7 +143,7 @@ async fn check_runtime_grants(conn: &mut PgConnection, role: &str) -> Result<(),
     let complete: bool = sqlx::query_scalar(r#"
       SELECT (SELECT pg_catalog.bool_and(pg_catalog.has_table_privilege($1,c.oid,'SELECT'))
         FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' AND c.relname NOT IN ('task_wakeups','task_deliveries','membership_events','membership_invitations','membership_versions','methodology_versions','methodology_assignments','methodology_events','methodology_recalls','task_methodology_bindings','task_methodology_heads','task_methodology_changes','skill_versions','skill_events','skill_status','task_skill_selections'))
-        AND (SELECT bool_and(pg_catalog.has_table_privilege($1,c.oid,'INSERT')) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname IN ('knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals'))
+        AND (SELECT bool_and(pg_catalog.has_table_privilege($1,c.oid,'INSERT')) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname IN ('knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals','model_profiles','model_catalogues','model_invocations','model_results','model_tool_bindings'))
         AND pg_catalog.has_table_privilege($1,'public.evidence_reservations','INSERT')
         AND pg_catalog.has_table_privilege($1,'public.evidence_originals','INSERT')
         AND pg_catalog.has_table_privilege($1,'public.login_attempts','INSERT')
@@ -214,6 +215,7 @@ async fn check_runtime_grants(conn: &mut PgConnection, role: &str) -> Result<(),
     check_methodology_functions(conn, Some(role)).await?;
     check_skills_functions(conn, Some(role)).await?;
     check_knowledge_functions(conn, Some(role)).await?;
+    check_model_functions(conn, Some(role)).await?;
     if complete {
         Ok(())
     } else {
@@ -332,6 +334,25 @@ async fn check_knowledge_functions(
     }
 }
 
+async fn check_model_functions(
+    conn: &mut PgConnection,
+    runtime: Option<&str>,
+) -> Result<(), BootstrapError> {
+    let safe: bool = sqlx::query_scalar(r#"
+      SELECT count(*)=1 AND bool_and(p.prosecdef
+       AND p.proowner=(SELECT relowner FROM pg_catalog.pg_class WHERE oid='public.zobba_bootstrap'::regclass)
+       AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a WHERE a.grantee=0 OR (a.grantee<>p.proowner AND (a.privilege_type<>'EXECUTE' OR a.is_grantable OR ($1::text IS NOT NULL AND a.grantee<>(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=$1)))))
+       AND ($1::text IS NULL OR pg_catalog.has_function_privilege($1,p.oid,'EXECUTE')))
+      FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public' AND p.proname='model_configuration_admin'
+    "#).bind(runtime).fetch_one(conn).await.map_err(|_| BootstrapError::SchemaMismatch)?;
+    if safe {
+        Ok(())
+    } else {
+        Err(BootstrapError::SchemaMismatch)
+    }
+}
+
 async fn inventory(conn: &mut PgConnection) -> Result<Vec<String>, BootstrapError> {
     let foreign: bool = sqlx::query_scalar(r#"
         SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname !~ '^pg_' AND nspname NOT IN ('public','information_schema'))
@@ -347,20 +368,20 @@ async fn inventory(conn: &mut PgConnection) -> Result<Vec<String>, BootstrapErro
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_dict o JOIN pg_catalog.pg_namespace n ON n.oid=o.dictnamespace WHERE n.nspname='public')
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_parser o JOIN pg_catalog.pg_namespace n ON n.oid=o.prsnamespace WHERE n.nspname='public')
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_template o JOIN pg_catalog.pg_namespace n ON n.oid=o.tmplnamespace WHERE n.nspname='public')
-        OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname NOT IN ('membership_admin','membership_session','membership_validate','membership_fence','membership_read','membership_write','membership_accept','membership_preview','membership_assignments','evidence_session_locked','admin_continuity_assert','admin_continuity_lock','admin_continuity_check','admin_continuity_truncate','methodology_audit','methodology_read','methodology_write','methodology_candidates','methodology_task','skills_read','skills_admin','skills_impact','skills_write','skills_task','knowledge_audit','knowledge_release_active'))
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname NOT IN ('membership_admin','membership_session','membership_validate','membership_fence','membership_read','membership_write','membership_accept','membership_preview','membership_assignments','evidence_session_locked','admin_continuity_assert','admin_continuity_lock','admin_continuity_check','admin_continuity_truncate','methodology_audit','methodology_read','methodology_write','methodology_candidates','methodology_task','skills_read','skills_admin','skills_impact','skills_write','skills_task','knowledge_audit','knowledge_release_active','model_configuration_admin'))
         OR EXISTS (
           SELECT 1 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace
           WHERE n.nspname='public' AND t.oid NOT IN (
-            SELECT c.reltype FROM pg_catalog.pg_class c WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap','identities','login_attempts','sessions','organisations','clients','engagements','organisation_memberships','engagement_assignments','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','trusted_attachment_metadata','task_deliveries','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers','membership_events','membership_invitations','membership_versions','evidence_reservations','evidence_originals','methodology_versions','methodology_assignments','methodology_events','methodology_recalls','task_methodology_bindings','task_methodology_heads','task_methodology_changes','skill_versions','skill_events','skill_status','task_skill_selections','knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals')
+            SELECT c.reltype FROM pg_catalog.pg_class c WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap','identities','login_attempts','sessions','organisations','clients','engagements','organisation_memberships','engagement_assignments','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','trusted_attachment_metadata','task_deliveries','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers','membership_events','membership_invitations','membership_versions','evidence_reservations','evidence_originals','methodology_versions','methodology_assignments','methodology_events','methodology_recalls','task_methodology_bindings','task_methodology_heads','task_methodology_changes','skill_versions','skill_events','skill_status','task_skill_selections','knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals','model_profiles','model_catalogues','model_invocations','model_results','model_tool_bindings')
             UNION ALL SELECT rowtype.typarray FROM pg_catalog.pg_type rowtype JOIN pg_catalog.pg_class c ON c.reltype=rowtype.oid
-              WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap','identities','login_attempts','sessions','organisations','clients','engagements','organisation_memberships','engagement_assignments','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','trusted_attachment_metadata','task_deliveries','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers','membership_events','membership_invitations','membership_versions','evidence_reservations','evidence_originals','methodology_versions','methodology_assignments','methodology_events','methodology_recalls','task_methodology_bindings','task_methodology_heads','task_methodology_changes','skill_versions','skill_events','skill_status','task_skill_selections','knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals')
+              WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap','identities','login_attempts','sessions','organisations','clients','engagements','organisation_memberships','engagement_assignments','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','trusted_attachment_metadata','task_deliveries','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers','membership_events','membership_invitations','membership_versions','evidence_reservations','evidence_originals','methodology_versions','methodology_assignments','methodology_events','methodology_recalls','task_methodology_bindings','task_methodology_heads','task_methodology_changes','skill_versions','skill_events','skill_status','task_skill_selections','knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals','model_profiles','model_catalogues','model_invocations','model_results','model_tool_bindings')
           ))
     "#).fetch_one(&mut *conn).await.map_err(|_| BootstrapError::DatabaseUnavailable)?;
     if foreign {
         return Err(BootstrapError::SchemaMismatch);
     }
     // Bound inventory independently of attacker-controlled catalog size.
-    sqlx::query_scalar("SELECT c.relname::text FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind <> 'i' ORDER BY c.relname LIMIT 65")
+    sqlx::query_scalar("SELECT c.relname::text FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind <> 'i' ORDER BY c.relname LIMIT 80")
         .fetch_all(conn).await.map_err(|_| BootstrapError::DatabaseUnavailable)
 }
 
@@ -373,6 +394,69 @@ async fn check_schema(
 ) -> Result<i64, BootstrapError> {
     let tables = inventory(conn).await?;
     let mut version = if tables
+        == [
+            "_sqlx_migrations",
+            "clients",
+            "engagement_assignments",
+            "engagements",
+            "evidence_originals",
+            "evidence_reservations",
+            "identities",
+            "knowledge_captures",
+            "knowledge_events",
+            "knowledge_invalidations",
+            "knowledge_layout_events",
+            "knowledge_publications",
+            "knowledge_records",
+            "knowledge_source_corrections",
+            "knowledge_withdrawals",
+            "login_attempts",
+            "membership_events",
+            "membership_invitations",
+            "membership_versions",
+            "methodology_assignments",
+            "methodology_events",
+            "methodology_recalls",
+            "methodology_versions",
+            "model_catalogues",
+            "model_invocations",
+            "model_profiles",
+            "model_results",
+            "model_tool_bindings",
+            "operation_attempts",
+            "operation_claims",
+            "operation_decisions",
+            "operation_receipt_producers",
+            "operation_receipt_slots",
+            "operation_receipts",
+            "operations",
+            "organisation_memberships",
+            "organisations",
+            "permission_heads",
+            "permission_versions",
+            "sessions",
+            "skill_events",
+            "skill_status",
+            "skill_versions",
+            "task_claims",
+            "task_commands",
+            "task_counters",
+            "task_cycles",
+            "task_deliveries",
+            "task_events",
+            "task_methodology_bindings",
+            "task_methodology_changes",
+            "task_methodology_heads",
+            "task_observations",
+            "task_receipt_slots",
+            "task_skill_selections",
+            "task_wakeups",
+            "tasks",
+            "trusted_attachment_metadata",
+            "zobba_bootstrap",
+        ] {
+        11
+    } else if tables
         == [
             "_sqlx_migrations",
             "clients",
@@ -428,7 +512,8 @@ async fn check_schema(
             "tasks",
             "trusted_attachment_metadata",
             "zobba_bootstrap",
-        ] {
+        ]
+    {
         10
     } else if tables
         == [
@@ -725,8 +810,10 @@ async fn check_schema(
         include_str!("schema-v8.catalog")
     } else if version == 9 {
         include_str!("schema-v9.catalog")
-    } else {
+    } else if version == 10 {
         include_str!("schema-v10.catalog")
+    } else {
+        include_str!("schema-v11.catalog")
     };
     if signature.len() >= 4097 || !signature.iter().map(String::as_str).eq(expected.lines()) {
         return Err(BootstrapError::SchemaMismatch);
@@ -749,9 +836,12 @@ async fn check_schema(
     if version >= 10 {
         check_knowledge_functions(conn, None).await?;
     }
+    if version >= 11 {
+        check_model_functions(conn, None).await?;
+    }
     // Compare bounded booleans, never allocate untrusted metadata strings/blobs.
     let versions: Vec<i64> =
-        sqlx::query_scalar("SELECT version FROM public._sqlx_migrations ORDER BY version LIMIT 11")
+        sqlx::query_scalar("SELECT version FROM public._sqlx_migrations ORDER BY version LIMIT 12")
             .fetch_all(&mut *conn)
             .await
             .map_err(|_| BootstrapError::SchemaMismatch)?;
@@ -942,7 +1032,7 @@ async fn migrate_locked(conn: &mut PgConnection, runtime_role: &str) -> Result<(
         "{grants} GRANT EXECUTE ON FUNCTION public.skills_read(text,text,text),public.skills_admin(text,text,text,text,jsonb),public.skills_impact(text,jsonb),public.skills_write(text,text,text,text,jsonb,text,text,text,jsonb),public.skills_task(text,text,jsonb) TO \"{runtime_role}\";"
     );
     let grants = format!(
-        "{grants} GRANT SELECT,INSERT ON public.knowledge_captures,public.knowledge_events,public.knowledge_invalidations,public.knowledge_layout_events,public.knowledge_publications,public.knowledge_records,public.knowledge_source_corrections,public.knowledge_withdrawals TO \"{runtime_role}\"; GRANT EXECUTE ON FUNCTION public.knowledge_audit(text,text,text,text),public.knowledge_release_active(text,text) TO \"{runtime_role}\";"
+        "{grants} GRANT SELECT,INSERT ON public.knowledge_captures,public.knowledge_events,public.knowledge_invalidations,public.knowledge_layout_events,public.knowledge_publications,public.knowledge_records,public.knowledge_source_corrections,public.knowledge_withdrawals,public.model_profiles,public.model_catalogues,public.model_invocations,public.model_results,public.model_tool_bindings TO \"{runtime_role}\"; GRANT EXECUTE ON FUNCTION public.knowledge_audit(text,text,text,text),public.knowledge_release_active(text,text),public.model_configuration_admin(text,text,text) TO \"{runtime_role}\";"
     );
     sqlx::raw_sql(&grants)
         .execute(&mut *tx)

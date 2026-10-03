@@ -1,0 +1,24 @@
+{
+  "gate": "clippy-final-frozen",
+  "command": [
+    "cargo",
+    "clippy",
+    "--workspace",
+    "--all-targets",
+    "--locked",
+    "--",
+    "-D",
+    "warnings"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T05:51:50.220176+00:00",
+  "ended_at": "2026-10-03T05:52:25.108642+00:00",
+  "duration_seconds": 34.889,
+  "exit": 0,
+  "source_before": "clippy-final-frozen-source-before.json",
+  "source_after": "clippy-final-frozen-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "clippy-final-frozen.log",
+  "log_sha256": "316eda0e834f1ee62c71c5c3c6a1d725ff64d698628810587dac7656625e0069"
+}

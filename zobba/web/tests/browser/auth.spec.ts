@@ -457,12 +457,19 @@ COMMIT;`);
     await expect(page.getByRole('button', { name: /Pagination A.*Updated assignment 001/ })).toBeVisible();
     await page.goto(`${runtime.url}/?organisation_id=org-pagination-b&client_id=client-shared&engagement_id=engagement-060`);
     await expect(page.getByRole('heading', { name: 'Assignment 060', exact: true })).toBeVisible();
+    await expect(page.getByText('Conversation up to date', { exact: true })).toBeVisible();
     await page.setViewportSize({ width: 320, height: 800 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await capture(page, info, 'paginated-direct-scope-mobile.png');
-    runtime.sql("UPDATE public.engagement_assignments SET active=false WHERE organisation_id='org-pagination-b' AND engagement_id='engagement-060' AND actor_id='actor-a';");
-    await page.getByRole('button', { name: 'All engagements' }).focus();
+    // Establish the protected focus before revocation: an independent authority
+    // read may withdraw the back button as soon as the assignment changes.
+    const previouslyFocused = page.getByRole('button', { name: '← All engagements', exact: true });
+    await previouslyFocused.evaluate(element => element.setAttribute('data-before-assignment-revocation', 'focused'));
+    await previouslyFocused.focus();
+    await expect(previouslyFocused).toBeFocused();
+    await runtime.sqlAsync("UPDATE public.engagement_assignments SET active=false WHERE organisation_id='org-pagination-b' AND engagement_id='engagement-060' AND actor_id='actor-a';");
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(page.locator('[data-before-assignment-revocation="focused"]')).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Your engagements', exact: true })).toBeFocused();
     await expect(page.getByText('This engagement is no longer available to you.', { exact: false })).toBeVisible();
     await page.getByRole('button', { name: 'Next page' }).click();

@@ -1,0 +1,10 @@
+{
+  "rust_passes": 371,
+  "rust_ignored_parent_owned_helpers": 3,
+  "browser_passes": 159,
+  "browser_retries": 0,
+  "web_passes": 183,
+  "qualification_guard_passes": 6,
+  "python_guard_passes": 47,
+  "fixture_passes": 56
+}

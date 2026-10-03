@@ -1,3 +1,40 @@
+## 2026-10-03 — Story 22.1 native model boundaries
+
+Model configuration is Admin-owned history; an Admin-only identity needs a narrow
+session-bound configuration boundary, not audit membership or access to the
+owner-only membership helpers. Preserve published migrations and catalogues.
+Model and operation repositories must use the same trusted qualification source;
+ordinary configuration and local fixtures cannot establish live qualification.
+
+Bind the complete portable input and its declared data classifications to the
+canonical disclosure operation before the durable possible-disclosure cutoff.
+Typed tool-result provenance is distinct from the firm's data classifications.
+Recheck current knowledge, profile, catalogue, Task and Permissions at admission
+and consumption. A withdrawn source revokes unconsumed readiness; verification
+unavailability or capacity is not proof of revocation. Consumed receipts remain
+historical facts. Recover uncertain invocations without resending them.
+
+The initial tool catalogue describes exact prepared operations. Variable-argument
+tools need a trusted resolver and persisted canonical binding in a later story.
+Keep native transport qualification separate from audit quality and production
+availability. Live credentials, processing permissions and a reviewed spend bound
+remain explicit owner gates; a fixture pass or environment flag is not approval.
+
+## 2026-10-03 — Story 21.6 bounded source search
+
+Search registered evidence through one current-scope, C-ordered candidate stream.
+Examine at most 256 candidates, fetch one lookahead, and return at most 50 matches.
+The next cursor names the last candidate actually examined, including on an empty
+partial page; it must not skip the remainder of a fetched block. A changed query
+starts from the beginning. Reaching the end describes this metadata scan, never
+source completeness or absence of relevant material. Preserve Rust whitespace
+semantics and the already accepted Unicode filename/source values.
+
+Knowledge source navigation retains the original scope, evidence ID, storage
+version and digest. Reading knowledge does not grant access to its supporting
+original. Inspect and download under current source authority while keeping the
+coordinating conversation and Task owner unchanged.
+
 ## 2026-10-02 — Story 21.4 scoped context and derivative custody
 
 Keep immutable source facts distinct from current eligibility. Guide projection

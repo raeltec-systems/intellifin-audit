@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { AccessError } from '../src/auth.ts';
-import { discardAcquisitionDraft, downloadEvidence, evidenceAudience, listEvidence, measureFile, parseEvidence, parseReservationRequest,
+import { discardAcquisitionDraft, downloadEvidence, evidenceAudience, evidenceSearchQuery, listEvidence, measureFile, parseEvidence, parseReservationRequest,
   previewEvidence, recoverAcquisitionDraft, ReservationLimitError, reserveEvidence, safeFilename, saveAcquisitionDraft, trimEvidenceWhitespace } from '../src/evidence.ts';
 const scope = { organisation_id: 'org-a', client_id: 'client-a', engagement_id: 'engagement-a' };
 const session = { identity: { id: 'actor-a', display_name: 'Auditor A' }, csrf_token: 'session-a' };
@@ -175,14 +175,41 @@ test('durable reservation quota is distinguished from conflict and transient I/O
   await assert.rejects(reserveEvidence(scope, session, request, signal()), error => error instanceof AccessError && !(error instanceof ReservationLimitError));
 });
 
-test('bounded evidence pages validate ordering, exact final cursor and explicit storage configuration', async context => {
+test('bounded evidence pages validate ordered examined-prefix continuation and explicit coverage', async context => {
   const items = Array.from({ length: 50 }, (_, index) => ({ ...evidence, reservation: { ...reservation, id: `evidence-${String(index).padStart(2, '0')}` } }));
-  const valid = { items, next_cursor: 'evidence-49', storage_configured: false };
+  const valid = { items, next_cursor: 'evidence-49', storage_configured: false, query: '', coverage: { examined_count: 50, candidate_limit: 256, complete: false } };
   authorizedFetch(context, () => Response.json(valid));
   assert.deepEqual(await listEvidence(scope, session, signal()), valid); context.mock.restoreAll();
   for (const value of [{ ...valid, items: [...items, evidence] }, { ...valid, items: [...items].reverse() }, { ...valid, next_cursor: 'evidence-48' }, { items, next_cursor: 'evidence-49' }]) {
     authorizedFetch(context, () => Response.json(value)); await assert.rejects(listEvidence(scope, session, signal())); context.mock.restoreAll();
   }
+});
+
+test('source search preserves Unicode, uses UTF-8 bounds and canonical query equality', async context => {
+  for (const [input, expected] of [['\u2000Résumé\u3000', 'Résumé'], ['\ufeff', '\ufeff'], ['界'.repeat(66) + 'aa', '界'.repeat(66) + 'aa'], ['internal\u2028value', 'internal\u2028value']]) assert.equal(evidenceSearchQuery(input), expected);
+  for (const input of ['界'.repeat(67), '\nsearch', 'search\r', 'text\u0085', '\u0000']) assert.throws(() => evidenceSearchQuery(input));
+  const result = { items: [evidence], next_cursor: null, storage_configured: true, query: 'Résumé', coverage: { examined_count: 1, candidate_limit: 256, complete: true } };
+  authorizedFetch(context, path => { assert.equal(new URL(path, 'https://example.test').searchParams.get('q'), 'Résumé'); return Response.json(result); });
+  assert.deepEqual(await listEvidence(scope, session, signal(), undefined, '\u2000Résumé\u3000'), result);
+  context.mock.restoreAll();
+  authorizedFetch(context, () => Response.json({ ...result, query: 'different' }));
+  await assert.rejects(listEvidence(scope, session, signal(), undefined, 'Résumé'));
+});
+
+test('sparse and empty search pages can continue only through a valid examined prefix', async context => {
+  const empty = { items: [], next_cursor: 'evidence-z', storage_configured: true, query: 'needle', coverage: { examined_count: 256, candidate_limit: 256, complete: false } };
+  for (const valid of [empty, { ...empty, items: [evidence] }, { ...empty, next_cursor: null, coverage: { ...empty.coverage, complete: true } }]) {
+    authorizedFetch(context, () => Response.json(valid));
+    assert.deepEqual(await listEvidence(scope, session, signal(), undefined, 'needle'), valid); context.mock.restoreAll();
+  }
+  for (const invalid of [
+    { ...empty, next_cursor: null }, { ...empty, coverage: { ...empty.coverage, complete: true } },
+    { ...empty, coverage: { ...empty.coverage, examined_count: 257 } }, { ...empty, coverage: { ...empty.coverage, examined_count: 0 } },
+    { ...empty, coverage: { ...empty.coverage, candidate_limit: 1024 } }, { ...empty, coverage: undefined },
+    { ...empty, items: [evidence], next_cursor: 'evidence-0' },
+  ]) { authorizedFetch(context, () => Response.json(invalid)); await assert.rejects(listEvidence(scope, session, signal(), undefined, 'needle')); context.mock.restoreAll(); }
+  authorizedFetch(context, () => Response.json(empty));
+  await assert.rejects(listEvidence(scope, session, signal(), 'evidence-z', 'needle'));
 });
 
 

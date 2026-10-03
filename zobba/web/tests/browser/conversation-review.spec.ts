@@ -249,8 +249,14 @@ test('an unresolved exact send scrolls once and never pulls deliberately opened 
 });
 
 test('inner methodology disclosure survives cancelled reads and tab-away but withdraws on current failure', async ({ page }) => {
+  await page.clock.install();
   await signIn(page);
   const task = await create(page, 'Retain the inspected methodology disclosure');
+  // Creation uses the running clock. Reload at a paused origin before opening
+  // inspection so the 15s/30s refresh intervals cannot supersede its 8s deadline.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 60_000));
+  await page.reload();
+  await expect(page.getByText('Conversation up to date', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: `Open ${task.objective}`, exact: true }).click();
   const methodology = page.locator('.task-methodology');
   const template = methodology.locator('details').filter({ has: page.locator('summary', { hasText: /^Template: / }) });
@@ -338,6 +344,10 @@ test('inner methodology disclosure survives cancelled reads and tab-away but wit
   });
   try {
     await refresh.click(); await expect.poll(() => deadlineHeld).toBe(true);
+    // The real response is held; exercise the production timeout boundary.
+    await page.clock.runFor(7_999);
+    await expect(page.locator('[data-timeout-template="retained"]')).toBeVisible();
+    await page.clock.runFor(1);
     await expect(methodology.getByText('Current methodology basis is unavailable. Refresh to inspect it.', { exact: true })).toBeVisible();
     await expect(page.locator('[data-timeout-template="retained"]')).toHaveCount(0);
     await expect(template).toHaveCount(0);

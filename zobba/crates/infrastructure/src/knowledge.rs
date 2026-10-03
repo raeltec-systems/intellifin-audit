@@ -984,6 +984,86 @@ async fn publication_view(tx: &mut Tx, p: &Value) -> Result<KnowledgeView, Knowl
     v.can_undo = false;
     Ok(v)
 }
+/// Recheck exact context references and Task basis within the caller's existing
+/// organisation/engagement/Task fence. This grants no outbound authority itself.
+pub(crate) async fn verify_in_transaction(
+    tx: &mut Tx,
+    actor: &str,
+    s: &Scope,
+    task_id: &str,
+    command: &VerifyKnowledge,
+) -> Result<String, KnowledgeError> {
+    if command.items.len() > KNOWLEDGE_PAGE_SIZE
+        || (command.exact && command.items.len() != 1)
+        || command.expected_execution_epoch > i64::MAX as u64
+        || !valid_scope_id(&command.expected_methodology_binding_id)
+        || command.items.iter().any(|item| {
+            !valid_scope_id(&item.id) || item.revision == 0 || item.revision > i64::MAX as u64
+        })
+        || command
+            .items
+            .iter()
+            .map(|item| &item.id)
+            .collect::<BTreeSet<_>>()
+            .len()
+            != command.items.len()
+    {
+        return Err(KnowledgeError::Invalid);
+    }
+    let (consumer, _, epoch) = task(tx, s, task_id).await?;
+    if !audit(tx, &consumer, s).await? {
+        return Err(KnowledgeError::Denied);
+    }
+    let binding = crate::methodology::current_binding(tx, task_id)
+        .await
+        .map_err(|_| KnowledgeError::Unavailable)?;
+    if epoch != command.expected_execution_epoch
+        || binding.id != command.expected_methodology_binding_id
+    {
+        return Err(KnowledgeError::Conflict);
+    }
+    for expected in &command.items {
+        let publication:Option<Value>=sqlx::query_scalar("SELECT document FROM public.knowledge_publications WHERE organisation_id=$1 AND id=$2 AND client_id=$3 AND engagement_id=$4 AND kind='preference'").bind(&s.organisation_id).bind(&expected.id).bind(&s.client_id).bind(&s.engagement_id).fetch_optional(&mut **tx).await.map_err(db)?;
+        let (current, applicability) = if let Some(publication) = publication {
+            (
+                publication_view(tx, &publication).await?,
+                Applicability::default(),
+            )
+        } else {
+            let record = load(
+                tx,
+                &s.organisation_id,
+                &expected.id,
+                Some(expected.revision),
+            )
+            .await?;
+            checked_context(tx, actor, &consumer, s, task_id, record).await?
+        };
+        if current.record.revision != expected.revision || current.status != expected.status {
+            return Err(KnowledgeError::Conflict);
+        }
+        if !command.exact {
+            if !command.include_inactive && current.status != RecordStatus::Current {
+                return Err(KnowledgeError::Ineligible);
+            }
+            if applicability.omission.is_some() {
+                return Err(KnowledgeError::Ineligible);
+            }
+        }
+    }
+    if !audit(tx, actor, s).await? || !audit(tx, &consumer, s).await? {
+        return Err(KnowledgeError::Denied);
+    }
+    // Dependency checks may have visited other engagements. Recheck their
+    // server-time membership expiries immediately before returning the joint
+    // grant to an outbound caller, just as the browser repository finish does.
+    let dependencies_current: bool = sqlx::query_scalar("SELECT NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(nullif(current_setting('zobba.knowledge_checks',true),''),'[]')::jsonb) c WHERE NOT public.knowledge_audit(c->>0,c->>1,c->>2,c->>3))")
+        .fetch_one(&mut **tx).await.map_err(db)?;
+    if !dependencies_current {
+        return Err(KnowledgeError::Denied);
+    }
+    Ok(consumer)
+}
 impl KnowledgeStore for KnowledgeRepository {
     async fn verify(
         &self,
@@ -992,67 +1072,8 @@ impl KnowledgeStore for KnowledgeRepository {
         task_id: &str,
         command: &VerifyKnowledge,
     ) -> Result<(), KnowledgeError> {
-        if command.items.len() > KNOWLEDGE_PAGE_SIZE
-            || (command.exact && command.items.len() != 1)
-            || command.expected_execution_epoch > i64::MAX as u64
-            || !valid_scope_id(&command.expected_methodology_binding_id)
-            || command.items.iter().any(|item| {
-                !valid_scope_id(&item.id) || item.revision == 0 || item.revision > i64::MAX as u64
-            })
-            || command
-                .items
-                .iter()
-                .map(|item| &item.id)
-                .collect::<BTreeSet<_>>()
-                .len()
-                != command.items.len()
-        {
-            return Err(KnowledgeError::Invalid);
-        }
         let mut tx = self.scoped(actor, s, None).await?;
-        let (consumer, _, epoch) = task(&mut tx, s, task_id).await?;
-        if !audit(&mut tx, &consumer, s).await? {
-            return Err(KnowledgeError::Denied);
-        }
-        let binding = crate::methodology::current_binding(&mut tx, task_id)
-            .await
-            .map_err(|_| KnowledgeError::Unavailable)?;
-        if epoch != command.expected_execution_epoch
-            || binding.id != command.expected_methodology_binding_id
-        {
-            return Err(KnowledgeError::Conflict);
-        }
-        for expected in &command.items {
-            let publication:Option<Value>=sqlx::query_scalar("SELECT document FROM public.knowledge_publications WHERE organisation_id=$1 AND id=$2 AND client_id=$3 AND engagement_id=$4 AND kind='preference'").bind(&s.organisation_id).bind(&expected.id).bind(&s.client_id).bind(&s.engagement_id).fetch_optional(&mut *tx).await.map_err(db)?;
-            let (current, applicability) = if let Some(publication) = publication {
-                (
-                    publication_view(&mut tx, &publication).await?,
-                    Applicability::default(),
-                )
-            } else {
-                let record = load(
-                    &mut tx,
-                    &s.organisation_id,
-                    &expected.id,
-                    Some(expected.revision),
-                )
-                .await?;
-                checked_context(&mut tx, actor, &consumer, s, task_id, record).await?
-            };
-            if current.record.revision != expected.revision || current.status != expected.status {
-                return Err(KnowledgeError::Conflict);
-            }
-            if !command.exact {
-                if !command.include_inactive && current.status != RecordStatus::Current {
-                    return Err(KnowledgeError::Ineligible);
-                }
-                if applicability.omission.is_some() {
-                    return Err(KnowledgeError::Ineligible);
-                }
-            }
-        }
-        // All fragments, exact revisions, destination actor and Task/method basis
-        // share this fence. No split read may certify an earlier context reply.
+        let consumer = verify_in_transaction(&mut tx, actor, s, task_id, command).await?;
         self.finish(&mut tx, actor, s, Some(&consumer)).await?;
         tx.commit().await.map_err(db)?;
         Ok(())

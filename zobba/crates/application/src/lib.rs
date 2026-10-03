@@ -5,6 +5,7 @@ pub mod identity;
 pub mod knowledge;
 pub mod membership;
 pub mod methodology;
+pub mod model;
 pub mod operation;
 pub mod skills;
 pub mod task;

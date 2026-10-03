@@ -1,0 +1,18 @@
+{
+  "gate": "fixture-final",
+  "command": [
+    "pnpm",
+    "fixture:test"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T04:27:13.043021+00:00",
+  "ended_at": "2026-10-03T04:27:18.596173+00:00",
+  "duration_seconds": 5.553,
+  "exit": 0,
+  "source_before": "fixture-final-source-before.json",
+  "source_after": "fixture-final-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "fixture-final.log",
+  "log_sha256": "9bbf3aca4572bf820b38bd0cba85d37206b175f77de4a1a6c9c41c45c498f6a9"
+}

@@ -74,6 +74,7 @@ function ExactKnowledge({ scope, task, session, accessReady, onAccessFailure, on
 
 export function TaskKnowledge({ scope, task, session, accessReady, onAccessFailure, method, skills, onGuide, onApplyLayout }: Props) {
   const owner = knowledgeAudience(session, scope.organisation_id, scope, task.id);
+  const heading = useRef<HTMLHeadingElement>(null);
   const [draft, updateDraft] = useState<KnowledgeDraft | null>(() => recoverKnowledge(owner, session).draft);
   // Custody and this ref advance together before rendering. An asynchronous
   // source read must merge its one field with the latest edits, and cannot act
@@ -112,6 +113,7 @@ export function TaskKnowledge({ scope, task, session, accessReady, onAccessFailu
     // A supporting origin can disappear while this destination stays valid.
     // Withdraw the whole old projection, exact inspector and dependent editor;
     // uncertain requests remain bound to this owner for later receipt recovery.
+    if (inspection.panel.current?.contains(document.activeElement) && heading.current?.getClientRects().length) heading.current.focus({ preventScroll: true });
     fragment.current = { owner, generation: sourceGeneration + 1 };
     setDraft(null); setNotice(''); setSourceGeneration(sourceGeneration + 1);
   }, [owner, sourceGeneration, denied]);
@@ -146,7 +148,7 @@ export function TaskKnowledge({ scope, task, session, accessReady, onAccessFailu
     else return;
     void mutation.apply({ kind: 'knowledge', scope, task_id: task.id, body: { key: crypto.randomUUID(), expected_revision: draft.expected_revision, action } });
   }
-  return <section ref={inspection.panel} className="brief-section task-knowledge" aria-label="Scoped working knowledge"><h4>Scoped working knowledge</h4>
+  return <section ref={inspection.panel} className="brief-section task-knowledge" aria-label="Scoped working knowledge"><h4 ref={heading} tabIndex={-1}>Scoped working knowledge</h4>
     <p>Inspectable preparation for this Task. These independent current observations do not claim a model or skill consumed this context.</p>
     {!visible ? <p role="status">{inspection.error ? 'Current working knowledge is unavailable. Refresh to check its basis.' : inspection.verified && !matchesTask ? 'The Task changed while context was read. Refresh knowledge to inspect its current epoch.' : inspection.verified && !matchesMethod ? 'Waiting for a matching current methodology basis. Knowledge is withheld while its basis differs.' : 'Checking current knowledge and source access…'}</p> : null}
     <button type="button" className="text-button" disabled={!accessReady || inspection.loading || mutation.working} onClick={() => void inspection.refresh()}>Refresh working knowledge</button>

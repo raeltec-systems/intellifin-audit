@@ -402,6 +402,7 @@ pub fn authenticated_router_with_evidence(
         evidence::EvidenceReservationResponse,
         evidence::EvidenceResponse,
         evidence::EvidencePageResponse,
+        evidence::EvidenceSearchCoverageResponse,
         evidence::EvidenceReservationPageResponse,
         evidence::EvidencePreviewKind,
         evidence::EvidencePreviewResponse,

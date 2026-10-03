@@ -1,0 +1,21 @@
+{
+  "gate": "lib-repair-1",
+  "command": [
+    "cargo",
+    "test",
+    "--workspace",
+    "--lib",
+    "--locked"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T03:43:51.926389+00:00",
+  "ended_at": "2026-10-03T03:44:29.597754+00:00",
+  "duration_seconds": 37.671,
+  "exit": 0,
+  "source_before": "lib-repair-1-source-before.json",
+  "source_after": "lib-repair-1-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "lib-repair-1.log",
+  "log_sha256": "e1f2f686bb7f6984120aa38a98871f61ec67f6169627383e1259185f739d4fdc"
+}

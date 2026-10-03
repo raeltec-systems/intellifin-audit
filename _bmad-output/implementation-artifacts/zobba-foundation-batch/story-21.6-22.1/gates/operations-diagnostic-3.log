@@ -1,0 +1,169 @@
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.02s
+     Running tests/operations.rs (target/debug/deps/operations-c15f0a4016247673)
+
+running 5 tests
+test maximal_valid_owned_wire_values_fit_durable_byte_envelopes ... maximal valid wire bytes: canonical=16837, decision=17212, policy=83779, authority=1031769
+ok
+test owned_storage_roundtrips_and_refuses_ambiguous_durable_fields ... ok
+test standing_permissions_exact_operations_and_transaction_cutoffs ... model integration phase 1
+model integration phase 2
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model integration phase 3
+model projection seam future bytes=10240
+model integration phase 4
+model integration phase 5
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model integration phase 6
+model projection seam future bytes=10240
+model integration complete
+public operation get future bytes=5808
+ordinary operations phase begins
+ordinary phase logical_admission_and_atomicity, future bytes=30960
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+ordinary phase exact_decisions, future bytes=24384
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+ordinary phase intersected_policy_and_lineage, future bytes=26496
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+ordinary phase cutoff_races, future bytes=20320
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+ordinary phase facts_and_recovery, future bytes=31920
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+ordinary phase policy_revisions::verify, future bytes=22560
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+ordinary phase review_repairs::verify, future bytes=21192
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+model projection seam future bytes=10240
+ordinary phase task_reconciliation::verify, future bytes=46128
+
+thread 'standing_permissions_exact_operations_and_transaction_cutoffs' (1115243) has overflowed its stack
+fatal runtime error: stack overflow, aborting
+error: test failed, to rerun pass `-p zobba-infrastructure --test operations`
+
+Caused by:
+  process didn't exit successfully: `/workspace/intellifin-audit/zobba/target/debug/deps/operations-c15f0a4016247673 --nocapture --test-threads=1` (signal: 6, SIGABRT: process abort signal)

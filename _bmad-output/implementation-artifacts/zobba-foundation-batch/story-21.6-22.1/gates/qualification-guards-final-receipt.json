@@ -1,0 +1,25 @@
+{
+  "gate": "qualification-guards-final",
+  "command": [
+    "cargo",
+    "test",
+    "-p",
+    "zobba-infrastructure",
+    "--example",
+    "model_qualification",
+    "--locked",
+    "--",
+    "--test-threads=1"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T04:51:05.523322+00:00",
+  "ended_at": "2026-10-03T04:51:19.358726+00:00",
+  "duration_seconds": 13.835,
+  "exit": 0,
+  "source_before": "qualification-guards-final-source-before.json",
+  "source_after": "qualification-guards-final-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "qualification-guards-final.log",
+  "log_sha256": "c1a4897a9c733db43e9df5978f699ee5b83302e0b2e1c891435037359783b569"
+}

@@ -100,6 +100,14 @@ impl EvidenceMetadata for Metadata {
     ) -> Result<EvidencePage<RegisteredEvidence>, EvidenceError> {
         unreachable!()
     }
+    async fn search(
+        &self,
+        _: &str,
+        _: &Scope,
+        _: &EvidenceSearchQuery,
+    ) -> Result<EvidenceSearchPage, EvidenceError> {
+        unreachable!()
+    }
     async fn inspect(&self, _: &str, _: &Scope, _: &str) -> Result<StoredEvidence, EvidenceError> {
         Ok(StoredEvidence {
             evidence: self

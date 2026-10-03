@@ -262,6 +262,41 @@ impl EvidenceMetadata for EvidenceRepository {
         tx.commit().await.map_err(unavailable)?;
         Ok(EvidencePage { items, next_cursor })
     }
+    async fn search(
+        &self,
+        actor: &str,
+        s: &Scope,
+        query: &EvidenceSearchQuery,
+    ) -> Result<EvidenceSearchPage, EvidenceError> {
+        if !query.is_valid() {
+            return Err(EvidenceError::Invalid);
+        }
+        let mut tx = self.begin(actor, s).await?;
+        // Scope/RLS and the candidate limit precede text matching. The extra row
+        // only proves continuation; it is never examined by this page.
+        let rows = sqlx::query(
+            "SELECT * FROM public.evidence_originals \
+             WHERE organisation_id=$1 AND client_id=$2 AND engagement_id=$3 \
+             AND ($4::text IS NULL OR id COLLATE \"C\">$4) \
+             ORDER BY id COLLATE \"C\" LIMIT $5",
+        )
+        .bind(&s.organisation_id)
+        .bind(&s.client_id)
+        .bind(&s.engagement_id)
+        .bind(query.after.as_deref())
+        .bind((EVIDENCE_SEARCH_CANDIDATES + 1) as i64)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(unavailable)?;
+        let candidates = rows
+            .iter()
+            .map(evidence_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        let result = search_candidates(query, candidates)?;
+        self.current(&mut tx, actor, s).await?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(result)
+    }
     async fn inspect(
         &self,
         actor: &str,

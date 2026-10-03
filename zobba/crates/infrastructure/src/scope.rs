@@ -23,7 +23,7 @@ pub async fn begin_actor(
         .execute(&mut *tx)
         .await
         .map_err(|_| ScopeError::Unavailable)?;
-    sqlx::query("SELECT pg_catalog.set_config('zobba.actor_id',$1,true), pg_catalog.set_config('zobba.organisation_id','',true), pg_catalog.set_config('zobba.client_id','',true), pg_catalog.set_config('zobba.engagement_id','',true), pg_catalog.set_config('zobba.dispatcher','',true), pg_catalog.set_config('zobba.receipt_claim','',true), pg_catalog.set_config('zobba.receipt_hash','',true), pg_catalog.set_config('zobba.receipt_org','',true), pg_catalog.set_config('zobba.receipt_client','',true), pg_catalog.set_config('zobba.receipt_engagement','',true)")
+    sqlx::query("SELECT pg_catalog.set_config('zobba.actor_id',$1,true), pg_catalog.set_config('zobba.organisation_id','',true), pg_catalog.set_config('zobba.client_id','',true), pg_catalog.set_config('zobba.engagement_id','',true), pg_catalog.set_config('zobba.dispatcher','',true), pg_catalog.set_config('zobba.receipt_claim','',true), pg_catalog.set_config('zobba.receipt_hash','',true), pg_catalog.set_config('zobba.receipt_org','',true), pg_catalog.set_config('zobba.receipt_client','',true), pg_catalog.set_config('zobba.receipt_engagement','',true), pg_catalog.set_config('zobba.model_invocation','',true), pg_catalog.set_config('zobba.model_receipt_hash','',true), pg_catalog.set_config('zobba.model_session_hash','',true)")
         .bind(actor_id).execute(&mut *tx).await.map_err(|_| ScopeError::Unavailable)?;
     Ok(tx)
 }

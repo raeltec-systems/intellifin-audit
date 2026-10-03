@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+  "effective_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+  "retrieved_at_utc": "2026-10-03T04:28:09.081365+00:00",
+  "completed_at_utc": "2026-10-03T04:28:09.468009+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html; charset=utf-8",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "anthropic-opus.html",
+  "bytes": 435514,
+  "sha256": "37e6ce8a608bda8c9b834b911efabb9a1d01a4f8d6aa361139849062b699cdcf",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/anthropic-opus.txt",
+  "readable_extraction_sha256": "77fe41127fadb458e1e18eb0da694116358329860d76d236439472c245d2e874",
+  "raw_body_in_checkpoint": false
+}

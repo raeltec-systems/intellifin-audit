@@ -498,10 +498,16 @@ textarea:focus-visible, select:focus-visible, summary:focus-visible, [tabindex='
 .evidence-source, .evidence-recovery { margin-top: 14px; font-size: 13px; }
 .evidence-source > summary, .evidence-recovery > summary { min-height: 44px; padding: 10px 0; cursor: pointer; }
 .evidence-registry { border-top: 1px solid var(--hairline); padding-top: 14px; margin-top: 24px; }
+.evidence-search { display: grid; gap: 8px; margin-top: 20px; font-size: 13px; }
+.evidence-search > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.evidence-search input { flex: 1; min-width: 120px; width: 100%; }
+.evidence-search button { min-height: 44px; }
+.evidence-coverage { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .evidence-registry ul, .evidence-recovery ul { list-style: none; padding: 0; margin: 8px 0; }
 .evidence-open-item { display: flex; flex-direction: column; width: 100%; text-align: left; gap: 4px; background: var(--canvas); border: 1px solid var(--hairline); border-radius: 6px; padding: 12px; margin-bottom: 8px; color: var(--text); }
+.evidence-open-item:hover:not([aria-disabled='true']) { background: var(--sidebar); border-color: var(--input); color: var(--text); }
 .evidence-open-item strong { font-size: 14px; overflow-wrap: anywhere; }
-.evidence-open-item span { font-size: 11px; color: var(--secondary); }
+.evidence-open-item span { font-size: 11px; color: var(--secondary); overflow-wrap: anywhere; max-width: 100%; }
 .evidence-recovery li { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--hairline); }
 .evidence-recovery li > span { overflow-wrap: anywhere; }
 .evidence-inspection { border-top: 1px solid var(--hairline); margin-top: 20px; padding-top: 20px; }
@@ -511,6 +517,11 @@ textarea:focus-visible, select:focus-visible, summary:focus-visible, [tabindex='
 .evidence-inspection dt, .evidence-reserved-details dt { color: var(--tertiary); }
 .evidence-inspection dd, .evidence-reserved-details dd { margin: 0; overflow-wrap: anywhere; }
 .evidence-preview { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 340px; overflow: auto; font-size: 12px; background: var(--sidebar); padding: 12px; border-radius: 6px; }
+.evidence-source-inspector { min-width: 0; overflow-wrap: anywhere; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--hairline); }
+.evidence-source-inspector button { min-height: 44px; max-width: 100%; white-space: normal; }
+.evidence-provenance { font-size: 12px; }
+.evidence-provenance dl > div { display: grid; grid-template-columns: minmax(90px, .65fr) minmax(0, 1fr); gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--hairline); }
+.evidence-provenance dd { margin: 0; overflow-wrap: anywhere; }
 @media (max-width: 1000px) {
   .evidence-open > .evidence-layout { display: block; overflow: auto; }
   .evidence-open .continuing-conversation { display: none; }
@@ -521,6 +532,7 @@ textarea:focus-visible, select:focus-visible, summary:focus-visible, [tabindex='
   .evidence-pane { padding: 12px; }
   .evidence-acquisition .membership-actions { display: grid; }
   .evidence-inspection dl > div, .evidence-reserved-details dl > div { grid-template-columns: 1fr; gap: 4px; }
+  .evidence-provenance dl > div { grid-template-columns: 1fr; gap: 4px; }
 }
 
 /* Firm configuration and recorded Task methodology share the existing workspace. */

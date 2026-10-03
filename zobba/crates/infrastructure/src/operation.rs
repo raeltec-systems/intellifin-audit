@@ -6,8 +6,10 @@ use rand::{RngCore, rngs::OsRng};
 use serde::{Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Row, Transaction, postgres::PgRow};
+use std::sync::Arc;
+use zobba_application::model::ModelQualificationSource;
 use zobba_application::{
-    operation::{OperationError as Error, OperationStore, wire::*},
+    operation::{ModelToolBinding, OperationError as Error, OperationStore, wire::*},
     task::TaskError,
 };
 use zobba_domain::{
@@ -20,10 +22,21 @@ type Tx = Transaction<'static, Postgres>;
 #[derive(Clone)]
 pub struct OperationRepository {
     pool: PgPool,
+    model_qualifications: Option<Arc<dyn ModelQualificationSource>>,
 }
 impl OperationRepository {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            model_qualifications: None,
+        }
+    }
+    pub fn with_model_qualification_source(
+        mut self,
+        source: Arc<dyn ModelQualificationSource>,
+    ) -> Self {
+        self.model_qualifications = Some(source);
+        self
     }
 }
 fn unavailable(_: sqlx::Error) -> Error {
@@ -278,7 +291,11 @@ fn decision_projection(row: &PgRow) -> Result<OperationDecision, Error> {
         allowed: field(row, "allow")?,
     })
 }
-async fn project(tx: &mut Tx, row: &PgRow) -> Result<Operation, Error> {
+async fn project(
+    tx: &mut Tx,
+    row: &PgRow,
+    qualifications: Option<&dyn ModelQualificationSource>,
+) -> Result<Operation, Error> {
     let request: StoredCanonical = decode(&field::<String>(row, "request")?)?;
     let accepted: StoredAuthority = decode(&field::<String>(row, "authority_snapshot")?)?;
     let now = clock(tx).await?;
@@ -313,6 +330,27 @@ async fn project(tx: &mut Tx, row: &PgRow) -> Result<Operation, Error> {
     {
         state = OperationState::Revoked;
     }
+    let attempt=sqlx::query("SELECT a.id,c.state FROM public.operation_attempts a JOIN public.operation_claims c ON c.attempt_id=a.id WHERE a.operation_id=$1 ORDER BY a.attempt_number DESC LIMIT 1").bind(&id).fetch_optional(&mut **tx).await.map_err(unavailable)?;
+    let consumed = attempt
+        .as_ref()
+        .map(|row| field::<String>(row, "state").map(|state| state == "consumed"))
+        .transpose()?
+        .unwrap_or(false);
+    if !consumed {
+        // Keep optional model context verification out of the inline future
+        // carried by every ordinary operation projection.
+        match Box::pin(crate::model::operation_configuration_current(
+            tx,
+            &id,
+            qualifications,
+        ))
+        .await
+        {
+            Ok(()) => {}
+            Err(Error::Fenced | Error::Denied | Error::Conflict) => state = OperationState::Revoked,
+            Err(error) => return Err(error),
+        }
+    }
     if let Some(decision) = decision_row(tx, &id).await? {
         if !field::<bool>(&decision, "allow")? {
             state = OperationState::Revoked;
@@ -322,9 +360,15 @@ async fn project(tx: &mut Tx, row: &PgRow) -> Result<Operation, Error> {
             state = OperationState::Ready;
         }
     }
-    if let Some(attempt)=sqlx::query("SELECT a.id,c.state FROM public.operation_attempts a JOIN public.operation_claims c ON c.attempt_id=a.id WHERE a.operation_id=$1 ORDER BY a.attempt_number DESC LIMIT 1").bind(&id).fetch_optional(&mut **tx).await.map_err(unavailable)?
-        && field::<String>(&attempt,"state")?=="consumed" {
-        state=match latest_fact(tx,&field::<String>(&attempt,"id")?).await?{SourceFact::Unknown=>OperationState::PossiblyDispatched,SourceFact::Accepted=>OperationState::Accepted,SourceFact::Completed=>OperationState::Completed,SourceFact::AuthoritativelyAbsent=>OperationState::Absent};
+    if let Some(attempt) = attempt
+        && consumed
+    {
+        state = match latest_fact(tx, &field::<String>(&attempt, "id")?).await? {
+            SourceFact::Unknown => OperationState::PossiblyDispatched,
+            SourceFact::Accepted => OperationState::Accepted,
+            SourceFact::Completed => OperationState::Completed,
+            SourceFact::AuthoritativelyAbsent => OperationState::Absent,
+        };
     }
     Ok(Operation {
         source: decode::<StoredSource>(&field::<String>(row, "source_binding")?)?.0,
@@ -346,7 +390,7 @@ async fn project(tx: &mut Tx, row: &PgRow) -> Result<Operation, Error> {
         state,
     })
 }
-async fn verify_basis(tx: &mut Tx, b: &ClaimBasis) -> Result<(), Error> {
+pub(crate) async fn verify_basis(tx: &mut Tx, b: &ClaimBasis) -> Result<(), Error> {
     let row = task::task(tx, &b.task_id).await.map_err(from_task)?;
     if !task::valid_basis(&row, b).map_err(from_task)?
         || !crate::methodology::new_use_allowed(tx, &b.task_id)
@@ -361,6 +405,27 @@ async fn verify_basis(tx: &mut Tx, b: &ClaimBasis) -> Result<(), Error> {
         return Err(Error::Fenced);
     }
     Ok(())
+}
+
+pub(crate) async fn model_disclosure(
+    tx: &mut Tx,
+    b: &ClaimBasis,
+    request: &CanonicalOperation,
+) -> Result<(), Error> {
+    verify_basis(tx, b).await?;
+    if !request.is_valid() || hash(request.material.as_bytes()) != request.material_digest {
+        return Err(Error::Invalid);
+    }
+    let accepted = accepted(tx, &b.scope, &b.task_id).await?;
+    if accepted.actor_id != b.actor_id {
+        return Err(Error::Denied);
+    }
+    let current = current(tx, &accepted).await?;
+    match evaluate(request, &current, &accepted, clock(tx).await?) {
+        PermissionVerdict::Standing => Ok(()),
+        PermissionVerdict::NeedsDecision => Err(Error::NeedsDecision),
+        PermissionVerdict::Denied => Err(Error::Denied),
+    }
 }
 
 fn source_key(source: &SourceBinding) -> String {
@@ -469,6 +534,137 @@ async fn recovery_authority(
         return Err(Error::Denied);
     }
     Ok(())
+}
+
+/// Receipt history remains a fact, but disclosing its data requires the existing
+/// source-recovery authority checks. This never consumes or retries an operation.
+pub(crate) async fn model_history_access(
+    tx: &mut Tx,
+    actor: &str,
+    operation_id: &str,
+    attempt_id: &str,
+    fact: SourceFact,
+) -> Result<(), Error> {
+    let row = operation_row(tx, operation_id).await?;
+    let attempt=sqlx::query("SELECT a.* FROM public.operation_attempts a JOIN public.operation_claims c ON c.attempt_id=a.id WHERE a.id=$1 AND a.operation_id=$2 AND c.state='consumed'")
+        .bind(attempt_id).bind(operation_id).fetch_optional(&mut **tx).await.map_err(unavailable)?.ok_or(Error::Denied)?;
+    if !matches!(
+        fact,
+        SourceFact::Completed | SourceFact::AuthoritativelyAbsent
+    ) || latest_fact(tx, attempt_id).await? != fact
+    {
+        return Err(Error::Conflict);
+    }
+    recovery_authority(tx, actor, &attempt, &row).await
+}
+
+impl OperationRepository {
+    async fn admit_bound(
+        &self,
+        actor: &str,
+        s: &Scope,
+        b: &ClaimBasis,
+        operation_key: &str,
+        request: &CanonicalOperation,
+        binding: Option<&ModelToolBinding>,
+    ) -> Result<Operation, Error> {
+        if !valid_scope_id(operation_key)
+            || actor != b.actor_id
+            || *s != b.scope
+            || !request.is_valid()
+            || hash(request.material.as_bytes()) != request.material_digest
+        {
+            return Err(Error::Invalid);
+        }
+        let mut tx = lock(&self.pool, actor, s).await?;
+        if let Some(row) =
+            sqlx::query("SELECT * FROM public.operations WHERE actor_id=$1 AND key=$2")
+                .bind(actor)
+                .bind(operation_key)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(unavailable)?
+        {
+            crate::model::verify_binding_retry(&mut tx, &field::<String>(&row, "id")?, binding)
+                .await?;
+            let result = project(&mut tx, &row, self.model_qualifications.as_deref()).await?;
+            let original: StoredBasis = decode(&field::<String>(&row, "basis")?)?;
+            if result.request != *request
+                || original.0.task_id != b.task_id
+                || original.0.cycle_id != b.cycle_id
+                || original.0.intent_revision != b.intent_revision
+                || original.0.execution_epoch != b.execution_epoch
+            {
+                return Err(Error::Conflict);
+            }
+            tx.commit().await.map_err(unavailable)?;
+            return Ok(result);
+        }
+        verify_basis(&mut tx, b).await?;
+        if let Some(binding) = binding {
+            // Keep optional model-context state out of ordinary operation
+            // futures; allocation does not alter this transaction's fences.
+            Box::pin(crate::model::check_proposal(
+                &mut tx,
+                b,
+                binding,
+                request,
+                self.model_qualifications.as_deref(),
+            ))
+            .await?;
+        }
+        let a = accepted(&mut tx, s, &b.task_id).await?;
+        if a.actor_id != actor {
+            return Err(Error::Denied);
+        }
+        let c = current(&mut tx, &a).await?;
+        let source = a
+            .account
+            .account
+            .as_ref()
+            .ok_or(Error::Denied)?
+            .source
+            .clone();
+        verify_material(&mut tx, s, &source, request).await?;
+        if evaluate(request, &c, &a, clock(&mut tx).await?) == PermissionVerdict::Denied {
+            return Err(Error::Denied);
+        }
+        let count: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM public.operations WHERE task_id=$1")
+                .bind(&b.task_id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(unavailable)?;
+        if count >= 1000 {
+            return Err(Error::Capacity);
+        }
+        let id = token();
+        sqlx::query("INSERT INTO public.operations(organisation_id,client_id,engagement_id,id,task_id,cycle_id,actor_id,key,request,request_digest,authority_snapshot,basis,source_binding) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)")
+            .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id).bind(&id).bind(&b.task_id).bind(&b.cycle_id).bind(actor).bind(operation_key).bind(encode(&StoredCanonical(request.clone()))?).bind(hash(&request.canonical_bytes().ok_or(Error::Invalid)?)).bind(encode(&StoredAuthority(a))?).bind(encode(&StoredBasis(b.clone()))?).bind(encode(&StoredSource(source))?).execute(&mut *tx).await.map_err(unavailable)?;
+        if let Some(binding) = binding {
+            crate::model::insert_binding(&mut tx, b, &id, binding, request).await?;
+        }
+        task::wake(&mut tx, s, &b.task_id, actor)
+            .await
+            .map_err(from_task)?;
+        let row = operation_row(&mut tx, &id).await?;
+        let result = project(&mut tx, &row, self.model_qualifications.as_deref()).await?;
+        sqlx::query("SET CONSTRAINTS ALL IMMEDIATE")
+            .execute(&mut *tx)
+            .await
+            .map_err(unavailable)?;
+        verify_basis(&mut tx, b).await?;
+        Box::pin(crate::model::check_bound_operation(
+            &mut tx,
+            &id,
+            b,
+            request,
+            self.model_qualifications.as_deref(),
+        ))
+        .await?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(result)
+    }
 }
 
 impl OperationStore for OperationRepository {
@@ -706,72 +902,20 @@ impl OperationStore for OperationRepository {
         operation_key: &str,
         request: &CanonicalOperation,
     ) -> Result<Operation, Error> {
-        if !valid_scope_id(operation_key)
-            || actor != b.actor_id
-            || *s != b.scope
-            || !request.is_valid()
-            || hash(request.material.as_bytes()) != request.material_digest
-        {
-            return Err(Error::Invalid);
-        }
-        let mut tx = lock(&self.pool, actor, s).await?;
-        if let Some(row) =
-            sqlx::query("SELECT * FROM public.operations WHERE actor_id=$1 AND key=$2")
-                .bind(actor)
-                .bind(operation_key)
-                .fetch_optional(&mut *tx)
-                .await
-                .map_err(unavailable)?
-        {
-            let result = project(&mut tx, &row).await?;
-            let original: StoredBasis = decode(&field::<String>(&row, "basis")?)?;
-            if result.request != *request
-                || original.0.task_id != b.task_id
-                || original.0.cycle_id != b.cycle_id
-                || original.0.intent_revision != b.intent_revision
-                || original.0.execution_epoch != b.execution_epoch
-            {
-                return Err(Error::Conflict);
-            }
-            tx.commit().await.map_err(unavailable)?;
-            return Ok(result);
-        }
-        verify_basis(&mut tx, b).await?;
-        let a = accepted(&mut tx, s, &b.task_id).await?;
-        if a.actor_id != actor {
-            return Err(Error::Denied);
-        }
-        let c = current(&mut tx, &a).await?;
-        let source = a
-            .account
-            .account
-            .as_ref()
-            .ok_or(Error::Denied)?
-            .source
-            .clone();
-        verify_material(&mut tx, s, &source, request).await?;
-        if evaluate(request, &c, &a, clock(&mut tx).await?) == PermissionVerdict::Denied {
-            return Err(Error::Denied);
-        }
-        let count: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM public.operations WHERE task_id=$1")
-                .bind(&b.task_id)
-                .fetch_one(&mut *tx)
-                .await
-                .map_err(unavailable)?;
-        if count >= 1000 {
-            return Err(Error::Capacity);
-        }
-        let id = token();
-        sqlx::query("INSERT INTO public.operations(organisation_id,client_id,engagement_id,id,task_id,cycle_id,actor_id,key,request,request_digest,authority_snapshot,basis,source_binding) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)")
-            .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id).bind(&id).bind(&b.task_id).bind(&b.cycle_id).bind(actor).bind(operation_key).bind(encode(&StoredCanonical(request.clone()))?).bind(hash(&request.canonical_bytes().ok_or(Error::Invalid)?)).bind(encode(&StoredAuthority(a))?).bind(encode(&StoredBasis(b.clone()))?).bind(encode(&StoredSource(source))?).execute(&mut *tx).await.map_err(unavailable)?;
-        task::wake(&mut tx, s, &b.task_id, actor)
+        self.admit_bound(actor, s, b, operation_key, request, None)
             .await
-            .map_err(from_task)?;
-        let row = operation_row(&mut tx, &id).await?;
-        let result = project(&mut tx, &row).await?;
-        tx.commit().await.map_err(unavailable)?;
-        Ok(result)
+    }
+    async fn admit_model_tool(
+        &self,
+        actor: &str,
+        s: &Scope,
+        b: &ClaimBasis,
+        operation_key: &str,
+        request: &CanonicalOperation,
+        binding: &ModelToolBinding,
+    ) -> Result<Operation, Error> {
+        self.admit_bound(actor, s, b, operation_key, request, Some(binding))
+            .await
     }
     async fn decide(
         &self,
@@ -808,7 +952,7 @@ impl OperationStore for OperationRepository {
             return Ok(result);
         }
         let row = operation_row(&mut tx, &d.operation_id).await?;
-        let op = project(&mut tx, &row).await?;
+        let op = project(&mut tx, &row, self.model_qualifications.as_deref()).await?;
         if !d.matches(&op, clock(&mut tx).await?) {
             return Err(Error::Conflict);
         }
@@ -885,14 +1029,9 @@ impl OperationStore for OperationRepository {
         if !valid_scope_id(id) {
             return Err(Error::Invalid);
         }
-        let mut tx = scope::begin(&self.pool, actor, s)
-            .await
-            .map_err(|e| match e {
-                scope::ScopeError::Denied => Error::Denied,
-                _ => Error::Unavailable,
-            })?;
+        let mut tx = lock(&self.pool, actor, s).await?;
         let row = operation_row(&mut tx, id).await?;
-        let result = project(&mut tx, &row).await?;
+        let result = project(&mut tx, &row, self.model_qualifications.as_deref()).await?;
         read_fence(&mut tx, s).await?;
         tx.commit().await.map_err(unavailable)?;
         Ok(result)
@@ -907,19 +1046,14 @@ impl OperationStore for OperationRepository {
         if !valid_scope_id(task_id) || after.is_some_and(|v| !valid_scope_id(v)) {
             return Err(Error::Invalid);
         }
-        let mut tx = scope::begin(&self.pool, actor, s)
-            .await
-            .map_err(|e| match e {
-                scope::ScopeError::Denied => Error::Denied,
-                _ => Error::Unavailable,
-            })?;
+        let mut tx = lock(&self.pool, actor, s).await?;
         let rows=sqlx::query("SELECT * FROM public.operations WHERE task_id=$1 AND ($2::text IS NULL OR id>$2) ORDER BY id LIMIT $3").bind(task_id).bind(after).bind(OPERATION_PAGE_SIZE as i64+1).fetch_all(&mut *tx).await.map_err(unavailable)?;
         let next_cursor = (rows.len() > OPERATION_PAGE_SIZE)
             .then(|| field::<String>(&rows[OPERATION_PAGE_SIZE - 1], "id"))
             .transpose()?;
         let mut operations = Vec::new();
         for row in rows.iter().take(OPERATION_PAGE_SIZE) {
-            operations.push(project(&mut tx, row).await?)
+            operations.push(project(&mut tx, row, self.model_qualifications.as_deref()).await?)
         }
         read_fence(&mut tx, s).await?;
         tx.commit().await.map_err(unavailable)?;
@@ -952,6 +1086,14 @@ impl OperationStore for OperationRepository {
         let request: StoredCanonical = decode(&field::<String>(&row, "request")?)?;
         let source: StoredSource = decode(&field::<String>(&row, "source_binding")?)?;
         dispatch_authority(&mut tx, operation_id, &request.0, &accepted.0, &source.0).await?;
+        Box::pin(crate::model::check_bound_operation(
+            &mut tx,
+            operation_id,
+            b,
+            &request.0,
+            self.model_qualifications.as_deref(),
+        ))
+        .await?;
         let latest=sqlx::query("SELECT * FROM public.operation_attempts WHERE operation_id=$1 ORDER BY attempt_number DESC LIMIT 1").bind(operation_id).fetch_optional(&mut *tx).await.map_err(unavailable)?;
         let number = if let Some(latest) = latest {
             let id: String = field(&latest, "id")?;
@@ -997,6 +1139,14 @@ impl OperationStore for OperationRepository {
             .map_err(unavailable)?;
         verify_basis(&mut tx, b).await?;
         dispatch_authority(&mut tx, operation_id, &request.0, &accepted.0, &source.0).await?;
+        Box::pin(crate::model::check_bound_operation(
+            &mut tx,
+            operation_id,
+            b,
+            &request.0,
+            self.model_qualifications.as_deref(),
+        ))
+        .await?;
         tx.commit().await.map_err(unavailable)?;
         Ok(ConsumedOperation {
             source: source.0,

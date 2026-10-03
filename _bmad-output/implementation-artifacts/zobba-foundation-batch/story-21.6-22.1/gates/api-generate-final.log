@@ -1,0 +1,2 @@
+$ pnpm --filter @zobba/web api:generate
+$ node scripts/generate-api.mjs

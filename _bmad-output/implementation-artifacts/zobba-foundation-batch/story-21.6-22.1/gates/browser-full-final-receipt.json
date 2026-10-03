@@ -1,0 +1,24 @@
+{
+  "gate": "browser-full-final",
+  "command": [
+    "pnpm",
+    "--filter",
+    "@zobba/web",
+    "exec",
+    "playwright",
+    "test",
+    "--workers=1",
+    "--retries=0"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T05:51:47.245521+00:00",
+  "ended_at": "2026-10-03T06:17:34.726489+00:00",
+  "duration_seconds": 1547.481,
+  "exit": 1,
+  "source_before": "browser-full-final-source-before.json",
+  "source_after": "browser-full-final-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "browser-full-final.log",
+  "log_sha256": "020d4d39a5990e711e6a13dafb00eda3d9d8b15b92bd9456332f3146e60b8770"
+}

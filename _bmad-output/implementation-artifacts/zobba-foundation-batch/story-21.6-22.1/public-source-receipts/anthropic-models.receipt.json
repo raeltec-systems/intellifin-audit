@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://platform.claude.com/docs/en/about-claude/models/overview",
+  "effective_url": "https://platform.claude.com/docs/en/models/overview",
+  "retrieved_at_utc": "2026-10-03T04:26:50.213953+00:00",
+  "completed_at_utc": "2026-10-03T04:26:50.991012+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html; charset=utf-8",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "anthropic-models.html",
+  "bytes": 388392,
+  "sha256": "3f3519fd17c4734adce28eb40cfce2da138c54eb0444206dc7b58081cb62ba12",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/anthropic-models.txt",
+  "readable_extraction_sha256": "162c7e52ad270612e799657d964fcc435dcea9440d8570438fdba00c18dfc62b",
+  "raw_body_in_checkpoint": false
+}

@@ -20,8 +20,8 @@ use zobba_application::{
 };
 use zobba_domain::{
     evidence::{
-        ContentIdentity, RegisteredEvidence, Reservation, ReservationRequest, SourceAssertions,
-        plain_preview,
+        ContentIdentity, EvidenceSearchCoverage, EvidenceSearchQuery, RegisteredEvidence,
+        Reservation, ReservationRequest, SourceAssertions, plain_preview,
     },
     identity::{Scope, valid_scope_id},
 };
@@ -246,6 +246,30 @@ pub struct EvidencePageResponse {
     pub items: Vec<EvidenceResponse>,
     #[schema(required = true)]
     pub next_cursor: Option<String>,
+    /// Canonical literal query, trimmed using Rust Unicode whitespace rules;
+    /// at most 200 UTF-8 bytes. Empty text browses registered originals.
+    #[schema(max_length = 200)]
+    pub query: String,
+    pub coverage: EvidenceSearchCoverageResponse,
+}
+#[derive(Serialize, ToSchema)]
+pub struct EvidenceSearchCoverageResponse {
+    #[schema(minimum = 0, maximum = 256)]
+    pub examined_count: usize,
+    #[schema(minimum = 256, maximum = 256)]
+    pub candidate_limit: usize,
+    /// No remaining C-ordered candidates for this read, iff next_cursor is null.
+    /// This never establishes source completeness or absence before the cursor.
+    pub complete: bool,
+}
+impl From<EvidenceSearchCoverage> for EvidenceSearchCoverageResponse {
+    fn from(value: EvidenceSearchCoverage) -> Self {
+        Self {
+            examined_count: value.examined_count,
+            candidate_limit: value.candidate_limit,
+            complete: value.complete,
+        }
+    }
 }
 #[derive(Serialize, ToSchema)]
 pub struct EvidenceReservationPageResponse {
@@ -286,8 +310,18 @@ pub(crate) struct EvidencePageQuery {
     client_id: String,
     after: Option<String>,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct EvidenceSearchPageQuery {
+    organisation_id: String,
+    client_id: String,
+    after: Option<String>,
+    q: Option<String>,
+}
 type ScopeQuery = Result<Query<EvidenceScopeQuery>, axum::extract::rejection::QueryRejection>;
 type PageQuery = Result<Query<EvidencePageQuery>, axum::extract::rejection::QueryRejection>;
+type SearchPageQuery =
+    Result<Query<EvidenceSearchPageQuery>, axum::extract::rejection::QueryRejection>;
 
 enum HttpError {
     Identity(IdentityError),
@@ -484,29 +518,33 @@ pub(crate) async fn recover(
 }
 
 #[utoipa::path(get, path="/engagements/{engagement_id}/evidence", operation_id="list_evidence", security(("server_session"=[])),
-    params(("engagement_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query),("after"=Option<String>,Query),("X-Expected-Session"=Option<String>,Header)),
-    responses((status=200,body=EvidencePageResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=412,body=ErrorResponse),(status=503,body=ErrorResponse)))]
+    params(("engagement_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query),("after"=Option<String>,Query,description="Last examined C-ordered candidate; restart without a cursor when q changes"),("q"=Option<String>,Query,description="Literal substring of filename or attributed source fields after context-independent per-scalar Unicode lowercase; no normalization or full case folding. At most 200 UTF-8 bytes after Rust Unicode whitespace trim, controls refused and FEFF preserved. No original-content search."),("X-Expected-Session"=Option<String>,Header)),
+    responses((status=200,description="At most 50 matches from at most 256 examined current-scope candidates. Partial empty pages retain continuation; no page proves document meaning or source completeness.",body=EvidencePageResponse),(status=400,description="evidence_invalid: shorten the search to 200 UTF-8 bytes, remove control characters or restart with a valid cursor",body=ErrorResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=412,body=ErrorResponse),(status=503,body=ErrorResponse)))]
 pub(crate) async fn list(
     State(state): State<EvidenceHttpState>,
     headers: HeaderMap,
     Path(engagement_id): Path<String>,
-    query: PageQuery,
+    query: SearchPageQuery,
 ) -> Response {
-    let (query, after) = match split_page(query) {
+    let Query(query) = match query {
+        Ok(value) => value,
+        Err(_) => return failure(EvidenceError::Invalid),
+    };
+    let scope = Ok(Query(EvidenceScopeQuery {
+        organisation_id: query.organisation_id,
+        client_id: query.client_id,
+    }));
+    let authority = match authority(&state, &headers, engagement_id, scope, false).await {
         Ok(value) => value,
         Err(response) => return response.into_response(),
     };
-    let authority = match authority(&state, &headers, engagement_id, query, false).await {
-        Ok(value) => value,
-        Err(response) => return response.into_response(),
+    let Some(query) = EvidenceSearchQuery::new(query.q.as_deref().unwrap_or(""), query.after)
+    else {
+        return failure(EvidenceError::Invalid);
     };
     match authority
         .repository
-        .list(
-            &authority.current.identity.id,
-            &authority.scope,
-            after.as_deref(),
-        )
+        .search(&authority.current.identity.id, &authority.scope, &query)
         .await
     {
         Ok(page) => match final_authority(&state, &headers, &authority).await {
@@ -514,6 +552,8 @@ pub(crate) async fn list(
                 storage_configured: state.objects.is_some(),
                 items: page.items.into_iter().map(Into::into).collect(),
                 next_cursor: page.next_cursor,
+                query: query.query,
+                coverage: page.coverage.into(),
             })
             .into_response(),
             Err(response) => response.into_response(),

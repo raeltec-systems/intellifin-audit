@@ -1,0 +1,33 @@
+{
+  "gate": "qualification-refusal-expected",
+  "command": [
+    "env",
+    "-u",
+    "ZOBBA_MODEL_QUALIFICATION_APPROVED_MANIFEST_SHA256",
+    "-u",
+    "ZOBBA_MODEL_QUALIFICATION_APPROVAL_ID",
+    "-u",
+    "ZOBBA_MODEL_QUALIFICATION_SPEND_LIMIT_CONFIRMED_USD",
+    "cargo",
+    "run",
+    "--quiet",
+    "--locked",
+    "-p",
+    "zobba-infrastructure",
+    "--example",
+    "model_qualification",
+    "--",
+    "--execute"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T05:34:24.066160+00:00",
+  "ended_at": "2026-10-03T05:34:24.729809+00:00",
+  "duration_seconds": 0.664,
+  "exit": 1,
+  "source_before": "qualification-refusal-expected-source-before.json",
+  "source_after": "qualification-refusal-expected-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "qualification-refusal-expected.log",
+  "log_sha256": "aa9e859a2b0bba5032f02b05407bcf865dc9deb0766ed08d857f88a43e64fad1"
+}

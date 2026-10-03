@@ -950,6 +950,16 @@
           {
             "name": "after",
             "in": "query",
+            "description": "Last examined C-ordered candidate; restart without a cursor when q changes",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Literal substring of filename or attributed source fields after context-independent per-scalar Unicode lowercase; no normalization or full case folding. At most 200 UTF-8 bytes after Rust Unicode whitespace trim, controls refused and FEFF preserved. No original-content search.",
             "required": false,
             "schema": {
               "type": "string"
@@ -969,11 +979,21 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "At most 50 matches from at most 256 examined current-scope candidates. Partial empty pages retain continuation; no page proves document meaning or source completeness.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EvidencePageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "evidence_invalid: shorten the search to 200 UTF-8 bytes, remove control characters or restart with a valid cursor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -9026,9 +9046,14 @@
         "required": [
           "storage_configured",
           "items",
-          "next_cursor"
+          "next_cursor",
+          "query",
+          "coverage"
         ],
         "properties": {
+          "coverage": {
+            "$ref": "#/components/schemas/EvidenceSearchCoverageResponse"
+          },
           "items": {
             "type": "array",
             "items": {
@@ -9041,6 +9066,11 @@
               "string",
               "null"
             ]
+          },
+          "query": {
+            "type": "string",
+            "description": "Canonical literal query, trimmed using Rust Unicode whitespace rules;\nat most 200 UTF-8 bytes. Empty text browses registered originals.",
+            "maxLength": 200
           },
           "storage_configured": {
             "type": "boolean",
@@ -9175,6 +9205,30 @@
           "version": {
             "type": "string",
             "description": "Immutable storage version independently confirmed by a bounded pinned read."
+          }
+        }
+      },
+      "EvidenceSearchCoverageResponse": {
+        "type": "object",
+        "required": [
+          "examined_count",
+          "candidate_limit",
+          "complete"
+        ],
+        "properties": {
+          "candidate_limit": {
+            "type": "integer",
+            "maximum": 256,
+            "minimum": 256
+          },
+          "complete": {
+            "type": "boolean",
+            "description": "No remaining C-ordered candidates for this read, iff next_cursor is null.\nThis never establishes source completeness or absence before the cursor."
+          },
+          "examined_count": {
+            "type": "integer",
+            "maximum": 256,
+            "minimum": 0
           }
         }
       },

@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+  "effective_url": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+  "retrieved_at_utc": "2026-10-03T04:28:09.077786+00:00",
+  "completed_at_utc": "2026-10-03T04:28:09.386826+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "openai-sol.html",
+  "bytes": 443094,
+  "sha256": "55f7012e07b820cdc98321f8a607c764e92d708e9437549ff1ad8b43c6fef3ca",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/openai-sol.txt",
+  "readable_extraction_sha256": "f50a9099bcdcbf308adcc3618f1ced74a6981c4d35241a980622b1d0747b9f56",
+  "raw_body_in_checkpoint": false
+}

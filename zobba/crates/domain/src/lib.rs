@@ -5,6 +5,7 @@ pub mod identity;
 pub mod knowledge;
 pub mod membership;
 pub mod methodology;
+pub mod model;
 pub mod permissions;
 pub mod skills;
 pub mod task;
@@ -12,4 +13,4 @@ pub mod task;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SchemaVersion(pub u32);
 
-pub const SCHEMA_VERSION: SchemaVersion = SchemaVersion(10);
+pub const SCHEMA_VERSION: SchemaVersion = SchemaVersion(11);

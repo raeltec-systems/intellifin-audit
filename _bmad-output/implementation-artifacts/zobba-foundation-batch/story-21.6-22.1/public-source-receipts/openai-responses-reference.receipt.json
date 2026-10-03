@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://developers.openai.com/api/docs/api-reference/responses/create",
+  "effective_url": "https://developers.openai.com/api/reference/resources/responses/methods/create",
+  "retrieved_at_utc": "2026-10-03T04:36:08.316918+00:00",
+  "completed_at_utc": "2026-10-03T04:36:08.903129+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html; charset=utf-8",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "openai-responses-reference.html",
+  "bytes": 11968072,
+  "sha256": "1a2b56a4ae0da43e0c977662c9bdca2ed41d6f86d028aec63b6558912c764480",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/openai-responses-reference.txt",
+  "readable_extraction_sha256": "7c592fbb7c234667ec03880959ecc06c9df7151ad9ac60b30dd937bc63ea50ec",
+  "raw_body_in_checkpoint": false
+}

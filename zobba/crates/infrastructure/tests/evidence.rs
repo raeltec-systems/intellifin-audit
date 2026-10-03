@@ -386,6 +386,36 @@ async fn immutable_scoped_custody_replay_and_post_lock_session_fence() {
         "R02 registry predicates and ordering share byte collation across page boundaries"
     );
     assert!(actual.windows(2).all(|pair| pair[0] < pair[1]));
+    let search_first = manager
+        .search(
+            "actor-manager",
+            &s,
+            &EvidenceSearchQuery::new("", None).unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(search_first.items.len(), 50);
+    let search_second = manager
+        .search(
+            "actor-manager",
+            &s,
+            &EvidenceSearchQuery::new("", search_first.next_cursor).unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(search_second.items.len(), 5);
+    assert!(search_second.coverage.complete);
+    assert_eq!(
+        search_first
+            .items
+            .iter()
+            .chain(&search_second.items)
+            .map(|item| item.reservation.id.clone())
+            .collect::<Vec<_>>(),
+        expected,
+        "search retains C-collated order across mixed-case cursor boundaries"
+    );
+    assert_bounded_metadata_search(&repo, &manager, &mut admin, &reserved.reservation.id).await;
     for index in 0..50 {
         let pending = repo
             .reserve(
@@ -497,6 +527,11 @@ async fn immutable_scoped_custody_replay_and_post_lock_session_fence() {
         repo.list("actor-a", &s, None).await,
         Err(EvidenceError::Denied)
     );
+    assert_eq!(
+        repo.search("actor-a", &s, &EvidenceSearchQuery::new("", None).unwrap())
+            .await,
+        Err(EvidenceError::Denied)
+    );
     let repo = EvidenceRepository::new(pool.clone()).with_session_hash(secret_hash(&rotated));
     assert_eq!(
         repo.reserve("actor-a", &s, &command, &namespace)
@@ -572,7 +607,134 @@ async fn immutable_scoped_custody_replay_and_post_lock_session_fence() {
         manager.inspect("actor-manager", &s, "missing").await,
         Err(EvidenceError::Denied)
     );
+    assert_eq!(
+        manager
+            .search(
+                "actor-manager",
+                &s,
+                &EvidenceSearchQuery::new("Résumé", None).unwrap()
+            )
+            .await,
+        Err(EvidenceError::Denied)
+    );
     pool.close().await;
+}
+
+/// Administrative synthetic metadata prepares scan density without claiming
+/// object acquisition. Reads use the real restricted repository and session.
+async fn assert_bounded_metadata_search(
+    repo: &EvidenceRepository,
+    manager: &EvidenceRepository,
+    admin: &mut PgConnection,
+    source_id: &str,
+) {
+    let inserted = sqlx::query(
+        "INSERT INTO evidence_reservations(id,organisation_id,client_id,engagement_id,actor_id,key,request,digest,size,namespace,reserved_at) \
+         SELECT 'search-'||lpad(n::text,4,'0'),organisation_id,client_id,engagement_id,actor_id,'search-key-'||n, \
+         (request::jsonb || jsonb_build_object('key','search-key-'||n,'filename','Résumé 界🙂 '||n||'.txt','coverage',CASE WHEN n=256 THEN 'Rare %_ needle' ELSE NULL END))::text, \
+         digest,size,namespace,reserved_at FROM evidence_reservations CROSS JOIN generate_series(0,256) n WHERE id=$1",
+    ).bind(source_id).execute(&mut *admin).await.unwrap();
+    assert_eq!(inserted.rows_affected(), 257);
+    sqlx::query("INSERT INTO evidence_originals(id,organisation_id,client_id,engagement_id,actor_id,key,request,digest,size,namespace,reserved_at,version) SELECT id,organisation_id,client_id,engagement_id,actor_id,key,request,digest,size,namespace,reserved_at,'search-version' FROM evidence_reservations WHERE id LIKE 'search-%'")
+        .execute(&mut *admin).await.unwrap();
+    // A matching foreign row falls inside this cursor range, but may neither
+    // consume the current scope's candidate budget nor appear in its results.
+    sqlx::query("INSERT INTO evidence_reservations(id,organisation_id,client_id,engagement_id,actor_id,key,request,digest,size,namespace,reserved_at) SELECT 'search-0000-foreign','org-b','client-b','engagement-b','actor-b',key,request,digest,size,namespace,reserved_at FROM evidence_reservations WHERE id='search-0000'")
+        .execute(&mut *admin).await.unwrap();
+    sqlx::query("INSERT INTO evidence_originals(id,organisation_id,client_id,engagement_id,actor_id,key,request,digest,size,namespace,reserved_at,version) SELECT id,organisation_id,client_id,engagement_id,actor_id,key,request,digest,size,namespace,reserved_at,'foreign-version' FROM evidence_reservations WHERE id='search-0000-foreign'")
+        .execute(&mut *admin).await.unwrap();
+    // The acquired original has a random ID and may sort anywhere after this
+    // cursor. It consumes scan budget even though it does not match either query.
+    // Independently count the exact scoped C-ordered prefix instead of assuming
+    // that only the synthetic matching rows are examined.
+    let candidates: Vec<String> = sqlx::query_scalar("SELECT id FROM evidence_originals WHERE organisation_id='org-a' AND client_id='client-a' AND engagement_id='engagement-a' AND id COLLATE \"C\">'search-' ORDER BY id COLLATE \"C\"")
+        .fetch_all(&mut *admin).await.unwrap();
+    let s = scope_a();
+    let query = EvidenceSearchQuery::new("%_ NEEDLE", Some("search-".into())).unwrap();
+    let first = manager.search("actor-manager", &s, &query).await.unwrap();
+    assert!(first.items.is_empty());
+    assert_eq!(first.coverage.examined_count, 256);
+    assert_eq!(first.coverage.candidate_limit, 256);
+    assert!(!first.coverage.complete);
+    assert_eq!(first.next_cursor.as_ref(), Some(&candidates[255]));
+    let second = manager
+        .search(
+            "actor-manager",
+            &s,
+            &EvidenceSearchQuery::new(&query.query, first.next_cursor).unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.items.len(), 1);
+    assert_eq!(second.items[0].reservation.id, "search-0256");
+    assert_eq!(second.items[0].version, "search-version");
+    assert_eq!(second.items[0].reservation.scope, s);
+    assert_eq!(second.coverage.examined_count, candidates.len() - 256);
+    assert!(second.coverage.complete);
+    assert!(second.next_cursor.is_none());
+    let mut after = Some("search-".into());
+    let mut actual = Vec::new();
+    let mut pages = 0;
+    let mut examined = 0;
+    loop {
+        let page = manager
+            .search(
+                "actor-manager",
+                &s,
+                &EvidenceSearchQuery::new("RÉSUMÉ 界🙂", after).unwrap(),
+            )
+            .await
+            .unwrap();
+        pages += 1;
+        assert!(page.items.len() <= 50);
+        let expected_cursor = (pages < 6).then(|| format!("search-{:04}", pages * 50 - 1));
+        let expected_end = expected_cursor.as_ref().map_or(candidates.len(), |cursor| {
+            candidates.iter().position(|id| id == cursor).unwrap() + 1
+        });
+        assert_eq!(page.coverage.examined_count, expected_end - examined);
+        assert_eq!(page.next_cursor, expected_cursor);
+        examined = expected_end;
+        assert_eq!(page.coverage.complete, page.next_cursor.is_none());
+        assert!(page.items.iter().all(|item| item.reservation.scope == s));
+        actual.extend(page.items.into_iter().map(|item| item.reservation.id));
+        after = page.next_cursor;
+        if after.is_none() {
+            break;
+        }
+        assert!(pages < 7, "bounded deterministic cursor must make progress");
+    }
+    assert_eq!(pages, 6);
+    assert_eq!(
+        actual,
+        (0..257)
+            .map(|n| format!("search-{n:04}"))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        repo.search(
+            "actor-a",
+            &Scope {
+                organisation_id: "org-b".into(),
+                client_id: "client-b".into(),
+                engagement_id: "engagement-b".into()
+            },
+            &EvidenceSearchQuery::new("Résumé", None).unwrap()
+        )
+        .await,
+        Err(EvidenceError::Denied)
+    );
+    assert_eq!(
+        repo.search(
+            "actor-a",
+            &s,
+            &EvidenceSearchQuery {
+                query: "x".repeat(201),
+                after: None
+            }
+        )
+        .await,
+        Err(EvidenceError::Invalid)
+    );
 }
 
 /// R15 exercises the durable per-owner/per-scope quota using the restricted

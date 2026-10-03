@@ -1,0 +1,18 @@
+{
+  "gate": "web-check-review-repair",
+  "command": [
+    "pnpm",
+    "check"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T05:19:53.902784+00:00",
+  "ended_at": "2026-10-03T05:20:09.105576+00:00",
+  "duration_seconds": 15.203,
+  "exit": 0,
+  "source_before": "web-check-review-repair-source-before.json",
+  "source_after": "web-check-review-repair-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "web-check-review-repair.log",
+  "log_sha256": "83087020a68632ce9407dc62aafcdd9c3e05deb8f3736954e8857ddfa5991077"
+}

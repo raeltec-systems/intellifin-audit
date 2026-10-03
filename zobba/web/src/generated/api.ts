@@ -1131,8 +1131,14 @@ export interface components {
             size: number;
         };
         EvidencePageResponse: {
+            coverage: components["schemas"]["EvidenceSearchCoverageResponse"];
             items: components["schemas"]["EvidenceResponse"][];
             next_cursor: string | null;
+            /**
+             * @description Canonical literal query, trimmed using Rust Unicode whitespace rules;
+             *     at most 200 UTF-8 bytes. Empty text browses registered originals.
+             */
+            query: string;
             /** @description Storage configuration is present; this does not assert bucket readiness. */
             storage_configured: boolean;
         };
@@ -1170,6 +1176,15 @@ export interface components {
             reservation: components["schemas"]["EvidenceReservationResponse"];
             /** @description Immutable storage version independently confirmed by a bounded pinned read. */
             version: string;
+        };
+        EvidenceSearchCoverageResponse: {
+            candidate_limit: number;
+            /**
+             * @description No remaining C-ordered candidates for this read, iff next_cursor is null.
+             *     This never establishes source completeness or absence before the cursor.
+             */
+            complete: boolean;
+            examined_count: number;
         };
         /** @description Each populated value is the acquisition actor's assertion; null means unknown. */
         EvidenceSourceAssertions: {
@@ -2758,7 +2773,10 @@ export interface operations {
             query: {
                 organisation_id: string;
                 client_id: string;
+                /** @description Last examined C-ordered candidate; restart without a cursor when q changes */
                 after?: string;
+                /** @description Literal substring of filename or attributed source fields after context-independent per-scalar Unicode lowercase; no normalization or full case folding. At most 200 UTF-8 bytes after Rust Unicode whitespace trim, controls refused and FEFF preserved. No original-content search. */
+                q?: string;
             };
             header?: {
                 "X-Expected-Session"?: string | null;
@@ -2770,12 +2788,22 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description At most 50 matches from at most 256 examined current-scope candidates. Partial empty pages retain continuation; no page proves document meaning or source completeness. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["EvidencePageResponse"];
+                };
+            };
+            /** @description evidence_invalid: shorten the search to 200 UTF-8 bytes, remove control characters or restart with a valid cursor */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             401: {

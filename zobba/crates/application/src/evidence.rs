@@ -95,6 +95,14 @@ pub trait EvidenceMetadata: Send + Sync {
         scope: &Scope,
         after: Option<&str>,
     ) -> impl Future<Output = Result<EvidencePage<RegisteredEvidence>, EvidenceError>> + Send;
+    /// The adapter must authorize the exact current scope and bound C-ordered
+    /// candidates before matching attributed metadata. Recovery stays separate.
+    fn search(
+        &self,
+        actor: &str,
+        scope: &Scope,
+        query: &EvidenceSearchQuery,
+    ) -> impl Future<Output = Result<EvidenceSearchPage, EvidenceError>> + Send;
     fn inspect(
         &self,
         actor: &str,
@@ -128,6 +136,75 @@ pub trait EvidenceMetadata: Send + Sync {
         actor: &str,
         scope: &Scope,
     ) -> impl Future<Output = Result<(), EvidenceError>> + Send;
+}
+/// Consume at most the candidate budget plus one unexamined lookahead row. Stop
+/// at the result budget without skipping later candidates, including matches.
+/// Adapters supply only currently authorized, C-ordered registered originals.
+pub fn search_candidates(
+    query: &EvidenceSearchQuery,
+    candidates: Vec<RegisteredEvidence>,
+) -> Result<EvidenceSearchPage, EvidenceError> {
+    if !query.is_valid() {
+        return Err(EvidenceError::Invalid);
+    }
+    if candidates.len() > EVIDENCE_SEARCH_CANDIDATES + 1
+        || candidates
+            .windows(2)
+            .any(|pair| pair[0].reservation.id >= pair[1].reservation.id)
+        || candidates.first().is_some_and(|first| {
+            query
+                .after
+                .as_ref()
+                .is_some_and(|after| &first.reservation.id <= after)
+        })
+    {
+        return Err(EvidenceError::Unavailable);
+    }
+    let needle = metadata_search_case_key(&query.query);
+    let candidate_count = candidates.len();
+    let mut items = Vec::new();
+    let mut examined_count = 0;
+    let mut last_examined = None;
+    for candidate in candidates.into_iter().take(EVIDENCE_SEARCH_CANDIDATES) {
+        examined_count += 1;
+        last_examined = Some(candidate.reservation.id.clone());
+        let request = &candidate.reservation.request;
+        if [
+            Some(&request.filename),
+            request.source.system.as_ref(),
+            request.source.account.as_ref(),
+            request.source.source_version.as_ref(),
+            request.source.selection.as_ref(),
+            request.source.coverage.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        .any(|value| metadata_search_case_key(value).contains(&needle))
+        {
+            items.push(candidate);
+            if items.len() == EVIDENCE_PAGE_SIZE {
+                break;
+            }
+        }
+    }
+    let complete = examined_count == candidate_count;
+    Ok(EvidenceSearchPage {
+        items,
+        next_cursor: if complete { None } else { last_examined },
+        coverage: EvidenceSearchCoverage {
+            examined_count,
+            candidate_limit: EVIDENCE_SEARCH_CANDIDATES,
+            complete,
+        },
+    })
+}
+/// Map each Unicode scalar to lowercase independently, then compare literal
+/// substrings. Whole-string lowercasing is context-sensitive (for example, Greek
+/// final sigma), so it can erase a prefix match. This applies neither Unicode
+/// normalization nor locale-specific casing/full case folding, and never changes
+/// the attributed metadata returned to the caller.
+fn metadata_search_case_key(value: &str) -> String {
+    value.chars().flat_map(char::to_lowercase).collect()
 }
 fn valid_version(version: &str) -> bool {
     !version.is_empty()
@@ -306,6 +383,193 @@ pub fn capture_range(bytes: &[u8], start: u64, end: u64) -> Result<CapturedExcer
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn search_fixture(index: usize, filename: &str) -> RegisteredEvidence {
+        RegisteredEvidence {
+            reservation: Reservation {
+                id: format!("evidence-{index:04}"),
+                actor_id: "actor-a".into(),
+                scope: Scope {
+                    organisation_id: "org-a".into(),
+                    client_id: "client-a".into(),
+                    engagement_id: "engagement-a".into(),
+                },
+                request: ReservationRequest {
+                    key: format!("key-{index}"),
+                    filename: filename.into(),
+                    identity: ContentIdentity {
+                        sha256: "a".repeat(64),
+                        size: 1,
+                    },
+                    source: SourceAssertions::default(),
+                },
+                reserved_at: 1,
+            },
+            version: "version-a".into(),
+            registered_at: 2,
+        }
+    }
+    #[test]
+    fn search_result_limit_continues_at_last_examined_without_skipping_matches() {
+        let candidates: Vec<_> = (0..101)
+            .map(|index| {
+                search_fixture(
+                    index,
+                    if index % 2 == 0 {
+                        "match.txt"
+                    } else {
+                        "other.txt"
+                    },
+                )
+            })
+            .collect();
+        let first = search_candidates(
+            &EvidenceSearchQuery::new("MATCH", None).unwrap(),
+            candidates.clone(),
+        )
+        .unwrap();
+        assert_eq!(first.items.len(), 50);
+        assert_eq!(first.coverage.examined_count, 99);
+        assert_eq!(first.next_cursor.as_deref(), Some("evidence-0098"));
+        assert!(!first.coverage.complete);
+        let second = search_candidates(
+            &EvidenceSearchQuery::new("MATCH", first.next_cursor).unwrap(),
+            candidates.into_iter().skip(99).collect(),
+        )
+        .unwrap();
+        assert_eq!(second.items.len(), 1);
+        assert_eq!(second.items[0].reservation.id, "evidence-0100");
+        assert_eq!(second.coverage.examined_count, 2);
+        assert!(second.coverage.complete);
+        assert!(second.next_cursor.is_none());
+    }
+    #[test]
+    fn search_partial_empty_page_continues_past_256_unmatched_candidates() {
+        let candidates: Vec<_> = (0..257)
+            .map(|index| {
+                search_fixture(
+                    index,
+                    if index == 256 {
+                        "rare.txt"
+                    } else {
+                        "other.txt"
+                    },
+                )
+            })
+            .collect();
+        let first = search_candidates(
+            &EvidenceSearchQuery::new("rare", None).unwrap(),
+            candidates.clone(),
+        )
+        .unwrap();
+        assert!(first.items.is_empty());
+        assert_eq!(first.coverage.examined_count, 256);
+        assert_eq!(first.next_cursor.as_deref(), Some("evidence-0255"));
+        assert!(!first.coverage.complete);
+        let second = search_candidates(
+            &EvidenceSearchQuery::new("rare", first.next_cursor).unwrap(),
+            vec![candidates[256].clone()],
+        )
+        .unwrap();
+        assert_eq!(second.items[0].reservation.id, "evidence-0256");
+        assert_eq!(second.coverage.examined_count, 1);
+        assert!(second.coverage.complete);
+        let empty =
+            search_candidates(&EvidenceSearchQuery::new("rare", None).unwrap(), vec![]).unwrap();
+        assert_eq!(empty.coverage.examined_count, 0);
+        assert!(empty.coverage.complete);
+    }
+    #[test]
+    fn search_matches_only_literal_attributed_fields_with_unicode_lowercase() {
+        let mut candidate = search_fixture(1, "Résumé 界🙂.txt");
+        candidate.reservation.request.source = SourceAssertions {
+            system: Some("LEDGER".into()),
+            account: Some("Bank account".into()),
+            source_version: Some("June-v2".into()),
+            selection: Some("Selected %_ rows".into()),
+            coverage: Some("Unverified coverage".into()),
+        };
+        for query in [
+            "RÉSUMÉ", "界🙂", "ledger", "ACCOUNT", "june", "%_", "COVERAGE", "",
+        ] {
+            assert_eq!(
+                search_candidates(
+                    &EvidenceSearchQuery::new(query, None).unwrap(),
+                    vec![candidate.clone()]
+                )
+                .unwrap()
+                .items,
+                vec![candidate.clone()]
+            );
+        }
+        for query in [
+            "actor-a",
+            "version-a",
+            "evidence-0001",
+            "org-a",
+            "not a stored excerpt",
+        ] {
+            assert!(
+                search_candidates(
+                    &EvidenceSearchQuery::new(query, None).unwrap(),
+                    vec![candidate.clone()]
+                )
+                .unwrap()
+                .items
+                .is_empty()
+            );
+        }
+        assert_eq!(
+            search_candidates(
+                &EvidenceSearchQuery::new("", None).unwrap(),
+                vec![candidate.clone(); 258]
+            ),
+            Err(EvidenceError::Unavailable)
+        );
+        assert_eq!(
+            search_candidates(
+                &EvidenceSearchQuery::new("", Some(candidate.reservation.id.clone())).unwrap(),
+                vec![candidate]
+            ),
+            Err(EvidenceError::Unavailable)
+        );
+    }
+    #[test]
+    fn search_unicode_case_mapping_is_context_independent_and_keeps_literal_substrings() {
+        let mut candidate = search_fixture(1, "ΟΣΑ Café %_.txt");
+        candidate.reservation.request.source = SourceAssertions {
+            system: Some("ΔΟΣΑ".into()),
+            account: Some("ΠΟΣΑ".into()),
+            source_version: Some("ΝΟΣΑ".into()),
+            selection: Some("ΡΟΣΑ".into()),
+            coverage: Some("ΤΟΣΑ".into()),
+        };
+        for query in [
+            "ΟΣ", "οσ", "ΟΣΑ", "ΔΟΣ", "ΠΟΣ", "ΝΟΣ", "ΡΟΣ", "ΤΟΣ", "CAFÉ", "%_",
+        ] {
+            assert_eq!(
+                search_candidates(
+                    &EvidenceSearchQuery::new(query, None).unwrap(),
+                    vec![candidate.clone()]
+                )
+                .unwrap()
+                .items,
+                vec![candidate.clone()],
+                "Unicode casing must retain literal metadata prefixes: {query}"
+            );
+        }
+        for query in ["ΟΣΒ", "Cafe\u{301}", ".*", "%X"] {
+            assert!(
+                search_candidates(
+                    &EvidenceSearchQuery::new(query, None).unwrap(),
+                    vec![candidate.clone()]
+                )
+                .unwrap()
+                .items
+                .is_empty(),
+                "search must not normalize text or interpret patterns: {query}"
+            );
+        }
+    }
     #[test]
     fn automatic_capture_preserves_exact_bytes_and_separates_assertions() {
         let bytes = "\u{feff}Statement\r\n界🙂".as_bytes();

@@ -198,3 +198,51 @@ fn finite_reservation_limit_is_documented_as_conflict_without_retry_after() {
         json!({"$ref":"#/components/schemas/ErrorResponse"})
     );
 }
+
+#[test]
+fn bounded_search_documents_literal_query_and_explicit_candidate_coverage() {
+    let document = serde_json::to_value(zobba_api::ApiDocument::openapi()).unwrap();
+    let operation = &document["paths"]["/engagements/{engagement_id}/evidence"]["get"];
+    let query = operation["parameters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|parameter| parameter["name"] == "q")
+        .unwrap();
+    assert_eq!(query["in"], "query");
+    assert!(
+        query["description"]
+            .as_str()
+            .unwrap()
+            .contains("200 UTF-8 bytes")
+    );
+    assert!(
+        operation["responses"]["400"]["description"]
+            .as_str()
+            .unwrap()
+            .contains("evidence_invalid")
+    );
+    let page = &document["components"]["schemas"]["EvidencePageResponse"];
+    for field in [
+        "items",
+        "next_cursor",
+        "query",
+        "coverage",
+        "storage_configured",
+    ] {
+        assert!(page["required"].as_array().unwrap().contains(&json!(field)));
+    }
+    assert_eq!(page["properties"]["items"]["maxItems"], 50);
+    let coverage = &document["components"]["schemas"]["EvidenceSearchCoverageResponse"];
+    assert_eq!(coverage["properties"]["examined_count"]["maximum"], 256);
+    assert_eq!(coverage["properties"]["candidate_limit"]["minimum"], 256);
+    assert_eq!(coverage["properties"]["candidate_limit"]["maximum"], 256);
+    for field in ["examined_count", "candidate_limit", "complete"] {
+        assert!(
+            coverage["required"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(field))
+        );
+    }
+}

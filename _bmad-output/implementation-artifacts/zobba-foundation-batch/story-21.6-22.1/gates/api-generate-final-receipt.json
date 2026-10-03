@@ -1,0 +1,21 @@
+{
+  "gate": "api-generate-final",
+  "command": [
+    "pnpm",
+    "api:generate"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T05:17:10.751870+00:00",
+  "ended_at": "2026-10-03T05:17:55.043534+00:00",
+  "duration_seconds": 44.292,
+  "exit": 0,
+  "source_before": "api-generate-final-source-before.json",
+  "source_after": "api-generate-final-source-after.json",
+  "source_unchanged": false,
+  "changed_source_paths": [
+    "zobba/openapi.json",
+    "zobba/web/src/generated/api.ts"
+  ],
+  "log": "api-generate-final.log",
+  "log_sha256": "474bc5d31e4f64bdb6d0d860bad0f6849bf3e4f2082f655528a048ca88048349"
+}

@@ -1,0 +1,22 @@
+{
+  "gate": "combined-check-repair-1",
+  "command": [
+    "cargo",
+    "check",
+    "--workspace",
+    "--offline"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T03:42:44.740504+00:00",
+  "ended_at": "2026-10-03T03:43:06.378800+00:00",
+  "duration_seconds": 21.638,
+  "exit": 0,
+  "source_before": "combined-check-repair-1-source-before.json",
+  "source_after": "combined-check-repair-1-source-after.json",
+  "source_unchanged": false,
+  "changed_source_paths": [
+    "zobba/Cargo.lock"
+  ],
+  "log": "combined-check-repair-1.log",
+  "log_sha256": "86ffa36a69214488fe2514f4f5f50ed23b789241959ac9a1e2d6e9ab49ae966e"
+}

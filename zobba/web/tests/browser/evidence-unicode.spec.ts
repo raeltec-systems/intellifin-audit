@@ -198,8 +198,12 @@ test('mixed API-created normal and FEFF originals retain exact metadata and down
   await page.mouse.move(0, 0);
   await page.screenshot({ path: info.outputPath('mixed-registered-originals.png'), fullPage: true });
   await page.locator('.evidence-registry').evaluate(element => element.scrollIntoView({ block: 'start' }));
+  // Complete provenance makes the registered list taller than its scroll pane.
+  // Every row must be fully readable when reached, not fit simultaneously.
   for (const item of registered) {
-    await expect(page.locator(`[data-evidence-id="${item.reservation.id}"]`)).toBeInViewport({ ratio: 1 });
+    const row = page.locator(`[data-evidence-id="${item.reservation.id}"]`);
+    await row.evaluate(element => element.scrollIntoView({ block: 'center', inline: 'nearest' }));
+    await expect(row).toBeInViewport({ ratio: 1 });
   }
   await page.screenshot({ path: info.outputPath('mixed-affected-registry.png'), fullPage: true });
 });

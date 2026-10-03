@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+  "effective_url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+  "retrieved_at_utc": "2026-10-03T04:30:50.261762+00:00",
+  "completed_at_utc": "2026-10-03T04:30:50.629916+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html; charset=utf-8",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "anthropic-deprecations.html",
+  "bytes": 430759,
+  "sha256": "7083d0fe6c5d2c60c37dbb3fb7400b1d7a5febb13c2e4a8ca8c4896f06cd4cef",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/anthropic-deprecations.txt",
+  "readable_extraction_sha256": "52618c6969a14af0800a0754e957ff528281253e279f11a4fc9d5bb0b3125a33",
+  "raw_body_in_checkpoint": false
+}

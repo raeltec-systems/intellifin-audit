@@ -160,12 +160,12 @@ async fn bootstrap_contract() {
     .fetch_all(&mut admin)
     .await
     .unwrap();
-    assert_eq!(installed.len(), 10, "fresh migration ledger is incomplete");
+    assert_eq!(installed.len(), 11, "fresh migration ledger is incomplete");
     assert_eq!(installed, repeated, "repeat changed migration ledger");
     let database = RuntimeDatabase::connect(&runtime_url)
         .await
         .expect("nonowner runtime starts");
-    assert_eq!(database.check().await.unwrap().0, 10);
+    assert_eq!(database.check().await.unwrap().0, 11);
     refused_without_mutation(
         &mut admin,
         &migration_url,
@@ -231,6 +231,10 @@ async fn bootstrap_contract() {
         "DELETE FROM public.skill_events",
         "UPDATE public.skill_status SET status='enabled'",
         "UPDATE public.task_skill_selections SET receipt='{}'",
+        "UPDATE public.model_profiles SET document='{}'",
+        "DELETE FROM public.model_invocations",
+        "UPDATE public.model_results SET document='{}'",
+        "DELETE FROM public.model_tool_bindings",
         "UPDATE public.knowledge_records SET document='{}'",
         "DELETE FROM public.knowledge_events",
         "UPDATE public.knowledge_invalidations SET document='{}'",
@@ -353,6 +357,14 @@ async fn bootstrap_contract() {
         "GRANT EXECUTE ON FUNCTION public.skills_impact(text,jsonb) TO PUBLIC",
         "ALTER FUNCTION public.skills_write(text,text,text,text,jsonb,text,text,text,jsonb) SET search_path=public",
         "GRANT EXECUTE ON FUNCTION public.skills_task(text,text,jsonb) TO PUBLIC",
+        "ALTER FUNCTION public.model_configuration_admin(text,text,text) SECURITY INVOKER",
+        "GRANT EXECUTE ON FUNCTION public.model_configuration_admin(text,text,text) TO PUBLIC",
+        "ALTER TABLE public.model_profiles NO FORCE ROW LEVEL SECURITY",
+        "ALTER TABLE public.model_catalogues NO FORCE ROW LEVEL SECURITY",
+        "ALTER TABLE public.model_invocations NO FORCE ROW LEVEL SECURITY",
+        "ALTER TABLE public.model_results NO FORCE ROW LEVEL SECURITY",
+        "ALTER TABLE public.model_tool_bindings NO FORCE ROW LEVEL SECURITY",
+        "ALTER POLICY model_result_insert ON public.model_results WITH CHECK (true)",
         "ALTER TABLE public.knowledge_records NO FORCE ROW LEVEL SECURITY",
         "ALTER TABLE public.knowledge_events NO FORCE ROW LEVEL SECURITY",
         "ALTER TABLE public.knowledge_invalidations NO FORCE ROW LEVEL SECURITY",
@@ -378,7 +390,7 @@ async fn bootstrap_contract() {
         "ALTER TABLE public.zobba_bootstrap ALTER COLUMN singleton SET DEFAULT false",
         "ALTER TABLE public._sqlx_migrations ALTER COLUMN installed_on SET DEFAULT '2000-01-01'::timestamptz",
         "CREATE RULE alien_rule AS ON DELETE TO public.zobba_bootstrap DO ALSO NOTHING",
-        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(11,1000) v",
+        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(12,1000) v",
         "UPDATE public._sqlx_migrations SET description=repeat('x',1048576),checksum=decode(repeat('ff',1048576),'hex')",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product='foreign'",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product=repeat('x',1048576)",
@@ -403,6 +415,7 @@ async fn bootstrap_contract() {
     methodology_function_authority(&config, &mut admin).await;
     skills_function_authority(&config, &mut admin).await;
     knowledge_function_authority(&config, &mut admin).await;
+    model_function_authority(&config, &mut admin).await;
     internal_trigger_contract(&config, &mut admin).await;
 
     // Column-level leases must not expand to routing identity, scheduling or
@@ -513,6 +526,7 @@ async fn bootstrap_contract() {
     methodology_upgrade_contract(&config, &mut admin).await;
     skills_upgrade_contract(&config, &mut admin).await;
     knowledge_upgrade_contract(&config, &mut admin).await;
+    model_upgrade_contract(&config, &mut admin).await;
     no_foreign_code_runs(&config, &mut admin).await;
     foreign_catalog_objects(&config, &mut admin).await;
     authority_and_atomicity(&config, &mut admin).await;
@@ -658,7 +672,7 @@ async fn foreign_catalog_objects(config: &Configuration, conn: &mut PgConnection
                 .await
                 .expect("remove foreign catalog fixture");
             if let Some(running) = running {
-                assert_eq!(running.check().await.unwrap().0, 10);
+                assert_eq!(running.check().await.unwrap().0, 11);
             }
         }
     }
@@ -675,7 +689,7 @@ async fn foreign_catalog_objects(config: &Configuration, conn: &mut PgConnection
     refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
     assert_eq!(running.check().await, Err(BootstrapError::SchemaMismatch));
     admin.execute("DROP STATISTICS public.alien").await.unwrap();
-    assert_eq!(running.check().await.unwrap().0, 10);
+    assert_eq!(running.check().await.unwrap().0, 11);
     reset(config, conn).await;
 }
 
@@ -755,7 +769,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
             .execute(format!("REVOKE MAINTAIN ON public.{table} FROM \"{target}\"").as_str())
             .await
             .unwrap();
-        assert_eq!(running.check().await.unwrap().0, 10);
+        assert_eq!(running.check().await.unwrap().0, 11);
     }
     privileged.execute(format!("GRANT pg_read_server_files TO \"{parent}\" WITH INHERIT TRUE, SET FALSE; GRANT \"{parent}\" TO \"{target}\" WITH INHERIT FALSE, SET TRUE").as_str()).await.unwrap();
     let mut capable = PgConnection::connect(&target_url).await.unwrap();
@@ -782,7 +796,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         Err(BootstrapError::UnsafeRuntimeRole)
     );
     privileged.execute(format!("REVOKE \"{parent}\" FROM \"{target}\"; REVOKE pg_read_server_files FROM \"{parent}\"").as_str()).await.unwrap();
-    assert_eq!(running.check().await.unwrap().0, 10);
+    assert_eq!(running.check().await.unwrap().0, 11);
 
     for flags in [
         "REPLICATION",
@@ -934,7 +948,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         .execute(format!("REVOKE \"{migrator_role}\" FROM \"{target}\"").as_str())
         .await
         .unwrap();
-    assert_eq!(running.check().await.unwrap().0, 10);
+    assert_eq!(running.check().await.unwrap().0, 11);
 
     // Simulate interruption after SQLx creates its ledger but before bootstrap
     // finishes. The outer transaction must remove BOTH tables and all grants.
@@ -957,7 +971,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         .execute("DROP EVENT TRIGGER zobba_fixture_interrupt")
         .await
         .unwrap();
-    assert_eq!(running.check().await.unwrap().0, 10);
+    assert_eq!(running.check().await.unwrap().0, 11);
     reset(config, conn).await;
     privileged.execute(trigger).await.unwrap();
     migration_refused_without_mutation(conn, config, &target, BootstrapError::SchemaMismatch).await;
@@ -1223,9 +1237,9 @@ async fn upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
                 .fetch_all(&mut *conn)
                 .await
                 .unwrap();
-                assert_eq!(all.len(), 10, "upgrade did not reach the complete ledger");
+                assert_eq!(all.len(), 11, "upgrade did not reach the complete ledger");
                 let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-                assert_eq!(database.check().await.unwrap().0, 10);
+                assert_eq!(database.check().await.unwrap().0, 11);
                 migrate(&config.migration, &role)
                     .await
                     .expect("upgrade repeat is safe");
@@ -1602,6 +1616,46 @@ async fn knowledge_function_authority(config: &Configuration, conn: &mut PgConne
     }
 }
 
+// Runtime execution is limited to the new session-bound configuration predicate.
+async fn model_function_authority(config: &Configuration, conn: &mut PgConnection) {
+    let role = database_options(&config.runtime)
+        .unwrap()
+        .get_username()
+        .to_owned();
+    let mut privileged = PgConnection::connect(&config.admin).await.unwrap();
+    config.guard_connection(&mut privileged).await;
+    for mutation in [
+        format!(
+            "GRANT EXECUTE ON FUNCTION public.model_configuration_admin(text,text,text) TO \"{role}\" WITH GRANT OPTION"
+        ),
+        format!(
+            "ALTER FUNCTION public.model_configuration_admin(text,text,text) OWNER TO \"{role}\""
+        ),
+        format!(
+            "REVOKE EXECUTE ON FUNCTION public.model_configuration_admin(text,text,text) FROM \"{role}\""
+        ),
+    ] {
+        privileged.execute(mutation.as_str()).await.unwrap();
+        refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
+        if mutation.starts_with("REVOKE") {
+            migrate(&config.migration, &role).await.expect(
+                "explicit migration restores missing narrow model configuration authority function",
+            );
+        } else {
+            migration_refused_without_mutation(conn, config, &role, BootstrapError::SchemaMismatch)
+                .await;
+            reset(config, conn).await;
+            migrate(&config.migration, &role).await.unwrap();
+        }
+        RuntimeDatabase::connect(&config.runtime)
+            .await
+            .unwrap()
+            .pool()
+            .close()
+            .await;
+    }
+}
+
 // A populated published schema 7 is upgraded by the restricted migration role.
 // Existing Task commands retain their bytes; bindings explicitly label their neutral legacy basis.
 async fn methodology_upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
@@ -1740,7 +1794,7 @@ async fn methodology_upgrade_contract(config: &Configuration, conn: &mut PgConne
             .contains("neutral")
     );
     let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-    assert_eq!(database.check().await.unwrap().0, 10);
+    assert_eq!(database.check().await.unwrap().0, 11);
     let selected = zobba_domain::identity::Scope {
         organisation_id: "methodology-upgrade".into(),
         client_id: "client".into(),
@@ -1848,7 +1902,7 @@ async fn continuity_upgrade_contract(config: &Configuration, conn: &mut PgConnec
             .expect("valid/remediated schema 6 upgrades");
         assert_eq!(authority_snapshot(conn).await, authorised);
         let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-        assert_eq!(database.check().await.unwrap().0, 10);
+        assert_eq!(database.check().await.unwrap().0, 11);
         database.pool().close().await;
     }
 
@@ -1881,7 +1935,7 @@ async fn continuity_upgrade_contract(config: &Configuration, conn: &mut PgConnec
             "upgrade changed authority"
         );
         let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-        assert_eq!(database.check().await.unwrap().0, 10);
+        assert_eq!(database.check().await.unwrap().0, 11);
         database.pool().close().await;
     }
 
@@ -2056,7 +2110,7 @@ async fn skills_upgrade_contract(config: &Configuration, conn: &mut PgConnection
         assert_eq!(count, 0, "upgrade invented a skill or selection");
     }
     let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-    assert_eq!(database.check().await.unwrap().0, 10);
+    assert_eq!(database.check().await.unwrap().0, 11);
     database.pool().close().await;
     migrate(&config.migration, &role)
         .await
@@ -2181,7 +2235,7 @@ async fn knowledge_upgrade_contract(config: &Configuration, conn: &mut PgConnect
         );
     }
     let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-    assert_eq!(database.check().await.unwrap().0, 10);
+    assert_eq!(database.check().await.unwrap().0, 11);
     database.pool().close().await;
     let installed: Vec<String> = sqlx::query_scalar(
         "SELECT to_jsonb(m)::text FROM public._sqlx_migrations m ORDER BY version",
@@ -2189,7 +2243,7 @@ async fn knowledge_upgrade_contract(config: &Configuration, conn: &mut PgConnect
     .fetch_all(&mut *conn)
     .await
     .unwrap();
-    assert_eq!(installed.len(), 10);
+    assert_eq!(installed.len(), 11);
     migrate(&config.migration, &role)
         .await
         .expect("knowledge upgrade repeat is idempotent");
@@ -2221,4 +2275,88 @@ async fn assert_legacy_command_timestamps_unknown(conn: &mut PgConnection) {
         invented, 0,
         "upgrade invented a receipt timestamp for legacy commands"
     );
+}
+
+/// The schema10 source owners and their immutable rows survive the model upgrade.
+async fn model_upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
+    let role = database_options(&config.runtime)
+        .unwrap()
+        .get_username()
+        .to_owned();
+    install_schema6(config, conn).await;
+    let migrator = sqlx::migrate!("../../migrations");
+    for migration in migrator.iter().skip(6).take(4) {
+        conn.execute(migration.sql.as_ref()).await.unwrap();
+        sqlx::query("INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) VALUES($1,$2,true,$3,0)")
+            .bind(migration.version).bind(migration.description.as_ref()).bind(migration.checksum.as_ref()).execute(&mut *conn).await.unwrap();
+    }
+    let catalog: Vec<String> = sqlx::query_scalar(include_str!("../src/catalog-signature.sql"))
+        .fetch_all(&mut *conn)
+        .await
+        .unwrap();
+    assert!(
+        catalog
+            .iter()
+            .map(String::as_str)
+            .eq(include_str!("../src/schema-v10.catalog").lines())
+    );
+    let mut admin = PgConnection::connect(&config.admin).await.unwrap();
+    config.guard_connection(&mut admin).await;
+    let mut seed = admin.begin().await.unwrap();
+    seed.execute(r#"
+      INSERT INTO public.identities(id,issuer,subject,display_name) VALUES('model-upgrade','upgrade','model','Upgrade Auditor');
+      INSERT INTO public.organisations VALUES('model-upgrade','Upgrade');
+      INSERT INTO public.organisation_memberships(organisation_id,actor_id,roles) VALUES('model-upgrade','model-upgrade',ARRAY['admin','auditor']);
+      INSERT INTO public.clients VALUES('model-upgrade','client','Client');
+      INSERT INTO public.engagements(organisation_id,client_id,id,name) VALUES('model-upgrade','client','engagement','Engagement');
+      INSERT INTO public.engagement_assignments(organisation_id,client_id,engagement_id,actor_id) VALUES('model-upgrade','client','engagement','model-upgrade');
+      SELECT set_config('zobba.actor_id','model-upgrade',true),set_config('zobba.organisation_id','model-upgrade',true),set_config('zobba.client_id','client',true),set_config('zobba.engagement_id','engagement',true);
+      INSERT INTO public.tasks(organisation_id,client_id,engagement_id,id,cycle_id,accountable_actor,objective,working_brief,state,cessation,intent_revision,applied_intent,applied_command_cursor) VALUES('model-upgrade','client','engagement','model-upgrade-task','model-upgrade-cycle','model-upgrade','Retained objective','Retained exact direction','ready','none',1,1,1);
+      INSERT INTO public.task_cycles VALUES('model-upgrade','client','engagement','model-upgrade-task','model-upgrade-cycle','active');
+      INSERT INTO public.task_commands(organisation_id,client_id,engagement_id,id,author_id,idempotency_key,kind,content,task_id,cycle_id,received_cursor,intent_revision) VALUES('model-upgrade','client','engagement','model-upgrade-create','model-upgrade','create','create','Retained objective','model-upgrade-task','model-upgrade-cycle',1,1);
+      INSERT INTO public.knowledge_records(organisation_id,id,revision,actor_id,client_id,engagement_id,document) VALUES('model-upgrade','retained-record',1,'model-upgrade','client','engagement','{"fact":"exact old source"}');
+      INSERT INTO public.knowledge_events(organisation_id,id,actor_id,key,client_id,engagement_id,command,receipt) VALUES('model-upgrade','retained-event','model-upgrade','retained-key','client','engagement','{"key":"retained-key"}','{"event":"retained-event"}');
+    "#).await.unwrap();
+    seed.commit().await.unwrap();
+    let tables:Vec<String>=sqlx::query_scalar("SELECT tablename::text FROM pg_catalog.pg_tables WHERE schemaname='public' AND tablename NOT IN ('zobba_bootstrap','_sqlx_migrations') ORDER BY tablename").fetch_all(&mut admin).await.unwrap();
+    let mut before = Vec::new();
+    for table in &tables {
+        let rows:serde_json::Value=sqlx::query_scalar(&format!("SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) FROM public.\"{table}\" t")).fetch_one(&mut admin).await.unwrap();
+        before.push(rows);
+    }
+    let ledger: Vec<String> = sqlx::query_scalar(
+        "SELECT to_jsonb(m)::text FROM public._sqlx_migrations m ORDER BY version",
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .unwrap();
+    assert_eq!(ledger.len(), 10);
+    migrate(&config.migration, &role).await.unwrap();
+    for (table, original) in tables.iter().zip(before) {
+        let after:serde_json::Value=sqlx::query_scalar(&format!("SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) FROM public.\"{table}\" t")).fetch_one(&mut admin).await.unwrap();
+        assert_eq!(original, after, "model upgrade rewrote {table}");
+    }
+    let retained:Vec<String>=sqlx::query_scalar("SELECT to_jsonb(m)::text FROM public._sqlx_migrations m WHERE version<=10 ORDER BY version").fetch_all(&mut *conn).await.unwrap();
+    assert_eq!(ledger, retained);
+    for table in [
+        "model_profiles",
+        "model_catalogues",
+        "model_invocations",
+        "model_results",
+        "model_tool_bindings",
+    ] {
+        let count: i64 = sqlx::query_scalar(&format!("SELECT count(*) FROM public.{table}"))
+            .fetch_one(&mut admin)
+            .await
+            .unwrap();
+        assert_eq!(
+            count, 0,
+            "migration invented qualification or model activity"
+        );
+    }
+    let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
+    assert_eq!(database.check().await.unwrap().0, 11);
+    database.pool().close().await;
+    migrate(&config.migration, &role).await.unwrap();
+    reset(config, conn).await;
 }

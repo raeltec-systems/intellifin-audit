@@ -22,6 +22,8 @@ use zobba_infrastructure::{
 };
 #[path = "operations/methodology_execution.rs"]
 mod methodology_execution;
+#[path = "operations/model_execution.rs"]
+mod model_execution;
 #[path = "operations/policy_revisions.rs"]
 mod policy_revisions;
 #[path = "operations/review_repairs.rs"]
@@ -1460,6 +1462,7 @@ async fn standing_permissions_exact_operations_and_transaction_cutoffs() {
     config.guard_connection(&mut holder).await;
     sqlx::query("INSERT INTO public.trusted_attachment_metadata(organisation_id,client_id,engagement_id,source_key,attachment_id,digest,classification) VALUES('org-a','client-a','engagement-a','14:fixture-source14:fixture-ledger','attachment',$1,'audit')").bind("a".repeat(64)).execute(&mut admin).await.unwrap();
     let mut fixture = Fixture::new(runtime_pool(&config, 4).await).await;
+    Box::pin(model_execution::verify(&fixture, &mut admin, &mut holder)).await;
     logical_admission_and_atomicity(&fixture, &mut admin, &mut holder).await;
     exact_decisions(&fixture, &mut admin).await;
     intersected_policy_and_lineage(&mut fixture).await;
@@ -1467,7 +1470,9 @@ async fn standing_permissions_exact_operations_and_transaction_cutoffs() {
     facts_and_recovery(&fixture, &mut admin).await;
     policy_revisions::verify(&mut fixture, &mut admin).await;
     review_repairs::verify(&mut fixture, &mut admin, &mut holder).await;
-    task_reconciliation::verify(&fixture).await;
+    // This scenario carries many independent claims and reconciliation orders;
+    // allocate its async state separately from the aggregate contract test.
+    Box::pin(task_reconciliation::verify(&fixture)).await;
     late_receipts_scope_and_cessation(&fixture, &config, &mut admin).await;
     methodology_execution::verify(&fixture, &mut admin).await;
     fixture.pool.close().await;

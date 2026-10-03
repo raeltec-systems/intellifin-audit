@@ -1,0 +1,31 @@
+{
+  "gate": "bootstrap-initial",
+  "command": [
+    "cargo",
+    "test",
+    "-p",
+    "zobba-infrastructure",
+    "--locked",
+    "--test",
+    "bootstrap",
+    "--",
+    "--test-threads=1"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T04:07:59.269705+00:00",
+  "ended_at": "2026-10-03T04:13:01.503219+00:00",
+  "duration_seconds": 302.234,
+  "exit": 0,
+  "source_before": "bootstrap-initial-source-before.json",
+  "source_after": "bootstrap-initial-source-after.json",
+  "source_unchanged": false,
+  "changed_source_paths": [
+    "zobba/crates/application/src/model.rs",
+    "zobba/crates/application/src/model/tests.rs",
+    "zobba/crates/infrastructure/src/model/mod.rs",
+    "zobba/crates/infrastructure/tests/operations.rs",
+    "zobba/crates/infrastructure/tests/operations/model_execution.rs"
+  ],
+  "log": "bootstrap-initial.log",
+  "log_sha256": "f49c047542959b53d2c4b7d142a8c98034a8effa766a29987fb95a4ca92710c3"
+}

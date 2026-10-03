@@ -240,7 +240,7 @@ cargo run -p zobba-cli --locked -- migrate --runtime-role zobba_app
 
 This command reads `ZOBBA_MIGRATION_DATABASE_URL`; repeating it is safe against
 the same valid schema. It accepts empty databases, exactly verified published
-schema 1–9 prefixes, or current schema 10. Physical catalog checks precede metadata
+schema 1–10 prefixes, or current schema 11. Physical catalog checks precede metadata
 reads; migration checksums, changes and restricted grants are validated atomically.
 Foreign, altered and newer states refuse without mutation. API and worker read
 only `ZOBBA_RUNTIME_DATABASE_URL` and
@@ -672,7 +672,7 @@ Both Rust processes expose:
 | Request | Healthy response | Dependency failure |
 |---|---|---|
 | `GET /health/live` | 200, `status: "live"`, `schema_version: null` | Remains live while the process can serve |
-| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 10` | 503, `status: "unavailable"`, `schema_version: null` |
+| `GET /health/ready` | 200, `status: "ready"`, `schema_version: 11` | 503, `status: "unavailable"`, `schema_version: null` |
 
 Each response also identifies `service: "api"` or `service: "worker"`. Readiness
 checks the supported schema through the restricted runtime connection. Startup
@@ -709,6 +709,7 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 . fixtures/oidc/.local/env.sh
 pnpm fixture:test
 cargo test --workspace --locked
+cargo test --locked -p zobba-infrastructure --example model_qualification
 cargo build --workspace --locked
 pnpm install --frozen-lockfile
 pnpm check
@@ -881,6 +882,50 @@ checks require the explicit `ZOBBA_TEST_ADMIN_DATABASE_URL` for that same guarde
 throwaway database. New evidence authority mutations use bounded asynchronous
 admin SQL so the Node database proxy can continue forwarding API transactions. The full
 verification commands above cover these targets, schema 5→6 and browser continuity.
+
+## Find registered sources without losing provenance (Story 21.6)
+
+The current engagement's Evidence library searches registered filenames and the
+five attributed source fields. `GET /evidence?q=...&after=...` compares literal
+substrings after mapping each Unicode scalar to lowercase independently. It does
+not normalize text or apply full Unicode case folding, and never searches document
+contents or interprets their meaning. Queries permit at most 200 UTF-8 bytes after Rust
+Unicode whitespace trimming and reject control characters before trimming.
+Accepted original metadata, including format characters such as U+FEFF, remains
+unchanged. Incomplete reservations retain their separate owner-only recovery path.
+
+Each request fetches at most 257 current-scope candidates in byte/C order, using
+one only as lookahead, examines at most 256 and returns at most 50 matches.
+`query` echoes the canonical query. `coverage` records `examined_count`,
+`candidate_limit: 256` and `complete`. The exclusive `next_cursor` is the last
+examined candidate, which may not match. It is null exactly when this read reaches
+the end of the remaining stream. Reaching 50 results stops consumption before any
+later eligible match; reaching 256 candidates keeps continuation even on an empty
+page. Reset the cursor when changing a query. Neither a complete scan nor a
+partial/empty page establishes business completeness or absence of relevant work.
+
+Results show exact original and storage version, composite scope, acquisition
+actor/time and registration standing, alongside explicitly attributed source
+assertions. Inspection distinguishes those facts from a bounded inert preview and
+a verified original download. Task knowledge can open its exact scope/ID/version/
+SHA-256 source in the same library without replacing conversation ownership or
+searching another engagement. Source access remains independently current; loss
+of a supporting source withdraws its projection while the separately authorized
+destination remains recoverable. Downloads verify the pinned original's size and
+digest before creating a short-lived Blob URL. Closing an inspector returns focus
+to a visible opener or a permitted fallback.
+
+Relevant checks from `zobba/` are `cargo test -p zobba-domain --lib evidence::`,
+`cargo test -p zobba-application --lib evidence::`,
+`cargo test -p zobba-api --test evidence_contract`, and the existing PostgreSQL
+`evidence`, `evidence_http` and object-store `evidence_s3` targets. Run guarded
+database targets serially. Web checks include `node --test web/tests/evidence.test.mjs`
+and `pnpm --filter @zobba/web exec playwright test evidence-search.spec.ts` plus
+existing evidence and knowledge regression suites. The search journey exercises
+dense and sparse continuation, held-response replacement, actual revocation,
+390px keyboard return, exact downloaded bytes and knowledge-to-library navigation.
+Actual execution results and inspected safe screenshots are recorded in the
+story delivery evidence; command availability alone is not a verification claim.
 
 ## Firm methodology and Task bindings (Story 21.2)
 
@@ -1164,3 +1209,135 @@ bounded memory across a transient session-check outage. Recovery waits for the s
 actor/session and that editor’s own fresh Admin read. Replacement, denial, sign-out,
 cancel and successful completion discard the draft. It is never stored in browser
 storage or automatically submitted.
+
+## Native model transport and current tools (Story 22.1)
+
+Schema 11 adds append-only model profile/catalogue revisions, attributable dispatch
+cutoffs, immutable results and exact model-call-to-operation bindings. Published
+migration and catalogue files 1–10 remain unchanged. New tables enforce scoped RLS;
+the non-owner runtime cannot rewrite or delete model history. Admin profile and
+catalogue saves require the current Admin session and share organisation advisory
+205 with Task controls and Permissions. Admin-only identities can read and revise
+configuration without receiving audit-workspace access. A successor or disablement prevents new
+use of an older snapshot while preserving its historical invocation facts.
+
+`ModelRepository::new` has no qualified providers. Trusted server composition must
+supply a `ModelQualificationSource` that corroborates the exact provider account,
+provider, model, destination, capability revision and fixture/live class. Native
+adapters also bind a non-secret account/project identifier and reject a different
+profile account before I/O. An operator must tie that identifier to the configured
+credential; the label alone does not prove provider account identity. Saving an
+Admin document
+or passing deterministic fixtures cannot establish live qualification. The same
+source must be installed on the operation repository consuming model proposals;
+its default configuration refuses model-bound operations. Installed skills keep
+their independent existing qualification gates.
+
+Requests are assembled by trusted application code, with exact Task/cycle/claim,
+producing intent/execution basis, profile and catalogue, input classes, context
+manifest and a canonical Send disclosure operation. `bind_disclosure` deterministically
+binds the entire portable input (including history, catalogue and schema) to exact
+SHA-256 attachments for every declared input class. Permissions therefore checks
+the actual payload's complete classification set; a changed payload requires new
+binding and current authority. There is no public raw-prompt endpoint. Current
+knowledge dependencies, Task controls, profile/catalogue,
+qualification and accepted/current Permissions are checked in the same short
+transaction before the durable possible-disclosure cutoff. Provider I/O holds no
+SQL connection. An exact retry or replacement owner recovers the original
+invocation without resending. A missing result means possibly accepted and unknown
+usage, never proof of non-execution or zero charge.
+
+The native adapters call only OpenAI `https://api.openai.com/v1/responses` with
+`store:false`, and Anthropic `https://api.anthropic.com/v1/messages`. Their credentials
+belong to adapter configuration and are absent from requests, database facts and
+public errors. Redirects and automatic retries are disabled. Neither adapter uses
+provider-owned conversations or implicit continuation IDs. Typed history carries
+complete paired calls and attributed results. The repository verifies the original
+successful proposal, exact operation binding, consumed attempt, terminal receipt
+and current source access before reuse. A receipt confirms execution disposition,
+not the truth of source content. Hostile result text remains tool data. Streams and
+JSON have
+independent frame, depth, node, argument, output and aggregate byte limits;
+fragmented UTF-8, CRLF and multiline SSE are decoded incrementally. Text and tool
+items remain provisional until validated terminal completion. A cancellation
+proves local termination, not provider non-execution or an absence of charges.
+
+Text, explicit structured output and complete canonical tool proposals are
+supported. The initial schema subset supports bounded strings, integer numbers,
+booleans, arrays, closed objects and constants. Fractional/exponential numbers and
+unrecognized provider events fail explicitly. Reasoning effort other than `None`
+is currently unsupported and must not be declared as an available profile
+capability. Tool descriptors currently describe exact prepared operations:
+account, destination, resource, material, digest and every effective argument are
+fixed by the catalogue. This is not an arbitrary variable-argument tool resolver.
+A future investigation tool needs a trusted versioned resolver that validates its
+arguments, derives and persists an exact canonical operation, and participates in
+both admission and consumption checks. Normalized tool-name collisions and
+substituted arguments are refused. A successful complete proposal can be atomically
+admitted only through
+the existing Permissions gateway; consumption repeats the current checks. Partial,
+refused, failed or unsupported completions cannot produce executable operations.
+Consumed effects retain existing reconciliation and receipt custody after controls
+or restrictions change.
+
+Local verification includes actual loopback HTTP/SSE fixtures for both providers,
+portable parser/coordinator tests, the PostgreSQL operation contract's model
+cases, and populated schema 10→11/bootstrap/runtime-role contracts. Run the
+workspace gates above; these checks do not contact a live model provider.
+
+Live qualification remains blocked until the owner explicitly approves the exact
+provider accounts, credentials, destinations, model identifiers, input classes,
+request/token limits and spend ceiling. No current application configuration is
+live-qualified. The reviewable qualification plan uses only synthetic material:
+for each provider, one text request, one exact inert tool proposal and one request
+reconstructed with that owned tool result. The local tool must never perform an
+external effect. Record exact native request counts, model identities, completion,
+usage and safe evidence; retain a failed/unknown outcome honestly. Enforce the
+approved ceiling through account/provider limits or a reviewed price-and-token
+bound before the first paid request. Only executed evidence can support a later
+trusted live registration. The default API and worker still start no model loop;
+continuing autonomous Task work belongs to Story 22.2.
+
+The proposed non-reasoning smoke profiles are `gpt-4.1-2025-04-14` and
+`claude-sonnet-4-6`; public availability does not establish account entitlement.
+The budget's `gpt-6.1-sol` and `claude-opus-5-5` profiles require later reasoning
+support and separate qualification. No approved model is silently substituted.
+Native requests explicitly select Standard processing, and usage retains the
+provider's reported tier. Unknown or unexpected live tiers cannot establish a
+successful qualified invocation or release executable proposals.
+
+The proposed envelope is six synthetic requests and **USD20 of API-token usage
+before taxes**, pending owner approval. Reserving each model's full documented
+context capacity for every attempt, plus 1,024 output tokens, gives USD16.7416224
+at the reviewed Standard tariffs, including Anthropic's 10% US geography premium.
+This deliberately exceeds the expected short-probe usage; the 16KiB body cap is
+not a proof of billed input tokens. It is not an account-wide limit or invoice
+guarantee. No deposits, subscriptions, hosted tools or infrastructure are included.
+The exact accounts, applicable tariffs and any required tax allowance must be
+resolved in the reviewed manifest before execution.
+
+Use only `ZOBBA_OPENAI_API_KEY` and `ZOBBA_ANTHROPIC_API_KEY` through secure
+settings, with explicit non-secret account/key mappings. Generic global API keys
+are not a fallback. A USD20 environment confirmation acknowledges the reviewed
+reservation; it does not enforce provider billing. Continuation previews are
+templates: only the validated provider call ID may change, and each transmitted
+body's hash is recorded.
+
+The local qualification plan can be inspected without credentials or provider
+requests:
+
+```sh
+cargo run --locked -p zobba-infrastructure --example model_qualification -- --dry-run
+cargo test --locked -p zobba-infrastructure --example model_qualification
+```
+
+The default plan uses explicitly pending account labels and spending evidence.
+Before execution, regenerate it with the approved `--openai-account`,
+`--anthropic-account`, exact model options, non-secret `--spend-evidence` reference
+and an existing retained `--receipt-dir`. Review that manifest and its SHA-256.
+The execution guard requires the exact approved manifest hash, an approval ID
+and the reviewed USD20 pre-tax reservation confirmation. It atomically consumes the approval
+before reading a key or attempting a request. An interrupted or failed approval
+cannot be reused; retain the receipt directory. These guards do not establish
+permission to execute, verify an account label against a key, or enforce provider
+billing. No live execution is approved in this checkpoint.

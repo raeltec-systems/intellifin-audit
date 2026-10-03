@@ -1,0 +1,46 @@
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 12.57s
+     Running unittests src/lib.rs (target/debug/deps/zobba_infrastructure-308e5fda13f9f60e)
+
+running 38 tests
+test model::native::tests::both_native_envelopes_preserve_roles_limits_catalogue_and_single_send ... ok
+test model::native::tests::cancellation_before_send_and_during_stream_is_responsive_and_never_retried ... ok
+test model::native::tests::cancellation_retains_complete_received_json_usage_without_releasing_output ... ok
+test model::native::tests::complete_tools_require_terminal_invocation_success_for_both_protocols ... ok
+test model::native::tests::declared_unsupported_or_wrong_destination_requests_do_not_send ... ok
+test model::native::tests::empty_refusal_without_delta_blocks_an_otherwise_completed_tool ... ok
+test model::native::tests::eof_retains_identifiable_partial_text_and_unknown_output_usage ... ok
+test model::native::tests::http_errors_preserve_valid_usage_and_nonstandard_tier_without_replacing_status ... ok
+test model::native::tests::inconsistent_event_identities_and_unsupported_events_fail_closed ... ok
+test model::native::tests::incremental_sse_handles_every_utf8_crlf_boundary_and_multiline_data ... ok
+test model::native::tests::invalid_owned_history_or_substituted_account_is_refused_without_sending ... ok
+test model::native::tests::invalid_terminal_and_post_terminal_events_cannot_release_tools ... ok
+test model::native::tests::json_labelled_http_errors_keep_status_for_malformed_and_truncated_bodies ... ok
+test model::native::tests::later_error_omitting_output_usage_preserves_the_known_counter ... ok
+test model::native::tests::live_qualified_transport_requires_observed_standard_before_tool_success ... ok
+test model::native::tests::malformed_duplicate_deep_oversized_and_partial_tool_arguments_fail_closed ... ok
+test model::native::tests::malformed_framing_after_valid_prefix_preserves_partial_output_and_usage ... ok
+test model::native::tests::malformed_tier_preserves_prior_bounded_tier_and_reported_tokens ... ok
+test model::native::tests::multiple_owned_calls_from_one_invocation_keep_correlated_native_groups ... ok
+test model::native::tests::openai_incompatible_strict_schemas_are_refused_before_any_send ... ok
+test model::native::tests::optional_http_error_metadata_deadline_keeps_the_already_observed_status ... ok
+test model::native::tests::owned_tool_history_uses_exact_native_call_result_linkage_without_new_authority ... ok
+test model::native::tests::real_wire_accepts_multiline_sse_and_refuses_duplicate_envelope_keys ... ok
+test model::native::tests::redirects_429_5xx_and_auth_errors_have_one_actual_send_and_safe_errors ... ok
+test model::native::tests::refusal_and_truncation_are_not_successful_tool_authority ... ok
+test model::native::tests::same_chunk_framing_and_stream_caps_retain_all_preceding_complete_frames ... ok
+test model::native::tests::shared_production_client_policy_never_replays_a_post_after_connection_loss ... ok
+test model::native::tests::stalled_stream_deadline_records_partial_output_without_a_second_send ... ok
+test model::native::tests::standard_request_selectors_and_observed_tiers_are_attributable_on_real_streams ... ok
+test model::native::tests::stored_usage_roundtrip_retains_actual_tier_and_old_missing_tiers_stay_unknown ... ok
+test model::native::tests::strict_decoding_bounds_frames_stream_events_depth_and_duplicate_keys ... ok
+test model::native::tests::structured_answers_are_schema_checked_and_keep_native_output_configuration ... ok
+test model::native::tests::structured_failure_removes_every_tool_proposal_after_final_classification ... ok
+test model::native::tests::unexpected_actual_model_preserves_identity_partial_text_and_known_usage ... ok
+test model::native::tests::unexpected_json_response_retains_tier_and_usage_without_accepting_protocol_fallback ... ok
+test model::native::tests::unexpected_or_changed_premium_tier_retains_usage_but_cannot_release_tools ... ok
+test model::native::tests::usage_fields_are_independent_and_omission_never_erases_known_counts ... ok
+test model::native::tests::valid_usage_counter_survives_a_malformed_counter_in_real_terminal_events ... ok
+
+test result: ok. 38 passed; 0 failed; 0 ignored; 0 measured; 27 filtered out; finished in 18.46s
+
