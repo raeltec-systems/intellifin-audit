@@ -151,7 +151,10 @@ pub async fn verify(pool: &PgPool, admin: &mut PgConnection, repo: &MembershipRe
         let before = task_record(admin, &basis.task_id).await;
         let other_before = task_record(admin, &other_basis.task_id).await;
         let other_delegation = delegation_head(admin, &other_subject).await;
-        let expiry = now(admin).await + 4;
+        // The held writer waits until this expiry passes, inside the pool's
+        // 4-second statement timeout. `now` is whole seconds, so +4 left up to
+        // ~4s of blocking and raced that timeout; +3 keeps ~1s of margin.
+        let expiry = now(admin).await + 3;
         let assignment_only = kind == "assignment";
         if assignment_only {
             sqlx::query("UPDATE engagement_assignments SET expires_at=$1 WHERE organisation_id='org' AND actor_id='member' AND engagement_id='engagement'").bind(expiry).execute(&mut *admin).await.unwrap();
