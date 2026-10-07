@@ -12,7 +12,16 @@ as `"enum": [[]]`. Adding `items`/`minItems`/`maxItems` while keeping that `enum
 HTTP 400 (tested); the `enum` itself must go. Fixed in `native.rs` (`constant_schema_json`). A manual check with the fixed
 schema got HTTP 200 and a correct `qualification_probe` call. Run 1 cannot be re-run.
 
-## Run 2 (needs a NEW owner approval ID)
+## Run 2 (2026-10-07): all three phases succeeded
+
+Approval `owner-2026-10-07-zobba-test-2` (owner approved), manifest
+`4b59e4830b49856ccbfd73b72ddea63cdd48a4dec8e2b308a3369c9208f66817`, is consumed.
+Receipt: `model-qualification-f5c0c162….jsonl`. Text (41 in / 6 out tokens), tool call
+(258 / 128) and tool-result continuation (466 / 6) all succeeded on `gpt-6-luna`, default
+tier. Result `adapter_qualification_evidence_only`: native transport evidence only; no
+trusted registration was installed and this is not audit-quality or production approval.
+
+## Run 2 command (for the record)
 
 Dry-run manifest SHA-256 after the fix (from this exact checkout path):
 `4b59e4830b49856ccbfd73b72ddea63cdd48a4dec8e2b308a3369c9208f66817`
@@ -28,7 +37,7 @@ cargo run -q --locked -p zobba-infrastructure --example model_qualification -- -
 # 2. Execute once. The approval is consumed even if the run is interrupted.
 ZOBBA_MODEL_QUALIFICATION_APPROVED_MANIFEST_SHA256=4b59e4830b49856ccbfd73b72ddea63cdd48a4dec8e2b308a3369c9208f66817 \
 ZOBBA_MODEL_QUALIFICATION_SPEND_LIMIT_CONFIRMED_USD=1 \
-ZOBBA_MODEL_QUALIFICATION_APPROVAL_ID=<new-owner-approval-id> \
+ZOBBA_MODEL_QUALIFICATION_APPROVAL_ID=owner-2026-10-07-zobba-test-2 \
 cargo run -q --locked -p zobba-infrastructure --example model_qualification -- --execute $ARGS
 ```
 
