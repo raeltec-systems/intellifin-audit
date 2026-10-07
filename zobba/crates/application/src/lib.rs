@@ -9,6 +9,7 @@ pub mod model;
 pub mod operation;
 pub mod skills;
 pub mod task;
+pub mod work;
 use std::{fmt, future::Future};
 use zobba_domain::SchemaVersion;
 

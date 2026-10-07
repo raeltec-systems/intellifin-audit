@@ -17,9 +17,10 @@ reqwest.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 base64.workspace = true
+sqlx.workspace = true
 
 [dev-dependencies]
-sqlx.workspace = true
+zobba-infrastructure = { workspace = true, features = ["test-loopback"] }
 
 [lints]
 workspace = true

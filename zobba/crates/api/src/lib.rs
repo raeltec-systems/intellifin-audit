@@ -9,6 +9,7 @@ pub mod methodology;
 pub mod operations;
 pub mod skills;
 pub mod tasks;
+pub mod work;
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
 use serde::Serialize;
 use utoipa::{OpenApi, ToSchema};
@@ -180,6 +181,10 @@ pub fn authenticated_router_with_evidence(
         tasks::list,
         tasks::get,
         tasks::events,
+        work::get_work,
+        work::direct,
+        work::questions,
+        work::answer,
         conversation::snapshot,
         conversation::history,
         conversation::events,
@@ -249,6 +254,20 @@ pub fn authenticated_router_with_evidence(
         tasks::TasksResponse,
         tasks::TaskEventResponse,
         tasks::TaskEventsResponse,
+        work::StepKindResponse,
+        work::StepStatusResponse,
+        work::AttentionResponse,
+        work::TaskStepResponse,
+        work::BriefRevisionResponse,
+        work::TaskWorkResponse,
+        work::DirectionRequest,
+        work::RoutingCandidateResponse,
+        work::RoutedGuideResponse,
+        work::RoutingQuestionResponse,
+        work::DirectionOutcome,
+        work::DirectionResponse,
+        work::RoutingQuestionsResponse,
+        work::AnswerRequest,
         conversation::ConversationScopeResponse,
         conversation::ConversationAudienceResponse,
         conversation::ConversationMessageResponse,

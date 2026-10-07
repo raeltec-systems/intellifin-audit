@@ -28,9 +28,12 @@ const REQUEST_DEADLINE: Duration = Duration::from_secs(6);
 
 #[derive(Clone)]
 pub(crate) struct TaskHttpState {
-    identity: AuthState,
-    repository: TaskRepository,
+    pub(crate) identity: AuthState,
+    pub(crate) repository: TaskRepository,
     control: bool,
+    /// Trusted qualification composition for availability reads. Production
+    /// installs none, so `model_available` is honestly false.
+    pub(crate) models: Option<zobba_infrastructure::model::ModelRepository>,
 }
 
 pub(crate) fn router(database: &RuntimeDatabase, identity: AuthState) -> Router {
@@ -42,12 +45,25 @@ pub(crate) fn router(database: &RuntimeDatabase, identity: AuthState) -> Router 
         .connect_lazy_with(database.pool().connect_options().as_ref().clone());
     let controls = Router::new()
         .route("/engagements/{engagement_id}/task-controls", post(control))
+        .route(
+            "/engagements/{engagement_id}/task-directions",
+            post(crate::work::direct),
+        )
+        .route(
+            "/engagements/{engagement_id}/task-questions",
+            route_get(crate::work::questions),
+        )
+        .route(
+            "/engagements/{engagement_id}/task-questions/{question_id}/answer",
+            post(crate::work::answer),
+        )
         .with_state(TaskHttpState {
             identity: identity
                 .clone()
                 .with_repository(IdentityRepository::new(control_pool.clone())),
             repository: TaskRepository::new(control_pool),
             control: true,
+            models: None,
         });
     let conversation = crate::conversation::router(database.pool().clone(), identity.clone());
     let operations = crate::operations::router(database.pool().clone(), identity.clone());
@@ -62,10 +78,15 @@ pub(crate) fn router(database: &RuntimeDatabase, identity: AuthState) -> Router 
             "/engagements/{engagement_id}/task-events",
             route_get(events),
         )
+        .route(
+            "/engagements/{engagement_id}/tasks/{task_id}/work",
+            route_get(crate::work::get_work),
+        )
         .with_state(TaskHttpState {
             identity,
             repository: TaskRepository::new(database.pool().clone()),
             control: false,
+            models: None,
         })
         .merge(conversation)
         .merge(operations);
@@ -337,7 +358,7 @@ pub(crate) struct TaskScopeQuery {
 }
 
 impl TaskScopeQuery {
-    fn scope(self, engagement_id: String) -> Result<Scope, TaskError> {
+    pub(crate) fn scope(self, engagement_id: String) -> Result<Scope, TaskError> {
         let scope = Scope {
             organisation_id: self.organisation_id,
             client_id: self.client_id,

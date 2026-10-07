@@ -118,8 +118,24 @@ impl NativeAdapter {
         })
     }
 
+    /// Loopback fixture adapter for worker process tests. Only the
+    /// `test-loopback` feature (enabled by dev-dependencies) exposes it; the
+    /// production worker build cannot construct a fixture transport.
+    #[cfg(feature = "test-loopback")]
+    pub fn test_loopback(
+        provider: Provider,
+        endpoint: &str,
+        deadline: Duration,
+    ) -> Result<Self, ModelError> {
+        let parsed = url::Url::parse(endpoint).map_err(|_| ModelError::Invalid)?;
+        if parsed.scheme() != "http" || parsed.host_str() != Some("127.0.0.1") {
+            return Err(ModelError::Invalid);
+        }
+        Ok(Self::loopback(provider, endpoint, deadline))
+    }
+
     /// Deliberately unavailable to production builds and integration consumers.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-loopback"))]
     fn loopback(provider: Provider, endpoint: &str, deadline: Duration) -> Self {
         let endpoint = url::Url::parse(endpoint).unwrap();
         assert_eq!(endpoint.scheme(), "http");

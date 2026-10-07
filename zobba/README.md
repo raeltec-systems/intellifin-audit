@@ -240,7 +240,7 @@ cargo run -p zobba-cli --locked -- migrate --runtime-role zobba_app
 
 This command reads `ZOBBA_MIGRATION_DATABASE_URL`; repeating it is safe against
 the same valid schema. It accepts empty databases, exactly verified published
-schema 1–10 prefixes, or current schema 11. Physical catalog checks precede metadata
+schema 1–11 prefixes, or current schema 12. Physical catalog checks precede metadata
 reads; migration checksums, changes and restricted grants are validated atomically.
 Foreign, altered and newer states refuse without mutation. API and worker read
 only `ZOBBA_RUNTIME_DATABASE_URL` and
@@ -1341,3 +1341,43 @@ before reading a key or attempting a request. An interrupted or failed approval
 cannot be reused; retain the receipt directory. These guards do not establish
 permission to execute, verify an account label against a key, or enforce provider
 billing. No live execution is approved in this checkpoint.
+
+## Continuing a real Task under changing guidance (Story 22.2)
+
+Schema 12 is additive; published migrations and catalogues 1–11 are unchanged.
+It adds append-only `task_steps`, `task_guidance_applications`,
+`task_routing_questions`, `task_routing_answers` and `task_work_claims`, with
+forced scoped RLS and SELECT/INSERT-only runtime grants, plus a `step` Task event.
+
+The worker runs a durable model work cycle only when a trusted composition is
+injected (`coordinate_work`): a qualification source, transport, owned gateway
+and disclosure template. Production `coordinate` installs none, so every Task
+keeps the inert executor and the card reports the model unavailable. Each turn
+uses the 22.1 coordinator with key `turn-` + SHA-256(Task, cycle, applied
+intent, step ordinal); each recorded step (model turn or tool step) is an
+immutable fact written under the exact claim producer's custody. Tool proposals
+pass `admit_tool` and current-Permissions consumption, then the owned gateway.
+A cycle is bounded at 16 turns; a text-only turn leaves the Task `waiting`, which
+is never a completed objective.
+
+Guidance never cancels work. `current()` checks only owner, execution epoch and
+cycle (continuation); admission, disclosure and consumption additionally require
+the applied intent. A Guide is Received at once and applied at the next step
+boundary, recorded in `task_guidance_applications` with the boundary ordinal. A
+turn whose producing intent is stale is recorded as `superseded` and its
+proposals are never admitted; the next turn reconsiders them by catalogue name
+under the applied brief. Pause/Stop bump the execution epoch, so the existing
+200 ms authority poll cancels a stalled provider call. A work claim lost with its
+producer is taken over by a fresh owner: the same invocation key recovers
+without resending, and consumed tool attempts go through the existing
+reconciliation without replay.
+
+Untargeted direction (`POST task-directions`, reserved control lane) is routed by
+the server, never a model: exactly one non-stopped Task receives it as Guidance;
+two or more produce one durable targeting question. An answer (`POST
+task-questions/{id}/answer`) names one or more of its candidates; each receives a
+Guide with key `route-` + SHA-256(question key, Task), so retries create no
+duplicates, and stale or foreign Tasks refuse. `GET tasks/{id}/work` returns the
+card projection (bound method, current work, next action with its proposing
+invocation, attention, recent steps and brief revisions with applied boundary and
+`superseded_by`). No route returns model text.

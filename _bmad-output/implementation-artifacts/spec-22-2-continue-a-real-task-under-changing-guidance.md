@@ -116,21 +116,21 @@ All paths are under `zobba/`.
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `migrations/0012_work_cycle.sql`, `schema-v12.catalog`, `domain/src/lib.rs`, `infrastructure/src/lib.rs`
+- [x] `migrations/0012_work_cycle.sql`, `schema-v12.catalog`, `domain/src/lib.rs`, `infrastructure/src/lib.rs`
   - Action: add `task_steps` (Task, cycle, ordinal, kind model_turn/tool_step, intent_revision, invocation_id/operation_id, status, superseded, next_action descriptor, current-work label). Add `task_routing_questions` (message, candidates, answer). Add a boundary column on the applied event or on a step link. Add RLS and grants.
   - Rationale: durable facts so restart resumes without chat.
-- [ ] `domain/src/task.rs`, `domain/src/work.rs` (new) -- add step, brief-revision and routing types, the deterministic routing rule and the invocation key derivation (task, cycle, intent, ordinal).
-- [ ] `infrastructure/src/task.rs`
+- [x] `domain/src/task.rs`, `domain/src/work.rs` (new) -- add step, brief-revision and routing types, the deterministic routing rule and the invocation key derivation (task, cycle, intent, ordinal).
+- [x] `infrastructure/src/task.rs`
   - Action:
     - Split basis validity. An in-flight turn stays current while only the intent changed. Admission and consumption still require the applied intent.
     - Apply guidance only at a step boundary and record that boundary.
     - Admit untargeted direction through the routing rule.
     - Add routing questions, answers (multi-target derived keys) and brief-revision reads.
   - Rationale: AC2 and AC3.
-- [ ] `infrastructure/src/model/mod.rs`
+- [x] `infrastructure/src/model/mod.rs`
   - Action: read the current profile and catalogue for the engagement. Expose a test-feature loopback adapter.
   - Rationale: the loop needs to select the profile.
-- [ ] `application/src/work.rs` (new), `worker/src/{lib.rs,executor.rs,work.rs}`
+- [x] `application/src/work.rs` (new), `worker/src/{lib.rs,executor.rs,work.rs}`
   - Action:
     - The work-cycle executor assembles context: system constraints, method binding, brief, verified knowledge, owned history.
     - It invokes, records the step, and admits, consumes, dispatches and observes tools.
@@ -138,17 +138,17 @@ All paths are under `zobba/`.
     - It cancels through `ModelCancellation` from the existing `current()` poll.
     - With no injected qualification source it keeps the inert executor.
   - Rationale: AC1 and responsive control.
-- [ ] `api/src/{tasks.rs,conversation.rs}` and OpenAPI
+- [x] `api/src/{tasks.rs,conversation.rs}` and OpenAPI
   - Action:
     - Card fields: method binding, current work, next action with invocation id, attention.
     - Untargeted direction admission.
     - Routing-question read and answer on the control lane.
     - Brief revisions.
   - Rationale: AC1–3.
-- [ ] `web/src/ConversationWorkspace.tsx` (+ api client)
+- [x] `web/src/ConversationWorkspace.tsx` (+ api client)
   - Action: render the card fields, an "Any Task / ask me" composer target, the targeting question with multi-select, per-target receipts, and brief revisions with superseded status. Show model text as untrusted.
   - Rationale: UX-DR42.
-- [ ] Tests:
+- [x] Tests:
   - Domain unit tests for routing and keys.
   - Infrastructure PostgreSQL tests for every row of the matrix, including the concurrent Guide-versus-turn completion race.
   - Worker process tests with a stalling loopback provider, restart, and Pause/Stop responsiveness.
@@ -180,3 +180,31 @@ Reconcile any existing inert tests that expect a Guide to cancel; do not delete 
 - `cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings` -- expected: clean.
 - `cargo test --locked --workspace -- --test-threads=1` -- expected: all pass, including the new tasks/worker/model tests.
 - `cargo run -p zobba-cli --locked -- openapi` then `pnpm check && pnpm test && pnpm test:browser` -- expected: generated types match; unit and Chromium suites pass with zero retries.
+
+## Implementation Notes (2026-10-07)
+
+Executed locally against the disposable `zobba_local_test` (recreated with UTF-8
+encoding; the provided database was SQL_ASCII and could not run migration 0002):
+
+- `cargo fmt --check`, `cargo clippy --locked --all-targets -D warnings`: clean.
+- `cargo test --locked --workspace --no-fail-fast -- --test-threads=1`: all pass.
+  New: domain `work` (routing, keys, SHA-256 vectors), infrastructure
+  `operations/work_cycle.rs` (first cycle, refused admission, Guide mid-call
+  superseded, Guide/turn race x4, two Guides `superseded_by`, stalled Pause,
+  restart mid-turn and mid-tool, routing single/ask/answer/retry/stale/foreign),
+  worker `work_process.rs` (real coordinator + executor poll + loopback native
+  transport: stalled Pause, Resume, abort and takeover without resend), API
+  `tasks_http.rs` work/direction/question/answer. The bootstrap blackhole case
+  needs `sslmode=disable` (server TLS hides the proxied query) and
+  `oidc_protocol` needs the running OIDC fixture; both pass under those
+  conditions and are unrelated to this story.
+- `pnpm check`: OpenAPI/types current, tsc clean, 184 unit tests; 2 IPv6
+  (`::1`) endpoint tests fail only because the sandbox has no IPv6.
+- `pnpm test:browser`: 161 passed, zero retries (includes new `routing.spec.ts`).
+
+Known limits: model availability on the card is false in production (no
+qualification source is installed in the API); the work card is fetched in the
+Task inspection panel, not in each conversation task card; a tool step recovered
+after its attempt already completed is recorded as refused rather than rebuilt
+(no replay either way); worker restart is proven with an in-process coordinator
+abort, not an OS process kill.

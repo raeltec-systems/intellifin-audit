@@ -3769,6 +3769,169 @@
         ]
       }
     },
+    "/engagements/{engagement_id}/task-directions": {
+      "post": {
+        "tags": [
+          "work"
+        ],
+        "operationId": "admit_task_direction",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact configured HTTPS application origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "Current session-bound token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Actor",
+            "in": "header",
+            "description": "Optional additional refusal fence",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DirectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Reserved lane. Routed to the only non-stopped Task as Guidance, or a durable targeting question; never routed by a model",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No Task can receive guidance, or the key was reused with different text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
     "/engagements/{engagement_id}/task-events": {
       "get": {
         "tags": [
@@ -3869,6 +4032,295 @@
           },
           "412": {
             "description": "Session changed; compose fresh reads without replacing the current cookie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/task-questions": {
+      "get": {
+        "tags": [
+          "work"
+        ],
+        "operationId": "list_task_questions",
+        "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's most recent targeting questions, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingQuestionsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/task-questions/{question_id}/answer": {
+      "post": {
+        "tags": [
+          "work"
+        ],
+        "operationId": "answer_task_question",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "question_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact configured HTTPS application origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "Current session-bound token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Actor",
+            "in": "header",
+            "description": "Optional additional refusal fence",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "One Guide per selected target with a derived key; an identical retry returns the same receipts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingQuestionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A selected Task is stale, foreign, or the question was answered differently",
             "content": {
               "application/json": {
                 "schema": {
@@ -5381,6 +5833,129 @@
           },
           "412": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/tasks/{task_id}/work": {
+      "get": {
+        "tags": [
+          "work"
+        ],
+        "operationId": "get_task_work",
+        "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recorded work facts for the Task card; a waiting Task is not a completed objective",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskWorkResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed",
             "content": {
               "application/json": {
                 "schema": {
@@ -8333,6 +8908,24 @@
           "send"
         ]
       },
+      "AnswerRequest": {
+        "type": "object",
+        "required": [
+          "selected"
+        ],
+        "properties": {
+          "selected": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Candidate Task IDs from the question; at least one.",
+            "maxItems": 32,
+            "minItems": 1
+          }
+        },
+        "additionalProperties": false
+      },
       "AttachmentRequest": {
         "type": "object",
         "required": [
@@ -8421,6 +9014,67 @@
               "null"
             ],
             "description": "Non-secret logical source identity; never an endpoint URL or capability."
+          }
+        }
+      },
+      "AttentionResponse": {
+        "type": "string",
+        "enum": [
+          "awaiting_guidance",
+          "reconciliation_required",
+          "step_failed",
+          "cycle_bounded"
+        ]
+      },
+      "BriefRevisionResponse": {
+        "type": "object",
+        "description": "An accepted brief revision. Received and applied are separate facts.",
+        "required": [
+          "command_id",
+          "cycle_id",
+          "content",
+          "received_cursor",
+          "applied_boundary",
+          "applied_cursor",
+          "superseded_by"
+        ],
+        "properties": {
+          "applied_boundary": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Recorded step count of the cycle when applied; null until applied.",
+            "minimum": 0
+          },
+          "applied_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$"
+          },
+          "command_id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string",
+            "description": "Retained plain text supplied by a person; no model understanding is asserted."
+          },
+          "cycle_id": {
+            "type": "string"
+          },
+          "received_cursor": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "superseded_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The later accepted revision that replaced this one."
           }
         }
       },
@@ -8919,6 +9573,71 @@
             "description": "Server recording time, positive Unix seconds as decimal text.",
             "maxLength": 19,
             "pattern": "^[1-9][0-9]{0,18}$"
+          }
+        }
+      },
+      "DirectionOutcome": {
+        "type": "string",
+        "enum": [
+          "routed",
+          "asked"
+        ]
+      },
+      "DirectionRequest": {
+        "type": "object",
+        "required": [
+          "key",
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "Exact retained guidance text, at most 4000 UTF-8 bytes.",
+            "maxLength": 4000,
+            "minLength": 1
+          },
+          "key": {
+            "type": "string",
+            "description": "Author and scope bind this key. Identical retries return the original outcome.",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DirectionResponse": {
+        "type": "object",
+        "required": [
+          "outcome",
+          "receipt",
+          "question"
+        ],
+        "properties": {
+          "outcome": {
+            "$ref": "#/components/schemas/DirectionOutcome"
+          },
+          "question": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RoutingQuestionResponse",
+                "description": "Present when two or more Tasks could receive it."
+              }
+            ]
+          },
+          "receipt": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommandReceiptResponse",
+                "description": "Present when exactly one Task received the direction as Guidance."
+              }
+            ]
           }
         }
       },
@@ -12426,6 +13145,103 @@
         },
         "additionalProperties": false
       },
+      "RoutedGuideResponse": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "cycle_id",
+          "command_id",
+          "event_cursor"
+        ],
+        "properties": {
+          "command_id": {
+            "type": "string"
+          },
+          "cycle_id": {
+            "type": "string"
+          },
+          "event_cursor": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "task_id": {
+            "type": "string"
+          }
+        }
+      },
+      "RoutingCandidateResponse": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "cycle_id",
+          "objective"
+        ],
+        "properties": {
+          "cycle_id": {
+            "type": "string"
+          },
+          "objective": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string"
+          }
+        }
+      },
+      "RoutingQuestionResponse": {
+        "type": "object",
+        "description": "A durable targeting question. Nothing is applied until it is answered.",
+        "required": [
+          "id",
+          "key",
+          "content",
+          "candidates",
+          "answer"
+        ],
+        "properties": {
+          "answer": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/RoutedGuideResponse"
+            },
+            "description": "One Guide receipt per selected target, once answered."
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoutingCandidateResponse"
+            },
+            "maxItems": 32
+          },
+          "content": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          }
+        }
+      },
+      "RoutingQuestionsResponse": {
+        "type": "object",
+        "required": [
+          "questions"
+        ],
+        "properties": {
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoutingQuestionResponse"
+            },
+            "maxItems": 20
+          }
+        }
+      },
       "SaveMemberRequest": {
         "type": "object",
         "required": [
@@ -13696,6 +14512,25 @@
           "authoritatively_absent"
         ]
       },
+      "StepKindResponse": {
+        "type": "string",
+        "enum": [
+          "model_turn",
+          "tool_step"
+        ]
+      },
+      "StepStatusResponse": {
+        "type": "string",
+        "enum": [
+          "proposed",
+          "responded",
+          "superseded",
+          "failed",
+          "completed",
+          "refused",
+          "reconciliation_required"
+        ]
+      },
       "TaskCommandRequest": {
         "type": "object",
         "required": [
@@ -13980,6 +14815,148 @@
           "stopped",
           "waiting"
         ]
+      },
+      "TaskStepResponse": {
+        "type": "object",
+        "description": "One immutable recorded step. Labels are fixed platform text, never model output.",
+        "required": [
+          "ordinal",
+          "kind",
+          "status",
+          "intent_revision",
+          "execution_epoch",
+          "invocation_id",
+          "operation_id",
+          "next_action",
+          "current_work"
+        ],
+        "properties": {
+          "current_work": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "execution_epoch": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "intent_revision": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "invocation_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/StepKindResponse"
+          },
+          "next_action": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`model_turn`, `await_guidance`, `reconcile` or `tool:<catalogue name>`."
+          },
+          "operation_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ordinal": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/StepStatusResponse"
+          }
+        }
+      },
+      "TaskWorkResponse": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "cycle_id",
+          "model_available",
+          "methodology_binding_id",
+          "methodology_status",
+          "current_work",
+          "next_action",
+          "next_action_invocation_id",
+          "attention",
+          "steps",
+          "briefs"
+        ],
+        "properties": {
+          "attention": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AttentionResponse"
+              }
+            ]
+          },
+          "briefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BriefRevisionResponse"
+            },
+            "maxItems": 50
+          },
+          "current_work": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cycle_id": {
+            "type": "string"
+          },
+          "methodology_binding_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "methodology_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model_available": {
+            "type": "boolean",
+            "description": "False when no qualified profile and enabled catalogue are selectable here:\nthe Task stays inert and no model is called."
+          },
+          "next_action": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "next_action_invocation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The invocation that proposed `next_action`."
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskStepResponse"
+            },
+            "maxItems": 50
+          },
+          "task_id": {
+            "type": "string"
+          }
+        }
       },
       "TasksResponse": {
         "type": "object",

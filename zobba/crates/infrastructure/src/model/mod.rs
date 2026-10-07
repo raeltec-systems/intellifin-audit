@@ -371,6 +371,33 @@ impl ModelRepository {
         self.session_hash = hash;
         self
     }
+    /// Current profile and catalogue selectable for this engagement: the latest
+    /// revision of each, enabled and (profile) trusted-qualified, lowest ID
+    /// first. None means the model is unavailable; nothing falls back silently.
+    pub async fn selection(
+        &self,
+        actor: &str,
+        selected: &Scope,
+    ) -> Result<Option<(ModelProfile, ToolCatalog)>, ModelError> {
+        let mut tx = task::begin(&self.pool, actor, selected)
+            .await
+            .map_err(task_error)?;
+        let org = &selected.organisation_id;
+        let profiles: Vec<Value> = sqlx::query_scalar("SELECT document FROM (SELECT DISTINCT ON (id) id,document FROM public.model_profiles WHERE organisation_id=$1 ORDER BY id, revision DESC) p ORDER BY id COLLATE \"C\" LIMIT 256")
+            .bind(org).fetch_all(&mut *tx).await.map_err(db)?;
+        let catalogues: Vec<Value> = sqlx::query_scalar("SELECT document FROM (SELECT DISTINCT ON (id) id,document FROM public.model_catalogues WHERE organisation_id=$1 ORDER BY id, revision DESC) c ORDER BY id COLLATE \"C\" LIMIT 256")
+            .bind(org).fetch_all(&mut *tx).await.map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        let profile = profiles
+            .into_iter()
+            .filter_map(|v| decode::<StoredProfile>(v).ok().map(|p| p.0))
+            .find(|p| p.enabled && p.is_valid() && self.qualifications.qualified(p));
+        let catalogue = catalogues
+            .into_iter()
+            .filter_map(|v| decode::<StoredCatalog>(v).ok().map(|c| c.0))
+            .find(|c| c.enabled && c.is_valid());
+        Ok(profile.zip(catalogue))
+    }
     async fn admin(&self, tx: &mut Tx, actor: &str, org: &str) -> Result<(), ModelError> {
         if !crate::identity::valid_secret(&self.session_hash) {
             return Err(ModelError::Denied);

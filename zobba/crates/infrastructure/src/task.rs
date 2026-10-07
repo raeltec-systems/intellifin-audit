@@ -13,7 +13,7 @@ use zobba_domain::{
     },
 };
 
-type Tx = Transaction<'static, Postgres>;
+pub(crate) type Tx = Transaction<'static, Postgres>;
 const MAX_OPEN_TASKS: i64 = 100;
 const COMMAND_BATCH: i64 = 32;
 
@@ -35,11 +35,17 @@ impl TaskRepository {
         self.session_hash = Some(hash);
         self
     }
+    pub(crate) fn pool(&self) -> &PgPool {
+        &self.pool
+    }
+    pub(crate) fn session(&self) -> Option<&str> {
+        self.session_hash.as_deref()
+    }
 }
-fn unavailable(_: sqlx::Error) -> TaskError {
+pub(crate) fn unavailable(_: sqlx::Error) -> TaskError {
     TaskError::Unavailable
 }
-fn token() -> String {
+pub(crate) fn token() -> String {
     let mut bytes = [0u8; 32];
     OsRng.fill_bytes(&mut bytes);
     bytes.iter().map(|b| format!("{b:02x}")).collect()
@@ -50,13 +56,13 @@ fn digest(value: &str) -> String {
         .map(|b| format!("{b:02x}"))
         .collect()
 }
-fn get<T>(row: &PgRow, name: &str) -> Result<T, TaskError>
+pub(crate) fn get<T>(row: &PgRow, name: &str) -> Result<T, TaskError>
 where
     for<'a> T: sqlx::Decode<'a, Postgres> + sqlx::Type<Postgres>,
 {
     row.try_get(name).map_err(unavailable)
 }
-fn snapshot(row: &PgRow) -> Result<TaskSnapshot, TaskError> {
+pub(crate) fn snapshot(row: &PgRow) -> Result<TaskSnapshot, TaskError> {
     Ok(TaskSnapshot {
         id: get(row, "id")?,
         cycle_id: get(row, "cycle_id")?,
@@ -72,7 +78,7 @@ fn snapshot(row: &PgRow) -> Result<TaskSnapshot, TaskError> {
         accountable_label: get(row, "accountable_label")?,
     })
 }
-async fn begin(pool: &PgPool, actor: &str, selected: &Scope) -> Result<Tx, TaskError> {
+pub(crate) async fn begin(pool: &PgPool, actor: &str, selected: &Scope) -> Result<Tx, TaskError> {
     if !selected.is_valid() {
         return Err(TaskError::Denied);
     }
@@ -152,7 +158,7 @@ fn receipt(row: &PgRow) -> Result<CommandReceipt, TaskError> {
     })
 }
 
-async fn admission_fence(
+pub(crate) async fn admission_fence(
     tx: &mut Tx,
     actor: &str,
     s: &Scope,
@@ -168,6 +174,158 @@ async fn admission_fence(
     } else {
         Err(TaskError::Denied)
     }
+}
+
+/// Admission inside an already locked organisation/engagement transaction.
+/// Callers own the session fence and commit.
+pub(crate) async fn admit_in(
+    tx: &mut Tx,
+    actor: &str,
+    s: &Scope,
+    c: &TaskCommand,
+) -> Result<CommandReceipt, TaskError> {
+    if !c.is_valid() {
+        return Err(TaskError::Invalid);
+    }
+    let context = c.context.as_ref().map(|context| {
+        serde_json::json!({
+            "audit_area": context.audit_area,
+            "period_start": context.period_start,
+            "period_end": context.period_end,
+        })
+    });
+    if let Some(existing) =
+        sqlx::query("SELECT * FROM public.task_commands WHERE author_id=$1 AND idempotency_key=$2")
+            .bind(actor)
+            .bind(&c.key)
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(unavailable)?
+    {
+        if get::<String>(&existing, "kind")? != c.kind.as_str()
+            || get::<Option<String>>(&existing, "target_task_id")? != c.task_id
+            || get::<Option<String>>(&existing, "target_cycle_id")? != c.cycle_id
+            || get::<Option<String>>(&existing, "content")? != c.content
+            || get::<Option<serde_json::Value>>(&existing, "methodology_context")? != context
+        {
+            return Err(TaskError::Conflict);
+        }
+        let original = receipt(&existing)?;
+        crate::knowledge::project_guide(tx, s, actor, &original.command_id)
+            .await
+            .map_err(|_| TaskError::Unavailable)?;
+        return Ok(original);
+    }
+    let id = c.task_id.clone().unwrap_or_else(token);
+    let mut cycle = c.cycle_id.clone().unwrap_or_else(token);
+    if c.kind == CommandKind::Create {
+        let count: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM public.tasks WHERE state <> 'stopped'")
+                .fetch_one(&mut **tx)
+                .await
+                .map_err(unavailable)?;
+        if count >= MAX_OPEN_TASKS {
+            return Err(TaskError::Capacity);
+        }
+        sqlx::query("INSERT INTO public.tasks(organisation_id,client_id,engagement_id,id,cycle_id,accountable_actor,objective,working_brief,state,cessation) VALUES($1,$2,$3,$4,$5,$6,$7,$7,'ready','none')")
+                .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id).bind(&id).bind(&cycle).bind(actor).bind(&c.content).execute(&mut **tx).await.map_err(unavailable)?;
+        insert_cycle(tx, s, &id, &cycle).await?;
+        crate::methodology::bind_new_task(tx, s, &id, c.context.as_ref()).await?;
+    } else {
+        let row = task(tx, &id).await?;
+        let before = snapshot(&row)?;
+        if before.cycle_id != cycle || !before.state.accepts(c.kind, before.cessation) {
+            return Err(TaskError::Conflict);
+        }
+        let unresolved:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM public.task_claims WHERE task_id=$1 AND state='consumed') OR EXISTS(SELECT 1 FROM public.operations o JOIN public.operation_claims c ON c.operation_id=o.id WHERE o.task_id=$1 AND c.state='consumed' AND NOT EXISTS(SELECT 1 FROM public.operation_receipts r WHERE r.attempt_id=c.attempt_id AND r.outcome IN ('completed','absent')))").bind(&id).fetch_one(&mut **tx).await.map_err(unavailable)?;
+        match c.kind {
+            CommandKind::Guide => {
+                sqlx::query("UPDATE public.tasks SET intent_revision=intent_revision+1,revision=revision+1 WHERE id=$1").bind(&id).execute(&mut **tx).await.map_err(unavailable)?;
+            }
+            CommandKind::Pause | CommandKind::Stop => {
+                let state = if c.kind == CommandKind::Pause {
+                    "paused"
+                } else {
+                    "stopped"
+                };
+                let cessation = if unresolved {
+                    if before.cessation == Cessation::ReconciliationRequired {
+                        "reconciliation_required"
+                    } else {
+                        "pending"
+                    }
+                } else {
+                    "confirmed"
+                };
+                sqlx::query("UPDATE public.tasks SET state=$2,cessation=$3,execution_epoch=execution_epoch+1,revision=revision+1 WHERE id=$1").bind(&id).bind(state).bind(cessation).execute(&mut **tx).await.map_err(unavailable)?;
+                if c.kind == CommandKind::Stop {
+                    sqlx::query(
+                        "UPDATE public.task_cycles SET status='stopped' WHERE task_id=$1 AND id=$2",
+                    )
+                    .bind(&id)
+                    .bind(&cycle)
+                    .execute(&mut **tx)
+                    .await
+                    .map_err(unavailable)?;
+                }
+            }
+            CommandKind::Resume | CommandKind::Continue => {
+                if unresolved {
+                    return Err(TaskError::Conflict);
+                }
+                if c.kind == CommandKind::Continue {
+                    let count: i64 = sqlx::query_scalar(
+                        "SELECT count(*) FROM public.tasks WHERE state <> 'stopped'",
+                    )
+                    .fetch_one(&mut **tx)
+                    .await
+                    .map_err(unavailable)?;
+                    if count >= MAX_OPEN_TASKS {
+                        return Err(TaskError::Capacity);
+                    }
+                    cycle = token();
+                    insert_cycle(tx, s, &id, &cycle).await?;
+                }
+                sqlx::query("UPDATE public.tasks SET cycle_id=$2,state='ready',cessation='none',execution_epoch=execution_epoch+1,revision=revision+1 WHERE id=$1").bind(&id).bind(&cycle).execute(&mut **tx).await.map_err(unavailable)?;
+            }
+            CommandKind::Create => unreachable!(),
+        }
+        sqlx::query(
+            "UPDATE public.task_claims SET state='abandoned' WHERE task_id=$1 AND state='admitted'",
+        )
+        .bind(&id)
+        .execute(&mut **tx)
+        .await
+        .map_err(unavailable)?;
+        sqlx::query("UPDATE public.operation_claims SET state='abandoned' WHERE operation_id IN (SELECT id FROM public.operations WHERE task_id=$1) AND state='admitted'").bind(&id).execute(&mut **tx).await.map_err(unavailable)?;
+    }
+    let after = task(tx, &id).await?;
+    let command_id = token();
+    let next = cursor(tx, s).await?;
+    sqlx::query("INSERT INTO public.task_commands(organisation_id,client_id,engagement_id,id,author_id,idempotency_key,kind,target_task_id,target_cycle_id,content,task_id,cycle_id,received_cursor,intent_revision,methodology_context) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)")
+            .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id).bind(&command_id).bind(actor).bind(&c.key).bind(c.kind.as_str()).bind(&c.task_id).bind(&c.cycle_id).bind(&c.content).bind(&id).bind(&cycle).bind(next).bind(get::<i64>(&after,"intent_revision")?).bind(context).execute(&mut **tx).await.map_err(unavailable)?;
+    if c.kind == CommandKind::Guide
+        && let Some(context) = &c.context
+    {
+        crate::methodology::stage_context(tx, s, &id, &command_id, actor, context).await?;
+    }
+    if c.kind == CommandKind::Continue {
+        crate::methodology::enroll_future(tx, s, &id).await?;
+    }
+    put_event(tx, s, &id, &cycle, Some(&command_id), "received", next).await?;
+    if c.kind == CommandKind::Guide {
+        crate::knowledge::project_guide(tx, s, actor, &command_id)
+            .await
+            .map_err(|_| TaskError::Unavailable)?;
+    }
+    wake(tx, s, &id, &get::<String>(&after, "accountable_actor")?).await?;
+    Ok(CommandReceipt {
+        command_id,
+        task_id: id,
+        cycle_id: cycle,
+        event_cursor: next.to_string(),
+        status: ReceiptStatus::Received,
+    })
 }
 
 impl TaskCommands for TaskRepository {
@@ -192,143 +350,10 @@ impl TaskCommands for TaskRepository {
                 return Err(TaskError::Denied);
             }
         }
-        let context = c.context.as_ref().map(|context| {
-            serde_json::json!({
-                "audit_area": context.audit_area,
-                "period_start": context.period_start,
-                "period_end": context.period_end,
-            })
-        });
-        if let Some(existing) = sqlx::query(
-            "SELECT * FROM public.task_commands WHERE author_id=$1 AND idempotency_key=$2",
-        )
-        .bind(actor)
-        .bind(&c.key)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(unavailable)?
-        {
-            if get::<String>(&existing, "kind")? != c.kind.as_str()
-                || get::<Option<String>>(&existing, "target_task_id")? != c.task_id
-                || get::<Option<String>>(&existing, "target_cycle_id")? != c.cycle_id
-                || get::<Option<String>>(&existing, "content")? != c.content
-                || get::<Option<serde_json::Value>>(&existing, "methodology_context")? != context
-            {
-                return Err(TaskError::Conflict);
-            }
-            let original = receipt(&existing)?;
-            crate::knowledge::project_guide(&mut tx, s, actor, &original.command_id)
-                .await
-                .map_err(|_| TaskError::Unavailable)?;
-            admission_fence(&mut tx, actor, s, self.session_hash.as_deref()).await?;
-            tx.commit().await.map_err(unavailable)?;
-            return Ok(original);
-        }
-        let id = c.task_id.clone().unwrap_or_else(token);
-        let mut cycle = c.cycle_id.clone().unwrap_or_else(token);
-        if c.kind == CommandKind::Create {
-            let count: i64 =
-                sqlx::query_scalar("SELECT count(*) FROM public.tasks WHERE state <> 'stopped'")
-                    .fetch_one(&mut *tx)
-                    .await
-                    .map_err(unavailable)?;
-            if count >= MAX_OPEN_TASKS {
-                return Err(TaskError::Capacity);
-            }
-            sqlx::query("INSERT INTO public.tasks(organisation_id,client_id,engagement_id,id,cycle_id,accountable_actor,objective,working_brief,state,cessation) VALUES($1,$2,$3,$4,$5,$6,$7,$7,'ready','none')")
-                .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id).bind(&id).bind(&cycle).bind(actor).bind(&c.content).execute(&mut *tx).await.map_err(unavailable)?;
-            insert_cycle(&mut tx, s, &id, &cycle).await?;
-            crate::methodology::bind_new_task(&mut tx, s, &id, c.context.as_ref()).await?;
-        } else {
-            let row = task(&mut tx, &id).await?;
-            let before = snapshot(&row)?;
-            if before.cycle_id != cycle || !before.state.accepts(c.kind, before.cessation) {
-                return Err(TaskError::Conflict);
-            }
-            let unresolved:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM public.task_claims WHERE task_id=$1 AND state='consumed') OR EXISTS(SELECT 1 FROM public.operations o JOIN public.operation_claims c ON c.operation_id=o.id WHERE o.task_id=$1 AND c.state='consumed' AND NOT EXISTS(SELECT 1 FROM public.operation_receipts r WHERE r.attempt_id=c.attempt_id AND r.outcome IN ('completed','absent')))").bind(&id).fetch_one(&mut *tx).await.map_err(unavailable)?;
-            match c.kind {
-                CommandKind::Guide => {
-                    sqlx::query("UPDATE public.tasks SET intent_revision=intent_revision+1,revision=revision+1 WHERE id=$1").bind(&id).execute(&mut *tx).await.map_err(unavailable)?;
-                }
-                CommandKind::Pause | CommandKind::Stop => {
-                    let state = if c.kind == CommandKind::Pause {
-                        "paused"
-                    } else {
-                        "stopped"
-                    };
-                    let cessation = if unresolved {
-                        if before.cessation == Cessation::ReconciliationRequired {
-                            "reconciliation_required"
-                        } else {
-                            "pending"
-                        }
-                    } else {
-                        "confirmed"
-                    };
-                    sqlx::query("UPDATE public.tasks SET state=$2,cessation=$3,execution_epoch=execution_epoch+1,revision=revision+1 WHERE id=$1").bind(&id).bind(state).bind(cessation).execute(&mut *tx).await.map_err(unavailable)?;
-                    if c.kind == CommandKind::Stop {
-                        sqlx::query("UPDATE public.task_cycles SET status='stopped' WHERE task_id=$1 AND id=$2").bind(&id).bind(&cycle).execute(&mut *tx).await.map_err(unavailable)?;
-                    }
-                }
-                CommandKind::Resume | CommandKind::Continue => {
-                    if unresolved {
-                        return Err(TaskError::Conflict);
-                    }
-                    if c.kind == CommandKind::Continue {
-                        let count: i64 = sqlx::query_scalar(
-                            "SELECT count(*) FROM public.tasks WHERE state <> 'stopped'",
-                        )
-                        .fetch_one(&mut *tx)
-                        .await
-                        .map_err(unavailable)?;
-                        if count >= MAX_OPEN_TASKS {
-                            return Err(TaskError::Capacity);
-                        }
-                        cycle = token();
-                        insert_cycle(&mut tx, s, &id, &cycle).await?;
-                    }
-                    sqlx::query("UPDATE public.tasks SET cycle_id=$2,state='ready',cessation='none',execution_epoch=execution_epoch+1,revision=revision+1 WHERE id=$1").bind(&id).bind(&cycle).execute(&mut *tx).await.map_err(unavailable)?;
-                }
-                CommandKind::Create => unreachable!(),
-            }
-            sqlx::query("UPDATE public.task_claims SET state='abandoned' WHERE task_id=$1 AND state='admitted'").bind(&id).execute(&mut *tx).await.map_err(unavailable)?;
-            sqlx::query("UPDATE public.operation_claims SET state='abandoned' WHERE operation_id IN (SELECT id FROM public.operations WHERE task_id=$1) AND state='admitted'").bind(&id).execute(&mut *tx).await.map_err(unavailable)?;
-        }
-        let after = task(&mut tx, &id).await?;
-        let command_id = token();
-        let next = cursor(&mut tx, s).await?;
-        sqlx::query("INSERT INTO public.task_commands(organisation_id,client_id,engagement_id,id,author_id,idempotency_key,kind,target_task_id,target_cycle_id,content,task_id,cycle_id,received_cursor,intent_revision,methodology_context) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)")
-            .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id).bind(&command_id).bind(actor).bind(&c.key).bind(c.kind.as_str()).bind(&c.task_id).bind(&c.cycle_id).bind(&c.content).bind(&id).bind(&cycle).bind(next).bind(get::<i64>(&after,"intent_revision")?).bind(context).execute(&mut *tx).await.map_err(unavailable)?;
-        if c.kind == CommandKind::Guide
-            && let Some(context) = &c.context
-        {
-            crate::methodology::stage_context(&mut tx, s, &id, &command_id, actor, context).await?;
-        }
-        if c.kind == CommandKind::Continue {
-            crate::methodology::enroll_future(&mut tx, s, &id).await?;
-        }
-        put_event(&mut tx, s, &id, &cycle, Some(&command_id), "received", next).await?;
-        if c.kind == CommandKind::Guide {
-            crate::knowledge::project_guide(&mut tx, s, actor, &command_id)
-                .await
-                .map_err(|_| TaskError::Unavailable)?;
-        }
-        wake(
-            &mut tx,
-            s,
-            &id,
-            &get::<String>(&after, "accountable_actor")?,
-        )
-        .await?;
+        let receipt = admit_in(&mut tx, actor, s, c).await?;
         admission_fence(&mut tx, actor, s, self.session_hash.as_deref()).await?;
         tx.commit().await.map_err(unavailable)?;
-        Ok(CommandReceipt {
-            command_id,
-            task_id: id,
-            cycle_id: cycle,
-            event_cursor: next.to_string(),
-            status: ReceiptStatus::Received,
-        })
+        Ok(receipt)
     }
     async fn get(&self, actor: &str, s: &Scope, id: &str) -> Result<TaskSnapshot, TaskError> {
         let mut tx = begin(&self.pool, actor, s).await?;
@@ -400,6 +425,66 @@ async fn insert_cycle(tx: &mut Tx, s: &Scope, id: &str, cycle: &str) -> Result<(
     Ok(())
 }
 
+/// Apply received commands in commit order at a work boundary. Create/Guide
+/// replace the working brief and record the step boundary at which they took
+/// effect; their immutable Received receipts are unchanged. With
+/// `guidance_only`, a pending non-guidance command refuses: inside a running
+/// cycle a control has already fenced continuation by execution epoch.
+pub(crate) async fn apply_commands(
+    tx: &mut Tx,
+    s: &Scope,
+    task_id: &str,
+    guidance_only: bool,
+) -> Result<usize, TaskError> {
+    let row = task(tx, task_id).await?;
+    let commands=sqlx::query("SELECT c.id,c.kind,c.content,c.cycle_id,c.intent_revision,c.received_cursor FROM public.task_commands c WHERE c.task_id=$1 AND c.received_cursor>$2 ORDER BY c.received_cursor LIMIT $3")
+        .bind(task_id).bind(get::<i64>(&row,"applied_command_cursor")?).bind(COMMAND_BATCH).fetch_all(&mut **tx).await.map_err(unavailable)?;
+    if guidance_only
+        && commands.iter().any(|command| {
+            !matches!(
+                get::<String>(command, "kind").as_deref(),
+                Ok("create" | "guide")
+            )
+        })
+    {
+        return Err(TaskError::Fenced);
+    }
+    for command in &commands {
+        let kind = get::<String>(command, "kind")?;
+        let cycle = get::<String>(command, "cycle_id")?;
+        let id = get::<String>(command, "id")?;
+        let guidance = matches!(kind.as_str(), "create" | "guide");
+        let boundary: i64 = if guidance {
+            sqlx::query("UPDATE public.tasks SET working_brief=$2,applied_intent=$3,revision=revision+1 WHERE id=$1")
+                .bind(task_id).bind(get::<String>(command,"content")?).bind(get::<i64>(command,"intent_revision")?).execute(&mut **tx).await.map_err(unavailable)?;
+            sqlx::query_scalar(
+                "SELECT count(*) FROM public.task_steps WHERE task_id=$1 AND cycle_id=$2",
+            )
+            .bind(task_id)
+            .bind(&cycle)
+            .fetch_one(&mut **tx)
+            .await
+            .map_err(unavailable)?
+        } else {
+            0
+        };
+        let applied = event(tx, s, task_id, &cycle, Some(&id), "applied").await?;
+        if guidance {
+            sqlx::query("INSERT INTO public.task_guidance_applications(organisation_id,client_id,engagement_id,command_id,task_id,cycle_id,boundary_ordinal,applied_cursor) VALUES($1,$2,$3,$4,$5,$6,$7,$8)")
+                .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id).bind(&id).bind(task_id).bind(&cycle).bind(boundary as i32).bind(applied).execute(&mut **tx).await.map_err(unavailable)?;
+        }
+    }
+    if let Some(last) = commands.last() {
+        sqlx::query("UPDATE public.tasks SET applied_command_cursor=$2 WHERE id=$1")
+            .bind(task_id)
+            .bind(get::<i64>(last, "received_cursor")?)
+            .execute(&mut **tx)
+            .await
+            .map_err(unavailable)?;
+    }
+    Ok(commands.len())
+}
+
 impl TaskRepository {
     /// Routes contain no work content and grant no authority. Re-derive their
     /// recorded actor/scope in this fresh transaction before touching the Task.
@@ -429,37 +514,55 @@ impl TaskRepository {
             Cessation::Pending | Cessation::ReconciliationRequired
         );
         // Applying retained text is an ordinary work boundary, not AI understanding.
-        let commands=sqlx::query("SELECT c.id,c.kind,c.content,c.cycle_id,c.intent_revision,c.received_cursor FROM public.task_commands c WHERE c.task_id=$1 AND c.received_cursor>$2 ORDER BY c.received_cursor LIMIT $3")
-            .bind(&route.task_id).bind(get::<i64>(&row,"applied_command_cursor")?).bind(COMMAND_BATCH).fetch_all(&mut *tx).await.map_err(unavailable)?;
-        for command in &commands {
-            let kind = get::<String>(command, "kind")?;
-            if matches!(kind.as_str(), "create" | "guide") {
-                sqlx::query("UPDATE public.tasks SET working_brief=$2,applied_intent=$3,revision=revision+1 WHERE id=$1")
-                    .bind(&route.task_id).bind(get::<String>(command,"content")?).bind(get::<i64>(command,"intent_revision")?).execute(&mut *tx).await.map_err(unavailable)?;
-            }
-            event(
-                &mut tx,
-                &route.scope,
-                &route.task_id,
-                &get::<String>(command, "cycle_id")?,
-                Some(&get::<String>(command, "id")?),
-                "applied",
-            )
-            .await?;
-        }
-        if let Some(last) = commands.last() {
-            sqlx::query("UPDATE public.tasks SET applied_command_cursor=$2 WHERE id=$1")
-                .bind(&route.task_id)
-                .bind(get::<i64>(last, "received_cursor")?)
-                .execute(&mut *tx)
-                .await
-                .map_err(unavailable)?;
-        }
+        let commands = apply_commands(&mut tx, &route.scope, &route.task_id, false).await?;
         let consumed=sqlx::query("SELECT c.*,o.outcome FROM public.task_claims c LEFT JOIN public.task_observations o ON o.claim_id=c.id WHERE c.task_id=$1 AND c.state='consumed' ORDER BY c.id LIMIT 1")
             .bind(&route.task_id).fetch_optional(&mut *tx).await.map_err(unavailable)?;
         let mut inert_observed = false;
         if let Some(claim) = consumed {
-            if let Some(outcome) = get::<Option<String>>(&claim, "outcome")? {
+            let work_claim: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM public.task_work_claims WHERE claim_id=$1)",
+            )
+            .bind(get::<String>(&claim, "id")?)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(unavailable)?;
+            if work_claim && get::<Option<String>>(&claim, "outcome")?.is_none() {
+                // The work loop lived in the lost producer. Its only effects are
+                // durable invocation facts (recovered by key, never resent) and
+                // operations (reconciled by the external check below), so a
+                // fresh owner may take the claim over instead of guessing.
+                sqlx::query("UPDATE public.task_claims SET state='observed' WHERE id=$1")
+                    .bind(get::<String>(&claim, "id")?)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(unavailable)?;
+                event(
+                    &mut tx,
+                    &route.scope,
+                    &route.task_id,
+                    &get::<String>(&claim, "cycle_id")?,
+                    None,
+                    "observed",
+                )
+                .await?;
+                let (state, cessation) =
+                    if matches!(now.state, TaskState::Paused | TaskState::Stopped) {
+                        (now.state.as_str(), "confirmed")
+                    } else {
+                        ("ready", "none")
+                    };
+                sqlx::query(
+                    "UPDATE public.tasks SET state=$2,cessation=$3,revision=revision+1 WHERE id=$1",
+                )
+                .bind(&route.task_id)
+                .bind(state)
+                .bind(cessation)
+                .execute(&mut *tx)
+                .await
+                .map_err(unavailable)?;
+                now.state = TaskState::parse(state).ok_or(TaskError::Unavailable)?;
+                now.cessation = Cessation::parse(cessation).ok_or(TaskError::Unavailable)?;
+            } else if let Some(outcome) = get::<Option<String>>(&claim, "outcome")? {
                 inert_observed = true;
                 sqlx::query("UPDATE public.task_claims SET state='observed' WHERE id=$1")
                     .bind(get::<String>(&claim, "id")?)
@@ -475,8 +578,17 @@ impl TaskRepository {
                     "observed",
                 )
                 .await?;
-                let same_basis = get::<i64>(&claim, "intent_revision")? as u64
-                    == now.intent_revision
+                // A work loop applies guidance at its own step boundaries, so it
+                // has finished the current brief when no received guidance
+                // remains unapplied. An inert child ran under its claim intent.
+                let latest = task(&mut tx, &route.task_id).await?;
+                let intent_done = if work_claim {
+                    get::<i64>(&latest, "applied_intent")?
+                        == get::<i64>(&latest, "intent_revision")?
+                } else {
+                    get::<i64>(&claim, "intent_revision")? as u64 == now.intent_revision
+                };
+                let same_basis = intent_done
                     && get::<i64>(&claim, "execution_epoch")? as u64 == now.execution_epoch
                     && get::<String>(&claim, "cycle_id")? == now.cycle_id;
                 let (state, cessation) =
@@ -621,7 +733,7 @@ impl TaskRepository {
             .await?;
         }
         let row = task(&mut tx, &route.task_id).await?;
-        if commands.len() == COMMAND_BATCH as usize
+        if commands == COMMAND_BATCH as usize
             || get::<i64>(&row, "applied_intent")? != get::<i64>(&row, "intent_revision")?
         {
             tx.commit().await.map_err(unavailable)?;
@@ -695,7 +807,7 @@ impl TaskRepository {
     pub async fn consume(&self, basis: &ClaimBasis) -> Result<ConsumedAttempt, TaskError> {
         let mut tx = lock(&self.pool, &basis.actor_id, &basis.scope).await?;
         let row = task(&mut tx, &basis.task_id).await?;
-        if !valid_basis(&row, basis)?
+        if !admission_current(&row, basis)?
             || !crate::methodology::new_use_allowed(&mut tx, &basis.task_id).await?
         {
             return Err(TaskError::Fenced);
@@ -737,7 +849,7 @@ impl TaskRepository {
             .await
             .map_err(unavailable)?;
         let current = task(&mut tx, &basis.task_id).await?;
-        if !valid_basis(&current, basis)?
+        if !admission_current(&current, basis)?
             || !crate::methodology::new_use_allowed(&mut tx, &basis.task_id).await?
         {
             return Err(TaskError::Fenced);
@@ -751,7 +863,7 @@ impl TaskRepository {
     pub async fn current(&self, basis: &ClaimBasis) -> Result<bool, TaskError> {
         let mut tx = lock(&self.pool, &basis.actor_id, &basis.scope).await?;
         let row = task(&mut tx, &basis.task_id).await?;
-        if !valid_basis(&row, basis)? {
+        if !continuation_current(&row, basis)? {
             return Ok(false);
         }
         let claim =
@@ -845,17 +957,27 @@ async fn retryable_external_absence(
     }
     Ok(false)
 }
-pub(crate) fn valid_basis(row: &PgRow, b: &ClaimBasis) -> Result<bool, TaskError> {
+/// Ownership and execution fences only. A changed intent (accepted guidance not
+/// yet applied) leaves in-flight work current: guidance never cancels work.
+/// Only Pause/Stop (execution epoch), cycle change or ownership loss do.
+pub(crate) fn continuation_current(row: &PgRow, b: &ClaimBasis) -> Result<bool, TaskError> {
     Ok(get::<String>(row, "accountable_actor")? == b.actor_id
         && get::<Option<String>>(row, "owner_id")?.as_deref() == Some(b.worker_id.as_str())
         && get::<Option<bool>>(row, "owner_live")?.unwrap_or(false)
         && get::<i64>(row, "owner_epoch")? == b.owner_epoch
         && get::<i64>(row, "execution_epoch")? == b.execution_epoch
-        && get::<i64>(row, "intent_revision")? == b.intent_revision
-        && get::<i64>(row, "applied_intent")? == b.intent_revision
         && get::<String>(row, "cycle_id")? == b.cycle_id
         && matches!(get::<String>(row, "state")?.as_str(), "ready" | "running"))
 }
+/// Continuation plus the producing intent: received guidance must be applied
+/// and equal the basis before any new admission, consumption or disclosure.
+pub(crate) fn admission_current(row: &PgRow, b: &ClaimBasis) -> Result<bool, TaskError> {
+    Ok(continuation_current(row, b)?
+        && get::<i64>(row, "intent_revision")? == b.intent_revision
+        && get::<i64>(row, "applied_intent")? == b.intent_revision)
+}
+/// The exact claim producer. Its recorded intent is the historical claim-time
+/// intent; current intent is a separate admission fence above.
 pub(crate) fn claim_matches(row: &PgRow, b: &ClaimBasis) -> Result<bool, TaskError> {
     Ok(get::<String>(row, "actor_id")? == b.actor_id
         && get::<String>(row, "task_id")? == b.task_id
@@ -863,8 +985,7 @@ pub(crate) fn claim_matches(row: &PgRow, b: &ClaimBasis) -> Result<bool, TaskErr
         && get::<String>(row, "worker_id")? == b.worker_id
         && get::<String>(row, "process_instance")? == b.process_instance
         && get::<i64>(row, "owner_epoch")? == b.owner_epoch
-        && get::<i64>(row, "execution_epoch")? == b.execution_epoch
-        && get::<i64>(row, "intent_revision")? == b.intent_revision)
+        && get::<i64>(row, "execution_epoch")? == b.execution_epoch)
 }
 
 impl TaskExecution for TaskRepository {

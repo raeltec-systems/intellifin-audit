@@ -432,6 +432,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/engagements/{engagement_id}/task-directions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["admit_task_direction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/engagements/{engagement_id}/task-events": {
         parameters: {
             query?: never;
@@ -442,6 +458,38 @@ export interface paths {
         get: operations["list_task_events"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/task-questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_task_questions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/task-questions/{question_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["answer_task_question"];
         delete?: never;
         options?: never;
         head?: never;
@@ -605,6 +653,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["skills_current_use"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/tasks/{task_id}/work": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_task_work"];
         put?: never;
         post?: never;
         delete?: never;
@@ -960,6 +1024,10 @@ export interface components {
         };
         /** @enum {string} */
         ActionRequest: "read" | "write" | "send";
+        AnswerRequest: {
+            /** @description Candidate Task IDs from the question; at least one. */
+            selected: string[];
+        };
         AttachmentRequest: {
             classification: string;
             digest: string;
@@ -979,6 +1047,24 @@ export interface components {
             request_digest: string;
             /** @description Non-secret logical source identity; never an endpoint URL or capability. */
             source_id: string | null;
+        };
+        /** @enum {string} */
+        AttentionResponse: "awaiting_guidance" | "reconciliation_required" | "step_failed" | "cycle_bounded";
+        /** @description An accepted brief revision. Received and applied are separate facts. */
+        BriefRevisionResponse: {
+            /**
+             * Format: int32
+             * @description Recorded step count of the cycle when applied; null until applied.
+             */
+            applied_boundary: number | null;
+            applied_cursor: string | null;
+            command_id: string;
+            /** @description Retained plain text supplied by a person; no model understanding is asserted. */
+            content: string;
+            cycle_id: string;
+            received_cursor: string;
+            /** @description The later accepted revision that replaced this one. */
+            superseded_by: string | null;
         };
         CanonicalOperationRequest: {
             account_id: string;
@@ -1100,6 +1186,19 @@ export interface components {
             key: string;
             /** @description Server recording time, positive Unix seconds as decimal text. */
             recorded_at: string;
+        };
+        /** @enum {string} */
+        DirectionOutcome: "routed" | "asked";
+        DirectionRequest: {
+            /** @description Exact retained guidance text, at most 4000 UTF-8 bytes. */
+            content: string;
+            /** @description Author and scope bind this key. Identical retries return the original outcome. */
+            key: string;
+        };
+        DirectionResponse: {
+            outcome: components["schemas"]["DirectionOutcome"];
+            question: null | components["schemas"]["RoutingQuestionResponse"];
+            receipt: null | components["schemas"]["CommandReceiptResponse"];
         };
         EngagementResponse: {
             client_id: string;
@@ -1901,6 +2000,29 @@ export interface components {
             invitation_id: components["schemas"]["MembershipIdentifier"];
             key: components["schemas"]["MembershipIdentifier"];
         };
+        RoutedGuideResponse: {
+            command_id: string;
+            cycle_id: string;
+            event_cursor: string;
+            task_id: string;
+        };
+        RoutingCandidateResponse: {
+            cycle_id: string;
+            objective: string;
+            task_id: string;
+        };
+        /** @description A durable targeting question. Nothing is applied until it is answered. */
+        RoutingQuestionResponse: {
+            /** @description One Guide receipt per selected target, once answered. */
+            answer: components["schemas"]["RoutedGuideResponse"][] | null;
+            candidates: components["schemas"]["RoutingCandidateResponse"][];
+            content: string;
+            id: string;
+            key: string;
+        };
+        RoutingQuestionsResponse: {
+            questions: components["schemas"]["RoutingQuestionResponse"][];
+        };
         SaveMemberRequest: {
             active: boolean;
             actor_id: components["schemas"]["MembershipIdentifier"];
@@ -2151,6 +2273,10 @@ export interface components {
         };
         /** @enum {string} */
         SourceFactResponse: "unknown" | "accepted" | "completed" | "authoritatively_absent";
+        /** @enum {string} */
+        StepKindResponse: "model_turn" | "tool_step";
+        /** @enum {string} */
+        StepStatusResponse: "proposed" | "responded" | "superseded" | "failed" | "completed" | "refused" | "reconciliation_required";
         TaskCommandRequest: {
             /**
              * @description Exact retained text, at most 4000 UTF-8 bytes. Required only for Create and Guide.
@@ -2216,6 +2342,38 @@ export interface components {
         };
         /** @enum {string} */
         TaskStateResponse: "ready" | "running" | "paused" | "stopped" | "waiting";
+        /** @description One immutable recorded step. Labels are fixed platform text, never model output. */
+        TaskStepResponse: {
+            current_work: string;
+            execution_epoch: string;
+            intent_revision: string;
+            invocation_id: string | null;
+            kind: components["schemas"]["StepKindResponse"];
+            /** @description `model_turn`, `await_guidance`, `reconcile` or `tool:<catalogue name>`. */
+            next_action: string | null;
+            operation_id: string | null;
+            /** Format: int32 */
+            ordinal: number;
+            status: components["schemas"]["StepStatusResponse"];
+        };
+        TaskWorkResponse: {
+            attention: null | components["schemas"]["AttentionResponse"];
+            briefs: components["schemas"]["BriefRevisionResponse"][];
+            current_work: string | null;
+            cycle_id: string;
+            methodology_binding_id: string | null;
+            methodology_status: string | null;
+            /**
+             * @description False when no qualified profile and enabled catalogue are selectable here:
+             *     the Task stays inert and no model is called.
+             */
+            model_available: boolean;
+            next_action: string | null;
+            /** @description The invocation that proposed `next_action`. */
+            next_action_invocation_id: string | null;
+            steps: components["schemas"]["TaskStepResponse"][];
+            task_id: string;
+        };
         TasksResponse: {
             /** @description Pass this Task ID as after_task_id; null means no further current Tasks. */
             next_cursor: string | null;
@@ -4323,6 +4481,91 @@ export interface operations {
             };
         };
     };
+    admit_task_direction: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header: {
+                /** @description Exact configured HTTPS application origin */
+                Origin: string;
+                /** @description Current session-bound token */
+                "X-CSRF-Token": string;
+                /** @description Optional additional refusal fence */
+                "X-Expected-Actor"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DirectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Reserved lane. Routed to the only non-stopped Task as Guidance, or a durable targeting question; never routed by a model */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectionResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No Task can receive guidance, or the key was reused with different text */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_task_events: {
         parameters: {
             query: {
@@ -4377,6 +4620,161 @@ export interface operations {
             };
             /** @description Session changed; compose fresh reads without replacing the current cookie */
             412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_task_questions: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header?: {
+                /** @description Optional session-bound read precondition */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's most recent targeting questions, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutingQuestionsResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    answer_task_question: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header: {
+                /** @description Exact configured HTTPS application origin */
+                Origin: string;
+                /** @description Current session-bound token */
+                "X-CSRF-Token": string;
+                /** @description Optional additional refusal fence */
+                "X-Expected-Actor"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                question_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnswerRequest"];
+            };
+        };
+        responses: {
+            /** @description One Guide per selected target with a derived key; an identical retry returns the same receipts */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutingQuestionResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A selected Task is stale, foreign, or the question was answered differently */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5194,6 +5592,76 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_task_work: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header?: {
+                /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recorded work facts for the Task card; a waiting Task is not a completed objective */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskWorkResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed */
             412: {
                 headers: {
                     [name: string]: unknown;

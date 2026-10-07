@@ -392,7 +392,7 @@ async fn project(
 }
 pub(crate) async fn verify_basis(tx: &mut Tx, b: &ClaimBasis) -> Result<(), Error> {
     let row = task::task(tx, &b.task_id).await.map_err(from_task)?;
-    if !task::valid_basis(&row, b).map_err(from_task)?
+    if !task::admission_current(&row, b).map_err(from_task)?
         || !crate::methodology::new_use_allowed(tx, &b.task_id)
             .await
             .map_err(from_task)?

@@ -19,7 +19,7 @@ use zobba_infrastructure::{
     model::{ModelRepository, bind_disclosure},
 };
 
-struct FixtureQualification(AtomicBool);
+pub(super) struct FixtureQualification(pub(super) AtomicBool);
 impl ModelQualificationSource for FixtureQualification {
     fn qualified(&self, p: &ModelProfile) -> bool {
         self.0.load(Ordering::SeqCst)
@@ -31,7 +31,7 @@ impl ModelQualificationSource for FixtureQualification {
             && p.capability_revision == "fixture-native-v1"
     }
 }
-fn profile() -> ModelProfile {
+pub(super) fn profile() -> ModelProfile {
     ModelProfile {
         id: "model-fixture".into(),
         revision: 1,
@@ -50,7 +50,7 @@ fn profile() -> ModelProfile {
         max_output_tokens: 128,
     }
 }
-fn catalogue(op: &CanonicalOperation) -> ToolCatalog {
+pub(super) fn catalogue(op: &CanonicalOperation) -> ToolCatalog {
     ToolCatalog {
         id: "model-tools".into(),
         revision: 1,

@@ -858,7 +858,10 @@ async fn durable_task_commands_and_fencing_contract() {
     match consumption {
         Ok(consumed) => {
             assert_eq!(raced.0, "consumed");
-            assert!(!repository.current(&race_basis).await.unwrap());
+            // Story 22.2: guidance never cancels consumed in-flight work. It is
+            // applied at the next work boundary; only Pause/Stop or ownership
+            // loss end continuation. Admission still requires the new intent.
+            assert!(repository.current(&race_basis).await.unwrap());
             repository
                 .observe(&consumed, Observation::NotStarted)
                 .await
@@ -998,7 +1001,8 @@ async fn durable_task_commands_and_fencing_contract() {
         .admit("actor-a", &a, &consumed_guidance)
         .await
         .unwrap();
-    assert!(!repository.current(&current_claim).await.unwrap());
+    // Guidance is received at once but does not cancel the consumed attempt.
+    assert!(repository.current(&current_claim).await.unwrap());
     let stop = command("stop-consumed", CommandKind::Stop, &receipt);
     let stop_receipt = repository.admit("actor-a", &a, &stop).await.unwrap();
     let stopped = repository
@@ -1010,6 +1014,8 @@ async fn durable_task_commands_and_fencing_contract() {
         (TaskState::Stopped, Cessation::Pending)
     );
     assert!(stopped.execution_epoch > current_claim.execution_epoch as u64);
+    // Only a control (execution epoch) ends continuation.
+    assert!(!repository.current(&current_claim).await.unwrap());
     let continuation = command("continue", CommandKind::Continue, &receipt);
     assert_eq!(
         repository.admit("actor-a", &a, &continuation).await,

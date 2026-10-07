@@ -1,4 +1,5 @@
-//! Own-binary inert subprocesses; no shell, model, tools, audit or desktop work.
+//! Own-binary inert subprocesses and the optional model work-cycle executor.
+//! The inert child has no shell, model, tools, audit or desktop work.
 use crate::diagnostics::{Code, Diagnostics};
 use std::{future::Future, path::PathBuf, process::Stdio, time::Duration};
 use tokio::{process::Command, sync::watch};
@@ -135,6 +136,77 @@ where
         _ => {
             config.diagnostics.record(Code::ProcessJoinUnconfirmed);
             None
+        }
+    }
+}
+
+/// Outcome of a work-loop attempt as an execution observation.
+pub enum WorkExecution {
+    /// No qualified profile/catalogue was selectable: run the inert executor.
+    Unavailable,
+    /// `None` (shutdown, or no confirmed termination of the loop) records no
+    /// receipt; a replacement owner takes the durable work claim over without replay.
+    Observed(Option<Observation>),
+}
+
+pub async fn execute_work<F, Fut>(
+    config: &Config,
+    basis: &ClaimBasis,
+    mut shutdown: watch::Receiver<bool>,
+    mut current: F,
+    runner: &dyn crate::work::WorkRunner,
+) -> WorkExecution
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<bool, TaskError>>,
+{
+    use zobba_application::work::CycleEnd;
+    if *shutdown.borrow() {
+        return WorkExecution::Observed(None);
+    }
+    let cancellation = zobba_application::model::ModelCancellation::new();
+    let run = runner.run(basis, &cancellation);
+    tokio::pin!(run);
+    let mut ticker = tokio::time::interval(AUTHORITY_POLL);
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    // The same bounded authority poll as the inert child: Pause/Stop, a new
+    // cycle or lost ownership cancels an in-flight model call promptly.
+    let authority = async {
+        loop {
+            ticker.tick().await;
+            match tokio::time::timeout(AUTHORITY_TIMEOUT, current()).await {
+                Ok(Ok(true)) => {}
+                Ok(Ok(false)) => return,
+                _ => {
+                    config.diagnostics.record(Code::AuthorityFailed);
+                    return;
+                }
+            }
+        }
+    };
+    tokio::pin!(authority);
+    let by_shutdown = tokio::select! {
+        biased;
+        end = &mut run => {
+            return match end {
+                None => WorkExecution::Unavailable,
+                Some(CycleEnd::Fenced) => WorkExecution::Observed(Some(Observation::Cancelled)),
+                Some(CycleEnd::Unavailable) => WorkExecution::Observed(Some(Observation::Exited)),
+                Some(_) => WorkExecution::Observed(Some(Observation::Completed)),
+            };
+        }
+        _ = shutdown.changed() => true,
+        _ = &mut authority => false,
+    };
+    cancellation.cancel();
+    match tokio::time::timeout(Duration::from_secs(5), &mut run).await {
+        Ok(None) => WorkExecution::Unavailable,
+        Ok(Some(_)) if !by_shutdown => WorkExecution::Observed(Some(Observation::Cancelled)),
+        _ => {
+            if !by_shutdown {
+                config.diagnostics.record(Code::ProcessJoinUnconfirmed);
+            }
+            WorkExecution::Observed(None)
         }
     }
 }

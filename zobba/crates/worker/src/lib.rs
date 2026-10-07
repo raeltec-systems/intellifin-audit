@@ -3,6 +3,7 @@ pub mod diagnostics;
 pub mod executor;
 pub mod gateway;
 pub mod supervision;
+pub mod work;
 
 use rand::{RngCore, rngs::OsRng};
 use std::{collections::HashMap, time::Duration};
@@ -36,12 +37,38 @@ pub async fn coordinate(
     coordinate_with(dispatcher, repository, config, shutdown).await;
 }
 
+/// Model work-cycle orchestration with an explicitly injected trusted
+/// composition. Without a selectable qualified profile a Task stays inert.
+pub async fn coordinate_work(
+    database: RuntimeDatabase,
+    config: executor::Config,
+    runner: std::sync::Arc<dyn work::WorkRunner>,
+    shutdown: watch::Receiver<bool>,
+) {
+    let dispatcher = Dispatcher::new(database.pool().clone());
+    let repository = TaskRepository::new(database.pool().clone());
+    coordinate_runner(dispatcher, repository, config, Some(runner), shutdown).await;
+}
+
 /// Production orchestration uses inward ports. Test executables may wrap real
 /// adapters; production contains no fault flags, bypasses or hook callbacks.
 pub async fn coordinate_with<D, E>(
     dispatcher: D,
     repository: E,
     config: executor::Config,
+    shutdown: watch::Receiver<bool>,
+) where
+    D: TaskDelivery + Clone + 'static,
+    E: TaskExecution + Clone + 'static,
+{
+    coordinate_runner(dispatcher, repository, config, None, shutdown).await;
+}
+
+pub async fn coordinate_runner<D, E>(
+    dispatcher: D,
+    repository: E,
+    config: executor::Config,
+    runner: Option<std::sync::Arc<dyn work::WorkRunner>>,
     mut shutdown: watch::Receiver<bool>,
 ) where
     D: TaskDelivery + Clone + 'static,
@@ -89,8 +116,9 @@ pub async fn coordinate_with<D, E>(
                     let worker_id = worker_id.clone();
                     let shutdown = shutdown.clone();
                     let returned_task_id = task_id.clone();
+                    let runner = runner.clone();
                     let handle = children.spawn(async move {
-                        advance(repository, dispatcher, route, worker_id, config, shutdown).await;
+                        advance(repository, dispatcher, route, worker_id, config, runner, shutdown).await;
                         returned_task_id
                     });
                     active_tasks.insert(task_id, handle.id());
@@ -114,6 +142,7 @@ async fn advance<D, E>(
     route: WakeupRoute,
     worker_id: String,
     config: executor::Config,
+    runner: Option<std::sync::Arc<dyn work::WorkRunner>>,
     shutdown: watch::Receiver<bool>,
 ) where
     D: TaskDelivery,
@@ -149,10 +178,28 @@ async fn advance<D, E>(
                 return;
             }
         };
-        let observation = executor::execute(&config, &attempt.basis, shutdown, || {
-            repository.current(&attempt.basis)
-        })
-        .await;
+        let worked = match &runner {
+            Some(runner) => {
+                executor::execute_work(
+                    &config,
+                    &attempt.basis,
+                    shutdown.clone(),
+                    || repository.current(&attempt.basis),
+                    runner.as_ref(),
+                )
+                .await
+            }
+            None => executor::WorkExecution::Unavailable,
+        };
+        let observation = match worked {
+            executor::WorkExecution::Observed(observation) => observation,
+            executor::WorkExecution::Unavailable => {
+                executor::execute(&config, &attempt.basis, shutdown, || {
+                    repository.current(&attempt.basis)
+                })
+                .await
+            }
+        };
         if let Some(observation) = observation {
             // A capability grants only an immutable fact, even after authority
             // or ownership was lost. Never log or expose this secret.

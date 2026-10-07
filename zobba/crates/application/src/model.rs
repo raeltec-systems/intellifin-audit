@@ -385,7 +385,10 @@ impl<S: ModelStore, T: ModelTransport> ModelCoordinator<S, T> {
     }
 }
 
-fn retain_failed_evidence(mut outcome: TransportOutcome, error: ModelError) -> TransportOutcome {
+pub(crate) fn retain_failed_evidence(
+    mut outcome: TransportOutcome,
+    error: ModelError,
+) -> TransportOutcome {
     // Reject executable/structured material but preserve attributable partial
     // text and known usage. A provider identity mismatch never erases a charge.
     let mut bytes = 0usize;

@@ -12,6 +12,10 @@ import { readTaskBasis } from './methodology';
 import { TaskKnowledge } from './TaskKnowledge';
 import { InspectionPreference, useInspectionPreference } from './InspectionPreference';
 import type { MethodContext, SkillContext } from './knowledge-context';
+import { TaskWorkPanel } from './TaskWorkPanel';
+import { RoutingQuestions } from './RoutingQuestions';
+import { postDirection } from './work';
+import type { RoutingQuestion } from './work';
 
 interface WorkspaceProps {
   engagement: Engagement;
@@ -23,7 +27,7 @@ interface WorkspaceProps {
   onOpenTask?: () => void;
 }
 
-type Target = { kind: 'create' } | { kind: 'guide'; task_id: string; cycle_id: string; objective: string };
+type Target = { kind: 'create' } | { kind: 'route' } | { kind: 'guide'; task_id: string; cycle_id: string; objective: string };
 type Control = 'pause' | 'resume' | 'stop' | 'continue';
 type AuditContextDraft = { audit_area: string; period_start: string; period_end: string };
 
@@ -53,7 +57,7 @@ function messageTitle(message: ConversationMessage): string {
 }
 
 function targetKey(target: Target): string {
-  return target.kind === 'create' ? 'create' : `${target.task_id}:${target.cycle_id}`;
+  return target.kind === 'create' || target.kind === 'route' ? target.kind : `${target.task_id}:${target.cycle_id}`;
 }
 function cycleLabel(id: string): string { return id.slice(0, 8); }
 
@@ -80,6 +84,10 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
   const [methodContext, setMethodContext] = useState<MethodContext | null>(null);
   const [skillContext, setSkillContext] = useState<SkillContext | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  // An untargeted direction keeps its request key until a receipt or question confirms it.
+  const [direction, setDirection] = useState<{ key: string; content: string } | null>(null);
+  const [directionNotice, setDirectionNotice] = useState<string | null>(null);
+  const [latestQuestion, setLatestQuestion] = useState<RoutingQuestion | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const historyPane = useRef<HTMLDivElement>(null);
   const inspectionHeading = useRef<HTMLHeadingElement>(null);
@@ -95,7 +103,7 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
   const selected = retainingProjection || projectionReady ? conversation.tasks.find((task) => task.id === selectedId) ?? inspected : null;
   const scopeLabel = `${engagement.organisation_name} / ${engagement.client_name} / ${engagement.engagement_name}`;
   const targetTask = target.kind === 'guide' ? conversation.tasks.find((task) => task.id === target.task_id) ?? (inspected?.id === target.task_id ? inspected : null) : null;
-  const targetIsCurrent = target.kind === 'create' || !targetTask || targetTask.cycle_id === target.cycle_id;
+  const targetIsCurrent = target.kind !== 'guide' || !targetTask || targetTask.cycle_id === target.cycle_id;
   const staleTargetError = !targetIsCurrent ? 'This target belongs to an earlier work cycle. Choose the current Task and cycle before sending.' : null;
   const controlsReady = projectionReady;
   const contextOwner = JSON.stringify([session.identity.id, session.csrf_token, engagement.organisation_id, engagement.client_id, engagement.engagement_id, targetKey(target)]);
@@ -223,8 +231,36 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
     });
   }
 
+  async function sendDirection() {
+    const content = draft;
+    const generation = draftGeneration.current;
+    // A retry of the same unchanged text reuses its key: the server returns the
+    // original receipt or question and never applies it twice.
+    const pending = direction && direction.content === content ? direction : { key: crypto.randomUUID(), content };
+    setDirection(pending); setLocalError(null); setDirectionNotice(null); submittingDraft.current = true;
+    const request = new AbortController();
+    const deadline = setTimeout(() => request.abort(), 8000);
+    try {
+      const outcome = await postDirection(engagement, session, pending.key, pending.content, request.signal);
+      setDirection(null);
+      if (draftGeneration.current === generation) setDraft('');
+      if (outcome.outcome === 'routed') {
+        const task = conversation.tasks.find(item => item.id === outcome.receipt.task_id);
+        setDirectionNotice(`Received as guidance for ${task?.objective ?? outcome.receipt.task_id}. It is applied at that Task’s next step boundary.`);
+      } else {
+        setLatestQuestion(outcome.question);
+        setDirectionNotice('More than one Task could receive this. Choose the target below; nothing has been applied yet.');
+      }
+    } catch (reason) {
+      if (reason instanceof AccessError && reason.status === 409) setLocalError('No current Task can receive untargeted guidance, or this text differs from the original request. Start a Task or choose one.');
+      else setLocalError('Delivery was not confirmed. Send again to check the original request; it will not be applied twice.');
+      if (reason instanceof AccessError && [401, 403, 404, 412].includes(reason.status)) onAccessFailure(reason);
+    } finally { clearTimeout(deadline); submittingDraft.current = false; }
+  }
+
   async function send() {
     if (!accessReady || conversation.sending || submittingDraft.current || contextRequested && !guideContext || !draft.trim()) return;
+    if (target.kind === 'route') { await sendDirection(); return; }
     if (!targetIsCurrent) { setLocalError('This target belongs to an earlier work cycle. Choose the current Task and cycle before sending.'); return; }
     const content = draft;
     const generation = draftGeneration.current;
@@ -263,7 +299,7 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
     <div className="conversation-content" hidden={!accessReady || conversation.connection === 'loading'}>
       <div className="conversation-topline"><div><span className="pair-presence" aria-hidden="true"><img src="/assets/zobba-symbol-color.svg" alt="" width="18" height="18" /></span><h2>Engagement conversation</h2></div>
         <span className="delivery-status" role="status" aria-live="polite">{statusText}</span></div>
-      <p className="foundation-notice">Foundation workspace · Tasks and guidance are saved. Model, audit and computer work are not available yet.</p>
+      <p className="foundation-notice">Foundation workspace · Tasks and guidance are saved. Model work runs only with a qualified profile; audit and computer work are not available yet.</p>
       <nav className="conversation-view-tabs" aria-label="Engagement views">
         <button type="button" className="quiet-button" aria-current={view === 'conversation' ? 'page' : undefined} onClick={() => setView('conversation')}>Conversation</button>
         <button type="button" className="quiet-button" aria-current={view === 'workspace' ? 'page' : undefined} onClick={() => setView('workspace')}>Workspace{selectedId ? ' · 1' : ''}</button>
@@ -312,6 +348,7 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
                   : <button type="button" className="quiet-button" onClick={() => conversation.acknowledgeRefusal(item.key)}>Dismiss refusal</button>}
               </article>)}
             </section> : null}
+            <RoutingQuestions key={`${session.identity.id}/${session.csrf_token}/routing`} scope={engagement} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} latest={latestQuestion} />
             <AffectedSkillSelections key={`${session.identity.id}/${session.csrf_token}`} scope={engagement} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} onOpenTask={openTask} />
           </div>
           <form className="conversation-composer" onSubmit={(event) => { event.preventDefault(); void send(); }}>
@@ -319,6 +356,7 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
             <select id="composer-target" data-focus="composer-target" value={targetKey(target)} onChange={(event) => {
               draftGeneration.current += 1;
               if (event.currentTarget.value === 'create') chooseTarget({ kind: 'create' });
+              else if (event.currentTarget.value === 'route') chooseTarget({ kind: 'route' });
               else {
                 const task = conversation.tasks.find((item) => `${item.id}:${item.cycle_id}` === event.currentTarget.value);
                 if (task) chooseTarget({ kind: 'guide', task_id: task.id, cycle_id: task.cycle_id, objective: task.objective });
@@ -326,12 +364,13 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
               setLocalError(null);
             }}>
               <option value="create">New Task</option>
+              <option value="route">Any Task · ask me if unclear</option>
               {target.kind === 'guide' && !conversation.tasks.some((task) => `${task.id}:${task.cycle_id}` === targetKey(target)) ? <option value={targetKey(target)}>Guide: {target.objective} · retained cycle</option> : null}
               {conversation.tasks.map((task) => <option key={`${task.id}:${task.cycle_id}`} value={`${task.id}:${task.cycle_id}`}>Guide: {task.objective} · current cycle {cycleLabel(task.cycle_id)}</option>)}
             </select>
-            <label className="composer-input-label" htmlFor="conversation-draft">{target.kind === 'create' ? 'Task objective' : 'Guidance'}</label>
+            <label className="composer-input-label" htmlFor="conversation-draft">{target.kind === 'create' ? 'Task objective' : target.kind === 'route' ? 'Direction' : 'Guidance'}</label>
             <textarea ref={textarea} id="conversation-draft" data-focus="conversation-draft" rows={3} value={draft} onChange={(event) => { draftGeneration.current += 1; setDraft(event.currentTarget.value); }} onKeyDown={composeKey}
-              placeholder={target.kind === 'create' ? 'What would you like to work on?' : 'Add guidance to this Task…'} aria-describedby="composer-audience composer-delivery" />
+              placeholder={target.kind === 'create' ? 'What would you like to work on?' : target.kind === 'route' ? 'Guidance for the only open Task, or Zobba asks which…' : 'Add guidance to this Task…'} aria-describedby="composer-audience composer-delivery" />
             {target.kind === 'create' ? <details className="methodology-context"><summary>Audit context (optional)</summary><p>Leave blank to use applicable firm defaults. Missing context is recorded without blocking Task creation.</p><label>Task audit area<input maxLength={200} value={auditContext.audit_area} onChange={event => { draftGeneration.current += 1; setAuditContext({ ...auditContext, audit_area: event.target.value }); }} /></label><label>Task period start<input type="date" value={auditContext.period_start} onChange={event => { draftGeneration.current += 1; setAuditContext({ ...auditContext, period_start: event.target.value }); }} /></label><label>Task period end<input type="date" value={auditContext.period_end} onChange={event => { draftGeneration.current += 1; setAuditContext({ ...auditContext, period_end: event.target.value }); }} /></label></details> : null}
             {target.kind === 'guide' ? <div className="methodology-context"><label><input type="checkbox" checked={contextRequested} onChange={event => { void editGuideContext(event.target.checked); }} />Update Task audit context</label>
               {contextLoading ? <p role="status">Loading this Task’s current context…</p> : null}
@@ -339,6 +378,8 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
               {guideContext ? <><p>{contextFromPending ? 'Prefilled from the pending change. ' : ''}These values replace this Task’s audit context. Explain the correction in your guidance. Any changed methodology takes effect after consumed activity reaches a safe boundary.</p><label>Task audit area<input maxLength={200} value={guideContext.audit_area} onChange={event => { draftGeneration.current += 1; setGuideContext({ ...guideContext, audit_area: event.target.value }); }} /></label><label>Task period start<input type="date" value={guideContext.period_start} onChange={event => { draftGeneration.current += 1; setGuideContext({ ...guideContext, period_start: event.target.value }); }} /></label><label>Task period end<input type="date" value={guideContext.period_end} onChange={event => { draftGeneration.current += 1; setGuideContext({ ...guideContext, period_end: event.target.value }); }} /></label></> : null}
             </div> : null}
             <div className="composer-bottom"><p id="composer-audience">{engagement.client_name} · Current assigned members</p><button type="submit" disabled={!accessReady || conversation.sending || contextRequested && !guideContext || !draft.trim() || !targetIsCurrent}>Send <span aria-hidden="true">↑</span></button></div>
+            {target.kind === 'route' ? <p className="composer-cycle">With one open Task this becomes its guidance; otherwise Zobba asks which Tasks. Routing never uses a model.</p> : null}
+            {directionNotice ? <p className="composer-cycle" role="status">{directionNotice}</p> : null}
             {target.kind === 'guide' ? <p className="composer-cycle">Guide {target.objective} · cycle <abbr title={target.cycle_id}>{cycleLabel(target.cycle_id)}</abbr></p> : null}
             <p id="composer-delivery" className="composer-help">{draft ? 'Not sent · ' : ''}Enter to send · Shift+Enter for a new line</p>
             {staleTargetError || localError || conversation.error ? <p className="composer-error" role="alert">{staleTargetError ?? localError ?? conversation.error}</p> : null}
@@ -359,6 +400,7 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
               <div className="task-state"><span className="status-label">{taskStateLabel(selected)}</span><p>{stateExplanation(selected)}</p></div>
               <section className="brief-section"><h3>Original objective</h3><p className="retained-text">{selected.objective}</p></section>
               <section className="brief-section"><h3>Working brief</h3><p className="brief-caption">Plain retained direction. Applied means added here; it does not mean model understanding.</p><p className="retained-text">{selected.working_brief}</p></section>
+              <TaskWorkPanel key={`${session.identity.id}/${session.csrf_token}/${selected.id}/work`} scope={engagement} taskId={selected.id} taskRevision={selected.revision} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} />
               <section key={`${selected.id}/${opening ?? ''}`} className="working-context" aria-label="What Zobba is using"><h3>What Zobba is using</h3>
                 <TaskKnowledge key={`${session.identity.id}/${session.csrf_token}/${selected.id}/knowledge`} scope={engagement} task={selected} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} method={methodContext} skills={skillContext} onApplyLayout={layout => { explicitLayoutOpening.current = opening; setExpanded(layout === 'expanded' && window.matchMedia('(min-width: 1001px)').matches); }} onGuide={() => { draftGeneration.current += 1; chooseTarget({ kind: 'guide', task_id: selected.id, cycle_id: selected.cycle_id, objective: selected.objective }); setView('conversation'); requestAnimationFrame(() => textarea.current?.focus()); }} />
                 <TaskMethodology scope={engagement} taskId={selected.id} taskRevision={selected.revision} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} onContext={setMethodContext} />

@@ -536,6 +536,134 @@ async fn conversation_http_pages(browser: &Browser, admin: &mut PgConnection, ta
     }
 }
 
+/// Story 22.2 work projection, untargeted direction and targeting answers.
+async fn work_http(browser: &Browser, admin: &mut PgConnection, task_id: &str) {
+    let scope = "organisation_id=org-a&client_id=client-a";
+    let work = document(
+        browser
+            .read(&format!(
+                "/engagements/engagement-a/tasks/{task_id}/work?{scope}"
+            ))
+            .await,
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(work["task_id"], task_id);
+    assert_eq!(
+        work["model_available"], false,
+        "no trusted qualification source: inert"
+    );
+    assert!(
+        work["steps"].as_array().unwrap().is_empty(),
+        "no invented progress"
+    );
+    assert!(
+        work["briefs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|b| b["received_cursor"].is_string())
+    );
+    assert_eq!(
+        browser
+            .read(&format!("/engagements/engagement-a/tasks/{task_id}/work"))
+            .await
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    let open: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM public.tasks WHERE engagement_id='engagement-a' AND state<>'stopped'",
+    )
+    .fetch_one(&mut *admin)
+    .await
+    .unwrap();
+    assert!(open >= 2, "fixture holds several Tasks");
+    let direction = json!({"key":"http-direction","content":"Untargeted synthetic direction"});
+    // Direction is a control-lane mutation: the ordinary lane has no route.
+    assert_eq!(
+        browser.command("task-commands", &direction).await.status(),
+        StatusCode::BAD_REQUEST
+    );
+    let asked = document(
+        browser.command("task-directions", &direction).await,
+        StatusCode::ACCEPTED,
+    )
+    .await;
+    assert_eq!(asked["outcome"], "asked");
+    assert_eq!(asked["receipt"], Value::Null);
+    let question = asked["question"].clone();
+    assert_eq!(
+        question["candidates"].as_array().unwrap().len() as i64,
+        open
+    );
+    assert_eq!(question["answer"], Value::Null);
+    assert_eq!(
+        document(
+            browser.command("task-directions", &direction).await,
+            StatusCode::ACCEPTED
+        )
+        .await,
+        asked,
+        "identical retry returns the same question"
+    );
+    let changed = json!({"key":"http-direction","content":"Different text"});
+    assert_eq!(
+        browser.command("task-directions", &changed).await.status(),
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        browser
+            .command("task-directions", &json!({"key":"bad key","content":"x"}))
+            .await
+            .status(),
+        StatusCode::BAD_REQUEST
+    );
+    let id = question["id"].as_str().unwrap();
+    let route = format!("task-questions/{id}/answer");
+    assert_eq!(
+        browser
+            .command(&route, &json!({"selected":["foreign-task"]}))
+            .await
+            .status(),
+        StatusCode::CONFLICT
+    );
+    let chosen: Vec<Value> = question["candidates"].as_array().unwrap()[..2]
+        .iter()
+        .map(|c| c["task_id"].clone())
+        .collect();
+    let answered = document(
+        browser.command(&route, &json!({"selected":chosen})).await,
+        StatusCode::ACCEPTED,
+    )
+    .await;
+    let guides = answered["answer"].as_array().unwrap();
+    assert_eq!(guides.len(), 2, "one Guide receipt per target");
+    assert_eq!(
+        document(
+            browser.command(&route, &json!({"selected":chosen})).await,
+            StatusCode::ACCEPTED
+        )
+        .await,
+        answered,
+        "retry creates no duplicates"
+    );
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM public.task_commands WHERE content='Untargeted synthetic direction'",
+    )
+    .fetch_one(&mut *admin)
+    .await
+    .unwrap();
+    assert_eq!(count, 2);
+    let listed = document(
+        browser
+            .read(&format!("/engagements/engagement-a/task-questions?{scope}"))
+            .await,
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(listed["questions"][0], answered);
+}
+
 async fn fixture(config: &support::Configuration, admin: &mut PgConnection) {
     // The schema must be recreated by its migration owner, not the separate
     // superuser used below solely for guarded synthetic identities/memberships.
@@ -826,6 +954,7 @@ async fn scoped_http_commands_reauthorize_retries_and_reserve_control_authentica
     }
     event_cursor_pages(&browser, &mut admin, task_id, cycle_id).await;
     conversation_http_pages(&browser, &mut admin, task_id).await;
+    work_http(&browser, &mut admin, task_id).await;
     assert_eq!(browser.read("/engagements/engagement-a/task-events?organisation_id=org-a&client_id=client-a&after=9223372036854775808").await.status(), StatusCode::BAD_REQUEST);
 
     let admin_token = identities

@@ -90,12 +90,25 @@ impl Gateway {
         basis: &ClaimBasis,
         operation_id: &str,
     ) -> Result<SourceFact, OperationError> {
+        self.dispatch_attempt(store, basis, operation_id)
+            .await
+            .map(|(_, fact)| fact)
+    }
+
+    /// As `dispatch`, also returning the exact consumed attempt identity so the
+    /// work loop can bind the receipt into durable portable history.
+    pub async fn dispatch_attempt<S: OperationStore>(
+        &self,
+        store: &S,
+        basis: &ClaimBasis,
+        operation_id: &str,
+    ) -> Result<(String, SourceFact), OperationError> {
         let attempt = database_call(store.consume(basis, operation_id)).await?;
         let fact = self.endpoint.dispatch(&attempt).await?;
         // Failure to persist a known outcome never causes another send. A
         // recovering owner reconstructs this same attempt and queries source.
         database_call(store.observe(&attempt, fact)).await?;
-        Ok(fact)
+        Ok((attempt.attempt_id.clone(), fact))
     }
 
     /// Recovery uses current reader/Task authority to obtain an exact receipt

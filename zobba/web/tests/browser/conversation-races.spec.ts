@@ -186,7 +186,7 @@ test('later bounded Task page refreshes factual state and cycle while retaining 
   await page.locator('.task-list-open').filter({ hasText: last.objective }).click();
   // Keep this exact inspection while returning to the first bounded Task page.
   await page.getByRole('button', { name: 'Latest messages', exact: true }).click();
-  await expect(page.getByLabel('Send to', { exact: true }).locator('option')).toHaveCount(102);
+  await expect(page.getByLabel('Send to', { exact: true }).locator('option')).toHaveCount(103);
   await page.getByRole('button', { name: new RegExp(`^Continue ${last.objective}`) }).click();
   await expect.poll(async () => (await currentTask(page, last.id)).cycle_id).not.toBe(last.cycle_id);
   const continued = await currentTask(page, last.id);

@@ -12,8 +12,8 @@ use zobba_domain::{
     identity::Scope,
     permissions::*,
     task::{
-        Cessation, ClaimBasis, CommandKind, CommandReceipt, Decision, TaskCommand, TaskState,
-        WakeupRoute,
+        Cessation, ClaimBasis, CommandKind, CommandReceipt, ConsumedAttempt, Decision, Observation,
+        TaskCommand, TaskState, WakeupRoute,
     },
 };
 use zobba_infrastructure::{
@@ -31,6 +31,8 @@ mod review_repairs;
 mod support;
 #[path = "operations/task_reconciliation.rs"]
 mod task_reconciliation;
+#[path = "operations/work_cycle.rs"]
+mod work_cycle;
 use support::Configuration;
 
 const GATE: i64 = 20_050_099;
@@ -1475,5 +1477,6 @@ async fn standing_permissions_exact_operations_and_transaction_cutoffs() {
     Box::pin(task_reconciliation::verify(&fixture)).await;
     late_receipts_scope_and_cessation(&fixture, &config, &mut admin).await;
     methodology_execution::verify(&fixture, &mut admin).await;
+    Box::pin(work_cycle::verify(&fixture, &mut admin)).await;
     fixture.pool.close().await;
 }

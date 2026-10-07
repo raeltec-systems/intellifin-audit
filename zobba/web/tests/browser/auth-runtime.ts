@@ -271,7 +271,7 @@ SELECT 'snapshot:'||json_build_object('api_connections',(SELECT count(*) FROM ap
   };
 }
 
-function resetSyntheticFixture(database: URL, host: string, port: number, schemaVersion = 11): void {
+function resetSyntheticFixture(database: URL, host: string, port: number, schemaVersion = 12): void {
   const result = spawnSync('psql', ['-X', '-q', '-1', '-v', 'ON_ERROR_STOP=1'], {
     cwd: root,
     encoding: 'utf8',
@@ -280,6 +280,11 @@ function resetSyntheticFixture(database: URL, host: string, port: number, schema
     // within psql's single transaction, including the deferred Task-cycle and
     // Admin-continuity checks. This is never an application lifecycle operation.
     input: `
+DELETE FROM public.task_steps;
+DELETE FROM public.task_work_claims;
+DELETE FROM public.task_guidance_applications;
+DELETE FROM public.task_routing_answers;
+DELETE FROM public.task_routing_questions;
 DELETE FROM public.model_tool_bindings;
 DELETE FROM public.model_results;
 DELETE FROM public.model_invocations;
@@ -336,7 +341,7 @@ DELETE FROM public.clients;
 DELETE FROM public.organisations;
 DELETE FROM public.sessions;
 DELETE FROM public.identities;
-UPDATE public.zobba_bootstrap SET local_fixture_issuer=NULL WHERE singleton;`.split("\n").filter(line => (schemaVersion >= 10 || !line.startsWith("DELETE FROM public.knowledge_")) && (schemaVersion >= 11 || !line.startsWith("DELETE FROM public.model_"))).join("\n"),
+UPDATE public.zobba_bootstrap SET local_fixture_issuer=NULL WHERE singleton;`.split("\n").filter(line => (schemaVersion >= 10 || !line.startsWith("DELETE FROM public.knowledge_")) && (schemaVersion >= 11 || !line.startsWith("DELETE FROM public.model_")) && (schemaVersion >= 12 || !/^DELETE FROM public\.task_(steps|work_claims|guidance_applications|routing_)/.test(line))).join("\n"),
     timeout: 10_000,
     env: {
       ...sanitizedRuntimeEnvironment(),
@@ -405,7 +410,7 @@ export async function startAuthRuntime(options: { evidence?: boolean; schema9?: 
   const adminEndpoint = databaseEndpoint(adminDatabase);
   run('cargo', ['build', '--quiet', '--locked', '-p', 'zobba-cli', '-p', 'zobba-worker'], sanitizedRuntimeEnvironment());
   const apiExecutable = buildEvidenceApiHarness();
-  let schemaVersion = options.schema9 ? 9 : 11;
+  let schemaVersion = options.schema9 ? 9 : 12;
   const metadata = JSON.parse(run('cargo', ['metadata', '--locked', '--no-deps', '--format-version', '1'], sanitizedRuntimeEnvironment()));
   const fixtureDirectory = resolve(process.env.ZOBBA_FIXTURE_DIR ?? resolve(fixtureRoot, '.local'));
   run('node', [resolve(fixtureRoot, 'setup.mjs')], { ...sanitizedRuntimeEnvironment(), ZOBBA_FIXTURE_DIR: fixtureDirectory });
@@ -587,7 +592,7 @@ export async function startAuthRuntime(options: { evidence?: boolean; schema9?: 
         run(resolve(metadata.target_directory, 'debug/zobba-cli'), ['migrate', '--runtime-role', decodeURIComponent(runtimeDatabase.username)], {
           ...environment, ZOBBA_MIGRATION_DATABASE_URL: migrationDatabase.toString(),
         });
-        schemaVersion = 11;
+        schemaVersion = 12;
         await startApi();
       },
       async startWorker(duration = 30_000) {
