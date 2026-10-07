@@ -150,3 +150,54 @@ Keep setup out of the engagement-scoped routing tables (22.2 AC1–3). They requ
 - `cargo fmt --check && cargo clippy --locked --workspace --all-targets -- -D warnings` -- expected: clean.
 - `cargo test --locked --workspace -- --test-threads=1` -- expected: all pass.
 - `cargo run -p zobba-cli --locked -- openapi`, then `pnpm check && pnpm test:browser` -- expected: the types match and the suites pass with zero retries. The only allowed failures are the two known IPv6-only sandbox unit tests.
+
+## Implementation Notes (2026-10-07)
+
+Delivered (not committed):
+- `migrations/0013_engagement_setup.sql` + `schema-v13.catalog` (captured byte-for-byte
+  with `psql -At` from a scratch database after migrations 1–13; the same capture of
+  1–12 reproduced `schema-v12.catalog` exactly). `SCHEMA_VERSION` 13, ledger `LIMIT 14`,
+  inventory/grant/effective-role checks, and `check_setup_functions` (three runtime
+  entry points, one private helper, no runtime INSERT on clients/engagements/assignments).
+- `domain/src/engagement_setup.rs`: pure state machine, simple case folding,
+  ISO period parser, bounds, ID/key derivation; unit tests per matrix row.
+- `application/src/engagement_setup.rs` port; `infrastructure/src/engagement_setup.rs`
+  repository (message committed, then interpreted; confirm calls `engagement_establish`,
+  enters the new scope and runs the existing `admit_in` Create + `admission_fence` in
+  the same transaction; exact replay; concurrent loser returns the original receipt).
+- `api/src/engagement_setup.rs` (+ OpenAPI): `GET /engagement-setups/organisations`,
+  `GET|POST /organisations/{org}/engagement-setups`, `GET .../{id}`,
+  `POST .../{id}/messages`, `POST .../{id}/confirm`. Mutations require CSRF, Origin
+  and `X-Expected-Actor`; reads honour `X-Expected-Session`.
+- Web: `engagement-setup.ts`, `EngagementSetup.tsx`, App empty state replaced by the
+  setup conversation and a "Start new engagement" entry; setup outbox channel
+  (`setup:` binding keyed by actor + organisation); explicit "Send again" recovery.
+
+Decisions inside the frozen intent:
+- Matching: exact name first; otherwise simple folding. Folding is computed in Rust
+  (lowercase of the single-scalar uppercase; `ı`/`İ` fold to themselves). SQL returns
+  a bounded superset (same scalar count and `lower(upper(.. COLLATE pg_c_utf8))`,
+  at most 21 rows); a full page is refused as "too many clients" rather than guessed.
+- Engagement name is `Audit YYYY-MM-DD to YYYY-MM-DD`; IDs are `c-`/`e-`/`s-` + 32 hex.
+- Establishment bumps `membership_versions` so an open administration draft cannot
+  silently replace the new assignment.
+- A member "cancel" message closes an open setup (needed to recover from the 8-open bound).
+- The engagement period is stored but not yet passed as the Task's methodology
+  context (the design note defers that use).
+- Narrow screens: the existing ≤620px brand bar now wraps (`.sidebar` flex-wrap); it
+  overflowed 360px pages by 17px before this change.
+
+Verification (local, disposable `zobba_local_test`, `sslmode=disable` URLs):
+- `cargo fmt --check`, `cargo clippy --locked --workspace --all-targets -D warnings`: clean.
+- `cargo test --locked --workspace --no-fail-fast -- --test-threads=1`: 387 passed,
+  0 failed except `oidc_protocol` (14), which needs the running OIDC fixture; with
+  `pnpm fixture:start` it passes 14/14. New: domain `engagement_setup` (8),
+  infrastructure `tests/engagement_setup.rs` (happy path, ambiguous, new client,
+  Admin-only refusal, revocation decided under lock 205, concurrent confirms held on
+  205 and observed in `pg_locks`, Task-failure rollback, open/daily bounds, replay
+  and conflict, runtime has no INSERT), API `tests/setup_http.rs`, bootstrap tamper,
+  privilege and upgrade checks for schema 13.
+- `scripts/smoke.py`: passed. `pnpm check`: types current, 190/192 (the same two
+  IPv6-only sandbox failures). `pnpm test:browser`: 165 passed, zero retries,
+  including `engagement-setup.spec.ts` (keyboard happy path, ambiguous client,
+  360px narrow screen).

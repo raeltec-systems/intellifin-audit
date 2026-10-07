@@ -51,7 +51,7 @@ test('real database loss is unavailable, then keyboard refresh restores Ready', 
     const restoredResponse = page.waitForResponse((response) =>
       new URL(response.url()).pathname === '/api/health/ready' && response.status() === 200);
     await page.keyboard.press('Enter');
-    expect(await (await restoredResponse).json()).toEqual({ service: 'api', status: 'ready', schema_version: 12 });
+    expect(await (await restoredResponse).json()).toEqual({ service: 'api', status: 'ready', schema_version: 13 });
     await expect(statuses).toHaveText(['Responding', 'Ready']);
     await expect(page.locator('.connection-help')).toHaveCount(0);
     await expect(refresh).toBeFocused();

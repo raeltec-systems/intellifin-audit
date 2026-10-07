@@ -322,6 +322,7 @@ test('bounded burst/history and second actor/foreign scope preserve exact attrib
   } finally { await context.close(); }
   runtime.sql("UPDATE public.engagement_assignments SET active=false WHERE actor_id='actor-a';");
   await page.getByRole('button', { name: 'Refresh access' }).click();
-  await expect(page.getByRole('heading', { name: 'No assigned engagements' })).toBeVisible();
+  // A current Auditor without assignments is offered conversational setup instead.
+  await expect(page.getByRole('heading', { name: 'Start your first engagement' })).toBeVisible();
   await expect(page.locator('.conversation-message')).toHaveCount(0);
 });

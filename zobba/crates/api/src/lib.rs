@@ -1,6 +1,7 @@
 //! Owned HTTP interface. OpenAPI is generated from these handler and wire types.
 pub mod auth;
 pub mod conversation;
+pub mod engagement_setup;
 pub mod engagements;
 pub mod evidence;
 pub mod knowledge;
@@ -104,6 +105,7 @@ pub fn authenticated_router_with_evidence(
 ) -> Router {
     let task_routes = tasks::router(&database, identity.clone());
     let membership_routes = membership::router(database.pool().clone(), identity.clone());
+    let setup_routes = engagement_setup::router(database.pool().clone(), identity.clone());
     let skills_routes = skills::router(database.pool().clone(), identity.clone());
     let methodology_routes = methodology::router(database.pool().clone(), identity.clone());
     let objects = objects.map(std::sync::Arc::new);
@@ -114,6 +116,7 @@ pub fn authenticated_router_with_evidence(
         .merge(auth::router(identity))
         .merge(task_routes)
         .merge(membership_routes)
+        .merge(setup_routes)
         .merge(methodology_routes)
         .merge(skills_routes)
         .merge(knowledge_routes)
@@ -176,6 +179,12 @@ pub fn authenticated_router_with_evidence(
         auth::logout,
         engagements::list,
         engagements::open,
+        engagement_setup::organisations,
+        engagement_setup::list,
+        engagement_setup::open,
+        engagement_setup::read,
+        engagement_setup::message,
+        engagement_setup::confirm,
         tasks::admit,
         tasks::control,
         tasks::list,
@@ -244,6 +253,19 @@ pub fn authenticated_router_with_evidence(
         engagements::EngagementResponse,
         engagements::EngagementsResponse,
         engagements::ScopeResponse,
+        engagement_setup::SetupOrganisationResponse,
+        engagement_setup::SetupOrganisationsResponse,
+        engagement_setup::SetupStateResponse,
+        engagement_setup::SetupClientResponse,
+        engagement_setup::SetupAuthorResponse,
+        engagement_setup::SetupMessageResponse,
+        engagement_setup::SetupEstablishedResponse,
+        engagement_setup::SetupResponse,
+        engagement_setup::SetupsResponse,
+        engagement_setup::OpenSetupRequest,
+        engagement_setup::SetupMessageKind,
+        engagement_setup::SetupMessageRequest,
+        engagement_setup::ConfirmSetupRequest,
         tasks::CommandKindRequest,
         tasks::TaskCommandRequest,
         tasks::ReceiptStatusResponse,

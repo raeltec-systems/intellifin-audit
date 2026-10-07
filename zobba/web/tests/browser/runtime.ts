@@ -144,7 +144,7 @@ export async function startRuntime(): Promise<{
       try {
         const response = await fetch(`${apiUrl}/health/ready`, { signal: AbortSignal.timeout(1500) });
         const body = await response.json();
-        if (response.status === 200 && body.service === 'api' && body.status === 'ready' && body.schema_version === 12) {
+        if (response.status === 200 && body.service === 'api' && body.status === 'ready' && body.schema_version === 13) {
           serving = true;
           break;
         }

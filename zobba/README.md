@@ -1426,3 +1426,40 @@ bootstrap. The browser persists a direction in its own channel of the durable
 recovery outbox before sending it, fences late replies, recovers an unconfirmed
 direction after reload for an explicit check, and verifies that an answer names
 exactly the chosen Tasks. The work card polls while the Task is ready or running.
+
+## Establishing an engagement conversationally (Story 22.2 AC4)
+
+Schema 13 is additive; published migrations and catalogues 1–12 are unchanged.
+`engagements` gains nullable `period_start`/`period_end` (both or neither, start
+≤ end); existing engagements keep an unknown (NULL) period. New
+`engagement_setups` and `engagement_setup_messages` are organisation-level, forced
+RLS limited to their own actor while that actor holds a current auditor or audit
+manager membership. Runtime has SELECT/INSERT on both and narrow column UPDATE on
+setups; it still has no INSERT on clients, engagements or assignments.
+
+A member with a current audit role types a first objective at organisation level
+(`POST /organisations/{org}/engagement-setups`). Each member message is committed
+before it is interpreted. Interpretation is deterministic and server-side (no
+model): Zobba asks for the client, then the audit period, then shows one summary.
+A client matches on its exact name, otherwise under context-independent Unicode
+simple case folding (the owner-mediated `engagement_setup_clients` returns a
+bounded superset; the application decides equality). Two or more matches become a
+pick list and an answer outside it is refused; no match proposes "Create client
+X?", created only after explicit acceptance (declining keeps the setup open). The
+period accepts only explicit ISO dates (`YYYY-MM-DD to YYYY-MM-DD` or
+`YYYY-MM-DD/YYYY-MM-DD`) with start ≤ end; refusals are retained Zobba turns.
+
+`POST .../{id}/confirm` calls the owner-mediated SECURITY DEFINER
+`engagement_establish`. It takes organisation advisory lock 205, rechecks the
+exact session and the active, unexpired auditor/audit_manager membership, locks
+the setup, enforces at most 20 engagements per actor and organisation per UTC day,
+creates the client (when new), the engagement with its period and the creator's
+assignment, locks the new engagement row and rechecks authority again. The same
+transaction then enters the new scope and runs the ordinary Task Create
+admission; any failure rolls back every row. Only the creator is assigned. At most
+8 setups may be open per actor and organisation. Keys are per actor and
+organisation: an identical retry returns the original setup or receipt, a changed
+meaning is 409, and a concurrent confirmation from another tab receives the
+original receipt. The web keeps each setup request in its own durable outbox
+channel (keyed by actor and organisation) before sending, offers an explicit
+"Send again" after reload, and opens the new engagement conversation on success.

@@ -9,6 +9,8 @@ export class AccessError extends Error {
 }
 
 export const MAX_JSON_BYTES = 4 * 1024 * 1024;
+/** Engagement setup conflicts whose recovery guidance differs. */
+export const SETUP_CONFLICT_CODES = ['engagement_setup_conflict', 'engagement_setup_open_limit', 'engagement_setup_daily_limit', 'engagement_setup_message_limit'];
 
 async function readConflictCode(response: Response): Promise<string | undefined> {
   if (response.headers.get('X-Zobba-Error-Code') === 'last_admin') {
@@ -41,7 +43,8 @@ async function readConflictCode(response: Response): Promise<string | undefined>
     let offset = 0;
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
     const body: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
-    if (body && typeof body === 'object' && !Array.isArray(body) && 'error' in body && body.error === 'last_admin') return 'last_admin';
+    if (body && typeof body === 'object' && !Array.isArray(body) && 'error' in body && typeof body.error === 'string' &&
+      ['last_admin', ...SETUP_CONFLICT_CODES].includes(body.error)) return body.error;
   } catch { /* The definite HTTP refusal does not depend on this optional body. */ }
   finally {
     clearTimeout(timer);

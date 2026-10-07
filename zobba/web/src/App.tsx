@@ -7,6 +7,7 @@ import { readEngagement, readEngagements, roleLabel, scopeFromLocation, showScop
 import type { Engagement, EngagementPage, Scope } from './engagements';
 import { HealthPage } from './HealthPage';
 import { ConversationWorkspace } from './ConversationWorkspace';
+import { EngagementSetup } from './EngagementSetup';
 import { EvidenceWorkspace } from './EvidenceWorkspace';
 import { MethodologyWorkspace } from './MethodologyWorkspace';
 import { discardMethodologyAction, withdrawReplacedMethodologySession } from './methodology';
@@ -319,7 +320,7 @@ function PairWorkspace() {
             </EvidenceWorkspace>
           </> : <>
             <div className="intro"><p className="eyebrow">Zobba · Pair</p><h1 ref={heading} data-focus="workspace-heading" tabIndex={-1}>Your engagements</h1>
-              <p className="intro-copy">Choose the client work you want to open.</p></div>
+              <p className="intro-copy">{view.page.engagements.length > 0 ? 'Choose the client work you want to open, or start a new engagement.' : 'Start new client work from a first objective.'}</p></div>
             {view.page.engagements.length > 0 ? <ul className="engagement-list" aria-label="Assigned engagements">
               {view.page.engagements.map((engagement) => <li key={`${engagement.organisation_id}/${engagement.client_id}/${engagement.engagement_id}`}>
                 <button className="engagement-card" data-focus={`engagement-${engagement.organisation_id}/${engagement.client_id}/${engagement.engagement_id}`} type="button" onClick={() => select(engagement)}>
@@ -328,7 +329,9 @@ function PairWorkspace() {
                   <span className="engagement-role">{engagement.roles.map(roleLabel).join(' · ')}</span>
                 </button>
               </li>)}
-            </ul> : <section className="empty-panel"><h2>No assigned engagements</h2><p>You are signed in, but you do not currently have access to any client work. Contact your organisation administrator if you need an assignment.</p></section>}
+            </ul> : null}
+            <EngagementSetup key={`${view.session.identity.id}/${view.session.csrf_token}`} session={view.session} accessReady={!busy}
+              hasEngagements={view.page.engagements.length > 0 || view.pageNumber > 1} onAccessFailure={accessFailure} onEstablished={select} />
             {view.pageNumber > 1 || view.page.next_cursor ? <nav className="pagination" aria-label="Engagement pages">
               {view.pageNumber > 1 ? <button className="quiet-button" data-focus="previous-page" type="button" onClick={() => changePage(null)}>Previous page</button> : null}
               <span>Page {view.pageNumber}</span>

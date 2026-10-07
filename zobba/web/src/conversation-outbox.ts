@@ -9,7 +9,7 @@ export type OutboxItem<C extends { key: string } = TaskCommand> = {
 };
 /** An untargeted direction: its whole meaning is the request key and exact text. */
 export type DirectionCommand = { key: string; content: string };
-type Codec<C extends { key: string }> = { prefix: string; parse: (value: unknown) => C; control: (command: C) => boolean };
+export type Codec<C extends { key: string }> = { prefix: string; parse: (value: unknown) => C; control: (command: C) => boolean };
 const commandCodec: Codec<TaskCommand> = { prefix: '', parse: parseCommand, control: command => isControl(command) };
 const directionCodec: Codec<DirectionCommand> = {
   // A distinct binding prefix keeps directions out of the command channel's

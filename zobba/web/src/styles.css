@@ -88,6 +88,9 @@ button[aria-disabled='true'] { background: var(--sidebar); border-color: var(--i
   .sidebar nav { display: none; }
   .sidebar-note { padding: 0; margin: 0; }
   .sidebar-note p, .sidebar-note > span:last-child { display: none; }
+  /* Narrow phones: the brand bar wraps rather than widening the page. */
+  .sidebar { flex-wrap: wrap; gap: 8px 16px; }
+  .sidebar-note { min-width: 0; overflow-wrap: anywhere; }
   .workspace-header { height: 52px; padding: 0 20px; }
   main { padding: 36px 20px 32px; }
   h1 { font-size: 30px; line-height: 38px; }
@@ -619,3 +622,44 @@ textarea:focus-visible, select:focus-visible, summary:focus-visible, [tabindex='
 .evidence-knowledge { margin: 1.25rem 0; padding: .75rem 0; border-top: 1px solid var(--line, #d9dfdc); }
 @media (max-width: 600px) { .inspection-preference { padding: .75rem; } .knowledge-editor fieldset { padding: .5rem; } }
 @media (max-width: 1000px) { .apply-released-layout { display: none; } }
+
+/* Story 22.2 AC4: organisation-level conversational engagement setup. */
+.setup-entry { margin-top: 24px; }
+.engagement-setup { margin-top: 32px; padding: 24px; border: 1px solid var(--hairline); border-radius: 12px; background: var(--paper); min-width: 0; }
+.setup-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+.setup-header h2 { font-size: 16px; margin: 0; }
+.setup-organisation { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 500; }
+.setup-organisation select { min-height: 44px; border: 1px solid var(--input); border-radius: 7px; background: var(--paper); font-size: 13px; padding: 7px 10px; max-width: 100%; }
+.setup-organisation-name { margin: 0; font-size: 13px; color: var(--secondary); }
+.setup-intro { color: var(--secondary); font-size: 14px; line-height: 22px; }
+.setup-open-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.setup-open-list .text-button[aria-current='true'] { background: var(--accent-wash); }
+.setup-messages { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.setup-message { max-width: 100%; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--hairline); }
+.setup-message.member { align-self: flex-end; background: var(--accent-wash); max-width: min(560px, 100%); }
+.setup-message.zobba { align-self: flex-start; background: var(--paper); max-width: min(620px, 100%); }
+.setup-message.refusal { border-left: 3px solid #8a4b06; }
+.setup-message p { margin: 4px 0 0; }
+.setup-author { font-size: 12px; font-weight: 600; color: var(--secondary); }
+.setup-composer { margin-top: 16px; border: 1px solid var(--input); border-radius: 14px; padding: 14px 16px 10px; background: var(--paper); }
+.setup-composer > label { font-size: 12px; font-weight: 500; display: block; }
+.setup-composer textarea, .setup-composer input[type='text'] { display: block; width: 100%; min-height: 44px; border: 1px solid var(--input); border-radius: 7px; padding: 8px 10px; margin: 6px 0; font-size: 15px; line-height: 24px; background: var(--paper); }
+.setup-composer textarea { resize: vertical; min-height: 85px; }
+.setup-composer fieldset { border: none; margin: 0; padding: 0; min-width: 0; }
+.setup-composer legend { font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+.setup-candidate { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 14px; overflow-wrap: anywhere; }
+.setup-candidate input { width: 20px; height: 20px; flex: none; }
+.setup-actions, .setup-footer { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.setup-summary { margin-top: 16px; padding: 16px; border: 1px solid var(--hairline); border-left: 3px solid var(--accent); border-radius: 8px; }
+.setup-summary dl { margin: 0 0 12px; display: grid; gap: 8px; }
+.setup-summary dl div { display: grid; grid-template-columns: minmax(96px, max-content) 1fr; gap: 12px; }
+.setup-summary dt { font-size: 12px; font-weight: 600; color: var(--secondary); }
+.setup-summary dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.setup-retained { margin-top: 16px; font-size: 13px; }
+.setup-retained ul { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 6px; }
+.setup-retained li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+@media (max-width: 620px) {
+  .engagement-setup { padding: 18px 16px; }
+  .setup-summary dl div { grid-template-columns: 1fr; gap: 2px; }
+  .setup-actions button, .setup-summary > button { width: 100%; white-space: normal; }
+}

@@ -64,6 +64,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/engagement-setups/organisations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_setup_organisations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/engagements": {
         parameters: {
             query?: never;
@@ -933,6 +949,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/organisations/{organisation_id}/engagement-setups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_engagement_setups"];
+        put?: never;
+        post: operations["open_engagement_setup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organisations/{organisation_id}/engagement-setups/{setup_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_engagement_setup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organisations/{organisation_id}/engagement-setups/{setup_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["confirm_engagement_setup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organisations/{organisation_id}/engagement-setups/{setup_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["answer_engagement_setup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/skills/organisations/{organisation_id}": {
         parameters: {
             query?: never;
@@ -1111,6 +1191,9 @@ export interface components {
             /** @description Admission is durable. Applied and observed cessation are separate event/snapshot facts. */
             status: components["schemas"]["ReceiptStatusResponse"];
             task_id: string;
+        };
+        ConfirmSetupRequest: {
+            key: string;
         };
         ConversationActivityResponse: {
             /** @description Decimal Received or Applied cursor, no greater than the snapshot watermark. */
@@ -1915,6 +1998,12 @@ export interface components {
         };
         /** @enum {string} */
         ObservationSourceResponse: "dispatch" | "reconciliation";
+        OpenSetupRequest: {
+            /** @description Actor and organisation bind this key; an identical retry returns the original setup. */
+            key: string;
+            /** @description The first objective, at most 4000 UTF-8 bytes. */
+            objective: string;
+        };
         OperationDecisionRequest: {
             /** @description False records an exact refusal; true cannot override a hard prohibition. */
             allow: boolean;
@@ -2072,6 +2161,81 @@ export interface components {
         SessionResponse: {
             csrf_token: string;
             identity: components["schemas"]["IdentityResponse"];
+        };
+        /** @enum {string} */
+        SetupAuthorResponse: "member" | "zobba";
+        SetupClientResponse: {
+            client_id: string;
+            client_name: string;
+        };
+        SetupEstablishedResponse: {
+            client_id: string;
+            engagement_id: string;
+            engagement_name: string;
+            organisation_id: string;
+            /** @description The first Task's immutable Received receipt. */
+            receipt: components["schemas"]["CommandReceiptResponse"];
+        };
+        /** @enum {string} */
+        SetupMessageKind: "text" | "choose_client" | "new_client" | "cancel";
+        SetupMessageRequest: {
+            /** @description Required only for new_client: explicit acceptance or decline. */
+            accept?: boolean | null;
+            /** @description Required only for choose_client: one of the listed candidates. */
+            client_id?: string | null;
+            /** @description Required only for text: a client name or an explicit ISO period. */
+            content?: string | null;
+            key: string;
+            kind: components["schemas"]["SetupMessageKind"];
+        };
+        SetupMessageResponse: {
+            author: components["schemas"]["SetupAuthorResponse"];
+            candidates: components["schemas"]["SetupClientResponse"][];
+            /** @description Retained member text, or Zobba's fixed deterministic sentence. */
+            content: string;
+            /**
+             * @description Member: objective, text, choose_client, new_client, confirm or cancel.
+             *     Zobba: question, refusal, summary, established or cancelled.
+             */
+            kind: string;
+            /** Format: int32 */
+            ordinal: number;
+            /** @description Closed prompt for a Zobba question: client, client_choice, new_client, period or confirm. */
+            prompt: string | null;
+            /** @description Closed refusal code; the content carries the reason. */
+            refusal: string | null;
+            /** Format: int32 */
+            reply_to: number | null;
+        };
+        SetupOrganisationResponse: {
+            organisation_id: string;
+            organisation_name: string;
+        };
+        SetupOrganisationsResponse: {
+            /** @description Organisations where the caller holds a current auditor or audit manager role. */
+            organisations: components["schemas"]["SetupOrganisationResponse"][];
+        };
+        SetupResponse: {
+            candidates: components["schemas"]["SetupClientResponse"][];
+            client: null | components["schemas"]["SetupClientResponse"];
+            established: null | components["schemas"]["SetupEstablishedResponse"];
+            id: string;
+            /** @description The idempotency key of the opening objective. */
+            key: string;
+            messages: components["schemas"]["SetupMessageResponse"][];
+            /** @description A new client the member explicitly agreed to create on confirmation. */
+            new_client_name: string | null;
+            objective: string;
+            organisation_id: string;
+            period_end: string | null;
+            period_start: string | null;
+            state: components["schemas"]["SetupStateResponse"];
+        };
+        /** @enum {string} */
+        SetupStateResponse: "objective" | "client" | "client_choice" | "new_client" | "period" | "confirm" | "established" | "cancelled";
+        SetupsResponse: {
+            /** @description The caller's open setups in this organisation, oldest first. */
+            setups: components["schemas"]["SetupResponse"][];
         };
         /** @enum {string} */
         SkillAssignmentKind: "client" | "engagement";
@@ -2560,6 +2724,68 @@ export interface operations {
             };
             /** @description Session changed; compose fresh reads without replacing the current cookie */
             412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_setup_organisations: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional session-bound read precondition */
+                "X-Expected-Session"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupOrganisationsResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6969,6 +7195,385 @@ export interface operations {
                 };
             };
             412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_engagement_setups: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional session-bound read precondition */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                organisation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupsResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    open_engagement_setup: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Exact configured HTTPS application origin */
+                Origin: string;
+                /** @description Current session-bound token */
+                "X-CSRF-Token": string;
+                /** @description Expected current actor; refusal fence only */
+                "X-Expected-Actor": string;
+            };
+            path: {
+                organisation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenSetupRequest"];
+            };
+        };
+        responses: {
+            /** @description The objective is persisted, then Zobba asks for what is missing. An identical retry returns the original setup */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No current auditor or audit manager membership */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Key reused with a different objective, or engagement_setup_open_limit */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_engagement_setup: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional session-bound read precondition */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                organisation_id: string;
+                setup_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    confirm_engagement_setup: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Exact configured HTTPS application origin */
+                Origin: string;
+                /** @description Current session-bound token */
+                "X-CSRF-Token": string;
+                /** @description Expected current actor; refusal fence only */
+                "X-Expected-Actor": string;
+            };
+            path: {
+                organisation_id: string;
+                setup_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmSetupRequest"];
+            };
+        };
+        responses: {
+            /** @description One transaction created the client (when new), the engagement with its period, the creator's assignment and the first Task. A retry or a concurrent confirmation returns the original receipt */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Membership revoked, expired or Admin only; nothing was created */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not ready to confirm, key reused, or engagement_setup_daily_limit */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    answer_engagement_setup: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Exact configured HTTPS application origin */
+                Origin: string;
+                /** @description Current session-bound token */
+                "X-CSRF-Token": string;
+                /** @description Expected current actor; refusal fence only */
+                "X-Expected-Actor": string;
+            };
+            path: {
+                organisation_id: string;
+                setup_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description The message is persisted, then answered deterministically. A refused answer is a retained Zobba refusal; the setup stays open */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Key reused with a different meaning, closed setup, or engagement_setup_message_limit */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
