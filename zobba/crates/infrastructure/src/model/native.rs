@@ -529,16 +529,53 @@ fn schema_json(schema: &ArgumentSchema) -> Value {
                 .collect();
             serde_json::json!({"type": "object", "properties": properties, "required": required, "additionalProperties": false})
         }
-        ArgumentSchema::Constant(value) => {
-            let kind = match value {
+        ArgumentSchema::Constant(value) => constant_schema_json(value),
+    }
+}
+
+/// A prepared constant must be a JSON Schema that every native provider
+/// accepts. OpenAI refuses `enum` whose member is an array (HTTP 400
+/// `invalid_function_parameters`, observed for `"enum": [[]]` in the
+/// 2026-10-07 gpt-6-luna qualification), so arrays and objects are rendered by
+/// their exact shape and only scalar leaves use a single-member `enum`. Returned
+/// arguments are still compared with the canonical operation locally.
+fn constant_schema_json(value: &JsonValue) -> Value {
+    match value {
+        JsonValue::Array(items) => {
+            let mut distinct: Vec<Value> = Vec::new();
+            for item in items {
+                let schema = constant_schema_json(item);
+                if !distinct.contains(&schema) {
+                    distinct.push(schema);
+                }
+            }
+            let item_schema = match distinct.len() {
+                // No item may appear; the item shape is never applied.
+                0 => serde_json::json!({"type": "string"}),
+                1 => distinct.remove(0),
+                _ => serde_json::json!({"anyOf": distinct}),
+            };
+            serde_json::json!({"type": "array", "items": item_schema,
+                "minItems": items.len(), "maxItems": items.len()})
+        }
+        JsonValue::Object(entries) => {
+            let properties: Map<String, Value> = entries
+                .iter()
+                .map(|(key, value)| (key.clone(), constant_schema_json(value)))
+                .collect();
+            let required: Vec<&String> = entries.keys().collect();
+            serde_json::json!({"type": "object", "properties": properties,
+                "required": required, "additionalProperties": false})
+        }
+        scalar => {
+            let kind = match scalar {
                 JsonValue::Null => "null",
                 JsonValue::Bool(_) => "boolean",
                 JsonValue::Integer(_) => "integer",
                 JsonValue::String(_) => "string",
-                JsonValue::Array(_) => "array",
-                JsonValue::Object(_) => "object",
+                JsonValue::Array(_) | JsonValue::Object(_) => unreachable!("handled above"),
             };
-            serde_json::json!({"type": kind, "enum": [json_value(value)]})
+            serde_json::json!({"type": kind, "enum": [json_value(scalar)]})
         }
     }
 }
@@ -553,8 +590,8 @@ fn openai_strict_schema(schema: &ArgumentSchema) -> bool {
             required,
         } => properties.len() == required.len() && properties.values().all(openai_strict_schema),
         ArgumentSchema::Array { items, .. } => openai_strict_schema(items),
-        // Complex constants render as enum-only schemas, without the explicit
-        // object/array shapes required by the native strict output contract.
+        // Complex constants use length/shape keywords (minItems, maxItems,
+        // anyOf) that the native strict output contract does not guarantee.
         ArgumentSchema::Constant(JsonValue::Object(_) | JsonValue::Array(_)) => false,
         _ => true,
     }

@@ -1,3 +1,12 @@
+## 2026-10-07 — Provider tool schemas: no composite enum
+
+The first gpt-6-luna run failed its tool phase: OpenAI answers HTTP 400
+`invalid_function_parameters` for an `enum` member that is an array (`"enum": [[]]`).
+Prepared constants now render arrays/objects by shape (`minItems`/`maxItems`, `items`,
+`anyOf`, closed object); only scalar leaves use one-member `enum`. Returned arguments are
+still checked against the canonical operation locally. A consumed approval is never reused:
+a schema change moves the manifest hash and needs a new owner approval ID.
+
 ## 2026-10-07 — OpenAI-only gpt-6-luna qualification
 
 Owner chose `gpt-6-luna` and an OpenAI-only first qualification within USD 10. Luna is a

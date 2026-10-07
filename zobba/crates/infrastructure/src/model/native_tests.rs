@@ -771,6 +771,12 @@ async fn both_native_envelopes_preserve_roles_limits_catalogue_and_single_send()
                 assert_eq!(wire.body["input"][0]["role"], "system");
                 assert_eq!(wire.body["input"][1]["role"], "user");
                 assert_eq!(wire.body["tools"][0]["type"], "function");
+                let parameters = &wire.body["tools"][0]["parameters"];
+                assert_no_composite_enum(parameters);
+                assert_eq!(
+                    parameters["properties"]["recipients"],
+                    json!({"type":"array","items":{"type":"string"},"minItems":0,"maxItems":0})
+                );
                 assert!(
                     wire.headers
                         .to_ascii_lowercase()
@@ -783,6 +789,7 @@ async fn both_native_envelopes_preserve_roles_limits_catalogue_and_single_send()
                 assert_eq!(wire.body["messages"][0]["role"], "user");
                 assert_eq!(wire.body["max_tokens"], 32);
                 assert!(wire.body["tools"][0].get("input_schema").is_some());
+                assert_no_composite_enum(&wire.body["tools"][0]["input_schema"]);
                 assert!(wire.body.get("input").is_none());
                 assert!(
                     wire.headers
@@ -1660,4 +1667,23 @@ fn strict_decoding_bounds_frames_stream_events_depth_and_duplicate_keys() {
         decoder.push(b"data: \xff\n\n"),
         Err(WireError::Malformed)
     ));
+}
+
+/// OpenAI refuses an `enum` member that is an array or object (HTTP 400
+/// `invalid_function_parameters`; observed in the 2026-10-07 gpt-6-luna
+/// qualification for `"enum": [[]]`). Prepared constants must use shapes.
+fn assert_no_composite_enum(schema: &serde_json::Value) {
+    match schema {
+        serde_json::Value::Object(map) => {
+            if let Some(serde_json::Value::Array(members)) = map.get("enum") {
+                assert!(
+                    members.iter().all(|m| !m.is_array() && !m.is_object()),
+                    "composite enum member in {schema}"
+                );
+            }
+            map.values().for_each(assert_no_composite_enum);
+        }
+        serde_json::Value::Array(items) => items.iter().for_each(assert_no_composite_enum),
+        _ => {}
+    }
 }
