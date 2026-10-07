@@ -32,7 +32,7 @@ import {
 
 const ADDENDUM = fileURLToPath(
   new URL(
-    '../../_bmad-output/planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/addendum.md',
+    '../../_bmad-output/planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/archive/pre-revision-3-2026-09-30/addendum.md',
     import.meta.url,
   ),
 );

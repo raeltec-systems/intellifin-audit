@@ -32,7 +32,7 @@ import {
 
 const ROOT = '../../';
 const ADDENDUM =
-  '_bmad-output/planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/addendum.md';
+  '_bmad-output/planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/archive/pre-revision-3-2026-09-30/addendum.md';
 const SYSTEMS = 'fixtures/northstar/datasets/systems.json';
 const EXPECTATIONS_DIR = 'fixtures/northstar/expectations';
 
