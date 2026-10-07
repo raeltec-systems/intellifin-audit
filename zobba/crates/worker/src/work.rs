@@ -10,7 +10,7 @@ use zobba_application::{
         ModelTransport, TransportOutcome,
     },
     operation::OperationError,
-    work::{CycleEnd, ToolDispatch, WorkLoop, WorkSettings},
+    work::{CycleEnd, SettledAttempt, ToolDispatch, WorkLoop, WorkSettings, settled_attempt},
 };
 use zobba_domain::{
     permissions::{CanonicalOperation, SourceFact},
@@ -60,6 +60,19 @@ impl ToolDispatch for GatewayDispatch {
         self.gateway
             .dispatch_attempt(&self.operations, basis, operation_id)
             .await
+    }
+    async fn settled(
+        &self,
+        basis: &ClaimBasis,
+        operation_id: &str,
+    ) -> Result<Option<SettledAttempt>, OperationError> {
+        settled_attempt(
+            &self.operations,
+            &basis.actor_id,
+            &basis.scope,
+            operation_id,
+        )
+        .await
     }
 }
 

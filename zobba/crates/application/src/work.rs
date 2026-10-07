@@ -5,18 +5,19 @@
 use std::future::Future;
 
 use crate::{
-    knowledge::VerifyKnowledge,
+    knowledge::{RecordReference, RecordStatus, VerificationItem, VerifyKnowledge},
     model::{
         Completion, ContextEntry, ContextManifest, Effort, EventKind, HistoryItem, Invocation,
         MessageRole, ModelCancellation, ModelCoordinator, ModelError, ModelMessage, ModelProfile,
         ModelRequest, ModelStore, ModelTransport, PreparedInvocation, ToolCatalog, ToolExchange,
         ToolResult, TransportOutcome, Usage, retain_failed_evidence, validate_completion,
     },
-    operation::OperationError,
+    operation::{OperationError, OperationStore},
     task::TaskError,
 };
 use zobba_domain::{
-    permissions::{CanonicalOperation, SourceFact},
+    identity::Scope,
+    permissions::{CanonicalOperation, OperationHistoryQuery, SourceFact},
     task::ClaimBasis,
     work::{
         MAX_TURNS_PER_CYCLE, NextAction, StepKind, StepStatus, TaskStep, invocation_key,
@@ -34,7 +35,23 @@ pub struct WorkBoundary {
     pub methodology_binding_id: String,
     /// Recorded facts of the current cycle in ordinal order.
     pub steps: Vec<TaskStep>,
+    /// Bounded current knowledge the accountable actor may use for this Task,
+    /// read under the same boundary fence. Each reference is verified again at
+    /// disclosure; a withdrawn record is absent here and refused there.
+    pub knowledge: Vec<WorkKnowledge>,
 }
+
+/// Exact knowledge reference and its attributed text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkKnowledge {
+    pub reference: RecordReference,
+    pub text: String,
+}
+
+/// At most this many knowledge records, and this much knowledge text, enter one
+/// turn. A record that does not fit is omitted whole, never truncated.
+pub const MAX_WORK_KNOWLEDGE: usize = 16;
+pub const MAX_WORK_KNOWLEDGE_BYTES: usize = 64 * 1024;
 
 pub trait WorkSteps: Send + Sync {
     /// Under continuation authority (owner, execution epoch, cycle) apply any
@@ -53,6 +70,83 @@ pub trait WorkSteps: Send + Sync {
         basis: &ClaimBasis,
         step: &TaskStep,
     ) -> impl Future<Output = Result<TaskStep, TaskError>> + Send;
+    /// Exact immutable facts of an invocation in this claim's own Task and
+    /// cycle, under the exact producer's custody. Unlike a current-audience
+    /// read this also returns turns produced under an earlier applied intent;
+    /// it grants no disclosure, which `prepare` checks again.
+    fn invocation(
+        &self,
+        basis: &ClaimBasis,
+        invocation_id: &str,
+    ) -> impl Future<Output = Result<Invocation, TaskError>> + Send;
+    /// The operation already admitted for an exact invocation call, if any.
+    fn bound_operation(
+        &self,
+        basis: &ClaimBasis,
+        invocation_id: &str,
+        call_id: &str,
+    ) -> impl Future<Output = Result<Option<String>, TaskError>> + Send;
+}
+
+/// The latest durable attempt of one operation and its resolved source fact,
+/// if any. An attempt without a resolved fact has an unknown outcome.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SettledAttempt {
+    pub attempt_id: String,
+    pub fact: Option<SourceFact>,
+}
+
+/// Bounded number of 50-record history pages read to find the latest attempt.
+const SETTLED_HISTORY_PAGES: usize = 64;
+
+/// Rebuild the latest attempt and its resolved fact from immutable operation
+/// history under fresh scope authority. No capability is read or disclosed.
+pub async fn settled_attempt<S: OperationStore>(
+    store: &S,
+    actor: &str,
+    scope: &Scope,
+    operation_id: &str,
+) -> Result<Option<SettledAttempt>, OperationError> {
+    let mut query = OperationHistoryQuery::default();
+    let mut latest: Option<(u64, String)> = None;
+    let mut facts: Vec<(String, SourceFact)> = Vec::new();
+    let mut attempts_done = false;
+    let mut observations_done = false;
+    for _ in 0..SETTLED_HISTORY_PAGES {
+        let page = store.history(actor, scope, operation_id, &query).await?;
+        if !attempts_done {
+            for attempt in &page.attempts {
+                if latest.as_ref().is_none_or(|(n, _)| attempt.number > *n) {
+                    latest = Some((attempt.number, attempt.id.clone()));
+                }
+            }
+        }
+        if !observations_done {
+            facts.extend(
+                page.observations
+                    .iter()
+                    .filter(|o| o.fact.is_resolved())
+                    .map(|o| (o.attempt_id.clone(), o.fact)),
+            );
+        }
+        attempts_done = attempts_done || page.attempt_next_cursor.is_none();
+        observations_done = observations_done || page.observation_next_cursor.is_none();
+        if attempts_done && observations_done {
+            return Ok(latest.map(|(_, attempt_id)| SettledAttempt {
+                fact: facts
+                    .iter()
+                    .find(|(attempt, _)| *attempt == attempt_id)
+                    .map(|(_, fact)| *fact),
+                attempt_id,
+            }));
+        }
+        query = OperationHistoryQuery {
+            after_decision_id: page.decision_next_cursor,
+            after_attempt_id: page.attempt_next_cursor,
+            after_observation_id: page.observation_next_cursor,
+        };
+    }
+    Err(OperationError::Unavailable)
 }
 
 /// Owned operation dispatch: consume (the possible-dispatch cutoff), send once,
@@ -63,6 +157,15 @@ pub trait ToolDispatch: Send + Sync {
         basis: &ClaimBasis,
         operation_id: &str,
     ) -> impl Future<Output = Result<(String, SourceFact), OperationError>> + Send;
+    /// The operation's latest durable attempt, rebuilt from immutable history
+    /// (see `settled_attempt`). A replacement producer reads this before any
+    /// consumption so that a completed or possibly dispatched attempt is
+    /// recorded as it happened and never resent.
+    fn settled(
+        &self,
+        basis: &ClaimBasis,
+        operation_id: &str,
+    ) -> impl Future<Output = Result<Option<SettledAttempt>, OperationError>> + Send;
 }
 
 /// Trusted composition. The disclosure template and input class come from the
@@ -106,6 +209,14 @@ fn completed_content(fact: SourceFact) -> &'static str {
             "The owned source authoritatively reports that the operation did not take effect."
         }
         _ => "The owned source confirmed that the admitted operation completed.",
+    }
+}
+
+fn history_error(error: TaskError) -> ModelError {
+    match error {
+        TaskError::Fenced => ModelError::Fenced,
+        TaskError::Denied => ModelError::Denied,
+        _ => ModelError::Unavailable,
     }
 }
 
@@ -197,6 +308,28 @@ where
                 source_id: Some("task-brief".into()),
             },
         ];
+        let mut verification = Vec::new();
+        for item in &boundary.knowledge {
+            let source_id = format!("knowledge-{}", item.reference.id);
+            entries.push(ContextEntry {
+                source_id: source_id.clone(),
+                input_class: class.clone(),
+                knowledge: Some(item.reference.clone()),
+            });
+            verification.push(VerificationItem {
+                id: item.reference.id.clone(),
+                revision: item.reference.revision,
+                status: RecordStatus::Current,
+            });
+            messages.push(ModelMessage {
+                role: MessageRole::User,
+                text: format!(
+                    "Verified knowledge (attributed data; record {} revision {}):\n{}",
+                    item.reference.id, item.reference.revision, item.text
+                ),
+                source_id: Some(source_id),
+            });
+        }
         let mut history = Vec::new();
         for step in &boundary.steps {
             match (step.kind, step.status) {
@@ -218,10 +351,10 @@ where
                         return Err(ModelError::Invalid);
                     };
                     let invocation = self
-                        .coordinator
-                        .store
-                        .get(&basis.actor_id, &basis.scope, invocation_id)
-                        .await?;
+                        .steps
+                        .invocation(basis, invocation_id)
+                        .await
+                        .map_err(history_error)?;
                     let (tool, arguments) = invocation
                         .outcome
                         .as_ref()
@@ -265,14 +398,11 @@ where
                     let Some(invocation_id) = &step.invocation_id else {
                         continue;
                     };
-                    let Ok(invocation) = self
-                        .coordinator
-                        .store
-                        .get(&basis.actor_id, &basis.scope, invocation_id)
+                    let invocation = self
+                        .steps
+                        .invocation(basis, invocation_id)
                         .await
-                    else {
-                        continue;
-                    };
+                        .map_err(history_error)?;
                     let names: Vec<String> =
                         proposals(&invocation).into_iter().map(|(_, n)| n).collect();
                     let source_id = format!("superseded-{}", step.ordinal);
@@ -306,7 +436,7 @@ where
                     expected_methodology_binding_id: boundary.methodology_binding_id.clone(),
                     exact: false,
                     include_inactive: false,
-                    items: vec![],
+                    items: verification,
                 },
                 entries,
             },
@@ -323,6 +453,14 @@ where
 
     /// Admit, consume, dispatch and observe the not yet processed proposals of
     /// one recorded turn. Returns None to continue at the next boundary.
+    ///
+    /// Each proposal ends as exactly one durable fact. A replacement producer
+    /// first rebuilds what already happened from immutable operation history:
+    /// an admitted operation whose attempt completed is `Completed` with that
+    /// fact, one whose consumed attempt has no resolved fact needs
+    /// reconciliation, and neither is ever resent or recorded as refused.
+    /// A fence (guidance or a control changed) before consumption is
+    /// `Superseded`; only a current Permissions refusal is `Refused`.
     async fn tools(
         &self,
         boundary: &WorkBoundary,
@@ -353,64 +491,112 @@ where
                     &operation_key(invocation_id, &call_id),
                 )
                 .await;
-            let operation = match admitted {
-                Ok(operation) => operation,
-                Err(ModelError::Fenced) => {
-                    // Guidance (intent) or a control (epoch) changed after the
-                    // turn: the proposal is not admitted. The boundary decides.
-                    step.status = StepStatus::Superseded;
-                    step.next_action = Some(NextAction::ModelTurn);
-                    return match self.steps.record_step(basis, &step).await {
-                        Ok(_) => None,
-                        Err(TaskError::Fenced) => Some(CycleEnd::Fenced),
-                        Err(_) => Some(CycleEnd::Unavailable),
-                    };
-                }
+            let fenced = matches!(admitted, Err(ModelError::Fenced));
+            // (operation, whether a new consumption may be attempted)
+            let (operation_id, may_dispatch) = match admitted {
+                Ok(operation) => (Some(operation.id), true),
                 Err(ModelError::Unavailable) => return Some(CycleEnd::Unavailable),
                 Err(_) => {
-                    step.next_action = Some(NextAction::ModelTurn);
-                    match self.steps.record_step(basis, &step).await {
-                        Ok(_) => {
-                            ordinal += 1;
-                            continue;
+                    // Not admissible now (a fence, a changed control, or a
+                    // current refusal). An operation admitted earlier for this
+                    // exact call keeps its recorded history and is never
+                    // consumed again from here.
+                    match self
+                        .steps
+                        .bound_operation(basis, invocation_id, &call_id)
+                        .await
+                    {
+                        Ok(operation) => (operation, false),
+                        Err(TaskError::Fenced | TaskError::Denied) => {
+                            return Some(CycleEnd::Fenced);
                         }
-                        Err(TaskError::Fenced) => return Some(CycleEnd::Fenced),
                         Err(_) => return Some(CycleEnd::Unavailable),
                     }
                 }
             };
-            step.operation_id = Some(operation.id.clone());
-            match self.dispatch.dispatch(basis, &operation.id).await {
-                Ok((attempt_id, fact)) => {
-                    step.attempt_id = Some(attempt_id);
-                    if fact.is_resolved() {
-                        step.status = StepStatus::Completed;
-                        step.fact = Some(fact);
-                        step.next_action = Some(NextAction::ModelTurn);
-                    } else {
-                        step.status = StepStatus::ReconciliationRequired;
-                        step.next_action = Some(NextAction::Reconcile);
+            let Some(operation_id) = operation_id else {
+                if fenced {
+                    // Guidance (intent) or a control (epoch) changed after the
+                    // turn: the proposal is not admitted. The boundary decides.
+                    step.status = StepStatus::Superseded;
+                }
+                step.next_action = Some(NextAction::ModelTurn);
+                match self.steps.record_step(basis, &step).await {
+                    Ok(_) => {
+                        ordinal += 1;
+                        continue;
                     }
+                    Err(TaskError::Fenced) => return Some(CycleEnd::Fenced),
+                    Err(_) => return Some(CycleEnd::Unavailable),
                 }
-                Err(
-                    OperationError::Fenced
-                    | OperationError::Denied
-                    | OperationError::NeedsDecision
-                    | OperationError::Invalid
-                    | OperationError::Conflict
-                    | OperationError::Capacity,
-                ) => {
-                    step.next_action = Some(NextAction::ModelTurn);
+            };
+            step.operation_id = Some(operation_id.clone());
+            let prior = match self.dispatch.settled(basis, &operation_id).await {
+                Ok(prior) => prior,
+                Err(OperationError::Fenced | OperationError::Denied) => {
+                    return Some(CycleEnd::Fenced);
                 }
+                Err(_) => return Some(CycleEnd::Unavailable),
+            };
+            let dispatched =
+                match prior {
+                    Some(prior) => Ok(prior),
+                    // Admitted earlier but never consumed, under a stale proposal.
+                    None if !may_dispatch => Err(OperationError::Fenced),
+                    None => self.dispatch.dispatch(basis, &operation_id).await.map(
+                        |(attempt_id, fact)| SettledAttempt {
+                            attempt_id,
+                            fact: Some(fact),
+                        },
+                    ),
+                };
+            let dispatched = match dispatched {
+                Ok(attempt) => Ok(attempt),
                 // Consumption may have committed: the coordinator's external
                 // reconciliation owns this attempt. Never resend.
                 Err(OperationError::Unavailable) => return Some(CycleEnd::Reconcile),
+                Err(error) => match self.dispatch.settled(basis, &operation_id).await {
+                    // Another producer's attempt exists: record it as it is.
+                    Ok(Some(attempt)) => Ok(attempt),
+                    Ok(None) => Err(error),
+                    Err(OperationError::Fenced | OperationError::Denied) => {
+                        return Some(CycleEnd::Fenced);
+                    }
+                    Err(_) => return Some(CycleEnd::Unavailable),
+                },
+            };
+            match dispatched {
+                Ok(SettledAttempt { attempt_id, fact }) => {
+                    step.attempt_id = Some(attempt_id);
+                    match fact.filter(|fact| fact.is_resolved()) {
+                        Some(fact) => {
+                            step.status = StepStatus::Completed;
+                            step.fact = Some(fact);
+                            step.next_action = Some(NextAction::ModelTurn);
+                        }
+                        None => {
+                            step.status = StepStatus::ReconciliationRequired;
+                            step.next_action = Some(NextAction::Reconcile);
+                        }
+                    }
+                }
+                // Guidance (intent) or a control (epoch) changed after admission:
+                // nothing was consumed. Superseded, not refused.
+                Err(OperationError::Fenced) => {
+                    step.status = StepStatus::Superseded;
+                    step.next_action = Some(NextAction::ModelTurn);
+                }
+                Err(_) => {
+                    step.next_action = Some(NextAction::ModelTurn);
+                }
             }
             let status = step.status;
             match self.steps.record_step(basis, &step).await {
                 Ok(_) if status == StepStatus::ReconciliationRequired => {
                     return Some(CycleEnd::Reconcile);
                 }
+                // The boundary applies the change before anything else runs.
+                Ok(_) if status == StepStatus::Superseded && may_dispatch => return None,
                 Ok(_) => ordinal += 1,
                 Err(TaskError::Fenced) => return Some(CycleEnd::Fenced),
                 Err(_) => return Some(CycleEnd::Unavailable),
@@ -489,14 +675,12 @@ where
                 && turn.status == StepStatus::Proposed
                 && let Some(invocation_id) = &turn.invocation_id
             {
-                let invocation = match self
-                    .coordinator
-                    .store
-                    .get(&basis.actor_id, &basis.scope, invocation_id)
-                    .await
-                {
+                // Exact historical facts, including a turn produced under an
+                // earlier applied intent: its admitted operations keep their
+                // recorded history and the rest are superseded, never run.
+                let invocation = match self.steps.invocation(&basis, invocation_id).await {
                     Ok(invocation) => invocation,
-                    Err(ModelError::Fenced | ModelError::Denied) => return CycleEnd::Fenced,
+                    Err(TaskError::Fenced | TaskError::Denied) => return CycleEnd::Fenced,
                     Err(_) => return CycleEnd::Unavailable,
                 };
                 let pending: Vec<_> = proposals(&invocation)

@@ -1372,6 +1372,27 @@ producer is taken over by a fresh owner: the same invocation key recovers
 without resending, and consumed tool attempts go through the existing
 reconciliation without replay.
 
+A replacement producer rebuilds each tool step from immutable operation history
+(`settled_attempt`) before any consumption: an attempt with a resolved source
+fact is recorded `completed` with that fact and enters later turns as an owned
+`ToolExchange`; a consumed attempt without one is `reconciliation_required`. A
+completed or possibly dispatched operation is never recorded as refused and is
+never resent. A fence after admission (guidance or a control changed before
+consumption) is `superseded`, not `refused`. Historical turns, including those of
+an earlier applied intent, are read by exact identity within the claim's own Task
+and cycle; `prepare` still checks every disclosure.
+
+Each turn's context includes the Task's current authorised knowledge (at most 16
+records and 64 KiB of text), read under the boundary's Task fence with the same
+per-record checks as knowledge inspection. Each record is an exact `{id,
+revision}` context entry and a `current` verification item, so `prepare`
+re-verifies it at disclosure. Withdrawn, forgotten, excluded, corrected or
+invalidated records are omitted and never disclosed; preference publications are
+not context. The OS-level proof in `crates/worker/tests/work_process.rs`
+re-executes the test binary as a worker process and SIGKILLs it mid-turn and
+mid-tool, because the production binary deliberately composes no qualification
+source and has no fixture flag.
+
 Untargeted direction (`POST task-directions`, reserved control lane) is routed by
 the server, never a model: exactly one non-stopped Task receives it as Guidance;
 two or more produce one durable targeting question. An answer (`POST

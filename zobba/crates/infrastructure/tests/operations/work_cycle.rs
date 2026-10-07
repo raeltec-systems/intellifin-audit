@@ -11,15 +11,20 @@ use std::{
     },
 };
 use tokio::sync::Notify;
+use zobba_application::knowledge::{
+    Assertion, KnowledgeAction, KnowledgeCommand, KnowledgeQuery, KnowledgeStore, Period,
+    RecordReference, RecordStatus,
+};
 use zobba_application::{
     model::*,
-    work::{CycleEnd, ToolDispatch, WorkLoop, WorkSettings},
+    work::{CycleEnd, SettledAttempt, ToolDispatch, WorkLoop, WorkSettings, settled_attempt},
 };
 use zobba_domain::work::{
     Attention, Direction, NextAction, StepKind, StepStatus, invocation_key, routed_guide_key,
 };
 use zobba_infrastructure::{
     identity::{IdentityRepository, secret_hash},
+    knowledge::KnowledgeRepository,
     model::{ModelRepository, bind_disclosure},
 };
 
@@ -37,6 +42,7 @@ struct Script {
     turns: Mutex<VecDeque<Turn>>,
     sends: AtomicUsize,
     briefs: Mutex<Vec<String>>,
+    requests: Mutex<Vec<ModelRequest>>,
 }
 impl Script {
     fn new(turns: Vec<Turn>) -> Arc<Self> {
@@ -85,6 +91,7 @@ struct Shared(Arc<Script>);
 impl ModelTransport for Shared {
     async fn invoke(&self, request: &ModelRequest, cancel: &ModelCancellation) -> TransportOutcome {
         self.0.sends.fetch_add(1, Ordering::SeqCst);
+        self.0.requests.lock().unwrap().push(request.clone());
         if let Some(brief) = request
             .messages
             .iter()
@@ -139,10 +146,18 @@ impl ModelTransport for Shared {
     }
 }
 
+/// A Guide admitted after tool admission and before consumption.
+type Interjection = Arc<Mutex<Option<(TaskRepository, TaskCommand)>>>;
+
 struct Dispatch {
     operations: OperationRepository,
     /// Simulate a lost producer after consumption (possible dispatch cutoff).
     hang_after_consume: Arc<AtomicBool>,
+    /// Simulate a lost producer after the completed receipt was recorded but
+    /// before the tool step fact was written.
+    hang_after_observe: Arc<AtomicBool>,
+    before_consume: Interjection,
+    dispatches: Arc<AtomicUsize>,
 }
 impl ToolDispatch for Dispatch {
     async fn dispatch(
@@ -150,6 +165,14 @@ impl ToolDispatch for Dispatch {
         basis: &ClaimBasis,
         operation_id: &str,
     ) -> Result<(String, SourceFact), OperationError> {
+        self.dispatches.fetch_add(1, Ordering::SeqCst);
+        let interjection = self.before_consume.lock().unwrap().take();
+        if let Some((tasks, command)) = interjection {
+            tasks
+                .admit("actor-a", &selected("a"), &command)
+                .await
+                .unwrap();
+        }
         let attempt = self.operations.consume(basis, operation_id).await?;
         if self.hang_after_consume.load(Ordering::SeqCst) {
             std::future::pending::<()>().await;
@@ -157,7 +180,23 @@ impl ToolDispatch for Dispatch {
         self.operations
             .observe(&attempt, SourceFact::Completed)
             .await?;
+        if self.hang_after_observe.load(Ordering::SeqCst) {
+            std::future::pending::<()>().await;
+        }
         Ok((attempt.attempt_id.clone(), SourceFact::Completed))
+    }
+    async fn settled(
+        &self,
+        basis: &ClaimBasis,
+        operation_id: &str,
+    ) -> Result<Option<SettledAttempt>, OperationError> {
+        settled_attempt(
+            &self.operations,
+            &basis.actor_id,
+            &basis.scope,
+            operation_id,
+        )
+        .await
     }
 }
 
@@ -166,6 +205,9 @@ struct Harness {
     operations: OperationRepository,
     profile: ModelProfile,
     catalogue: ToolCatalog,
+    hang_after_observe: Arc<AtomicBool>,
+    before_consume: Interjection,
+    dispatches: Arc<AtomicUsize>,
 }
 impl Harness {
     fn work(
@@ -183,6 +225,9 @@ impl Harness {
             dispatch: Dispatch {
                 operations: self.operations.clone(),
                 hang_after_consume: hang.clone(),
+                hang_after_observe: self.hang_after_observe.clone(),
+                before_consume: self.before_consume.clone(),
+                dispatches: self.dispatches.clone(),
             },
             settings: WorkSettings {
                 profile: self.profile.clone(),
@@ -267,6 +312,9 @@ pub(super) async fn verify(f: &Fixture, admin: &mut PgConnection) {
             .with_model_qualification_source(qualification.clone()),
         profile: p,
         catalogue: c,
+        hang_after_observe: Arc::new(AtomicBool::new(false)),
+        before_consume: Arc::new(Mutex::new(None)),
+        dispatches: Arc::new(AtomicUsize::new(0)),
     };
     let hang = Arc::new(AtomicBool::new(false));
     first_cycle(f, &harness, &hang).await;
@@ -274,6 +322,14 @@ pub(super) async fn verify(f: &Fixture, admin: &mut PgConnection) {
     guide_turn_race(f, &harness, &hang, admin).await;
     stalled_pause(f, &harness, &hang).await;
     restart_recovery(f, &harness, &hang, admin).await;
+    completed_before_restart(f, &harness, &hang, admin).await;
+    fenced_after_admission(f, &harness, &hang, admin).await;
+    guide_after_completed_tool(f, &harness, &hang).await;
+    let auditor = identities
+        .establish_session("https://127.0.0.1:4443", "auditor-a", "Auditor", None)
+        .await
+        .unwrap();
+    knowledge_context(f, &harness, &hang, &secret_hash(&auditor)).await;
     routing(f, admin).await;
 }
 
@@ -772,6 +828,425 @@ async fn restart_recovery(
     let attempts: i64 = sqlx::query_scalar("SELECT count(*) FROM public.operation_attempts a JOIN public.operations o ON o.id=a.operation_id WHERE o.task_id=$1")
         .bind(&case.receipt.task_id).fetch_one(&mut *admin).await.unwrap();
     assert_eq!(attempts, 1);
+}
+
+async fn expire_owner(case: &Case, admin: &mut PgConnection) {
+    sqlx::query(
+        "UPDATE public.tasks SET owner_until=clock_timestamp()-interval '1 second' WHERE id=$1",
+    )
+    .bind(&case.receipt.task_id)
+    .execute(&mut *admin)
+    .await
+    .unwrap();
+}
+async fn task_attempts(case: &Case, admin: &mut PgConnection) -> i64 {
+    sqlx::query_scalar("SELECT count(*) FROM public.operation_attempts a JOIN public.operations o ON o.id=a.operation_id WHERE o.task_id=$1")
+        .bind(&case.receipt.task_id).fetch_one(&mut *admin).await.unwrap()
+}
+
+/// The producer dies after the source confirmed completion and the receipt was
+/// recorded, but before the tool step fact. The replacement must record the
+/// completed attempt as Completed with its fact and owned history, never as a
+/// refusal and never by sending again.
+async fn completed_before_restart(
+    f: &Fixture,
+    h: &Harness,
+    hang: &Arc<AtomicBool>,
+    admin: &mut PgConnection,
+) {
+    let (case, basis, _lost) = consumed(f, "work-completed-restart").await;
+    let script = Script::new(vec![Turn::Tool("done-call", "send_exact")]);
+    h.hang_after_observe.store(true, Ordering::SeqCst);
+    let before = h.dispatches.load(Ordering::SeqCst);
+    {
+        let work = h.work(f, &script, hang);
+        let cancellation = ModelCancellation::new();
+        let run = work.run(&basis, &cancellation);
+        let observed = async {
+            loop {
+                let n: i64 = sqlx::query_scalar("SELECT count(*) FROM public.operation_receipts r JOIN public.operation_attempts a ON a.id=r.attempt_id JOIN public.operations o ON o.id=a.operation_id WHERE o.task_id=$1")
+                    .bind(&case.receipt.task_id).fetch_one(&mut *admin).await.unwrap();
+                if n >= 1 {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        };
+        tokio::select! {
+            _ = run => panic!("lost producer returned"),
+            _ = observed => {},
+        }
+    }
+    h.hang_after_observe.store(false, Ordering::SeqCst);
+    assert_eq!(h.dispatches.load(Ordering::SeqCst), before + 1);
+    let lost = f
+        .tasks
+        .work("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        lost.steps
+            .iter()
+            .map(|s| (s.kind, s.status))
+            .collect::<Vec<_>>(),
+        vec![(StepKind::ModelTurn, StepStatus::Proposed)],
+        "the tool step fact was not written before the loss"
+    );
+    expire_owner(&case, &mut *admin).await;
+    let replacement = execution(
+        f.tasks
+            .coordinate(&route(&case.receipt), "work-completed-replacement")
+            .await
+            .unwrap(),
+    );
+    let replacement_attempt = f.tasks.consume(&replacement).await.unwrap();
+    let retry = Script::new(vec![Turn::Text("Completed result considered.")]);
+    let end = h
+        .work(f, &retry, hang)
+        .run(&replacement, &ModelCancellation::new())
+        .await;
+    assert_eq!(end, CycleEnd::Waiting);
+    assert_eq!(
+        h.dispatches.load(Ordering::SeqCst),
+        before + 1,
+        "the completed operation was not dispatched again"
+    );
+    assert_eq!(task_attempts(&case, &mut *admin).await, 1);
+    let work = f
+        .tasks
+        .work("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        work.steps
+            .iter()
+            .map(|s| (s.kind, s.status))
+            .collect::<Vec<_>>(),
+        vec![
+            (StepKind::ModelTurn, StepStatus::Proposed),
+            (StepKind::ToolStep, StepStatus::Completed),
+            (StepKind::ModelTurn, StepStatus::Responded),
+        ],
+        "a completed operation is never recorded as refused"
+    );
+    let tool = &work.steps[1];
+    assert_eq!(tool.fact, Some(SourceFact::Completed));
+    let attempt_id: String = sqlx::query_scalar("SELECT a.id FROM public.operation_attempts a JOIN public.operations o ON o.id=a.operation_id WHERE o.task_id=$1")
+        .bind(&case.receipt.task_id).fetch_one(&mut *admin).await.unwrap();
+    assert_eq!(tool.attempt_id.as_deref(), Some(attempt_id.as_str()));
+    let next = h
+        .repo
+        .get(
+            "actor-a",
+            &selected("a"),
+            work.steps[2].invocation_id.as_ref().unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(
+        matches!(&next.request.history[..], [HistoryItem::ToolExchange(e)] if e.result.attempt_id == attempt_id && e.result.fact == SourceFact::Completed),
+        "the completed exchange is rebuilt into owned history"
+    );
+    finish(f, &case, &replacement_attempt, Observation::Completed).await;
+}
+
+/// Guidance received after tool admission and before consumption fences the
+/// consumption. Nothing is consumed; the fact says superseded, not refused.
+async fn fenced_after_admission(
+    f: &Fixture,
+    h: &Harness,
+    hang: &Arc<AtomicBool>,
+    admin: &mut PgConnection,
+) {
+    let (case, basis, attempt) = consumed(f, "work-fenced-admission").await;
+    *h.before_consume.lock().unwrap() = Some((
+        f.tasks.clone(),
+        guide(
+            "work-fenced-guide",
+            &case,
+            "Changed direction before the send",
+        ),
+    ));
+    let script = Script::new(vec![
+        Turn::Tool("fenced-call", "send_exact"),
+        Turn::Text("Reconsidered after the fence."),
+    ]);
+    let end = h
+        .work(f, &script, hang)
+        .run(&basis, &ModelCancellation::new())
+        .await;
+    assert_eq!(end, CycleEnd::Waiting);
+    assert!(h.before_consume.lock().unwrap().is_none());
+    let work = f
+        .tasks
+        .work("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        work.steps
+            .iter()
+            .map(|s| (s.kind, s.status))
+            .collect::<Vec<_>>(),
+        vec![
+            (StepKind::ModelTurn, StepStatus::Proposed),
+            (StepKind::ToolStep, StepStatus::Superseded),
+            (StepKind::ModelTurn, StepStatus::Responded),
+        ]
+    );
+    assert!(work.steps[1].operation_id.is_some(), "it had been admitted");
+    assert_eq!(work.steps[1].attempt_id, None);
+    assert_eq!(
+        task_attempts(&case, &mut *admin).await,
+        0,
+        "nothing consumed"
+    );
+    assert!(
+        script
+            .briefs
+            .lock()
+            .unwrap()
+            .last()
+            .unwrap()
+            .contains("Changed direction")
+    );
+    finish(f, &case, &attempt, Observation::Completed).await;
+}
+
+/// A completed tool exchange produced under an earlier applied intent remains
+/// exact owned history after new guidance; the stale turn is described by its
+/// fixed catalogue names only and never replayed.
+async fn guide_after_completed_tool(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
+    let (case, basis, attempt) = consumed(f, "work-guide-after-tool").await;
+    let release = Arc::new(Notify::new());
+    let script = Script::new(vec![
+        Turn::Tool("history-call", "send_exact"),
+        Turn::Stall(
+            release.clone(),
+            Box::new(Turn::Tool("stale-history-call", "send_exact")),
+        ),
+        Turn::Text("Continued under the new brief with earlier results."),
+    ]);
+    let work = h.work(f, &script, hang);
+    let cancellation = ModelCancellation::new();
+    let run = work.run(&basis, &cancellation);
+    let guidance = async {
+        while script.sends.load(Ordering::SeqCst) < 2 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        f.tasks
+            .admit(
+                "actor-a",
+                &selected("a"),
+                &guide(
+                    "work-guide-after-tool-guide",
+                    &case,
+                    "Newer direction after the tool",
+                ),
+            )
+            .await
+            .unwrap();
+        release.notify_one();
+    };
+    let (end, ()) = tokio::join!(run, guidance);
+    assert_eq!(end, CycleEnd::Waiting);
+    let work = f
+        .tasks
+        .work("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        work.steps
+            .iter()
+            .map(|s| (s.kind, s.status))
+            .collect::<Vec<_>>(),
+        vec![
+            (StepKind::ModelTurn, StepStatus::Proposed),
+            (StepKind::ToolStep, StepStatus::Completed),
+            (StepKind::ModelTurn, StepStatus::Superseded),
+            (StepKind::ModelTurn, StepStatus::Responded),
+        ]
+    );
+    let last = script.requests.lock().unwrap()[2].clone();
+    assert!(
+        matches!(&last.history[..], [HistoryItem::ToolExchange(e)] if Some(&e.result.attempt_id) == work.steps[1].attempt_id.as_ref()),
+        "the earlier-intent completed exchange remains exact history"
+    );
+    assert!(
+        last.messages
+            .iter()
+            .any(|m| m.text.contains("Newer direction"))
+    );
+    assert!(
+        last.messages
+            .iter()
+            .any(|m| m.text.starts_with("Earlier proposals were superseded")
+                && m.text.contains("send_exact")),
+        "the superseded turn is described by catalogue names only"
+    );
+    assert!(
+        !last
+            .messages
+            .iter()
+            .any(|m| m.text.contains("stale-history-call"))
+    );
+    finish(f, &case, &attempt, Observation::Completed).await;
+}
+
+fn disclosed(request: &ModelRequest, marker: &str) -> bool {
+    request.messages.iter().any(|m| m.text.contains(marker))
+}
+
+/// Context carries the Task's current authorised knowledge with exact
+/// references, checked again at disclosure. A record withdrawn before a turn
+/// is excluded from that turn and never disclosed.
+async fn knowledge_context(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>, session: &str) {
+    let knowledge = KnowledgeRepository::new(f.pool.clone()).with_session_hash(session.into());
+    let (case, basis, attempt) = consumed(f, "work-knowledge").await;
+    let task = &case.receipt.task_id;
+    let assert = async |key: &str, text: &str, expected: u64| {
+        let result = knowledge
+            .mutate(
+                "actor-a",
+                &selected("a"),
+                task,
+                &KnowledgeCommand {
+                    key: key.into(),
+                    expected_revision: expected,
+                    action: KnowledgeAction::Assert {
+                        assertion: Assertion {
+                            text: text.into(),
+                            period: Period::default(),
+                            uncertainty: Some("Attributed synthetic assertion".into()),
+                            dependencies: vec![],
+                        },
+                    },
+                },
+            )
+            .await
+            .unwrap();
+        let record = result.record.unwrap().record;
+        (
+            RecordReference {
+                id: record.id,
+                revision: record.revision,
+            },
+            result.revision,
+        )
+    };
+    let forget = async |key: &str, target: &RecordReference, expected: u64| {
+        knowledge
+            .mutate(
+                "actor-a",
+                &selected("a"),
+                task,
+                &KnowledgeCommand {
+                    key: key.into(),
+                    expected_revision: expected,
+                    action: KnowledgeAction::Forget {
+                        target: target.clone(),
+                        reason: "Withdraw from current use".into(),
+                    },
+                },
+            )
+            .await
+            .unwrap()
+            .revision
+    };
+    let page = knowledge
+        .inspect("actor-a", &selected("a"), task, &KnowledgeQuery::default())
+        .await
+        .unwrap();
+    let (kept, revision) = assert(
+        "work-knowledge-keep",
+        "Synthetic fact KN-KEEP-7731",
+        page.revision,
+    )
+    .await;
+    let (gone, revision) = assert(
+        "work-knowledge-gone",
+        "Synthetic fact KN-GONE-4410",
+        revision,
+    )
+    .await;
+    // Revoked before the first turn: excluded from that turn's context.
+    let revision = forget("work-knowledge-forget-gone", &gone, revision).await;
+    let script = Script::new(vec![Turn::Text("Considered the verified knowledge.")]);
+    let end = h
+        .work(f, &script, hang)
+        .run(&basis, &ModelCancellation::new())
+        .await;
+    assert_eq!(end, CycleEnd::Waiting);
+    let sent = script.requests.lock().unwrap()[0].clone();
+    assert!(
+        disclosed(&sent, "KN-KEEP-7731"),
+        "current knowledge is context"
+    );
+    assert!(
+        !disclosed(&sent, "KN-GONE-4410"),
+        "withdrawn knowledge is never disclosed"
+    );
+    assert!(
+        sent.context
+            .verification
+            .items
+            .iter()
+            .any(|v| v.id == kept.id
+                && v.revision == kept.revision
+                && v.status == RecordStatus::Current),
+        "the exact reference is verified at disclosure"
+    );
+    assert!(
+        !sent
+            .context
+            .verification
+            .items
+            .iter()
+            .any(|v| v.id == gone.id)
+    );
+    assert!(
+        sent.context
+            .entries
+            .iter()
+            .any(|e| e.knowledge.as_ref() == Some(&kept))
+    );
+    // The persisted invocation carries the same exact references.
+    let work = f.tasks.work("actor-a", &selected("a"), task).await.unwrap();
+    let stored = h
+        .repo
+        .get(
+            "actor-a",
+            &selected("a"),
+            work.steps[0].invocation_id.as_ref().unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        stored.request.context.verification,
+        sent.context.verification
+    );
+    finish(f, &case, &attempt, Observation::Completed).await;
+
+    // Revoked before the next turn of another Task in the engagement: excluded.
+    forget("work-knowledge-forget-keep", &kept, revision).await;
+    let (case, basis, attempt) = consumed(f, "work-knowledge-after").await;
+    let script = Script::new(vec![Turn::Text("No withdrawn knowledge.")]);
+    let end = h
+        .work(f, &script, hang)
+        .run(&basis, &ModelCancellation::new())
+        .await;
+    assert_eq!(end, CycleEnd::Waiting);
+    let sent = script.requests.lock().unwrap()[0].clone();
+    assert!(!disclosed(&sent, "KN-KEEP-7731"));
+    assert!(!disclosed(&sent, "KN-GONE-4410"));
+    assert!(
+        !sent
+            .context
+            .verification
+            .items
+            .iter()
+            .any(|v| v.id == kept.id || v.id == gone.id)
+    );
+    finish(f, &case, &attempt, Observation::Completed).await;
 }
 
 async fn routing(f: &Fixture, admin: &mut PgConnection) {

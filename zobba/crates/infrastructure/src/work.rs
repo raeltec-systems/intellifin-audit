@@ -7,8 +7,10 @@ use crate::task::{
 };
 use sqlx::postgres::PgRow;
 use zobba_application::{
+    knowledge::RecordReference,
+    model::Invocation,
     task::TaskError,
-    work::{WorkBoundary, WorkSteps},
+    work::{MAX_WORK_KNOWLEDGE, MAX_WORK_KNOWLEDGE_BYTES, WorkBoundary, WorkKnowledge, WorkSteps},
 };
 use zobba_domain::{
     identity::{Scope, valid_scope_id},
@@ -504,14 +506,42 @@ impl TaskRepository {
         let binding = crate::methodology::current_binding(&mut tx, &b.task_id)
             .await
             .map_err(|_| TaskError::Unavailable)?;
+        let objective: String = get(&row, "objective")?;
+        let working_brief: String = get(&row, "working_brief")?;
+        let applied_intent: i64 = get(&row, "applied_intent")?;
+        // Current authorised knowledge, under this same fence. Withdrawn or
+        // otherwise non-current records are omitted and never disclosed.
+        let knowledge = crate::knowledge::task_context_in_transaction(
+            &mut tx,
+            &b.actor_id,
+            &b.scope,
+            &b.task_id,
+            MAX_WORK_KNOWLEDGE,
+            MAX_WORK_KNOWLEDGE_BYTES,
+        )
+        .await
+        .map_err(|error| match error {
+            zobba_application::knowledge::KnowledgeError::Denied => TaskError::Fenced,
+            _ => TaskError::Unavailable,
+        })?
+        .into_iter()
+        .map(|view| WorkKnowledge {
+            reference: RecordReference {
+                id: view.record.id,
+                revision: view.record.revision,
+            },
+            text: view.record.text,
+        })
+        .collect();
         let mut basis = b.clone();
-        basis.intent_revision = get(&row, "applied_intent")?;
+        basis.intent_revision = applied_intent;
         let boundary = WorkBoundary {
             basis,
-            objective: get(&row, "objective")?,
-            working_brief: get(&row, "working_brief")?,
+            objective,
+            working_brief,
             methodology_binding_id: binding.id,
             steps,
+            knowledge,
         };
         admission_fence(&mut tx, &b.actor_id, &b.scope, None).await?;
         tx.commit().await.map_err(unavailable)?;
@@ -590,6 +620,48 @@ impl TaskRepository {
     }
 }
 
+impl TaskRepository {
+    /// See `WorkSteps::invocation`.
+    pub async fn cycle_invocation(
+        &self,
+        b: &ClaimBasis,
+        invocation_id: &str,
+    ) -> Result<Invocation, TaskError> {
+        let mut tx = lock(self.pool(), &b.actor_id, &b.scope).await?;
+        producer(&mut tx, b).await?;
+        let invocation = crate::model::load_for_cycle(&mut tx, b, invocation_id)
+            .await
+            .map_err(|error| match error {
+                zobba_application::model::ModelError::Unavailable => TaskError::Unavailable,
+                _ => TaskError::Denied,
+            })?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(invocation)
+    }
+    /// See `WorkSteps::bound_operation`.
+    pub async fn bound_operation(
+        &self,
+        b: &ClaimBasis,
+        invocation_id: &str,
+        call_id: &str,
+    ) -> Result<Option<String>, TaskError> {
+        if !valid_scope_id(invocation_id) || call_id.is_empty() || call_id.len() > 128 {
+            return Err(TaskError::Invalid);
+        }
+        let mut tx = lock(self.pool(), &b.actor_id, &b.scope).await?;
+        producer(&mut tx, b).await?;
+        let operation: Option<String> = sqlx::query_scalar("SELECT b.operation_id FROM public.model_tool_bindings b JOIN public.operations o ON o.id=b.operation_id WHERE b.invocation_id=$1 AND b.call_id=$2 AND o.task_id=$3")
+            .bind(invocation_id)
+            .bind(call_id)
+            .bind(&b.task_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(unavailable)?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(operation)
+    }
+}
+
 impl WorkSteps for TaskRepository {
     async fn boundary(&self, basis: &ClaimBasis) -> Result<WorkBoundary, TaskError> {
         TaskRepository::boundary(self, basis).await
@@ -600,5 +672,20 @@ impl WorkSteps for TaskRepository {
         step: &TaskStep,
     ) -> Result<TaskStep, TaskError> {
         TaskRepository::record_step(self, basis, step).await
+    }
+    async fn invocation(
+        &self,
+        basis: &ClaimBasis,
+        invocation_id: &str,
+    ) -> Result<Invocation, TaskError> {
+        self.cycle_invocation(basis, invocation_id).await
+    }
+    async fn bound_operation(
+        &self,
+        basis: &ClaimBasis,
+        invocation_id: &str,
+        call_id: &str,
+    ) -> Result<Option<String>, TaskError> {
+        TaskRepository::bound_operation(self, basis, invocation_id, call_id).await
     }
 }

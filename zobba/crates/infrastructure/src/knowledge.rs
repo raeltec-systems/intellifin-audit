@@ -1064,6 +1064,81 @@ pub(crate) async fn verify_in_transaction(
     }
     Ok(consumer)
 }
+/// Bounded current knowledge the Task's accountable actor may use as model
+/// context, read inside the caller's existing claim-bound Task fence. Uses the
+/// same candidate stream and per-record checks as `inspect`, but discloses only
+/// Current records with no applicability omission. Withdrawn, forgotten,
+/// excluded, corrected or invalidated records are never returned. Preference
+/// publications are presentation settings, not facts, and are not context.
+/// Every returned reference is verified again at disclosure by
+/// `verify_in_transaction`; this read grants no use by itself.
+pub(crate) async fn task_context_in_transaction(
+    tx: &mut Tx,
+    actor: &str,
+    s: &Scope,
+    task_id: &str,
+    max_items: usize,
+    max_text_bytes: usize,
+) -> Result<Vec<KnowledgeView>, KnowledgeError> {
+    let (consumer, _, _) = task(tx, s, task_id).await?;
+    if consumer != actor || !audit(tx, &consumer, s).await? {
+        return Err(KnowledgeError::Denied);
+    }
+    let mut items: Vec<KnowledgeView> = vec![];
+    let mut text_bytes = 0usize;
+    let mut cursor: Option<String> = None;
+    let mut examined = 0usize;
+    'scan: while examined < 1024 && items.len() < max_items {
+        let batch = (1024 - examined).min(51);
+        let rows=sqlx::query("SELECT id,document FROM (SELECT DISTINCT ON (id COLLATE \"C\") id,revision,document FROM public.knowledge_records WHERE organisation_id=$1 AND (client_id=$2 OR owner_id=$3) AND id COLLATE \"C\">coalesce($4,'') COLLATE \"C\" ORDER BY id COLLATE \"C\",revision DESC) latest ORDER BY id COLLATE \"C\" LIMIT $5").bind(&s.organisation_id).bind(&s.client_id).bind(actor).bind(&cursor).bind(batch as i64).fetch_all(&mut **tx).await.map_err(db)?;
+        let count = rows.len();
+        for row in rows {
+            let id: String = row.try_get("id").map_err(db)?;
+            let document: Value = row.try_get("document").map_err(db)?;
+            cursor = Some(id.clone());
+            examined += 1;
+            let record: KnowledgeRecord = dec(document)?;
+            if record.id != id {
+                return Err(KnowledgeError::Unavailable);
+            }
+            let (view, applicability) =
+                match checked_context(tx, actor, &consumer, s, task_id, record).await {
+                    Ok(checked) => checked,
+                    // Not visible to this Task, or support unavailable: omit.
+                    Err(
+                        KnowledgeError::Denied
+                        | KnowledgeError::Capacity
+                        | KnowledgeError::Ineligible,
+                    ) => continue,
+                    Err(e) => return Err(e),
+                };
+            if view.status != RecordStatus::Current || applicability.omission.is_some() {
+                continue;
+            }
+            if text_bytes + view.record.text.len() > max_text_bytes {
+                break 'scan;
+            }
+            text_bytes += view.record.text.len();
+            items.push(view);
+            if items.len() == max_items {
+                break 'scan;
+            }
+        }
+        if count < batch {
+            break;
+        }
+    }
+    select_scope(tx, s).await?;
+    if !audit(tx, actor, s).await? {
+        return Err(KnowledgeError::Denied);
+    }
+    let dependencies_current: bool = sqlx::query_scalar("SELECT NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(nullif(current_setting('zobba.knowledge_checks',true),''),'[]')::jsonb) c WHERE NOT public.knowledge_audit(c->>0,c->>1,c->>2,c->>3))")
+        .fetch_one(&mut **tx).await.map_err(db)?;
+    if !dependencies_current {
+        return Err(KnowledgeError::Denied);
+    }
+    Ok(items)
+}
 impl KnowledgeStore for KnowledgeRepository {
     async fn verify(
         &self,

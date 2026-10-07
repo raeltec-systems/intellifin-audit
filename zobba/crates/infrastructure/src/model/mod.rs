@@ -324,6 +324,28 @@ async fn audience(tx: &mut Tx, actor: &str, request: &ModelRequest) -> Result<()
     }
     Ok(())
 }
+/// Exact immutable invocation facts for the work loop's own Task and cycle,
+/// read under the caller's claim-bound Task fence. This grants no audience:
+/// any disclosure of these facts is checked again by `prepare`.
+pub(crate) async fn load_for_cycle(
+    tx: &mut Tx,
+    basis: &ClaimBasis,
+    id: &str,
+) -> Result<Invocation, ModelError> {
+    if !valid_scope_id(id) {
+        return Err(ModelError::Invalid);
+    }
+    let invocation = load(tx, id).await?;
+    let original = &invocation.request.basis;
+    if original.actor_id != basis.actor_id
+        || original.scope != basis.scope
+        || original.task_id != basis.task_id
+        || original.cycle_id != basis.cycle_id
+    {
+        return Err(ModelError::Denied);
+    }
+    Ok(invocation)
+}
 async fn load(tx: &mut Tx, id: &str) -> Result<Invocation, ModelError> {
     let row = sqlx::query("SELECT key,request FROM public.model_invocations WHERE id=$1")
         .bind(id)

@@ -1,6 +1,13 @@
 //! Story 22.2 worker proof: the real coordinator, executor authority poll,
 //! native loopback transport and PostgreSQL. The provider stalls so Pause and
 //! restart are exercised while a model call is genuinely in flight.
+//!
+//! The OS-level restart proof re-executes this test executable as a separate
+//! worker process (the ignored helper below) and SIGKILLs it mid-turn and,
+//! separately, mid-tool. The production `zobba-worker` binary deliberately
+//! composes no qualification source and has no fixture flag, so model work can
+//! only be composed by a test process; the killed and replacement processes
+//! run the production `coordinate_work` path against the real database.
 use sha2::{Digest, Sha256};
 use sqlx::{Connection, Executor, PgConnection, postgres::PgPoolOptions};
 use std::{
@@ -10,7 +17,11 @@ use std::{
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-use tokio::{io::AsyncReadExt, net::TcpListener};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpListener,
+    process::{Child, Command},
+};
 use zobba_application::{
     model::{
         ArgumentSchema, CancellationSemantics, Capabilities, Effect, IdempotencySemantics,
@@ -22,13 +33,14 @@ use zobba_application::{
 };
 use zobba_domain::{
     identity::Scope,
+    model::{JsonValue, operation_arguments},
     permissions::{
         AccountRestriction, Action, Attachment, AuthoritySnapshot, CanonicalOperation,
         EnvironmentKind, PermissionBounds, PermissionRule, PolicyDocument, PolicyKind, Purpose,
-        ReadRestriction, SourceBinding,
+        ReadRestriction, SourceBinding, SourceFact,
     },
     task::{Cessation, CommandKind, CommandReceipt, TaskCommand, TaskState},
-    work::{Attention, StepStatus},
+    work::{Attention, StepKind, StepStatus, invocation_key},
 };
 use zobba_infrastructure::{
     RuntimeDatabase, database_options,
@@ -133,24 +145,37 @@ fn policy(kind: PolicyKind, subject: &str) -> PolicyDocument {
     }
 }
 
-/// A loopback provider that accepts each request and never answers.
+/// A loopback endpoint that accepts each request and never answers, or (with
+/// a reply) answers every request with that exact response.
 struct Stall {
+    address: std::net::SocketAddr,
     endpoint: String,
     sends: Arc<AtomicUsize>,
+    bodies: Arc<std::sync::Mutex<Vec<String>>>,
     _task: tokio::task::JoinHandle<()>,
 }
 impl Stall {
     async fn start() -> Self {
+        Self::answering(vec![]).await
+    }
+    /// Serve `replies` in order (the last repeats); with none, hold every
+    /// request open. An owned-source lookup is answered from the request's own
+    /// exact identities with an authoritative completion.
+    async fn answering(replies: Vec<Vec<u8>>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let endpoint = format!("http://{}/native", listener.local_addr().unwrap());
+        let address = listener.local_addr().unwrap();
+        let endpoint = format!("http://{address}/native");
         let sends = Arc::new(AtomicUsize::new(0));
+        let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
         let count = sends.clone();
+        let seen = bodies.clone();
         let task = tokio::spawn(async move {
             let mut held = Vec::new();
             loop {
                 let (mut socket, _) = listener.accept().await.unwrap();
                 let mut buffer = vec![0u8; 1 << 20];
                 let mut total = 0;
+                let mut lookup = false;
                 // Read the complete request before counting it as sent.
                 loop {
                     let n = socket.read(&mut buffer[total..]).await.unwrap_or(0);
@@ -169,20 +194,223 @@ impl Stall {
                             })
                             .unwrap_or(0);
                         if total >= end + 4 + length {
+                            lookup = text[..end].starts_with("POST /v1/operations/lookup");
+                            seen.lock().unwrap().push(
+                                String::from_utf8_lossy(&buffer[end + 4..end + 4 + length])
+                                    .into_owned(),
+                            );
                             count.fetch_add(1, Ordering::SeqCst);
                             break;
                         }
                     }
                 }
-                held.push(socket);
+                if lookup {
+                    let body = seen.lock().unwrap().last().cloned().unwrap();
+                    let request: serde_json::Value = serde_json::from_str(&body).unwrap();
+                    let answer = serde_json::json!({
+                        "source": request["source"],
+                        "operation_id": request["operation_id"],
+                        "attempt_id": request["attempt_id"],
+                        "fingerprint": request["fingerprint"],
+                        "outcome": "completed",
+                    })
+                    .to_string();
+                    let reply = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
+                        answer.len()
+                    );
+                    let _ = socket.write_all(reply.as_bytes()).await;
+                    let _ = socket.shutdown().await;
+                } else if let Some(reply) = replies
+                    .get(count.load(Ordering::SeqCst) - 1)
+                    .or(replies.last())
+                {
+                    let _ = socket.write_all(reply).await;
+                    let _ = socket.shutdown().await;
+                } else {
+                    held.push(socket);
+                }
             }
         });
         Self {
+            address,
             endpoint,
             sends,
+            bodies,
             _task: task,
         }
     }
+    /// Owned-source dispatches carry the canonical request; lookups do not.
+    fn dispatches(&self) -> usize {
+        self.bodies
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|body| body.contains("\"canonical_request\""))
+            .count()
+    }
+}
+
+fn json(value: &JsonValue) -> serde_json::Value {
+    match value {
+        JsonValue::Null => serde_json::Value::Null,
+        JsonValue::Bool(v) => serde_json::Value::Bool(*v),
+        JsonValue::Integer(v) => serde_json::Value::Number((*v).into()),
+        JsonValue::String(v) => serde_json::Value::String(v.clone()),
+        JsonValue::Array(v) => serde_json::Value::Array(v.iter().map(json).collect()),
+        JsonValue::Object(v) => {
+            serde_json::Value::Object(v.iter().map(|(k, v)| (k.clone(), json(v))).collect())
+        }
+    }
+}
+
+fn sse_reply(mut values: Vec<serde_json::Value>) -> Vec<u8> {
+    for (sequence, value) in values.iter_mut().enumerate() {
+        value["sequence_number"] = serde_json::json!(sequence);
+    }
+    let body: String = values
+        .iter()
+        .map(|v| {
+            format!(
+                "event: {}\r\ndata: {v}\r\n\r\n",
+                v["type"].as_str().unwrap()
+            )
+        })
+        .collect();
+    format!(
+        "HTTP/1.1 200 Fixture\r\nContent-Type: text/event-stream; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )
+    .into_bytes()
+}
+
+/// A native OpenAI-format streamed text answer with no tool proposal.
+fn text_reply(text: &str) -> Vec<u8> {
+    use serde_json::json;
+    let part = json!({"type":"output_text","text":text});
+    let item = json!({"id":"message-1","type":"message","role":"assistant","status":"completed","content":[part.clone()]});
+    sse_reply(vec![
+        json!({"type":"response.created","response":{"id":"response-2","model":"fixture-model","status":"in_progress"}}),
+        json!({"type":"response.output_item.added","output_index":0,"item":{"id":"message-1","type":"message","role":"assistant","status":"in_progress","content":[]}}),
+        json!({"type":"response.content_part.added","output_index":0,"item_id":"message-1","content_index":0,"part":{"type":"output_text","text":""}}),
+        json!({"type":"response.output_text.delta","output_index":0,"item_id":"message-1","content_index":0,"delta":text}),
+        json!({"type":"response.output_text.done","output_index":0,"item_id":"message-1","content_index":0,"text":text}),
+        json!({"type":"response.content_part.done","output_index":0,"item_id":"message-1","content_index":0,"part":part}),
+        json!({"type":"response.output_item.done","output_index":0,"item":item.clone()}),
+        json!({"type":"response.completed","response":{"id":"response-2","model":"fixture-model","status":"completed","output":[item],"usage":{"input_tokens":17,"output_tokens":4}}}),
+    ])
+}
+
+/// A native OpenAI-format streamed response proposing the catalogue tool.
+fn tool_reply() -> Vec<u8> {
+    use serde_json::json;
+    let arguments = json(&operation_arguments(&disclosure())).to_string();
+    let item = json!({"id":"item-1","type":"function_call","call_id":"call-1","name":"send_exact","arguments":arguments,"status":"completed"});
+    sse_reply(vec![
+        json!({"type":"response.created","response":{"id":"response-1","model":"fixture-model","status":"in_progress"}}),
+        json!({"type":"response.output_item.added","output_index":0,"item":{"id":"item-1","type":"function_call","call_id":"call-1","name":"send_exact","arguments":"","status":"in_progress"}}),
+        json!({"type":"response.function_call_arguments.delta","output_index":0,"item_id":"item-1","delta":arguments}),
+        json!({"type":"response.function_call_arguments.done","output_index":0,"item_id":"item-1","arguments":arguments,"name":"send_exact"}),
+        json!({"type":"response.output_item.done","output_index":0,"item":item.clone()}),
+        json!({"type":"response.completed","response":{"id":"response-1","model":"fixture-model","status":"completed","output":[item],"usage":{"input_tokens":17,"output_tokens":4}}}),
+    ])
+}
+
+fn source_binding(address: std::net::SocketAddr) -> SourceBinding {
+    SourceBinding {
+        source_id: "fixture-source".into(),
+        ledger_id: "fixture-ledger".into(),
+        endpoint_digest: format!("{:x}", Sha256::digest(address.to_string().as_bytes())),
+        contract_version: 1,
+    }
+}
+
+/// Trusted fixture composition: qualification, loopback transport and the
+/// owned gateway. Shared by the in-process coordinator and the helper process.
+fn composition(
+    pool: sqlx::PgPool,
+    provider: &str,
+    source: std::net::SocketAddr,
+) -> Arc<dyn zobba_worker::work::WorkRunner> {
+    Arc::new(Composition {
+        pool,
+        qualifications: Arc::new(Fixture),
+        transport: Arc::new(
+            NativeAdapter::test_loopback(Provider::OpenAi, provider, Duration::from_secs(60))
+                .unwrap(),
+        ),
+        gateway: Gateway::qualification(source, source_binding(source)).unwrap(),
+        disclosure: disclosure(),
+        input_class: "audit".into(),
+        max_output_tokens: 128,
+    })
+}
+
+/// Spawned explicitly by the OS-level restart proof. It runs the production
+/// `coordinate_work` with the fixture composition until SIGTERM or SIGKILL.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "test-only worker subprocess; the parent supplies guarded configuration"]
+async fn work_worker_helper() {
+    let configuration = support::Configuration::from_environment();
+    let provider = std::env::var("ZOBBA_WORK_TEST_PROVIDER").unwrap();
+    let source: std::net::SocketAddr = std::env::var("ZOBBA_WORK_TEST_SOURCE")
+        .unwrap()
+        .parse()
+        .unwrap();
+    let database = RuntimeDatabase::connect(&configuration.runtime)
+        .await
+        .unwrap();
+    let runner = composition(database.pool().clone(), &provider, source);
+    let (shutdown, receiver) = tokio::sync::watch::channel(false);
+    let mut terminate =
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).unwrap();
+    tokio::spawn(async move {
+        terminate.recv().await;
+        let _ = shutdown.send(true);
+    });
+    let config = executor::Config::new(std::path::PathBuf::from("/bin/false"), 10).unwrap();
+    zobba_worker::coordinate_work(database, config, runner, receiver).await;
+}
+
+fn helper(configuration: &support::Configuration, provider: &str, source: &str) -> Child {
+    Command::new(std::env::current_exe().unwrap())
+        .args(["--ignored", "--exact", "work_worker_helper", "--nocapture"])
+        .env_clear()
+        .env(
+            "ZOBBA_TEST_MIGRATION_DATABASE_URL",
+            &configuration.migration,
+        )
+        .env("ZOBBA_TEST_RUNTIME_DATABASE_URL", &configuration.runtime)
+        .env("ZOBBA_TEST_ADMIN_DATABASE_URL", &configuration.admin)
+        .env("ZOBBA_WORK_TEST_PROVIDER", provider)
+        .env("ZOBBA_WORK_TEST_SOURCE", source)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::inherit())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap()
+}
+
+/// SIGKILL: the abrupt loss of the producing worker process.
+async fn kill(child: &mut Child) {
+    child.start_kill().unwrap();
+    let status = tokio::time::timeout(Duration::from_secs(10), child.wait())
+        .await
+        .expect("killed worker exits")
+        .unwrap();
+    assert!(!status.success(), "the worker was killed, not drained");
+}
+
+async fn terminate(child: &mut Child) {
+    let status = Command::new("/bin/kill")
+        .arg("-TERM")
+        .arg(child.id().unwrap().to_string())
+        .status()
+        .await
+        .unwrap();
+    assert!(status.success());
+    let _ = tokio::time::timeout(Duration::from_secs(15), child.wait()).await;
 }
 
 async fn eventually<T>(mut check: impl AsyncFnMut() -> Option<T>) -> T {
@@ -247,7 +475,10 @@ async fn stalled_provider_pause_and_restart_recover_without_resending() {
     let organisation = policy(PolicyKind::Organisation, "org-a");
     let engagement = policy(PolicyKind::Engagement, "engagement-a");
     let member = policy(PolicyKind::Member, "actor-a");
-    let account = policy(PolicyKind::Account, "fixture-account");
+    // The owned source for tool dispatch: accepts and never answers.
+    let source = Stall::start().await;
+    let mut account = policy(PolicyKind::Account, "fixture-account");
+    account.account.as_mut().unwrap().source = source_binding(source.address);
     for document in [&organisation, &engagement, &member, &account] {
         operations
             .save_policy("actor-manager", &scope(), document)
@@ -339,37 +570,7 @@ async fn stalled_provider_pause_and_restart_recover_without_resending() {
         .unwrap();
 
     let provider = Stall::start().await;
-    let gateway_address: std::net::SocketAddr = "127.0.0.1:9".parse().unwrap();
-    let runner = || -> Arc<dyn zobba_worker::work::WorkRunner> {
-        Arc::new(Composition {
-            pool: pool.clone(),
-            qualifications: Arc::new(Fixture),
-            transport: Arc::new(
-                NativeAdapter::test_loopback(
-                    Provider::OpenAi,
-                    &provider.endpoint,
-                    Duration::from_secs(60),
-                )
-                .unwrap(),
-            ),
-            gateway: Gateway::qualification(
-                gateway_address,
-                SourceBinding {
-                    source_id: "fixture-source".into(),
-                    ledger_id: "fixture-ledger".into(),
-                    endpoint_digest: format!(
-                        "{:x}",
-                        Sha256::digest(gateway_address.to_string().as_bytes())
-                    ),
-                    contract_version: 1,
-                },
-            )
-            .unwrap(),
-            disclosure: disclosure(),
-            input_class: "audit".into(),
-            max_output_tokens: 128,
-        })
-    };
+    let runner = || composition(pool.clone(), &provider.endpoint, source.address);
     let config = executor::Config::new(std::path::PathBuf::from("/bin/false"), 10).unwrap();
     let (stop, shutdown) = tokio::sync::watch::channel(false);
     let first = tokio::spawn(zobba_worker::coordinate_work(
@@ -479,4 +680,272 @@ async fn stalled_provider_pause_and_restart_recover_without_resending() {
     assert_eq!(provider.sends.load(Ordering::SeqCst), 2);
     stop.send(true).unwrap();
     let _ = tokio::time::timeout(Duration::from_secs(10), second).await;
+
+    // OS-level restart proof: separate worker processes, SIGKILL, new process.
+    let accepted = async |key: &str| -> CommandReceipt {
+        let receipt = tasks
+            .admit(
+                "actor-a",
+                &scope(),
+                &TaskCommand {
+                    context: None,
+                    key: key.into(),
+                    kind: CommandKind::Create,
+                    task_id: None,
+                    cycle_id: None,
+                    content: Some("Synthetic process-loss objective".into()),
+                },
+            )
+            .await
+            .unwrap();
+        let mut snapshot = authority.clone();
+        snapshot.task_id = receipt.task_id.clone();
+        snapshot.task = policy(PolicyKind::Task, &receipt.task_id);
+        snapshot.task.actor_id = "actor-a".into();
+        operations
+            .accept_authority("actor-a", &scope(), &receipt.task_id, &snapshot)
+            .await
+            .unwrap();
+        receipt
+    };
+    let expire = async |admin: &mut PgConnection, task: &str| {
+        sqlx::query(
+            "UPDATE public.tasks SET owner_until=clock_timestamp()-interval '1 second' WHERE id=$1",
+        )
+        .bind(task)
+        .execute(admin)
+        .await
+        .unwrap();
+    };
+    let task_invocations = async |admin: &mut PgConnection, task: &str| -> Vec<String> {
+        sqlx::query_scalar("SELECT key FROM public.model_invocations WHERE task_id=$1")
+            .bind(task)
+            .fetch_all(admin)
+            .await
+            .unwrap()
+    };
+    let source_address = source.address.to_string();
+    // Trusted material for the owned source, supplied by the guarded fixture
+    // owner exactly as Story 20.5 requires; runtime cannot write it.
+    sqlx::query("INSERT INTO public.trusted_attachment_metadata(organisation_id,client_id,engagement_id,source_key,attachment_id,digest,classification) VALUES('org-a','client-a','engagement-a','14:fixture-source14:fixture-ledger','attachment',$1,'audit')")
+        .bind("a".repeat(64))
+        .execute(&mut admin)
+        .await
+        .unwrap();
+
+    // Killed mid-turn: the provider holds the request; the process dies.
+    let stalled = Stall::start().await;
+    let receipt = accepted("work-process-kill-turn").await;
+    let mut lost = helper(&configuration, &stalled.endpoint, &source_address);
+    eventually(async || (stalled.sends.load(Ordering::SeqCst) == 1).then_some(())).await;
+    let keys = task_invocations(&mut admin, &receipt.task_id).await;
+    assert_eq!(keys.len(), 1, "the dispatch cutoff precedes provider I/O");
+    kill(&mut lost).await;
+    expire(&mut admin, &receipt.task_id).await;
+    let mut replacement = helper(&configuration, &stalled.endpoint, &source_address);
+    let work = eventually(async || {
+        let work = tasks
+            .work("actor-a", &scope(), &receipt.task_id)
+            .await
+            .ok()?;
+        (work.attention == Some(Attention::StepFailed)).then_some(work)
+    })
+    .await;
+    let task = eventually(async || {
+        let task = tasks
+            .get("actor-a", &scope(), &receipt.task_id)
+            .await
+            .ok()?;
+        (task.state == TaskState::Waiting).then_some(task)
+    })
+    .await;
+    assert_eq!(
+        task.state,
+        TaskState::Waiting,
+        "an unknown turn never completes"
+    );
+    assert_eq!(
+        stalled.sends.load(Ordering::SeqCst),
+        1,
+        "the new process recovered the same invocation key without a resend"
+    );
+    assert_eq!(
+        task_invocations(&mut admin, &receipt.task_id).await,
+        keys,
+        "the same invocation key, no second invocation"
+    );
+    let snapshot = tasks
+        .get("actor-a", &scope(), &receipt.task_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        keys[0],
+        invocation_key(
+            &receipt.task_id,
+            &receipt.cycle_id,
+            snapshot.intent_revision,
+            0
+        )
+    );
+    assert_eq!(
+        work.steps
+            .iter()
+            .map(|s| (s.kind, s.status))
+            .collect::<Vec<_>>(),
+        vec![(StepKind::ModelTurn, StepStatus::Failed)],
+        "the unknown turn is a recorded fact, not replayed"
+    );
+    terminate(&mut replacement).await;
+
+    // Killed mid-tool: the turn proposed the tool, consumption committed and the
+    // owned source holds the dispatch; the process dies.
+    let answering = Stall::answering(vec![
+        tool_reply(),
+        text_reply("Reconciled result considered."),
+    ])
+    .await;
+    let receipt = accepted("work-process-kill-tool").await;
+    let mut lost = helper(&configuration, &answering.endpoint, &source_address);
+    eventually(async || (source.dispatches() == 1).then_some(())).await;
+    kill(&mut lost).await;
+    let attempts = async |admin: &mut PgConnection, task: &str| -> (i64,) {
+        sqlx::query_as("SELECT count(*) FROM public.operation_attempts a JOIN public.operations o ON o.id=a.operation_id WHERE o.task_id=$1")
+            .bind(task)
+            .fetch_one(admin)
+            .await
+            .unwrap()
+    };
+    assert_eq!(attempts(&mut admin, &receipt.task_id).await.0, 1);
+    expire(&mut admin, &receipt.task_id).await;
+    let turns = answering.sends.load(Ordering::SeqCst);
+    assert_eq!(turns, 1);
+    let mut replacement = helper(&configuration, &answering.endpoint, &source_address);
+    let task = eventually(async || {
+        let task = tasks
+            .get("actor-a", &scope(), &receipt.task_id)
+            .await
+            .ok()?;
+        (task.cessation == Cessation::ReconciliationRequired).then_some(task)
+    })
+    .await;
+    assert_eq!(task.cessation, Cessation::ReconciliationRequired);
+    // Give the new process time to act; nothing may be replayed.
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    assert_eq!(
+        source.dispatches(),
+        1,
+        "the consumed attempt is never resent by the new process"
+    );
+    assert_eq!(
+        attempts(&mut admin, &receipt.task_id).await.0,
+        1,
+        "no second attempt"
+    );
+    assert_eq!(
+        answering.sends.load(Ordering::SeqCst),
+        turns,
+        "no model turn is replayed while the attempt is unresolved"
+    );
+    let work = tasks
+        .work("actor-a", &scope(), &receipt.task_id)
+        .await
+        .unwrap();
+    assert!(
+        !work
+            .steps
+            .iter()
+            .any(|s| s.kind == StepKind::ToolStep && s.status == StepStatus::Refused),
+        "a possibly dispatched operation is never recorded as refused"
+    );
+    // The consumed attempt reconciles through a source lookup under current
+    // authority (never a send). The Task then continues: the same attempt is
+    // recorded as completed with its fact, and nothing is resent.
+    let attempt_id: String = sqlx::query_scalar("SELECT a.id FROM public.operation_attempts a JOIN public.operations o ON o.id=a.operation_id WHERE o.task_id=$1")
+        .bind(&receipt.task_id)
+        .fetch_one(&mut admin)
+        .await
+        .unwrap();
+    let reconciler =
+        OperationRepository::new(pool.clone()).with_model_qualification_source(Arc::new(Fixture));
+    let fact = Gateway::qualification(source.address, source_binding(source.address))
+        .unwrap()
+        .recover(&reconciler, "actor-a", &scope(), &attempt_id)
+        .await
+        .unwrap();
+    assert_eq!(fact, SourceFact::Completed);
+    // Reconciliation leaves the Task waiting. An explicit Pause then Resume
+    // starts a fresh producer under the unchanged intent, which must rebuild
+    // the reconciled attempt from durable facts rather than send again.
+    let waiting = eventually(async || {
+        let task = tasks
+            .get("actor-a", &scope(), &receipt.task_id)
+            .await
+            .ok()?;
+        (task.state == TaskState::Waiting && task.cessation == Cessation::Confirmed).then_some(task)
+    })
+    .await;
+    assert_eq!(waiting.state, TaskState::Waiting);
+    controls
+        .admit(
+            "actor-a",
+            &scope(),
+            &control(
+                "work-process-reconciled-pause",
+                CommandKind::Pause,
+                &receipt,
+            ),
+        )
+        .await
+        .unwrap();
+    eventually(async || {
+        let task = tasks
+            .get("actor-a", &scope(), &receipt.task_id)
+            .await
+            .ok()?;
+        (task.state == TaskState::Paused).then_some(())
+    })
+    .await;
+    controls
+        .admit(
+            "actor-a",
+            &scope(),
+            &control(
+                "work-process-reconciled-resume",
+                CommandKind::Resume,
+                &receipt,
+            ),
+        )
+        .await
+        .unwrap();
+    let work = eventually(async || {
+        let work = tasks
+            .work("actor-a", &scope(), &receipt.task_id)
+            .await
+            .ok()?;
+        work.steps
+            .iter()
+            .any(|s| s.status == StepStatus::Responded)
+            .then_some(work)
+    })
+    .await;
+    assert_eq!(
+        work.steps
+            .iter()
+            .map(|s| (s.kind, s.status))
+            .collect::<Vec<_>>(),
+        vec![
+            (StepKind::ModelTurn, StepStatus::Proposed),
+            (StepKind::ToolStep, StepStatus::Completed),
+            (StepKind::ModelTurn, StepStatus::Responded),
+        ],
+        "the reconciled attempt is a completed fact, never refused or replayed"
+    );
+    assert_eq!(
+        work.steps[1].attempt_id.as_deref(),
+        Some(attempt_id.as_str())
+    );
+    assert_eq!(work.steps[1].fact, Some(SourceFact::Completed));
+    assert_eq!(source.dispatches(), 1, "a lookup is not a resend");
+    assert_eq!(attempts(&mut admin, &receipt.task_id).await.0, 1);
+    terminate(&mut replacement).await;
 }
