@@ -204,7 +204,21 @@ encoding; the provided database was SQL_ASCII and could not run migration 0002):
 
 Known limits: model availability on the card is false in production (no
 qualification source is installed in the API); the work card is fetched in the
-Task inspection panel, not in each conversation task card; a tool step recovered
-after its attempt already completed is recorded as refused rather than rebuilt
-(no replay either way); worker restart is proven with an in-process coordinator
-abort, not an OS process kill.
+Task inspection panel, not in each conversation task card.
+
+Follow-up (2026-10-07, before review):
+- Tool steps are rebuilt from immutable operation history before any consumption.
+  A completed attempt is `completed` with its fact and enters history as a
+  `ToolExchange`; an attempt with an unknown outcome is `reconciliation_required`;
+  a fence after admission is `superseded`. None is recorded as `refused`, and
+  none is resent. Historical turns (including earlier-intent turns) are read by
+  exact identity in the claim's own Task/cycle; `prepare` still checks disclosure.
+- Context includes current authorised knowledge (16 records, 64 KiB) with exact
+  references, verified again at disclosure; withdrawn records are omitted.
+- OS-level proof: `work_process.rs` re-executes the test binary as a worker
+  process and SIGKILLs it mid-turn and mid-tool. The production binary has no
+  qualification source or fixture flag, so it cannot run model work itself.
+- With `?sslmode=disable` on the three test URLs, `bootstrap.rs` (3/3) and
+  `scripts/smoke.py` pass. Full gates: fmt and clippy clean; workspace tests 385
+  passed, 0 failed, 4 ignored (45 binaries, single-threaded); `pnpm check` 184/186
+  (the same 2 IPv6 sandbox failures); browser 161 passed.
