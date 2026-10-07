@@ -13,7 +13,9 @@ Owner chose `gpt-6-luna` and an OpenAI-only first qualification within USD 10. L
 reasoning model (default effort medium), so a profile declaring the reasoning capability with
 request effort `None` now sends `reasoning.effort = "none"`; a non-reasoning profile sends no
 reasoning field. The runner accepts `--providers`, `--openai-reasoning` and `--max-usd` (1–20),
-all recorded in the reviewed manifest. Story 22.1 still needs Anthropic qualification.
+all recorded in the reviewed manifest. Run 2 qualified OpenAI native transport (receipt in
+`qualification-receipts/`). Owner deferred Anthropic qualification (2026-10-07, no budget):
+do not run or request it until the owner reopens it; Anthropic stays unqualified.
 
 ## 2026-10-03 — Final operation expiry checks follow validation
 
