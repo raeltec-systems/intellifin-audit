@@ -2,7 +2,7 @@
 title: '22.2 AC4 — Establish an engagement conversationally from the first objective'
 type: 'feature'
 created: '2026-10-07'
-status: 'in-progress'
+status: 'in-review'
 baseline_commit: '65cd82e677b64319c244a5ee4332fa884c1973c5'
 story_key: 22-2-continue-a-real-task-under-changing-guidance
 review_loop_iteration: 0
