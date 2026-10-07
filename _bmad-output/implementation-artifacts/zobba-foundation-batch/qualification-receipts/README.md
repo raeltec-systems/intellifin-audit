@@ -22,3 +22,19 @@ cargo run -q --locked -p zobba-infrastructure --example model_qualification -- -
 ```
 
 The resulting `model-qualification-*.jsonl` receipt in this folder is the record to keep.
+
+## Result of the first run (2026-10-07)
+
+Approval `owner-2026-10-07-zobba-test` was consumed. The text request succeeded (41 input /
+6 output tokens). The tool request failed with a provider HTTP error before any output, so
+the result is `not_qualified` and no trusted registration was installed.
+
+Likely cause, found by reading the retained request body: the `attachments` and `recipients`
+constant-array arguments were sent as `{"type":"array","enum":[[]]}` with no `items`. OpenAI
+refuses an array schema without `items`. This was an adapter defect, not a model limit, and it
+would have hit GPT-4.1 as well. The adapter now gives constant arrays and objects their full
+shape. The HTTP error body was not retained, so this cause is not yet proven.
+
+A re-run needs a new owner approval. The request bytes changed, so the new dry-run manifest
+SHA-256 is `bb69c378f9bd9726ae639e12264147fc1914d66a8fc4885c281a5fa702c9bca4`. Use a new approval
+ID (for example `owner-2026-10-07-zobba-test-2`) in step 2 above.

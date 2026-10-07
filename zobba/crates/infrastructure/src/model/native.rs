@@ -529,18 +529,41 @@ fn schema_json(schema: &ArgumentSchema) -> Value {
                 .collect();
             serde_json::json!({"type": "object", "properties": properties, "required": required, "additionalProperties": false})
         }
-        ArgumentSchema::Constant(value) => {
-            let kind = match value {
-                JsonValue::Null => "null",
-                JsonValue::Bool(_) => "boolean",
-                JsonValue::Integer(_) => "integer",
-                JsonValue::String(_) => "string",
-                JsonValue::Array(_) => "array",
-                JsonValue::Object(_) => "object",
-            };
-            serde_json::json!({"type": kind, "enum": [json_value(value)]})
-        }
+        ArgumentSchema::Constant(value) => constant_schema(value),
     }
+}
+
+// A constant keeps its exact `enum` value, and complex constants also carry the
+// structural shape providers validate: OpenAI refuses any array schema without
+// `items` (even outside strict mode), so `{"type":"array","enum":[[]]}` made the
+// whole tool request fail before the model saw it.
+fn constant_schema(value: &JsonValue) -> Value {
+    let mut schema = match value {
+        JsonValue::Null => serde_json::json!({"type": "null"}),
+        JsonValue::Bool(_) => serde_json::json!({"type": "boolean"}),
+        JsonValue::Integer(_) => serde_json::json!({"type": "integer"}),
+        JsonValue::String(_) => serde_json::json!({"type": "string"}),
+        JsonValue::Array(values) => {
+            // No element is ever accepted for an empty constant; `maxItems: 0`
+            // carries that, and the item schema only satisfies the shape rule.
+            let items = if values.is_empty() {
+                serde_json::json!({"type": "string"})
+            } else {
+                serde_json::json!({"anyOf": values.iter().map(constant_schema).collect::<Vec<_>>()})
+            };
+            serde_json::json!({"type": "array", "items": items, "minItems": values.len(), "maxItems": values.len()})
+        }
+        JsonValue::Object(values) => {
+            let properties: Map<String, Value> = values
+                .iter()
+                .map(|(key, value)| (key.clone(), constant_schema(value)))
+                .collect();
+            serde_json::json!({"type": "object", "properties": properties,
+                "required": values.keys().collect::<Vec<_>>(), "additionalProperties": false})
+        }
+    };
+    schema["enum"] = serde_json::json!([json_value(value)]);
+    schema
 }
 
 /// OpenAI strict output requires an object root and every property of every
