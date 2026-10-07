@@ -8,7 +8,8 @@ synthetic test messages only, reservation USD 1 before taxes, paid from the exis
 Approval `owner-2026-10-07-zobba-test`, manifest `71b0c5394c1d84c55425a009c7379da2a08c23ca5304ca2a41b970b27a70f834`,
 is consumed. Receipt: `model-qualification-751e42ff….jsonl`. The text phase passed; the tool
 phase got HTTP 400 `invalid_function_parameters` because prepared array constants were sent
-as `"enum": [[]]`. Fixed in `native.rs` (`constant_schema_json`). A manual check with the fixed
+as `"enum": [[]]`. Adding `items`/`minItems`/`maxItems` while keeping that `enum` still gets
+HTTP 400 (tested); the `enum` itself must go. Fixed in `native.rs` (`constant_schema_json`). A manual check with the fixed
 schema got HTTP 200 and a correct `qualification_probe` call. Run 1 cannot be re-run.
 
 ## Run 2 (needs a NEW owner approval ID)
@@ -32,3 +33,4 @@ cargo run -q --locked -p zobba-infrastructure --example model_qualification -- -
 ```
 
 The resulting `model-qualification-*.jsonl` receipt in this folder is the record to keep.
+

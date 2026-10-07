@@ -711,6 +711,43 @@ fn proposals(outcome: &TransportOutcome) -> usize {
         .count()
 }
 
+#[test]
+fn constant_array_and_object_schemas_carry_their_shape_and_no_composite_enum() {
+    let empty = schema_json(&ArgumentSchema::Constant(JsonValue::Array(vec![])));
+    assert_eq!(
+        empty,
+        json!({"type": "array", "items": {"type": "string"}, "minItems": 0, "maxItems": 0})
+    );
+    let listed = schema_json(&ArgumentSchema::Constant(JsonValue::Array(vec![
+        JsonValue::String("a".into()),
+        JsonValue::Integer(2),
+    ])));
+    assert_eq!(
+        listed["items"]["anyOf"][0],
+        json!({"type": "string", "enum": ["a"]})
+    );
+    assert_eq!(
+        listed["items"]["anyOf"][1],
+        json!({"type": "integer", "enum": [2]})
+    );
+    assert!(listed.get("enum").is_none());
+    let object = schema_json(&ArgumentSchema::Constant(JsonValue::Object(
+        [("k".to_string(), JsonValue::Array(vec![]))]
+            .into_iter()
+            .collect(),
+    )));
+    assert_eq!(
+        object["properties"]["k"]["items"],
+        json!({"type": "string"})
+    );
+    assert_eq!(object["required"], json!(["k"]));
+    assert!(object.get("enum").is_none());
+    assert_eq!(
+        schema_json(&ArgumentSchema::Constant(JsonValue::String("x".into()))),
+        json!({"type": "string", "enum": ["x"]})
+    );
+}
+
 #[tokio::test]
 async fn declared_openai_reasoning_model_is_explicitly_held_to_no_reasoning() {
     for (reasoning, provider) in [
