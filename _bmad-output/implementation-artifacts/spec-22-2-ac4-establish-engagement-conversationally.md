@@ -110,26 +110,26 @@ All paths are under `zobba/`.
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `migrations/0013_engagement_setup.sql`, `schema-v13.catalog`, `domain/src/lib.rs`, `infrastructure/src/lib.rs`
+- [x] `migrations/0013_engagement_setup.sql`, `schema-v13.catalog`, `domain/src/lib.rs`, `infrastructure/src/lib.rs`
   - Add nullable `period_start` and `period_end` to `engagements`, with a CHECK that both are set or both are NULL and start ≤ end.
   - Add `engagement_setups`: org, actor, key, objective, state, candidates, resolved client, new-client name, period, engagement, Task, receipt.
   - Add `engagement_setup_messages`, with RLS limited to the actor.
   - Add the owner function `engagement_establish`. It authorises under the locks, creates the client, engagement and assignment, and enforces the bounds.
-- [ ] `domain/src/engagement_setup.rs` (new)
+- [x] `domain/src/engagement_setup.rs` (new)
   - A pure state machine (objective → client → period → confirm → established) and the resolution rules: case folding, ISO period parsing, ID generation, bounds.
   - Unit tests for every row of the matrix.
-- [ ] `infrastructure/src/engagement_setup.rs` (new)
+- [x] `infrastructure/src/engagement_setup.rs` (new)
   - A repository that persists each message, then resolves it.
   - Confirmation calls `engagement_establish`, sets the new scope, and runs the existing Task `admit` Create in the same transaction.
   - Exact replay.
-- [ ] `api/src/engagement_setup.rs` and OpenAPI
+- [x] `api/src/engagement_setup.rs` and OpenAPI
   - Routes: `POST /organisations/{org}/engagement-setups`, `.../{id}/messages` and `.../{id}/confirm`, plus `GET` of a setup. All use the session and CSRF fences and `X-Expected-Actor`.
-- [ ] `web/src/EngagementSetup.tsx`, `App.tsx`
+- [x] `web/src/EngagementSetup.tsx`, `App.tsx`
   - An organisation-level conversation with a composer.
   - Question and answer turns, a candidate pick list, the new-client confirmation, and a summary confirmation.
   - Durable outbox recovery; then open the new engagement conversation.
   - Keyboard, narrow-screen and WCAG 2.2 AA support.
-- [ ] Tests:
+- [x] Tests:
   - PostgreSQL: atomic creation and rollback on Task failure, authority revocation under the lock, the concurrent-confirm race (a held transaction observed in `pg_locks`), bounds, replay and conflict, and that the runtime role has no INSERT.
   - API HTTP.
   - Chromium: an Auditor with zero assignments completes the happy path with keyboard only, plus the ambiguous-client path.
