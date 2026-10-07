@@ -182,8 +182,18 @@ impl NativeAdapter {
                         })
                     })
                     .collect();
-                serde_json::json!({"model": request.profile.model, "input": input, "tools": tools,
-                    "stream": true, "store": false, "service_tier": "default", "max_output_tokens": request.max_output_tokens})
+                let mut body = serde_json::json!({"model": request.profile.model, "input": input, "tools": tools,
+                    "stream": true, "store": false, "service_tier": "default", "max_output_tokens": request.max_output_tokens});
+                // An OpenAI reasoning model reasons by default (gpt-6-luna
+                // defaults to medium). Effort is already None here, so a
+                // declared reasoning model is explicitly held to no reasoning;
+                // reasoning output items remain unsupported and fail closed.
+                // A non-reasoning model would refuse this field, so it is sent
+                // only when the profile declares the capability.
+                if request.profile.capabilities.reasoning {
+                    body["reasoning"] = serde_json::json!({"effort": "none"});
+                }
+                body
             }
             Provider::Anthropic => {
                 let messages = native_history(request, Provider::Anthropic);

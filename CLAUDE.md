@@ -1,3 +1,11 @@
+## 2026-10-07 — OpenAI-only gpt-6-luna qualification
+
+Owner chose `gpt-6-luna` and an OpenAI-only first qualification within USD 10. Luna is a
+reasoning model (default effort medium), so a profile declaring the reasoning capability with
+request effort `None` now sends `reasoning.effort = "none"`; a non-reasoning profile sends no
+reasoning field. The runner accepts `--providers`, `--openai-reasoning` and `--max-usd` (1–20),
+all recorded in the reviewed manifest. Story 22.1 still needs Anthropic qualification.
+
 ## 2026-10-03 — Final operation expiry checks follow validation
 
 Finish bounded model/history validation and flush deferred dispatch writes before

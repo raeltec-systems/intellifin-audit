@@ -712,6 +712,31 @@ fn proposals(outcome: &TransportOutcome) -> usize {
 }
 
 #[tokio::test]
+async fn declared_openai_reasoning_model_is_explicitly_held_to_no_reasoning() {
+    for (reasoning, provider) in [
+        (true, Provider::OpenAi),
+        (false, Provider::OpenAi),
+        (true, Provider::Anthropic),
+    ] {
+        let fixture = Fixture::stream(&text_stream(provider, "text")).await;
+        let mut value = request(provider);
+        value.profile.capabilities.reasoning = reasoning;
+        assert_eq!(
+            fixture.invoke(provider, &value).await.completion,
+            Completion::Succeeded
+        );
+        let seen = fixture.requests.lock().await;
+        let body = &seen[0].body;
+        if reasoning && provider == Provider::OpenAi {
+            assert_eq!(body["reasoning"], serde_json::json!({"effort": "none"}));
+        } else {
+            assert!(body.get("reasoning").is_none());
+            assert!(body.get("thinking").is_none());
+        }
+    }
+}
+
+#[tokio::test]
 async fn both_native_envelopes_preserve_roles_limits_catalogue_and_single_send() {
     for provider in [Provider::OpenAi, Provider::Anthropic] {
         let fixture = Fixture::stream(&text_stream(provider, "héllo 🌍")).await;

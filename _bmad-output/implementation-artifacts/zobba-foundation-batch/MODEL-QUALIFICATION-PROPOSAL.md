@@ -40,3 +40,26 @@ cargo run --locked -p zobba-infrastructure --example model_qualification -- --dr
 The default account labels and spending reference are explicitly pending. Before paid execution, supply the designated account labels, reviewed pricing reference and retained receipt directory to that dry run, inspect its exact initial bodies and continuation templates, and bind the owner's approval to the resulting manifest. The only permitted continuation substitution is the validated provider call ID; the actual transmitted body hash is recorded. An environment confirmation acknowledges the reservation; it is not billing enforcement.
 
 Remaining owner inputs are the two nonproduction account/project bindings, approval of these exact profiles and processing destinations, and whether the spending authorisation is pre-tax or must include an account-specific tax allowance. Credentials must then be supplied securely. No provider or token-counting API call is authorised by this document.
+
+
+## 2026-10-07 amendment: OpenAI-only gpt-6-luna run
+
+Owner direction (2026-10-07): qualify OpenAI first with `gpt-6-luna`, inside the owner's existing
+USD 10 OpenAI credit. Anthropic is deferred, not dropped: Story 22.1 still needs both providers.
+
+- **Model facts** (OpenAI model page, retrieved 2026-10-07): `gpt-6-luna`, 1,050,000-token context,
+  128,000 max output, Standard USD 0.10 / 0.01 cached / 0.50 per million input / output tokens.
+  It is a reasoning model whose default effort is `medium`, and it accepts `none`.
+- **Adapter change:** when a profile declares the reasoning capability and the request effort is
+  `None`, the OpenAI body now carries `"reasoning": {"effort": "none"}`. Reasoning output items stay
+  unsupported and fail closed. A non-reasoning profile sends no reasoning field.
+- **Runner options:** `--providers openai`, `--openai-reasoning true|false` (default `true` for the
+  default `gpt-6-luna`) and `--max-usd N` (whole USD 1–20). The manifest records all three, and
+  `ZOBBA_MODEL_QUALIFICATION_SPEND_LIMIT_CONFIRMED_USD` must equal `--max-usd`.
+- **Reservation:** same conservative rule (full context plus output cap for each of the three
+  possibly accepted attempts): 3 × (1,050,000 × 0.10 + 1,024 × 0.50) / 1,000,000 =
+  **USD 0.316536 before taxes**. Proposed cap: `--max-usd 1`. Expected real use is a few cents.
+
+Dry run: `cargo run --locked -p zobba-infrastructure --example model_qualification -- --dry-run --providers openai --max-usd 1`.
+Remaining owner inputs: the OpenAI project label, approval of the exact manifest hash, permission
+to send these synthetic bodies to OpenAI, and the key supplied securely.
