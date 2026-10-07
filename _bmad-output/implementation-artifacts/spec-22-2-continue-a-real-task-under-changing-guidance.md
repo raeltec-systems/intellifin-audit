@@ -2,7 +2,8 @@
 title: '22.2 — Continue a real Task under changing guidance (work loop, AC1–3)'
 type: 'feature'
 created: '2026-10-07'
-status: 'draft'
+status: 'in-progress'
+baseline_commit: 'ed0d95bdaa70da22b547189fda88c54ca678df64'
 story_key: 22-2-continue-a-real-task-under-changing-guidance
 review_loop_iteration: 0
 context:
@@ -172,6 +173,8 @@ Reconcile any existing inert tests that expect a Guide to cancel; do not delete 
 **Deterministic routing.** Routing stays deterministic so the control path never waits on a model. "Semantic" in this story means that the explicit target, a reply to a question, and the single-candidate rule are resolved by the server.
 
 ## Verification
+
+**Environment:** first run `. /tmp/zobba-env.sh`. It sets Node 24.20.0, pnpm 11.25.0 and the three `ZOBBA_TEST_*` URLs for the disposable PostgreSQL 18.6 database `zobba_local_test` on port 55434. Never commit, push or call a live provider.
 
 **Commands** (run from `zobba/`, sequentially, against a guarded `*_test` PostgreSQL 18 database):
 - `cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings` -- expected: clean.
