@@ -31,3 +31,7 @@
 - source_spec: none
   summary: Story 22.2 AC4 — establish a new scoped engagement and assignment conversationally from the first objective (authorised client and period resolved) before acquiring material, with no procedure or skill-selection wizard.
   evidence: Split on 2026-10-07 (owner chose S) from the Story 22.2 Task work-loop spec (AC1–3); independently shippable and touches engagement-creation authority, so it gets its own spec and review. Story 22.2 is not done until this is delivered.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-22-2-ac4-establish-engagement-conversationally.md`
+  summary: Use the engagement's stored audit period as the default methodology context (period_start/period_end) for Tasks created in that engagement.
+  evidence: Schema 13 stores the period on the engagement, but nothing reads it yet; the AC4 design note leaves methodology use to a later change without changing the Story 21.2 binding rules.
