@@ -1354,11 +1354,21 @@ injected (`coordinate_work`): a qualification source, transport, owned gateway
 and disclosure template. Production `coordinate` installs none, so every Task
 keeps the inert executor and the card reports the model unavailable. Each turn
 uses the 22.1 coordinator with key `turn-` + SHA-256(Task, cycle, applied
-intent, step ordinal); each recorded step (model turn or tool step) is an
+intent, step ordinal, profile ID and revision, catalogue ID and revision), so a
+configuration change after a crash cannot replay an old receipt; each recorded step (model turn or tool step) is an
 immutable fact written under the exact claim producer's custody. Tool proposals
 pass `admit_tool` and current-Permissions consumption, then the owned gateway.
 A cycle is bounded at 16 turns; a text-only turn leaves the Task `waiting`, which
-is never a completed objective.
+is never a completed objective. While any step of the cycle is
+`reconciliation_required` and unresolved, no new turn starts and no further
+proposal is dispatched. A turn that responded or failed under the applied brief
+is not repeated on an owner takeover; only newly applied guidance (or, after a
+failed turn, an explicit Resume/Continue) starts another paid turn. Guidance to a
+`waiting` Task wakes it: the Guide is applied at the boundary and the next turn
+runs with the new brief. Only a current Permissions refusal is recorded
+`refused`; other admission or dispatch failures are `failed`. Consecutive fenced
+retries are bounded (3, with backoff). A step write that replays an existing
+ordinal must match every stored field; a differing retry is a conflict.
 
 Guidance never cancels work. `current()` checks only owner, execution epoch and
 cycle (continuation); admission, disclosure and consumption additionally require
@@ -1383,9 +1393,10 @@ an earlier applied intent, are read by exact identity within the claim's own Tas
 and cycle; `prepare` still checks every disclosure.
 
 Each turn's context includes the Task's current authorised knowledge (at most 16
-records and 64 KiB of text), read under the boundary's Task fence with the same
+records and 64 KiB of text; a record that does not fit is skipped, and the count
+of left-out records is stated in the context and recorded on the step), read under the boundary's Task fence with the same
 per-record checks as knowledge inspection. Each record is an exact `{id,
-revision}` context entry and a `current` verification item, so `prepare`
+revision}` context entry under a bounded derived source ID and a `current` verification item, so `prepare`
 re-verifies it at disclosure. Withdrawn, forgotten, excluded, corrected or
 invalidated records are omitted and never disclosed; preference publications are
 not context. The OS-level proof in `crates/worker/tests/work_process.rs`
@@ -1394,11 +1405,24 @@ mid-tool, because the production binary deliberately composes no qualification
 source and has no fixture flag.
 
 Untargeted direction (`POST task-directions`, reserved control lane) is routed by
-the server, never a model: exactly one non-stopped Task receives it as Guidance;
-two or more produce one durable targeting question. An answer (`POST
+the server, never a model: exactly one open Task that accepts guidance receives
+it as Guidance (direction keys are namespaced `direct-`); two to 100 produce one
+durable targeting question. An answer (`POST
 task-questions/{id}/answer`) names one or more of its candidates; each receives a
 Guide with key `route-` + SHA-256(question key, Task), so retries create no
 duplicates, and stale or foreign Tasks refuse. `GET tasks/{id}/work` returns the
 card projection (bound method, current work, next action with its proposing
-invocation, attention, recent steps and brief revisions with applied boundary and
-`superseded_by`). No route returns model text.
+invocation, attention, recent steps with the total step count, and brief
+revisions with applied boundary and `superseded_by` — only a later revision of
+the same cycle that was actually applied supersedes). No route returns model
+text. `GET task-questions` uses the ordinary lane and reports `has_more`.
+
+Schema 12 also enforces, at the storage boundary, that a step's attempt and
+operation belong to the same Task, cycle and proposing invocation call; that
+guidance applications are recorded only for Create/Guide commands; and that an
+answer's selection is a distinct subset of the question's candidates, by its
+author. These SECURITY INVOKER trigger functions are inventoried and checked at
+bootstrap. The browser persists a direction in its own channel of the durable
+recovery outbox before sending it, fences late replies, recovers an unconfirmed
+direction after reload for an explicit check, and verifies that an answer names
+exactly the chosen Tasks. The work card polls while the Task is ready or running.

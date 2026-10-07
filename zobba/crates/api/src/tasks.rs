@@ -50,10 +50,6 @@ pub(crate) fn router(database: &RuntimeDatabase, identity: AuthState) -> Router 
             post(crate::work::direct),
         )
         .route(
-            "/engagements/{engagement_id}/task-questions",
-            route_get(crate::work::questions),
-        )
-        .route(
             "/engagements/{engagement_id}/task-questions/{question_id}/answer",
             post(crate::work::answer),
         )
@@ -81,6 +77,12 @@ pub(crate) fn router(database: &RuntimeDatabase, identity: AuthState) -> Router 
         .route(
             "/engagements/{engagement_id}/tasks/{task_id}/work",
             route_get(crate::work::get_work),
+        )
+        // Reading questions is ordinary traffic; only answers and directions
+        // (which produce Guides) use the reserved control lane.
+        .route(
+            "/engagements/{engagement_id}/task-questions",
+            route_get(crate::work::questions),
         )
         .with_state(TaskHttpState {
             identity,

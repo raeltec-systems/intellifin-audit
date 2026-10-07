@@ -438,7 +438,8 @@ column|task_steps|14|fact|text|false|||
 column|task_steps|15|status|text|true|||
 column|task_steps|16|next_action|text|false|||
 column|task_steps|17|current_work|text|true|||
-column|task_steps|18|recorded_at|bigint|true|(floor(EXTRACT(epoch FROM clock_timestamp())))::bigint||
+column|task_steps|18|knowledge_omitted|integer|true|0||
+column|task_steps|19|recorded_at|bigint|true|(floor(EXTRACT(epoch FROM clock_timestamp())))::bigint||
 column|task_steps|1|organisation_id|text|true|||
 column|task_steps|2|client_id|text|true|||
 column|task_steps|3|engagement_id|text|true|||
@@ -1218,12 +1219,12 @@ constraint|task_routing_answers|task_routing_answers_organisation_id_client_id_e
 constraint|task_routing_answers|task_routing_answers_organisation_id_not_null|true|NOT NULL organisation_id
 constraint|task_routing_answers|task_routing_answers_pkey|true|PRIMARY KEY (question_id)
 constraint|task_routing_answers|task_routing_answers_question_id_not_null|true|NOT NULL question_id
-constraint|task_routing_answers|task_routing_answers_selected_check|true|CHECK (((jsonb_typeof(selected) = 'array'::text) AND ((jsonb_array_length(selected) >= 1) AND (jsonb_array_length(selected) <= 32)) AND (octet_length((selected)::text) <= 16384)))
+constraint|task_routing_answers|task_routing_answers_selected_check|true|CHECK (((jsonb_typeof(selected) = 'array'::text) AND ((jsonb_array_length(selected) >= 1) AND (jsonb_array_length(selected) <= 100)) AND (octet_length((selected)::text) <= 16384)))
 constraint|task_routing_answers|task_routing_answers_selected_not_null|true|NOT NULL selected
 constraint|task_routing_questions|task_routing_questions_asked_at_not_null|true|NOT NULL asked_at
 constraint|task_routing_questions|task_routing_questions_author_id_fkey|true|FOREIGN KEY (author_id) REFERENCES identities(id)
 constraint|task_routing_questions|task_routing_questions_author_id_not_null|true|NOT NULL author_id
-constraint|task_routing_questions|task_routing_questions_candidates_check|true|CHECK (((jsonb_typeof(candidates) = 'array'::text) AND ((jsonb_array_length(candidates) >= 2) AND (jsonb_array_length(candidates) <= 32)) AND (octet_length((candidates)::text) <= 262144)))
+constraint|task_routing_questions|task_routing_questions_candidates_check|true|CHECK (((jsonb_typeof(candidates) = 'array'::text) AND ((jsonb_array_length(candidates) >= 2) AND (jsonb_array_length(candidates) <= 100)) AND (octet_length((candidates)::text) <= 262144)))
 constraint|task_routing_questions|task_routing_questions_candidates_not_null|true|NOT NULL candidates
 constraint|task_routing_questions|task_routing_questions_client_id_not_null|true|NOT NULL client_id
 constraint|task_routing_questions|task_routing_questions_content_check|true|CHECK ((((char_length(content) >= 1) AND (char_length(content) <= 4000)) AND (octet_length(content) <= 4000)))
@@ -1263,7 +1264,8 @@ constraint|task_skill_selections|task_skill_selections_version_id_not_null|true|
 constraint|task_steps|task_steps_attempt_id_check|true|CHECK ((attempt_id ~ '^[A-Za-z0-9_-]{1,128}$'::text))
 constraint|task_steps|task_steps_call_id_check|true|CHECK ((call_id ~ '^[A-Za-z0-9_.:-]{1,200}$'::text))
 constraint|task_steps|task_steps_check1|true|CHECK (((status = 'completed'::text) = (fact IS NOT NULL)))
-constraint|task_steps|task_steps_check|true|CHECK ((((kind = 'model_turn'::text) AND (call_id IS NULL) AND (operation_id IS NULL) AND (attempt_id IS NULL) AND (status = ANY (ARRAY['proposed'::text, 'responded'::text, 'superseded'::text, 'failed'::text])) AND ((invocation_id IS NOT NULL) OR (status = 'failed'::text))) OR ((kind = 'tool_step'::text) AND (invocation_id IS NOT NULL) AND (call_id IS NOT NULL) AND (status = ANY (ARRAY['completed'::text, 'refused'::text, 'superseded'::text, 'reconciliation_required'::text])) AND ((status <> ALL (ARRAY['completed'::text, 'reconciliation_required'::text])) OR ((operation_id IS NOT NULL) AND (attempt_id IS NOT NULL))))))
+constraint|task_steps|task_steps_check2|true|CHECK (((attempt_id IS NULL) OR (operation_id IS NOT NULL)))
+constraint|task_steps|task_steps_check|true|CHECK ((((kind = 'model_turn'::text) AND (call_id IS NULL) AND (operation_id IS NULL) AND (attempt_id IS NULL) AND (status = ANY (ARRAY['proposed'::text, 'responded'::text, 'superseded'::text, 'failed'::text])) AND ((invocation_id IS NOT NULL) OR (status = 'failed'::text))) OR ((kind = 'tool_step'::text) AND (invocation_id IS NOT NULL) AND (call_id IS NOT NULL) AND (knowledge_omitted = 0) AND (status = ANY (ARRAY['completed'::text, 'refused'::text, 'superseded'::text, 'failed'::text, 'reconciliation_required'::text])) AND ((status <> ALL (ARRAY['completed'::text, 'reconciliation_required'::text])) OR ((operation_id IS NOT NULL) AND (attempt_id IS NOT NULL))))))
 constraint|task_steps|task_steps_client_id_not_null|true|NOT NULL client_id
 constraint|task_steps|task_steps_current_work_check|true|CHECK ((((char_length(current_work) >= 1) AND (char_length(current_work) <= 200)) AND (current_work !~ '[[:cntrl:]]'::text)))
 constraint|task_steps|task_steps_current_work_not_null|true|NOT NULL current_work
@@ -1278,11 +1280,14 @@ constraint|task_steps|task_steps_invocation_id_call_id_key|true|UNIQUE (invocati
 constraint|task_steps|task_steps_invocation_id_check|true|CHECK ((invocation_id ~ '^[A-Za-z0-9_-]{1,128}$'::text))
 constraint|task_steps|task_steps_kind_check|true|CHECK ((kind = ANY (ARRAY['model_turn'::text, 'tool_step'::text])))
 constraint|task_steps|task_steps_kind_not_null|true|NOT NULL kind
+constraint|task_steps|task_steps_knowledge_omitted_check|true|CHECK (((knowledge_omitted >= 0) AND (knowledge_omitted <= 1000000)))
+constraint|task_steps|task_steps_knowledge_omitted_not_null|true|NOT NULL knowledge_omitted
 constraint|task_steps|task_steps_next_action_check|true|CHECK ((((char_length(next_action) >= 1) AND (char_length(next_action) <= 200)) AND (next_action ~ '^(model_turn|await_guidance|reconcile|tool:[A-Za-z0-9_.:-]{1,128})$'::text)))
-constraint|task_steps|task_steps_operation_id_fkey|true|FOREIGN KEY (operation_id) REFERENCES operations(id)
 constraint|task_steps|task_steps_ordinal_check|true|CHECK (((ordinal >= 0) AND (ordinal <= 4095)))
 constraint|task_steps|task_steps_ordinal_not_null|true|NOT NULL ordinal
 constraint|task_steps|task_steps_organisation_id_client_id_engagement_id_invocat_fkey|true|FOREIGN KEY (organisation_id, client_id, engagement_id, invocation_id) REFERENCES model_invocations(organisation_id, client_id, engagement_id, id)
+constraint|task_steps|task_steps_organisation_id_client_id_engagement_id_operat_fkey1|true|FOREIGN KEY (organisation_id, client_id, engagement_id, operation_id, attempt_id) REFERENCES operation_attempts(organisation_id, client_id, engagement_id, operation_id, id)
+constraint|task_steps|task_steps_organisation_id_client_id_engagement_id_operati_fkey|true|FOREIGN KEY (organisation_id, client_id, engagement_id, operation_id) REFERENCES operations(organisation_id, client_id, engagement_id, id)
 constraint|task_steps|task_steps_organisation_id_client_id_engagement_id_task_id_fkey|true|FOREIGN KEY (organisation_id, client_id, engagement_id, task_id, cycle_id) REFERENCES task_cycles(organisation_id, client_id, engagement_id, task_id, id)
 constraint|task_steps|task_steps_organisation_id_not_null|true|NOT NULL organisation_id
 constraint|task_steps|task_steps_pkey|true|PRIMARY KEY (organisation_id, client_id, engagement_id, task_id, cycle_id, ordinal)
@@ -1387,6 +1392,9 @@ function|skills_impact|version text, document jsonb|8c1745b1a29b9664b6a9151bde10
 function|skills_read|actor text, session_hash text, org text|c1ca41a471b9d955b9c6adb40b3d1ba351ded9e5de455bf200bf0b78e4c20bcb
 function|skills_task|task text, action text, document jsonb|d27801461fbb136129674ccc30cf90a3022652b8e6aee1d2a6d6494cf1604586
 function|skills_write|actor text, session_hash text, org text, kind text, command jsonb, event_id text, version_id text, digest text, resource_digests jsonb|bcd27035528ea88749a612fadff12fcb3aa0579c09d4b5c10b3872081f5eb22b
+function|work_answer_guard||fb71ede4d92b4d235457ccfa6f7759b1083cb692ed17df3be53ced03d8ec2c51
+function|work_guidance_guard||153d18fef71d6092792f9967cc8debe5d8a16e4c2240140a4f7e39dac2ead6f3
+function|work_step_guard||46277efcc79528dcccf556af0a90526c816592a2ca7965dc60eb82096d6132fb
 index|_sqlx_migrations|true|true|CREATE UNIQUE INDEX _sqlx_migrations_pkey ON public._sqlx_migrations USING btree (version)
 index|clients|true|true|CREATE INDEX skills_client_choices ON public.clients USING btree (organisation_id, id COLLATE "C")
 index|clients|true|true|CREATE UNIQUE INDEX clients_pkey ON public.clients USING btree (organisation_id, id)
@@ -1985,6 +1993,8 @@ trigger|operation_attempts|operation_receipt_producers_organisation_id_client_id
 trigger|operation_attempts|operation_receipt_producers_organisation_id_client_id_enga_fkey|O|9|false|false|"RI_FKey_noaction_del"|operation_receipt_producers||
 trigger|operation_attempts|operation_receipt_slots_organisation_id_client_id_engageme_fkey|O|17|false|false|"RI_FKey_noaction_upd"|operation_receipt_slots||
 trigger|operation_attempts|operation_receipt_slots_organisation_id_client_id_engageme_fkey|O|9|false|false|"RI_FKey_noaction_del"|operation_receipt_slots||
+trigger|operation_attempts|task_steps_organisation_id_client_id_engagement_id_operat_fkey1|O|17|false|false|"RI_FKey_noaction_upd"|task_steps||
+trigger|operation_attempts|task_steps_organisation_id_client_id_engagement_id_operat_fkey1|O|9|false|false|"RI_FKey_noaction_del"|task_steps||
 trigger|operation_claims|operation_claims_organisation_id_client_id_engagement_id_o_fkey|O|17|false|false|"RI_FKey_check_upd"|operation_attempts||
 trigger|operation_claims|operation_claims_organisation_id_client_id_engagement_id_o_fkey|O|5|false|false|"RI_FKey_check_ins"|operation_attempts||
 trigger|operation_decisions|operation_decisions_actor_id_fkey|O|17|false|false|"RI_FKey_check_upd"|identities||
@@ -2013,8 +2023,8 @@ trigger|operations|operations_actor_id_fkey|O|17|false|false|"RI_FKey_check_upd"
 trigger|operations|operations_actor_id_fkey|O|5|false|false|"RI_FKey_check_ins"|identities||
 trigger|operations|operations_organisation_id_client_id_engagement_id_task_id_fkey|O|17|false|false|"RI_FKey_check_upd"|task_cycles||
 trigger|operations|operations_organisation_id_client_id_engagement_id_task_id_fkey|O|5|false|false|"RI_FKey_check_ins"|task_cycles||
-trigger|operations|task_steps_operation_id_fkey|O|17|false|false|"RI_FKey_noaction_upd"|task_steps||
-trigger|operations|task_steps_operation_id_fkey|O|9|false|false|"RI_FKey_noaction_del"|task_steps||
+trigger|operations|task_steps_organisation_id_client_id_engagement_id_operati_fkey|O|17|false|false|"RI_FKey_noaction_upd"|task_steps||
+trigger|operations|task_steps_organisation_id_client_id_engagement_id_operati_fkey|O|9|false|false|"RI_FKey_noaction_del"|task_steps||
 trigger|organisation_memberships|engagement_assignments_organisation_id_actor_id_fkey|O|17|false|false|"RI_FKey_noaction_upd"|engagement_assignments||
 trigger|organisation_memberships|engagement_assignments_organisation_id_actor_id_fkey|O|9|false|false|"RI_FKey_noaction_del"|engagement_assignments||
 trigger|organisation_memberships|organisation_memberships_actor_id_fkey|O|17|false|false|"RI_FKey_check_upd"|identities||
@@ -2173,10 +2183,12 @@ trigger|task_skill_selections|task_skill_selections_organisation_id_version_id_f
 trigger|task_skill_selections|task_skill_selections_organisation_id_version_id_fkey|O|5|false|false|"RI_FKey_check_ins"|skill_versions||
 trigger|task_skill_selections|task_skill_selections_selector_id_fkey|O|17|false|false|"RI_FKey_check_upd"|identities||
 trigger|task_skill_selections|task_skill_selections_selector_id_fkey|O|5|false|false|"RI_FKey_check_ins"|identities||
-trigger|task_steps|task_steps_operation_id_fkey|O|17|false|false|"RI_FKey_check_upd"|operations||
-trigger|task_steps|task_steps_operation_id_fkey|O|5|false|false|"RI_FKey_check_ins"|operations||
 trigger|task_steps|task_steps_organisation_id_client_id_engagement_id_invocat_fkey|O|17|false|false|"RI_FKey_check_upd"|model_invocations||
 trigger|task_steps|task_steps_organisation_id_client_id_engagement_id_invocat_fkey|O|5|false|false|"RI_FKey_check_ins"|model_invocations||
+trigger|task_steps|task_steps_organisation_id_client_id_engagement_id_operat_fkey1|O|17|false|false|"RI_FKey_check_upd"|operation_attempts||
+trigger|task_steps|task_steps_organisation_id_client_id_engagement_id_operat_fkey1|O|5|false|false|"RI_FKey_check_ins"|operation_attempts||
+trigger|task_steps|task_steps_organisation_id_client_id_engagement_id_operati_fkey|O|17|false|false|"RI_FKey_check_upd"|operations||
+trigger|task_steps|task_steps_organisation_id_client_id_engagement_id_operati_fkey|O|5|false|false|"RI_FKey_check_ins"|operations||
 trigger|task_steps|task_steps_organisation_id_client_id_engagement_id_task_id_fkey|O|17|false|false|"RI_FKey_check_upd"|task_cycles||
 trigger|task_steps|task_steps_organisation_id_client_id_engagement_id_task_id_fkey|O|5|false|false|"RI_FKey_check_ins"|task_cycles||
 trigger|task_wakeups|task_deliveries_wakeup_id_fkey|O|17|false|false|"RI_FKey_noaction_upd"|task_deliveries||
@@ -2216,3 +2228,6 @@ user_trigger|organisation_memberships|admin_continuity_truncate|O|2b0ed0c74e5d2d
 user_trigger|organisations|admin_continuity_check|O|d09da743e20ae8f9722e50660f561fb8acbe6f2dfd333ba0d62a02a2abaa7ac7
 user_trigger|organisations|admin_continuity_lock|O|5b6677cd7b86f8e24a013b97f00e043b8ed245a05d5570428c756ee7842a2103
 user_trigger|organisations|admin_continuity_truncate|O|b4146bf619ee32375f2c179d3417643ffa48466f43fc008271ddf2bf5827c5b1
+user_trigger|task_guidance_applications|work_guidance_guard|O|d17a51c95b60d81b151b79e18f8e67109fa2db0965693e717d4aa593c2011a5a
+user_trigger|task_routing_answers|work_answer_guard|O|51e80be7bf6bc39420f41ff0fe02f7d3e397a018104ebad312d526d9ef97e3a2
+user_trigger|task_steps|work_step_guard|O|1192e42a4da2c392d56445a7d82ad7e2c3982bad715c03a7b51c849824b52f06

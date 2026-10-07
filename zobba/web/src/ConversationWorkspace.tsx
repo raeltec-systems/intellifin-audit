@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { AccessError } from './auth';
 import type { Session } from './auth';
@@ -16,6 +16,8 @@ import { TaskWorkPanel } from './TaskWorkPanel';
 import { RoutingQuestions } from './RoutingQuestions';
 import { postDirection } from './work';
 import type { RoutingQuestion } from './work';
+import { directionOutbox } from './conversation-outbox';
+import type { DirectionCommand } from './conversation-outbox';
 
 interface WorkspaceProps {
   engagement: Engagement;
@@ -85,7 +87,28 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
   const [skillContext, setSkillContext] = useState<SkillContext | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   // An untargeted direction keeps its request key until a receipt or question confirms it.
-  const [direction, setDirection] = useState<{ key: string; content: string } | null>(null);
+  const [direction, setDirection] = useState<DirectionCommand | null>(null);
+  const [directionSending, setDirectionSending] = useState(false);
+  // Directions are persisted (actor, scope, key, exact text) before any
+  // transmission, in their own channel of the durable recovery outbox.
+  const directionOwner = JSON.stringify([session.identity.id, session.csrf_token, engagement.organisation_id, engagement.client_id, engagement.engagement_id]);
+  const currentDirectionOwner = useRef(directionOwner); currentDirectionOwner.current = directionOwner;
+  const directions = useMemo(() => directionOutbox(session.identity.id, { organisation_id: engagement.organisation_id, client_id: engagement.client_id, engagement_id: engagement.engagement_id }),
+    [session.identity.id, engagement.organisation_id, engagement.client_id, engagement.engagement_id]);
+  useEffect(() => () => directions.close(), [directions]);
+  useEffect(() => {
+    setDirection(null); setDirectionNotice(null); setLatestQuestion(null);
+    if (!accessReady) return;
+    const owner = directionOwner;
+    directions.read().then(items => {
+      const [first] = items;
+      if (currentDirectionOwner.current !== owner || !first) return;
+      setDirection(first.command);
+      setDirectionNotice('An earlier direction was not confirmed. Check it to see whether it was received; it will not be applied twice.');
+    }, () => {
+      if (currentDirectionOwner.current === owner) setDirectionNotice('Saved directions could not be read. Nothing is sent automatically.');
+    });
+  }, [directions, directionOwner, accessReady]);
   const [directionNotice, setDirectionNotice] = useState<string | null>(null);
   const [latestQuestion, setLatestQuestion] = useState<RoutingQuestion | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -231,19 +254,35 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
     });
   }
 
-  async function sendDirection() {
-    const content = draft;
+  async function sendDirection(retained?: DirectionCommand) {
+    if (directionSending) return;
+    const content = retained?.content ?? draft;
     const generation = draftGeneration.current;
+    const owner = directionOwner;
+    if (!retained && direction && direction.content !== content) {
+      setLocalError('An earlier direction is still unconfirmed. Check it before sending different text.');
+      return;
+    }
     // A retry of the same unchanged text reuses its key: the server returns the
     // original receipt or question and never applies it twice.
-    const pending = direction && direction.content === content ? direction : { key: crypto.randomUUID(), content };
-    setDirection(pending); setLocalError(null); setDirectionNotice(null); submittingDraft.current = true;
+    const pending = retained ?? (direction && direction.content === content ? direction : { key: crypto.randomUUID(), content });
+    setLocalError(null); setDirectionNotice(null); submittingDraft.current = true; setDirectionSending(true);
     const request = new AbortController();
     const deadline = setTimeout(() => request.abort(), 8000);
+    const current = () => currentDirectionOwner.current === owner;
     try {
+      try { await directions.reserve(pending); } catch {
+        if (current()) setLocalError('Reliable recovery storage is unavailable, or another direction is still unconfirmed. Nothing was sent.');
+        return;
+      }
+      if (!current()) return;
+      setDirection(pending);
       const outcome = await postDirection(engagement, session, pending.key, pending.content, request.signal);
+      await directions.remove(pending.key).catch(() => undefined);
+      // A late reply for another actor, session or engagement changes nothing here.
+      if (!current()) return;
       setDirection(null);
-      if (draftGeneration.current === generation) setDraft('');
+      if (!retained && draftGeneration.current === generation) setDraft('');
       if (outcome.outcome === 'routed') {
         const task = conversation.tasks.find(item => item.id === outcome.receipt.task_id);
         setDirectionNotice(`Received as guidance for ${task?.objective ?? outcome.receipt.task_id}. It is applied at that Task’s next step boundary.`);
@@ -252,10 +291,12 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
         setDirectionNotice('More than one Task could receive this. Choose the target below; nothing has been applied yet.');
       }
     } catch (reason) {
-      if (reason instanceof AccessError && reason.status === 409) setLocalError('No current Task can receive untargeted guidance, or this text differs from the original request. Start a Task or choose one.');
+      if (reason instanceof AccessError && reason.status === 409) await directions.remove(pending.key).catch(() => undefined);
+      if (!current()) return;
+      if (reason instanceof AccessError && reason.status === 409) { setDirection(null); setLocalError('No current Task can receive untargeted guidance, or this text differs from the original request. Start a Task or choose one.'); }
       else setLocalError('Delivery was not confirmed. Send again to check the original request; it will not be applied twice.');
       if (reason instanceof AccessError && [401, 403, 404, 412].includes(reason.status)) onAccessFailure(reason);
-    } finally { clearTimeout(deadline); submittingDraft.current = false; }
+    } finally { clearTimeout(deadline); submittingDraft.current = false; setDirectionSending(false); }
   }
 
   async function send() {
@@ -348,7 +389,7 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
                   : <button type="button" className="quiet-button" onClick={() => conversation.acknowledgeRefusal(item.key)}>Dismiss refusal</button>}
               </article>)}
             </section> : null}
-            <RoutingQuestions key={`${session.identity.id}/${session.csrf_token}/routing`} scope={engagement} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} latest={latestQuestion} />
+            <RoutingQuestions key={`${session.identity.id}/${session.csrf_token}/${engagement.organisation_id}/${engagement.client_id}/${engagement.engagement_id}/routing`} scope={engagement} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} latest={latestQuestion} />
             <AffectedSkillSelections key={`${session.identity.id}/${session.csrf_token}`} scope={engagement} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} onOpenTask={openTask} />
           </div>
           <form className="conversation-composer" onSubmit={(event) => { event.preventDefault(); void send(); }}>
@@ -380,6 +421,8 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
             <div className="composer-bottom"><p id="composer-audience">{engagement.client_name} · Current assigned members</p><button type="submit" disabled={!accessReady || conversation.sending || contextRequested && !guideContext || !draft.trim() || !targetIsCurrent}>Send <span aria-hidden="true">↑</span></button></div>
             {target.kind === 'route' ? <p className="composer-cycle">With one open Task this becomes its guidance; otherwise Zobba asks which Tasks. Routing never uses a model.</p> : null}
             {directionNotice ? <p className="composer-cycle" role="status">{directionNotice}</p> : null}
+            {direction && !directionSending ? <div className="pending-direction"><p className="retained-text">{direction.content}</p>
+              <button type="button" className="quiet-button" disabled={!accessReady} onClick={() => void sendDirection(direction)}>Check original direction</button></div> : null}
             {target.kind === 'guide' ? <p className="composer-cycle">Guide {target.objective} · cycle <abbr title={target.cycle_id}>{cycleLabel(target.cycle_id)}</abbr></p> : null}
             <p id="composer-delivery" className="composer-help">{draft ? 'Not sent · ' : ''}Enter to send · Shift+Enter for a new line</p>
             {staleTargetError || localError || conversation.error ? <p className="composer-error" role="alert">{staleTargetError ?? localError ?? conversation.error}</p> : null}
@@ -400,7 +443,7 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
               <div className="task-state"><span className="status-label">{taskStateLabel(selected)}</span><p>{stateExplanation(selected)}</p></div>
               <section className="brief-section"><h3>Original objective</h3><p className="retained-text">{selected.objective}</p></section>
               <section className="brief-section"><h3>Working brief</h3><p className="brief-caption">Plain retained direction. Applied means added here; it does not mean model understanding.</p><p className="retained-text">{selected.working_brief}</p></section>
-              <TaskWorkPanel key={`${session.identity.id}/${session.csrf_token}/${selected.id}/work`} scope={engagement} taskId={selected.id} taskRevision={selected.revision} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} />
+              <TaskWorkPanel key={`${session.identity.id}/${session.csrf_token}/${selected.id}/work`} scope={engagement} taskId={selected.id} taskRevision={selected.revision} taskState={selected.state} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} />
               <section key={`${selected.id}/${opening ?? ''}`} className="working-context" aria-label="What Zobba is using"><h3>What Zobba is using</h3>
                 <TaskKnowledge key={`${session.identity.id}/${session.csrf_token}/${selected.id}/knowledge`} scope={engagement} task={selected} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} method={methodContext} skills={skillContext} onApplyLayout={layout => { explicitLayoutOpening.current = opening; setExpanded(layout === 'expanded' && window.matchMedia('(min-width: 1001px)').matches); }} onGuide={() => { draftGeneration.current += 1; chooseTarget({ kind: 'guide', task_id: selected.id, cycle_id: selected.cycle_id, objective: selected.objective }); setView('conversation'); requestAnimationFrame(() => textarea.current?.focus()); }} />
                 <TaskMethodology scope={engagement} taskId={selected.id} taskRevision={selected.revision} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} onContext={setMethodContext} />

@@ -80,12 +80,16 @@ pub(super) async fn verify(f: &Fixture) {
         .await
         .unwrap();
     observe(f, &attempt, SourceFact::AuthoritativelyAbsent).await;
-    assert_eq!(coordinate(f, &case).await, Decision::Idle);
-    assert_eq!(
-        state(f, &case).await,
-        (TaskState::Waiting, Cessation::Confirmed)
-    );
+    // Story 22.2: guidance to a waiting Task resumes its work, but only under the
+    // new applied intent. The old intent's operation is never retried.
+    let resumed = execution(coordinate(f, &case).await);
+    assert!(resumed.intent_revision > case.basis.intent_revision);
+    assert_eq!(state(f, &case).await, (TaskState::Ready, Cessation::None));
     assert!(f.operations.consume(&case.basis, &op.id).await.is_err());
+    assert!(
+        f.operations.consume(&resumed, &op.id).await.is_err(),
+        "an operation admitted under the withdrawn intent is not consumable"
+    );
 
     // Every control/terminal-fact combination, on both sides of coordination.
     for control in [CommandKind::Pause, CommandKind::Stop] {

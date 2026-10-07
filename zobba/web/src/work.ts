@@ -43,12 +43,20 @@ function array(value: unknown, max: number): unknown[] {
   return value;
 }
 
+function count(value: unknown, max: number): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > max) invalid();
+  return value;
+}
+
 export function parseStep(value: unknown): TaskStep {
   const v = record(value);
   if (typeof v.ordinal !== 'number' || !Number.isInteger(v.ordinal) || v.ordinal < 0 || v.ordinal > 4095) invalid();
+  const kind = oneOf(v.kind, ['model_turn', 'tool_step'] as const);
+  const knowledgeOmitted = count(v.knowledge_omitted, 4096);
+  if (kind === 'tool_step' && knowledgeOmitted !== 0) invalid();
   return {
     ordinal: v.ordinal,
-    kind: oneOf(v.kind, ['model_turn', 'tool_step'] as const),
+    kind,
     status: oneOf(v.status, ['proposed', 'responded', 'superseded', 'failed', 'completed', 'refused', 'reconciliation_required'] as const),
     intent_revision: cursor(v.intent_revision),
     execution_epoch: cursor(v.execution_epoch),
@@ -56,6 +64,7 @@ export function parseStep(value: unknown): TaskStep {
     operation_id: nullable(v.operation_id, identifier),
     next_action: nullable(v.next_action, action),
     current_work: label(v.current_work),
+    knowledge_omitted: knowledgeOmitted,
   };
 }
 
@@ -88,8 +97,9 @@ export function parseWork(value: unknown, taskId: string): TaskWork {
     attention: nullable(v.attention, value => oneOf(value, ['awaiting_guidance', 'reconciliation_required', 'step_failed', 'cycle_bounded'] as const)),
     steps: array(v.steps, 50).map(parseStep),
     briefs: array(v.briefs, 50).map(parseBrief),
+    total_steps: count(v.total_steps, 4096),
   };
-  if (work.task_id !== taskId) invalid();
+  if (work.task_id !== taskId || work.total_steps < work.steps.length) invalid();
   return work;
 }
 
@@ -100,14 +110,14 @@ function guide(value: unknown): RoutedGuide {
 
 export function parseQuestion(value: unknown): RoutingQuestion {
   const v = record(value);
-  const candidates = array(v.candidates, 32).map(candidate => {
+  const candidates = array(v.candidates, 100).map(candidate => {
     const c = record(candidate);
     return { task_id: identifier(c.task_id), cycle_id: identifier(c.cycle_id), objective: commandContent(c.objective) };
   });
   if (candidates.length < 2) invalid();
   return {
     id: identifier(v.id), key: identifier(v.key), content: commandContent(v.content), candidates,
-    answer: v.answer === null ? null : array(v.answer, 32).map(guide),
+    answer: v.answer === null ? null : array(v.answer, 100).map(guide),
   };
 }
 
@@ -138,14 +148,25 @@ export async function readTaskWork(scope: Scope, taskId: string, session: Sessio
 export async function postDirection(scope: Scope, session: Session, key: string, content: string, signal: AbortSignal): Promise<Direction> {
   return parseDirection(await readJson(route(scope, 'task-directions'), signal, post(session, { key: identifier(key), content: commandContent(content) })));
 }
-export async function readQuestions(scope: Scope, session: Session | null, signal: AbortSignal): Promise<RoutingQuestion[]> {
-  const v = record(await readSessionJson(route(scope, 'task-questions'), session, signal));
-  return array(v.questions, 20).map(parseQuestion);
+export type QuestionPage = { questions: RoutingQuestion[]; has_more: boolean };
+export function parseQuestionPage(value: unknown): QuestionPage {
+  const v = record(value);
+  if (typeof v.has_more !== 'boolean') invalid();
+  return { questions: array(v.questions, 20).map(parseQuestion), has_more: v.has_more };
+}
+export async function readQuestions(scope: Scope, session: Session | null, signal: AbortSignal): Promise<QuestionPage> {
+  return parseQuestionPage(await readSessionJson(route(scope, 'task-questions'), session, signal));
+}
+/** The answer must name exactly the chosen Tasks: one routed Guide per selection. */
+export function verifyAnswer(answered: RoutingQuestion, questionId: string, selected: string[]): RoutingQuestion {
+  const chosen = [...new Set(selected)].sort();
+  const routed = (answered.answer ?? []).map(guide => guide.task_id).sort();
+  if (answered.id !== questionId || !answered.answer || routed.length !== chosen.length || routed.some((id, i) => id !== chosen[i])) invalid();
+  return answered;
 }
 export async function answerQuestion(scope: Scope, session: Session, questionId: string, selected: string[], signal: AbortSignal): Promise<RoutingQuestion> {
   const answered = parseQuestion(await readJson(route(scope, `task-questions/${identifier(questionId)}/answer`), signal, post(session, { selected: selected.map(identifier) })));
-  if (answered.id !== questionId || !answered.answer || answered.answer.length !== selected.length) invalid();
-  return answered;
+  return verifyAnswer(answered, questionId, selected);
 }
 
 export function nextActionLabel(value: string | null): string {

@@ -27,7 +27,8 @@ use crate::gateway::Gateway;
 pub type CycleFuture<'a> = Pin<Box<dyn Future<Output = Option<CycleEnd>> + Send + 'a>>;
 
 /// Runs one claim's work cycle. `None` means no qualified profile and
-/// enabled catalogue are selectable: the caller keeps the inert executor.
+/// enabled catalogue are selectable: the caller keeps the inert executor. A
+/// configuration that cannot be read is `Some(CycleEnd::Unavailable)`.
 pub trait WorkRunner: Send + Sync {
     fn run<'a>(
         &'a self,
@@ -97,11 +98,13 @@ impl<T: ModelTransport + 'static> WorkRunner for Composition<T> {
         Box::pin(async move {
             let models = ModelRepository::new(self.pool.clone())
                 .with_qualification_source(self.qualifications.clone());
-            let (profile, catalogue) = models
-                .selection(&basis.actor_id, &basis.scope)
-                .await
-                .ok()
-                .flatten()?;
+            // Only an explicit absence of a selectable configuration keeps
+            // the inert executor. A database or decode error fails closed.
+            let (profile, catalogue) = match models.selection(&basis.actor_id, &basis.scope).await {
+                Ok(Some(selection)) => selection,
+                Ok(None) => return None,
+                Err(_) => return Some(CycleEnd::Unavailable),
+            };
             let max_output_tokens = self.max_output_tokens.min(profile.max_output_tokens);
             let work = WorkLoop {
                 steps: TaskRepository::new(self.pool.clone()),
@@ -122,6 +125,7 @@ impl<T: ModelTransport + 'static> WorkRunner for Composition<T> {
                     max_output_tokens,
                 },
                 bind: bind_disclosure,
+                delay: |duration| Box::pin(tokio::time::sleep(duration)),
             };
             Some(work.run(basis, cancellation).await)
         })

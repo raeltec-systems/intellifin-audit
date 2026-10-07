@@ -1,11 +1,27 @@
-import { identifier, parseCommand, sameTaskContext } from './conversation.ts';
+import { commandContent, identifier, parseCommand, sameTaskContext } from './conversation.ts';
 import type { ConversationMessage, TaskCommand } from './conversation.ts';
 import { parseScope, sameScope } from './engagements.ts';
 import type { Scope } from './engagements.ts';
 
-export type OutboxItem = {
-  actor_id: string; scope: Scope; key: string; command: TaskCommand;
+export type OutboxItem<C extends { key: string } = TaskCommand> = {
+  actor_id: string; scope: Scope; key: string; command: C;
   status: 'uncertain' | 'sending' | 'conflict' | 'received'; error?: string;
+};
+/** An untargeted direction: its whole meaning is the request key and exact text. */
+export type DirectionCommand = { key: string; content: string };
+type Codec<C extends { key: string }> = { prefix: string; parse: (value: unknown) => C; control: (command: C) => boolean };
+const commandCodec: Codec<TaskCommand> = { prefix: '', parse: parseCommand, control: command => isControl(command) };
+const directionCodec: Codec<DirectionCommand> = {
+  // A distinct binding prefix keeps directions out of the command channel's
+  // reads while sharing its durable store, quota and serialized transactions.
+  prefix: 'direction:',
+  parse(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw unavailable();
+    const v = value as Record<string, unknown>;
+    if (Object.keys(v).sort().join(',') !== 'content,key') throw unavailable();
+    return { key: identifier(v.key), content: commandContent(v.content) };
+  },
+  control: () => false,
 };
 export type StorageLike = Pick<Storage, 'length' | 'key' | 'getItem' | 'setItem' | 'removeItem'>;
 export const OUTBOX_LIMIT = 8;
@@ -19,21 +35,22 @@ const legacyPrefix = 'zobba:conversation-outbox:v1:';
 const memoryQueues = new WeakMap<StorageLike, Promise<unknown>>();
 const memoryListeners = new WeakMap<StorageLike, Set<{ binding: string; listener: () => void }>>();
 
-type RecordValue = OutboxItem & { id: string; binding: string; ordinary: 0 | 1; version: 1 };
+type RecordValue<C extends { key: string } = TaskCommand> = OutboxItem<C> & { id: string; binding: string; ordinary: 0 | 1; version: 1 };
 function isControl(command: TaskCommand): boolean { return command.kind === 'pause' || command.kind === 'stop'; }
 export function sameMeaning(command: TaskCommand, message: ConversationMessage): boolean {
   return command.key === message.key && command.kind === message.kind &&
     (command.task_id ?? null) === message.target_task_id && (command.cycle_id ?? null) === message.target_cycle_id &&
     (command.content ?? null) === message.content && sameTaskContext(command.context, message.context);
 }
-function unchanged(a: TaskCommand, b: TaskCommand): boolean { return JSON.stringify(a) === JSON.stringify(b); }
+function unchanged(a: unknown, b: unknown): boolean { return JSON.stringify(a) === JSON.stringify(b); }
 export class LegacyRecoveryError extends Error {
   constructor() { super('Saved requests from an earlier preview need recovery before you can send new ones.'); }
 }
 function unavailable(): Error { return new Error('Reliable recovery storage is unavailable. Nothing was sent.'); }
 
 /** One durable authority. IndexedDB serializes quota checks and writes across tabs. */
-export class OutboxStore {
+export class OutboxStore<C extends { key: string } = TaskCommand> {
+  private readonly codec: Codec<C>;
   private readonly actor: string;
   private readonly scope: Scope;
   private readonly binding: string;
@@ -41,23 +58,24 @@ export class OutboxStore {
   private opening: Promise<IDBDatabase> | null = null;
   private connection: IDBDatabase | null = null;
   private connectionGeneration = 0;
-  constructor(actor: string, scope: Scope, memory?: () => StorageLike) {
+  constructor(actor: string, scope: Scope, memory?: () => StorageLike, codec?: Codec<C>) {
+    this.codec = codec ?? commandCodec as unknown as Codec<C>;
     this.actor = identifier(actor); this.scope = parseScope(scope);
-    this.binding = `${this.actor}/${this.scope.organisation_id}/${this.scope.client_id}/${this.scope.engagement_id}/`;
+    this.binding = `${this.codec.prefix}${this.actor}/${this.scope.organisation_id}/${this.scope.client_id}/${this.scope.engagement_id}/`;
     this.memory = memory;
   }
   ownsStorageKey(key: string | null): boolean { return key === null || key.startsWith(legacyPrefix + this.binding); }
-  private record(command: TaskCommand, status: 'uncertain' | 'conflict'): RecordValue {
-    return { id: this.binding + command.key, binding: this.binding, ordinary: isControl(command) ? 0 : 1,
+  private record(command: C, status: 'uncertain' | 'conflict'): RecordValue<C> {
+    return { id: this.binding + command.key, binding: this.binding, ordinary: this.codec.control(command) ? 0 : 1,
       version: 1, actor_id: this.actor, scope: { ...this.scope }, key: command.key, command, status };
   }
-  private parse(value: unknown): OutboxItem {
+  private parse(value: unknown): OutboxItem<C> {
     if (!value || typeof value !== 'object') throw unavailable();
-    const row = value as RecordValue;
-    const command = parseCommand(row.command);
+    const row = value as RecordValue<C>;
+    const command = this.codec.parse(row.command);
     if (row.version !== 1 || row.actor_id !== this.actor || !sameScope(parseScope(row.scope), this.scope) ||
       row.key !== command.key || !['uncertain', 'conflict'].includes(row.status) ||
-      row.binding !== this.binding || row.id !== this.binding + command.key || row.ordinary !== (isControl(command) ? 0 : 1)) throw unavailable();
+      row.binding !== this.binding || row.id !== this.binding + command.key || row.ordinary !== (this.codec.control(command) ? 0 : 1)) throw unavailable();
     return { actor_id: this.actor, scope: { ...this.scope }, key: command.key, command, status: row.status,
       ...(row.status === 'conflict' ? { error: 'This exact request was refused. Its target or meaning conflicts with the server.' } : {}) };
   }
@@ -147,19 +165,19 @@ export class OutboxStore {
     const operation = (memoryQueues.get(storage) ?? Promise.resolve()).catch(() => {}).then(() => action(storage));
     memoryQueues.set(storage, operation); return operation;
   }
-  private memoryRows(storage: StorageLike): OutboxItem[] {
+  private memoryRows(storage: StorageLike): OutboxItem<C>[] {
     if (storage.length > STORAGE_KEY_SCAN_LIMIT) throw unavailable();
-    const result: OutboxItem[] = [];
+    const result: OutboxItem<C>[] = [];
     for (let i = 0; i < storage.length; i++) {
       const key = storage.key(i); if (!key?.startsWith(legacyPrefix + this.binding)) continue;
       if (result.length >= OUTBOX_LIMIT) throw unavailable();
       const raw = storage.getItem(key); if (!raw || raw.length > 32_000) throw unavailable();
-      const row = JSON.parse(raw) as OutboxItem;
-      result.push(this.parse({ ...row, id: this.binding + row.key, binding: this.binding, ordinary: isControl(row.command) ? 0 : 1 }));
+      const row = JSON.parse(raw) as OutboxItem<C>;
+      result.push(this.parse({ ...row, id: this.binding + row.key, binding: this.binding, ordinary: this.codec.control(this.codec.parse(row.command)) ? 0 : 1 }));
     }
     return result;
   }
-  async read(): Promise<OutboxItem[]> {
+  async read(): Promise<OutboxItem<C>[]> {
     if (this.memory) return this.memoryRun(storage => this.memoryRows(storage));
     return this.transaction('readonly', (store, finish, fail) => {
       const request = store.index('binding').getAll(this.binding, OUTBOX_LIMIT + 1);
@@ -169,9 +187,10 @@ export class OutboxStore {
       } catch (error) { fail(error); } };
     });
   }
-  async reserve(input: TaskCommand): Promise<OutboxItem> {
-    const command = parseCommand(input), record = this.record(command, 'uncertain');
-    let result: OutboxItem;
+  async reserve(input: C): Promise<OutboxItem<C>> {
+    const command = this.codec.parse(input), record = this.record(command, 'uncertain');
+    const isControl = this.codec.control;
+    let result: OutboxItem<C>;
     if (this.memory) result = await this.memoryRun(storage => {
       const own = this.memoryRows(storage), existing = own.find(item => item.key === command.key);
       if (existing) { if (!unchanged(existing.command, command)) throw new Error('A pending key cannot change meaning.'); return existing; }
@@ -208,13 +227,13 @@ export class OutboxStore {
     });
     this.signal(); return result;
   }
-  async save(input: TaskCommand, status: 'uncertain' | 'conflict' = 'uncertain'): Promise<OutboxItem> {
-    const command = parseCommand(input), record = this.record(command, status);
-    const update = (prior: OutboxItem | undefined) => {
+  async save(input: C, status: 'uncertain' | 'conflict' = 'uncertain'): Promise<OutboxItem<C>> {
+    const command = this.codec.parse(input), record = this.record(command, status);
+    const update = (prior: OutboxItem<C> | undefined) => {
       if (!prior || !unchanged(prior.command, command)) throw new Error('The retained request no longer exists or changed meaning.');
       return this.parse(record);
     };
-    let result: OutboxItem;
+    let result: OutboxItem<C>;
     if (this.memory) result = await this.memoryRun(storage => {
       const value = update(this.memoryRows(storage).find(item => item.key === command.key));
       storage.setItem(legacyPrefix + record.id, JSON.stringify(record)); return value;
@@ -231,9 +250,11 @@ export class OutboxStore {
     else await this.transaction<void>('readwrite', (store, finish) => { store.delete(id); finish(); });
     this.signal();
   }
-  async reconcile(messages: ConversationMessage[]): Promise<OutboxItem[]> {
-    const matches = (item: OutboxItem) => messages.some(message => message.author_id === this.actor && sameMeaning(item.command, message));
-    let changed = false, result: OutboxItem[];
+  async reconcile(messages: ConversationMessage[]): Promise<OutboxItem<C>[]> {
+    // Only Task commands echo as conversation messages; a direction never does.
+    const matches = (item: OutboxItem<C>) => this.codec === commandCodec as unknown as Codec<C> &&
+      messages.some(message => message.author_id === this.actor && sameMeaning(item.command as unknown as TaskCommand, message));
+    let changed = false, result: OutboxItem<C>[];
     if (this.memory) result = await this.memoryRun(storage => {
       const items = this.memoryRows(storage);
       for (const item of items) if (matches(item)) { storage.removeItem(legacyPrefix + this.binding + item.key); changed = true; }
@@ -250,4 +271,9 @@ export class OutboxStore {
     });
     if (changed) this.signal(); return result;
   }
+}
+
+/** The durable direction channel: persisted before transmission, shared quota. */
+export function directionOutbox(actor: string, scope: Scope, memory?: () => StorageLike): OutboxStore<DirectionCommand> {
+  return new OutboxStore<DirectionCommand>(actor, scope, memory, directionCodec);
 }

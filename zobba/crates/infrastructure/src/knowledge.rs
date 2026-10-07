@@ -1072,6 +1072,11 @@ pub(crate) async fn verify_in_transaction(
 /// publications are presentation settings, not facts, and are not context.
 /// Every returned reference is verified again at disclosure by
 /// `verify_in_transaction`; this read grants no use by itself.
+///
+/// Returns the usable records and how many records were left out because they
+/// did not fit the bounds, were not usable for this Task (denied or with
+/// unavailable support), or were beyond the bounded examination. A record that
+/// does not fit is skipped, not truncated, and later smaller records may fit.
 pub(crate) async fn task_context_in_transaction(
     tx: &mut Tx,
     actor: &str,
@@ -1079,17 +1084,25 @@ pub(crate) async fn task_context_in_transaction(
     task_id: &str,
     max_items: usize,
     max_text_bytes: usize,
-) -> Result<Vec<KnowledgeView>, KnowledgeError> {
+) -> Result<(Vec<KnowledgeView>, u32), KnowledgeError> {
+    const EXAMINE: usize = 1024;
     let (consumer, _, _) = task(tx, s, task_id).await?;
     if consumer != actor || !audit(tx, &consumer, s).await? {
         return Err(KnowledgeError::Denied);
     }
     let mut items: Vec<KnowledgeView> = vec![];
+    let mut omitted = 0u32;
     let mut text_bytes = 0usize;
     let mut cursor: Option<String> = None;
     let mut examined = 0usize;
-    'scan: while examined < 1024 && items.len() < max_items {
-        let batch = (1024 - examined).min(51);
+    loop {
+        if examined == EXAMINE {
+            // Records beyond the bounded examination are counted, not read.
+            let remaining: i64 = sqlx::query_scalar("SELECT count(DISTINCT id) FROM public.knowledge_records WHERE organisation_id=$1 AND (client_id=$2 OR owner_id=$3) AND id COLLATE \"C\">coalesce($4,'') COLLATE \"C\"").bind(&s.organisation_id).bind(&s.client_id).bind(actor).bind(&cursor).fetch_one(&mut **tx).await.map_err(db)?;
+            omitted = omitted.saturating_add(u32::try_from(remaining).unwrap_or(u32::MAX));
+            break;
+        }
+        let batch = (EXAMINE - examined).min(51);
         let rows=sqlx::query("SELECT id,document FROM (SELECT DISTINCT ON (id COLLATE \"C\") id,revision,document FROM public.knowledge_records WHERE organisation_id=$1 AND (client_id=$2 OR owner_id=$3) AND id COLLATE \"C\">coalesce($4,'') COLLATE \"C\" ORDER BY id COLLATE \"C\",revision DESC) latest ORDER BY id COLLATE \"C\" LIMIT $5").bind(&s.organisation_id).bind(&s.client_id).bind(actor).bind(&cursor).bind(batch as i64).fetch_all(&mut **tx).await.map_err(db)?;
         let count = rows.len();
         for row in rows {
@@ -1104,25 +1117,30 @@ pub(crate) async fn task_context_in_transaction(
             let (view, applicability) =
                 match checked_context(tx, actor, &consumer, s, task_id, record).await {
                     Ok(checked) => checked,
-                    // Not visible to this Task, or support unavailable: omit.
+                    // Not usable for this Task, or support unavailable: omitted.
                     Err(
                         KnowledgeError::Denied
                         | KnowledgeError::Capacity
                         | KnowledgeError::Ineligible,
-                    ) => continue,
+                    ) => {
+                        omitted = omitted.saturating_add(1);
+                        continue;
+                    }
                     Err(e) => return Err(e),
                 };
-            if view.status != RecordStatus::Current || applicability.omission.is_some() {
+            // Withdrawn or otherwise non-current knowledge is simply not context.
+            if view.status != RecordStatus::Current {
                 continue;
             }
-            if text_bytes + view.record.text.len() > max_text_bytes {
-                break 'scan;
+            if applicability.omission.is_some()
+                || items.len() == max_items
+                || text_bytes + view.record.text.len() > max_text_bytes
+            {
+                omitted = omitted.saturating_add(1);
+                continue;
             }
             text_bytes += view.record.text.len();
             items.push(view);
-            if items.len() == max_items {
-                break 'scan;
-            }
         }
         if count < batch {
             break;
@@ -1137,7 +1155,7 @@ pub(crate) async fn task_context_in_transaction(
     if !dependencies_current {
         return Err(KnowledgeError::Denied);
     }
-    Ok(items)
+    Ok((items, omitted))
 }
 impl KnowledgeStore for KnowledgeRepository {
     async fn verify(

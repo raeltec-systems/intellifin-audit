@@ -149,6 +149,22 @@ pub enum WorkExecution {
     Observed(Option<Observation>),
 }
 
+/// How a finished cycle is observed. Only a loop that reached its own resting
+/// point (waiting for guidance) is `Completed`. A bounded, failed or
+/// reconciliation-pending loop exited unsuccessfully: the coordinator's
+/// separate operation check keeps any possibly dispatched attempt unresolved
+/// for reconciliation, and nothing here claims that it was resolved.
+fn observation(end: zobba_application::work::CycleEnd) -> Observation {
+    use zobba_application::work::CycleEnd;
+    match end {
+        CycleEnd::Waiting => Observation::Completed,
+        CycleEnd::Fenced => Observation::Cancelled,
+        CycleEnd::Bounded | CycleEnd::Failed | CycleEnd::Reconcile | CycleEnd::Unavailable => {
+            Observation::Exited
+        }
+    }
+}
+
 pub async fn execute_work<F, Fut>(
     config: &Config,
     basis: &ClaimBasis,
@@ -160,7 +176,6 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<bool, TaskError>>,
 {
-    use zobba_application::work::CycleEnd;
     if *shutdown.borrow() {
         return WorkExecution::Observed(None);
     }
@@ -190,9 +205,7 @@ where
         end = &mut run => {
             return match end {
                 None => WorkExecution::Unavailable,
-                Some(CycleEnd::Fenced) => WorkExecution::Observed(Some(Observation::Cancelled)),
-                Some(CycleEnd::Unavailable) => WorkExecution::Observed(Some(Observation::Exited)),
-                Some(_) => WorkExecution::Observed(Some(Observation::Completed)),
+                Some(end) => WorkExecution::Observed(Some(observation(end))),
             };
         }
         _ = shutdown.changed() => true,
@@ -200,8 +213,9 @@ where
     };
     cancellation.cancel();
     match tokio::time::timeout(Duration::from_secs(5), &mut run).await {
-        Ok(None) => WorkExecution::Unavailable,
-        Ok(Some(_)) if !by_shutdown => WorkExecution::Observed(Some(Observation::Cancelled)),
+        // After cancellation began, never fall back to the inert executor:
+        // this claim was being worked and was cancelled.
+        Ok(_) if !by_shutdown => WorkExecution::Observed(Some(Observation::Cancelled)),
         _ => {
             if !by_shutdown {
                 config.diagnostics.record(Code::ProcessJoinUnconfirmed);

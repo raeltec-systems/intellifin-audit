@@ -92,3 +92,29 @@ test('two Tasks: one targeting question, keyboard multi-select, one receipt per 
   await expect(work.locator('.brief-revisions li')).toHaveCount(2);
   expect(errors).toEqual([]);
 });
+
+test('a direction is persisted before sending; a lost reply is retained and checked once after reload', async ({ page }) => {
+  await signIn(page);
+  await create(page, 'Review leaver access');
+  await page.getByLabel('Send to', { exact: true }).selectOption('route');
+  // The server commits; the reply never reaches the browser.
+  let delivered = 0;
+  await page.route('**/api/engagements/engagement-a/task-directions?**', async route => {
+    await route.fetch(); delivered += 1; await route.abort();
+  });
+  await page.getByLabel('Direction', { exact: true }).fill('Sample only terminated users.');
+  await page.getByLabel('Direction', { exact: true }).press('Enter');
+  await expect(page.getByRole('alert').filter({ hasText: 'Delivery was not confirmed' })).toBeVisible();
+  expect(delivered).toBe(1);
+  expect(await commands(page, 'Sample only terminated users.')).toHaveLength(1);
+  await page.unrouteAll({ behavior: 'wait' });
+  await page.reload();
+  await expect(page.getByText('Conversation up to date', { exact: true })).toBeVisible();
+  await page.getByLabel('Send to', { exact: true }).selectOption('route');
+  const check = page.getByRole('button', { name: 'Check original direction' });
+  await expect(check).toBeVisible();
+  await check.click();
+  await expect(page.getByRole('status').filter({ hasText: 'Received as guidance for Review leaver access' })).toBeVisible();
+  await expect(check).toHaveCount(0);
+  expect(await commands(page, 'Sample only terminated users.')).toHaveLength(1);
+});

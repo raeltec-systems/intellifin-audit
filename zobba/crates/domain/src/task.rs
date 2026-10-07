@@ -5,6 +5,8 @@ pub const COMMAND_CONTENT_MAX: usize = 4_000;
 pub const TASK_PAGE_SIZE: usize = 100;
 pub const EVENT_PAGE_SIZE: usize = 100;
 pub const MAX_DELIVERY_BATCH: usize = 8;
+/// Open (non-stopped) Tasks per engagement; Create and Continue refuse beyond it.
+pub const MAX_OPEN_TASKS: usize = 100;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CommandKind {

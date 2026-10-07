@@ -3855,7 +3855,7 @@
         },
         "responses": {
           "202": {
-            "description": "Reserved lane. Routed to the only non-stopped Task as Guidance, or a durable targeting question; never routed by a model",
+            "description": "Reserved lane. Routed to the only open Task that accepts guidance, or a durable targeting question; never routed by a model",
             "content": {
               "application/json": {
                 "schema": {
@@ -8920,7 +8920,7 @@
               "type": "string"
             },
             "description": "Candidate Task IDs from the question; at least one.",
-            "maxItems": 32,
+            "maxItems": 100,
             "minItems": 1
           }
         },
@@ -13214,7 +13214,7 @@
             "items": {
               "$ref": "#/components/schemas/RoutingCandidateResponse"
             },
-            "maxItems": 32
+            "maxItems": 100
           },
           "content": {
             "type": "string"
@@ -13230,9 +13230,14 @@
       "RoutingQuestionsResponse": {
         "type": "object",
         "required": [
-          "questions"
+          "questions",
+          "has_more"
         ],
         "properties": {
+          "has_more": {
+            "type": "boolean",
+            "description": "More (older) questions exist beyond this page."
+          },
           "questions": {
             "type": "array",
             "items": {
@@ -14828,7 +14833,8 @@
           "invocation_id",
           "operation_id",
           "next_action",
-          "current_work"
+          "current_work",
+          "knowledge_omitted"
         ],
         "properties": {
           "current_work": {
@@ -14851,6 +14857,12 @@
           },
           "kind": {
             "$ref": "#/components/schemas/StepKindResponse"
+          },
+          "knowledge_omitted": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Model turns: authorised knowledge records left out of the turn's context.",
+            "minimum": 0
           },
           "next_action": {
             "type": [
@@ -14888,6 +14900,7 @@
           "next_action_invocation_id",
           "attention",
           "steps",
+          "total_steps",
           "briefs"
         ],
         "properties": {
@@ -14951,10 +14964,17 @@
             "items": {
               "$ref": "#/components/schemas/TaskStepResponse"
             },
+            "description": "The most recent recorded steps of the current cycle, in order.",
             "maxItems": 50
           },
           "task_id": {
             "type": "string"
+          },
+          "total_steps": {
+            "type": "integer",
+            "format": "int32",
+            "description": "All steps recorded in the current cycle; earlier ones may be omitted above.",
+            "minimum": 0
           }
         }
       },

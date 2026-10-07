@@ -393,32 +393,48 @@ impl ModelRepository {
         self.session_hash = hash;
         self
     }
-    /// Current profile and catalogue selectable for this engagement: the latest
-    /// revision of each, enabled and (profile) trusted-qualified, lowest ID
-    /// first. None means the model is unavailable; nothing falls back silently.
+    /// Current profile and catalogue selectable for this organisation: the
+    /// latest revision of each, enabled and (profile) trusted-qualified. The
+    /// profile with the lowest ID (byte order) is chosen, then the lowest-ID
+    /// catalogue usable with that profile (tools require its tool capability),
+    /// so the pair is consistent and deterministic. None means the model is
+    /// unavailable; an unreadable stored document is an error, never skipped.
     pub async fn selection(
         &self,
         actor: &str,
         selected: &Scope,
     ) -> Result<Option<(ModelProfile, ToolCatalog)>, ModelError> {
+        const LIMIT: i64 = 256;
         let mut tx = task::begin(&self.pool, actor, selected)
             .await
             .map_err(task_error)?;
         let org = &selected.organisation_id;
-        let profiles: Vec<Value> = sqlx::query_scalar("SELECT document FROM (SELECT DISTINCT ON (id) id,document FROM public.model_profiles WHERE organisation_id=$1 ORDER BY id, revision DESC) p ORDER BY id COLLATE \"C\" LIMIT 256")
-            .bind(org).fetch_all(&mut *tx).await.map_err(db)?;
-        let catalogues: Vec<Value> = sqlx::query_scalar("SELECT document FROM (SELECT DISTINCT ON (id) id,document FROM public.model_catalogues WHERE organisation_id=$1 ORDER BY id, revision DESC) c ORDER BY id COLLATE \"C\" LIMIT 256")
-            .bind(org).fetch_all(&mut *tx).await.map_err(db)?;
+        let profiles: Vec<Value> = sqlx::query_scalar("SELECT document FROM (SELECT DISTINCT ON (id COLLATE \"C\") id,document FROM public.model_profiles WHERE organisation_id=$1 ORDER BY id COLLATE \"C\", revision DESC) p ORDER BY id COLLATE \"C\" LIMIT $2")
+            .bind(org).bind(LIMIT + 1).fetch_all(&mut *tx).await.map_err(db)?;
+        let catalogues: Vec<Value> = sqlx::query_scalar("SELECT document FROM (SELECT DISTINCT ON (id COLLATE \"C\") id,document FROM public.model_catalogues WHERE organisation_id=$1 ORDER BY id COLLATE \"C\", revision DESC) c ORDER BY id COLLATE \"C\" LIMIT $2")
+            .bind(org).bind(LIMIT + 1).fetch_all(&mut *tx).await.map_err(db)?;
         tx.commit().await.map_err(db)?;
-        let profile = profiles
+        if profiles.len() as i64 > LIMIT || catalogues.len() as i64 > LIMIT {
+            return Err(ModelError::Capacity);
+        }
+        let profiles = profiles
             .into_iter()
-            .filter_map(|v| decode::<StoredProfile>(v).ok().map(|p| p.0))
-            .find(|p| p.enabled && p.is_valid() && self.qualifications.qualified(p));
-        let catalogue = catalogues
+            .map(|v| decode::<StoredProfile>(v).map(|p| p.0))
+            .collect::<Result<Vec<_>, _>>()?;
+        let catalogues = catalogues
             .into_iter()
-            .filter_map(|v| decode::<StoredCatalog>(v).ok().map(|c| c.0))
-            .find(|c| c.enabled && c.is_valid());
-        Ok(profile.zip(catalogue))
+            .map(|v| decode::<StoredCatalog>(v).map(|c| c.0))
+            .collect::<Result<Vec<_>, _>>()?;
+        let Some(profile) = profiles
+            .into_iter()
+            .find(|p| p.enabled && p.is_valid() && self.qualifications.qualified(p))
+        else {
+            return Ok(None);
+        };
+        let catalogue = catalogues.into_iter().find(|c| {
+            c.enabled && c.is_valid() && (c.tools.is_empty() || profile.capabilities.tools)
+        });
+        Ok(catalogue.map(|catalogue| (profile, catalogue)))
     }
     async fn admin(&self, tx: &mut Tx, actor: &str, org: &str) -> Result<(), ModelError> {
         if !crate::identity::valid_secret(&self.session_hash) {

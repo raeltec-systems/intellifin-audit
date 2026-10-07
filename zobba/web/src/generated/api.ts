@@ -2021,6 +2021,8 @@ export interface components {
             key: string;
         };
         RoutingQuestionsResponse: {
+            /** @description More (older) questions exist beyond this page. */
+            has_more: boolean;
             questions: components["schemas"]["RoutingQuestionResponse"][];
         };
         SaveMemberRequest: {
@@ -2349,6 +2351,11 @@ export interface components {
             intent_revision: string;
             invocation_id: string | null;
             kind: components["schemas"]["StepKindResponse"];
+            /**
+             * Format: int32
+             * @description Model turns: authorised knowledge records left out of the turn's context.
+             */
+            knowledge_omitted: number;
             /** @description `model_turn`, `await_guidance`, `reconcile` or `tool:<catalogue name>`. */
             next_action: string | null;
             operation_id: string | null;
@@ -2371,8 +2378,14 @@ export interface components {
             next_action: string | null;
             /** @description The invocation that proposed `next_action`. */
             next_action_invocation_id: string | null;
+            /** @description The most recent recorded steps of the current cycle, in order. */
             steps: components["schemas"]["TaskStepResponse"][];
             task_id: string;
+            /**
+             * Format: int32
+             * @description All steps recorded in the current cycle; earlier ones may be omitted above.
+             */
+            total_steps: number;
         };
         TasksResponse: {
             /** @description Pass this Task ID as after_task_id; null means no further current Tasks. */
@@ -4506,7 +4519,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Reserved lane. Routed to the only non-stopped Task as Guidance, or a durable targeting question; never routed by a model */
+            /** @description Reserved lane. Routed to the only open Task that accepts guidance, or a durable targeting question; never routed by a model */
             202: {
                 headers: {
                     [name: string]: unknown;

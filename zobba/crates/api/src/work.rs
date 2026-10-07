@@ -1,6 +1,7 @@
 //! Task work projection, untargeted direction and targeting questions.
 //! Direction and answers use the reserved control lane: they produce Guides,
-//! which never wait on a model. No model text is returned by these routes.
+//! which never wait on a model. Work and question reads are ordinary traffic.
+//! No model text is returned by these routes.
 use axum::{
     Json,
     extract::{Path, Query, State, rejection::JsonRejection},
@@ -68,6 +69,8 @@ pub struct TaskStepResponse {
     pub next_action: Option<String>,
     #[schema(max_length = 200)]
     pub current_work: String,
+    /// Model turns: authorised knowledge records left out of the turn's context.
+    pub knowledge_omitted: u32,
 }
 
 /// An accepted brief revision. Received and applied are separate facts.
@@ -109,8 +112,11 @@ pub struct TaskWorkResponse {
     pub next_action_invocation_id: Option<String>,
     #[schema(required = true)]
     pub attention: Option<AttentionResponse>,
+    /// The most recent recorded steps of the current cycle, in order.
     #[schema(max_items = 50)]
     pub steps: Vec<TaskStepResponse>,
+    /// All steps recorded in the current cycle; earlier ones may be omitted above.
+    pub total_steps: u32,
     #[schema(max_items = 50)]
     pub briefs: Vec<BriefRevisionResponse>,
 }
@@ -137,6 +143,7 @@ fn step(step: TaskStep) -> TaskStepResponse {
         operation_id: step.operation_id,
         next_action: step.next_action.as_ref().map(NextAction::descriptor),
         current_work: step.current_work,
+        knowledge_omitted: step.knowledge_omitted,
     }
 }
 
@@ -169,6 +176,7 @@ fn work_response(work: TaskWork, model_available: bool) -> TaskWorkResponse {
             Attention::CycleBounded => AttentionResponse::CycleBounded,
         }),
         steps: work.steps.into_iter().map(step).collect(),
+        total_steps: work.total_steps,
         briefs: work.briefs.into_iter().map(brief).collect(),
     }
 }
@@ -247,7 +255,7 @@ pub struct RoutingQuestionResponse {
     pub id: String,
     pub key: String,
     pub content: String,
-    #[schema(max_items = 32)]
+    #[schema(max_items = 100)]
     pub candidates: Vec<RoutingCandidateResponse>,
     /// One Guide receipt per selected target, once answered.
     #[schema(required = true)]
@@ -276,13 +284,15 @@ pub struct DirectionResponse {
 pub struct RoutingQuestionsResponse {
     #[schema(max_items = 20)]
     pub questions: Vec<RoutingQuestionResponse>,
+    /// More (older) questions exist beyond this page.
+    pub has_more: bool,
 }
 
 #[derive(Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AnswerRequest {
     /// Candidate Task IDs from the question; at least one.
-    #[schema(min_items = 1, max_items = 32)]
+    #[schema(min_items = 1, max_items = 100)]
     pub selected: Vec<String>,
 }
 
@@ -365,7 +375,7 @@ async fn mutation(
         ("X-CSRF-Token"=String,Header,description="Current session-bound token")
         ,("X-Expected-Actor"=Option<String>,Header,description="Optional additional refusal fence",min_length=1,max_length=128,pattern="^[A-Za-z0-9_-]+$")
     ),request_body=DirectionRequest,
-    responses((status=202,description="Reserved lane. Routed to the only non-stopped Task as Guidance, or a durable targeting question; never routed by a model",body=DirectionResponse),(status=400,body=ErrorResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=409,description="No Task can receive guidance, or the key was reused with different text",body=ErrorResponse),(status=429,body=ErrorResponse),(status=503,body=ErrorResponse)))]
+    responses((status=202,description="Reserved lane. Routed to the only open Task that accepts guidance, or a durable targeting question; never routed by a model",body=DirectionResponse),(status=400,body=ErrorResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=409,description="No Task can receive guidance, or the key was reused with different text",body=ErrorResponse),(status=429,body=ErrorResponse),(status=503,body=ErrorResponse)))]
 pub(crate) async fn direct(
     State(state): State<TaskHttpState>,
     headers: HeaderMap,
@@ -434,8 +444,9 @@ pub(crate) async fn questions(
         .questions(&current.identity.id, &scope)
         .await
     {
-        Ok(found) => Json(RoutingQuestionsResponse {
+        Ok((found, has_more)) => Json(RoutingQuestionsResponse {
             questions: found.into_iter().map(question).collect(),
+            has_more,
         })
         .into_response(),
         Err(error) => failure(error),
@@ -467,6 +478,10 @@ pub(crate) async fn answer(
     let Ok(Json(body)) = body else {
         return failure(TaskError::Invalid);
     };
+    if body.selected.is_empty() || body.selected.len() > zobba_domain::work::MAX_ROUTING_CANDIDATES
+    {
+        return failure(TaskError::Invalid);
+    }
     match state
         .repository
         .clone()

@@ -40,7 +40,7 @@ use zobba_domain::{
         ReadRestriction, SourceBinding, SourceFact,
     },
     task::{Cessation, CommandKind, CommandReceipt, TaskCommand, TaskState},
-    work::{Attention, StepKind, StepStatus, invocation_key},
+    work::{Attention, StepKind, StepStatus, TurnConfiguration, invocation_key},
 };
 use zobba_infrastructure::{
     RuntimeDatabase, database_options,
@@ -784,7 +784,13 @@ async fn stalled_provider_pause_and_restart_recover_without_resending() {
             &receipt.task_id,
             &receipt.cycle_id,
             snapshot.intent_revision,
-            0
+            0,
+            TurnConfiguration {
+                profile_id: "loopback",
+                profile_revision: 1,
+                catalogue_id: "loopback-tools",
+                catalogue_revision: 1,
+            }
         )
     );
     assert_eq!(
@@ -829,6 +835,14 @@ async fn stalled_provider_pause_and_restart_recover_without_resending() {
     })
     .await;
     assert_eq!(task.cessation, Cessation::ReconciliationRequired);
+    assert_eq!(
+        tasks
+            .work("actor-a", &scope(), &receipt.task_id)
+            .await
+            .unwrap()
+            .attention,
+        Some(Attention::ReconciliationRequired)
+    );
     // Give the new process time to act; nothing may be replayed.
     tokio::time::sleep(Duration::from_secs(3)).await;
     assert_eq!(

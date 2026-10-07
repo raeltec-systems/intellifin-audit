@@ -20,7 +20,8 @@ use zobba_application::{
     work::{CycleEnd, SettledAttempt, ToolDispatch, WorkLoop, WorkSettings, settled_attempt},
 };
 use zobba_domain::work::{
-    Attention, Direction, NextAction, StepKind, StepStatus, invocation_key, routed_guide_key,
+    Attention, Direction, MAX_TURNS_PER_CYCLE, NextAction, StepKind, StepStatus, TaskStep,
+    TurnConfiguration, invocation_key, routed_guide_key,
 };
 use zobba_infrastructure::{
     identity::{IdentityRepository, secret_hash},
@@ -30,6 +31,8 @@ use zobba_infrastructure::{
 
 enum Turn {
     Tool(&'static str, &'static str),
+    /// Several proposals in one turn.
+    Tools(Vec<(&'static str, &'static str)>),
     Text(&'static str),
     /// Wait for the notify, then answer with the inner turn.
     Stall(Arc<Notify>, Box<Turn>),
@@ -63,6 +66,21 @@ fn outcome(turn: &Turn) -> TransportOutcome {
                     arguments: JsonValue::Null,
                 },
             }],
+            Completion::Succeeded,
+        ),
+        Turn::Tools(calls) => (
+            calls
+                .iter()
+                .enumerate()
+                .map(|(i, (call, name))| ModelEvent {
+                    sequence: i as u64,
+                    kind: EventKind::ToolProposal {
+                        call_id: (*call).into(),
+                        name: (*name).into(),
+                        arguments: JsonValue::Null,
+                    },
+                })
+                .collect(),
             Completion::Succeeded,
         ),
         Turn::Text(text) => (
@@ -158,6 +176,8 @@ struct Dispatch {
     hang_after_observe: Arc<AtomicBool>,
     before_consume: Interjection,
     dispatches: Arc<AtomicUsize>,
+    /// The source outcome is unknown; the consumed attempt is retained here.
+    unknown: Arc<Mutex<Option<Vec<ConsumedOperation>>>>,
 }
 impl ToolDispatch for Dispatch {
     async fn dispatch(
@@ -177,13 +197,17 @@ impl ToolDispatch for Dispatch {
         if self.hang_after_consume.load(Ordering::SeqCst) {
             std::future::pending::<()>().await;
         }
-        self.operations
-            .observe(&attempt, SourceFact::Completed)
-            .await?;
+        if let Some(held) = self.unknown.lock().unwrap().as_mut() {
+            let id = attempt.attempt_id.clone();
+            held.push(attempt);
+            return Ok((id, SourceFact::Unknown));
+        }
+        let fact = SourceFact::Completed;
+        self.operations.observe(&attempt, fact).await?;
         if self.hang_after_observe.load(Ordering::SeqCst) {
             std::future::pending::<()>().await;
         }
-        Ok((attempt.attempt_id.clone(), SourceFact::Completed))
+        Ok((attempt.attempt_id.clone(), fact))
     }
     async fn settled(
         &self,
@@ -208,6 +232,7 @@ struct Harness {
     hang_after_observe: Arc<AtomicBool>,
     before_consume: Interjection,
     dispatches: Arc<AtomicUsize>,
+    unknown: Arc<Mutex<Option<Vec<ConsumedOperation>>>>,
 }
 impl Harness {
     fn work(
@@ -228,6 +253,7 @@ impl Harness {
                 hang_after_observe: self.hang_after_observe.clone(),
                 before_consume: self.before_consume.clone(),
                 dispatches: self.dispatches.clone(),
+                unknown: self.unknown.clone(),
             },
             settings: WorkSettings {
                 profile: self.profile.clone(),
@@ -237,6 +263,7 @@ impl Harness {
                 max_output_tokens: 128,
             },
             bind: bind_disclosure,
+            delay: |duration| Box::pin(tokio::time::sleep(duration)),
         }
     }
 }
@@ -306,7 +333,7 @@ pub(super) async fn verify(f: &Fixture, admin: &mut PgConnection) {
         None,
         "without a trusted qualification source the model is unavailable"
     );
-    let harness = Harness {
+    let mut harness = Harness {
         repo: repo.clone(),
         operations: OperationRepository::new(f.pool.clone())
             .with_model_qualification_source(qualification.clone()),
@@ -315,22 +342,44 @@ pub(super) async fn verify(f: &Fixture, admin: &mut PgConnection) {
         hang_after_observe: Arc::new(AtomicBool::new(false)),
         before_consume: Arc::new(Mutex::new(None)),
         dispatches: Arc::new(AtomicUsize::new(0)),
+        unknown: Arc::new(Mutex::new(None)),
     };
     let hang = Arc::new(AtomicBool::new(false));
-    first_cycle(f, &harness, &hang).await;
-    guidance_mid_call(f, &harness, &hang, admin).await;
-    guide_turn_race(f, &harness, &hang, admin).await;
-    stalled_pause(f, &harness, &hang).await;
-    restart_recovery(f, &harness, &hang, admin).await;
-    completed_before_restart(f, &harness, &hang, admin).await;
-    fenced_after_admission(f, &harness, &hang, admin).await;
-    guide_after_completed_tool(f, &harness, &hang).await;
+    Box::pin(first_cycle(f, &harness, &hang)).await;
+    Box::pin(guidance_mid_call(f, &harness, &hang, admin)).await;
+    Box::pin(guide_turn_race(f, &harness, &hang, admin)).await;
+    Box::pin(stalled_pause(f, &harness, &hang)).await;
+    Box::pin(restart_recovery(f, &harness, &hang, admin)).await;
+    Box::pin(completed_before_restart(f, &harness, &hang, admin)).await;
+    Box::pin(fenced_after_admission(f, &harness, &hang, admin)).await;
+    Box::pin(guide_after_completed_tool(f, &harness, &hang)).await;
     let auditor = identities
         .establish_session("https://127.0.0.1:4443", "auditor-a", "Auditor", None)
         .await
         .unwrap();
-    knowledge_context(f, &harness, &hang, &secret_hash(&auditor)).await;
-    routing(f, admin).await;
+    Box::pin(knowledge_context(
+        f,
+        &harness,
+        &hang,
+        &secret_hash(&auditor),
+    ))
+    .await;
+    Box::pin(bounded_cycle(f, &harness, &hang)).await;
+    Box::pin(absent_fact(f, &harness, &hang, admin)).await;
+    Box::pin(reconciliation_stops_work(f, &harness, &hang)).await;
+    Box::pin(responded_reclaim_waits(f, &harness, &hang, admin)).await;
+    Box::pin(waiting_guidance_resumes(f, &harness, &hang)).await;
+    Box::pin(record_step_replay(f, &harness, &hang)).await;
+    Box::pin(configuration_change_after_crash(
+        f,
+        &mut harness,
+        &hang,
+        admin,
+        &repo,
+    ))
+    .await;
+    Box::pin(routing(f, admin)).await;
+    Box::pin(storage_guards(admin)).await;
 }
 
 async fn first_cycle(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
@@ -400,7 +449,13 @@ async fn first_cycle(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
             &basis.task_id,
             &basis.cycle_id,
             basis.intent_revision as u64,
-            0
+            0,
+            TurnConfiguration {
+                profile_id: &h.profile.id,
+                profile_revision: h.profile.revision,
+                catalogue_id: &h.catalogue.id,
+                catalogue_revision: h.catalogue.revision,
+            }
         )
     );
     assert_eq!(first.request.basis.execution_epoch, basis.execution_epoch);
@@ -571,37 +626,102 @@ async fn guidance_mid_call(
     assert_eq!(briefs[1].applied_boundary, briefs[0].applied_boundary);
 }
 
-/// Concurrent Guide versus turn completion. Whichever commits first, a
-/// proposal produced under the old intent is never consumed and the guidance
-/// is applied at a recorded boundary before the next turn.
+/// Waiting lock requests on the organisation advisory lock that every Task
+/// transaction takes first.
+async fn advisory_waiters(f: &Fixture) -> i64 {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM pg_catalog.pg_locks WHERE locktype='advisory' AND NOT granted",
+    )
+    .fetch_one(&f.pool)
+    .await
+    .unwrap()
+}
+async fn until_waiters(f: &Fixture, expected: i64) {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while advisory_waiters(f).await < expected {
+        assert!(
+            Instant::now() < deadline,
+            "expected {expected} blocked transactions"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+}
+
+/// Concurrent Guide versus turn completion, with real overlap: a held
+/// transaction owns the organisation lock that both the Guide admission and the
+/// turn's audience/recording transactions need. Both are observed blocked in
+/// pg_locks before the hold is released, in each arrival order. Whichever
+/// commits first, a proposal produced under the old intent is never consumed
+/// and the guidance is applied at a recorded boundary before the next turn.
 async fn guide_turn_race(
     f: &Fixture,
     h: &Harness,
     hang: &Arc<AtomicBool>,
     admin: &mut PgConnection,
 ) {
-    for delay in [0u64, 2, 5, 15] {
-        let name = format!("work-race-{delay}");
-        let (case, basis, _) = consumed(f, &name).await;
+    for guide_first in [true, false] {
+        let name = format!("work-race-held-{guide_first}");
+        let (case, basis, attempt) = consumed(f, &name).await;
+        let release = Arc::new(Notify::new());
         let script = Script::new(vec![
-            Turn::Tool("race-call", "send_exact"),
+            Turn::Stall(
+                release.clone(),
+                Box::new(Turn::Tool("race-call", "send_exact")),
+            ),
             Turn::Text("After the race."),
         ]);
         let work = h.work(f, &script, hang);
         let cancellation = ModelCancellation::new();
         let command = guide(&format!("{name}-guide"), &case, "Raced direction");
-        let guidance = async {
-            while script.sends.load(Ordering::SeqCst) == 0 {
-                tokio::task::yield_now().await;
+        let run = work.run(&basis, &cancellation);
+        tokio::pin!(run);
+        // The provider call is in flight (prepare already committed).
+        tokio::select! {
+            _ = &mut run => panic!("stalled turn returned"),
+            _ = async { while script.sends.load(Ordering::SeqCst) == 0 { tokio::time::sleep(Duration::from_millis(5)).await; } } => {},
+        }
+        let mut held = admin.begin().await.unwrap();
+        sqlx::query(
+            "SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('org-a',205))",
+        )
+        .execute(&mut *held)
+        .await
+        .unwrap();
+        let scope = selected("a");
+        let guidance = f.tasks.admit("actor-a", &scope, &command);
+        tokio::pin!(guidance);
+        let race = async {
+            if guide_first {
+                // The Guide queues on the lock first, then the turn completes
+                // and its audience transaction queues behind it.
+                tokio::select! {
+                    _ = &mut guidance => panic!("Guide passed the held lock"),
+                    _ = until_waiters(f, 1) => {},
+                }
+                release.notify_one();
+                tokio::select! {
+                    _ = &mut run => panic!("turn passed the held lock"),
+                    _ = &mut guidance => panic!("Guide passed the held lock"),
+                    _ = until_waiters(f, 2) => {},
+                }
+            } else {
+                release.notify_one();
+                tokio::select! {
+                    _ = &mut run => panic!("turn passed the held lock"),
+                    _ = until_waiters(f, 1) => {},
+                }
+                tokio::select! {
+                    _ = &mut run => panic!("turn passed the held lock"),
+                    _ = &mut guidance => panic!("Guide passed the held lock"),
+                    _ = until_waiters(f, 2) => {},
+                }
             }
-            tokio::time::sleep(Duration::from_millis(delay)).await;
-            f.tasks
-                .admit("actor-a", &selected("a"), &command)
-                .await
-                .unwrap()
         };
-        let (end, receipt) = tokio::join!(work.run(&basis, &cancellation), guidance);
-        assert!(matches!(end, CycleEnd::Waiting), "{delay}: {end:?}");
+        race.await;
+        held.commit().await.unwrap();
+        let (end, receipt) = tokio::join!(&mut run, &mut guidance);
+        let receipt = receipt.unwrap();
+        assert_eq!(end, CycleEnd::Waiting, "guide_first={guide_first}");
         let work = f
             .tasks
             .work("actor-a", &selected("a"), &case.receipt.task_id)
@@ -610,28 +730,27 @@ async fn guide_turn_race(
         let first = &work.steps[0];
         let consumed: i64 = sqlx::query_scalar("SELECT count(*) FROM public.operation_claims c JOIN public.model_tool_bindings b ON b.operation_id=c.operation_id WHERE b.invocation_id=$1 AND c.state='consumed'")
             .bind(first.invocation_id.as_ref().unwrap()).fetch_one(&mut *admin).await.unwrap();
+        assert_eq!(
+            consumed, 0,
+            "guide_first={guide_first}: a stale proposal is never consumed"
+        );
         match first.status {
-            StepStatus::Superseded => assert_eq!(consumed, 0, "{delay}"),
-            // The turn committed before the Guide: its tool either completed
-            // before the Guide or was fenced from admission/consumption.
-            StepStatus::Proposed => assert!(
-                matches!(
-                    work.steps[1].status,
-                    StepStatus::Superseded | StepStatus::Completed
-                ),
-                "{delay}"
+            StepStatus::Superseded => {}
+            // Recorded before the Guide committed: its proposal was fenced
+            // from admission or consumption.
+            StepStatus::Proposed => assert_eq!(
+                work.steps[1].status,
+                StepStatus::Superseded,
+                "guide_first={guide_first}"
             ),
-            other => panic!("{delay}: unexpected {other:?}"),
+            other => panic!("guide_first={guide_first}: unexpected {other:?}"),
         }
         let applied = work
             .briefs
             .iter()
             .find(|b| b.command_id == receipt.command_id)
             .unwrap();
-        assert!(
-            applied.applied_boundary.is_some(),
-            "{delay}: guidance applied at a boundary"
-        );
+        assert!(applied.applied_boundary.is_some(), "applied at a boundary");
         assert_eq!(work.steps.last().unwrap().status, StepStatus::Responded);
         assert!(
             script
@@ -642,6 +761,7 @@ async fn guide_turn_race(
                 .unwrap()
                 .contains("Raced direction")
         );
+        finish(f, &case, &attempt, Observation::Completed).await;
     }
 }
 
@@ -825,6 +945,16 @@ async fn restart_recovery(
         .await
         .unwrap();
     assert_eq!(snapshot.cessation, Cessation::ReconciliationRequired);
+    let reconciling = f
+        .tasks
+        .work("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        reconciling.attention,
+        Some(Attention::ReconciliationRequired),
+        "the card asks for reconciliation, not new work"
+    );
     let attempts: i64 = sqlx::query_scalar("SELECT count(*) FROM public.operation_attempts a JOIN public.operations o ON o.id=a.operation_id WHERE o.task_id=$1")
         .bind(&case.receipt.task_id).fetch_one(&mut *admin).await.unwrap();
     assert_eq!(attempts, 1);
@@ -1068,16 +1198,24 @@ async fn guide_after_completed_tool(f: &Fixture, h: &Harness, hang: &Arc<AtomicB
     );
     let last = script.requests.lock().unwrap()[2].clone();
     assert!(
-        matches!(&last.history[..], [HistoryItem::ToolExchange(e)] if Some(&e.result.attempt_id) == work.steps[1].attempt_id.as_ref()),
-        "the earlier-intent completed exchange remains exact history"
+        matches!(&last.history[..], [HistoryItem::ToolExchange(e), HistoryItem::Message(_)] if Some(&e.result.attempt_id) == work.steps[1].attempt_id.as_ref()),
+        "the earlier-intent completed exchange remains exact history, followed by the superseded note"
     );
+    let notes: Vec<&ModelMessage> = last
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            HistoryItem::Message(m) => Some(m),
+            _ => None,
+        })
+        .collect();
     assert!(
         last.messages
             .iter()
             .any(|m| m.text.contains("Newer direction"))
     );
     assert!(
-        last.messages
+        notes
             .iter()
             .any(|m| m.text.starts_with("Earlier proposals were superseded")
                 && m.text.contains("send_exact")),
@@ -1087,13 +1225,19 @@ async fn guide_after_completed_tool(f: &Fixture, h: &Harness, hang: &Arc<AtomicB
         !last
             .messages
             .iter()
-            .any(|m| m.text.contains("stale-history-call"))
+            .chain(notes.iter().copied())
+            .any(|m| m.text.contains("stale-history-call")),
+        "no proposal call identity or model text from the stale turn"
     );
     finish(f, &case, &attempt, Observation::Completed).await;
 }
 
 fn disclosed(request: &ModelRequest, marker: &str) -> bool {
     request.messages.iter().any(|m| m.text.contains(marker))
+        || request
+            .history
+            .iter()
+            .any(|item| matches!(item, HistoryItem::Message(m) if m.text.contains(marker)))
 }
 
 /// Context carries the Task's current authorised knowledge with exact
@@ -1249,6 +1393,447 @@ async fn knowledge_context(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>, ses
     finish(f, &case, &attempt, Observation::Completed).await;
 }
 
+fn leaked(value: String) -> &'static str {
+    Box::leak(value.into_boxed_str())
+}
+fn shape(work: &zobba_domain::work::TaskWork) -> Vec<(StepKind, StepStatus)> {
+    work.steps.iter().map(|s| (s.kind, s.status)).collect()
+}
+
+/// A model that always proposes a tool runs exactly the bounded 16 turns. The
+/// proposals are refused by current Permissions, so the bound (not an effect
+/// budget) is what ends the cycle.
+async fn bounded_cycle(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
+    let (case, basis, attempt) = consumed(f, "work-bounded").await;
+    let turns: Vec<Turn> = (0..=MAX_TURNS_PER_CYCLE)
+        .map(|i| Turn::Tool(leaked(format!("bound-call-{i}")), "send_forbidden"))
+        .collect();
+    let script = Script::new(turns);
+    let end = h
+        .work(f, &script, hang)
+        .run(&basis, &ModelCancellation::new())
+        .await;
+    assert_eq!(end, CycleEnd::Bounded);
+    assert_eq!(
+        script.sends.load(Ordering::SeqCst),
+        MAX_TURNS_PER_CYCLE,
+        "no 17th send"
+    );
+    assert_eq!(
+        script.turns.lock().unwrap().len(),
+        1,
+        "one scripted turn unused"
+    );
+    let work = f
+        .tasks
+        .work("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    assert_eq!(work.total_steps as usize, 2 * MAX_TURNS_PER_CYCLE);
+    assert_eq!(
+        work.steps
+            .iter()
+            .filter(|s| s.kind == StepKind::ModelTurn)
+            .count(),
+        MAX_TURNS_PER_CYCLE.min(25)
+    );
+    finish(f, &case, &attempt, Observation::Exited).await;
+    let work = f
+        .tasks
+        .work("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    assert_eq!(work.attention, Some(Attention::CycleBounded));
+}
+
+/// An authoritative absence, established by reconciliation of a consumed
+/// attempt whose producer was lost, is recorded as the step's fact and enters
+/// the next turn as an exchange that says the operation did not take effect.
+async fn absent_fact(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>, admin: &mut PgConnection) {
+    let (case, basis, _lost) = consumed(f, "work-absent").await;
+    let script = Script::new(vec![Turn::Tool("absent-call", "send_exact")]);
+    hang.store(true, Ordering::SeqCst);
+    {
+        let work = h.work(f, &script, hang);
+        let cancellation = ModelCancellation::new();
+        let run = work.run(&basis, &cancellation);
+        let consumed_attempt = async {
+            loop {
+                if task_attempts(&case, &mut *admin).await == 1 {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        };
+        tokio::select! {
+            _ = run => panic!("lost dispatch returned"),
+            _ = consumed_attempt => {},
+        }
+    }
+    hang.store(false, Ordering::SeqCst);
+    let attempt_id: String = sqlx::query_scalar("SELECT a.id FROM public.operation_attempts a JOIN public.operations o ON o.id=a.operation_id WHERE o.task_id=$1")
+        .bind(&case.receipt.task_id)
+        .fetch_one(&mut *admin)
+        .await
+        .unwrap();
+    // Reconciliation's source lookup establishes absence for this exact attempt.
+    let recovered = h
+        .operations
+        .recover("actor-a", &selected("a"), &attempt_id)
+        .await
+        .unwrap();
+    h.operations
+        .reauthorize_recovery("actor-a", &selected("a"), &recovered)
+        .await
+        .unwrap();
+    h.operations
+        .observe(&recovered, SourceFact::AuthoritativelyAbsent)
+        .await
+        .unwrap();
+    expire_owner(&case, &mut *admin).await;
+    let replacement = execution(
+        f.tasks
+            .coordinate(&route(&case.receipt), "work-absent-replacement")
+            .await
+            .unwrap(),
+    );
+    let replacement_attempt = f.tasks.consume(&replacement).await.unwrap();
+    let retry = Script::new(vec![Turn::Text("Noted that it did not take effect.")]);
+    let end = h
+        .work(f, &retry, hang)
+        .run(&replacement, &ModelCancellation::new())
+        .await;
+    assert_eq!(end, CycleEnd::Waiting);
+    assert_eq!(
+        task_attempts(&case, &mut *admin).await,
+        1,
+        "absence is never retried here"
+    );
+    let work = f
+        .tasks
+        .work("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        shape(&work),
+        vec![
+            (StepKind::ModelTurn, StepStatus::Proposed),
+            (StepKind::ToolStep, StepStatus::Completed),
+            (StepKind::ModelTurn, StepStatus::Responded),
+        ]
+    );
+    assert_eq!(work.steps[1].fact, Some(SourceFact::AuthoritativelyAbsent));
+    assert_eq!(
+        work.steps[1].attempt_id.as_deref(),
+        Some(attempt_id.as_str())
+    );
+    let next = retry.requests.lock().unwrap()[0].clone();
+    let [HistoryItem::ToolExchange(exchange)] = &next.history[..] else {
+        panic!("one exchange: {:?}", next.history.len())
+    };
+    assert_eq!(exchange.result.fact, SourceFact::AuthoritativelyAbsent);
+    assert!(exchange.result.content.contains("did not take effect"));
+    finish(f, &case, &replacement_attempt, Observation::Completed).await;
+}
+
+/// An unresolved possible dispatch stops the cycle: the remaining proposal is
+/// not admitted and no new turn starts, even when the loop runs again. Once the
+/// source resolves the attempt, work continues from the durable facts.
+async fn reconciliation_stops_work(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
+    let (case, basis, attempt) = consumed(f, "work-reconcile-stop").await;
+    *h.unknown.lock().unwrap() = Some(vec![]);
+    let script = Script::new(vec![
+        Turn::Tools(vec![
+            ("unknown-call", "send_exact"),
+            ("after-call", "send_exact"),
+        ]),
+        Turn::Text("Continued after reconciliation."),
+    ]);
+    let work = h.work(f, &script, hang);
+    let cancellation = ModelCancellation::new();
+    assert_eq!(work.run(&basis, &cancellation).await, CycleEnd::Reconcile);
+    let held = h.unknown.lock().unwrap().take().unwrap();
+    assert_eq!(held.len(), 1, "only the first proposal was consumed");
+    let steps = f
+        .tasks
+        .work("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        shape(&steps),
+        vec![
+            (StepKind::ModelTurn, StepStatus::Proposed),
+            (StepKind::ToolStep, StepStatus::ReconciliationRequired),
+        ]
+    );
+    // Running again (a reclaim) neither resends, nor admits the next
+    // proposal, nor starts a paid turn.
+    assert_eq!(work.run(&basis, &cancellation).await, CycleEnd::Reconcile);
+    assert_eq!(script.sends.load(Ordering::SeqCst), 1);
+    let again = f
+        .tasks
+        .work("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    assert_eq!(again.total_steps, 2);
+    // The source resolves the exact attempt; the cycle then continues.
+    h.operations
+        .observe(&held[0], SourceFact::Completed)
+        .await
+        .unwrap();
+    assert_eq!(work.run(&basis, &cancellation).await, CycleEnd::Waiting);
+    let done = f
+        .tasks
+        .work("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        shape(&done),
+        vec![
+            (StepKind::ModelTurn, StepStatus::Proposed),
+            (StepKind::ToolStep, StepStatus::ReconciliationRequired),
+            (StepKind::ToolStep, StepStatus::Completed),
+            (StepKind::ModelTurn, StepStatus::Responded),
+        ]
+    );
+    let last = script.requests.lock().unwrap()[1].clone();
+    let attempts: Vec<_> = last
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            HistoryItem::ToolExchange(e) => Some(e.result.attempt_id.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        attempts.len(),
+        2,
+        "the reconciled attempt is rebuilt into history"
+    );
+    assert!(attempts.contains(&held[0].attempt_id));
+    finish(f, &case, &attempt, Observation::Completed).await;
+}
+
+/// A turn that already answered is not repeated when the claim is reclaimed
+/// without new guidance: no new paid turn.
+async fn responded_reclaim_waits(
+    f: &Fixture,
+    h: &Harness,
+    hang: &Arc<AtomicBool>,
+    admin: &mut PgConnection,
+) {
+    let (case, basis, _lost) = consumed(f, "work-responded-reclaim").await;
+    let script = Script::new(vec![Turn::Text("Answered once.")]);
+    assert_eq!(
+        h.work(f, &script, hang)
+            .run(&basis, &ModelCancellation::new())
+            .await,
+        CycleEnd::Waiting
+    );
+    // The producer is lost before observing; a replacement reclaims the work.
+    expire_owner(&case, &mut *admin).await;
+    let replacement = execution(
+        f.tasks
+            .coordinate(&route(&case.receipt), "work-responded-replacement")
+            .await
+            .unwrap(),
+    );
+    let replacement_attempt = f.tasks.consume(&replacement).await.unwrap();
+    let retry = Script::new(vec![]);
+    assert_eq!(
+        h.work(f, &retry, hang)
+            .run(&replacement, &ModelCancellation::new())
+            .await,
+        CycleEnd::Waiting
+    );
+    assert_eq!(retry.sends.load(Ordering::SeqCst), 0, "no new paid turn");
+    finish(f, &case, &replacement_attempt, Observation::Completed).await;
+}
+
+/// Guidance to a waiting Task resumes its work: the Guide applies at the
+/// boundary and the next turn runs with the new brief and the earlier answer.
+async fn waiting_guidance_resumes(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
+    let (case, basis, attempt) = consumed(f, "work-waiting-wake").await;
+    let first = Script::new(vec![Turn::Text("Awaiting your direction.")]);
+    assert_eq!(
+        h.work(f, &first, hang)
+            .run(&basis, &ModelCancellation::new())
+            .await,
+        CycleEnd::Waiting
+    );
+    finish(f, &case, &attempt, Observation::Completed).await;
+    let waiting = f
+        .tasks
+        .get("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    assert_eq!(waiting.state, TaskState::Waiting);
+    let receipt = f
+        .tasks
+        .admit(
+            "actor-a",
+            &selected("a"),
+            &guide("work-waiting-guide", &case, "Now test the accrual sample"),
+        )
+        .await
+        .unwrap();
+    let resumed = execution(
+        f.tasks
+            .coordinate(&route(&case.receipt), &basis.worker_id)
+            .await
+            .unwrap(),
+    );
+    let resumed_attempt = f.tasks.consume(&resumed).await.unwrap();
+    let second = Script::new(vec![Turn::Text("Accrual sample considered.")]);
+    assert_eq!(
+        h.work(f, &second, hang)
+            .run(&resumed, &ModelCancellation::new())
+            .await,
+        CycleEnd::Waiting
+    );
+    assert_eq!(second.sends.load(Ordering::SeqCst), 1);
+    let request = second.requests.lock().unwrap()[0].clone();
+    assert!(
+        request
+            .messages
+            .iter()
+            .any(|m| m.text.contains("Now test the accrual sample"))
+    );
+    assert!(
+        request
+            .history
+            .iter()
+            .any(|item| matches!(item, HistoryItem::Message(m)
+            if m.role == MessageRole::Assistant && m.text == "Awaiting your direction.")),
+        "the model's own earlier answer is attributed history"
+    );
+    let work = f
+        .tasks
+        .work("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        shape(&work),
+        vec![
+            (StepKind::ModelTurn, StepStatus::Responded),
+            (StepKind::ModelTurn, StepStatus::Responded),
+        ]
+    );
+    let applied = work
+        .briefs
+        .iter()
+        .find(|b| b.command_id == receipt.command_id)
+        .unwrap();
+    assert_eq!(applied.applied_boundary, Some(1));
+    finish(f, &case, &resumed_attempt, Observation::Completed).await;
+}
+
+/// An identical step retry returns the original fact; any difference conflicts.
+async fn record_step_replay(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
+    let (case, basis, attempt) = consumed(f, "work-step-replay").await;
+    let script = Script::new(vec![Turn::Text("Recorded once.")]);
+    h.work(f, &script, hang)
+        .run(&basis, &ModelCancellation::new())
+        .await;
+    let work = f
+        .tasks
+        .work("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    let stored: TaskStep = work.steps[0].clone();
+    assert_eq!(f.tasks.record_step(&basis, &stored).await.unwrap(), stored);
+    for changed in [
+        TaskStep {
+            current_work: "A different label".into(),
+            ..stored.clone()
+        },
+        TaskStep {
+            next_action: Some(NextAction::ModelTurn),
+            ..stored.clone()
+        },
+        TaskStep {
+            status: StepStatus::Failed,
+            next_action: None,
+            ..stored.clone()
+        },
+        TaskStep {
+            knowledge_omitted: stored.knowledge_omitted + 1,
+            ..stored.clone()
+        },
+    ] {
+        assert_eq!(
+            f.tasks.record_step(&basis, &changed).await,
+            Err(TaskError::Conflict),
+            "{changed:?}"
+        );
+    }
+    finish(f, &case, &attempt, Observation::Completed).await;
+}
+
+/// Changed model configuration after a crash is a different invocation: it
+/// never collides with the stored one under the same Task/cycle/intent/ordinal.
+async fn configuration_change_after_crash(
+    f: &Fixture,
+    h: &mut Harness,
+    hang: &Arc<AtomicBool>,
+    admin: &mut PgConnection,
+    repo: &ModelRepository,
+) {
+    let (case, basis, _lost) = consumed(f, "work-config-change").await;
+    let script = Script::new(vec![Turn::Hang]);
+    {
+        let work = h.work(f, &script, hang);
+        let cancellation = ModelCancellation::new();
+        let run = work.run(&basis, &cancellation);
+        tokio::pin!(run);
+        tokio::select! {
+            _ = &mut run => panic!("hung turn returned"),
+            _ = async { while script.sends.load(Ordering::SeqCst) == 0 { tokio::time::sleep(Duration::from_millis(5)).await; } } => {},
+        }
+    }
+    let mut changed = h.profile.clone();
+    changed.revision += 1;
+    changed.max_output_tokens = 256;
+    repo.save_profile("actor-manager", "org-a", &changed)
+        .await
+        .unwrap();
+    h.profile = changed;
+    expire_owner(&case, &mut *admin).await;
+    let replacement = execution(
+        f.tasks
+            .coordinate(&route(&case.receipt), "work-config-replacement")
+            .await
+            .unwrap(),
+    );
+    let replacement_attempt = f.tasks.consume(&replacement).await.unwrap();
+    let retry = Script::new(vec![Turn::Text("Under the new configuration.")]);
+    assert_eq!(
+        h.work(f, &retry, hang)
+            .run(&replacement, &ModelCancellation::new())
+            .await,
+        CycleEnd::Waiting
+    );
+    assert_eq!(retry.sends.load(Ordering::SeqCst), 1);
+    let keys: Vec<(String, i64)> = sqlx::query_as("SELECT key,profile_revision FROM public.model_invocations WHERE task_id=$1 ORDER BY profile_revision")
+        .bind(&case.receipt.task_id)
+        .fetch_all(&mut *admin)
+        .await
+        .unwrap();
+    assert_eq!(keys.len(), 2, "a distinct invocation, no collision");
+    assert_ne!(keys[0].0, keys[1].0);
+    assert_eq!(keys[1].1 as u64, h.profile.revision);
+    let work = f
+        .tasks
+        .work("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        shape(&work),
+        vec![(StepKind::ModelTurn, StepStatus::Responded)]
+    );
+    finish(f, &case, &replacement_attempt, Observation::Completed).await;
+}
+
 async fn routing(f: &Fixture, admin: &mut PgConnection) {
     let b = selected("b");
     let tasks = &f.tasks;
@@ -1379,7 +1964,9 @@ async fn routing(f: &Fixture, admin: &mut PgConnection) {
     .await
     .unwrap();
     assert_eq!(count, 2);
-    assert_eq!(tasks.questions("actor-b", &b).await.unwrap()[0], answered);
+    let (listed, more) = tasks.questions("actor-b", &b).await.unwrap();
+    assert_eq!(listed[0], answered);
+    assert!(!more, "a single page of questions");
     // A stale candidate (stopped since the question) refuses the answer.
     let asked = tasks
         .direct("actor-b", &b, "route-stale", "Recheck controls")
@@ -1409,4 +1996,90 @@ async fn routing(f: &Fixture, admin: &mut PgConnection) {
             .await
             .is_ok()
     );
+}
+
+async fn refused(
+    admin: &mut PgConnection,
+    statement: sqlx::query::Query<'_, sqlx::Postgres, sqlx::postgres::PgArguments>,
+) {
+    let error = statement.execute(&mut *admin).await.unwrap_err();
+    assert_eq!(
+        error.as_database_error().and_then(|e| e.code()).as_deref(),
+        Some("23514"),
+        "{error:?}"
+    );
+}
+
+/// Storage refuses cross-row inconsistencies even from a privileged writer.
+async fn storage_guards(admin: &mut PgConnection) {
+    let (invocation, owner): (String, String) =
+        sqlx::query_as("SELECT id,task_id FROM public.model_invocations ORDER BY id LIMIT 1")
+            .fetch_one(&mut *admin)
+            .await
+            .unwrap();
+    let (other, other_cycle, org, client, engagement): (String, String, String, String, String) =
+        sqlx::query_as("SELECT t.id,t.cycle_id,t.organisation_id,t.client_id,t.engagement_id FROM public.tasks t JOIN public.model_invocations i ON (i.organisation_id,i.client_id,i.engagement_id)=(t.organisation_id,t.client_id,t.engagement_id) WHERE i.id=$1 AND t.id<>$2 ORDER BY t.id LIMIT 1")
+            .bind(&invocation)
+            .bind(&owner)
+            .fetch_one(&mut *admin)
+            .await
+            .unwrap();
+    // A step cannot name another Task's invocation.
+    refused(
+        admin,
+        sqlx::query("INSERT INTO public.task_steps(organisation_id,client_id,engagement_id,task_id,cycle_id,ordinal,kind,intent_revision,execution_epoch,invocation_id,status,current_work) VALUES($1,$2,$3,$4,$5,4000,'model_turn',1,1,$6,'proposed','Forged')")
+            .bind(&org).bind(&client).bind(&engagement).bind(&other).bind(&other_cycle).bind(&invocation),
+    )
+    .await;
+    // A tool step cannot name an operation bound to a different call.
+    let (step_task, step_cycle, step_invocation, bound_operation): (String, String, String, String) =
+        sqlx::query_as("SELECT s.task_id,s.cycle_id,s.invocation_id,b.operation_id FROM public.task_steps s JOIN public.model_tool_bindings b ON b.invocation_id=s.invocation_id AND b.call_id=s.call_id WHERE s.kind='tool_step' AND s.status='completed' ORDER BY s.task_id LIMIT 1")
+            .fetch_one(&mut *admin)
+            .await
+            .unwrap();
+    refused(
+        admin,
+        sqlx::query("INSERT INTO public.task_steps(organisation_id,client_id,engagement_id,task_id,cycle_id,ordinal,kind,intent_revision,execution_epoch,invocation_id,call_id,operation_id,status,current_work) VALUES($1,$2,$3,$4,$5,4001,'tool_step',1,1,$6,'forged-call',$7,'refused','Forged')")
+            .bind(&org).bind(&client).bind(&engagement).bind(&step_task).bind(&step_cycle).bind(&step_invocation).bind(&bound_operation),
+    )
+    .await;
+    // Only Create and Guide commands can be applied as guidance.
+    let (command, command_task, command_cycle): (String, String, String) = sqlx::query_as(
+        "SELECT id,task_id,cycle_id FROM public.task_commands WHERE kind='pause' AND organisation_id=$1 AND client_id=$2 AND engagement_id=$3 ORDER BY id LIMIT 1",
+    )
+    .bind(&org).bind(&client).bind(&engagement)
+    .fetch_one(&mut *admin)
+    .await
+    .unwrap();
+    refused(
+        admin,
+        sqlx::query("INSERT INTO public.task_guidance_applications(organisation_id,client_id,engagement_id,command_id,task_id,cycle_id,boundary_ordinal,applied_cursor) VALUES($1,$2,$3,$4,$5,$6,0,1)")
+            .bind(&org).bind(&client).bind(&engagement).bind(&command).bind(&command_task).bind(&command_cycle),
+    )
+    .await;
+    // An answer selects only distinct candidates of its own question, by its author.
+    sqlx::query("INSERT INTO public.task_routing_questions(organisation_id,client_id,engagement_id,id,author_id,idempotency_key,content,candidates) VALUES($1,$2,$3,'guard-question','actor-a','guard-question-key','Guarded',$4)")
+        .bind(&org).bind(&client).bind(&engagement)
+        .bind(serde_json::json!([{"task_id":"task-x","cycle_id":"c","objective":"o"},{"task_id":"task-y","cycle_id":"c","objective":"o"}]))
+        .execute(&mut *admin)
+        .await
+        .unwrap();
+    for (author, selected) in [
+        ("actor-a", serde_json::json!(["task-z"])),
+        ("actor-a", serde_json::json!(["task-x", "task-x"])),
+        ("actor-a", serde_json::json!([1])),
+        ("actor-b", serde_json::json!(["task-x"])),
+    ] {
+        refused(
+            admin,
+            sqlx::query("INSERT INTO public.task_routing_answers(organisation_id,client_id,engagement_id,question_id,author_id,selected) VALUES($1,$2,$3,'guard-question',$4,$5)")
+                .bind(&org).bind(&client).bind(&engagement).bind(author).bind(selected),
+        )
+        .await;
+    }
+    sqlx::query("INSERT INTO public.task_routing_answers(organisation_id,client_id,engagement_id,question_id,author_id,selected) VALUES($1,$2,$3,'guard-question','actor-a',$4)")
+        .bind(&org).bind(&client).bind(&engagement).bind(serde_json::json!(["task-y", "task-x"]))
+        .execute(&mut *admin)
+        .await
+        .expect("a valid answer is stored");
 }

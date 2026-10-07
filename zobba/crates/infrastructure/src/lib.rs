@@ -217,6 +217,7 @@ async fn check_runtime_grants(conn: &mut PgConnection, role: &str) -> Result<(),
     check_skills_functions(conn, Some(role)).await?;
     check_knowledge_functions(conn, Some(role)).await?;
     check_model_functions(conn, Some(role)).await?;
+    check_work_functions(conn, Some(role)).await?;
     if complete {
         Ok(())
     } else {
@@ -354,6 +355,29 @@ async fn check_model_functions(
     }
 }
 
+// Story 22.2 storage guards are trigger-only security-invoker functions owned by
+// the schema owner, never callable entry points; each guard trigger must exist
+// exactly once and be enabled.
+async fn check_work_functions(
+    conn: &mut PgConnection,
+    runtime: Option<&str>,
+) -> Result<(), BootstrapError> {
+    let safe: bool = sqlx::query_scalar(r#"
+      SELECT count(*)=3 AND bool_and(NOT p.prosecdef
+       AND p.proowner=(SELECT relowner FROM pg_catalog.pg_class WHERE oid='public.zobba_bootstrap'::regclass)
+       AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a WHERE a.grantee<>p.proowner)
+       AND ($1::text IS NULL OR NOT pg_catalog.has_function_privilege($1,p.oid,'EXECUTE'))
+       AND (SELECT count(*) FROM pg_catalog.pg_trigger t WHERE t.tgfoid=p.oid AND t.tgname=p.proname AND t.tgenabled='O' AND NOT t.tgisinternal)=1)
+      FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public' AND p.proname IN ('work_step_guard','work_guidance_guard','work_answer_guard')
+    "#).bind(runtime).fetch_one(conn).await.map_err(|_| BootstrapError::SchemaMismatch)?;
+    if safe {
+        Ok(())
+    } else {
+        Err(BootstrapError::SchemaMismatch)
+    }
+}
+
 async fn inventory(conn: &mut PgConnection) -> Result<Vec<String>, BootstrapError> {
     let foreign: bool = sqlx::query_scalar(r#"
         SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname !~ '^pg_' AND nspname NOT IN ('public','information_schema'))
@@ -369,7 +393,7 @@ async fn inventory(conn: &mut PgConnection) -> Result<Vec<String>, BootstrapErro
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_dict o JOIN pg_catalog.pg_namespace n ON n.oid=o.dictnamespace WHERE n.nspname='public')
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_parser o JOIN pg_catalog.pg_namespace n ON n.oid=o.prsnamespace WHERE n.nspname='public')
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_template o JOIN pg_catalog.pg_namespace n ON n.oid=o.tmplnamespace WHERE n.nspname='public')
-        OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname NOT IN ('membership_admin','membership_session','membership_validate','membership_fence','membership_read','membership_write','membership_accept','membership_preview','membership_assignments','evidence_session_locked','admin_continuity_assert','admin_continuity_lock','admin_continuity_check','admin_continuity_truncate','methodology_audit','methodology_read','methodology_write','methodology_candidates','methodology_task','skills_read','skills_admin','skills_impact','skills_write','skills_task','knowledge_audit','knowledge_release_active','model_configuration_admin'))
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname NOT IN ('membership_admin','membership_session','membership_validate','membership_fence','membership_read','membership_write','membership_accept','membership_preview','membership_assignments','evidence_session_locked','admin_continuity_assert','admin_continuity_lock','admin_continuity_check','admin_continuity_truncate','methodology_audit','methodology_read','methodology_write','methodology_candidates','methodology_task','skills_read','skills_admin','skills_impact','skills_write','skills_task','knowledge_audit','knowledge_release_active','model_configuration_admin','work_step_guard','work_guidance_guard','work_answer_guard'))
         OR EXISTS (
           SELECT 1 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace
           WHERE n.nspname='public' AND t.oid NOT IN (
@@ -910,6 +934,9 @@ async fn check_schema(
     }
     if version >= 11 {
         check_model_functions(conn, None).await?;
+    }
+    if version >= 12 {
+        check_work_functions(conn, None).await?;
     }
     // Compare bounded booleans, never allocate untrusted metadata strings/blobs.
     let versions: Vec<i64> =

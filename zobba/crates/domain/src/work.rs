@@ -7,9 +7,14 @@ use crate::{identity::valid_scope_id, permissions::SourceFact};
 pub const MAX_TURNS_PER_CYCLE: usize = 16;
 /// Steps per cycle: each turn plus at most its bounded tool proposals.
 pub const MAX_STEPS_PER_CYCLE: usize = 4096;
-pub const MAX_ROUTING_CANDIDATES: usize = 32;
+/// A targeting question can list every open Task, so routing never refuses for
+/// capacity below the engagement's open-Task limit.
+pub const MAX_ROUTING_CANDIDATES: usize = crate::task::MAX_OPEN_TASKS;
 pub const BRIEF_PAGE_SIZE: usize = 50;
 pub const STEP_LABEL_MAX: usize = 200;
+/// Same bound as the step call identifier column.
+pub const CALL_ID_MAX: usize = 200;
+pub const MAX_KNOWLEDGE_OMITTED: u32 = 1_000_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StepKind {
@@ -46,11 +51,14 @@ pub enum StepStatus {
     /// current. Recorded, never admitted; the next turn reconsiders it.
     Superseded,
     /// Model turn that did not succeed (refusal, failure, cancellation or an
-    /// unknown possibly accepted outcome). No proposal is executable.
+    /// unknown possibly accepted outcome), or a tool proposal that could not
+    /// be admitted or consumed for a reason other than a Permissions refusal
+    /// (conflict, invalid request, capacity, pending decision). No dispatch.
     Failed,
     /// Tool proposal admitted, consumed, dispatched and resolved.
     Completed,
-    /// Tool proposal refused at admission or consumption; no dispatch.
+    /// Tool proposal refused by current Permissions at admission or
+    /// consumption; no dispatch.
     Refused,
     /// Consumed tool attempt whose effect is unknown.
     ReconciliationRequired,
@@ -88,7 +96,11 @@ impl StepStatus {
             ),
             StepKind::ToolStep => matches!(
                 self,
-                Self::Completed | Self::Refused | Self::Superseded | Self::ReconciliationRequired
+                Self::Completed
+                    | Self::Refused
+                    | Self::Superseded
+                    | Self::Failed
+                    | Self::ReconciliationRequired
             ),
         }
     }
@@ -150,6 +162,9 @@ pub struct TaskStep {
     pub next_action: Option<NextAction>,
     /// Fixed platform label describing the step, never model text.
     pub current_work: String,
+    /// Model turns only: authorised knowledge records left out of this turn's
+    /// context by the context limit or because they were not usable.
+    pub knowledge_omitted: u32,
 }
 
 impl TaskStep {
@@ -166,14 +181,23 @@ impl TaskStep {
             && optional(&self.attempt_id)
             && self.call_id.as_ref().is_none_or(|v| {
                 !v.is_empty()
-                    && v.len() <= 200
+                    && v.len() <= CALL_ID_MAX
                     && v.bytes()
                         .all(|b| b.is_ascii_alphanumeric() || b"_.:-".contains(&b))
             })
             && match self.kind {
-                StepKind::ModelTurn => self.call_id.is_none() && self.operation_id.is_none(),
-                StepKind::ToolStep => self.invocation_id.is_some() && self.call_id.is_some(),
+                StepKind::ModelTurn => {
+                    self.call_id.is_none()
+                        && self.operation_id.is_none()
+                        && self.attempt_id.is_none()
+                }
+                StepKind::ToolStep => {
+                    self.invocation_id.is_some()
+                        && self.call_id.is_some()
+                        && self.knowledge_omitted == 0
+                }
             }
+            && self.knowledge_omitted <= MAX_KNOWLEDGE_OMITTED
             && (self.invocation_id.is_some() || self.status == StepStatus::Failed)
             && match self.status {
                 StepStatus::Completed => {
@@ -264,6 +288,8 @@ pub struct TaskWork {
     pub methodology_status: Option<String>,
     /// Most recent steps of the current cycle, in ordinal order.
     pub steps: Vec<TaskStep>,
+    /// All steps recorded in the current cycle; `steps` may omit earlier ones.
+    pub total_steps: u32,
     /// Most recent brief revisions, newest first.
     pub briefs: Vec<BriefRevision>,
     pub current_work: Option<String>,
@@ -346,22 +372,39 @@ pub fn route_direction(mut candidates: Vec<RoutingCandidate>) -> Routing {
     }
 }
 
+/// Why an answer cannot be accepted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AnswerError {
+    /// Empty, over the candidate limit, duplicated or malformed.
+    Invalid,
+    /// Names a Task that is not one of this question's candidates.
+    NotCandidate,
+}
+
 /// Validate an answer against the question's candidates. Unknown (foreign)
 /// Task IDs and duplicates are refused; order is normalised.
-pub fn answer_selection(question: &RoutingQuestion, selected: &[String]) -> Option<Vec<String>> {
-    if selected.is_empty() || selected.len() > MAX_ROUTING_CANDIDATES {
-        return None;
+pub fn answer_selection(
+    question: &RoutingQuestion,
+    selected: &[String],
+) -> Result<Vec<String>, AnswerError> {
+    if selected.is_empty()
+        || selected.len() > MAX_ROUTING_CANDIDATES
+        || selected.iter().any(|id| !valid_scope_id(id))
+    {
+        return Err(AnswerError::Invalid);
     }
     let mut ids: Vec<String> = selected.to_vec();
     ids.sort();
-    if ids.windows(2).any(|pair| pair[0] == pair[1])
-        || ids
-            .iter()
-            .any(|id| !question.candidates.iter().any(|c| &c.task_id == id))
-    {
-        return None;
+    if ids.windows(2).any(|pair| pair[0] == pair[1]) {
+        return Err(AnswerError::Invalid);
     }
-    Some(ids)
+    if ids
+        .iter()
+        .any(|id| !question.candidates.iter().any(|c| &c.task_id == id))
+    {
+        return Err(AnswerError::NotCandidate);
+    }
+    Ok(ids)
 }
 
 fn material(parts: &[&[u8]]) -> Vec<u8> {
@@ -373,18 +416,61 @@ fn material(parts: &[&[u8]]) -> Vec<u8> {
     bytes
 }
 
-/// Logical model invocation key. The same Task, cycle, producing intent and
-/// step ordinal always recover the same durable invocation after restart.
-pub fn invocation_key(task_id: &str, cycle_id: &str, intent: u64, ordinal: u32) -> String {
+/// The model configuration a turn is produced under. Selection is re-read at
+/// every claim, so it is part of the invocation's logical identity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TurnConfiguration<'a> {
+    pub profile_id: &'a str,
+    pub profile_revision: u64,
+    pub catalogue_id: &'a str,
+    pub catalogue_revision: u64,
+}
+
+/// Logical model invocation key. The same Task, cycle, producing intent, step
+/// ordinal and model configuration always recover the same durable invocation
+/// after restart; changed configuration is a different invocation.
+pub fn invocation_key(
+    task_id: &str,
+    cycle_id: &str,
+    intent: u64,
+    ordinal: u32,
+    configuration: TurnConfiguration<'_>,
+) -> String {
     format!(
         "turn-{}",
         sha256_hex(&material(&[
-            b"zobba-turn-v1",
+            b"zobba-turn-v2",
             task_id.as_bytes(),
             cycle_id.as_bytes(),
             &intent.to_be_bytes(),
             &ordinal.to_be_bytes(),
+            configuration.profile_id.as_bytes(),
+            &configuration.profile_revision.to_be_bytes(),
+            configuration.catalogue_id.as_bytes(),
+            &configuration.catalogue_revision.to_be_bytes(),
         ]))
+    )
+}
+
+/// Internal idempotency key of the Guide that an untargeted direction routes
+/// to a single Task. It is in its own namespace, so the same client key used
+/// for an ordinary Task command never returns this receipt or the reverse.
+pub fn direction_key(key: &str) -> String {
+    format!(
+        "direct-{}",
+        sha256_hex(&material(&[b"zobba-direction-v1", key.as_bytes()]))
+    )
+}
+
+/// Bounded context source identifier for one exact knowledge reference.
+pub fn knowledge_source_id(id: &str, revision: u64) -> String {
+    format!(
+        "knowledge-{}",
+        &sha256_hex(&material(&[
+            b"zobba-knowledge-source-v1",
+            id.as_bytes(),
+            &revision.to_be_bytes(),
+        ]))[..48]
     )
 }
 
@@ -534,30 +620,88 @@ mod tests {
         };
         assert_eq!(
             answer_selection(&question, &["b".into(), "a".into()]),
-            Some(vec!["a".into(), "b".into()])
+            Ok(vec!["a".into(), "b".into()])
         );
         for bad in [
             vec![],
-            vec!["c".to_string()],
             vec!["a".into(), "a".into()],
-            vec!["a".into(), "foreign".into()],
+            vec!["bad id".into()],
+            vec!["a".to_string(); MAX_ROUTING_CANDIDATES + 1],
         ] {
-            assert_eq!(answer_selection(&question, &bad), None, "{bad:?}");
+            assert_eq!(
+                answer_selection(&question, &bad),
+                Err(AnswerError::Invalid),
+                "{bad:?}"
+            );
+        }
+        for foreign in [vec!["c".to_string()], vec!["a".into(), "foreign".into()]] {
+            assert_eq!(
+                answer_selection(&question, &foreign),
+                Err(AnswerError::NotCandidate),
+                "{foreign:?}"
+            );
         }
     }
 
+    const CONFIG: TurnConfiguration<'static> = TurnConfiguration {
+        profile_id: "profile",
+        profile_revision: 1,
+        catalogue_id: "catalogue",
+        catalogue_revision: 1,
+    };
+
     #[test]
     fn keys_are_bounded_scope_ids_and_bind_every_component() {
-        let base = invocation_key("task", "cycle", 1, 0);
+        let base = invocation_key("task", "cycle", 1, 0, CONFIG);
         assert!(valid_scope_id(&base));
-        assert_eq!(base, invocation_key("task", "cycle", 1, 0));
+        assert_eq!(base, invocation_key("task", "cycle", 1, 0, CONFIG));
         for other in [
-            invocation_key("task2", "cycle", 1, 0),
-            invocation_key("task", "cycle2", 1, 0),
-            invocation_key("task", "cycle", 2, 0),
-            invocation_key("task", "cycle", 1, 1),
+            invocation_key("task2", "cycle", 1, 0, CONFIG),
+            invocation_key("task", "cycle2", 1, 0, CONFIG),
+            invocation_key("task", "cycle", 2, 0, CONFIG),
+            invocation_key("task", "cycle", 1, 1, CONFIG),
             // Length prefixes keep component boundaries distinct.
-            invocation_key("taskc", "ycle", 1, 0),
+            invocation_key("taskc", "ycle", 1, 0, CONFIG),
+            invocation_key(
+                "task",
+                "cycle",
+                1,
+                0,
+                TurnConfiguration {
+                    profile_revision: 2,
+                    ..CONFIG
+                },
+            ),
+            invocation_key(
+                "task",
+                "cycle",
+                1,
+                0,
+                TurnConfiguration {
+                    profile_id: "profile2",
+                    ..CONFIG
+                },
+            ),
+            invocation_key(
+                "task",
+                "cycle",
+                1,
+                0,
+                TurnConfiguration {
+                    catalogue_revision: 2,
+                    ..CONFIG
+                },
+            ),
+            invocation_key(
+                "task",
+                "cycle",
+                1,
+                0,
+                TurnConfiguration {
+                    catalogue_id: "catalogue2",
+                    ..CONFIG
+                },
+            ),
         ] {
             assert_ne!(base, other);
         }
@@ -566,8 +710,20 @@ mod tests {
             &long,
             &long,
             u64::MAX,
-            u32::MAX
+            u32::MAX,
+            TurnConfiguration {
+                profile_id: &long,
+                profile_revision: u64::MAX,
+                catalogue_id: &long,
+                catalogue_revision: u64::MAX,
+            }
         )));
+        let source = knowledge_source_id(&long, u64::MAX);
+        assert!(valid_scope_id(&source));
+        assert_ne!(source, knowledge_source_id(&long, 1));
+        assert!(valid_scope_id(&direction_key(&long)));
+        assert_ne!(direction_key("k"), direction_key("k2"));
+        assert_ne!(direction_key("k"), routed_guide_key("k", "task"));
         assert!(valid_scope_id(&operation_key(&long, "call:1")));
         assert_ne!(operation_key("i", "c1"), operation_key("i", "c2"));
         let guide = routed_guide_key("question-key", "task-a");
@@ -618,8 +774,12 @@ mod tests {
             status: StepStatus::Proposed,
             next_action: Some(NextAction::ModelTurn),
             current_work: "Model turn 1".into(),
+            knowledge_omitted: 0,
         };
         assert!(step.is_valid());
+        step.attempt_id = Some("attempt".into());
+        assert!(!step.is_valid(), "a model turn has no attempt");
+        step.attempt_id = None;
         step.call_id = Some("call".into());
         assert!(!step.is_valid());
         step.call_id = None;
@@ -632,5 +792,141 @@ mod tests {
         assert!(step.is_valid());
         step.current_work = "bad\u{0}label".into();
         assert!(!step.is_valid());
+        let tool = TaskStep {
+            kind: StepKind::ToolStep,
+            invocation_id: Some("invocation".into()),
+            call_id: Some("c".repeat(CALL_ID_MAX)),
+            status: StepStatus::Failed,
+            current_work: "Tool".into(),
+            ..step.clone()
+        };
+        assert!(tool.is_valid(), "a tool step can fail without dispatch");
+        assert!(
+            !TaskStep {
+                call_id: Some("c".repeat(CALL_ID_MAX + 1)),
+                ..tool.clone()
+            }
+            .is_valid()
+        );
+        assert!(
+            !TaskStep {
+                knowledge_omitted: 1,
+                ..tool
+            }
+            .is_valid(),
+            "knowledge omission belongs to model turns"
+        );
+    }
+
+    fn fact(
+        ordinal: u32,
+        kind: StepKind,
+        status: StepStatus,
+        next: Option<NextAction>,
+    ) -> TaskStep {
+        TaskStep {
+            task_id: "task".into(),
+            cycle_id: "cycle".into(),
+            ordinal,
+            kind,
+            intent_revision: 1,
+            execution_epoch: 1,
+            invocation_id: Some(format!("invocation-{ordinal}")),
+            call_id: (kind == StepKind::ToolStep).then(|| "call".into()),
+            operation_id: matches!(
+                status,
+                StepStatus::Completed | StepStatus::ReconciliationRequired
+            )
+            .then(|| "operation".into()),
+            attempt_id: matches!(
+                status,
+                StepStatus::Completed | StepStatus::ReconciliationRequired
+            )
+            .then(|| "attempt".into()),
+            fact: (status == StepStatus::Completed).then_some(SourceFact::Completed),
+            status,
+            next_action: next,
+            current_work: format!("Step {ordinal}"),
+            knowledge_omitted: 0,
+        }
+    }
+
+    #[test]
+    fn summary_derives_every_attention_from_recorded_facts() {
+        assert_eq!(summarise(&[], true, false), (None, None, None, None));
+        let responded = fact(
+            0,
+            StepKind::ModelTurn,
+            StepStatus::Responded,
+            Some(NextAction::AwaitGuidance),
+        );
+        let (work, next, invocation, attention) =
+            summarise(std::slice::from_ref(&responded), true, false);
+        assert_eq!(work.as_deref(), Some("Step 0"));
+        assert_eq!(next, Some(NextAction::AwaitGuidance));
+        assert_eq!(invocation.as_deref(), Some("invocation-0"));
+        assert_eq!(attention, Some(Attention::AwaitingGuidance));
+        assert_eq!(
+            summarise(std::slice::from_ref(&responded), false, false).3,
+            None,
+            "a running Task needs no attention"
+        );
+        let reconciling = fact(
+            1,
+            StepKind::ToolStep,
+            StepStatus::ReconciliationRequired,
+            Some(NextAction::Reconcile),
+        );
+        assert_eq!(
+            summarise(&[responded.clone(), reconciling], true, false).3,
+            Some(Attention::ReconciliationRequired)
+        );
+        assert_eq!(
+            summarise(std::slice::from_ref(&responded), true, true).3,
+            Some(Attention::ReconciliationRequired),
+            "Task cessation alone requires reconciliation"
+        );
+        for failed in [
+            fact(0, StepKind::ModelTurn, StepStatus::Failed, None),
+            fact(
+                1,
+                StepKind::ToolStep,
+                StepStatus::Failed,
+                Some(NextAction::ModelTurn),
+            ),
+        ] {
+            assert_eq!(
+                summarise(&[failed], true, false).3,
+                Some(Attention::StepFailed)
+            );
+        }
+        let bounded: Vec<_> = (0..MAX_TURNS_PER_CYCLE as u32)
+            .map(|i| {
+                fact(
+                    i,
+                    StepKind::ModelTurn,
+                    StepStatus::Superseded,
+                    Some(NextAction::ModelTurn),
+                )
+            })
+            .collect();
+        assert_eq!(
+            summarise(&bounded, true, false).3,
+            Some(Attention::CycleBounded)
+        );
+        assert_eq!(
+            summarise(&bounded[1..], true, false).3,
+            None,
+            "below the bound a superseded turn is not bounded"
+        );
+        // Every Attention value is reachable and named.
+        for value in [
+            Attention::AwaitingGuidance,
+            Attention::ReconciliationRequired,
+            Attention::StepFailed,
+            Attention::CycleBounded,
+        ] {
+            assert!(!value.as_str().is_empty());
+        }
     }
 }

@@ -662,6 +662,168 @@ async fn work_http(browser: &Browser, admin: &mut PgConnection, task_id: &str) {
     )
     .await;
     assert_eq!(listed["questions"][0], answered);
+    assert_eq!(listed["has_more"], false);
+    assert_eq!(
+        browser
+            .command(&route, &json!({"selected":[]}))
+            .await
+            .status(),
+        StatusCode::BAD_REQUEST,
+        "an empty selection is invalid"
+    );
+    work_projection_http(browser, admin, task_id).await;
+}
+
+/// A non-empty work projection uses the exact JSON vocabulary, and a brief is
+/// superseded only by a later revision of its cycle that was applied.
+async fn work_projection_http(browser: &Browser, admin: &mut PgConnection, task_id: &str) {
+    let scope = "organisation_id=org-a&client_id=client-a";
+    let read = || async {
+        document(
+            browser
+                .read(&format!(
+                    "/engagements/engagement-a/tasks/{task_id}/work?{scope}"
+                ))
+                .await,
+            StatusCode::OK,
+        )
+        .await
+    };
+    let (cycle, state, cessation): (String, String, String) =
+        sqlx::query_as("SELECT cycle_id,state,cessation FROM public.tasks WHERE id=$1")
+            .bind(task_id)
+            .fetch_one(&mut *admin)
+            .await
+            .unwrap();
+    // Received but unapplied revisions supersede nothing.
+    let before = read().await;
+    assert!(
+        before["briefs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|b| b["superseded_by"].is_null()),
+        "{before}"
+    );
+    let revisions: Vec<(String, i64)> = sqlx::query_as("SELECT id,received_cursor FROM public.task_commands WHERE task_id=$1 AND cycle_id=$2 AND kind IN ('create','guide') ORDER BY received_cursor")
+        .bind(task_id)
+        .bind(&cycle)
+        .fetch_all(&mut *admin)
+        .await
+        .unwrap();
+    assert!(
+        revisions.len() >= 2,
+        "the fixture Task has a Create and Guides"
+    );
+    // Stay inside the bounded brief page (newest first).
+    let start = revisions.len().saturating_sub(3);
+    let revisions = &revisions[start..];
+    let (first, latest) = (&revisions[0], revisions.last().unwrap());
+    let mut tx = admin.begin().await.unwrap();
+    sqlx::query("INSERT INTO public.model_profiles(organisation_id,id,revision,actor_id,document) VALUES('org-a','http-profile',1,'identity-admin','{}') ON CONFLICT DO NOTHING")
+        .execute(&mut *tx).await.unwrap();
+    sqlx::query("INSERT INTO public.model_catalogues(organisation_id,id,revision,actor_id,document) VALUES('org-a','http-catalogue',1,'identity-admin','{}') ON CONFLICT DO NOTHING")
+        .execute(&mut *tx).await.unwrap();
+    sqlx::query("INSERT INTO public.model_invocations(organisation_id,client_id,engagement_id,id,task_id,cycle_id,actor_id,key,profile_id,profile_revision,catalogue_id,catalogue_revision,request,receipt_hash) VALUES('org-a','client-a','engagement-a','http-invocation',$1,$2,'identity-a','http-invocation-key','http-profile',1,'http-catalogue',1,'{}',repeat('a',64))")
+        .bind(task_id).bind(&cycle).execute(&mut *tx).await.unwrap();
+    for (ordinal, kind, status, call, next, label, omitted) in [
+        (
+            0,
+            "model_turn",
+            "proposed",
+            None,
+            Some("tool:send_exact"),
+            "Model turn 1 proposed tools",
+            2,
+        ),
+        (
+            1,
+            "tool_step",
+            "refused",
+            Some("call-1"),
+            Some("model_turn"),
+            "Tool send_exact",
+            0,
+        ),
+        (
+            2,
+            "model_turn",
+            "responded",
+            None,
+            Some("await_guidance"),
+            "Model turn 3 responded",
+            0,
+        ),
+    ] {
+        sqlx::query("INSERT INTO public.task_steps(organisation_id,client_id,engagement_id,task_id,cycle_id,ordinal,kind,intent_revision,execution_epoch,invocation_id,call_id,status,next_action,current_work,knowledge_omitted) VALUES('org-a','client-a','engagement-a',$1,$2,$3,$4,1,1,'http-invocation',$5,$6,$7,$8,$9)")
+            .bind(task_id).bind(&cycle).bind(ordinal).bind(kind).bind(call).bind(status).bind(next).bind(label).bind(omitted)
+            .execute(&mut *tx).await.unwrap();
+    }
+    for (command, boundary) in [(&first.0, 0), (&latest.0, 2)] {
+        sqlx::query("INSERT INTO public.task_guidance_applications(organisation_id,client_id,engagement_id,command_id,task_id,cycle_id,boundary_ordinal,applied_cursor) VALUES('org-a','client-a','engagement-a',$1,$2,$3,$4,$5)")
+            .bind(command).bind(task_id).bind(&cycle).bind(boundary).bind(latest.1 + 1000 + i64::from(boundary))
+            .execute(&mut *tx).await.unwrap();
+    }
+    sqlx::query("UPDATE public.tasks SET state='waiting',cessation='confirmed' WHERE id=$1")
+        .bind(task_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let work = read().await;
+    assert_eq!(work["total_steps"], 3);
+    let steps = work["steps"].as_array().unwrap();
+    let field = |name: &str| steps.iter().map(|s| s[name].clone()).collect::<Vec<_>>();
+    assert_eq!(
+        field("kind"),
+        vec![json!("model_turn"), json!("tool_step"), json!("model_turn")]
+    );
+    assert_eq!(
+        field("status"),
+        vec![json!("proposed"), json!("refused"), json!("responded")]
+    );
+    assert_eq!(
+        field("next_action"),
+        vec![
+            json!("tool:send_exact"),
+            json!("model_turn"),
+            json!("await_guidance")
+        ]
+    );
+    assert_eq!(
+        field("knowledge_omitted"),
+        vec![json!(2), json!(0), json!(0)]
+    );
+    assert_eq!(field("intent_revision"), vec![json!("1"); 3]);
+    assert_eq!(work["attention"], "awaiting_guidance");
+    assert_eq!(work["next_action"], "await_guidance");
+    assert_eq!(work["next_action_invocation_id"], "http-invocation");
+    assert_eq!(work["current_work"], "Model turn 3 responded");
+    let briefs = work["briefs"].as_array().unwrap();
+    let brief = |id: &str| {
+        briefs
+            .iter()
+            .find(|b| b["command_id"] == id)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(brief(&first.0)["applied_boundary"], 0);
+    assert_eq!(brief(&first.0)["superseded_by"], latest.0.as_str());
+    assert_eq!(brief(&latest.0)["applied_boundary"], 2);
+    assert!(brief(&latest.0)["applied_cursor"].is_string());
+    assert!(brief(&latest.0)["superseded_by"].is_null());
+    for unapplied in &revisions[1..revisions.len() - 1] {
+        let middle = brief(&unapplied.0);
+        assert!(middle["applied_boundary"].is_null());
+        assert_eq!(middle["superseded_by"], latest.0.as_str());
+    }
+    sqlx::query("UPDATE public.tasks SET state=$2,cessation=$3 WHERE id=$1")
+        .bind(task_id)
+        .bind(&state)
+        .bind(&cessation)
+        .execute(&mut *admin)
+        .await
+        .unwrap();
 }
 
 async fn fixture(config: &support::Configuration, admin: &mut PgConnection) {

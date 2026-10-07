@@ -14,7 +14,9 @@ use zobba_domain::{
 };
 
 pub(crate) type Tx = Transaction<'static, Postgres>;
-const MAX_OPEN_TASKS: i64 = 100;
+const MAX_OPEN_TASKS: i64 = zobba_domain::task::MAX_OPEN_TASKS as i64;
+/// The worker owner lease, renewed at every claim, boundary and authority poll.
+pub(crate) const OWNER_LEASE_SECONDS: f64 = 5.0;
 const COMMAND_BATCH: i64 = 32;
 
 #[derive(Clone)]
@@ -435,7 +437,7 @@ pub(crate) async fn apply_commands(
     s: &Scope,
     task_id: &str,
     guidance_only: bool,
-) -> Result<usize, TaskError> {
+) -> Result<Applied, TaskError> {
     let row = task(tx, task_id).await?;
     let commands=sqlx::query("SELECT c.id,c.kind,c.content,c.cycle_id,c.intent_revision,c.received_cursor FROM public.task_commands c WHERE c.task_id=$1 AND c.received_cursor>$2 ORDER BY c.received_cursor LIMIT $3")
         .bind(task_id).bind(get::<i64>(&row,"applied_command_cursor")?).bind(COMMAND_BATCH).fetch_all(&mut **tx).await.map_err(unavailable)?;
@@ -482,7 +484,23 @@ pub(crate) async fn apply_commands(
             .await
             .map_err(unavailable)?;
     }
-    Ok(commands.len())
+    let guidance = commands.iter().any(|command| {
+        matches!(
+            get::<String>(command, "kind").as_deref(),
+            Ok("create" | "guide")
+        )
+    });
+    Ok(Applied {
+        count: commands.len(),
+        guidance,
+    })
+}
+
+/// Commands applied at one boundary.
+pub(crate) struct Applied {
+    pub(crate) count: usize,
+    /// A Create or Guide brief was among them.
+    pub(crate) guidance: bool,
 }
 
 impl TaskRepository {
@@ -506,15 +524,16 @@ impl TaskRepository {
             return Ok(Decision::Idle);
         }
         let changed = !live || old_owner.as_deref() != Some(worker);
-        sqlx::query("UPDATE public.tasks SET owner_id=$2,owner_until=clock_timestamp()+interval '5 seconds',owner_epoch=owner_epoch+$3 WHERE id=$1")
-            .bind(&route.task_id).bind(worker).bind(i64::from(changed)).execute(&mut *tx).await.map_err(unavailable)?;
+        sqlx::query("UPDATE public.tasks SET owner_id=$2,owner_until=clock_timestamp()+make_interval(secs=>$4),owner_epoch=owner_epoch+$3 WHERE id=$1")
+            .bind(&route.task_id).bind(worker).bind(i64::from(changed)).bind(OWNER_LEASE_SECONDS).execute(&mut *tx).await.map_err(unavailable)?;
         let mut now = snapshot(&row)?;
         let was_reconciling = matches!(
             now.cessation,
             Cessation::Pending | Cessation::ReconciliationRequired
         );
         // Applying retained text is an ordinary work boundary, not AI understanding.
-        let commands = apply_commands(&mut tx, &route.scope, &route.task_id, false).await?;
+        let applied = apply_commands(&mut tx, &route.scope, &route.task_id, false).await?;
+        let commands = applied.count;
         let consumed=sqlx::query("SELECT c.*,o.outcome FROM public.task_claims c LEFT JOIN public.task_observations o ON o.claim_id=c.id WHERE c.task_id=$1 AND c.state='consumed' ORDER BY c.id LIMIT 1")
             .bind(&route.task_id).fetch_optional(&mut *tx).await.map_err(unavailable)?;
         let mut inert_observed = false;
@@ -545,9 +564,20 @@ impl TaskRepository {
                     "observed",
                 )
                 .await?;
+                // Same rule as admission: a consumed attempt without a resolved
+                // receipt is never confirmed ceased.
+                let unresolved: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM public.operations o JOIN public.operation_claims c ON c.operation_id=o.id WHERE o.task_id=$1 AND c.state='consumed' AND NOT EXISTS(SELECT 1 FROM public.operation_receipts r WHERE r.attempt_id=c.attempt_id AND r.outcome IN ('completed','absent')))")
+                    .bind(&route.task_id).fetch_one(&mut *tx).await.map_err(unavailable)?;
                 let (state, cessation) =
                     if matches!(now.state, TaskState::Paused | TaskState::Stopped) {
-                        (now.state.as_str(), "confirmed")
+                        let cessation = if !unresolved {
+                            "confirmed"
+                        } else if now.cessation == Cessation::ReconciliationRequired {
+                            "reconciliation_required"
+                        } else {
+                            "pending"
+                        };
+                        (now.state.as_str(), cessation)
                     } else {
                         ("ready", "none")
                     };
@@ -717,6 +747,20 @@ impl TaskRepository {
                 .await?;
             }
         }
+        // "Awaiting your direction": new guidance applied to a Task that is
+        // waiting (not paused, stopped or reconciling) resumes its work.
+        if applied.guidance
+            && now.state == TaskState::Waiting
+            && now.cessation == Cessation::Confirmed
+        {
+            sqlx::query("UPDATE public.tasks SET state='ready',cessation='none',revision=revision+1 WHERE id=$1")
+                .bind(&route.task_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(unavailable)?;
+            now.state = TaskState::Ready;
+            now.cessation = Cessation::None;
+        }
         // A configuration change is applied only after all consumed inert and
         // external effects above have their original facts reconciled. A staged
         // change fences unused work without cancelling this receipt authority.
@@ -880,7 +924,7 @@ impl TaskRepository {
         {
             return Ok(false);
         }
-        sqlx::query("UPDATE public.tasks SET owner_until=clock_timestamp()+interval '5 seconds' WHERE id=$1").bind(&basis.task_id).execute(&mut *tx).await.map_err(unavailable)?;
+        sqlx::query("UPDATE public.tasks SET owner_until=clock_timestamp()+make_interval(secs=>$2) WHERE id=$1").bind(&basis.task_id).bind(OWNER_LEASE_SECONDS).execute(&mut *tx).await.map_err(unavailable)?;
         tx.commit().await.map_err(unavailable)?;
         Ok(true)
     }
