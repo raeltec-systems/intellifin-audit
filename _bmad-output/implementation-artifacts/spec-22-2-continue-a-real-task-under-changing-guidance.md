@@ -2,7 +2,7 @@
 title: '22.2 — Continue a real Task under changing guidance (work loop, AC1–3)'
 type: 'feature'
 created: '2026-10-07'
-status: 'in-review'
+status: 'done'
 baseline_commit: 'ed0d95bdaa70da22b547189fda88c54ca678df64'
 story_key: 22-2-continue-a-real-task-under-changing-guidance
 review_loop_iteration: 0
@@ -254,3 +254,85 @@ Independent-review patch (2026-10-07, after d0d7a1a; not committed):
   error and a "more exist" note; directions persist in a separate channel of the
   durable outbox before transmission, recover after reload for an explicit
   check, and answers must name exactly the selected Tasks.
+
+## Suggested Review Order
+
+**Work-cycle loop (entry point)**
+
+- One claim runs bounded turns; stops on reconciliation, waiting, fence or the 16-turn bound.
+  [`work.rs:864`](../../zobba/crates/application/src/work.rs#L864)
+
+- History is rebuilt from durable steps, invocations, receipts and verified knowledge only.
+  [`work.rs:352`](../../zobba/crates/application/src/work.rs#L352)
+
+- Tool steps: admit, dispatch, settle; only a Permissions refusal is recorded `refused`.
+  [`work.rs:641`](../../zobba/crates/application/src/work.rs#L641)
+
+- Text the model receives for a settled tool, including authoritative absence.
+  [`work.rs:221`](../../zobba/crates/application/src/work.rs#L221)
+
+**Guidance applied at a boundary, not as a cancel**
+
+- Executor poll checks owner, epoch and cycle only, so Guide no longer cancels work.
+  [`task.rs:1007`](../../zobba/crates/infrastructure/src/task.rs#L1007)
+
+- Admission still requires the applied intent; stale proposals are superseded.
+  [`task.rs:163`](../../zobba/crates/infrastructure/src/task.rs#L163)
+
+- Step facts are idempotent; a differing replay is a conflict.
+  [`work.rs:654`](../../zobba/crates/infrastructure/src/work.rs#L654)
+
+**Deterministic routing and questions**
+
+- Untargeted direction: one accepting Task gets it, several get a durable question.
+  [`work.rs:256`](../../zobba/crates/infrastructure/src/work.rs#L256)
+
+- Answers create one Guide per selected Task with derived keys.
+  [`work.rs:373`](../../zobba/crates/infrastructure/src/work.rs#L373)
+
+- Pure routing rule and invocation key (includes profile and catalogue revision).
+  [`work.rs:365`](../../zobba/crates/domain/src/work.rs#L365)
+
+**Worker composition and control**
+
+- Model loop only with an injected qualification source; database errors fail closed.
+  [`work.rs:103`](../../zobba/crates/worker/src/work.rs#L103)
+
+- Unresolved dispatch is never reported as a completed observation.
+  [`executor.rs:168`](../../zobba/crates/worker/src/executor.rs#L168)
+
+- Profile and catalogue are selected as a consistent pair per organisation.
+  [`mod.rs:402`](../../zobba/crates/infrastructure/src/model/mod.rs#L402)
+
+- Bounded current knowledge enters context with explicit omission counts.
+  [`knowledge.rs:1080`](../../zobba/crates/infrastructure/src/knowledge.rs#L1080)
+
+**Storage**
+
+- Additive schema 12 with storage guards binding steps, answers and applications.
+  [`0012_work_cycle.sql:5`](../../zobba/migrations/0012_work_cycle.sql#L5)
+
+**Card, API and web**
+
+- Card attention derivation (reconciliation, failed step, bounded cycle, awaiting guidance).
+  [`work.rs:310`](../../zobba/crates/domain/src/work.rs#L310)
+
+- Direction and question routes on the control lane; question reads on the ordinary lane.
+  [`work.rs:379`](../../zobba/crates/api/src/work.rs#L379)
+
+- Current-work panel with polling, totals and deadline error.
+  [`TaskWorkPanel.tsx:29`](../../zobba/web/src/TaskWorkPanel.tsx#L29)
+
+- Targeting question with multi-select, fencing and per-target receipts.
+  [`RoutingQuestions.tsx:21`](../../zobba/web/src/RoutingQuestions.tsx#L21)
+
+**Tests**
+
+- PostgreSQL matrix: first cycle, Guide race, restart, bound, absence, knowledge, waiting wake.
+  [`work_cycle.rs:296`](../../zobba/crates/infrastructure/tests/operations/work_cycle.rs#L296)
+
+- Real worker process SIGKILL mid-turn and mid-tool, recovery without resend.
+  [`work_process.rs:158`](../../zobba/crates/worker/tests/work_process.rs#L158)
+
+- Chromium two-Task routing, keyboard selection, reload and lost-reply recovery.
+  [`routing.spec.ts:43`](../../zobba/web/tests/browser/routing.spec.ts#L43)
