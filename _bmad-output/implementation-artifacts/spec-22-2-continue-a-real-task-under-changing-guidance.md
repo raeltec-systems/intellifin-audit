@@ -222,3 +222,35 @@ Follow-up (2026-10-07, before review):
   `scripts/smoke.py` pass. Full gates: fmt and clippy clean; workspace tests 385
   passed, 0 failed, 4 ignored (45 binaries, single-threaded); `pnpm check` 184/186
   (the same 2 IPv6 sandbox failures); browser 161 passed.
+
+Independent-review patch (2026-10-07, after d0d7a1a; not committed):
+- Work loop: an unresolved `reconciliation_required` step ends the cycle
+  (`Reconcile`) before any turn or further proposal. A Responded/Failed last
+  turn under the applied brief is not repeated on takeover; newly applied
+  guidance (or, for a failed turn, an explicit Resume/Continue that advanced the
+  execution epoch) starts the next turn. Guidance to a Waiting Task wakes it.
+  Takeover uses the `admit` cessation rule (pending/reconciliation_required
+  while a consumed attempt lacks a receipt). Fenced retries are bounded at 3 with
+  backoff. Only a current Permissions refusal is `refused`; other failures are
+  `failed`. A ModelTurn requires no attempt ID. A step replay must match every
+  field (else Conflict); callers branch on the stored status. Selection errors
+  fail closed. The executor never maps Reconcile/Failed/Bounded to Completed and
+  never starts the inert executor after a cancelled run.
+- History: fixed-text notes for refused/superseded/failed/unresolved tool steps
+  and failed/superseded turns, plus the model's own earlier answers.
+- Keys: the invocation key binds profile and catalogue IDs and revisions;
+  direction keys are namespaced; knowledge source IDs are bounded and derived.
+  Knowledge records that do not fit are skipped and counted on the step.
+- Routing: candidates filtered by `accepts(Guide)`, limit 100; empty or
+  over-limit selection is 400; brief supersession is per cycle and only by an
+  applied revision; `task-questions` GET moved to the ordinary lane, batch read.
+- Storage (0012 edited in place; v12 catalogue recaptured byte-for-byte):
+  composite FKs for operation/attempt; SECURITY INVOKER guards for step
+  invocation/operation binding, Create/Guide-only applications, and answer
+  author/subset; inventoried and tamper-tested at bootstrap.
+- Web: work card polls while ready/running, reports a deadline failure, shows
+  the total step count, omitted steps and omitted knowledge; routing questions
+  are owned by actor+session+scope with fenced reads/answers, a visible read
+  error and a "more exist" note; directions persist in a separate channel of the
+  durable outbox before transmission, recover after reload for an explicit
+  check, and answers must name exactly the selected Tasks.
