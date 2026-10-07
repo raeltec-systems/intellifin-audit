@@ -10,10 +10,12 @@ export class AccessError extends Error {
 
 export const MAX_JSON_BYTES = 4 * 1024 * 1024;
 /** Engagement setup conflicts whose recovery guidance differs. */
-export const SETUP_CONFLICT_CODES = ['engagement_setup_conflict', 'engagement_setup_open_limit', 'engagement_setup_daily_limit', 'engagement_setup_message_limit'];
+export const SETUP_CONFLICT_CODES = ['engagement_setup_conflict', 'engagement_setup_open_limit', 'engagement_setup_daily_limit', 'engagement_setup_message_limit', 'engagement_setup_confirm_failed'];
+/** Engagement setup refusals that are not a conflict: lost access, a request fence, an unknown setup. */
+export const SETUP_REFUSAL_CODES = ['access_denied', 'engagement_setup_request_rejected', 'engagement_setup_not_found'];
 
-async function readConflictCode(response: Response): Promise<string | undefined> {
-  if (response.headers.get('X-Zobba-Error-Code') === 'last_admin') {
+async function readConflictCode(response: Response, allowed: readonly string[]): Promise<string | undefined> {
+  if (allowed.includes('last_admin') && response.headers.get('X-Zobba-Error-Code') === 'last_admin') {
     // Headers are sufficient even if the body or its cancellation never settles.
     void response.body?.cancel().catch(() => {});
     return 'last_admin';
@@ -44,7 +46,7 @@ async function readConflictCode(response: Response): Promise<string | undefined>
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
     const body: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
     if (body && typeof body === 'object' && !Array.isArray(body) && 'error' in body && typeof body.error === 'string' &&
-      ['last_admin', ...SETUP_CONFLICT_CODES].includes(body.error)) return body.error;
+      allowed.includes(body.error)) return body.error;
   } catch { /* The definite HTTP refusal does not depend on this optional body. */ }
   finally {
     clearTimeout(timer);
@@ -64,7 +66,9 @@ export async function readJson(path: string, signal?: AbortSignal, init?: Reques
   if (!response.ok) {
     // Only this known conflict needs different recovery guidance. Neither a slow
     // body nor malformed server text may delay the definite refusal indefinitely.
-    const code = response.status === 409 ? await readConflictCode(response) : undefined;
+    // Setup 403/404 codes distinguish lost access from a request fence or an unknown setup.
+    const code = response.status === 409 ? await readConflictCode(response, ['last_admin', ...SETUP_CONFLICT_CODES])
+      : [403, 404].includes(response.status) ? await readConflictCode(response, SETUP_REFUSAL_CODES) : undefined;
     throw new AccessError(response.status, code);
   }
   return readJsonBody(response, limit);

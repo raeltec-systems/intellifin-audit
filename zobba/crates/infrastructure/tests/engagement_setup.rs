@@ -123,14 +123,23 @@ async fn postgres_engagement_setup_contract() {
       ('revoked','https://setup.fixture.invalid','revoked','Revoked'),
       ('racer','https://setup.fixture.invalid','racer','Racer'),
       ('bounded','https://setup.fixture.invalid','bounded','Bounded'),
-      ('foreign-admin','https://setup.fixture.invalid','foreign-admin','Foreign Admin');
+      ('foreign-admin','https://setup.fixture.invalid','foreign-admin','Foreign Admin'),
+      ('expiring','https://setup.fixture.invalid','expiring','Expiring'),
+      ('demoted','https://setup.fixture.invalid','demoted','Demoted'),
+      ('folder','https://setup.fixture.invalid','folder','Folder'),
+      ('newrace','https://setup.fixture.invalid','newrace','New Race'),
+      ('limited','https://setup.fixture.invalid','limited','Limited'),
+      ('midway','https://setup.fixture.invalid','midway','Midway');
      INSERT INTO organisations VALUES('org','Northstar'),('foreign','Meridian');
-     INSERT INTO clients VALUES('org','acme-1','Acme'),('org','acme-2','ACME'),('org','alder','Alder Manufacturing'),('foreign','foreign-alder','Alder Manufacturing');
+     INSERT INTO clients VALUES('org','acme-1','Acme'),('org','acme-2','ACME'),('org','alder','Alder Manufacturing'),('foreign','foreign-alder','Alder Manufacturing'),
+      ('org','stop','STOP'),('org','alesund','Ålesund'),('org','kelvin','Kelvin Labs');
      INSERT INTO engagements(organisation_id,client_id,id,name) VALUES('org','alder','existing','Existing engagement');
      INSERT INTO organisation_memberships(organisation_id,actor_id,roles) VALUES
       ('org','auditor',ARRAY['auditor']),('org','manager',ARRAY['audit_manager','admin']),('org','admin',ARRAY['admin']),
       ('org','revoked',ARRAY['auditor']),('org','racer',ARRAY['auditor']),('org','bounded',ARRAY['auditor']),
-      ('foreign','foreign-admin',ARRAY['admin']);
+      ('foreign','foreign-admin',ARRAY['admin']),
+      ('org','expiring',ARRAY['auditor']),('org','demoted',ARRAY['audit_manager']),('org','folder',ARRAY['auditor']),
+      ('org','newrace',ARRAY['auditor']),('org','limited',ARRAY['auditor']),('org','midway',ARRAY['auditor']);
     "#).await.unwrap();
     // Existing engagements keep an unknown period.
     assert_eq!(
@@ -165,9 +174,10 @@ async fn postgres_engagement_setup_contract() {
     let auditor = repository(&pool, "auditor").await;
     assert_eq!(
         auditor
-            .organisations("auditor")
+            .organisations("auditor", None)
             .await
             .unwrap()
+            .organisations
             .iter()
             .map(|o| o.id.as_str())
             .collect::<Vec<_>>(),
@@ -281,6 +291,20 @@ async fn postgres_engagement_setup_contract() {
     assert_eq!(
         count(&mut admin, &format!("SELECT count(*) FROM engagement_assignments WHERE engagement_id='{}' AND actor_id='auditor'", established.scope.engagement_id)).await,
         1
+    );
+    // Administration history explains the creator's assignment.
+    let history: serde_json::Value = sqlx::query_scalar(
+        "SELECT meaning FROM membership_events WHERE organisation_id='org' AND actor_id='auditor' AND command_key=$1",
+    )
+    .bind(&opened.id)
+    .fetch_one(&mut admin)
+    .await
+    .unwrap();
+    assert_eq!(history["kind"], "establish_engagement");
+    assert_eq!(history["client_created"], false);
+    assert_eq!(
+        history["assignment"]["engagement_id"],
+        established.scope.engagement_id.as_str()
     );
     assert_eq!(
         count(
@@ -407,8 +431,70 @@ async fn postgres_engagement_setup_contract() {
         .await
         .unwrap();
     assert_eq!(chosen.facts.client.unwrap().name, "ACME");
+    // Corrections from the summary return to that step; nothing else changes.
+    auditor
+        .message(
+            "auditor",
+            ORG,
+            &ambiguous.id,
+            "amb-period",
+            &MemberInput::Text("2026-01-01 to 2026-06-30".into()),
+        )
+        .await
+        .unwrap();
+    let back = auditor
+        .message(
+            "auditor",
+            ORG,
+            &ambiguous.id,
+            "amb-change-period",
+            &MemberInput::ChangePeriod,
+        )
+        .await
+        .unwrap();
+    assert_eq!(back.facts.state, SetupState::Period);
+    let back = auditor
+        .message(
+            "auditor",
+            ORG,
+            &ambiguous.id,
+            "amb-period-2",
+            &MemberInput::Text("2026-07-01 to 2026-12-31".into()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(back.facts.state, SetupState::Confirm);
+    let back = auditor
+        .message(
+            "auditor",
+            ORG,
+            &ambiguous.id,
+            "amb-change-client",
+            &MemberInput::ChangeClient,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        (back.facts.state, back.facts.client.is_none()),
+        (SetupState::Client, true)
+    );
+    let back = auditor
+        .message(
+            "auditor",
+            ORG,
+            &ambiguous.id,
+            "amb-alder",
+            &MemberInput::Text("alder manufacturing".into()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        (back.facts.state, back.facts.client.unwrap().id.as_str()),
+        (SetupState::Confirm, "alder"),
+        "the kept period returns straight to the summary"
+    );
     // A foreign organisation's client never resolves.
-    assert_eq!(count(&mut admin, "SELECT count(*) FROM clients").await, 4);
+    assert_eq!(count(&mut admin, "SELECT count(*) FROM clients").await, 7);
 
     // New client: proposed, declined (stays open), then explicitly accepted.
     let fresh = auditor
@@ -489,7 +575,14 @@ async fn postgres_engagement_setup_contract() {
 
     // Unauthorised: Admin alone is not audit authority.
     let only_admin = repository(&pool, "admin").await;
-    assert!(only_admin.organisations("admin").await.unwrap().is_empty());
+    assert!(
+        only_admin
+            .organisations("admin", None)
+            .await
+            .unwrap()
+            .organisations
+            .is_empty()
+    );
     assert_eq!(
         only_admin
             .open("admin", ORG, "admin-open", "Anything")
@@ -505,7 +598,7 @@ async fn postgres_engagement_setup_contract() {
             .await
             .get("manager", ORG, &opened.id)
             .await,
-        Err(SetupError::Denied),
+        Err(SetupError::NotFound),
         "a setup is visible only to its own actor"
     );
 
@@ -541,6 +634,11 @@ async fn postgres_engagement_setup_contract() {
         .await
         .unwrap();
     assert_eq!(confirm.await.unwrap(), Err(SetupError::Denied));
+    // Authority is decided under lock 205 before the confirmation is retained.
+    assert_eq!(
+        count(&mut admin, &format!("SELECT count(*) FROM engagement_setup_messages WHERE setup_id='{}' AND kind='confirm'", pending.id)).await,
+        0
+    );
     assert_eq!(
         count(&mut admin, "SELECT count(*) FROM engagements").await,
         engagements_before
@@ -592,6 +690,18 @@ async fn postgres_engagement_setup_contract() {
     let first = first.await.unwrap().unwrap().established.unwrap();
     let second = second.await.unwrap().unwrap().established.unwrap();
     assert_eq!(first, second, "the loser receives the original receipt");
+    // The same client and period existed already: the summary said so, and the
+    // new engagement received a distinct name.
+    assert!(
+        race.messages
+            .last()
+            .unwrap()
+            .content
+            .contains("already exists"),
+        "{}",
+        race.messages.last().unwrap().content
+    );
+    assert_eq!(first.engagement_name, "Audit 2026-01-01 to 2026-12-31 (2)");
     assert_eq!(
         count(
             &mut admin,
@@ -630,7 +740,7 @@ async fn postgres_engagement_setup_contract() {
         manager
             .confirm("manager", ORG, &failing.id, "fail-confirm")
             .await,
-        Err(SetupError::Unavailable)
+        Err(SetupError::ConfirmFailed)
     );
     assert_eq!(
         (
@@ -656,9 +766,29 @@ async fn postgres_engagement_setup_contract() {
         )
         .await
         .unwrap();
-    // The durable confirmation is retried with its own key.
+    // The refused key's receipt is the refusal: replaying it never establishes.
+    assert_eq!(
+        manager
+            .confirm("manager", ORG, &failing.id, "fail-confirm")
+            .await,
+        Err(SetupError::ConfirmFailed)
+    );
+    assert_eq!(
+        count(
+            &mut admin,
+            "SELECT count(*) FROM clients WHERE name='Cedar Partners'"
+        )
+        .await,
+        0
+    );
+    let refusal = manager.get("manager", ORG, &failing.id).await.unwrap();
+    assert_eq!(
+        refusal.messages.last().unwrap().refusal.as_deref(),
+        Some("confirm_failed")
+    );
+    // A new confirmation needs a new key.
     let recovered = manager
-        .confirm("manager", ORG, &failing.id, "fail-confirm")
+        .confirm("manager", ORG, &failing.id, "fail-confirm-2")
         .await
         .unwrap();
     assert_eq!(recovered.facts.state, SetupState::Established);
@@ -737,12 +867,305 @@ async fn postgres_engagement_setup_contract() {
     assert_eq!(
         bounded
             .confirm("bounded", ORG, &daily.id, "daily-confirm")
+            .await,
+        Err(SetupError::DailyLimit),
+        "the refused key repeats its refusal"
+    );
+    assert_eq!(
+        bounded
+            .confirm("bounded", ORG, &daily.id, "daily-confirm-2")
             .await
             .unwrap()
             .facts
             .state,
         SetupState::Established
     );
+    // Expiry and a role change between the summary and confirmation are decided
+    // under lock 205: nothing is created.
+    for (actor, change) in [
+        (
+            "expiring",
+            "UPDATE organisation_memberships SET expires_at=floor(extract(epoch FROM clock_timestamp()))::bigint-1 WHERE organisation_id='org' AND actor_id='expiring'",
+        ),
+        (
+            "demoted",
+            "UPDATE organisation_memberships SET roles=ARRAY['admin'] WHERE organisation_id='org' AND actor_id='demoted'",
+        ),
+    ] {
+        let repo = repository(&pool, actor).await;
+        let pending = to_confirm(&repo, actor, actor, "Changed authority", "Elm Group", true).await;
+        let before = (
+            count(&mut admin, "SELECT count(*) FROM clients").await,
+            count(&mut admin, "SELECT count(*) FROM engagements").await,
+            count(&mut admin, "SELECT count(*) FROM tasks").await,
+        );
+        admin.execute(change).await.unwrap();
+        assert_eq!(
+            repo.confirm(actor, ORG, &pending.id, &format!("{actor}-confirm"))
+                .await,
+            Err(SetupError::Denied),
+            "{actor}"
+        );
+        assert_eq!(
+            repo.get(actor, ORG, &pending.id).await,
+            Err(SetupError::Denied)
+        );
+        assert_eq!(
+            (
+                count(&mut admin, "SELECT count(*) FROM clients").await,
+                count(&mut admin, "SELECT count(*) FROM engagements").await,
+                count(&mut admin, "SELECT count(*) FROM tasks").await,
+            ),
+            before,
+            "{actor}"
+        );
+    }
+
+    // Authority lost inside the establishing transaction: the confirmation is
+    // answered by a retained refusal, and replaying its key never establishes.
+    let midway = repository(&pool, "midway").await;
+    let pending = to_confirm(
+        &midway,
+        "midway",
+        "mid",
+        "Midway objective",
+        "Alder Manufacturing",
+        false,
+    )
+    .await;
+    admin.execute(r#"
+     CREATE FUNCTION public.setup_test_revoke() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN UPDATE public.organisation_memberships SET active=false WHERE organisation_id='org' AND actor_id='midway'; RETURN NEW; END$$;
+     CREATE TRIGGER setup_test_revoke BEFORE INSERT ON public.engagements FOR EACH ROW EXECUTE FUNCTION public.setup_test_revoke();
+    "#).await.unwrap();
+    let engagements_before = count(&mut admin, "SELECT count(*) FROM engagements").await;
+    assert_eq!(
+        midway
+            .confirm("midway", ORG, &pending.id, "mid-confirm")
+            .await,
+        Err(SetupError::Denied)
+    );
+    admin
+        .execute("DROP TRIGGER setup_test_revoke ON public.engagements; DROP FUNCTION public.setup_test_revoke()")
+        .await
+        .unwrap();
+    let refusal = format!(
+        "SELECT count(*) FROM engagement_setup_messages r JOIN engagement_setup_messages m ON m.setup_id=r.setup_id AND m.ordinal=r.reply_to WHERE r.setup_id='{}' AND m.idempotency_key='mid-confirm' AND r.payload->>'refusal'='confirm_denied'",
+        pending.id
+    );
+    assert_eq!(count(&mut admin, &refusal).await, 1);
+    // Even with access restored, the refused key repeats its refusal.
+    admin
+        .execute("UPDATE organisation_memberships SET active=true WHERE organisation_id='org' AND actor_id='midway'")
+        .await
+        .unwrap();
+    assert_eq!(
+        midway
+            .confirm("midway", ORG, &pending.id, "mid-confirm")
+            .await,
+        Err(SetupError::Denied)
+    );
+    assert_eq!(
+        count(&mut admin, "SELECT count(*) FROM engagements").await,
+        engagements_before
+    );
+    assert_eq!(count(&mut admin, &refusal).await, 1);
+
+    // Non-ASCII simple case folding through the real SQL prefilter.
+    let folder = repository(&pool, "folder").await;
+    for (index, (answer, client)) in [
+        ("ſtop", "stop"),
+        ("ålesund", "alesund"),
+        ("KELVIN LABS", "kelvin"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let view = folder
+            .open("folder", ORG, &format!("fold-{index}"), "Folded client")
+            .await
+            .unwrap();
+        let view = folder
+            .message(
+                "folder",
+                ORG,
+                &view.id,
+                &format!("fold-{index}-client"),
+                &MemberInput::Text(answer.into()),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            (view.facts.state, view.facts.client.map(|c| c.id).as_deref()),
+            (SetupState::Period, Some(client)),
+            "{answer}"
+        );
+    }
+
+    // A committed member message whose interpretation failed is answered by the
+    // next read, exactly once.
+    admin
+        .execute(
+            format!("REVOKE EXECUTE ON FUNCTION public.engagement_setup_clients(text,text,text,text,integer) FROM \"{role}\"")
+                .as_str(),
+        )
+        .await
+        .unwrap();
+    let stalled = folder
+        .open("folder", ORG, "stall-open", "Stalled interpretation")
+        .await
+        .unwrap();
+    assert!(
+        folder
+            .message(
+                "folder",
+                ORG,
+                &stalled.id,
+                "stall-client",
+                &MemberInput::Text("Alder Manufacturing".into()),
+            )
+            .await
+            .is_err()
+    );
+    let replies = format!(
+        "SELECT count(*) FROM engagement_setup_messages r JOIN engagement_setup_messages m ON m.setup_id=r.setup_id AND m.ordinal=r.reply_to WHERE r.setup_id='{}' AND m.idempotency_key='stall-client'",
+        stalled.id
+    );
+    assert_eq!(count(&mut admin, &replies).await, 0);
+    admin
+        .execute(
+            format!("GRANT EXECUTE ON FUNCTION public.engagement_setup_clients(text,text,text,text,integer) TO \"{role}\"")
+                .as_str(),
+        )
+        .await
+        .unwrap();
+    let read = folder.get("folder", ORG, &stalled.id).await.unwrap();
+    assert_eq!(read.facts.state, SetupState::Period);
+    folder.get("folder", ORG, &stalled.id).await.unwrap();
+    assert_eq!(folder.open_setups("folder", ORG).await.unwrap().len(), 4);
+    assert_eq!(count(&mut admin, &replies).await, 1);
+
+    // A full setup refuses an answer before any insert, yet can still be cancelled.
+    let limited = repository(&pool, "limited").await;
+    let full = limited
+        .open("limited", ORG, "full-open", "Full setup")
+        .await
+        .unwrap();
+    admin
+        .execute(
+            format!(
+                "UPDATE engagement_setups SET message_count=197 WHERE id='{}'",
+                full.id
+            )
+            .as_str(),
+        )
+        .await
+        .unwrap();
+    let rows = format!(
+        "SELECT count(*) FROM engagement_setup_messages WHERE setup_id='{}'",
+        full.id
+    );
+    let stored = format!(
+        "SELECT message_count::bigint FROM engagement_setups WHERE id='{}'",
+        full.id
+    );
+    assert_eq!(
+        limited
+            .message(
+                "limited",
+                ORG,
+                &full.id,
+                "full-text",
+                &MemberInput::Text("Alder Manufacturing".into())
+            )
+            .await,
+        Err(SetupError::MessageLimit)
+    );
+    assert_eq!(
+        (
+            count(&mut admin, &rows).await,
+            count(&mut admin, &stored).await
+        ),
+        (2, 197)
+    );
+    assert_eq!(
+        limited
+            .message(
+                "limited",
+                ORG,
+                &full.id,
+                "full-cancel",
+                &MemberInput::Cancel
+            )
+            .await
+            .unwrap()
+            .facts
+            .state,
+        SetupState::Cancelled
+    );
+
+    // Two setups proposing the same new client concurrently: one client.
+    let newrace = repository(&pool, "newrace").await;
+    let one = to_confirm(
+        &newrace,
+        "newrace",
+        "dog-1",
+        "Dogwood one",
+        "Dogwood Ltd",
+        true,
+    )
+    .await;
+    let two = to_confirm(
+        &newrace,
+        "newrace",
+        "dog-2",
+        "Dogwood two",
+        "dogwood ltd",
+        true,
+    )
+    .await;
+    holder
+        .execute("BEGIN; SELECT pg_advisory_xact_lock(hashtextextended('org',205))")
+        .await
+        .unwrap();
+    let first = tokio::spawn({
+        let repo = newrace.clone();
+        let id = one.id.clone();
+        async move { repo.confirm("newrace", ORG, &id, "dog-1-confirm").await }
+    });
+    let second = tokio::spawn({
+        let repo = newrace.clone();
+        let id = two.id.clone();
+        async move { repo.confirm("newrace", ORG, &id, "dog-2-confirm").await }
+    });
+    blocked_on(&mut admin, holder_pid, 2).await;
+    holder.execute("COMMIT").await.unwrap();
+    let outcomes = [
+        first.await.unwrap().unwrap(),
+        second.await.unwrap().unwrap(),
+    ];
+    assert_eq!(
+        count(
+            &mut admin,
+            "SELECT count(*) FROM clients WHERE lower(name)='dogwood ltd'"
+        )
+        .await,
+        1
+    );
+    let states: Vec<_> = outcomes.iter().map(|view| view.facts.state).collect();
+    assert!(
+        states.contains(&SetupState::Established) && states.contains(&SetupState::ClientChoice),
+        "{states:?}"
+    );
+    let moved = outcomes
+        .iter()
+        .find(|view| view.facts.state == SetupState::ClientChoice)
+        .unwrap();
+    assert_eq!(moved.facts.candidates.len(), 1);
+    assert_eq!(
+        moved.messages.last().unwrap().prompt.as_deref(),
+        Some("client_choice")
+    );
+
     // Every member message precedes its single Zobba reply.
     assert_eq!(
         count(&mut admin, "SELECT count(*) FROM engagement_setup_messages r JOIN engagement_setup_messages m ON m.setup_id=r.setup_id AND m.ordinal=r.reply_to WHERE r.ordinal<=m.ordinal OR m.author<>'member'").await,

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { establishedScope, parseSetup, parseSetupCommand, setupErrorText, setupOutbox } from '../src/engagement-setup.ts';
+import { SETUP_LIMITS, draftProblem, establishedScope, isAccessLoss, parseOrganisationPage, parseSetup, parseSetupCommand, setupErrorText, setupOutbox } from '../src/engagement-setup.ts';
+import { AccessError, readJson } from '../src/auth.ts';
 import { OutboxStore, directionOutbox } from '../src/conversation-outbox.ts';
 
 const question = { ordinal: 1, author: 'zobba', kind: 'question', content: 'Which client is this engagement for? Give the client’s name.', reply_to: 0, prompt: 'client', candidates: [], refusal: null };
@@ -32,11 +33,14 @@ test('a setup view is strictly parsed', () => {
 test('setup commands carry their whole meaning and nothing else', () => {
   assert.deepEqual(parseSetupCommand({ key: 'k', op: 'open', objective: 'Objective' }), { key: 'k', op: 'open', objective: 'Objective' });
   assert.deepEqual(parseSetupCommand({ key: 'k', op: 'new_client', setup_id: 's', accept: false }).accept, false);
+  assert.equal(parseSetupCommand({ key: 'k', op: 'choose_client', setup_id: 's', client_id: 'c', client_name: 'Alder' }).client_name, 'Alder');
+  assert.deepEqual(parseSetupCommand({ key: 'k', op: 'change_period', setup_id: 's' }), { key: 'k', op: 'change_period', setup_id: 's' });
   for (const bad of [
     { key: 'k', op: 'open', objective: 'x', extra: 1 },
     { key: 'k', op: 'text', setup_id: 's', content: 'x'.repeat(401) },
     { key: 'k', op: 'new_client', setup_id: 's', accept: 'yes' },
-    { key: 'k', op: 'choose_client', setup_id: 's', client_id: 'bad id' },
+    { key: 'k', op: 'choose_client', setup_id: 's', client_id: 'bad id', client_name: 'Alder' },
+    { key: 'k', op: 'choose_client', setup_id: 's', client_id: 'c' },
     { key: 'k', op: 'delete', setup_id: 's' },
     { key: 'bad key', op: 'cancel', setup_id: 's' },
   ]) assert.throws(() => parseSetupCommand(bad));
@@ -63,8 +67,52 @@ test('setup requests persist in a channel keyed by actor and organisation', asyn
   assert.deepEqual(await outbox.read(), []);
 });
 
-test('capacity refusals explain the reason', () => {
+test('capacity refusals explain the reason with the server limits', () => {
   assert.match(setupErrorText('engagement_setup_open_limit', 409), /8 engagement setups/);
-  assert.match(setupErrorText('engagement_setup_daily_limit', 409), /20 engagements/);
+  assert.match(setupErrorText('engagement_setup_daily_limit', 409, { ...SETUP_LIMITS, established_per_day: 5 }), /set up 5 engagements/);
   assert.match(setupErrorText(undefined, 0), /safe/);
+});
+
+test('each setup refusal code reaches AccessError.code and its own reason', async () => {
+  const previous = globalThis.fetch;
+  const cases = [
+    [409, 'engagement_setup_conflict', /no longer matches the setup/],
+    [409, 'engagement_setup_open_limit', /8 engagement setups open/],
+    [409, 'engagement_setup_daily_limit', /20 engagements here today/],
+    [409, 'engagement_setup_message_limit', /200-message limit/],
+    [409, 'engagement_setup_confirm_failed', /could not be created/],
+    [403, 'access_denied', /no longer have an auditor/],
+    [403, 'engagement_setup_request_rejected', /security check/],
+    [404, 'engagement_setup_not_found', /no longer available/],
+  ];
+  try {
+    for (const [status, code, reason] of cases) {
+      globalThis.fetch = async () => new Response(JSON.stringify({ error: code }), { status, headers: { 'Content-Type': 'application/json' } });
+      const error = await readJson('/organisations/org/engagement-setups', undefined, { method: 'POST' }).then(() => null, failure => failure);
+      assert.ok(error instanceof AccessError, code);
+      assert.deepEqual([error.status, error.code], [status, code]);
+      assert.match(setupErrorText(error.code, error.status), reason, code);
+    }
+  } finally { globalThis.fetch = previous; }
+  // Only a real loss of authority ends the workspace.
+  assert.equal(isAccessLoss(403, 'access_denied'), true);
+  assert.equal(isAccessLoss(403, undefined), true);
+  assert.equal(isAccessLoss(403, 'engagement_setup_request_rejected'), false);
+  assert.equal(isAccessLoss(404, 'engagement_setup_not_found'), false);
+  assert.equal(isAccessLoss(409, 'engagement_setup_conflict'), false);
+});
+
+test('organisation pages carry the server limits and refuse a disagreement', () => {
+  const page = { organisations: [{ organisation_id: 'org-a', organisation_name: 'Northstar' }], more: true, limits: SETUP_LIMITS };
+  assert.deepEqual(parseOrganisationPage(page), page);
+  assert.throws(() => parseOrganisationPage({ ...page, limits: { ...SETUP_LIMITS, answer_bytes: 500 } }));
+  assert.throws(() => parseOrganisationPage({ ...page, more: 'yes' }));
+  assert.throws(() => parseOrganisationPage({ organisations: [], limits: SETUP_LIMITS }));
+});
+
+test('draft lengths are checked in UTF-8 bytes before anything is reserved', () => {
+  assert.equal(draftProblem('x'.repeat(400), 'answer'), null);
+  assert.match(draftProblem('é'.repeat(201), 'answer'), /402 bytes; the limit is 400 bytes/);
+  assert.equal(draftProblem('界'.repeat(1333), 'objective'), null);
+  assert.match(draftProblem('界'.repeat(1334), 'objective'), /4002 bytes/);
 });

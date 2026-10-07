@@ -255,6 +255,7 @@ pub fn authenticated_router_with_evidence(
         engagements::ScopeResponse,
         engagement_setup::SetupOrganisationResponse,
         engagement_setup::SetupOrganisationsResponse,
+        engagement_setup::SetupLimitsResponse,
         engagement_setup::SetupStateResponse,
         engagement_setup::SetupClientResponse,
         engagement_setup::SetupAuthorResponse,

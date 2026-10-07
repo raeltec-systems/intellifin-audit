@@ -1437,29 +1437,52 @@ RLS limited to their own actor while that actor holds a current auditor or audit
 manager membership. Runtime has SELECT/INSERT on both and narrow column UPDATE on
 setups; it still has no INSERT on clients, engagements or assignments.
 
+Every setup route first calls the owner-mediated `engagement_setup_access`: the
+exact session, an active identity and an active, unexpired auditor or audit manager
+membership. Writers take organisation advisory lock 205 before that check, so
+revocation, expiry and role changes are decided under the lock. Lost access is 403
+`access_denied`; a CSRF, origin or expected-actor fence is 403
+`engagement_setup_request_rejected`; an unknown or another actor's setup is 404
+`engagement_setup_not_found`. Reads and writes use separate bounded permits.
+
 A member with a current audit role types a first objective at organisation level
 (`POST /organisations/{org}/engagement-setups`). Each member message is committed
-before it is interpreted. Interpretation is deterministic and server-side (no
-model): Zobba asks for the client, then the audit period, then shows one summary.
-A client matches on its exact name, otherwise under context-independent Unicode
-simple case folding (the owner-mediated `engagement_setup_clients` returns a
-bounded superset; the application decides equality). Two or more matches become a
-pick list and an answer outside it is refused; no match proposes "Create client
-X?", created only after explicit acceptance (declining keeps the setup open). The
-period accepts only explicit ISO dates (`YYYY-MM-DD to YYYY-MM-DD` or
-`YYYY-MM-DD/YYYY-MM-DD`) with start ≤ end; refusals are retained Zobba turns.
+before it is interpreted, and a read (`GET` of one setup or the open list) answers
+any committed member message that has no reply yet; after a setup closes, such a
+message gets the fixed "setup closed" refusal. Interpretation is deterministic and
+server-side (no model): Zobba asks for the client, then the audit period, then
+shows one summary. A client matches on its exact name, otherwise under
+context-independent Unicode simple case folding (`engagement_setup_clients`
+returns a bounded superset; the application decides equality). Two or more
+matches become a pick list; typing another name there searches again. No match
+proposes "Create client X?", created only after explicit acceptance. The period
+accepts only explicit ISO dates (`YYYY-MM-DD to YYYY-MM-DD` or
+`YYYY-MM-DD/YYYY-MM-DD`) with start ≤ end. From the summary, `change_client` and
+`change_period` return to that question (a known period is kept). The summary says
+when this client already has an engagement for exactly this period; confirming is
+still allowed and the new engagement name gets a ` (2)`-style suffix. Refusals are
+retained Zobba turns. A setup holds at most 200 messages; an answer that would not
+leave room for its reply and a final cancellation is 409
+`engagement_setup_message_limit` before anything is written.
 
-`POST .../{id}/confirm` calls the owner-mediated SECURITY DEFINER
-`engagement_establish`. It takes organisation advisory lock 205, rechecks the
-exact session and the active, unexpired auditor/audit_manager membership, locks
-the setup, enforces at most 20 engagements per actor and organisation per UTC day,
-creates the client (when new), the engagement with its period and the creator's
-assignment, locks the new engagement row and rechecks authority again. The same
-transaction then enters the new scope and runs the ordinary Task Create
-admission; any failure rolls back every row. Only the creator is assigned. At most
-8 setups may be open per actor and organisation. Keys are per actor and
-organisation: an identical retry returns the original setup or receipt, a changed
-meaning is 409, and a concurrent confirmation from another tab receives the
-original receipt. The web keeps each setup request in its own durable outbox
-channel (keyed by actor and organisation) before sending, offers an explicit
-"Send again" after reload, and opens the new engagement conversation on success.
+`POST .../{id}/confirm` first retains the confirmation, then establishes in a
+second transaction. A new client is created only if no client now matches it
+exactly or folded, decided under lock 205; otherwise the setup returns to the pick
+list. A chosen client that no longer exists returns the setup to the client
+question. The owner-mediated `engagement_establish` rechecks authority, enforces
+the daily limit (passed in from the application), creates the client (when new),
+the engagement with its period and the creator's assignment, records an
+`establish_engagement` entry in `membership_events`, and rechecks authority again.
+The same transaction then runs the ordinary Task Create admission; any failure
+rolls back every row. Only the creator is assigned. A confirmation that is refused
+after it was retained (lost access, daily limit, a changed setup, a failed
+establishment) is answered by a retained refusal turn; replaying that key repeats
+the refusal (409 `engagement_setup_confirm_failed`, `engagement_setup_daily_limit`,
+`engagement_setup_conflict`, or 403) and never establishes. A new confirmation
+needs a new key. A confirmation whose establishment never finished (for example a
+lost commit) has no answer yet, and replaying its key retries it safely. At most 8
+setups may be open per actor and organisation; organisations are listed 50 per
+page in C order with an explicit `more` flag and the server's limits. The web
+keeps each setup request in its own durable outbox channel (keyed by actor and
+organisation) before sending, offers an explicit "Send again" after reload, keeps a
+draft per setup, and opens the new engagement conversation on success.

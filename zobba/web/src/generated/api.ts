@@ -2176,14 +2176,41 @@ export interface components {
             /** @description The first Task's immutable Received receipt. */
             receipt: components["schemas"]["CommandReceiptResponse"];
         };
+        /** @description The server's setup bounds, so clients never restate them. */
+        SetupLimitsResponse: {
+            /**
+             * Format: int32
+             * @description One answer (a client name or a period), in UTF-8 bytes.
+             */
+            answer_bytes: number;
+            /** Format: int32 */
+            client_candidates: number;
+            /**
+             * Format: int32
+             * @description Engagements one actor may establish in one organisation per UTC day.
+             */
+            established_per_day: number;
+            /**
+             * Format: int32
+             * @description The first objective, in UTF-8 bytes.
+             */
+            objective_bytes: number;
+            /** Format: int32 */
+            open_setups: number;
+            /** Format: int32 */
+            setup_messages: number;
+        };
         /** @enum {string} */
-        SetupMessageKind: "text" | "choose_client" | "new_client" | "cancel";
+        SetupMessageKind: "text" | "choose_client" | "new_client" | "change_client" | "change_period" | "cancel";
         SetupMessageRequest: {
             /** @description Required only for new_client: explicit acceptance or decline. */
             accept?: boolean | null;
             /** @description Required only for choose_client: one of the listed candidates. */
             client_id?: string | null;
-            /** @description Required only for text: a client name or an explicit ISO period. */
+            /**
+             * @description Required only for text: a client name or an explicit ISO period, at most
+             *     400 UTF-8 bytes.
+             */
             content?: string | null;
             key: string;
             kind: components["schemas"]["SetupMessageKind"];
@@ -2191,10 +2218,10 @@ export interface components {
         SetupMessageResponse: {
             author: components["schemas"]["SetupAuthorResponse"];
             candidates: components["schemas"]["SetupClientResponse"][];
-            /** @description Retained member text, or Zobba's fixed deterministic sentence. */
+            /** @description Retained member text, or Zobba's fixed deterministic sentence; at most 4000 UTF-8 bytes. */
             content: string;
             /**
-             * @description Member: objective, text, choose_client, new_client, confirm or cancel.
+             * @description Member: objective, text, choose_client, new_client, change_client, change_period, confirm or cancel.
              *     Zobba: question, refusal, summary, established or cancelled.
              */
             kind: string;
@@ -2212,7 +2239,13 @@ export interface components {
             organisation_name: string;
         };
         SetupOrganisationsResponse: {
-            /** @description Organisations where the caller holds a current auditor or audit manager role. */
+            limits: components["schemas"]["SetupLimitsResponse"];
+            /** @description Another page exists after the last organisation listed. */
+            more: boolean;
+            /**
+             * @description Organisations where the caller holds a current auditor or audit manager
+             *     role, in C (byte) order of their IDs.
+             */
             organisations: components["schemas"]["SetupOrganisationResponse"][];
         };
         SetupResponse: {
@@ -2225,6 +2258,7 @@ export interface components {
             messages: components["schemas"]["SetupMessageResponse"][];
             /** @description A new client the member explicitly agreed to create on confirmation. */
             new_client_name: string | null;
+            /** @description At most 4000 UTF-8 bytes. */
             objective: string;
             organisation_id: string;
             period_end: string | null;
@@ -2748,7 +2782,10 @@ export interface operations {
                 /** @description Optional session-bound read precondition */
                 "X-Expected-Session"?: string | null;
             };
-            path?: never;
+            path: {
+                /** @description The last organisation ID of the previous page. */
+                after: string | null;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2761,6 +2798,14 @@ export interface operations {
                     "application/json": components["schemas"]["SetupOrganisationsResponse"];
                 };
             };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2769,6 +2814,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description access_denied: no current auditor or audit manager role; engagement_setup_request_rejected: the CSRF, origin or expected-actor fence refused the request (reload) */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -7250,6 +7296,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description access_denied: no current auditor or audit manager role; engagement_setup_request_rejected: the CSRF, origin or expected-actor fence refused the request (reload) */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -7331,7 +7378,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description No current auditor or audit manager membership */
+            /** @description access_denied: no current auditor or audit manager role; engagement_setup_request_rejected: the CSRF, origin or expected-actor fence refused the request (reload) */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -7398,7 +7445,17 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description access_denied: no current auditor or audit manager role; engagement_setup_request_rejected: the CSRF, origin or expected-actor fence refused the request (reload) */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description engagement_setup_not_found: no such setup for this actor here */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7480,7 +7537,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Membership revoked, expired or Admin only; nothing was created */
+            /** @description access_denied: no current auditor or audit manager role; engagement_setup_request_rejected: the CSRF, origin or expected-actor fence refused the request (reload) */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -7489,7 +7546,16 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Not ready to confirm, key reused, or engagement_setup_daily_limit */
+            /** @description engagement_setup_not_found: no such setup for this actor here */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not ready to confirm, key reused, engagement_setup_message_limit, engagement_setup_daily_limit or engagement_setup_confirm_failed. A refusal after the confirmation was saved is retained as a Zobba turn; replaying that key repeats it and never establishes */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -7564,7 +7630,17 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description access_denied: no current auditor or audit manager role; engagement_setup_request_rejected: the CSRF, origin or expected-actor fence refused the request (reload) */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description engagement_setup_not_found: no such setup for this actor here */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

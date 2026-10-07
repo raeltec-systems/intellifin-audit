@@ -551,7 +551,7 @@ constraint|engagement_setup_messages|engagement_setup_messages_actor_id_not_null
 constraint|engagement_setup_messages|engagement_setup_messages_author_check|true|CHECK ((author = ANY (ARRAY['member'::text, 'zobba'::text])))
 constraint|engagement_setup_messages|engagement_setup_messages_author_not_null|true|NOT NULL author
 constraint|engagement_setup_messages|engagement_setup_messages_check1|true|CHECK (((author = 'zobba'::text) = (reply_to IS NOT NULL)))
-constraint|engagement_setup_messages|engagement_setup_messages_check2|true|CHECK ((((author = 'member'::text) AND (kind = ANY (ARRAY['objective'::text, 'text'::text, 'choose_client'::text, 'new_client'::text, 'confirm'::text, 'cancel'::text]))) OR ((author = 'zobba'::text) AND (kind = ANY (ARRAY['question'::text, 'refusal'::text, 'summary'::text, 'established'::text, 'cancelled'::text])))))
+constraint|engagement_setup_messages|engagement_setup_messages_check2|true|CHECK ((((author = 'member'::text) AND (kind = ANY (ARRAY['objective'::text, 'text'::text, 'choose_client'::text, 'new_client'::text, 'change_client'::text, 'change_period'::text, 'confirm'::text, 'cancel'::text]))) OR ((author = 'zobba'::text) AND (kind = ANY (ARRAY['question'::text, 'refusal'::text, 'summary'::text, 'established'::text, 'cancelled'::text])))))
 constraint|engagement_setup_messages|engagement_setup_messages_check|true|CHECK (((author = 'member'::text) = (idempotency_key IS NOT NULL)))
 constraint|engagement_setup_messages|engagement_setup_messages_content_check|true|CHECK ((((char_length(content) >= 1) AND (char_length(content) <= 4000)) AND (octet_length(content) <= 4000)))
 constraint|engagement_setup_messages|engagement_setup_messages_content_not_null|true|NOT NULL content
@@ -1456,10 +1456,13 @@ function|admin_continuity_assert|org text|842219bdacd00ff0b0c1720e13ccaafd019e7b
 function|admin_continuity_check||d8fc6c7344c841a992e5b06b6d8c300fd81bb5fbacb4f021e5cb9277b27932b2
 function|admin_continuity_lock||99fb65e7340be8f3501f2d4854ba467ad513ef6dad59c6e7fe34bbdf7e9426a8
 function|admin_continuity_truncate||6bea74cc8431d06fb2fd40997d232413296617d27ded413eefac643257f517a2
-function|engagement_establish|actor text, session_hash text, org text, setup text, new_client text, new_engagement text|136df9e6c235ba3735392be9c66cde177794559ff514e52220023bf760d70f3f
+function|engagement_establish|actor text, session_hash text, org text, setup text, new_client text, new_engagement text, daily_limit integer|960fca846b8cd4992c83b64ac764ca1b462d20c43f280e2559697b928f377478
+function|engagement_setup_access|actor text, session_hash text, org text, writer boolean|cd7e7f8a2069aabbffde6335ebc56486370d1521dd42a32f3b336f377b5145e7
 function|engagement_setup_authority|actor text, session_hash text, org text|e18e4abbaa8aac43372eafd7e626809cd91c05e7ebc0438d2b050e8ab4048e62
-function|engagement_setup_clients|actor text, session_hash text, org text, query text|4557c5376480be830f05323d92e40764a69d9c1e9e8d9e78eb5fbc5b2ab2be16
-function|engagement_setup_organisations|actor text, session_hash text|dbe04d70b65c4d37a08ee07d1d6530d65c4f1f71598b19931952c567f7df880b
+function|engagement_setup_clients|actor text, session_hash text, org text, query text, row_limit integer|a19633c1e0040f01083fc07204126e139f660247bb72e266240b19e4f4970b63
+function|engagement_setup_duplicate|actor text, session_hash text, org text, client text, first_day date, last_day date|8e26a5ac95b517401d8811bb2b7ccab602fd6f6e453bcfaf9fe7717d687c92aa
+function|engagement_setup_organisations|actor text, session_hash text, after text, page_size integer|ad58c791a73c15657ceea61a7d4bdeea7e392269a8be05cbac1c1970fd27a556
+function|engagement_setup_refuse|actor text, session_hash text, org text, setup text, confirm integer, code text, content text|49ea070788729e6c35215b5a975e1f3bcf9aacc6c46209c8ed7a7dd50812e6e5
 function|evidence_session_locked|actor text, session_hash text|e77cd21e401a70ee90b223e38cf70e0c2bf6896a9b924607b82d535582ed43c6
 function|knowledge_audit|actor text, org text, client text, engagement text|1f5a68d0a079bdd173cff025a742eeb78ffa496873957570a846e87a95fe0dd9
 function|knowledge_release_active|org text, publication text|de8213d4e6e122ad693044e49ce4ec6c65c60f43eb15560febd7cee269cab774

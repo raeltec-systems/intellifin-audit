@@ -136,9 +136,10 @@ async fn organisation_setup_http_fences_replay_and_establishes_once() {
         StatusCode::OK,
     )
     .await;
+    let limits = json!({"open_setups":8,"established_per_day":20,"setup_messages":200,"client_candidates":20,"objective_bytes":4000,"answer_bytes":400});
     assert_eq!(
         organisations,
-        json!({"organisations":[{"organisation_id":"org-a","organisation_name":"Northstar"}]})
+        json!({"organisations":[{"organisation_id":"org-a","organisation_name":"Northstar"}],"more":false,"limits":limits})
     );
     assert_eq!(
         document(
@@ -146,7 +147,38 @@ async fn organisation_setup_http_fences_replay_and_establishes_once() {
             StatusCode::OK
         )
         .await,
-        json!({"organisations":[]})
+        json!({"organisations":[],"more":false,"limits":limits})
+    );
+    // Organisations page in C order with an explicit continuation flag.
+    admin.execute("INSERT INTO public.organisations(id,name) SELECT 'org-p'||lpad(n::text,3,'0'),'Page '||n FROM generate_series(1,55) n; INSERT INTO public.organisation_memberships(organisation_id,actor_id,roles) SELECT 'org-p'||lpad(n::text,3,'0'),'identity-a',ARRAY['audit_manager','admin'] FROM generate_series(1,55) n")
+        .await.unwrap();
+    let first = document(
+        auditor.get("/engagement-setups/organisations").await,
+        StatusCode::OK,
+    )
+    .await;
+    let page = first["organisations"].as_array().unwrap();
+    assert_eq!((page.len(), first["more"].clone()), (50, json!(true)));
+    assert_eq!(page[0]["organisation_id"], "org-a");
+    let last = page[49]["organisation_id"].as_str().unwrap().to_owned();
+    let rest = document(
+        auditor
+            .get(&format!("/engagement-setups/organisations?after={last}"))
+            .await,
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(rest["organisations"].as_array().unwrap().len(), 6);
+    assert_eq!(rest["more"], false);
+    assert_eq!(
+        document(
+            auditor
+                .get("/engagement-setups/organisations?after=bad%20id")
+                .await,
+            StatusCode::BAD_REQUEST
+        )
+        .await,
+        json!({"error":"invalid_engagement_setup"})
     );
 
     let base = "/organisations/org-a/engagement-setups";
@@ -154,15 +186,16 @@ async fn organisation_setup_http_fences_replay_and_establishes_once() {
     // Mutation fences: CSRF, expected actor and Admin-only authority.
     let mut forged = auditor.clone();
     forged.actor = "identity-admin".into();
+    // A request fence is not lost access: it has its own code.
     assert_eq!(
         document(forged.post(base, &open).await, StatusCode::FORBIDDEN).await,
-        json!({"error":"access_denied"})
+        json!({"error":"engagement_setup_request_rejected"})
     );
     let mut no_csrf = auditor.clone();
     no_csrf.csrf = "wrong".into();
     assert_eq!(
-        no_csrf.post(base, &open).await.status(),
-        StatusCode::FORBIDDEN
+        document(no_csrf.post(base, &open).await, StatusCode::FORBIDDEN).await,
+        json!({"error":"engagement_setup_request_rejected"})
     );
     assert_eq!(
         document(only_admin.post(base, &open).await, StatusCode::FORBIDDEN).await,
@@ -276,6 +309,15 @@ async fn organisation_setup_http_fences_replay_and_establishes_once() {
             .unwrap()
             .len(),
         1
+    );
+    assert_eq!(
+        document(
+            auditor.get(&format!("{base}/s-unknown")).await,
+            StatusCode::NOT_FOUND
+        )
+        .await,
+        json!({"error":"engagement_setup_not_found"}),
+        "an unknown setup is not lost access"
     );
     let confirm = format!("{base}/{id}/confirm");
     let done = document(

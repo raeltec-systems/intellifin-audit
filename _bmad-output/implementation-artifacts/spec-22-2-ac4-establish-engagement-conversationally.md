@@ -2,7 +2,7 @@
 title: '22.2 AC4 — Establish an engagement conversationally from the first objective'
 type: 'feature'
 created: '2026-10-07'
-status: 'in-review'
+status: 'done'
 baseline_commit: '65cd82e677b64319c244a5ee4332fa884c1973c5'
 story_key: 22-2-continue-a-real-task-under-changing-guidance
 review_loop_iteration: 0
@@ -153,51 +153,124 @@ Keep setup out of the engagement-scoped routing tables (22.2 AC1–3). They requ
 
 ## Implementation Notes (2026-10-07)
 
-Delivered (not committed):
-- `migrations/0013_engagement_setup.sql` + `schema-v13.catalog` (captured byte-for-byte
-  with `psql -At` from a scratch database after migrations 1–13; the same capture of
-  1–12 reproduced `schema-v12.catalog` exactly). `SCHEMA_VERSION` 13, ledger `LIMIT 14`,
-  inventory/grant/effective-role checks, and `check_setup_functions` (three runtime
-  entry points, one private helper, no runtime INSERT on clients/engagements/assignments).
-- `domain/src/engagement_setup.rs`: pure state machine, simple case folding,
-  ISO period parser, bounds, ID/key derivation; unit tests per matrix row.
-- `application/src/engagement_setup.rs` port; `infrastructure/src/engagement_setup.rs`
-  repository (message committed, then interpreted; confirm calls `engagement_establish`,
-  enters the new scope and runs the existing `admit_in` Create + `admission_fence` in
-  the same transaction; exact replay; concurrent loser returns the original receipt).
-- `api/src/engagement_setup.rs` (+ OpenAPI): `GET /engagement-setups/organisations`,
-  `GET|POST /organisations/{org}/engagement-setups`, `GET .../{id}`,
-  `POST .../{id}/messages`, `POST .../{id}/confirm`. Mutations require CSRF, Origin
-  and `X-Expected-Actor`; reads honour `X-Expected-Session`.
-- Web: `engagement-setup.ts`, `EngagementSetup.tsx`, App empty state replaced by the
-  setup conversation and a "Start new engagement" entry; setup outbox channel
-  (`setup:` binding keyed by actor + organisation); explicit "Send again" recovery.
+State: in review. First pass committed as `7780f7e`; the independent-review repairs
+below are in the working tree for the next review commit.
+
+Delivered:
+- `migrations/0013_engagement_setup.sql` (unpublished, edited in place) +
+  `schema-v13.catalog` (recaptured byte-for-byte with `psql -At` from a scratch
+  database after migrations 1–13). `SCHEMA_VERSION` 13; `check_setup_functions`
+  inventories six owner-mediated entry points (`engagement_setup_access`,
+  `_organisations`, `_clients`, `_duplicate`, `_refuse`, `engagement_establish`) and
+  one private helper; runtime still has no INSERT on clients, engagements or
+  assignments.
+- `domain/src/engagement_setup.rs`: pure state machine, simple case folding, ISO
+  period parser, corrections (`change_client`, `change_period`), fixed closed-setup
+  and confirmation refusals, bounds as the single source of the limits.
+- `application`/`infrastructure` `engagement_setup.rs`: every route runs
+  `engagement_setup_access` (writers take lock 205 first); reads answer committed but
+  unanswered member messages; confirmation is retained, then established in a second
+  transaction that answers it (established turn, retained refusal, or a return to
+  the client question).
+- `api/src/engagement_setup.rs` (+ OpenAPI, generated TypeScript): routes as before,
+  organisation paging (`after`, `more`, `limits`), 403 `access_denied` vs
+  `engagement_setup_request_rejected`, 404 `engagement_setup_not_found`, 409
+  `engagement_setup_confirm_failed`; separate read and write permits; limits
+  documented as UTF-8 bytes.
+- Web: `engagement-setup.ts`, `EngagementSetup.tsx` (fenced reads, per-setup drafts,
+  byte checks before reserving, retained client names, access loss distinguished by
+  code, organisation paging, change client/period), `auth.ts` 403/404 setup codes.
 
 Decisions inside the frozen intent:
-- Matching: exact name first; otherwise simple folding. Folding is computed in Rust
-  (lowercase of the single-scalar uppercase; `ı`/`İ` fold to themselves). SQL returns
-  a bounded superset (same scalar count and `lower(upper(.. COLLATE pg_c_utf8))`,
-  at most 21 rows); a full page is refused as "too many clients" rather than guessed.
-- Engagement name is `Audit YYYY-MM-DD to YYYY-MM-DD`; IDs are `c-`/`e-`/`s-` + 32 hex.
-- Establishment bumps `membership_versions` so an open administration draft cannot
-  silently replace the new assignment.
-- A member "cancel" message closes an open setup (needed to recover from the 8-open bound).
-- The engagement period is stored but not yet passed as the Task's methodology
-  context (the design note defers that use).
-- Narrow screens: the existing ≤620px brand bar now wraps (`.sidebar` flex-wrap); it
-  overflowed 360px pages by 17px before this change.
+- Matching: exact name first; otherwise simple folding computed in Rust (lowercase
+  of the single-scalar uppercase; `ı`/`İ` fold to themselves). SQL returns a bounded
+  superset (same scalar count and `lower(upper(.. COLLATE pg_c_utf8))`, one row more
+  than the 20 listed); a full page is refused as "too many clients".
+- New client at confirmation: under lock 205 the name is matched again (exact and
+  folded); a match returns the setup to the pick list with a reply and creates
+  nothing. A chosen client that no longer exists returns the setup to the client
+  question. Both are answers to the confirmation (200), not permanent conflicts.
+- A confirmation refused after it was retained (lost authority, daily limit, a
+  changed setup, a failed establishment) gets a retained refusal turn; replaying the
+  key repeats it. A confirmation whose establishment never finished stays unanswered
+  and its key may be replayed safely. Authority is decided under lock 205 before a
+  confirmation is retained, so a revocation that lands first stores nothing.
+- `engagement_setup_refuse` records only that refusal (exact session, no audit
+  authority), because a member who just lost authority cannot see the setup through
+  RLS.
+- Duplicate client and period: the summary says so; confirming still creates a new
+  engagement named `Audit … to …` with a ` (n)` suffix when that name exists.
+- Establishment bumps `membership_versions` and records `establish_engagement` in
+  `membership_events` (client, whether it was created, the creator's assignment).
+- Two message slots are reserved so a full setup can always be cancelled.
+- Unchanged: the period is stored but not yet passed as the Task's methodology
+  context; the ≤620px brand bar wraps.
 
 Verification (local, disposable `zobba_local_test`, `sslmode=disable` URLs):
 - `cargo fmt --check`, `cargo clippy --locked --workspace --all-targets -D warnings`: clean.
-- `cargo test --locked --workspace --no-fail-fast -- --test-threads=1`: 387 passed,
-  0 failed except `oidc_protocol` (14), which needs the running OIDC fixture; with
-  `pnpm fixture:start` it passes 14/14. New: domain `engagement_setup` (8),
-  infrastructure `tests/engagement_setup.rs` (happy path, ambiguous, new client,
-  Admin-only refusal, revocation decided under lock 205, concurrent confirms held on
-  205 and observed in `pg_locks`, Task-failure rollback, open/daily bounds, replay
-  and conflict, runtime has no INSERT), API `tests/setup_http.rs`, bootstrap tamper,
-  privilege and upgrade checks for schema 13.
-- `scripts/smoke.py`: passed. `pnpm check`: types current, 190/192 (the same two
-  IPv6-only sandbox failures). `pnpm test:browser`: 165 passed, zero retries,
-  including `engagement-setup.spec.ts` (keyboard happy path, ambiguous client,
-  360px narrow screen).
+- `cargo test --locked --workspace --no-fail-fast -- --test-threads=1` with the OIDC
+  fixture running: 403 passed, 0 failed, 4 ignored. Domain `engagement_setup` 10;
+  infrastructure `tests/engagement_setup.rs` adds expiry and auditor→admin-only
+  between summary and confirm, revocation inside the establishing transaction
+  (retained refusal, replay never establishes), non-ASCII folding through the SQL
+  prefilter (`ſtop`, `ålesund`, Kelvin sign), a failed interpretation answered once
+  by a later read, the message limit (no row, count unchanged, cancel still allowed),
+  concurrent new-client confirmations (one client), duplicate warning and name
+  suffix, `membership_events`. Mutations checked (each failed the contract test):
+  no confirm replay check, no new-client rematch, no cancel reserve, reads not
+  answering, membership-row-only authority, exact-only SQL prefilter.
+- `scripts/smoke.py`: passed. `pnpm check`: types current, 193/195 (the same two
+  IPv6-only sandbox failures). Full browser suite: 167 passed, zero retries, including
+  a dropped confirm response recovered by "Send again" with one engagement, and a
+  member with engagements completing "Start new engagement".
+
+## Suggested Review Order
+
+**Establishment (entry point)**
+
+- One locked transaction creates client, engagement, assignment and history; duplicates fold back to choice.
+  [`0013_engagement_setup.sql:175`](../../zobba/migrations/0013_engagement_setup.sql#L175)
+
+- Confirm runs establishment then the normal Task Create in the same transaction; refusals are retained.
+  [`engagement_setup.rs:1208`](../../zobba/crates/infrastructure/src/engagement_setup.rs#L1208)
+
+**Authority**
+
+- Every route rechecks session, identity and auditor/audit-manager membership; writes take lock 205 first.
+  [`0013_engagement_setup.sql:95`](../../zobba/migrations/0013_engagement_setup.sql#L95)
+
+- Repository entry applies that check before any read or write.
+  [`engagement_setup.rs:271`](../../zobba/crates/infrastructure/src/engagement_setup.rs#L271)
+
+- A refusal turn is written even after the member lost RLS visibility.
+  [`0013_engagement_setup.sql:153`](../../zobba/migrations/0013_engagement_setup.sql#L153)
+
+**Conversation rules**
+
+- Pure state machine: objective, client, period, confirm, with change commands.
+  [`engagement_setup.rs:532`](../../zobba/crates/domain/src/engagement_setup.rs#L532)
+
+- Context-independent simple case folding for client matching.
+  [`engagement_setup.rs:434`](../../zobba/crates/domain/src/engagement_setup.rs#L434)
+
+- Committed member messages are always answered, including after cancel.
+  [`engagement_setup.rs:489`](../../zobba/crates/infrastructure/src/engagement_setup.rs#L489)
+
+**Storage, API and web**
+
+- Additive schema 13 with actor-only RLS and engagement period.
+  [`0013_engagement_setup.sql:8`](../../zobba/migrations/0013_engagement_setup.sql#L8)
+
+- Closed error codes separate lost access from unknown setup and rejected requests.
+  [`engagement_setup.rs:89`](../../zobba/crates/api/src/engagement_setup.rs#L89)
+
+- Organisation-level setup conversation with durable outbox recovery.
+  [`EngagementSetup.tsx:43`](../../zobba/web/src/EngagementSetup.tsx#L43)
+
+**Tests**
+
+- PostgreSQL contract: races, revocation, bounds, folding, replay, rollback.
+  [`engagement_setup.rs:26`](../../zobba/crates/infrastructure/tests/engagement_setup.rs#L26)
+
+- Chromium keyboard, ambiguity, reload recovery and existing-user entry.
+  [`engagement-setup.spec.ts:52`](../../zobba/web/tests/browser/engagement-setup.spec.ts#L52)

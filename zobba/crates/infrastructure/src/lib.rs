@@ -380,7 +380,7 @@ async fn check_work_functions(
     }
 }
 
-// Story 22.2 AC4: three owner-mediated entry points plus one private helper.
+// Story 22.2 AC4: six owner-mediated entry points plus one private helper.
 // Runtime may execute only the entry points; it never gains client, engagement
 // or assignment INSERT.
 async fn check_setup_functions(
@@ -388,14 +388,14 @@ async fn check_setup_functions(
     runtime: Option<&str>,
 ) -> Result<(), BootstrapError> {
     let safe: bool = sqlx::query_scalar(r#"
-      SELECT count(*)=4 AND bool_and(
+      SELECT count(*)=7 AND bool_and(
        p.proowner=(SELECT relowner FROM pg_catalog.pg_class WHERE oid='public.zobba_bootstrap'::regclass)
        AND (p.proname='engagement_setup_authority' OR p.prosecdef)
        AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a WHERE a.grantee=0 OR (a.grantee<>p.proowner AND (p.proname='engagement_setup_authority' OR a.privilege_type<>'EXECUTE' OR a.is_grantable OR ($1::text IS NOT NULL AND a.grantee<>(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=$1)))))
        AND ($1::text IS NULL OR CASE WHEN p.proname='engagement_setup_authority' THEN NOT pg_catalog.has_function_privilege($1,p.oid,'EXECUTE') ELSE pg_catalog.has_function_privilege($1,p.oid,'EXECUTE') END)
        AND ($1::text IS NULL OR NOT (pg_catalog.has_table_privilege($1,'public.clients','INSERT') OR pg_catalog.has_table_privilege($1,'public.engagements','INSERT') OR pg_catalog.has_table_privilege($1,'public.engagement_assignments','INSERT'))))
       FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
-      WHERE n.nspname='public' AND p.proname IN ('engagement_setup_authority','engagement_setup_organisations','engagement_setup_clients','engagement_establish')
+      WHERE n.nspname='public' AND p.proname IN ('engagement_setup_authority','engagement_setup_access','engagement_setup_organisations','engagement_setup_clients','engagement_setup_duplicate','engagement_setup_refuse','engagement_establish')
     "#).bind(runtime).fetch_one(conn).await.map_err(|_| BootstrapError::SchemaMismatch)?;
     if safe {
         Ok(())
@@ -419,7 +419,7 @@ async fn inventory(conn: &mut PgConnection) -> Result<Vec<String>, BootstrapErro
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_dict o JOIN pg_catalog.pg_namespace n ON n.oid=o.dictnamespace WHERE n.nspname='public')
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_parser o JOIN pg_catalog.pg_namespace n ON n.oid=o.prsnamespace WHERE n.nspname='public')
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_template o JOIN pg_catalog.pg_namespace n ON n.oid=o.tmplnamespace WHERE n.nspname='public')
-        OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname NOT IN ('membership_admin','membership_session','membership_validate','membership_fence','membership_read','membership_write','membership_accept','membership_preview','membership_assignments','evidence_session_locked','admin_continuity_assert','admin_continuity_lock','admin_continuity_check','admin_continuity_truncate','methodology_audit','methodology_read','methodology_write','methodology_candidates','methodology_task','skills_read','skills_admin','skills_impact','skills_write','skills_task','knowledge_audit','knowledge_release_active','model_configuration_admin','work_step_guard','work_guidance_guard','work_answer_guard','engagement_setup_authority','engagement_setup_organisations','engagement_setup_clients','engagement_establish'))
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname NOT IN ('membership_admin','membership_session','membership_validate','membership_fence','membership_read','membership_write','membership_accept','membership_preview','membership_assignments','evidence_session_locked','admin_continuity_assert','admin_continuity_lock','admin_continuity_check','admin_continuity_truncate','methodology_audit','methodology_read','methodology_write','methodology_candidates','methodology_task','skills_read','skills_admin','skills_impact','skills_write','skills_task','knowledge_audit','knowledge_release_active','model_configuration_admin','work_step_guard','work_guidance_guard','work_answer_guard','engagement_setup_authority','engagement_setup_access','engagement_setup_organisations','engagement_setup_clients','engagement_setup_duplicate','engagement_setup_refuse','engagement_establish'))
         OR EXISTS (
           SELECT 1 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace
           WHERE n.nspname='public' AND t.oid NOT IN (
@@ -1236,7 +1236,7 @@ async fn migrate_locked(conn: &mut PgConnection, runtime_role: &str) -> Result<(
         "{grants} GRANT SELECT,INSERT ON public.knowledge_captures,public.knowledge_events,public.knowledge_invalidations,public.knowledge_layout_events,public.knowledge_publications,public.knowledge_records,public.knowledge_source_corrections,public.knowledge_withdrawals,public.model_profiles,public.model_catalogues,public.model_invocations,public.model_results,public.model_tool_bindings,public.task_steps,public.task_guidance_applications,public.task_routing_questions,public.task_routing_answers,public.task_work_claims TO \"{runtime_role}\"; GRANT EXECUTE ON FUNCTION public.knowledge_audit(text,text,text,text),public.knowledge_release_active(text,text),public.model_configuration_admin(text,text,text) TO \"{runtime_role}\";"
     );
     let grants = format!(
-        "{grants} GRANT SELECT,INSERT ON public.engagement_setups,public.engagement_setup_messages TO \"{runtime_role}\"; GRANT UPDATE(state,candidates,resolved_client_id,resolved_client_name,new_client_name,period_start,period_end,client_id,engagement_id,task_id,cycle_id,receipt,message_count,established_at) ON public.engagement_setups TO \"{runtime_role}\"; GRANT EXECUTE ON FUNCTION public.engagement_setup_organisations(text,text),public.engagement_setup_clients(text,text,text,text),public.engagement_establish(text,text,text,text,text,text) TO \"{runtime_role}\";"
+        "{grants} GRANT SELECT,INSERT ON public.engagement_setups,public.engagement_setup_messages TO \"{runtime_role}\"; GRANT UPDATE(state,candidates,resolved_client_id,resolved_client_name,new_client_name,period_start,period_end,client_id,engagement_id,task_id,cycle_id,receipt,message_count,established_at) ON public.engagement_setups TO \"{runtime_role}\"; GRANT EXECUTE ON FUNCTION public.engagement_setup_access(text,text,text,boolean),public.engagement_setup_organisations(text,text,text,integer),public.engagement_setup_clients(text,text,text,text,integer),public.engagement_setup_duplicate(text,text,text,text,date,date),public.engagement_setup_refuse(text,text,text,text,integer,text,text),public.engagement_establish(text,text,text,text,text,text,integer) TO \"{runtime_role}\";"
     );
     sqlx::raw_sql(&grants)
         .execute(&mut *tx)

@@ -11,10 +11,16 @@ pub const MAX_OPEN_SETUPS: usize = 8;
 pub const MAX_ESTABLISHED_PER_DAY: usize = 20;
 /// Messages (member and Zobba) retained by one setup.
 pub const MAX_SETUP_MESSAGES: usize = 200;
+/// Message slots kept free for a cancellation and its reply, so a full setup can
+/// always be closed.
+pub const CANCEL_RESERVE: usize = 2;
 /// Candidates listed by a client question. A wider match is refused, not truncated.
 pub const MAX_CLIENT_CANDIDATES: usize = 20;
+/// Organisations listed per page by the setup organisation read.
+pub const ORGANISATION_PAGE: usize = 50;
+/// The first objective, in UTF-8 bytes.
 pub const OBJECTIVE_MAX: usize = crate::task::COMMAND_CONTENT_MAX;
-/// An answer is short free text: a client name or a period.
+/// An answer is short free text (a client name or a period), in UTF-8 bytes.
 pub const ANSWER_MAX: usize = 400;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -110,6 +116,10 @@ pub enum MemberInput {
     Text(String),
     ChooseClient(String),
     NewClient(bool),
+    /// Return to the client question; a known period is kept.
+    ChangeClient,
+    /// Return to the period question from the summary.
+    ChangePeriod,
     Confirm,
     Cancel,
 }
@@ -121,6 +131,8 @@ impl MemberInput {
             Self::Text(_) => "text",
             Self::ChooseClient(_) => "choose_client",
             Self::NewClient(_) => "new_client",
+            Self::ChangeClient => "change_client",
+            Self::ChangePeriod => "change_period",
             Self::Confirm => "confirm",
             Self::Cancel => "cancel",
         }
@@ -130,7 +142,11 @@ impl MemberInput {
             Self::Objective(text) => valid_text(text, OBJECTIVE_MAX),
             Self::Text(text) => valid_text(text, ANSWER_MAX),
             Self::ChooseClient(id) => valid_scope_id(id),
-            Self::NewClient(_) | Self::Confirm | Self::Cancel => true,
+            Self::NewClient(_)
+            | Self::ChangeClient
+            | Self::ChangePeriod
+            | Self::Confirm
+            | Self::Cancel => true,
         }
     }
     /// Retained display text for the member's own turn.
@@ -140,6 +156,8 @@ impl MemberInput {
             Self::ChooseClient(id) => format!("Chose client {id}"),
             Self::NewClient(true) => "Create this client".into(),
             Self::NewClient(false) => "Do not create this client".into(),
+            Self::ChangeClient => "Change client".into(),
+            Self::ChangePeriod => "Change audit period".into(),
             Self::Confirm => "Confirm".into(),
             Self::Cancel => "Cancel setup".into(),
         }
@@ -166,6 +184,16 @@ pub enum Refusal {
     PeriodOrder,
     ConfirmOrCancel,
     NotApplicable,
+    /// The setup is established or cancelled; nothing was changed.
+    SetupClosed,
+    /// Confirmation refused: the member no longer holds audit access.
+    ConfirmDenied,
+    /// Confirmation refused: the setup was no longer ready to confirm.
+    ConfirmConflict,
+    /// Confirmation refused: the daily establishment limit is reached.
+    DailyLimit,
+    /// Confirmation failed while establishing; nothing was created.
+    ConfirmFailed,
 }
 
 impl Refusal {
@@ -180,25 +208,66 @@ impl Refusal {
             Self::PeriodOrder => "period_order",
             Self::ConfirmOrCancel => "confirm_or_cancel",
             Self::NotApplicable => "not_applicable",
+            Self::SetupClosed => "setup_closed",
+            Self::ConfirmDenied => "confirm_denied",
+            Self::ConfirmConflict => "confirm_conflict",
+            Self::DailyLimit => "daily_limit",
+            Self::ConfirmFailed => "confirm_failed",
         }
     }
-    pub const fn reason(self) -> &'static str {
+    pub fn parse(code: &str) -> Option<Self> {
+        [
+            Self::InvalidClientName,
+            Self::TooManyClients,
+            Self::NotACandidate,
+            Self::AnswerNewClient,
+            Self::PeriodFormat,
+            Self::PeriodInvalidDate,
+            Self::PeriodOrder,
+            Self::ConfirmOrCancel,
+            Self::NotApplicable,
+            Self::SetupClosed,
+            Self::ConfirmDenied,
+            Self::ConfirmConflict,
+            Self::DailyLimit,
+            Self::ConfirmFailed,
+        ]
+        .into_iter()
+        .find(|refusal| refusal.code() == code)
+    }
+    pub fn reason(self) -> String {
         match self {
             Self::InvalidClientName => {
-                "A client name is 1–200 characters without control characters."
+                "A client name is 1–200 characters without control characters.".into()
             }
-            Self::TooManyClients => {
-                "More than 20 clients match that name. Use the exact client name."
-            }
-            Self::NotACandidate => "Choose one of the listed clients.",
-            Self::AnswerNewClient => "Confirm or decline creating this client.",
+            Self::TooManyClients => format!(
+                "More than {MAX_CLIENT_CANDIDATES} clients match that name. Use the exact client name."
+            ),
+            Self::NotACandidate => "Choose one of the listed clients.".into(),
+            Self::AnswerNewClient => "Confirm or decline creating this client.".into(),
             Self::PeriodFormat => {
                 "Give the audit period as two ISO dates, for example 2026-01-01 to 2026-12-31."
+                    .into()
             }
-            Self::PeriodInvalidDate => "One of those dates does not exist in the calendar.",
-            Self::PeriodOrder => "The period must start on or before its end date.",
-            Self::ConfirmOrCancel => "Confirm the summary, or cancel this setup.",
-            Self::NotApplicable => "That answer does not apply at this step.",
+            Self::PeriodInvalidDate => "One of those dates does not exist in the calendar.".into(),
+            Self::PeriodOrder => "The period must start on or before its end date.".into(),
+            Self::ConfirmOrCancel => {
+                "Confirm the summary, change the client or period, or cancel this setup.".into()
+            }
+            Self::NotApplicable => "That answer does not apply at this step.".into(),
+            Self::SetupClosed => "This setup is closed. Nothing was changed.".into(),
+            Self::ConfirmDenied => {
+                "Not confirmed: you no longer hold an auditor or audit manager role here. Nothing was created.".into()
+            }
+            Self::ConfirmConflict => {
+                "Not confirmed: the setup changed before confirmation. Nothing was created.".into()
+            }
+            Self::DailyLimit => format!(
+                "Not confirmed: you have set up {MAX_ESTABLISHED_PER_DAY} engagements here today (UTC). Nothing was created."
+            ),
+            Self::ConfirmFailed => {
+                "Not confirmed: the engagement could not be created. Nothing was created; confirm again to retry.".into()
+            }
         }
     }
 }
@@ -210,7 +279,15 @@ pub enum Reply {
     ChooseClient(Vec<ClientCandidate>),
     ProposeNewClient(String),
     AskPeriod,
-    Summary,
+    /// The summary; `duplicate` when this client already has an engagement for
+    /// exactly this period (confirmation is still allowed).
+    Summary {
+        duplicate: bool,
+    },
+    /// At confirmation a matching client now exists; nothing was created.
+    ClientNowExists(Vec<ClientCandidate>),
+    /// At confirmation the chosen client no longer exists; nothing was created.
+    ClientGone(String),
     Refused(Refusal),
     Cancelled,
 }
@@ -222,8 +299,10 @@ impl Reply {
             Self::AskClient
             | Self::ChooseClient(_)
             | Self::ProposeNewClient(_)
-            | Self::AskPeriod => "question",
-            Self::Summary => "summary",
+            | Self::AskPeriod
+            | Self::ClientNowExists(_)
+            | Self::ClientGone(_) => "question",
+            Self::Summary { .. } => "summary",
             Self::Refused(_) => "refusal",
             Self::Cancelled => "cancelled",
         }
@@ -236,7 +315,13 @@ impl Reply {
             Self::AskPeriod => {
                 "What audit period does this engagement cover? Give two ISO dates, for example 2026-01-01 to 2026-12-31.".into()
             }
-            Self::Summary => {
+            Self::ClientNowExists(_) => {
+                "A client with that name exists now, so no new client was created. Which client is it? You can also give another name.".into()
+            }
+            Self::ClientGone(name) => format!(
+                "Client “{name}” no longer exists, so nothing was created. Which client is this engagement for?"
+            ),
+            Self::Summary { duplicate } => {
                 let client = match (&facts.client, &facts.new_client_name) {
                     (Some(client), _) => client.name.clone(),
                     (None, Some(name)) => format!("{name} (new client)"),
@@ -247,11 +332,16 @@ impl Reply {
                     .as_ref()
                     .map(|p| format!("{} to {}", p.start, p.end))
                     .unwrap_or_default();
+                let warning = if *duplicate {
+                    " An engagement for this client with exactly this audit period already exists; confirming creates another one."
+                } else {
+                    ""
+                };
                 format!(
-                    "Ready to set up: client {client}, audit period {period}. You will be the only person assigned. Confirm to create the engagement and start the first Task."
+                    "Ready to set up: client {client}, audit period {period}.{warning} You will be the only person assigned. Confirm to create the engagement and start the first Task."
                 )
             }
-            Self::Refused(refusal) => refusal.reason().into(),
+            Self::Refused(refusal) => refusal.reason(),
             Self::Cancelled => "Setup cancelled. Nothing was created.".into(),
         }
     }
@@ -261,6 +351,13 @@ impl Reply {
 pub struct SetupOrganisation {
     pub id: String,
     pub name: String,
+}
+
+/// One page of setup organisations in C order; `more` means another page exists.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OrganisationPage {
+    pub organisations: Vec<SetupOrganisation>,
+    pub more: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -305,11 +402,11 @@ impl Reply {
     /// Closed prompt identifier for a question, used by clients to render controls.
     pub const fn prompt(&self) -> Option<&'static str> {
         match self {
-            Self::AskClient => Some("client"),
-            Self::ChooseClient(_) => Some("client_choice"),
+            Self::AskClient | Self::ClientGone(_) => Some("client"),
+            Self::ChooseClient(_) | Self::ClientNowExists(_) => Some("client_choice"),
             Self::ProposeNewClient(_) => Some("new_client"),
             Self::AskPeriod => Some("period"),
-            Self::Summary => Some("confirm"),
+            Self::Summary { .. } => Some("confirm"),
             Self::Refused(_) | Self::Cancelled => None,
         }
     }
@@ -439,45 +536,38 @@ pub fn interpret(
 ) -> Step {
     let stay = |refusal| Step::Next(facts.clone(), Reply::Refused(refusal));
     let mut next = facts.clone();
-    if matches!(input, MemberInput::Cancel) && facts.state.is_open() {
+    if !facts.state.is_open() {
+        return stay(Refusal::SetupClosed);
+    }
+    if matches!(input, MemberInput::Cancel) {
         next.state = SetupState::Cancelled;
         return Step::Next(next, Reply::Cancelled);
+    }
+    if matches!(input, MemberInput::ChangeClient)
+        && matches!(
+            facts.state,
+            SetupState::ClientChoice
+                | SetupState::NewClient
+                | SetupState::Period
+                | SetupState::Confirm
+        )
+    {
+        next.client = None;
+        next.new_client_name = None;
+        next.candidates.clear();
+        next.state = SetupState::Client;
+        return Step::Next(next, Reply::AskClient);
+    }
+    if matches!(input, MemberInput::ChangePeriod) && facts.state == SetupState::Confirm {
+        next.state = SetupState::Period;
+        return Step::Next(next, Reply::AskPeriod);
     }
     match (facts.state, input) {
         (SetupState::Objective, MemberInput::Objective(_)) => {
             next.state = SetupState::Client;
             Step::Next(next, Reply::AskClient)
         }
-        (SetupState::Client, MemberInput::Text(text)) => {
-            let Some(name) = normalize_name(text) else {
-                return stay(Refusal::InvalidClientName);
-            };
-            let Some(lookup) = lookup else {
-                return Step::LookupClients(name);
-            };
-            match resolve_client(&name, lookup) {
-                ClientResolution::Resolved(client) => {
-                    next.client = Some(client);
-                    next.new_client_name = None;
-                    next.candidates.clear();
-                    next.state = SetupState::Period;
-                    Step::Next(next, Reply::AskPeriod)
-                }
-                ClientResolution::Ambiguous(candidates) => {
-                    next.candidates = candidates.clone();
-                    next.state = SetupState::ClientChoice;
-                    Step::Next(next, Reply::ChooseClient(candidates))
-                }
-                ClientResolution::New(name) => {
-                    next.new_client_name = Some(name.clone());
-                    next.client = None;
-                    next.candidates.clear();
-                    next.state = SetupState::NewClient;
-                    Step::Next(next, Reply::ProposeNewClient(name))
-                }
-                ClientResolution::TooMany => stay(Refusal::TooManyClients),
-            }
-        }
+        (SetupState::Client, MemberInput::Text(text)) => search(facts, next, text, lookup),
         (SetupState::ClientChoice, MemberInput::ChooseClient(id)) => {
             match facts.candidates.iter().find(|c| &c.id == id) {
                 Some(client) => choose(next, client.clone()),
@@ -485,17 +575,18 @@ pub fn interpret(
             }
         }
         (SetupState::ClientChoice, MemberInput::Text(text)) => {
-            let name = text.trim();
-            let named: Vec<_> = facts.candidates.iter().filter(|c| c.name == name).collect();
+            let named: Vec<_> = facts
+                .candidates
+                .iter()
+                .filter(|c| c.name == text.trim())
+                .collect();
             match named.as_slice() {
                 [client] => choose(next, (*client).clone()),
-                _ => stay(Refusal::NotACandidate),
+                // Another name is a new search, not a refusal.
+                _ => search(facts, next, text, lookup),
             }
         }
-        (SetupState::NewClient, MemberInput::NewClient(true)) => {
-            next.state = SetupState::Period;
-            Step::Next(next, Reply::AskPeriod)
-        }
+        (SetupState::NewClient, MemberInput::NewClient(true)) => after_client(next),
         (SetupState::NewClient, MemberInput::NewClient(false)) => {
             next.new_client_name = None;
             next.state = SetupState::Client;
@@ -506,7 +597,7 @@ pub fn interpret(
             Ok(period) => {
                 next.period = Some(period);
                 next.state = SetupState::Confirm;
-                Step::Next(next, Reply::Summary)
+                Step::Next(next, Reply::Summary { duplicate: false })
             }
             Err(refusal) => stay(refusal),
         },
@@ -515,11 +606,57 @@ pub fn interpret(
     }
 }
 
+/// A client-name answer: look the name up, then resolve it.
+fn search(
+    facts: &SetupFacts,
+    mut next: SetupFacts,
+    text: &str,
+    lookup: Option<&[ClientCandidate]>,
+) -> Step {
+    let Some(name) = normalize_name(text) else {
+        return Step::Next(facts.clone(), Reply::Refused(Refusal::InvalidClientName));
+    };
+    let Some(lookup) = lookup else {
+        return Step::LookupClients(name);
+    };
+    match resolve_client(&name, lookup) {
+        ClientResolution::Resolved(client) => choose(next, client),
+        ClientResolution::Ambiguous(candidates) => {
+            next.client = None;
+            next.new_client_name = None;
+            next.candidates = candidates.clone();
+            next.state = SetupState::ClientChoice;
+            Step::Next(next, Reply::ChooseClient(candidates))
+        }
+        ClientResolution::New(name) => {
+            next.new_client_name = Some(name.clone());
+            next.client = None;
+            next.candidates.clear();
+            next.state = SetupState::NewClient;
+            Step::Next(next, Reply::ProposeNewClient(name))
+        }
+        ClientResolution::TooMany => {
+            Step::Next(facts.clone(), Reply::Refused(Refusal::TooManyClients))
+        }
+    }
+}
+
 fn choose(mut next: SetupFacts, client: ClientCandidate) -> Step {
     next.client = Some(client);
+    next.new_client_name = None;
     next.candidates.clear();
-    next.state = SetupState::Period;
-    Step::Next(next, Reply::AskPeriod)
+    after_client(next)
+}
+
+/// Once the client is known, ask for the period unless it is already known.
+fn after_client(mut next: SetupFacts) -> Step {
+    if next.period.is_some() {
+        next.state = SetupState::Confirm;
+        Step::Next(next, Reply::Summary { duplicate: false })
+    } else {
+        next.state = SetupState::Period;
+        Step::Next(next, Reply::AskPeriod)
+    }
 }
 
 /// Deterministic Task idempotency key for the first Task of a setup.
@@ -588,7 +725,7 @@ mod tests {
         ));
         assert_eq!(
             (facts.state, &reply),
-            (SetupState::Confirm, &Reply::Summary)
+            (SetupState::Confirm, &Reply::Summary { duplicate: false })
         );
         assert_eq!(
             facts.period,
@@ -628,12 +765,22 @@ mod tests {
                 Reply::Refused(Refusal::NotACandidate)
             )
         );
-        let (same, reply) = next(interpret(&facts, &MemberInput::Text("Other".into()), None));
+        // Typing another name is a new search, not a refusal.
         assert_eq!(
-            (same.state, reply),
+            interpret(&facts, &MemberInput::Text(" Other ".into()), None),
+            Step::LookupClients("Other".into())
+        );
+        let (renamed, reply) = next(interpret(
+            &facts,
+            &MemberInput::Text("Other".into()),
+            Some(&[client("o1", "Other")]),
+        ));
+        assert_eq!(
+            (renamed.state, renamed.client, reply),
             (
-                SetupState::ClientChoice,
-                Reply::Refused(Refusal::NotACandidate)
+                SetupState::Period,
+                Some(client("o1", "Other")),
+                Reply::AskPeriod
             )
         );
         let (chosen, _) = next(interpret(
@@ -730,6 +877,86 @@ mod tests {
             let (done, _) = next(interpret(&facts, &MemberInput::Text(text.into()), None));
             assert_eq!(done.state, SetupState::Confirm, "{text}");
         }
+    }
+
+    #[test]
+    fn client_and_period_can_be_corrected_from_the_summary() {
+        let ready = SetupFacts {
+            state: SetupState::Confirm,
+            client: Some(client("c1", "Alder")),
+            period: Some(Period {
+                start: "2026-01-01".into(),
+                end: "2026-12-31".into(),
+            }),
+            ..SetupFacts::opened()
+        };
+        let (asked, reply) = next(interpret(&ready, &MemberInput::ChangeClient, None));
+        assert_eq!(
+            (asked.state, &reply),
+            (SetupState::Client, &Reply::AskClient)
+        );
+        assert!(asked.client.is_none() && asked.period.is_some());
+        // The known period is kept: a resolved client returns to the summary.
+        let (back, reply) = next(interpret(
+            &asked,
+            &MemberInput::Text("Birch".into()),
+            Some(&[client("c2", "Birch")]),
+        ));
+        assert_eq!(
+            (back.state, reply, back.client),
+            (
+                SetupState::Confirm,
+                Reply::Summary { duplicate: false },
+                Some(client("c2", "Birch"))
+            )
+        );
+        let (period, reply) = next(interpret(&ready, &MemberInput::ChangePeriod, None));
+        assert_eq!(
+            (period.state, reply),
+            (SetupState::Period, Reply::AskPeriod)
+        );
+        let (_, reply) = next(interpret(
+            &at(SetupState::Client),
+            &MemberInput::ChangePeriod,
+            None,
+        ));
+        assert_eq!(reply, Reply::Refused(Refusal::NotApplicable));
+        assert!(
+            Reply::Summary { duplicate: true }
+                .text(&ready)
+                .contains("already exists")
+        );
+        assert!(
+            !Reply::Summary { duplicate: false }
+                .text(&ready)
+                .contains("already exists")
+        );
+    }
+
+    #[test]
+    fn closed_setups_answer_every_message_with_a_fixed_refusal() {
+        for state in [SetupState::Established, SetupState::Cancelled] {
+            for input in [
+                MemberInput::Text("x".into()),
+                MemberInput::Cancel,
+                MemberInput::ChangeClient,
+            ] {
+                let (same, reply) = next(interpret(&at(state), &input, None));
+                assert_eq!(
+                    (same.state, reply),
+                    (state, Reply::Refused(Refusal::SetupClosed))
+                );
+            }
+        }
+        for refusal in [
+            Refusal::SetupClosed,
+            Refusal::ConfirmDenied,
+            Refusal::DailyLimit,
+            Refusal::ConfirmFailed,
+        ] {
+            assert_eq!(Refusal::parse(refusal.code()), Some(refusal));
+        }
+        assert_eq!(Refusal::parse("other"), None);
     }
 
     #[test]

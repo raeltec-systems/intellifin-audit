@@ -275,6 +275,21 @@
         "operationId": "list_setup_organisations",
         "parameters": [
           {
+            "name": "after",
+            "in": "path",
+            "description": "The last organisation ID of the previous page.",
+            "required": true,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          {
             "name": "X-Expected-Session",
             "in": "header",
             "description": "Optional session-bound read precondition",
@@ -300,6 +315,16 @@
               }
             }
           },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "401": {
             "description": "",
             "content": {
@@ -311,7 +336,7 @@
             }
           },
           "403": {
-            "description": "",
+            "description": "access_denied: no current auditor or audit manager role; engagement_setup_request_rejected: the CSRF, origin or expected-actor fence refused the request (reload)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8335,7 +8360,7 @@
             }
           },
           "403": {
-            "description": "",
+            "description": "access_denied: no current auditor or audit manager role; engagement_setup_request_rejected: the CSRF, origin or expected-actor fence refused the request (reload)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8471,7 +8496,7 @@
             }
           },
           "403": {
-            "description": "No current auditor or audit manager membership",
+            "description": "access_denied: no current auditor or audit manager role; engagement_setup_request_rejected: the CSRF, origin or expected-actor fence refused the request (reload)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8584,7 +8609,17 @@
             }
           },
           "403": {
-            "description": "",
+            "description": "access_denied: no current auditor or audit manager role; engagement_setup_request_rejected: the CSRF, origin or expected-actor fence refused the request (reload)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "engagement_setup_not_found: no such setup for this actor here",
             "content": {
               "application/json": {
                 "schema": {
@@ -8733,7 +8768,17 @@
             }
           },
           "403": {
-            "description": "Membership revoked, expired or Admin only; nothing was created",
+            "description": "access_denied: no current auditor or audit manager role; engagement_setup_request_rejected: the CSRF, origin or expected-actor fence refused the request (reload)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "engagement_setup_not_found: no such setup for this actor here",
             "content": {
               "application/json": {
                 "schema": {
@@ -8743,7 +8788,7 @@
             }
           },
           "409": {
-            "description": "Not ready to confirm, key reused, or engagement_setup_daily_limit",
+            "description": "Not ready to confirm, key reused, engagement_setup_message_limit, engagement_setup_daily_limit or engagement_setup_confirm_failed. A refusal after the confirmation was saved is retained as a Zobba turn; replaying that key repeats it and never establishes",
             "content": {
               "application/json": {
                 "schema": {
@@ -8882,7 +8927,17 @@
             }
           },
           "403": {
-            "description": "",
+            "description": "access_denied: no current auditor or audit manager role; engagement_setup_request_rejected: the CSRF, origin or expected-actor fence refused the request (reload)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "engagement_setup_not_found: no such setup for this actor here",
             "content": {
               "application/json": {
                 "schema": {
@@ -13551,7 +13606,6 @@
           "objective": {
             "type": "string",
             "description": "The first objective, at most 4000 UTF-8 bytes.",
-            "maxLength": 4000,
             "minLength": 1
           }
         },
@@ -14306,12 +14360,61 @@
           }
         }
       },
+      "SetupLimitsResponse": {
+        "type": "object",
+        "description": "The server's setup bounds, so clients never restate them.",
+        "required": [
+          "open_setups",
+          "established_per_day",
+          "setup_messages",
+          "client_candidates",
+          "objective_bytes",
+          "answer_bytes"
+        ],
+        "properties": {
+          "answer_bytes": {
+            "type": "integer",
+            "format": "int32",
+            "description": "One answer (a client name or a period), in UTF-8 bytes.",
+            "minimum": 0
+          },
+          "client_candidates": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "established_per_day": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Engagements one actor may establish in one organisation per UTC day.",
+            "minimum": 0
+          },
+          "objective_bytes": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The first objective, in UTF-8 bytes.",
+            "minimum": 0
+          },
+          "open_setups": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "setup_messages": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "SetupMessageKind": {
         "type": "string",
         "enum": [
           "text",
           "choose_client",
           "new_client",
+          "change_client",
+          "change_period",
           "cancel"
         ]
       },
@@ -14344,8 +14447,7 @@
               "string",
               "null"
             ],
-            "description": "Required only for text: a client name or an explicit ISO period.",
-            "maxLength": 400,
+            "description": "Required only for text: a client name or an explicit ISO period, at most\n400 UTF-8 bytes.",
             "minLength": 1
           },
           "key": {
@@ -14385,13 +14487,12 @@
           },
           "content": {
             "type": "string",
-            "description": "Retained member text, or Zobba's fixed deterministic sentence.",
-            "maxLength": 4000,
+            "description": "Retained member text, or Zobba's fixed deterministic sentence; at most 4000 UTF-8 bytes.",
             "minLength": 1
           },
           "kind": {
             "type": "string",
-            "description": "Member: objective, text, choose_client, new_client, confirm or cancel.\nZobba: question, refusal, summary, established or cancelled."
+            "description": "Member: objective, text, choose_client, new_client, change_client, change_period, confirm or cancel.\nZobba: question, refusal, summary, established or cancelled."
           },
           "ordinal": {
             "type": "integer",
@@ -14445,15 +14546,24 @@
       "SetupOrganisationsResponse": {
         "type": "object",
         "required": [
-          "organisations"
+          "organisations",
+          "more",
+          "limits"
         ],
         "properties": {
+          "limits": {
+            "$ref": "#/components/schemas/SetupLimitsResponse"
+          },
+          "more": {
+            "type": "boolean",
+            "description": "Another page exists after the last organisation listed."
+          },
           "organisations": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/SetupOrganisationResponse"
             },
-            "description": "Organisations where the caller holds a current auditor or audit manager role.",
+            "description": "Organisations where the caller holds a current auditor or audit manager\nrole, in C (byte) order of their IDs.",
             "maxItems": 50
           }
         }
@@ -14534,7 +14644,7 @@
           },
           "objective": {
             "type": "string",
-            "maxLength": 4000,
+            "description": "At most 4000 UTF-8 bytes.",
             "minLength": 1
           },
           "organisation_id": {

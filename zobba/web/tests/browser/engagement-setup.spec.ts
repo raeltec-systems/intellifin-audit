@@ -11,6 +11,7 @@ test.use({ ignoreHTTPSErrors: true });
 let runtime: AuthRuntime;
 const cleanup = `
 DELETE FROM public.engagement_setup_messages; DELETE FROM public.engagement_setups;
+DELETE FROM public.membership_events WHERE meaning->>'kind'='establish_engagement';
 TRUNCATE public.tasks, public.task_counters, public.task_routing_questions CASCADE;
 DELETE FROM public.engagement_assignments WHERE engagement_id NOT IN ('engagement-a','engagement-b');
 DELETE FROM public.engagements WHERE id NOT IN ('engagement-a','engagement-b');
@@ -26,13 +27,23 @@ test.afterEach(async ({ page }) => {
 });
 test.afterAll(async () => { if (runtime) await restoreAndClose(runtime, restore()); });
 
-async function signIn(page: Page) {
+async function signIn(page: Page, account = 'unassigned', heading = 'Start your first engagement') {
   await page.goto(runtime.url);
   await page.getByRole('link', { name: 'Sign in to Zobba' }).click();
-  await page.getByLabel('Account', { exact: true }).selectOption('unassigned');
+  await page.getByLabel('Account', { exact: true }).selectOption(account);
   await page.getByLabel('Password', { exact: true }).fill(runtime.password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Start your first engagement' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+}
+/** Objective, an existing client and a period, up to the one confirmation. */
+async function toSummary(page: Page, objective: string, client: string) {
+  await page.getByLabel('First objective', { exact: true }).fill(objective);
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await page.getByLabel('Client name', { exact: true }).fill(client);
+  await page.keyboard.press('Enter');
+  await page.getByLabel('Audit period', { exact: true }).fill('2026-01-01 to 2026-12-31');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('group', { name: 'Confirm engagement setup' })).toBeVisible();
 }
 function counts(): string {
   return runtime.sqlValue("SELECT (SELECT count(*) FROM public.engagements)||'/'||(SELECT count(*) FROM public.clients)||'/'||(SELECT count(*) FROM public.engagement_assignments WHERE actor_id='actor-unassigned')||'/'||(SELECT count(*) FROM public.tasks)").trim();
@@ -135,4 +146,49 @@ test('a narrow screen keeps every setup control reachable without horizontal scr
   await proposal.getByRole('button', { name: 'No, name another client' }).click();
   await expect(page.getByLabel('Client name', { exact: true })).toBeFocused();
   expect(runtime.sqlValue("SELECT count(*) FROM public.clients WHERE name='Cedar Partners'").trim()).toBe('0');
+});
+
+test('a lost confirmation response is recovered by sending the same request again, creating nothing twice', async ({ page }) => {
+  await signIn(page);
+  const before = counts().split('/').map(Number);
+  await toSummary(page, 'Reconcile supplier statements', 'Alder Manufacturing');
+  // The server commits the confirmation; its response never reaches the browser.
+  await page.route('**/api/organisations/*/engagement-setups/*/confirm', async route => { await route.fetch(); await route.abort('connectionreset'); });
+  await page.getByRole('button', { name: 'Confirm and start' }).click();
+  await expect(page.getByText('The request was not confirmed. Sending it again is safe and creates no duplicates.')).toBeVisible();
+  await page.unrouteAll({ behavior: 'wait' });
+  const committed = counts().split('/').map(Number);
+  expect([committed[0]! - before[0]!, committed[3]! - before[3]!]).toEqual([1, 1]);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Your engagements', level: 1 })).toBeVisible();
+  await page.getByRole('button', { name: 'Start new engagement' }).click();
+  const retained = page.locator('.setup-retained');
+  await expect(retained).toContainText('Confirm and start · not confirmed');
+  await retained.getByRole('button', { name: 'Send again' }).click();
+  await expect(page.getByRole('heading', { name: 'Audit 2026-01-01 to 2026-12-31', level: 1 })).toBeVisible();
+  const after = counts().split('/').map(Number);
+  expect([after[0]! - before[0]!, after[2], after[3]! - before[3]!]).toEqual([1, 1, 1]);
+});
+
+test('a member who already has engagements opens Start new engagement and completes setup', async ({ page }) => {
+  await signIn(page, 'auditor-a', 'Your engagements');
+  const engagements = () => Number(runtime.sqlValue('SELECT count(*) FROM public.engagements').trim());
+  const before = engagements();
+  await page.getByRole('button', { name: 'Start new engagement' }).click();
+  await expect(page.getByRole('heading', { name: 'Start new engagement', level: 2 })).toBeVisible();
+  await page.getByLabel('First objective', { exact: true }).fill('Walk through change approvals');
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await page.getByLabel('Client name', { exact: true }).fill('Juniper Holdings');
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Create client Juniper Holdings' }).click();
+  await page.getByLabel('Audit period', { exact: true }).fill('2026-04-01/2027-03-31');
+  await page.keyboard.press('Enter');
+  const summary = page.getByRole('group', { name: 'Confirm engagement setup' });
+  await expect(summary).toContainText('Juniper Holdings (new client)');
+  expect(engagements()).toBe(before);
+  await summary.getByRole('button', { name: 'Confirm and start' }).click();
+  await expect(page.getByRole('heading', { name: 'Audit 2026-04-01 to 2027-03-31', level: 1 })).toBeVisible();
+  await expect(page.locator('.task-card h3').filter({ hasText: 'Walk through change approvals' })).toBeVisible();
+  expect(engagements()).toBe(before + 1);
+  expect(runtime.sqlValue("SELECT count(*) FROM public.engagement_assignments a JOIN public.engagements e ON e.id=a.engagement_id WHERE e.name='Audit 2026-04-01 to 2027-03-31' AND a.actor_id='actor-a'").trim()).toBe('1');
 });
