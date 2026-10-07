@@ -2,7 +2,7 @@
 
 Baseline: `67a290173dea7212b600d00ec5bad3f5bd52a6c0`. Branch: `codex/zobba-foundation-batch`.
 
-Story 21.6 supplies bounded evidence search and exact source inspection. Story 22.1 supplies native model transport, durable invocation history and current tool admission locally. It remains incomplete pending the separately approved live-provider qualification. Story 22.2 has not started. Nothing was merged or deployed; no live model, Graph or managed-computer service was called.
+Story 21.6 supplies bounded evidence search and exact source inspection. Story 22.1 supplies native model transport, durable invocation history and current tool admission locally. Its live qualification passed with OpenAI `gpt-6-luna` on 2026-10-07 ([receipts](../qualification-receipts/README.md)); Anthropic is deferred and does not block the story. Story 22.2 has not started. Nothing was merged or deployed; no live model, Graph or managed-computer service was called.
 
 ## Delivered behaviour
 
@@ -47,9 +47,9 @@ The five [safe screenshots](screenshots/README.md) come from passing source-libr
 - A successful synthetic qualification would validate adapter transport only. It does not install trusted production registration, qualify methodology or implement Story 22.2's autonomous task loop.
 - The current build retains Vite's existing large-chunk warning; the production build succeeds.
 
-To complete 22.1, review the separate [model qualification proposal](../MODEL-QUALIFICATION-PROPOSAL.md): existing workspace, designated nonproduction accounts, exact model/endpoints, six synthetic requests, Standard tiers, no external tool effects and proposed USD20 API-token usage before tax. Accounts, credentials, processing permission and spending approval remain outstanding. The us-east-1/USD300 hosting proposal remains unapproved.
+22.1 is complete. Activating another provider later needs its keys and its own approved qualification run under the same procedure; see the [model qualification proposal](../MODEL-QUALIFICATION-PROPOSAL.md) and the [receipts](../qualification-receipts/README.md). The us-east-1/USD300 hosting proposal remains unapproved.
 
-Next is 22.2 after 22.1 qualification and its already accepted 21.4/20.4 producers. Keep early 23.1 real-computer qualification in sequence; present its exact environment, region and spend ceiling separately before incurring costs. Graph 21.5 also retains its independent credentials/permission gate.
+Next is 22.2, building on 22.1 and its already accepted 21.4/20.4 producers. Keep early 23.1 real-computer qualification in sequence; present its exact environment, region and spend ceiling separately before incurring costs. Graph 21.5 also retains its independent credentials/permission gate.
 
 ## Review entry points
 

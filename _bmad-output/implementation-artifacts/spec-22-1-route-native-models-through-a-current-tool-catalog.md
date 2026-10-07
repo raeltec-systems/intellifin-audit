@@ -2,7 +2,7 @@
 title: '22.1 — Route native models through a current tool catalog'
 type: feature
 created: '2026-10-03'
-status: in-progress
+status: done
 story_key: 22-1-route-native-models-through-a-current-tool-catalog
 baseline_commit: 67a290173dea7212b600d00ec5bad3f5bd52a6c0
 review_loop_iteration: 0
@@ -62,7 +62,7 @@ Paths are relative to `zobba/`.
 - [x] `crates/infrastructure/src/model/` — both real native HTTP/SSE adapters, cancellation/deadlines and explicit unsupported/error behavior; local wire fixture constructors stay guarded.
 - [x] `migrations/0011_model.sql`, schema/bootstrap and operation repository — durable invocation/profile/catalogue facts, exact admission/consumption bindings, current-authority and recovery.
 - [x] `crates/*/tests`, relevant API contracts and `README.md` — execute matrix/native fixtures/PG races, record safe evidence and concrete live qualification procedure.
-- [ ] Qualification record — execute minimal live calls to both providers only after specific credentials/permissions/ceiling approval; until then record blocked qualification and do not mark story done.
+- [x] Qualification record — one provider qualified the provider-neutral adapter contract: OpenAI `gpt-6-luna` run 2 passed text, tool call and continuation ([receipts](zobba-foundation-batch/qualification-receipts/README.md)). Each other provider is qualified separately when the owner activates it (keys plus its own approved run); that is an activation gate, not a Story 22.1 gate.
 
 **Acceptance Criteria:**
 - Given a Task selects a qualified provider profile, when its request runs, then model/version, disclosed input classes and tool-catalogue revision are attributable to the invocation.
@@ -70,6 +70,8 @@ Paths are relative to `zobba/`.
 - Given streaming fails or capabilities change, when a call ends or retries, then partial output remains identifiable, external effects are not blindly replayed and unsupported fallback is explicit.
 
 ## Spec Change Log
+
+- 2026-10-07 (owner): The adapter is provider-neutral, so one live qualification proves its contract. OpenAI run 2 is that proof. Anthropic qualification was deferred (no budget) and no longer blocks this story. A provider without its own qualification receipt stays unqualified and cannot be selected; activating it later needs its keys and its own approved qualification run.
 
 ## Design Notes
 
@@ -81,14 +83,14 @@ Run domain/application tests, actual local HTTP/SSE fixtures for both adapters, 
 
 Executed local verification is recorded in the [checkpoint and evidence](zobba-foundation-batch/story-21.6-22.1/README.md): 371 Rust passes, 183 web passes, 159 browser passes with zero retries, and the supplemental guards/process smoke. Independent source review and targeted repair rechecks are recorded separately from root's suite executions.
 
-Local implementation is verified. The final qualification task remains unchecked because both live-provider calls require specific account, credential, destination and spending approval. Story 22.2 remains queued; fixtures and dry runs cannot close this gate.
+Local implementation is verified. Live qualification closed with OpenAI `gpt-6-luna` run 2 (2026-10-07). Anthropic remains unqualified until the owner activates and qualifies it; that does not block this story. Story 22.2 remains queued.
 
 The owner's subsequent final-dispatch expiry repair is recorded separately in
 the [repair specification](spec-22-1-final-dispatch-expiry-repair.md) and
 [repair evidence](zobba-foundation-batch/story-22.1-expiry-repair/README.md).
 Model/history validation precedes the final authority fence; later policy reads
 cannot leave recorded source access, the lease or permission time stale.
-The repair does not close live qualification or advance Story 22.2.
+The repair did not itself close live qualification or advance Story 22.2.
 
 ## Suggested Review Order
 
@@ -121,5 +123,5 @@ The repair does not close live qualification or advance Story 22.2.
 - Exercise repeated real SQL history, exact lease renewal and conflicting duplicates.
   [model_execution.rs:1042](../../zobba/crates/infrastructure/tests/operations/model_execution.rs#L1042)
 
-- Inspect local results and the explicit live-qualification blocker.
+- Inspect local results and the live-qualification record.
   [README.md:1](zobba-foundation-batch/story-21.6-22.1/README.md#L1)

@@ -15,7 +15,10 @@ request effort `None` now sends `reasoning.effort = "none"`; a non-reasoning pro
 reasoning field. The runner accepts `--providers`, `--openai-reasoning` and `--max-usd` (1–20),
 all recorded in the reviewed manifest. Run 2 qualified OpenAI native transport (receipt in
 `qualification-receipts/`). Owner deferred Anthropic qualification (2026-10-07, no budget):
-do not run or request it until the owner reopens it; Anthropic stays unqualified.
+do not run or request it until the owner reopens it; Anthropic stays unqualified. The adapter is
+provider-neutral, so one passed qualification closes Story 22.1 (now done). A provider is
+qualified per provider when the owner activates it (its keys plus its own approved run); an
+unqualified provider never blocks a story and must not be selectable.
 
 ## 2026-10-03 — Final operation expiry checks follow validation
 
