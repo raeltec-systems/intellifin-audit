@@ -27,3 +27,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-21-4-remember-scoped-working-knowledge-with-its-basis.md`
   summary: Closed the Story 21.3 follow-up for unsent methodology edit and recall custody within this batch.
   evidence: Exact actor/session/organisation memory custody now survives actual session-check outage and App unmount. Recovery requires the workspace’s own fresh current-Admin read; replacement, denial, logout, cancellation and success clear private custody, without automatic submission. The previous component fails the intended restored-editor assertion; the repaired four-case browser invocation passes. See `zobba-foundation-batch/story-21.4/methodology-custody/README.md` and the final Story 21.4 verification record for manifests, negative-control restoration, independent review and combined coverage. The original discovery entry above is retained.
+
+- source_spec: none
+  summary: Story 22.2 AC4 — establish a new scoped engagement and assignment conversationally from the first objective (authorised client and period resolved) before acquiring material, with no procedure or skill-selection wizard.
+  evidence: Split on 2026-10-07 (owner chose S) from the Story 22.2 Task work-loop spec (AC1–3); independently shippable and touches engagement-creation authority, so it gets its own spec and review. Story 22.2 is not done until this is delivered.
