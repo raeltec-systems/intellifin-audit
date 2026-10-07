@@ -2,7 +2,7 @@
 title: '22.2 — Continue a real Task under changing guidance (work loop, AC1–3)'
 type: 'feature'
 created: '2026-10-07'
-status: 'in-progress'
+status: 'in-review'
 baseline_commit: 'ed0d95bdaa70da22b547189fda88c54ca678df64'
 story_key: 22-2-continue-a-real-task-under-changing-guidance
 review_loop_iteration: 0
