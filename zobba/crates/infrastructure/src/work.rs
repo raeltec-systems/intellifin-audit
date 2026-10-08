@@ -14,10 +14,11 @@ use zobba_application::{
 };
 use zobba_domain::{
     context::{
-        CompactionDigest, ContextCompaction, MAX_COMPACTIONS_PER_CYCLE, OmissionCategory,
-        SourceState, SourceStatus,
+        CompactionDigest, CompactionSummary, ContextCompaction, MAX_COMPACTIONS_PER_CYCLE,
+        OmissionCategory, SourceState, SourceStatus, canonical_json,
     },
     identity::{Scope, valid_scope_id},
+    model::JsonValue,
     permissions::SourceFact,
     task::{
         COMMAND_CONTENT_MAX, Cessation, ClaimBasis, CommandKind, CommandReceipt, ReceiptStatus,
@@ -77,6 +78,7 @@ fn tokens(value: Option<i64>) -> Result<Option<u64>, TaskError> {
 
 const COMPACTION_PAGE_SIZE: i64 = 20;
 const OPEN_QUESTION_LIMIT: i64 = 20;
+const REFERENCE_CHUNK: usize = 512;
 
 fn source_status(status: RecordStatus) -> SourceStatus {
     match status {
@@ -89,13 +91,35 @@ fn source_status(status: RecordStatus) -> SourceStatus {
     }
 }
 
-/// Decode a stored record. The JSONB digest is re-serialised canonically
-/// (sorted keys, compact) and must hash to the stored digest identity.
-fn compaction(row: &PgRow) -> Result<ContextCompaction, TaskError> {
-    let digest: serde_json::Value = get(row, "digest")?;
-    let digest = serde_json::to_string(&digest).map_err(|_| TaskError::Unavailable)?;
+/// The decoded JSON subset of a stored digest (integers only, no floats).
+fn json_value(value: &serde_json::Value) -> Option<JsonValue> {
+    Some(match value {
+        serde_json::Value::Null => JsonValue::Null,
+        serde_json::Value::Bool(b) => JsonValue::Bool(*b),
+        serde_json::Value::Number(n) => JsonValue::Integer(n.as_i64()?),
+        serde_json::Value::String(s) => JsonValue::String(s.clone()),
+        serde_json::Value::Array(items) => {
+            JsonValue::Array(items.iter().map(json_value).collect::<Option<_>>()?)
+        }
+        serde_json::Value::Object(map) => JsonValue::Object(
+            map.iter()
+                .map(|(k, v)| Some((k.clone(), json_value(v)?)))
+                .collect::<Option<_>>()?,
+        ),
+    })
+}
+
+/// The stored digest's canonical bytes, rendered by the domain serialiser
+/// (byte-ordered keys) so integrity never depends on a JSON library's map order.
+fn canonical_digest(value: &serde_json::Value) -> Result<String, TaskError> {
+    json_value(value)
+        .map(|v| canonical_json(&v))
+        .ok_or(TaskError::Unavailable)
+}
+
+fn sources_of(row: &PgRow) -> Result<Vec<SourceState>, TaskError> {
     let sources: serde_json::Value = get(row, "sources")?;
-    let sources = sources
+    sources
         .as_array()
         .ok_or(TaskError::Unavailable)?
         .iter()
@@ -107,9 +131,12 @@ fn compaction(row: &PgRow) -> Result<ContextCompaction, TaskError> {
             })
         })
         .collect::<Option<Vec<_>>>()
-        .ok_or(TaskError::Unavailable)?;
+        .ok_or(TaskError::Unavailable)
+}
+
+fn omissions_of(row: &PgRow) -> Result<Vec<(OmissionCategory, u32)>, TaskError> {
     let omissions: serde_json::Value = get(row, "omissions")?;
-    let omissions = omissions
+    let counts = omissions
         .as_object()
         .ok_or(TaskError::Unavailable)?
         .iter()
@@ -121,23 +148,53 @@ fn compaction(row: &PgRow) -> Result<ContextCompaction, TaskError> {
         })
         .collect::<Option<Vec<_>>>()
         .ok_or(TaskError::Unavailable)?;
+    Ok(zobba_domain::context::omissions(&counts))
+}
+
+fn ordinal(row: &PgRow, name: &str) -> Result<u32, TaskError> {
+    u32::try_from(get::<i32>(row, name)?).map_err(|_| TaskError::Unavailable)
+}
+
+/// Decode a stored record. The JSONB digest is re-serialised by the domain's
+/// canonical serialiser and must hash to the stored digest identity.
+fn compaction(row: &PgRow) -> Result<ContextCompaction, TaskError> {
+    let digest = canonical_digest(&get(row, "digest")?)?;
     let record = ContextCompaction {
         task_id: get(row, "task_id")?,
         cycle_id: get(row, "cycle_id")?,
-        sequence: u32::try_from(get::<i32>(row, "sequence")?)
-            .map_err(|_| TaskError::Unavailable)?,
-        first_ordinal: u32::try_from(get::<i32>(row, "first_ordinal")?)
-            .map_err(|_| TaskError::Unavailable)?,
-        last_ordinal: u32::try_from(get::<i32>(row, "last_ordinal")?)
-            .map_err(|_| TaskError::Unavailable)?,
+        sequence: ordinal(row, "sequence")?,
+        first_ordinal: ordinal(row, "first_ordinal")?,
+        last_ordinal: ordinal(row, "last_ordinal")?,
         digest,
         digest_sha256: get(row, "digest_sha256")?,
-        sources,
-        omissions: zobba_domain::context::omissions(&omissions),
+        sources: sources_of(row)?,
+        omissions: omissions_of(row)?,
         estimated_tokens: tokens(Some(get(row, "estimated_tokens")?))?.unwrap_or(0),
     };
     if record.is_valid() {
         Ok(record)
+    } else {
+        Err(TaskError::Unavailable)
+    }
+}
+
+/// A listed record without its digest body.
+fn compaction_summary(row: &PgRow) -> Result<CompactionSummary, TaskError> {
+    let summary = CompactionSummary {
+        sequence: ordinal(row, "sequence")?,
+        first_ordinal: ordinal(row, "first_ordinal")?,
+        last_ordinal: ordinal(row, "last_ordinal")?,
+        digest_sha256: get(row, "digest_sha256")?,
+        sources: sources_of(row)?,
+        omissions: omissions_of(row)?,
+        estimated_tokens: tokens(Some(get(row, "estimated_tokens")?))?.unwrap_or(0),
+        created_at: get(row, "created_at")?,
+    };
+    if summary.first_ordinal <= summary.last_ordinal
+        && summary.digest_sha256.len() == 64
+        && summary.digest_sha256.bytes().all(|b| b.is_ascii_hexdigit())
+    {
+        Ok(summary)
     } else {
         Err(TaskError::Unavailable)
     }
@@ -170,7 +227,7 @@ async fn rebuild_digest(
     sequence: u32,
     first: u32,
     last: u32,
-) -> Result<String, TaskError> {
+) -> Result<(String, Vec<(String, u64)>), TaskError> {
     let steps: Vec<TaskStep> = cycle_steps(tx, task_id, cycle_id)
         .await?
         .into_iter()
@@ -193,7 +250,9 @@ async fn rebuild_digest(
                 .map_err(|_| TaskError::Unavailable)?,
         );
     }
-    CompactionDigest {
+    sources.sort();
+    sources.dedup();
+    let digest = CompactionDigest {
         task_id,
         cycle_id,
         sequence,
@@ -201,7 +260,8 @@ async fn rebuild_digest(
         sources: &sources,
     }
     .canonical()
-    .ok_or(TaskError::Unavailable)
+    .ok_or(TaskError::Unavailable)?;
+    Ok((digest, sources))
 }
 
 async fn cycle_steps(
@@ -704,7 +764,7 @@ impl TaskRepository {
         {
             attention = Some(zobba_domain::work::Attention::CycleBounded);
         }
-        let mut compactions = sqlx::query("SELECT * FROM public.task_context_compactions WHERE task_id=$1 AND cycle_id=$2 ORDER BY sequence DESC LIMIT $3")
+        let mut compactions = sqlx::query("SELECT sequence,first_ordinal,last_ordinal,digest_sha256,sources,omissions,estimated_tokens,created_at FROM public.task_context_compactions WHERE task_id=$1 AND cycle_id=$2 ORDER BY sequence DESC LIMIT $3")
             .bind(task_id)
             .bind(&cycle_id)
             .bind(COMPACTION_PAGE_SIZE)
@@ -712,7 +772,7 @@ impl TaskRepository {
             .await
             .map_err(unavailable)?
             .iter()
-            .map(compaction)
+            .map(compaction_summary)
             .collect::<Result<Vec<_>, _>>()?;
         compactions.reverse();
         let total_compactions: i64 = sqlx::query_scalar(
@@ -804,12 +864,14 @@ impl TaskRepository {
         let compactions = cycle_compactions(&mut tx, &b.task_id, &b.cycle_id).await?;
         // Unresolved targeting questions that list this Task. Only identifiers
         // enter context; nothing a question asks has been applied.
-        let open_questions: Vec<String> = sqlx::query_scalar("SELECT q.id FROM public.task_routing_questions q WHERE q.candidates @> jsonb_build_array(jsonb_build_object('task_id',$1::text)) AND NOT EXISTS(SELECT 1 FROM public.task_routing_answers a WHERE a.question_id=q.id) ORDER BY q.asked_at, q.id COLLATE \"C\" LIMIT $2")
+        let mut open_questions: Vec<String> = sqlx::query_scalar("SELECT q.id FROM public.task_routing_questions q WHERE q.candidates @> jsonb_build_array(jsonb_build_object('task_id',$1::text)) AND NOT EXISTS(SELECT 1 FROM public.task_routing_answers a WHERE a.question_id=q.id) ORDER BY q.asked_at, q.id COLLATE \"C\" LIMIT $2")
             .bind(&b.task_id)
-            .bind(OPEN_QUESTION_LIMIT)
+            .bind(OPEN_QUESTION_LIMIT + 1)
             .fetch_all(&mut *tx)
             .await
             .map_err(unavailable)?;
+        let open_questions_omitted = open_questions.len() as i64 > OPEN_QUESTION_LIMIT;
+        open_questions.truncate(OPEN_QUESTION_LIMIT as usize);
         let mut basis = b.clone();
         basis.intent_revision = applied_intent;
         let boundary = WorkBoundary {
@@ -822,6 +884,7 @@ impl TaskRepository {
             knowledge_omitted,
             compactions,
             open_questions,
+            open_questions_omitted,
         };
         admission_fence(&mut tx, &b.actor_id, &b.scope, None).await?;
         tx.commit().await.map_err(unavailable)?;
@@ -958,19 +1021,27 @@ impl TaskRepository {
     ) -> Result<Vec<SourceStatus>, TaskError> {
         let mut tx = lock(self.pool(), &b.actor_id, &b.scope).await?;
         producer(&mut tx, b).await?;
-        let statuses = crate::knowledge::reference_statuses_in_transaction(
-            &mut tx,
-            &b.actor_id,
-            &b.scope,
-            &b.task_id,
-            references,
-        )
-        .await
-        .map_err(|error| match error {
-            zobba_application::knowledge::KnowledgeError::Denied => TaskError::Fenced,
-            zobba_application::knowledge::KnowledgeError::Invalid => TaskError::Invalid,
-            _ => TaskError::Unavailable,
-        })?;
+        let mut statuses = Vec::with_capacity(references.len());
+        // Chunked within one transaction so a long cycle never fails the turn
+        // on the per-call bound.
+        for chunk in references.chunks(REFERENCE_CHUNK) {
+            statuses.extend(
+                crate::knowledge::reference_statuses_in_transaction(
+                    &mut tx,
+                    &b.actor_id,
+                    &b.scope,
+                    &b.task_id,
+                    chunk,
+                )
+                .await
+                .map_err(|error| match error {
+                    zobba_application::knowledge::KnowledgeError::Denied => TaskError::Fenced,
+                    zobba_application::knowledge::KnowledgeError::Invalid => TaskError::Invalid,
+                    // Capacity or unavailability is not revocation.
+                    _ => TaskError::Unavailable,
+                })?,
+            );
+        }
         tx.commit().await.map_err(unavailable)?;
         Ok(statuses.into_iter().map(source_status).collect())
     }
@@ -1000,7 +1071,7 @@ impl TaskRepository {
             tx.commit().await.map_err(unavailable)?;
             return Ok(stored);
         }
-        let rebuilt = rebuild_digest(
+        let (rebuilt, sources) = rebuild_digest(
             &mut tx,
             &b.task_id,
             &b.cycle_id,
@@ -1009,7 +1080,22 @@ impl TaskRepository {
             record.last_ordinal,
         )
         .await?;
-        if rebuilt != record.digest {
+        // The digest, the named sources and the derivable omission count must
+        // all be the facts the database holds; a standing is an observation.
+        let named: Vec<(String, u64)> = record
+            .sources
+            .iter()
+            .map(|s| (s.id.clone(), s.revision))
+            .collect();
+        let compacted = record
+            .omissions
+            .iter()
+            .find(|(c, _)| *c == OmissionCategory::StepsCompacted)
+            .map(|(_, n)| *n);
+        if rebuilt != record.digest
+            || named != sources
+            || compacted != Some(record.last_ordinal + 1)
+        {
             return Err(TaskError::Conflict);
         }
         let digest: serde_json::Value =
@@ -1035,7 +1121,8 @@ impl TaskRepository {
             .bind(digest).bind(&record.digest_sha256).bind(sources).bind(omissions)
             .bind(record.estimated_tokens as i64)
             .execute(&mut *tx).await.map_err(|error| {
-                if error.as_database_error().and_then(|e| e.code()).as_deref() == Some("23514") {
+                // A guard refusal or a concurrent insert at the same sequence.
+                if matches!(error.as_database_error().and_then(|e| e.code()).as_deref(), Some("23514" | "23505")) {
                     TaskError::Conflict
                 } else {
                     TaskError::Unavailable
@@ -1062,7 +1149,7 @@ impl TaskRepository {
         task_id: &str,
         cycle_id: &str,
         sequence: u32,
-    ) -> Result<String, TaskError> {
+    ) -> Result<(ContextCompaction, String), TaskError> {
         if !valid_scope_id(task_id) || !valid_scope_id(cycle_id) {
             return Err(TaskError::Invalid);
         }
@@ -1072,7 +1159,7 @@ impl TaskRepository {
             .into_iter()
             .find(|c| c.sequence == sequence)
             .ok_or(TaskError::Denied)?;
-        let rebuilt = rebuild_digest(
+        let (rebuilt, _) = rebuild_digest(
             &mut tx,
             task_id,
             cycle_id,
@@ -1082,7 +1169,7 @@ impl TaskRepository {
         )
         .await?;
         tx.commit().await.map_err(unavailable)?;
-        Ok(rebuilt)
+        Ok((record, rebuilt))
     }
 }
 

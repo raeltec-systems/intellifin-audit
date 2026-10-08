@@ -10078,9 +10078,15 @@
           "digest_sha256",
           "sources",
           "omissions",
-          "estimated_tokens"
+          "estimated_tokens",
+          "created_at"
         ],
         "properties": {
+          "created_at": {
+            "type": "string",
+            "description": "Server time the record was made, in seconds since the Unix epoch.",
+            "pattern": "^[0-9]+$"
+          },
           "digest_sha256": {
             "type": "string",
             "description": "SHA-256 of the canonical digest, reproducible from the database.",
@@ -13663,6 +13669,18 @@
           "reconciliation"
         ]
       },
+      "OmissionCategoryResponse": {
+        "type": "string",
+        "description": "Why material was left out of a request. A category never means absence.",
+        "enum": [
+          "steps_compacted",
+          "digests_omitted",
+          "knowledge_budget",
+          "knowledge_unusable",
+          "stale_sources",
+          "stale_content"
+        ]
+      },
       "OmissionResponse": {
         "type": "object",
         "description": "Count of material left out by category. An omission never means absence.",
@@ -13672,8 +13690,7 @@
         ],
         "properties": {
           "category": {
-            "type": "string",
-            "description": "`steps_compacted`, `digests_omitted`, `knowledge_budget`,\n`knowledge_unusable`, `stale_sources` or `stale_content`."
+            "$ref": "#/components/schemas/OmissionCategoryResponse"
           },
           "count": {
             "type": "integer",

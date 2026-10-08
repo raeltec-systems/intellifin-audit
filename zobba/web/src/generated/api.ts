@@ -1198,6 +1198,8 @@ export interface components {
          *     inspectable.
          */
         CompactionResponse: {
+            /** @description Server time the record was made, in seconds since the Unix epoch. */
+            created_at: string;
             /** @description SHA-256 of the canonical digest, reproducible from the database. */
             digest_sha256: string;
             estimated_tokens: string;
@@ -2025,13 +2027,14 @@ export interface components {
         };
         /** @enum {string} */
         ObservationSourceResponse: "dispatch" | "reconciliation";
+        /**
+         * @description Why material was left out of a request. A category never means absence.
+         * @enum {string}
+         */
+        OmissionCategoryResponse: "steps_compacted" | "digests_omitted" | "knowledge_budget" | "knowledge_unusable" | "stale_sources" | "stale_content";
         /** @description Count of material left out by category. An omission never means absence. */
         OmissionResponse: {
-            /**
-             * @description `steps_compacted`, `digests_omitted`, `knowledge_budget`,
-             *     `knowledge_unusable`, `stale_sources` or `stale_content`.
-             */
-            category: string;
+            category: components["schemas"]["OmissionCategoryResponse"];
             /** Format: int32 */
             count: number;
         };

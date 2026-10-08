@@ -23,11 +23,15 @@ use crate::{
 use zobba_domain::{
     context::{
         self, CompactionDigest, ContextBudget, ContextCompaction, ITEM_OVERHEAD_TOKENS, InputClass,
-        OmissionCategory, Plan, PlanError, PlanInput, SourceState, SourceStatus, StepCost,
-        digest_overhead_tokens, digest_step, envelope, estimate_tokens, omission_summary,
+        MAX_COMPACTION_SOURCES, MAX_COMPACTIONS_PER_CYCLE, MAX_CONTEXT_TOKENS, OmissionCategory,
+        Plan, PlanError, PlanInput, SourceState, SourceStatus, StepCost, digest_overhead_tokens,
+        digest_step, envelope, estimate_tokens, omission_summary,
     },
     identity::Scope,
-    model::{JsonValue, ToolDescriptor},
+    model::{
+        JsonValue, MAX_HISTORY_BYTES, MAX_HISTORY_ITEMS, MAX_INPUT_BYTES, MAX_MESSAGES,
+        ToolDescriptor,
+    },
     permissions::{CanonicalOperation, OperationHistoryQuery, SourceFact},
     task::ClaimBasis,
     work::{
@@ -56,8 +60,10 @@ pub struct WorkBoundary {
     pub knowledge_omitted: u32,
     /// Durable compaction records of this cycle, in sequence order.
     pub compactions: Vec<ContextCompaction>,
-    /// Open targeting questions that list this Task as a candidate.
+    /// Open targeting questions that list this Task as a candidate (bounded).
     pub open_questions: Vec<String>,
+    /// More open questions exist than `open_questions` lists.
+    pub open_questions_omitted: bool,
 }
 
 /// Exact knowledge reference and its attributed text.
@@ -284,6 +290,59 @@ fn origins(request: &ModelRequest) -> BTreeSet<String> {
     ids
 }
 
+/// Knowledge revisions each invocation's content depends on: its own verified
+/// context plus, transitively, the invocations whose exchanges or answers it
+/// carried (the same traversal as the disclosure gate). Shared ancestors (a
+/// diamond) are visited once; only a true cycle, an origin that is its own
+/// ancestor, or an origin missing from `invocations` is refused (`None`).
+pub fn transitive_dependencies(
+    invocations: &BTreeMap<String, Invocation>,
+) -> Option<BTreeMap<String, BTreeSet<(String, u64)>>> {
+    let mut done: BTreeMap<String, BTreeSet<(String, u64)>> = BTreeMap::new();
+    for root in invocations.keys() {
+        // (node, expanded). Every entry above a node's expanded marker
+        // descends from it, so `ancestors` is exactly the current path.
+        let mut stack = vec![(root.clone(), false)];
+        let mut ancestors = BTreeSet::new();
+        while let Some((id, expanded)) = stack.pop() {
+            if done.contains_key(&id) {
+                continue;
+            }
+            let invocation = invocations.get(&id)?;
+            let origins = origins(&invocation.request);
+            if expanded {
+                let mut all: BTreeSet<(String, u64)> = invocation
+                    .request
+                    .context
+                    .verification
+                    .items
+                    .iter()
+                    .map(|v| (v.id.clone(), v.revision))
+                    .collect();
+                for origin in &origins {
+                    all.extend(done.get(origin)?.iter().cloned());
+                }
+                ancestors.remove(&id);
+                done.insert(id, all);
+                continue;
+            }
+            if !ancestors.insert(id.clone()) {
+                return None;
+            }
+            stack.push((id, true));
+            for origin in origins {
+                if ancestors.contains(&origin) {
+                    return None;
+                }
+                if !done.contains_key(&origin) {
+                    stack.push((origin, false));
+                }
+            }
+        }
+    }
+    Some(done)
+}
+
 /// Conservative tokens of one rendered history item.
 fn item_tokens(item: &HistoryItem) -> Option<u64> {
     Some(match item {
@@ -305,6 +364,12 @@ fn item_tokens(item: &HistoryItem) -> Option<u64> {
     })
 }
 
+/// The exact labelled text of an earlier answer as it enters context. The
+/// disclosure gate requires an entry naming `depends_on` to carry exactly this.
+pub fn earlier_answer_envelope(source_id: &str, invocation: &Invocation) -> String {
+    envelope(InputClass::ModelOutput, source_id, &answer_text(invocation))
+}
+
 fn digest_cost(record: &ContextCompaction) -> u64 {
     record.digest.len() as u64 + 1
 }
@@ -312,7 +377,9 @@ fn digest_cost(record: &ContextCompaction) -> u64 {
 fn fact_text(fact: SourceFact) -> &'static str {
     match fact {
         SourceFact::AuthoritativelyAbsent => "authoritatively absent",
-        _ => "completed",
+        SourceFact::Completed => "completed",
+        SourceFact::Accepted => "accepted",
+        SourceFact::Unknown => "unknown",
     }
 }
 
@@ -370,6 +437,11 @@ fn decisions(
             format!("Open targeting question {id} may route pending direction to this Task; nothing it asks has been applied.")
         })
         .collect();
+    if boundary.open_questions_omitted {
+        lines.push(
+            "Further open targeting questions naming this Task exist and are not listed.".into(),
+        );
+    }
     let mut superseded = Vec::new();
     for step in &boundary.steps {
         let Some(invocation) = step.invocation_id.as_ref().and_then(|id| memo.get(id)) else {
@@ -498,7 +570,7 @@ fn proposals(invocation: &Invocation) -> Vec<(String, String)> {
 }
 
 /// The model's own earlier text answer, bounded on a character boundary.
-fn answer_text(invocation: &Invocation) -> String {
+pub fn answer_text(invocation: &Invocation) -> String {
     let Some(outcome) = &invocation.outcome else {
         return String::new();
     };
@@ -618,52 +690,25 @@ where
         Ok(&memo[id])
     }
 
-    /// Knowledge revisions each invocation's content depends on: its own
-    /// verified context plus, transitively, the invocations whose exchanges or
-    /// answers it carried. This mirrors the disclosure gate's own traversal.
-    async fn dependencies(
+    /// Load every invocation reachable from `root` through the content it
+    /// carried (included exchanges and dependent answers), bounded.
+    async fn load_reachable(
         &self,
         basis: &ClaimBasis,
         memo: &mut BTreeMap<String, Invocation>,
-        deps: &mut BTreeMap<String, BTreeSet<(String, u64)>>,
         root: &str,
     ) -> Result<(), ModelError> {
-        let mut stack = vec![root.to_string()];
-        while let Some(top) = stack.last().cloned() {
-            if deps.contains_key(&top) {
-                stack.pop();
+        let mut pending = vec![root.to_string()];
+        while let Some(id) = pending.pop() {
+            if memo.contains_key(&id) {
                 continue;
             }
-            let invocation = self.load(basis, memo, &top).await?;
-            let origins = origins(&invocation.request);
-            let own: BTreeSet<(String, u64)> = invocation
-                .request
-                .context
-                .verification
-                .items
-                .iter()
-                .map(|v| (v.id.clone(), v.revision))
-                .collect();
-            let missing: Vec<String> = origins
-                .iter()
-                .filter(|id| !deps.contains_key(*id))
-                .cloned()
-                .collect();
-            if missing.is_empty() {
-                let mut all = own;
-                for origin in &origins {
-                    all.extend(deps[origin].iter().cloned());
-                }
-                deps.insert(top, all);
-                stack.pop();
-            } else {
-                for id in missing {
-                    if stack.contains(&id) {
-                        return Err(ModelError::Invalid);
-                    }
-                    stack.push(id);
-                }
-            }
+            let invocation = self.load(basis, memo, &id).await?;
+            pending.extend(
+                origins(&invocation.request)
+                    .into_iter()
+                    .filter(|o| !memo.contains_key(o)),
+            );
         }
         Ok(())
     }
@@ -690,12 +735,12 @@ where
         };
         // Exact invocations and their transitive knowledge dependencies.
         let mut memo = BTreeMap::new();
-        let mut deps = BTreeMap::new();
         for step in &boundary.steps {
             if let Some(id) = &step.invocation_id {
-                self.dependencies(basis, &mut memo, &mut deps, id).await?;
+                self.load_reachable(basis, &mut memo, id).await?;
             }
         }
+        let deps = transitive_dependencies(&memo).ok_or(ModelError::Invalid)?;
         let current: BTreeSet<(String, u64)> = boundary
             .knowledge
             .iter()
@@ -807,7 +852,6 @@ where
 
         // Tier 3 candidates: every step rendered as raw history.
         let mut rendered: Vec<Vec<(ContextEntry, HistoryItem)>> = Vec::new();
-        let mut stale_content = 0u32;
         for step in &boundary.steps {
             let invocation = step.invocation_id.as_ref().map(|id| &memo[id]);
             let fact = match step.status {
@@ -839,7 +883,6 @@ where
                         return Err(RequestEnd::Model(ModelError::Invalid));
                     };
                     if !stale.is_empty() {
-                        stale_content += 1;
                         let name = proposal_name(invocation, call_id)
                             .ok_or(RequestEnd::Model(ModelError::Conflict))?;
                         note(
@@ -858,27 +901,43 @@ where
                         let (tool, arguments) = proposal(invocation, call_id)
                             .ok_or(RequestEnd::Model(ModelError::Conflict))?;
                         let source_id = format!("tool-result-{}", step.ordinal);
-                        items.push((
-                            entry(&source_id, None),
-                            HistoryItem::ToolExchange(Box::new(ToolExchange {
-                                invocation_id: invocation.id.clone(),
-                                call_id: call_id.clone(),
-                                tool,
-                                arguments,
-                                result: ToolResult {
-                                    content: envelope(
-                                        InputClass::ToolResult,
-                                        &source_id,
-                                        completed_content(fact),
-                                    ),
-                                    source_id,
-                                    operation_id: operation_id.clone(),
-                                    attempt_id: attempt_id.clone(),
-                                    fact,
-                                    is_error: false,
-                                },
-                            })),
-                        ));
+                        let exchange = HistoryItem::ToolExchange(Box::new(ToolExchange {
+                            invocation_id: invocation.id.clone(),
+                            call_id: call_id.clone(),
+                            tool,
+                            arguments,
+                            result: ToolResult {
+                                content: envelope(
+                                    InputClass::ToolResult,
+                                    &source_id,
+                                    completed_content(fact),
+                                ),
+                                source_id: source_id.clone(),
+                                operation_id: operation_id.clone(),
+                                attempt_id: attempt_id.clone(),
+                                fact,
+                                is_error: false,
+                            },
+                        }));
+                        if item_tokens(&exchange).is_some() {
+                            items.push((entry(&source_id, None), exchange));
+                        } else {
+                            // Arguments or schemas beyond the JSON bounds cannot be
+                            // costed or sent; the exchange is stated as facts.
+                            let name = proposal_name(invocation, call_id)
+                                .ok_or(RequestEnd::Model(ModelError::Conflict))?;
+                            note(
+                                &mut items,
+                                format!("tool-facts-{}", step.ordinal),
+                                MessageRole::User,
+                                format!(
+                                    "Step {}: tool {name} operation {operation_id} attempt {attempt_id} was recorded as {}; its proposal exceeds the context bounds and is not included.",
+                                    step.ordinal + 1,
+                                    fact_text(fact)
+                                ),
+                                None,
+                            );
+                        }
                     }
                 }
                 (StepKind::ToolStep, status, Some(invocation)) => {
@@ -920,7 +979,6 @@ where
                 (StepKind::ModelTurn, StepStatus::Responded, Some(invocation)) => {
                     let text = answer_text(invocation);
                     if !stale.is_empty() {
-                        stale_content += 1;
                         note(
                             &mut items,
                             format!("stale-{}", step.ordinal),
@@ -936,7 +994,7 @@ where
                         // The model's own earlier answer, attributed by role and
                         // labelled as data. Disclosure verifies its context again.
                         let source_id = format!("earlier-answer-{}", step.ordinal);
-                        let wrapped = envelope(InputClass::ModelOutput, &source_id, &text);
+                        let wrapped = earlier_answer_envelope(&source_id, invocation);
                         note(
                             &mut items,
                             source_id,
@@ -973,7 +1031,7 @@ where
                         .iter()
                         .map(|(_, item)| item_tokens(item))
                         .sum::<Option<u64>>()
-                        .ok_or(RequestEnd::Model(ModelError::Capacity))?,
+                        .ok_or(RequestEnd::Model(ModelError::Invalid))?,
                     items: items.len(),
                     digest_tokens: digest_step(step).len() as u64 + 1,
                 })
@@ -1012,7 +1070,8 @@ where
 
         // Tier 1-2 cost includes the tool catalogue sent with every request,
         // the digest message frame and an exact bound on the omission summary.
-        let catalogue = self
+        // A catalogue beyond the JSON bounds cannot be costed: nothing is sent.
+        let Some(catalogue) = self
             .settings
             .catalogue
             .tools
@@ -1026,7 +1085,11 @@ where
                 )
             })
             .sum::<Option<u64>>()
-            .ok_or(RequestEnd::Model(ModelError::Capacity))?;
+        else {
+            return Err(RequestEnd::Budget {
+                estimated: MAX_CONTEXT_TOKENS,
+            });
+        };
         let worst = OmissionCategory::ALL
             .iter()
             .map(|c| (*c, u32::MAX))
@@ -1040,38 +1103,59 @@ where
             + DIGEST_FRAME_TOKENS
             + omission_reserve;
         let budget = self.settings.context.effective();
-        let mut compactions = boundary.compactions.clone();
-        let mut plan = None;
-        // At most one new record per request; the second plan runs with it
-        // stored, exactly as a recovering producer would see it.
-        for _ in 0..2 {
+        let new_digest_overhead =
+            digest_overhead_tokens(&basis.task_id, &basis.cycle_id, used.len());
+        let plan_with = |compactions: &[ContextCompaction]| {
             let digests: Vec<u64> = compactions.iter().map(digest_cost).collect();
-            let input = PlanInput {
+            context::plan(&PlanInput {
                 budget,
                 fixed_tokens: fixed_messages + catalogue,
                 fixed_message_tokens: fixed_messages,
                 steps: &costs,
                 covered_through: compactions.last().map(|c| c.last_ordinal),
                 digests: &digests,
-                new_digest_overhead: digest_overhead_tokens(
-                    &basis.task_id,
-                    &basis.cycle_id,
-                    used.len(),
-                ),
+                new_digest_overhead,
                 knowledge: &knowledge_costs,
-            };
-            let next = match context::plan(&input) {
-                Ok(next) => next,
-                Err(PlanError::ContextBudget { required, .. }) => {
-                    return Err(RequestEnd::Budget {
-                        estimated: required,
-                    });
-                }
-            };
-            let Some((first, last)) = next.compact else {
-                plan = Some(next);
-                break;
-            };
+            })
+        };
+        // One rule for stale content, used by the record and the request alike:
+        // stale markers among the raw steps the plan sends.
+        let stale_in = |first_raw: usize| -> u32 {
+            rendered[first_raw..]
+                .iter()
+                .flatten()
+                .filter(|(e, _)| e.source_id.starts_with("stale-"))
+                .count() as u32
+        };
+        let counts_for = |plan: &Plan, existing: usize| {
+            omission_counts(
+                plan,
+                existing,
+                boundary.knowledge_omitted,
+                stale_sources.len(),
+                stale_in(plan.first_raw),
+            )
+        };
+        let budget_end = |plan: &Plan| RequestEnd::Budget {
+            estimated: plan.estimated_tokens,
+        };
+        let mut compactions = boundary.compactions.clone();
+        let mut plan = match plan_with(&compactions) {
+            Ok(plan) => plan,
+            Err(PlanError::ContextBudget { required, .. }) => {
+                return Err(RequestEnd::Budget {
+                    estimated: required,
+                });
+            }
+        };
+        // At most one new record per request. It is built, then the request is
+        // planned with it stored, exactly as a recovering producer will see it.
+        // Any hard record limit is an honest recorded budget failure: nothing
+        // is persisted and nothing is sent.
+        if let Some((first, last)) = plan.compact {
+            if compactions.len() >= MAX_COMPACTIONS_PER_CYCLE {
+                return Err(budget_end(&plan));
+            }
             let covered: Vec<TaskStep> = boundary
                 .steps
                 .iter()
@@ -1092,18 +1176,22 @@ where
                     );
                 }
             }
+            if sources.len() > MAX_COMPACTION_SOURCES {
+                return Err(budget_end(&plan));
+            }
             let sources: Vec<(String, u64)> = sources.into_iter().collect();
             let sequence = compactions.len() as u32;
-            let digest = CompactionDigest {
+            let Some(digest) = (CompactionDigest {
                 task_id: &basis.task_id,
                 cycle_id: &basis.cycle_id,
                 sequence,
                 steps: &covered,
                 sources: &sources,
-            }
-            .canonical()
-            .ok_or(RequestEnd::Model(ModelError::Capacity))?;
-            let record = ContextCompaction {
+            })
+            .canonical() else {
+                return Err(budget_end(&plan));
+            };
+            let mut record = ContextCompaction {
                 task_id: basis.task_id.clone(),
                 cycle_id: basis.cycle_id.clone(),
                 sequence,
@@ -1113,34 +1201,45 @@ where
                 digest,
                 sources: sources
                     .iter()
-                    .map(|(id, revision)| SourceState {
-                        id: id.clone(),
-                        revision: *revision,
-                        status: status_of
+                    .map(|(id, revision)| {
+                        // Every source a covered turn used was assessed above;
+                        // a missing standing is never invented.
+                        status_of
                             .get(&(id.clone(), *revision))
                             .copied()
-                            .unwrap_or(SourceStatus::Invalidated),
+                            .map(|status| SourceState {
+                                id: id.clone(),
+                                revision: *revision,
+                                status,
+                            })
+                            .ok_or(RequestEnd::Model(ModelError::Unavailable))
                     })
-                    .collect(),
-                omissions: omission_counts(
-                    &next,
-                    compactions.len(),
-                    boundary.knowledge_omitted,
-                    stale_sources.len(),
-                    stale_content,
-                ),
-                estimated_tokens: next.estimated_tokens,
+                    .collect::<Result<_, _>>()?,
+                omissions: vec![],
+                estimated_tokens: 0,
             };
-            let stored = self
+            let mut stored = compactions.clone();
+            stored.push(record.clone());
+            let after = match plan_with(&stored) {
+                Ok(after) if after.compact.is_none() => after,
+                // The stored record still leaves too much: never a second one.
+                Ok(after) => return Err(budget_end(&after)),
+                Err(PlanError::ContextBudget { required, .. }) => {
+                    return Err(RequestEnd::Budget {
+                        estimated: required,
+                    });
+                }
+            };
+            record.omissions = counts_for(&after, stored.len());
+            record.estimated_tokens = after.estimated_tokens;
+            let saved = self
                 .steps
                 .compact(basis, &record)
                 .await
                 .map_err(|e| RequestEnd::Model(history_error(e)))?;
-            compactions.push(stored);
+            compactions.push(saved);
+            plan = after;
         }
-        let Some(plan) = plan.filter(|p| p.compact.is_none()) else {
-            return Err(RequestEnd::Model(ModelError::Capacity));
-        };
 
         // Assemble in tier order. Physical order: owned messages, digests,
         // knowledge, omission summary; history holds the newest raw steps.
@@ -1178,17 +1277,7 @@ where
                 messages.push(message);
             }
         }
-        let counts = omission_counts(
-            &plan,
-            compactions.len(),
-            boundary.knowledge_omitted,
-            stale_sources.len(),
-            rendered[plan.first_raw..]
-                .iter()
-                .flatten()
-                .filter(|(e, _)| e.source_id.starts_with("stale-"))
-                .count() as u32,
-        );
+        let counts = counts_for(&plan, compactions.len());
         if let Some(text) = omission_summary(&counts, &stale_sources) {
             entries.push(entry("omissions", None));
             messages.push(user("omissions", text));
@@ -1210,6 +1299,18 @@ where
             })
             .fold(0u32, |sum, (_, n)| sum.saturating_add(*n))
             .min(MAX_KNOWLEDGE_OMITTED);
+        // The plan's estimate bounds these, but the validation caps are checked
+        // on the assembled request itself; a breach is a recorded budget
+        // failure, never an unrecorded error.
+        let history_bytes: Option<u64> = history.iter().map(item_tokens).sum();
+        if messages.iter().map(|m| m.text.len()).sum::<usize>() > MAX_INPUT_BYTES
+            || messages.len() > MAX_MESSAGES
+            || entries.len() > MAX_MESSAGES
+            || history.len() > MAX_HISTORY_ITEMS
+            || history_bytes.is_none_or(|b| b > MAX_HISTORY_BYTES as u64)
+        {
+            return Err(budget_end(&plan));
+        }
         let mut request = ModelRequest {
             key: invocation_key(
                 &basis.task_id,

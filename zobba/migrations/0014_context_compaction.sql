@@ -46,6 +46,10 @@ BEGIN
    RAISE EXCEPTION 'compaction records cover contiguous ranges' USING ERRCODE='23514';
   END IF;
  END IF;
+ IF jsonb_typeof(NEW.digest->'sequence') IS DISTINCT FROM 'number' OR jsonb_typeof(NEW.digest->'first_ordinal') IS DISTINCT FROM 'number'
+   OR jsonb_typeof(NEW.digest->'last_ordinal') IS DISTINCT FROM 'number' THEN
+  RAISE EXCEPTION 'the digest names its own record' USING ERRCODE='23514';
+ END IF;
  IF (NEW.digest->>'task_id' IS DISTINCT FROM NEW.task_id OR NEW.digest->>'cycle_id' IS DISTINCT FROM NEW.cycle_id
    OR (NEW.digest->>'sequence')::bigint IS DISTINCT FROM NEW.sequence
    OR (NEW.digest->>'first_ordinal')::bigint IS DISTINCT FROM NEW.first_ordinal
@@ -56,7 +60,17 @@ BEGIN
 END $body$;
 CREATE TRIGGER work_compaction_guard BEFORE INSERT ON public.task_context_compactions
  FOR EACH ROW EXECUTE FUNCTION public.work_compaction_guard();
-REVOKE ALL ON FUNCTION public.work_compaction_guard() FROM PUBLIC;
+-- A record is an immutable fact, even for the owner. Runtime holds no UPDATE or
+-- DELETE grant (as for every append-only table here); whole-aggregate removal by
+-- the owner (fixture resets) follows the existing tables and is not refused.
+CREATE FUNCTION public.work_compaction_immutable() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
+BEGIN
+ RAISE EXCEPTION 'compaction records are immutable' USING ERRCODE='23514';
+END $body$;
+CREATE TRIGGER work_compaction_immutable BEFORE UPDATE ON public.task_context_compactions
+ FOR EACH ROW EXECUTE FUNCTION public.work_compaction_immutable();
+REVOKE ALL ON FUNCTION public.work_compaction_guard(),public.work_compaction_immutable() FROM PUBLIC;
 ALTER TABLE public.task_context_compactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.task_context_compactions FORCE ROW LEVEL SECURITY;
 CREATE POLICY scoped_read ON public.task_context_compactions FOR SELECT USING (organisation_id=pg_catalog.current_setting('zobba.organisation_id',true) AND client_id=pg_catalog.current_setting('zobba.client_id',true) AND engagement_id=pg_catalog.current_setting('zobba.engagement_id',true) AND EXISTS(SELECT 1 FROM public.engagements e WHERE (e.organisation_id,e.client_id,e.id)=(task_context_compactions.organisation_id,task_context_compactions.client_id,task_context_compactions.engagement_id)));

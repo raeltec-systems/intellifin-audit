@@ -12,7 +12,7 @@ import { readTaskBasis } from './methodology';
 import { TaskKnowledge } from './TaskKnowledge';
 import { InspectionPreference, useInspectionPreference } from './InspectionPreference';
 import type { MethodContext, SkillContext } from './knowledge-context';
-import { TaskContextUse, TaskWorkPanel } from './TaskWorkPanel';
+import { TaskContextUse, TaskWorkPanel, useTaskWork } from './TaskWorkPanel';
 import { RoutingQuestions } from './RoutingQuestions';
 import { postDirection } from './work';
 import type { RoutingQuestion } from './work';
@@ -124,6 +124,7 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
   const preference = useInspectionPreference(engagement.organisation_id, session, projectionReady, onAccessFailure);
   const retainingProjection = !accessReady || conversation.connection === 'loading';
   const selected = retainingProjection || projectionReady ? conversation.tasks.find((task) => task.id === selectedId) ?? inspected : null;
+  const taskWork = useTaskWork({ scope: engagement, taskId: selected?.id ?? null, taskRevision: selected?.revision ?? '', taskState: selected?.state ?? '', session, accessReady: projectionReady, onAccessFailure });
   const scopeLabel = `${engagement.organisation_name} / ${engagement.client_name} / ${engagement.engagement_name}`;
   const targetTask = target.kind === 'guide' ? conversation.tasks.find((task) => task.id === target.task_id) ?? (inspected?.id === target.task_id ? inspected : null) : null;
   const targetIsCurrent = target.kind !== 'guide' || !targetTask || targetTask.cycle_id === target.cycle_id;
@@ -443,10 +444,10 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
               <div className="task-state"><span className="status-label">{taskStateLabel(selected)}</span><p>{stateExplanation(selected)}</p></div>
               <section className="brief-section"><h3>Original objective</h3><p className="retained-text">{selected.objective}</p></section>
               <section className="brief-section"><h3>Working brief</h3><p className="brief-caption">Plain retained direction. Applied means added here; it does not mean model understanding.</p><p className="retained-text">{selected.working_brief}</p></section>
-              <TaskWorkPanel key={`${session.identity.id}/${session.csrf_token}/${selected.id}/work`} scope={engagement} taskId={selected.id} taskRevision={selected.revision} taskState={selected.state} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} />
+              <TaskWorkPanel state={taskWork} />
               <section key={`${selected.id}/${opening ?? ''}`} className="working-context" aria-label="What Zobba is using"><h3>What Zobba is using</h3>
                 <TaskKnowledge key={`${session.identity.id}/${session.csrf_token}/${selected.id}/knowledge`} scope={engagement} task={selected} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} method={methodContext} skills={skillContext} onApplyLayout={layout => { explicitLayoutOpening.current = opening; setExpanded(layout === 'expanded' && window.matchMedia('(min-width: 1001px)').matches); }} onGuide={() => { draftGeneration.current += 1; chooseTarget({ kind: 'guide', task_id: selected.id, cycle_id: selected.cycle_id, objective: selected.objective }); setView('conversation'); requestAnimationFrame(() => textarea.current?.focus()); }} />
-                <TaskContextUse key={`${session.identity.id}/${session.csrf_token}/${selected.id}/context`} scope={engagement} taskId={selected.id} taskRevision={selected.revision} taskState={selected.state} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} />
+                <TaskContextUse state={taskWork} />
                 <TaskMethodology scope={engagement} taskId={selected.id} taskRevision={selected.revision} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} onContext={setMethodContext} />
                 <TaskSkills key={`${session.identity.id}/${session.csrf_token}/${selected.id}`} scope={engagement} taskId={selected.id} taskRevision={selected.revision} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} onContext={setSkillContext} />
               </section>

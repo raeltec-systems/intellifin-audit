@@ -50,14 +50,15 @@ test('compaction records, stale sources and the budget refusal are recorded fact
     step(0, ',estimated_input_tokens,actual_input_tokens', ',4100,3990'),
     step(1, ',estimated_input_tokens', ',4200'),
     step(2, ',reason,estimated_input_tokens', ",'context_budget',9100"),
-    `INSERT INTO public.task_context_compactions(organisation_id,client_id,engagement_id,task_id,cycle_id,sequence,first_ordinal,last_ordinal,digest,digest_sha256,sources,omissions,estimated_tokens) VALUES('org-a','client-a','engagement-a','${task}','${cycle}',0,0,1,'${digest}','${sha}','[{"id":"record-withdrawn","revision":1,"status":"withdrawn"}]','{"stale_sources":1,"steps_compacted":2}',4200);`,
+    `INSERT INTO public.task_context_compactions(organisation_id,client_id,engagement_id,task_id,cycle_id,sequence,first_ordinal,last_ordinal,digest,digest_sha256,sources,omissions,estimated_tokens,created_at) VALUES('org-a','client-a','engagement-a','${task}','${cycle}',0,0,1,'${digest}','${sha}','[{"id":"record-withdrawn","revision":1,"status":"withdrawn"}]','{"stale_sources":1,"steps_compacted":2}',4200,1767225600);`,
   ].join('\n'));
   await page.getByRole('button', { name: 'Open Review leaver access', exact: true }).click();
   const using = page.getByRole('region', { name: 'What Zobba is using', exact: true });
   const context = using.getByRole('region', { name: 'Context of recent turns' });
   await expect(context).toContainText('The latest turn was not sent');
   await expect(context).toContainText('estimated 9100 input tokens');
-  await expect(context).toContainText('Steps 1–2 compacted · record 1');
+  await expect(context).toContainText('Steps 1–2 compacted · record 1 · made 2026-01-01 00:00:00 UTC');
+  await expect(context.locator('time')).toHaveAttribute('datetime', '2026-01-01T00:00:00.000Z');
   await expect(context).toContainText('revision 1 · withdrawn · stale');
   await expect(context).toContainText('Steps represented only by a fact digest: 2');
   await expect(context).toContainText('Stale knowledge revisions: 1');
@@ -71,7 +72,7 @@ test('compaction records, stale sources and the budget refusal are recorded fact
   const response = await page.request.get(`${runtime.url}/api/engagements/engagement-a/tasks/${task}/work?${scope}`);
   expect(response.status()).toBe(200);
   const body = await response.json();
-  expect(body.compactions).toEqual([{ sequence: 0, first_ordinal: 0, last_ordinal: 1, digest_sha256: sha, sources: [{ id: 'record-withdrawn', revision: '1', status: 'withdrawn' }], omissions: [{ category: 'steps_compacted', count: 2 }, { category: 'stale_sources', count: 1 }], estimated_tokens: '4200' }]);
+  expect(body.compactions).toEqual([{ sequence: 0, first_ordinal: 0, last_ordinal: 1, digest_sha256: sha, sources: [{ id: 'record-withdrawn', revision: '1', status: 'withdrawn' }], omissions: [{ category: 'steps_compacted', count: 2 }, { category: 'stale_sources', count: 1 }], estimated_tokens: '4200', created_at: '1767225600' }]);
   expect(body.steps[0].actual_input_tokens).toBe('3990');
   expect(body.steps[2].reason).toBe('context_budget');
   expect(errors).toEqual([]);

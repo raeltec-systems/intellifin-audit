@@ -1726,3 +1726,31 @@ fn assert_no_composite_enum(schema: &serde_json::Value) {
         _ => {}
     }
 }
+
+// Story 22.3: stored requests and disclosure bindings made before schema 14
+// carry no dependency field; adding the field must not change their bytes.
+#[test]
+fn a_context_entry_without_a_dependency_serialises_exactly_as_before_schema_14() {
+    use zobba_application::model::wire::StoredContextEntry;
+    let entry = ContextEntry {
+        source_id: "brief".into(),
+        input_class: "task_brief".into(),
+        knowledge: None,
+        depends_on: None,
+    };
+    let stored = serde_json::to_string(&StoredContextEntry(entry.clone())).unwrap();
+    assert_eq!(
+        stored,
+        r#"{"source_id":"brief","input_class":"task_brief","knowledge":null}"#
+    );
+    let read: StoredContextEntry = serde_json::from_str(&stored).unwrap();
+    assert_eq!(read.0, entry);
+    let with = ContextEntry {
+        depends_on: Some("earlier".into()),
+        ..entry
+    };
+    assert_eq!(
+        serde_json::to_string(&StoredContextEntry(with)).unwrap(),
+        r#"{"source_id":"brief","input_class":"task_brief","knowledge":null,"depends_on":"earlier"}"#
+    );
+}

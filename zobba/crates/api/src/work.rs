@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use zobba_application::task::TaskError;
 use zobba_domain::{
-    context::{ContextCompaction, SourceStatus},
+    context::{CompactionSummary, OmissionCategory, SourceStatus},
     identity::valid_scope_id,
     work::{
         Attention, BriefRevision, Direction, NextAction, RoutedGuide, RoutingQuestion, StepKind,
@@ -78,12 +78,22 @@ pub struct CompactionSourceResponse {
     pub status: SourceStatusResponse,
 }
 
+/// Why material was left out of a request. A category never means absence.
+#[derive(Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum OmissionCategoryResponse {
+    StepsCompacted,
+    DigestsOmitted,
+    KnowledgeBudget,
+    KnowledgeUnusable,
+    StaleSources,
+    StaleContent,
+}
+
 /// Count of material left out by category. An omission never means absence.
 #[derive(Serialize, ToSchema)]
 pub struct OmissionResponse {
-    /// `steps_compacted`, `digests_omitted`, `knowledge_budget`,
-    /// `knowledge_unusable`, `stale_sources` or `stale_content`.
-    pub category: String,
+    pub category: OmissionCategoryResponse,
     pub count: u32,
 }
 
@@ -104,6 +114,9 @@ pub struct CompactionResponse {
     pub omissions: Vec<OmissionResponse>,
     #[schema(pattern = "^[0-9]+$")]
     pub estimated_tokens: String,
+    /// Server time the record was made, in seconds since the Unix epoch.
+    #[schema(pattern = "^[0-9]+$")]
+    pub created_at: String,
 }
 
 /// One immutable recorded step. Labels are fixed platform text, never model output.
@@ -191,7 +204,7 @@ pub struct TaskWorkResponse {
     pub total_compactions: u32,
 }
 
-fn compaction(record: ContextCompaction) -> CompactionResponse {
+fn compaction(record: CompactionSummary) -> CompactionResponse {
     CompactionResponse {
         sequence: record.sequence,
         first_ordinal: record.first_ordinal,
@@ -215,11 +228,21 @@ fn compaction(record: ContextCompaction) -> CompactionResponse {
             .omissions
             .into_iter()
             .map(|(category, count)| OmissionResponse {
-                category: category.as_str().into(),
+                category: match category {
+                    OmissionCategory::StepsCompacted => OmissionCategoryResponse::StepsCompacted,
+                    OmissionCategory::DigestsOmitted => OmissionCategoryResponse::DigestsOmitted,
+                    OmissionCategory::KnowledgeBudget => OmissionCategoryResponse::KnowledgeBudget,
+                    OmissionCategory::KnowledgeUnusable => {
+                        OmissionCategoryResponse::KnowledgeUnusable
+                    }
+                    OmissionCategory::StaleSources => OmissionCategoryResponse::StaleSources,
+                    OmissionCategory::StaleContent => OmissionCategoryResponse::StaleContent,
+                },
                 count,
             })
             .collect(),
         estimated_tokens: record.estimated_tokens.to_string(),
+        created_at: record.created_at.max(0).to_string(),
     }
 }
 

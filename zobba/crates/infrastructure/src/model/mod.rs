@@ -212,24 +212,39 @@ async fn history_authority(
     let mut exchanges = BTreeMap::<(String, String), ToolExchange>::new();
     let mut contexts = Vec::new();
     let mut edges = 0usize;
+    // Distinct answer origins, bounded like exchanges.
+    let mut answers = BTreeSet::<String>::new();
     while let Some(part) = pending.pop() {
-        let mut origins: Vec<(String, Option<&ToolExchange>)> = part
+        let mut origins: Vec<(String, Option<&ToolExchange>, Option<&ModelMessage>)> = part
             .history
             .iter()
             .filter_map(|item| match item {
-                HistoryItem::ToolExchange(exchange) => {
-                    Some((exchange.invocation_id.clone(), Some(exchange.as_ref())))
-                }
+                HistoryItem::ToolExchange(exchange) => Some((
+                    exchange.invocation_id.clone(),
+                    Some(exchange.as_ref()),
+                    None,
+                )),
                 HistoryItem::Message(_) => None,
             })
             .collect();
-        origins.extend(
-            part.context
-                .entries
+        for entry in &part.context.entries {
+            let Some(origin) = &entry.depends_on else {
+                continue;
+            };
+            // The dependent content must be a message carrying exactly this
+            // source; validation guarantees one exists.
+            let message = part
+                .messages
                 .iter()
-                .filter_map(|entry| entry.depends_on.clone().map(|id| (id, None))),
-        );
-        for (origin, exchange) in origins {
+                .chain(part.history.iter().filter_map(|item| match item {
+                    HistoryItem::Message(m) => Some(m),
+                    HistoryItem::ToolExchange(_) => None,
+                }))
+                .find(|m| m.source_id.as_ref() == Some(&entry.source_id))
+                .ok_or(ModelError::Invalid)?;
+            origins.push((origin.clone(), None, Some(message)));
+        }
+        for (origin, exchange, answer) in origins {
             if let Some(exchange) = exchange {
                 let identity = (exchange.invocation_id.clone(), exchange.call_id.clone());
                 if let Some(previous) = exchanges.get(&identity) {
@@ -273,9 +288,24 @@ async fn history_authority(
                     (exchange.invocation_id.clone(), exchange.call_id.clone()),
                     exchange.clone(),
                 );
-            } else if original.outcome.is_none() {
-                // A dependent answer must name an invocation that answered.
-                return Err(ModelError::Conflict);
+            } else {
+                // A dependent answer must be exactly the labelled answer of an
+                // invocation that answered, attributed to the model.
+                let Some(message) = answer else {
+                    return Err(ModelError::Invalid);
+                };
+                if original.outcome.is_none()
+                    || message.role != MessageRole::Assistant
+                    || message.source_id.as_deref().is_none_or(|source| {
+                        message.text
+                            != zobba_application::work::earlier_answer_envelope(source, &original)
+                    })
+                {
+                    return Err(ModelError::Conflict);
+                }
+                if answers.insert(origin.clone()) && answers.len() > MAX_HISTORY_DEPENDENCIES {
+                    return Err(ModelError::Capacity);
+                }
             }
             if !graph.contains_key(&original.id) {
                 if graph.len() >= MAX_HISTORY_DEPENDENCIES {

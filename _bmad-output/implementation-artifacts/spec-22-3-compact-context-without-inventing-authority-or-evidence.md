@@ -189,3 +189,29 @@ Limiting the transitive check to included content keeps 22.1's rule that revoked
   by the trusted composition (`WorkSettings.context`); there is no per-Task user
   setting or profile field yet. No populated 13→14 upgrade test with existing
   `task_steps` rows (existing upgrade tests reach 14 from 8, 9 and 10).
+
+## Review Repairs (2026-10-08)
+
+- The dependency walk visits a shared ancestor (a diamond) once and refuses only a
+  true cycle or a missing origin.
+- One compaction record per request at most. Any hard limit, the post-assembly
+  caps and an unboundable catalogue end the turn as a recorded `context_budget`
+  failure. An exchange that cannot be bounded becomes a fixed-fact note. The digest
+  overhead estimate is fixed and bounds the record's actual cost.
+- Source standing is read in chunks of 512. Capacity and unavailability fail the
+  turn as unavailable; they are never a revocation, and a missing status is an
+  error. Only definite Denied/Ineligible facts become Invalidated.
+- A dependent answer must have an outcome, the assistant role and text equal to
+  the origin's exact labelled envelope. Distinct answer origins are bounded.
+- `compact` compares the rebuilt sources and the derivable `steps_compacted`
+  count as well as the digest. A guard refusal or a concurrent insert (23514,
+  23505) is a conflict. The guard checks `jsonb_typeof` before any cast. A new
+  BEFORE UPDATE trigger makes records immutable; the v14 catalogue was recaptured.
+- The digest has no `call_id` field. On read, the SHA-256 is verified over the
+  domain canonical serialiser. Open questions are read with LIMIT 21 and an
+  omitted flag. The work read selects only the columns it returns.
+- API: `created_at` (epoch seconds) and a closed omission-category enum. Web: one
+  `useTaskWork` subscription serves Current work and the context panel, and the
+  record's creation time is shown.
+- Not changed: no DELETE trigger. Runtime has no DELETE grant, and owner-mediated
+  whole-aggregate removal (fixture resets) follows the existing append-only tables.

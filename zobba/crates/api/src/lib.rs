@@ -287,6 +287,7 @@ pub fn authenticated_router_with_evidence(
         work::SourceStatusResponse,
         work::CompactionSourceResponse,
         work::OmissionResponse,
+        work::OmissionCategoryResponse,
         work::CompactionResponse,
         work::DirectionRequest,
         work::RoutingCandidateResponse,

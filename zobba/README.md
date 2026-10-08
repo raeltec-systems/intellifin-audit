@@ -1437,8 +1437,10 @@ covered ordinal range, a bounded JSONB digest with its SHA-256, the knowledge
 sources with their status when the record was made, omission counts and the
 token estimate. Runtime has SELECT/INSERT only; the SECURITY INVOKER trigger
 `work_compaction_guard` refuses a record out of sequence, a non-contiguous range
-or a digest that names another record, and both ends of a range must be
-recorded steps.
+or a digest that names another record (its identity fields must be JSON numbers
+and strings, checked before any cast), and both ends of a range must be recorded
+steps. A BEFORE UPDATE trigger, `work_compaction_immutable`, refuses every update,
+including one made by a privileged writer. Runtime has no DELETE grant.
 
 Each request is planned (`zobba_domain::context::plan`, pure) under a budget in
 conservative tokens: UTF-8 bytes, which are never fewer than the tokens they
@@ -1456,8 +1458,11 @@ beside the earlier digests, the oldest whole turns are compacted: the record is
 persisted before the send, and the request is planned again with it stored, so a
 recovering producer builds the identical request. Covered steps are never
 expanded again; a later record covers the next range and earlier records remain.
-If tiers 1–2 alone exceed the budget, nothing is sent and the turn is recorded
-`failed` with reason `context_budget`. Each turn records its estimate and the
+At most one record is made per request. If tiers 1–2 alone exceed the budget,
+the re-plan after that record still needs another, or a hard limit is reached
+(records per cycle, sources per record, the request caps after assembly), nothing
+is sent and the turn is recorded `failed` with reason `context_budget`. A cycle
+therefore never stops being recordable. Each turn records its estimate and the
 provider's reported input tokens.
 
 A digest is canonical JSON (sorted keys, no whitespace) of step facts only —
@@ -1466,8 +1471,12 @@ attempt identifiers, receipt facts and fixed reasons — plus the knowledge
 `{id, revision}` references the covered turns used and fixed limitations. It
 contains no model, tool or source text and no platform label, is never a
 summary and never evidence. The store rebuilds it from immutable step and
-invocation rows and refuses one it cannot reproduce byte for byte;
-`TaskRepository::rebuild_compaction` returns that rebuild for review. Raw steps,
+invocation rows and refuses one it cannot reproduce byte for byte. It also
+refuses named sources that differ from the rebuilt set and a `steps_compacted`
+count other than the covered steps. On read, the SHA-256 is verified over the
+domain `canonical_json` serialiser, not over PostgreSQL's jsonb text.
+`TaskRepository::rebuild_compaction` returns the stored record and that rebuild
+for review. Raw steps,
 invocations and results are never altered.
 
 Before disclosure the loop computes, for every earlier invocation, the knowledge
@@ -1482,7 +1491,11 @@ included carries dependency verification: a model answer's context entry now
 names its producing invocation (`depends_on`), and `prepare` verifies the
 context of every included exchange's and answer's origin, transitively. A
 withdrawn source therefore no longer refuses every later turn; loss of the
-viewer's or Task's own scope is still refused.
+viewer's or Task's own scope is still refused. An earlier answer must be the
+answered invocation of the same Task, with its exact labelled envelope text, or
+the request is refused. Exhausted capacity or unavailability while checking a
+standing is not a revocation: the turn ends unavailable, with no stale marker and
+no compaction. Reference checks are chunked (512 per read).
 
 Objective, brief, knowledge, tool results, digests and earlier model output are
 each wrapped in a `[zobba-data class=<input class> source=<id>]` envelope; any
@@ -1491,9 +1504,11 @@ class is carried by the envelope and is distinct from the firm's data
 classification, which alone is bound to Permissions at disclosure (that binding
 format is unchanged). Only the owned constraints are System, and tool admission
 remains Permissions-only. `GET tasks/{id}/work` adds the step reason and token
-counts and the most recent 20 compaction records (no digest body); "What Zobba is
-using" shows them with stale sources and omissions, and the raw steps stay
-listed under Current work.
+counts and the most recent 20 compaction records (no digest body, with
+`created_at` in epoch seconds and omission categories as a closed enum); "What
+Zobba is using" shows them with their creation time, stale sources and
+omissions, and the raw steps stay listed under Current work. One read serves both
+panels.
 
 ## Establishing an engagement conversationally (Story 22.2 AC4)
 

@@ -619,3 +619,95 @@ fn malformed_tier_is_removed_without_erasing_known_token_accounting() {
     assert_eq!(failed.completion, Completion::Failed(ModelError::Malformed));
     assert_eq!(validate_completion(&request, &failed), Ok(()));
 }
+
+// Story 22.3: `depends_on` narrows disclosure verification to included content.
+
+fn knowledge_item(id: &str, revision: u64) -> crate::knowledge::VerificationItem {
+    crate::knowledge::VerificationItem {
+        id: id.into(),
+        revision,
+        status: RecordStatus::Current,
+    }
+}
+
+fn dependent(id: &str, items: &[(&str, u64)], origins: &[&str]) -> Invocation {
+    let mut request = request();
+    request.context.verification.items = items
+        .iter()
+        .map(|(id, revision)| knowledge_item(id, *revision))
+        .collect();
+    for (i, origin) in origins.iter().enumerate() {
+        request.context.entries.push(ContextEntry {
+            source_id: format!("answer-{i}"),
+            input_class: "task_brief".into(),
+            knowledge: None,
+            depends_on: Some((*origin).into()),
+        });
+    }
+    Invocation {
+        id: id.into(),
+        key: format!("key-{id}"),
+        request,
+        outcome: None,
+    }
+}
+
+#[test]
+fn transitive_dependencies_visit_a_shared_ancestor_once_and_refuse_true_cycles() {
+    use crate::work::transitive_dependencies;
+    use std::collections::{BTreeMap, BTreeSet};
+    let set = |values: &[(&str, u64)]| -> BTreeSet<(String, u64)> {
+        values
+            .iter()
+            .map(|(id, r)| ((*id).to_string(), *r))
+            .collect()
+    };
+    // A diamond traversed from its top (the first key): A carries B and C,
+    // both of which carry D.
+    let mut all = BTreeMap::new();
+    for invocation in [
+        dependent("a", &[], &["b", "c"]),
+        dependent("b", &[("k2", 1)], &["d"]),
+        dependent("c", &[("k3", 2)], &["d"]),
+        dependent("d", &[("k1", 1)], &[]),
+    ] {
+        all.insert(invocation.id.clone(), invocation);
+    }
+    let deps = transitive_dependencies(&all).expect("a diamond is not a cycle");
+    assert_eq!(deps["a"], set(&[("k1", 1), ("k2", 1), ("k3", 2)]));
+    assert_eq!(deps["b"], set(&[("k1", 1), ("k2", 1)]));
+    assert_eq!(deps["d"], set(&[("k1", 1)]));
+    // A true cycle and a missing origin are refused.
+    let mut cyclic = all.clone();
+    cyclic.insert("d".into(), dependent("d", &[("k1", 1)], &["a"]));
+    assert_eq!(transitive_dependencies(&cyclic), None);
+    let mut selfish = BTreeMap::new();
+    selfish.insert("e".into(), dependent("e", &[], &["e"]));
+    assert_eq!(transitive_dependencies(&selfish), None);
+    let mut missing = BTreeMap::new();
+    missing.insert("f".into(), dependent("f", &[], &["absent"]));
+    assert_eq!(transitive_dependencies(&missing), None);
+}
+
+#[test]
+fn request_refuses_an_invalid_or_knowledge_bearing_dependency() {
+    let mut valid = request();
+    valid.context.entries[0].depends_on = Some("earlier_invocation".into());
+    assert_eq!(valid.validate(), Ok(()));
+    let mut changed = valid.clone();
+    changed.context.entries[0].depends_on = Some("not a scope id".into());
+    assert_eq!(changed.validate(), Err(ModelError::Invalid));
+    let mut changed = valid.clone();
+    changed.context.entries[0].depends_on = Some(String::new());
+    assert_eq!(changed.validate(), Err(ModelError::Invalid));
+    // Knowledge is verified directly; it cannot also claim an earlier turn.
+    let mut bound = request();
+    bound.context.verification.items = vec![knowledge_item("knowledge", 2)];
+    bound.context.entries[0].knowledge = Some(RecordReference {
+        id: "knowledge".into(),
+        revision: 2,
+    });
+    assert_eq!(bound.validate(), Ok(()));
+    bound.context.entries[0].depends_on = Some("earlier_invocation".into());
+    assert_eq!(bound.validate(), Err(ModelError::Invalid));
+}

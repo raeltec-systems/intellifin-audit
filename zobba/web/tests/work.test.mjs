@@ -5,7 +5,7 @@ import { OutboxStore, directionOutbox } from '../src/conversation-outbox.ts';
 
 const step = { ordinal: 0, kind: 'model_turn', status: 'proposed', intent_revision: '1', execution_epoch: '1', invocation_id: 'inv-a', operation_id: null, next_action: 'tool:send_exact', current_work: 'Model turn 1 proposed tools', knowledge_omitted: 2, reason: null, estimated_input_tokens: '4096', actual_input_tokens: '3900' };
 const brief = { command_id: 'cmd-a', cycle_id: 'cycle-a', content: 'Objective', received_cursor: '1', applied_boundary: 0, applied_cursor: '2', superseded_by: null };
-const compaction = { sequence: 0, first_ordinal: 0, last_ordinal: 5, digest_sha256: 'a'.repeat(64), sources: [{ id: 'record-a', revision: '1', status: 'withdrawn' }], omissions: [{ category: 'steps_compacted', count: 6 }, { category: 'stale_sources', count: 1 }], estimated_tokens: '4096' };
+const compaction = { sequence: 0, first_ordinal: 0, last_ordinal: 5, digest_sha256: 'a'.repeat(64), sources: [{ id: 'record-a', revision: '1', status: 'withdrawn' }], omissions: [{ category: 'steps_compacted', count: 6 }, { category: 'stale_sources', count: 1 }], estimated_tokens: '4096', created_at: '1767225600' };
 const work = { task_id: 'task-a', cycle_id: 'cycle-a', model_available: true, methodology_binding_id: 'binding-a', methodology_status: 'neutral', current_work: 'Model turn 1 proposed tools', next_action: 'tool:send_exact', next_action_invocation_id: 'inv-a', attention: null, steps: [step], briefs: [brief], total_steps: 9, compactions: [compaction], total_compactions: 1 };
 
 test('work projection is strictly parsed and bound to the requested Task', () => {
@@ -30,6 +30,8 @@ test('work projection is strictly parsed and bound to the requested Task', () =>
     { ...work, compactions: [{ ...compaction, sources: [{ id: 'record-a', revision: '1', status: 'gone' }] }] },
     { ...work, compactions: [{ ...compaction, omissions: [{ category: 'model_summary', count: 1 }] }] },
     { ...work, compactions: [compaction], total_compactions: 0 },
+    { ...work, compactions: [{ ...compaction, created_at: 1767225600 }] },
+    { ...work, compactions: [{ ...compaction, created_at: undefined }] },
   ]) assert.throws(() => parseWork(bad, 'task-a'));
 });
 

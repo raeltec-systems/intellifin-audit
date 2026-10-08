@@ -334,7 +334,7 @@ pub struct TaskWork {
     pub attention: Option<Attention>,
     /// Most recent context compaction records of the current cycle, oldest
     /// first. Raw steps stay reachable; a record lists facts, never a summary.
-    pub compactions: Vec<crate::context::ContextCompaction>,
+    pub compactions: Vec<crate::context::CompactionSummary>,
     /// All compaction records of the current cycle.
     pub total_compactions: u32,
 }

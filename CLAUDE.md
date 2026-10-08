@@ -1,3 +1,30 @@
+## 2026-10-08 — Story 22.3 context compaction boundaries
+
+The context budget counts UTF-8 bytes as tokens. That is a conservative bound, not
+a provider tokenizer. Tiers 1–2 (owned constraints, objective, method, brief,
+unresolved decisions) are never dropped. If they alone do not fit, or a hard
+limit (compactions per cycle, sources, message/entry/history caps) is reached,
+nothing is sent and the turn is a recorded `context_budget` failure. A cycle is
+never left unrecordable.
+
+`ContextEntry.depends_on` narrows the Story 22.1 disclosure refusal to content that
+is actually included. An earlier answer must be this Task's own answered invocation,
+carried with its exact labelled envelope text, and its sources must still be current.
+A withdrawn source makes dependent content a stale marker; it no longer refuses
+every later turn. The field is omitted when absent, so stored pre-14 requests and
+bindings keep their bytes.
+
+Capacity or unavailability while checking a source's standing is not proof of
+revocation. The turn ends unavailable, with no stale marker and no compaction. Only
+definite Denied/Ineligible facts become Invalidated.
+
+A compaction digest is a platform fact record only: step facts and knowledge
+revision identities. It is never a model summary and never evidence. Raw steps stay
+complete. The store rebuilds the digest, sources and the derivable omission count
+from immutable facts and refuses any other. Records are immutable (BEFORE UPDATE
+trigger). The SHA-256 is verified over the domain `canonical_json` serialiser, not
+over PostgreSQL's jsonb text.
+
 ## 2026-10-07 — Provider tool schemas: no composite enum
 
 The first gpt-6-luna run failed its tool phase: OpenAI answers HTTP 400

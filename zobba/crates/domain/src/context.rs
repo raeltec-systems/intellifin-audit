@@ -4,7 +4,7 @@
 //! facts the platform already owns; it is never a summary and never evidence.
 use crate::{
     identity::valid_scope_id,
-    model::{MAX_HISTORY_BYTES, MAX_HISTORY_ITEMS, MAX_INPUT_BYTES},
+    model::{JsonValue, MAX_HISTORY_BYTES, MAX_HISTORY_ITEMS, MAX_INPUT_BYTES},
     work::{StepKind, TaskStep, sha256_hex},
 };
 
@@ -223,6 +223,21 @@ impl ContextCompaction {
     }
 }
 
+/// A record as listed for inspection: identity, range, sources, omissions and
+/// estimate, without the digest body.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CompactionSummary {
+    pub sequence: u32,
+    pub first_ordinal: u32,
+    pub last_ordinal: u32,
+    pub digest_sha256: String,
+    pub sources: Vec<SourceState>,
+    pub omissions: Vec<(OmissionCategory, u32)>,
+    pub estimated_tokens: u64,
+    /// Seconds since the Unix epoch, server clock.
+    pub created_at: i64,
+}
+
 /// Fixed limitations stated in every digest of this version.
 pub const DIGEST_LIMITATIONS: [&str; 3] = [
     "Facts only: recorded step facts and the knowledge revisions earlier turns used. No model, tool or source text is included, and this is not evidence.",
@@ -302,13 +317,54 @@ impl<'o> Object<'o> {
     }
 }
 
-/// Canonical digest entry of one step: fixed vocabulary values and owned
-/// identifiers only. Labels, model text and tool arguments are never included.
+/// Canonical JSON of a decoded value: object keys in byte order (the
+/// `BTreeMap` order of `JsonValue`), no whitespace, the same escaping as the
+/// digest writer. A stored digest is verified with this serialiser, never with
+/// a third-party map ordering.
+pub fn canonical_json(value: &JsonValue) -> String {
+    fn write(out: &mut String, value: &JsonValue) {
+        match value {
+            JsonValue::Null => out.push_str("null"),
+            JsonValue::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+            JsonValue::Integer(n) => out.push_str(&n.to_string()),
+            JsonValue::String(s) => json_string(out, s),
+            JsonValue::Array(items) => {
+                out.push('[');
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    write(out, item);
+                }
+                out.push(']');
+            }
+            JsonValue::Object(map) => {
+                out.push('{');
+                for (i, (key, item)) in map.iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    json_string(out, key);
+                    out.push(':');
+                    write(out, item);
+                }
+                out.push('}');
+            }
+        }
+    }
+    let mut out = String::new();
+    write(&mut out, value);
+    out
+}
+
+/// Canonical digest entry of one step: fixed vocabulary values and
+/// platform-owned identifiers only. Labels, model text, tool arguments and the
+/// provider-chosen call identifier are never included; the invocation, ordinal,
+/// operation and attempt identify the exchange.
 pub fn digest_step(step: &TaskStep) -> String {
     let mut out = String::new();
     let mut o = Object::new(&mut out);
     o.optional("attempt_id", step.attempt_id.as_deref());
-    o.optional("call_id", step.call_id.as_deref());
     o.number("execution_epoch", step.execution_epoch);
     o.optional("fact", step.fact.map(|f| f.as_str()));
     o.number("intent_revision", step.intent_revision);
@@ -391,15 +447,18 @@ impl CompactionDigest<'_> {
 /// Fixed overhead of a digest around its step entries (identifiers, limits,
 /// limitations), used to estimate a record before it is built.
 pub fn digest_overhead_tokens(task_id: &str, cycle_id: &str, sources: usize) -> u64 {
+    // Keys, separators and numbers of the record frame (sequence, ordinals and
+    // version are at most 20 digits each), with margin.
     let base = DIGEST_LIMITATIONS
         .iter()
         .map(|l| l.len() as u64 + 3)
         .sum::<u64>()
         + task_id.len() as u64
         + cycle_id.len() as u64
-        + 160;
-    // Each source entry: {"id":"<=128","revision":<=19} plus a comma.
-    base + sources as u64 * (128 + 40)
+        + 256;
+    // Each source entry `{"id":"<128>","revision":<19 digits>}` plus a comma is
+    // 170 bytes at most; 192 keeps the estimate above the actual cost.
+    base + sources as u64 * 192
 }
 
 /// Cost of one recorded step as raw history and as a digest entry.

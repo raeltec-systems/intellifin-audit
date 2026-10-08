@@ -94,6 +94,7 @@ export function parseCompaction(value: unknown): Compaction {
       return { category: oneOf(o.category, omissionCategories), count: count(o.count, 4294967295) };
     }),
     estimated_tokens: cursor(v.estimated_tokens),
+    created_at: cursor(v.created_at),
   };
 }
 

@@ -357,3 +357,83 @@ fn earlier_digests_are_kept_before_extra_raw_steps_and_omitted_only_last() {
     assert_eq!(last.compact, None);
     assert_eq!(last.digests_included, 1, "the newest digest is kept");
 }
+
+#[test]
+fn the_new_digest_estimate_bounds_its_actual_cost() {
+    let long = "x".repeat(128);
+    let mut steps = Vec::new();
+    for ordinal in 0..8u32 {
+        let mut s = step(
+            ordinal,
+            if ordinal % 2 == 0 {
+                StepKind::ModelTurn
+            } else {
+                StepKind::ToolStep
+            },
+            if ordinal % 2 == 0 {
+                StepStatus::Proposed
+            } else {
+                StepStatus::Completed
+            },
+        );
+        s.task_id = long.clone();
+        s.cycle_id = long.clone();
+        s.intent_revision = i64::MAX as u64;
+        s.execution_epoch = i64::MAX as u64;
+        s.ordinal = 4000 + ordinal;
+        s.invocation_id = Some(long.clone());
+        s.call_id = s.call_id.as_ref().map(|_| "c".repeat(200));
+        if s.operation_id.is_some() {
+            s.operation_id = Some(long.clone());
+            s.attempt_id = Some(long.clone());
+        }
+        steps.push(s);
+    }
+    let sources: Vec<(String, u64)> = (0..20)
+        .map(|i| (format!("{i:02}{}", "k".repeat(126)), i64::MAX as u64))
+        .collect();
+    let digest = CompactionDigest {
+        task_id: &long,
+        cycle_id: &long,
+        sequence: (MAX_COMPACTIONS_PER_CYCLE - 1) as u32,
+        steps: &steps,
+        sources: &sources,
+    }
+    .canonical()
+    .unwrap();
+    assert!(
+        !digest.contains("ccccc"),
+        "the provider call id is not a digest fact"
+    );
+    let estimate = digest_overhead_tokens(&long, &long, sources.len())
+        + steps
+            .iter()
+            .map(|s| digest_step(s).len() as u64 + 1)
+            .sum::<u64>();
+    assert!(
+        estimate > digest.len() as u64,
+        "estimate {estimate} < actual {}",
+        digest.len() + 1
+    );
+}
+
+#[test]
+fn canonical_json_orders_keys_by_bytes() {
+    use crate::model::JsonValue;
+    let value = JsonValue::Object(
+        [
+            ("b".to_string(), JsonValue::Integer(-1)),
+            (
+                "a".to_string(),
+                JsonValue::Array(vec![JsonValue::Null, JsonValue::Bool(true)]),
+            ),
+            ("A\"\n".to_string(), JsonValue::String("é\\".into())),
+        ]
+        .into_iter()
+        .collect(),
+    );
+    assert_eq!(
+        canonical_json(&value),
+        r#"{"A\"\n":"é\\","a":[null,true],"b":-1}"#
+    );
+}

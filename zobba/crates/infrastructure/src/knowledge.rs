@@ -1162,7 +1162,9 @@ pub(crate) async fn task_context_in_transaction(
 /// only when the revision is still the current, applicable, accessible record.
 /// A record whose own source scope or applicability no longer holds is
 /// reported `Invalidated` rather than refusing the caller; loss of the viewer's
-/// or accountable actor's own scope is still `Denied`. Grants no use.
+/// or accountable actor's own scope is still `Denied`, and verification
+/// capacity or unavailability is an error, never a status. At most 512
+/// references per call; callers chunk. Grants no use.
 pub(crate) async fn reference_statuses_in_transaction(
     tx: &mut Tx,
     actor: &str,
@@ -1212,9 +1214,11 @@ pub(crate) async fn reference_statuses_in_transaction(
             }
             Ok((view, _)) if view.status != RecordStatus::Current => view.status,
             Ok(_) => RecordStatus::Invalidated,
-            Err(KnowledgeError::Denied | KnowledgeError::Ineligible | KnowledgeError::Capacity) => {
-                RecordStatus::Invalidated
-            }
+            // A current refusal of this record (its own source scope or
+            // destination) or a dependency or source that is no longer current
+            // is a definite fact. Capacity or unavailability of verification
+            // is not proof of revocation: the caller fails the turn instead.
+            Err(KnowledgeError::Denied | KnowledgeError::Ineligible) => RecordStatus::Invalidated,
             Err(error) => return Err(error),
         });
     }

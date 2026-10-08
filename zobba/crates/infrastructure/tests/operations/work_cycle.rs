@@ -388,12 +388,22 @@ pub(super) async fn verify(f: &Fixture, admin: &mut PgConnection) {
         &repo,
     ))
     .await;
-    Box::pin(compaction_by_items(f, &harness, &hang)).await;
+    Box::pin(compaction_by_items(f, &harness, &hang, admin)).await;
     Box::pin(compaction_by_bytes(f, &harness, &hang)).await;
     Box::pin(tier_one_overflow(f, &harness, &hang)).await;
     let auditor_hash = secret_hash(&auditor);
     Box::pin(stale_after_withdrawal(f, &harness, &hang, &auditor_hash)).await;
     Box::pin(stale_after_correction(f, &harness, &hang, &auditor_hash)).await;
+    Box::pin(open_question_decision(f, &harness, &hang)).await;
+    Box::pin(knowledge_budget_drop(f, &harness, &hang, &auditor_hash)).await;
+    Box::pin(answer_dependencies(
+        f,
+        &harness,
+        &hang,
+        admin,
+        &auditor_hash,
+    ))
+    .await;
     Box::pin(hostile_knowledge(f, &harness, &hang, &auditor_hash)).await;
     Box::pin(scope_negative_knowledge(
         f,
@@ -615,6 +625,16 @@ async fn guidance_mid_call(
     let seen = script.briefs.lock().unwrap().clone();
     assert!(seen[1].contains("New direction"), "{seen:?}");
     assert!(!seen[0].contains("New direction"));
+    // The superseded proposal is an unresolved decision of the next turn.
+    let reconsider = script.requests.lock().unwrap()[1].clone();
+    let decisions = message(&reconsider, "unresolved-decisions").expect("tier 2 decisions");
+    assert!(
+        decisions
+            .text
+            .contains("Step 1: proposal of tool send_exact was superseded and not executed"),
+        "{}",
+        decisions.text
+    );
     // Two further Guides: revisions listed in order with superseded_by.
     let g2 = f
         .tasks
@@ -1636,6 +1656,16 @@ async fn reconciliation_stops_work(f: &Fixture, h: &Harness, hang: &Arc<AtomicBo
         "the reconciled attempt is rebuilt into history"
     );
     assert!(attempts.contains(&held[0].attempt_id));
+    // The reconciled outcome is stated as an unresolved decision.
+    let decisions = message(&last, "unresolved-decisions").expect("tier 2 decisions");
+    assert!(
+        decisions.text.contains(&format!(
+            "Step 2: operation {} required reconciliation; the owned source now reports it",
+            done.steps[1].operation_id.as_deref().unwrap()
+        )),
+        "{}",
+        decisions.text
+    );
     finish(f, &case, &attempt, Observation::Completed).await;
 }
 
@@ -2134,6 +2164,23 @@ async fn compaction_guards(admin: &mut PgConnection) {
         )
         .await;
     }
+    // A non-numeric digest field is a named refusal, not a cast error.
+    let mut typed = digest(next, last + 1, last + 1, task.as_str());
+    typed["sequence"] = serde_json::json!("x");
+    refused(
+        admin,
+        sqlx::query("INSERT INTO public.task_context_compactions(organisation_id,client_id,engagement_id,task_id,cycle_id,sequence,first_ordinal,last_ordinal,digest,digest_sha256,sources,omissions,estimated_tokens) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'[]','{}',1)")
+            .bind(&org).bind(&client).bind(&engagement).bind(&task).bind(&cycle)
+            .bind(next).bind(last + 1).bind(last + 1).bind(typed).bind("0".repeat(64)),
+    )
+    .await;
+    // A stored record is immutable even to a privileged writer.
+    for update in [
+        "UPDATE public.task_context_compactions SET estimated_tokens=estimated_tokens+1 WHERE task_id=$1 AND cycle_id=$2",
+        "UPDATE public.task_context_compactions SET sources='[]' WHERE task_id=$1 AND cycle_id=$2",
+    ] {
+        refused(admin, sqlx::query(update).bind(&task).bind(&cycle)).await;
+    }
     refused(
         admin,
         sqlx::query("UPDATE public.task_steps SET estimated_input_tokens=1 WHERE task_id=$1 AND cycle_id=$2 AND kind='tool_step'")
@@ -2202,6 +2249,65 @@ async fn guided(
     );
     let attempt = f.tasks.consume(&resumed).await.unwrap();
     (resumed, attempt)
+}
+
+/// The production repository, except that verifying the standing of earlier
+/// sources reports exhausted capacity. Counts every compaction attempt.
+#[derive(Clone)]
+struct UnverifiedSources {
+    inner: TaskRepository,
+    compactions: Arc<AtomicUsize>,
+}
+impl zobba_application::work::WorkSteps for UnverifiedSources {
+    async fn boundary(
+        &self,
+        basis: &ClaimBasis,
+    ) -> Result<zobba_application::work::WorkBoundary, TaskError> {
+        zobba_application::work::WorkSteps::boundary(&self.inner, basis).await
+    }
+    async fn record_step(
+        &self,
+        basis: &ClaimBasis,
+        step: &TaskStep,
+    ) -> Result<TaskStep, TaskError> {
+        zobba_application::work::WorkSteps::record_step(&self.inner, basis, step).await
+    }
+    async fn invocation(
+        &self,
+        basis: &ClaimBasis,
+        invocation_id: &str,
+    ) -> Result<zobba_application::model::Invocation, TaskError> {
+        zobba_application::work::WorkSteps::invocation(&self.inner, basis, invocation_id).await
+    }
+    async fn source_statuses(
+        &self,
+        _basis: &ClaimBasis,
+        _references: &[RecordReference],
+    ) -> Result<Vec<zobba_domain::context::SourceStatus>, TaskError> {
+        Err(TaskError::Capacity)
+    }
+    async fn compact(
+        &self,
+        basis: &ClaimBasis,
+        record: &zobba_domain::context::ContextCompaction,
+    ) -> Result<zobba_domain::context::ContextCompaction, TaskError> {
+        self.compactions.fetch_add(1, Ordering::SeqCst);
+        zobba_application::work::WorkSteps::compact(&self.inner, basis, record).await
+    }
+    async fn bound_operation(
+        &self,
+        basis: &ClaimBasis,
+        invocation_id: &str,
+        call_id: &str,
+    ) -> Result<Option<String>, TaskError> {
+        zobba_application::work::WorkSteps::bound_operation(
+            &self.inner,
+            basis,
+            invocation_id,
+            call_id,
+        )
+        .await
+    }
 }
 
 struct Knowledge {
@@ -2321,7 +2427,12 @@ fn stored_turns(work: &zobba_domain::work::TaskWork) -> Vec<&TaskStep> {
 /// Permissions refuse, so the refusal notes outgrow the history cap. Whole
 /// earlier turns are compacted into deterministic records, repeatedly, while
 /// tiers 1-2 and the newest steps stay, and every raw step stays inspectable.
-async fn compaction_by_items(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
+async fn compaction_by_items(
+    f: &Fixture,
+    h: &Harness,
+    hang: &Arc<AtomicBool>,
+    admin: &mut PgConnection,
+) {
     let (case, basis, attempt) = consumed(f, "work-compact-items").await;
     let turns: Vec<Turn> = (0..MAX_TURNS_PER_CYCLE)
         .map(|i| {
@@ -2370,12 +2481,12 @@ async fn compaction_by_items(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
         work.total_compactions
     );
     let mut next = 0;
+    let mut digests_seen = Vec::new();
     for (i, record) in work.compactions.iter().enumerate() {
         assert_eq!(record.sequence as usize, i);
         assert_eq!(record.first_ordinal, next, "contiguous ranges");
         next = record.last_ordinal + 1;
-        assert_eq!(record.digest_sha256, sha256_hex(record.digest.as_bytes()));
-        let rebuilt = f
+        let (stored, rebuilt) = f
             .tasks
             .rebuild_compaction(
                 "actor-a",
@@ -2386,14 +2497,16 @@ async fn compaction_by_items(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
             )
             .await
             .unwrap();
+        assert_eq!(record.digest_sha256, sha256_hex(stored.digest.as_bytes()));
         assert_eq!(
-            rebuilt, record.digest,
+            rebuilt, stored.digest,
             "rebuilt from the database byte for byte"
         );
         assert!(
-            !record.digest.contains("Earlier proposal") && !record.digest.contains("Model turn"),
+            !stored.digest.contains("Earlier proposal") && !stored.digest.contains("Model turn"),
             "a digest holds facts, never labels or model text"
         );
+        digests_seen.push(stored.digest);
         assert!(
             record
                 .omissions
@@ -2408,8 +2521,8 @@ async fn compaction_by_items(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
     let (class, _, body) =
         open_envelope(digests.text.split_once('\n').map(|(_, rest)| rest).unwrap()).unwrap();
     assert_eq!(class, InputClass::CompactionDigest);
-    for record in &work.compactions {
-        assert!(body.lines().any(|line| line == record.digest));
+    for digest in &digests_seen {
+        assert!(body.lines().any(|line| line == digest));
     }
     let omissions = message(last, "omissions").expect("omission summary");
     assert!(omissions.text.contains("steps_compacted"));
@@ -2425,7 +2538,95 @@ async fn compaction_by_items(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
         );
         assert_eq!(turn.actual_input_tokens, Some(FIXTURE_INPUT_TOKENS));
     }
+    Box::pin(compaction_conflicts(f, &basis, &work, admin)).await;
     finish(f, &case, &attempt, Observation::Exited).await;
+}
+
+/// The store accepts only a record it can rebuild from immutable facts: an
+/// added summary, mismatched sources, a wrong derivable omission count or a
+/// different digest at an existing sequence is a conflict and stores nothing.
+async fn compaction_conflicts(
+    f: &Fixture,
+    basis: &ClaimBasis,
+    work: &zobba_domain::work::TaskWork,
+    admin: &mut PgConnection,
+) {
+    async fn stored(admin: &mut PgConnection, basis: &ClaimBasis) -> i64 {
+        sqlx::query_scalar(
+            "SELECT count(*) FROM public.task_context_compactions WHERE task_id=$1 AND cycle_id=$2",
+        )
+        .bind(&basis.task_id)
+        .bind(&basis.cycle_id)
+        .fetch_one(&mut *admin)
+        .await
+        .unwrap()
+    }
+    let latest = work.compactions.last().expect("a compaction exists");
+    let (genuine, _) = f
+        .tasks
+        .rebuild_compaction(
+            "actor-a",
+            &selected("a"),
+            &basis.task_id,
+            &basis.cycle_id,
+            latest.sequence,
+        )
+        .await
+        .unwrap();
+    let recount = |record: &mut zobba_domain::context::ContextCompaction| {
+        record.digest_sha256 = sha256_hex(record.digest.as_bytes());
+    };
+    // A different digest at an existing sequence.
+    let mut changed = genuine.clone();
+    let mut value: serde_json::Value = serde_json::from_str(&genuine.digest).unwrap();
+    assert_eq!(
+        serde_json::to_string(&value).unwrap(),
+        genuine.digest,
+        "canonical form"
+    );
+    value["summary"] = json!("The earlier work found no issues.");
+    changed.digest = serde_json::to_string(&value).unwrap();
+    recount(&mut changed);
+    let total = work.total_compactions as i64;
+    assert_eq!(stored(admin, basis).await, total);
+    assert_eq!(
+        f.tasks.compact(basis, &changed).await,
+        Err(TaskError::Conflict)
+    );
+    // Remove the latest record (owner fixture authority), then offer
+    // forgeries at its now-free sequence.
+    sqlx::query("DELETE FROM public.task_context_compactions WHERE task_id=$1 AND cycle_id=$2 AND sequence=$3")
+        .bind(&basis.task_id)
+        .bind(&basis.cycle_id)
+        .bind(genuine.sequence as i32)
+        .execute(&mut *admin)
+        .await
+        .unwrap();
+    let mut extra_source = genuine.clone();
+    extra_source
+        .sources
+        .push(zobba_domain::context::SourceState {
+            id: "zz-invented-source".into(),
+            revision: 1,
+            status: zobba_domain::context::SourceStatus::Current,
+        });
+    let mut wrong_count = genuine.clone();
+    for (category, n) in &mut wrong_count.omissions {
+        if *category == OmissionCategory::StepsCompacted {
+            *n += 1;
+        }
+    }
+    for forged in [changed, extra_source, wrong_count] {
+        assert_eq!(
+            f.tasks.compact(basis, &forged).await,
+            Err(TaskError::Conflict)
+        );
+        assert_eq!(stored(admin, basis).await, total - 1, "nothing is stored");
+    }
+    // The genuine record is accepted again, byte for byte.
+    let accepted = f.tasks.compact(basis, &genuine).await.unwrap();
+    assert_eq!(accepted.digest, genuine.digest);
+    assert_eq!(stored(admin, basis).await, total);
 }
 
 /// History bytes over a small budget: completed tool exchanges outgrow it, so
@@ -2487,19 +2688,19 @@ async fn compaction_by_bytes(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
     }
     for record in &work.compactions {
         assert!(record.estimated_tokens <= budget);
-        assert_eq!(
-            f.tasks
-                .rebuild_compaction(
-                    "actor-a",
-                    &selected("a"),
-                    &case.receipt.task_id,
-                    &work.cycle_id,
-                    record.sequence
-                )
-                .await
-                .unwrap(),
-            record.digest
-        );
+        let (stored, rebuilt) = f
+            .tasks
+            .rebuild_compaction(
+                "actor-a",
+                &selected("a"),
+                &case.receipt.task_id,
+                &work.cycle_id,
+                record.sequence,
+            )
+            .await
+            .unwrap();
+        assert_eq!(rebuilt, stored.digest);
+        assert_eq!(record.digest_sha256, sha256_hex(stored.digest.as_bytes()));
     }
     finish(f, &case, &attempt, Observation::Completed).await;
 }
@@ -2589,6 +2790,46 @@ async fn stale_after_withdrawal(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>
         "Continue after withdrawal",
     )
     .await;
+    // Capacity while verifying the earlier source is not proof of revocation:
+    // the turn ends unavailable, nothing is sent, no stale marker or
+    // compaction is recorded, and the recorded steps are unchanged.
+    let before = f
+        .tasks
+        .work("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    let unverified = Script::new(vec![Turn::Text("Must not be sent.")]);
+    let base = h.work(f, &unverified, hang);
+    let compactions = Arc::new(AtomicUsize::new(0));
+    let blocked = WorkLoop {
+        steps: UnverifiedSources {
+            inner: f.tasks.clone(),
+            compactions: compactions.clone(),
+        },
+        coordinator: base.coordinator,
+        dispatch: base.dispatch,
+        settings: base.settings,
+        bind: base.bind,
+        delay: base.delay,
+    };
+    assert_eq!(
+        blocked.run(&resumed, &ModelCancellation::new()).await,
+        CycleEnd::Unavailable
+    );
+    assert_eq!(unverified.sends.load(Ordering::SeqCst), 0, "nothing sent");
+    assert!(unverified.requests.lock().unwrap().is_empty());
+    assert_eq!(
+        compactions.load(Ordering::SeqCst),
+        0,
+        "no compaction attempted"
+    );
+    let after = f
+        .tasks
+        .work("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    assert_eq!(after.total_steps, before.total_steps, "no step recorded");
+    assert_eq!(after.total_compactions, before.total_compactions);
     let next = Script::new(vec![Turn::Text("Continued without it.")]);
     assert_eq!(
         h.work(f, &next, hang)
@@ -2814,4 +3055,286 @@ async fn scope_negative_knowledge(
     );
     finish(f, &case, &attempt, Observation::Completed).await;
     knowledge.forget("work-scope-forget", &template).await;
+}
+
+/// An open targeting question naming this Task is an unresolved decision in
+/// the owned tier of its next turn; nothing it asks is applied.
+async fn open_question_decision(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
+    let (case, basis, attempt) = consumed(f, "work-open-question").await;
+    let Direction::Asked(question) = f
+        .tasks
+        .direct(
+            "actor-a",
+            &selected("a"),
+            "work-open-question-direct",
+            "Which Task should check the sample?",
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("several open Tasks must ask")
+    };
+    assert!(
+        question
+            .candidates
+            .iter()
+            .any(|c| c.task_id == case.receipt.task_id)
+    );
+    let script = Script::new(vec![Turn::Text("Noted the open question.")]);
+    assert_eq!(
+        h.work(f, &script, hang)
+            .run(&basis, &ModelCancellation::new())
+            .await,
+        CycleEnd::Waiting
+    );
+    let request = script.requests.lock().unwrap()[0].clone();
+    let decisions = message(&request, "unresolved-decisions").expect("tier 2 decisions");
+    assert!(
+        decisions.text.contains(&format!(
+            "Open targeting question {} may route pending direction to this Task; nothing it asks has been applied.",
+            question.id
+        )),
+        "{}",
+        decisions.text
+    );
+    assert!(!disclosed(&request, "Which Task should check the sample?"));
+    // Answer it so later turns of other Tasks are unaffected.
+    f.tasks
+        .answer(
+            "actor-a",
+            &selected("a"),
+            &question.id,
+            std::slice::from_ref(&case.receipt.task_id),
+        )
+        .await
+        .unwrap();
+    finish(f, &case, &attempt, Observation::Completed).await;
+}
+
+/// A knowledge record that does not fit the budget is left out whole: it is
+/// not sent, the omission is counted and the stored turn records it.
+async fn knowledge_budget_drop(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>, session: &str) {
+    let (calibrate, calibrate_basis, calibrate_attempt) =
+        consumed(f, "work-knowledge-budget-calibrate").await;
+    let knowledge = Knowledge {
+        repo: KnowledgeRepository::new(f.pool.clone()).with_session_hash(session.into()),
+        task: calibrate.receipt.task_id.clone(),
+    };
+    knowledge.clear("work-kb-clear").await;
+    let script = Script::new(vec![Turn::Text("Calibrated.")]);
+    assert_eq!(
+        h.work(f, &script, hang)
+            .run(&calibrate_basis, &ModelCancellation::new())
+            .await,
+        CycleEnd::Waiting
+    );
+    let fixed = stored_turns(
+        &f.tasks
+            .work("actor-a", &selected("a"), &calibrate.receipt.task_id)
+            .await
+            .unwrap(),
+    )[0]
+    .estimated_input_tokens
+    .unwrap();
+    finish(f, &calibrate, &calibrate_attempt, Observation::Completed).await;
+
+    let (case, basis, attempt) = consumed(f, "work-knowledge-budget").await;
+    let knowledge = Knowledge {
+        repo: KnowledgeRepository::new(f.pool.clone()).with_session_hash(session.into()),
+        task: case.receipt.task_id.clone(),
+    };
+    let small = knowledge
+        .assert("work-kb-small", "Synthetic fact KN-SMALL-2203")
+        .await;
+    let large_text = format!("Synthetic fact KN-LARGE-2203 {}", "x".repeat(12_000));
+    let large = knowledge.assert("work-kb-large", &large_text).await;
+    let script = Script::new(vec![Turn::Text("Used what fit.")]);
+    assert_eq!(
+        h.budgeted(f, &script, hang, fixed + 800)
+            .run(&basis, &ModelCancellation::new())
+            .await,
+        CycleEnd::Waiting
+    );
+    let request = script.requests.lock().unwrap()[0].clone();
+    assert!(
+        disclosed(&request, "KN-SMALL-2203"),
+        "the record that fits is sent"
+    );
+    assert!(
+        !disclosed(&request, "KN-LARGE-2203"),
+        "the record that does not fit is not sent"
+    );
+    let verified: Vec<&str> = request
+        .context
+        .verification
+        .items
+        .iter()
+        .map(|v| v.id.as_str())
+        .collect();
+    assert!(verified.contains(&small.id.as_str()));
+    assert!(!verified.contains(&large.id.as_str()));
+    let omissions = message(&request, "omissions").expect("omission summary");
+    assert!(
+        omissions.text.contains("knowledge_budget: 1"),
+        "{}",
+        omissions.text
+    );
+    assert!(
+        omissions
+            .text
+            .contains("not evidence that material is absent")
+    );
+    let work = f
+        .tasks
+        .work("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    assert_eq!(stored_turns(&work)[0].knowledge_omitted, 1);
+    finish(f, &case, &attempt, Observation::Completed).await;
+    knowledge.clear("work-kb-done").await;
+}
+
+/// The disclosure gate verifies the origin of every earlier answer a request
+/// carries: it must be this Task's own answered invocation, carried with its
+/// exact labelled text, and its sources must still be current.
+async fn answer_dependencies(
+    f: &Fixture,
+    h: &Harness,
+    hang: &Arc<AtomicBool>,
+    admin: &mut PgConnection,
+    session: &str,
+) {
+    let (case, basis, attempt) = consumed(f, "work-answer-dependency").await;
+    let knowledge = Knowledge {
+        repo: KnowledgeRepository::new(f.pool.clone()).with_session_hash(session.into()),
+        task: case.receipt.task_id.clone(),
+    };
+    knowledge.clear("work-answer-clear").await;
+    let record = knowledge
+        .assert("work-answer-assert", "Synthetic fact KN-ANSWER-2203")
+        .await;
+    let first = Script::new(vec![Turn::Text("Answered using KN-ANSWER-2203.")]);
+    assert_eq!(
+        h.work(f, &first, hang)
+            .run(&basis, &ModelCancellation::new())
+            .await,
+        CycleEnd::Waiting
+    );
+    finish(f, &case, &attempt, Observation::Completed).await;
+    let (resumed, resumed_attempt) = guided(
+        f,
+        &case,
+        &basis,
+        "work-answer-guide",
+        "Continue with the earlier answer",
+    )
+    .await;
+    let next = Script::new(vec![Turn::Text("Continued.")]);
+    assert_eq!(
+        h.work(f, &next, hang)
+            .run(&resumed, &ModelCancellation::new())
+            .await,
+        CycleEnd::Waiting
+    );
+    let carried = next.requests.lock().unwrap()[0].clone();
+    let entry = carried
+        .context
+        .entries
+        .iter()
+        .find(|e| e.depends_on.is_some())
+        .expect("the earlier answer is carried with its dependency")
+        .clone();
+    let source = entry.source_id.clone();
+    async fn invocations(admin: &mut PgConnection, task: &str) -> i64 {
+        sqlx::query_scalar("SELECT count(*) FROM public.model_invocations WHERE task_id=$1")
+            .bind(task)
+            .fetch_one(&mut *admin)
+            .await
+            .unwrap()
+    }
+    let probe = |key: &str, change: &dyn Fn(&mut ModelRequest)| {
+        let mut request = carried.clone();
+        request.key = key.into();
+        change(&mut request);
+        bind_disclosure(&mut request).unwrap();
+        request
+    };
+    let with_dependency = |origin: String| {
+        let source = source.clone();
+        move |request: &mut ModelRequest| {
+            for entry in &mut request.context.entries {
+                if entry.source_id == source {
+                    entry.depends_on = Some(origin.clone());
+                }
+            }
+        }
+    };
+    let prepare = |request: ModelRequest| async move {
+        h.repo.prepare("actor-a", &selected("a"), &request).await
+    };
+    // (d) The carried text differs from the origin's exact labelled answer.
+    let edited = probe("work-answer-probe-edited", &|request| {
+        for item in request
+            .messages
+            .iter_mut()
+            .chain(request.history.iter_mut().filter_map(|item| match item {
+                HistoryItem::Message(m) => Some(m),
+                HistoryItem::ToolExchange(_) => None,
+            }))
+        {
+            if item.source_id.as_deref() == Some(source.as_str()) {
+                item.text = item
+                    .text
+                    .replace("Answered using", "Answered and approved using");
+            }
+        }
+    });
+    let before = invocations(admin, &case.receipt.task_id).await;
+    assert!(matches!(prepare(edited).await, Err(ModelError::Conflict)));
+    // (b) The origin is another Task's invocation.
+    let foreign: String = sqlx::query_scalar(
+        "SELECT id FROM public.model_invocations WHERE task_id<>$1 AND actor_id='actor-a' ORDER BY id LIMIT 1",
+    )
+    .bind(&case.receipt.task_id)
+    .fetch_one(&mut *admin)
+    .await
+    .unwrap();
+    let other = probe("work-answer-probe-other", &with_dependency(foreign));
+    assert!(matches!(prepare(other).await, Err(ModelError::Denied)));
+    assert_eq!(
+        invocations(admin, &case.receipt.task_id).await,
+        before,
+        "nothing was prepared"
+    );
+    // (c) The origin never answered: a prepared request without an outcome.
+    let unsent = probe("work-answer-unsent", &|_| {});
+    let Ok(PreparedInvocation::Dispatch(permit)) = prepare(unsent).await else {
+        panic!("a fresh exact request is prepared");
+    };
+    let before = invocations(admin, &case.receipt.task_id).await;
+    let unanswered = probe(
+        "work-answer-probe-unanswered",
+        &with_dependency(permit.invocation_id.clone()),
+    );
+    assert!(matches!(
+        prepare(unanswered).await,
+        Err(ModelError::Conflict)
+    ));
+    assert_eq!(invocations(admin, &case.receipt.task_id).await, before);
+    // (a) The origin's source was withdrawn: the earlier answer cannot be
+    // disclosed again, although the platform's own next turn proceeds
+    // (stale_after_withdrawal).
+    knowledge.forget("work-answer-forget", &record).await;
+    let withdrawn = probe("work-answer-probe-withdrawn", &|_| {});
+    let refused = prepare(withdrawn).await;
+    assert!(
+        matches!(
+            refused,
+            Err(ModelError::Conflict | ModelError::Denied | ModelError::Fenced)
+        ),
+        "{:?}",
+        refused.as_ref().err()
+    );
+    assert_eq!(invocations(admin, &case.receipt.task_id).await, before);
+    finish(f, &case, &resumed_attempt, Observation::Completed).await;
 }
