@@ -1,0 +1,88 @@
+{
+  "invocation": "repair-browser-full-3",
+  "reviewer": "implementation lead; independently also root",
+  "inspection": "Viewed the three actual images. Synthetic fixture content only; no credentials or sign-in page visible.",
+  "artifacts": [
+    {
+      "path": "repair-browser-full-3-results/knowledge-verified-acquisi-b130a-ith-exact-source-navigation/knowledge-narrow-source-inspection.png",
+      "bytes": 61568,
+      "sha256": "1c737464086c555c76f6c259ee99f82aef806cbb16c74b6c87144d58d25b3bdc",
+      "observation": "At 390px, exact registered source text and digest fit the Task reading area. Engagement navigation, Pause/Stop and the work-product shelf remain visible; labels wrap within the viewport.",
+      "publication_review": "Root visually inspected the actual image. Synthetic fixture content; no credential or sign-in data visible."
+    },
+    {
+      "path": "repair-browser-full-3-results/knowledge-real-distinct-Ex-42463-o-consumes-old-observations/knowledge-learned-preference.png",
+      "bytes": 93274,
+      "sha256": "05da0457776a83e0b09945e54f67203e8be4940d61b9615a2045c92aeb8feffa",
+      "observation": "Expanded Task inspection shows a learned private layout, its owner, exact record/revision, learning rule and distinct choice-event basis. Further inspection fields continue below the viewport in the scrollable area.",
+      "publication_review": "Root visually inspected the actual image. Synthetic fixture content; no credential or sign-in data visible."
+    },
+    {
+      "path": "repair-browser-full-3-results/methodology-custody-unsent-4f227-ount-recovery-never-submits/methodology-recovered-unsent-edit.png",
+      "bytes": 74954,
+      "sha256": "2139db4bebd1559416576175f6a1f2aa0522f883fff2445d397e71bd985e1d7c",
+      "observation": "Admin-only methodology settings show the exact recovered unsent editor. The configuration/audit-authority distinction and neutral-starter explanation remain visible.",
+      "publication_review": "Root visually inspected the actual image. Synthetic fixture content; no credential or sign-in data visible."
+    }
+  ],
+  "geometry": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "documentWidth": 390,
+    "readingArea": {
+      "x": 13,
+      "y": 349.1875,
+      "width": 364,
+      "height": 283.640625
+    },
+    "sourcePreview": {
+      "x": 63,
+      "y": 459.40625,
+      "width": 286,
+      "height": 63.59375
+    },
+    "sourceText": "\ufeff  Source says \ud83d\ude00\r\nExact second line.\r\n",
+    "engagementHeading": {
+      "x": 12,
+      "y": 119.59375,
+      "width": 366,
+      "height": 25
+    },
+    "backNavigation": {
+      "x": 12,
+      "y": 56,
+      "width": 105.140625,
+      "height": 44
+    },
+    "pause": {
+      "x": 25,
+      "y": 667.015625,
+      "width": 94.625,
+      "height": 44
+    },
+    "stop": {
+      "x": 127.625,
+      "y": 667.015625,
+      "width": 86.703125,
+      "height": 44
+    },
+    "assertionsPassed": [
+      "exact registered source text",
+      "source preview fully in viewport",
+      "reading area at least 240px",
+      "Pause and Stop in viewport",
+      "engagement navigation in viewport",
+      "no horizontal overflow"
+    ]
+  },
+  "observations": [
+    "390\u00d7844 narrow capture shows the exact source preview within a 364\u00d7283.640625 reading area, with engagement navigation and Pause/Stop visible and no horizontal overflow.",
+    "Desktop preference capture shows private learned expanded layout, owner, exact record/revision, learning rule and two distinct choice IDs; further basis fields continue below the scrollable viewport.",
+    "Methodology capture shows the recovered unsent saved-methodology editor and its exact package-name value under Admin-only settings."
+  ],
+  "scope": "Actual screenshot inspection and emitted geometry; pictured case results are distinct from the complete gate receipt. No native operating-system or other-browser qualification.",
+  "complete_gate_receipt": "repair-browser-full-3-receipt.json",
+  "independent_review": "root-final-visual-review.json"
+}

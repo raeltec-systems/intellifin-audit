@@ -1,0 +1,25 @@
+{
+  "gate": "python-guards-accepted",
+  "command": [
+    "python3",
+    "-B",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "scripts",
+    "-p",
+    "test_*.py"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T05:36:12.809292+00:00",
+  "ended_at": "2026-10-03T05:36:13.914363+00:00",
+  "duration_seconds": 1.105,
+  "exit": 0,
+  "source_before": "python-guards-accepted-source-before.json",
+  "source_after": "python-guards-accepted-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "python-guards-accepted.log",
+  "log_sha256": "412177f934750c29e8dac6135d0b617ea98bd72bc26252adb8bc2b4cdad49984"
+}

@@ -1,0 +1,96 @@
+{
+  "baseline": "d38e1daed736415ef13e7606345dac71bd1d9f01",
+  "published_migrations_and_catalogues_1_through_9_unchanged": true,
+  "files": [
+    {
+      "path": "zobba/migrations/0001_bootstrap.sql",
+      "bytes": 423,
+      "sha256": "71b93f78c9a1e955c065ef33ece4f88a1e1d600940f554af3cfd80eae4115a02"
+    },
+    {
+      "path": "zobba/migrations/0002_identity_scope.sql",
+      "bytes": 7566,
+      "sha256": "5705f9272b239da2139b72c62ac3d2876e31a949ed6c5ebff9250d0a73361881"
+    },
+    {
+      "path": "zobba/migrations/0003_tasks.sql",
+      "bytes": 18568,
+      "sha256": "210e6634d586b16b9e67b0a7b8393d3bef8499979810cec3aded272b213cb8e4"
+    },
+    {
+      "path": "zobba/migrations/0004_permissions_operations.sql",
+      "bytes": 25515,
+      "sha256": "f420bbbb4f211d3554fd8a1599ec310cb27cc174e11d2508da6b9212c0515731"
+    },
+    {
+      "path": "zobba/migrations/0005_membership_administration.sql",
+      "bytes": 37196,
+      "sha256": "72c4f45e71c99609550b838cb714979623827d7daf86d528789137cbf2dd9dde"
+    },
+    {
+      "path": "zobba/migrations/0006_evidence.sql",
+      "bytes": 6912,
+      "sha256": "a55288f59fa4a89935c3cfb5ab9032b7f3ae4cf91de100964c9fc6fb93d6a86d"
+    },
+    {
+      "path": "zobba/migrations/0007_admin_continuity.sql",
+      "bytes": 7279,
+      "sha256": "626ced0ff54fc43860babddc730bc75ef7e52fbe452529fe82ae02677cb79f2d"
+    },
+    {
+      "path": "zobba/migrations/0008_methodology.sql",
+      "bytes": 39524,
+      "sha256": "8b589278bd54d21c841defa2c8acc0819011cb97c941851c66007624ffddb3f1"
+    },
+    {
+      "path": "zobba/migrations/0009_skills.sql",
+      "bytes": 28062,
+      "sha256": "0729dc983091c43354fc5aea38a4c9c740ed6b50b091099119687a062ecf416a"
+    },
+    {
+      "path": "zobba/crates/infrastructure/src/schema-v1.catalog",
+      "bytes": 2044,
+      "sha256": "335d96414f519b262a984a85d2c993295a0d57d1263b8c5e827b0262ae6e64c9"
+    },
+    {
+      "path": "zobba/crates/infrastructure/src/schema-v2.catalog",
+      "bytes": 17174,
+      "sha256": "7d980560b6964ce22ca8f288ae964e3363dd3cd1aa84c14b917b8142f1e57de8"
+    },
+    {
+      "path": "zobba/crates/infrastructure/src/schema-v3.catalog",
+      "bytes": 56988,
+      "sha256": "c021d6c2de75d220a44b987437f459f683855da7ae50201851c5450d2b83ff49"
+    },
+    {
+      "path": "zobba/crates/infrastructure/src/schema-v4.catalog",
+      "bytes": 109729,
+      "sha256": "2fe738a7acd4f7abc2caafbdbc2b2dc6e43435e7b4b960dfc41f0298ce6038bb"
+    },
+    {
+      "path": "zobba/crates/infrastructure/src/schema-v5.catalog",
+      "bytes": 132422,
+      "sha256": "b23577d5beda191b0d2cae44dd742d9655ed75d732218f1d4ccdaf3cd0c48fc8"
+    },
+    {
+      "path": "zobba/crates/infrastructure/src/schema-v6.catalog",
+      "bytes": 146071,
+      "sha256": "caeb0540199e401f1ee4c111472d3c13a95fc13b648f14474ffed4f4e32dcb0a"
+    },
+    {
+      "path": "zobba/crates/infrastructure/src/schema-v7.catalog",
+      "bytes": 148011,
+      "sha256": "a7ab606747ab5b31f5d66319895b5df2835e863f9d2d2ef5800770ba18722878"
+    },
+    {
+      "path": "zobba/crates/infrastructure/src/schema-v8.catalog",
+      "bytes": 174938,
+      "sha256": "cc04764ecbaa941be118f10ac63d6205a4b99d92c73fced4eb1cc55afac8a973"
+    },
+    {
+      "path": "zobba/crates/infrastructure/src/schema-v9.catalog",
+      "bytes": 195343,
+      "sha256": "6285a6d96fa4633be14d8b24a7c41a5358d745adc0ba4ce9be3e95b30bac733c"
+    }
+  ]
+}

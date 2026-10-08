@@ -1,0 +1,41 @@
+{
+  "source_manifest": "../zobba-foundation-batch/SOURCE-MANIFEST-21.1.json",
+  "source": "Passing actual Chromium scenarios against local synthetic OIDC/API/PostgreSQL/S3 fixtures",
+  "captures": [
+    {
+      "file": "evidence-overview-desktop.png",
+      "width": 1280,
+      "height": 800,
+      "sha256": "688435eb3997c2023203e28a32c46f039a74a05c530d5cf8301133f25183181a",
+      "captured_at_utc": "2026-10-01T15:40:57.748023+00:00"
+    },
+    {
+      "file": "evidence-desktop.png",
+      "width": 1280,
+      "height": 800,
+      "sha256": "54bb8fddf037788868d777c71fcd59d4a84253bc62ec662d097b64e3b81267d2",
+      "captured_at_utc": "2026-10-01T15:40:58.136006+00:00"
+    },
+    {
+      "file": "evidence-top-desktop.png",
+      "width": 1280,
+      "height": 800,
+      "sha256": "b5f3b44c39d1e15dbb2184a270314723b698750d40084cfa25abe773e48da8e2",
+      "captured_at_utc": "2026-10-01T15:41:27.746691+00:00"
+    },
+    {
+      "file": "evidence-top-narrow.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "c6d0e767107648630286d5224605f0d7be831379f24520303e75e9bd7c201d4a",
+      "captured_at_utc": "2026-10-01T15:41:27.854686+00:00"
+    },
+    {
+      "file": "evidence-narrow.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "60abea9c3e2df2b20f1e9120ebcd1a69c7df3388d815f264b1fbf3e9c5073233",
+      "captured_at_utc": "2026-10-01T15:41:21.150984+00:00"
+    }
+  ]
+}

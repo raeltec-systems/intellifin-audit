@@ -40,3 +40,13 @@ playwright/.auth/
 # synthetic Run; CI uploads it as an artifact. A local dry-run leaves it in the
 # tree, where a `git add -A` would sweep it in.
 deployed-loancore-evidence/
+
+# Independent Rust foundation and local development state
+/zobba/target/
+/zobba/target-*/
+/zobba/.cargo-cache/
+/zobba/.pnpm-store/
+/zobba/.local/
+/zobba/.data/
+/zobba/.credentials/
+__pycache__/

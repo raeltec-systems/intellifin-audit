@@ -1,0 +1,17 @@
+[
+  {
+    "document": "repair/handoff.md",
+    "label": "service-state.json",
+    "source_basename": "service-state.json"
+  },
+  {
+    "document": "repair/closure-matrix.md",
+    "label": "service observation",
+    "source_basename": "service-state.json"
+  },
+  {
+    "document": "repair/verification.md",
+    "label": "service-state.json",
+    "source_basename": "service-state.json"
+  }
+]

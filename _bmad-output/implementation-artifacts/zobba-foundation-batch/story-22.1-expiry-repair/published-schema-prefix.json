@@ -1,0 +1,28 @@
+{
+  "baseline_commit": "6aaca7aab3463fb00e4f411e9b488eef5b2fa290",
+  "files": {
+    "zobba/crates/infrastructure/src/schema-v1.catalog": "335d96414f519b262a984a85d2c993295a0d57d1263b8c5e827b0262ae6e64c9",
+    "zobba/crates/infrastructure/src/schema-v10.catalog": "9ee195604f4e31403c6fc64a1f2d2506fc930f2c07d4dcd2474948c237dc3ab7",
+    "zobba/crates/infrastructure/src/schema-v11.catalog": "79ee45fc663dfd097338ab8d55cf94712c1668022aff8146f51ce472e64df559",
+    "zobba/crates/infrastructure/src/schema-v2.catalog": "7d980560b6964ce22ca8f288ae964e3363dd3cd1aa84c14b917b8142f1e57de8",
+    "zobba/crates/infrastructure/src/schema-v3.catalog": "c021d6c2de75d220a44b987437f459f683855da7ae50201851c5450d2b83ff49",
+    "zobba/crates/infrastructure/src/schema-v4.catalog": "2fe738a7acd4f7abc2caafbdbc2b2dc6e43435e7b4b960dfc41f0298ce6038bb",
+    "zobba/crates/infrastructure/src/schema-v5.catalog": "b23577d5beda191b0d2cae44dd742d9655ed75d732218f1d4ccdaf3cd0c48fc8",
+    "zobba/crates/infrastructure/src/schema-v6.catalog": "caeb0540199e401f1ee4c111472d3c13a95fc13b648f14474ffed4f4e32dcb0a",
+    "zobba/crates/infrastructure/src/schema-v7.catalog": "a7ab606747ab5b31f5d66319895b5df2835e863f9d2d2ef5800770ba18722878",
+    "zobba/crates/infrastructure/src/schema-v8.catalog": "cc04764ecbaa941be118f10ac63d6205a4b99d92c73fced4eb1cc55afac8a973",
+    "zobba/crates/infrastructure/src/schema-v9.catalog": "6285a6d96fa4633be14d8b24a7c41a5358d745adc0ba4ce9be3e95b30bac733c",
+    "zobba/migrations/0001_bootstrap.sql": "71b93f78c9a1e955c065ef33ece4f88a1e1d600940f554af3cfd80eae4115a02",
+    "zobba/migrations/0002_identity_scope.sql": "5705f9272b239da2139b72c62ac3d2876e31a949ed6c5ebff9250d0a73361881",
+    "zobba/migrations/0003_tasks.sql": "210e6634d586b16b9e67b0a7b8393d3bef8499979810cec3aded272b213cb8e4",
+    "zobba/migrations/0004_permissions_operations.sql": "f420bbbb4f211d3554fd8a1599ec310cb27cc174e11d2508da6b9212c0515731",
+    "zobba/migrations/0005_membership_administration.sql": "72c4f45e71c99609550b838cb714979623827d7daf86d528789137cbf2dd9dde",
+    "zobba/migrations/0006_evidence.sql": "a55288f59fa4a89935c3cfb5ab9032b7f3ae4cf91de100964c9fc6fb93d6a86d",
+    "zobba/migrations/0007_admin_continuity.sql": "626ced0ff54fc43860babddc730bc75ef7e52fbe452529fe82ae02677cb79f2d",
+    "zobba/migrations/0008_methodology.sql": "8b589278bd54d21c841defa2c8acc0819011cb97c941851c66007624ffddb3f1",
+    "zobba/migrations/0009_skills.sql": "0729dc983091c43354fc5aea38a4c9c740ed6b50b091099119687a062ecf416a",
+    "zobba/migrations/0010_knowledge.sql": "243ba8519afadf46867aab40e98b8e7fa8cc3b66da25d2508f3fae400a8f3707",
+    "zobba/migrations/0011_model.sql": "d4ea0f44afbb4a34d97728e25500233099368e56560b4a90e156b77be4edf150"
+  },
+  "all_unchanged": true
+}

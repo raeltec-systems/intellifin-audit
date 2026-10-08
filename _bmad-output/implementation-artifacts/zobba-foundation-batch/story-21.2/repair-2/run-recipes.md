@@ -1,0 +1,12 @@
+# Final verification recipes and retained execution
+
+Activate `/workspace/zobba-build-tools/activate-tests.sh`; commands run in `/workspace/intellifin-audit/zobba`. Browser plugin not available; use the existing repository Playwright workflow with installed Chromium. Private synthetic fixture configuration remains outside the checkout at `/tmp/zobba-story-21-2/browser-fixture` and `/tmp/zobba-story-21-2/rust-fixture/env.sh`; source those paths when required, never publish their contents or credential values.
+
+- `run-browser-negative.sh` exercised the new inner-node regression while the owner had temporarily installed `TaskMethodology.before-p16.tsx`, then restored the repaired component before the passing checks. The runner itself does not swap source. Expected exit 1 is diagnostic evidence, not the final gate; reproduction requires that explicit reversible old-source substitution with no competing work.
+- `run-browser-focused.sh` reset only the guarded disposable `zobba_story_20_test` and ran all 4 conversation-review cases serially without retries.
+- `run-browser-harness-focused.sh` ran seven cases covering confirmed conversation fault delivery and all six metadata/download account-replacement variants after the two diagnosed harness repairs.
+- `run-web-checks.sh` ran TypeScript/generated-contract/131 unit checks and the production build.
+- `run-browser-full.sh` verifies exact disposable URLs before resetting only `zobba_story_20_test`, then runs `pnpm test:browser --workers=1 --retries=0` with installed Chromium and the bounded credential-free cursor reporter. Browser IdP 9444 and this DB have one owner; development DB and pre-existing IdPs 9443/9445 remain untouched.
+- `source-manifest.py` hashes all 201 reviewable implementation files; the start/end equality and explicit component/browser-test before/after delta retain applicability of the earlier backend/static evidence.
+
+The complete Rust 225/fixture 56/Python 47 and other unchanged backend gates were executed in repair-1, not rerun for P16. Their exact commands are in `../repair-1/run-recipes.md` and runner scripts: full locked/offline workspace tests with RUST_TEST_THREADS=1, strict all-target Clippy/build, format/boundaries, synthetic fixture tests and guarded process smoke. Rust uses only `zobba_patch20_3_test` and private IdP 9446. Retained receipts include source provenance in `final-gates.json`. Preserve all service ownership guards and private environment paths; never use a development URL for fixture reset.

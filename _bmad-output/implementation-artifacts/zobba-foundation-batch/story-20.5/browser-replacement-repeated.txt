@@ -1,0 +1,14 @@
+
+Running 3 tests using 1 worker
+
+(node:322923) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/conversation-races.spec.ts:90:1 › real replacement OIDC actor and scope cannot reveal or replay the previous recovery outbox (4.6s)
+(node:323193) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  2 tests/browser/conversation-races.spec.ts:90:1 › real replacement OIDC actor and scope cannot reveal or replay the previous recovery outbox (5.0s)
+(node:323471) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  3 tests/browser/conversation-races.spec.ts:90:1 › real replacement OIDC actor and scope cannot reveal or replay the previous recovery outbox (4.8s)
+
+  3 passed (26.6s)

@@ -1,0 +1,85 @@
+# Executed gate history
+
+Earlier failures and superseded sources are retained; use the checkpoint index for accepted gates.
+
+| Gate | Result | Source stable during invocation | Receipt |
+| --- | --- | --- | --- |
+| api-final-prewarm | passed | True | [record](api-final-prewarm-receipt.json) |
+| api-generate-final | passed | False | [record](api-generate-final-receipt.json) |
+| bootstrap-initial | passed | False | [record](bootstrap-initial-receipt.json) |
+| boundaries-accepted | passed | True | [record](boundaries-accepted-receipt.json) |
+| boundaries-final | passed | True | [record](boundaries-final-receipt.json) |
+| boundaries-initial | failed | True | [record](boundaries-initial-receipt.json) |
+| boundaries-repair-1 | passed | True | [record](boundaries-repair-1-receipt.json) |
+| browser-api-prewarm | passed | True | [record](browser-api-prewarm-receipt.json) |
+| browser-full-clean | passed | True | [record](browser-full-clean-receipt.json) |
+| browser-full-final | failed | True | [record](browser-full-final-receipt.json) |
+| browser-preconditions-clean | passed | True | [record](browser-preconditions-clean-receipt.json) |
+| browser-preconditions-focused | failed | True | [record](browser-preconditions-focused-receipt.json) |
+| browser-prewarm | passed | True | [record](browser-prewarm-receipt.json) |
+| browser-search-clean-2 | passed | True | [record](browser-search-clean-2-receipt.json) |
+| browser-search-clean | failed | True | [record](browser-search-clean-receipt.json) |
+| browser-search-review | failed | True | [record](browser-search-review-receipt.json) |
+| browser-upgrade-review | passed | True | [record](browser-upgrade-review-receipt.json) |
+| clippy-final-clean | passed | True | [record](clippy-final-clean-receipt.json) |
+| clippy-final-frozen | passed | True | [record](clippy-final-frozen-receipt.json) |
+| combined-check-repair-1 | passed | False | [record](combined-check-repair-1-receipt.json) |
+| evidence-review-repair | passed | True | [record](evidence-review-repair-receipt.json) |
+| fixture-final | passed | True | [record](fixture-final-receipt.json) |
+| fmt-accepted | passed | True | [record](fmt-accepted-receipt.json) |
+| fmt-final-clean | passed | True | [record](fmt-final-clean-receipt.json) |
+| fmt-final-frozen | passed | True | [record](fmt-final-frozen-receipt.json) |
+| fmt-final | passed | True | [record](fmt-final-receipt.json) |
+| fmt-tier-final | passed | True | [record](fmt-tier-final-receipt.json) |
+| full-rust-1 | failed | True | [record](full-rust-1-receipt.json) |
+| full-rust-2 | failed | True | [record](full-rust-2-receipt.json) |
+| full-rust-3 | passed, superseded by final cancellation source | False | [record](full-rust-3-receipt.json) |
+| full-rust-4 | failed | True | [record](full-rust-4-receipt.json) |
+| full-rust-5 | passed | True | [record](full-rust-5-receipt.json) |
+| full-rust-final-prewarm | passed | True | [record](full-rust-final-prewarm-receipt.json) |
+| gateway-clean-1 | passed | True | [record](gateway-clean-1-receipt.json) |
+| gateway-size-after | passed | True | [record](gateway-size-after-receipt.json) |
+| gateway-size-before | passed | True | [record](gateway-size-before-receipt.json) |
+| lib-repair-1 | passed | True | [record](lib-repair-1-receipt.json) |
+| library-review-repair | passed | True | [record](library-review-repair-receipt.json) |
+| membership-failure-diagnosis | passed | True | [record](membership-failure-diagnosis-receipt.json) |
+| native-cancellation-clean | passed | True | [record](native-cancellation-clean-receipt.json) |
+| native-cancellation-repair | failed | True | [record](native-cancellation-repair-receipt.json) |
+| operations-clean-1 | passed | True | [record](operations-clean-1-receipt.json) |
+| operations-diagnostic-1 | failed | True | [record](operations-diagnostic-1-receipt.json) |
+| operations-diagnostic-2 | failed | True | [record](operations-diagnostic-2-receipt.json) |
+| operations-diagnostic-3 | failed | True | [record](operations-diagnostic-3-receipt.json) |
+| operations-lease-repair | passed | True | [record](operations-lease-repair-receipt.json) |
+| operations-repair-1 | failed | True | [record](operations-repair-1-receipt.json) |
+| operations-repair-2 | failed | True | [record](operations-repair-2-receipt.json) |
+| operations-repair-3 | failed | True | [record](operations-repair-3-receipt.json) |
+| operations-repair-4 | failed | True | [record](operations-repair-4-receipt.json) |
+| operations-repair-5 | failed | True | [record](operations-repair-5-receipt.json) |
+| operations-repair-6 | failed | True | [record](operations-repair-6-receipt.json) |
+| operations-repair-7 | failed | True | [record](operations-repair-7-receipt.json) |
+| operations-review-repair | failed | True | [record](operations-review-repair-receipt.json) |
+| process-final-prewarm | passed | True | [record](process-final-prewarm-receipt.json) |
+| process-smoke-final | passed | True | [record](process-smoke-final-receipt.json) |
+| python-guards-accepted | passed | True | [record](python-guards-accepted-receipt.json) |
+| python-guards-initial | passed | True | [record](python-guards-initial-receipt.json) |
+| qualification-dry-run-review | passed | True | [record](qualification-dry-run-review-receipt.json) |
+| qualification-final-clean | passed | True | [record](qualification-final-clean-receipt.json) |
+| qualification-final-frozen | passed | True | [record](qualification-final-frozen-receipt.json) |
+| qualification-guards-final | passed | True | [record](qualification-guards-final-receipt.json) |
+| qualification-refusal-expected | expected refusal (exit1) | True | [record](qualification-refusal-expected-receipt.json) |
+| qualification-review-repair | passed | True | [record](qualification-review-repair-receipt.json) |
+| strict-clippy-accepted | passed | True | [record](strict-clippy-accepted-receipt.json) |
+| strict-clippy-initial | failed | True | [record](strict-clippy-initial-receipt.json) |
+| strict-clippy-repair-1 | failed | False | [record](strict-clippy-repair-1-receipt.json) |
+| strict-clippy-repair-2 | passed | True | [record](strict-clippy-repair-2-receipt.json) |
+| strict-clippy-review-repair | passed | True | [record](strict-clippy-review-repair-receipt.json) |
+| web-build-final-clean | passed | True | [record](web-build-final-clean-receipt.json) |
+| web-build-final-frozen | passed | True | [record](web-build-final-frozen-receipt.json) |
+| web-build-repair-1 | passed | True | [record](web-build-repair-1-receipt.json) |
+| web-build-review-repair | passed | True | [record](web-build-review-repair-receipt.json) |
+| web-check-accepted | passed | True | [record](web-check-accepted-receipt.json) |
+| web-check-final-clean | passed | True | [record](web-check-final-clean-receipt.json) |
+| web-check-final-frozen | passed | True | [record](web-check-final-frozen-receipt.json) |
+| web-check-repair-1 | passed | True | [record](web-check-repair-1-receipt.json) |
+| web-check-review-repair | passed | True | [record](web-check-review-repair-receipt.json) |
+| web-units-final | passed | True | [record](web-units-final-receipt.json) |

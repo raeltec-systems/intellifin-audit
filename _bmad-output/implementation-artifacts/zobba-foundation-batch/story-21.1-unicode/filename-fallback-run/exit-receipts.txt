@@ -1,0 +1,7 @@
+fmt exit=0
+evidence-contract exit=0
+domain exit=0
+clippy exit=0
+frontend-check exit=0
+frontend-build exit=0
+browser exit=1

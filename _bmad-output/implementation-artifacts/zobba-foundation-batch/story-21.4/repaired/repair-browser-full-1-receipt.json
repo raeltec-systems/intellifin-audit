@@ -1,0 +1,31 @@
+{
+  "exit": 1,
+  "passed": 142,
+  "failed": 3,
+  "selected": 145,
+  "workers": 1,
+  "retries": 0,
+  "elapsed_minutes": 17.5,
+  "source_paths": 245,
+  "source_unchanged": true,
+  "failures": [
+    {
+      "case": 82,
+      "file": "evidence.spec.ts:389",
+      "observed": "Nonzero guarded asynchronous psql close with generic message; phase/SQLSTATE unavailable; test6.0s",
+      "cause": "undetermined"
+    },
+    {
+      "case": 94,
+      "file": "knowledge.spec.ts:314",
+      "observed": "First manager-a signIn at324 failed before Task/create/reuse; auth_error signed-out page; expected heading12s timeout",
+      "cause": "callback collapsed error; exact branch undetermined"
+    },
+    {
+      "case": 137,
+      "file": "skills.spec.ts:601",
+      "observed": "Held /api/auth/session handler route.fulfill alreadyhandled at616; later cleanup pageclosed at645",
+      "cause": "handler lifecycle ordering undetermined; cleanuperrornotprimary"
+    }
+  ]
+}

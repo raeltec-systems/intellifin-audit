@@ -1,0 +1,14 @@
+{
+  "baseline_commit": "6aaca7aab3463fb00e4f411e9b488eef5b2fa290",
+  "diff_sha256": "ca90c082170e193c709be1bfe23fb63a8d21f51b047c24da86d509917e6ca8ec",
+  "diff_bytes": 55320,
+  "files": [
+    "CLAUDE.md",
+    "_bmad-output/implementation-artifacts/spec-22-1-final-dispatch-expiry-repair.md",
+    "_bmad-output/implementation-artifacts/spec-22-1-route-native-models-through-a-current-tool-catalog.md",
+    "zobba/crates/infrastructure/src/operation.rs",
+    "zobba/crates/worker/tests/gateway_process.rs",
+    "zobba/crates/worker/tests/support/fault_endpoint.rs",
+    "zobba/crates/worker/tests/support/final_validation_expiry.rs"
+  ]
+}

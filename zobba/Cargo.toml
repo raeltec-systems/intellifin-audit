@@ -1,0 +1,35 @@
+[workspace]
+members = ["crates/domain", "crates/application", "crates/infrastructure", "crates/api", "crates/worker", "crates/cli"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98.1"
+publish = false
+
+[workspace.dependencies]
+zobba-domain = { path = "crates/domain" }
+zobba-application = { path = "crates/application" }
+zobba-infrastructure = { path = "crates/infrastructure" }
+axum = "=0.8.9"
+tokio = { version = "=1.53.1", features = ["macros", "rt-multi-thread", "signal", "net", "time", "io-util", "sync", "process"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+sqlx = { version = "=0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls-ring-native-roots", "postgres", "migrate", "macros"] }
+utoipa = "=5.4.0"
+url = "=2.5.8"
+openidconnect = { version = "=4.0.1", default-features = false }
+reqwest = { version = "=0.12.28", default-features = false, features = ["rustls-tls-native-roots", "stream"] }
+base64 = "=0.22.1"
+sha2 = "=0.10.9"
+rand = "=0.8.8"
+object_store = { version = "=0.14.2", default-features = false, features = ["aws"] }
+futures-util = "=0.3.34"
+bytes = "=1.12.1"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[profile.dev]
+debug = 1

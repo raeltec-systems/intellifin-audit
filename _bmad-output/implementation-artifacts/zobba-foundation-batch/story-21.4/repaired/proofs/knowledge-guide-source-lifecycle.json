@@ -1,0 +1,20 @@
+{
+  "source_kind": "guide",
+  "held_status": 200,
+  "source_status": 403,
+  "held_failure": "net::ERR_ABORTED",
+  "held_fulfilled": true,
+  "protected_withdrawn": true,
+  "exact_recovery_completed": true,
+  "events": [
+    "exact-response-held",
+    "actual-source-refusal",
+    "exact-held-request-failed",
+    "enclosing-fragment-withdrawn",
+    "held-gate-released",
+    "held-fulfill-completed",
+    "exact-recovery-completed",
+    "cleanup-wait-started",
+    "cleanup-wait-completed"
+  ]
+}

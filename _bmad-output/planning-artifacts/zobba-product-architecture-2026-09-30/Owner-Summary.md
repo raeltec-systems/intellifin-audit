@@ -1,0 +1,29 @@
+# Zobba: consolidated direction
+
+**Product and architecture design · 30 September 2026 · Revision 3**
+
+Zobba is a continuing working relationship with each **Task inside an Engagement**. The auditor sets objectives and coordinates several Tasks in the same engagement conversation; each Task retains its inspectable history, scope and accountability. Zobba applies the firm's method, gathers evidence, uses real applications and analytical programs, investigates and produces supported work. The person can watch, guide, privately sign in, take over, correct and review. Closing a tab does not end the task.
+
+The lead architecture stays: **one Rust backend and agent engine, a fresh PostgreSQL schema, a real managed computer, isolated analysis and standing Permissions**. Keep the Pair identity, useful React components and the strongest evidence/review/recovery behaviours. Retire compiler-1, the procedure-first Builder and Node domain orchestration. The alternate agent's document supplied completeness detail, not a replacement architecture or build plan.
+
+**Dots is the primary interaction reference.** Revision 3 incorporates the four supplied screenshots and current public documentation: conversation stays available while work runs; the actual computer opens beside it; access and criterion questions arrive when needed; outputs have a stable shelf; returning users see what changed. Sign-in distinguishes submitted details from verified access. Task Stop includes delegated execution and names any schedule left enabled. Ongoing Tasks, scheduled/event work and optional read-only discovery remain distinct. The [research memo](references/dots/Dots-UX-Lessons-for-Zobba.md) separates observed screens, documented behavior and our recommendations; it supplies no claim about OpenAI's internals, performance or costs.
+
+**A responsive computer with explicit costs.** Use EC2 Linux and the actual Guacamole desktop, with human and agent input fenced by the local computer adapter. Prepare early, keep ten minutes of ready grace and maintain small clean spare capacity. Target a current frame within two seconds for a ready computer and ordinary input response within 200 ms under the stated network conditions; stopped/cold computers have explicit restore targets and honest states. These are acceptance targets, not measured performance promises.
+
+At checked us-east-1 list rates, the reference 12-user Linux workload costs **$431.55/month** for the specified computer, storage, network/display and analysis resources, versus **$1,169.47 always on**. It includes 60 useful hours/user, preparation/grace and a staffed spare. Direct Linux profile/use cost is **$12.49/user-month plus shared capacity**; this is neither the sale price nor full service cost. The separate $300 application/data allowance is unpriced, and models, support and other stated costs are additional. Windows has named-user subscriptions and a **$116.80 organisation directory/endpoint floor**; its apps, authentication and unattended rights must be qualified. The editable worksheet makes these assumptions inspectable.
+
+**A concrete audit result and repeatable method.** Bind criteria, period, sources, population/sample and analytical method. Record typed facts and immutable evaluations, keeping applicability, execution, verdict, coverage and human disposition separate. Missing evidence cannot become a pass or a fabricated failure. The worked example shows 27 criterion failures affecting 20 distinct payments, alongside 20 unassessed payments: supported exceptions and an inconclusive wider assessment can coexist.
+
+A recurring Check freezes that assurance meaning, not browser clicks. It binds new period sources, uses current Permissions and a revocable service delegation, deduplicates by logical period and carries continuing issues forward. Routine token refresh, layout adaptation and semantically harmless maintenance continue; a material method change follows the Check's review rule. Late evidence creates a traceable revision, and uncertain external effects remain subject to reconciliation.
+
+**Methodology, skills and knowledge belong in the first complete task.** Admin imports or edits methodology and uses ordinary **Save** to create a scoped immutable version. There is no default second approver. Tasks use applicable requirements, selected installed skills and authorised source-backed working knowledge from the beginning; context, corrections and unresolved decisions survive compaction and recovery. Configuration changes affect active work visibly without rewriting history.
+
+**Teams and solo practitioners are both supported.** Teams default to a different eligible manager reviewing the preparer's work. Solo practitioners use **Self-review and approve**, with exports explicitly saying that no independent review occurred. Admin configuration alone never confers audit sign-off. Issuance remains a separate authorised action.
+
+Three business commitments remain:
+
+1. **Launch support:** name the applications/account types, authentication, service hours and concurrency being promised. Recommend Linux/browser standard with a qualified paid Windows profile in the same product.
+2. **Data contract:** choose launch region, allowed model/connector destinations and retention/legal-hold terms. Recommend one primary region per organisation; the US East worksheet is a reference, not a residency decision.
+3. **Commercial offer:** set seat price, included usage, overage ceiling and margin. Recommend bounded included usage, transparent firm budgets and separate Windows entitlement; allocate real shared capacity once, not once per solo customer.
+
+Read the [complete consolidated design](Zobba-Product-and-Architecture-Design.md), [formatted edition](Zobba-Design.html), or [cost workbook](costs/README.md). The dependency map defines the complete product experience. Epics and the build plan should be derived from this design afterward.

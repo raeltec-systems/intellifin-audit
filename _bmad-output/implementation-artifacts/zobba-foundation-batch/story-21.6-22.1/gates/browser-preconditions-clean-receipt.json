@@ -1,0 +1,29 @@
+{
+  "gate": "browser-preconditions-clean",
+  "command": [
+    "pnpm",
+    "--filter",
+    "@zobba/web",
+    "exec",
+    "playwright",
+    "test",
+    "tests/browser/auth.spec.ts",
+    "tests/browser/conversation-review.spec.ts",
+    "tests/browser/evidence-unicode.spec.ts",
+    "--grep",
+    "more than 100 assignments|inner methodology disclosure|mixed API-created normal",
+    "--workers=1",
+    "--retries=0"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T06:19:28.703580+00:00",
+  "ended_at": "2026-10-03T06:20:01.595054+00:00",
+  "duration_seconds": 32.892,
+  "exit": 0,
+  "source_before": "browser-preconditions-clean-source-before.json",
+  "source_after": "browser-preconditions-clean-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "browser-preconditions-clean.log",
+  "log_sha256": "119bc291655623d01e9f912c7093cf1ae335f8a05bb53f600760db4aa640be61"
+}

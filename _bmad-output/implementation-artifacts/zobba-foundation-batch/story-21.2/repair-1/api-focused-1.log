@@ -1,0 +1,43 @@
+   Compiling zobba-application v0.1.0 (/workspace/intellifin-audit/zobba/crates/application)
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+   Compiling zobba-api v0.1.0 (/workspace/intellifin-audit/zobba/crates/api)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 30.43s
+     Running tests/methodology_contract.rs (target/debug/deps/methodology_contract-195ec626e3cb96b3)
+
+running 11 tests
+test composed_diff_and_guide_reason_preserve_valid_text_without_truncation ... ok
+test create_and_guide_context_is_optional_exact_and_refused_for_controls ... ok
+test generated_contract_exposes_methodology_routes_owned_enums_and_context ... ok
+test methodology_rejects_unknown_fields_and_non_owned_vocabulary_at_every_depth ... ok
+test methodology_revisions_are_canonical_lossless_decimal_strings ... ok
+test recall_retains_the_exact_reason_and_refuses_revision_coercion ... ok
+test resolution_neutral_source_bound_includes_the_builtin_fallback ... ok
+test resolution_preserves_neutral_contributors_and_exact_field_and_template_sources ... ok
+test save_preserves_template_contents_and_json_escaping_within_the_request_envelope ... ok
+test task_basis_conversion_preserves_more_than_two_hundred_bindings_and_notices ... ok
+test template_prose_preserves_layout_and_feff_with_distinct_text_bounds ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/methodology_http.rs (target/debug/deps/methodology_http-271d468f995154ed)
+
+running 3 tests
+test methodology_http_save_replay_scope_context_and_session_fences ... FAILED
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+failures:
+
+---- methodology_http_save_replay_scope_context_and_session_fences stdout ----
+
+thread 'methodology_http_save_replay_scope_context_and_session_fences' (766783) panicked at crates/api/tests/methodology_http.rs:574:44:
+load the local fixture OIDC configuration: NotPresent
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    methodology_http_save_replay_scope_context_and_session_fences
+
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p zobba-api --test methodology_http`

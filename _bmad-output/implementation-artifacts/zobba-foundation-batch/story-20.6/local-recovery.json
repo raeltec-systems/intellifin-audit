@@ -1,0 +1,31 @@
+{
+  "recorded_at_utc": "2026-10-01T13:39:28.755227+00:00",
+  "scope": "Explicit local repair of one known unpublished migration5 draft; no general application checksum repair path",
+  "database": "zobba_story_20",
+  "endpoint": "127.0.0.1:55434",
+  "original_migration5_sha384": "0006d307a6fb84b7a30f916fceca29ff4266dbf1c24d4ac9827bf358ee850743b0c554584c83f125a377018755216c84",
+  "final_migration5_sha384": "f37f620b90745b6e2e86f886df697ffe1be074a70372a77194109a12713a9f341cfd2ab1abcadd71ed271e221bee3ba3",
+  "final_catalogue_sha256": "b23577d5beda191b0d2cae44dd742d9655ed75d732218f1d4ccdaf3cd0c48fc8",
+  "fresh_private_backup_sha256": "412e73df87d585b0bfafedfd70c34e22732ca5c64d3a9f38d9302594371dc591",
+  "executed_script_sha256": "3d0e2a8cd7bb206c4df31a394bfd8d1bccba38e9f810cea7c6cc97fee509c894",
+  "result": "committed; strict schema readiness passed",
+  "preservation": {
+    "application_tables_unchanged": 32,
+    "published_ledger_versions_unchanged": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "existing_function_ownership_acl_attributes_unchanged": true,
+    "new_function_exact_runtime_execute_only": true
+  },
+  "rehearsal": "separate owned exact-schema restored copy; preservation and strict readiness passed",
+  "refusal_probes": [
+    "Unix socket",
+    "wrong database",
+    "repeated execution",
+    "missing bootstrap marker"
+  ],
+  "private_data": "Backups, row contents, session material and row fingerprints remain outside Git."
+}

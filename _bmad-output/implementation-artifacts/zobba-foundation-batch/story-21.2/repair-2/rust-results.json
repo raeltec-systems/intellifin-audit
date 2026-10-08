@@ -1,0 +1,199 @@
+{
+  "execution": "retained unchanged backend run",
+  "log": "../repair-1/rust-tests.txt",
+  "log_sha256": "dfe78234fe4b5438f78fd4cf32f29f5f11366a8f641ff53b1c9c2e6dd1265071",
+  "passed": 225,
+  "sections": 38,
+  "results": [
+    {
+      "section": "Running unittests src/lib.rs (target/debug/deps/zobba_api-aa83e70e5aefe8dd)",
+      "line": 26,
+      "result": "test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+    },
+    {
+      "section": "Running unittests src/main.rs (target/debug/deps/zobba_api-3dff437d49934503)",
+      "line": 32,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "section": "Running tests/evidence_contract.rs (target/debug/deps/evidence_contract-2f2c4d1d0ebaf912)",
+      "line": 41,
+      "result": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s"
+    },
+    {
+      "section": "Running tests/evidence_http.rs (target/debug/deps/evidence_http-6dcce35e241bcef1)",
+      "line": 52,
+      "result": "test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 9.84s"
+    },
+    {
+      "section": "Running tests/membership_contract.rs (target/debug/deps/membership_contract-205f01a5ba5d6b2f)",
+      "line": 64,
+      "result": "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s"
+    },
+    {
+      "section": "Running tests/membership_http.rs (target/debug/deps/membership_http-9bf2310c04080123)",
+      "line": 73,
+      "result": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.22s"
+    },
+    {
+      "section": "Running tests/methodology_contract.rs (target/debug/deps/methodology_contract-195ec626e3cb96b3)",
+      "line": 90,
+      "result": "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s"
+    },
+    {
+      "section": "Running tests/methodology_http.rs (target/debug/deps/methodology_http-271d468f995154ed)",
+      "line": 99,
+      "result": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.08s"
+    },
+    {
+      "section": "Running tests/operations_http.rs (target/debug/deps/operations_http-93c1f0e552e4ac83)",
+      "line": 108,
+      "result": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.94s"
+    },
+    {
+      "section": "Running tests/tasks_http.rs (target/debug/deps/tasks_http-8be75bbbc14e6972)",
+      "line": 117,
+      "result": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.78s"
+    },
+    {
+      "section": "Running unittests src/lib.rs (target/debug/deps/zobba_application-0ef0c30cf1eb2dc7)",
+      "line": 132,
+      "result": "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "section": "Running unittests src/main.rs (target/debug/deps/zobba_cli-bb50dd0fcb211625)",
+      "line": 138,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "section": "Running unittests src/lib.rs (target/debug/deps/zobba_domain-e3cd4001b4dd28f1)",
+      "line": 189,
+      "result": "test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s"
+    },
+    {
+      "section": "Running unittests src/lib.rs (target/debug/deps/zobba_infrastructure-4bc84a058a5e8bcc)",
+      "line": 213,
+      "result": "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.25s"
+    },
+    {
+      "section": "Running tests/admin_continuity.rs (target/debug/deps/admin_continuity-e04a7bbc44ee63ef)",
+      "line": 222,
+      "result": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.04s"
+    },
+    {
+      "section": "Running tests/bootstrap.rs (target/debug/deps/bootstrap-a737a4b6c06c9479)",
+      "line": 231,
+      "result": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 268.97s"
+    },
+    {
+      "section": "Running tests/conversation.rs (target/debug/deps/conversation-8e5bc408997b3cf1)",
+      "line": 240,
+      "result": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 48.90s"
+    },
+    {
+      "section": "Running tests/evidence.rs (target/debug/deps/evidence-486938067ae5dc7e)",
+      "line": 249,
+      "result": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.20s"
+    },
+    {
+      "section": "Running tests/evidence_s3.rs (target/debug/deps/evidence_s3-98959cbab7ced61c)",
+      "line": 278,
+      "result": "test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.29s"
+    },
+    {
+      "section": "Running tests/fixture.rs (target/debug/deps/fixture-7a77a737a8ba2018)",
+      "line": 288,
+      "result": "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.72s"
+    },
+    {
+      "section": "Running tests/identity.rs (target/debug/deps/identity-155b4fded0d6fac9)",
+      "line": 297,
+      "result": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.72s"
+    },
+    {
+      "section": "Running tests/membership.rs (target/debug/deps/membership-fe9fa49acf6f4d98)",
+      "line": 306,
+      "result": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 34.01s"
+    },
+    {
+      "section": "Running tests/methodology.rs (target/debug/deps/methodology-af87dd7cfa906421)",
+      "line": 315,
+      "result": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.69s"
+    },
+    {
+      "section": "Running tests/oidc_protocol.rs (target/debug/deps/oidc_protocol-6c2bc2585a148928)",
+      "line": 335,
+      "result": "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 32.92s"
+    },
+    {
+      "section": "Running tests/operations.rs (target/debug/deps/operations-68c6066810a36cbb)",
+      "line": 346,
+      "result": "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 48.35s"
+    },
+    {
+      "section": "Running tests/scope.rs (target/debug/deps/scope-ba6112f8c1cc3c44)",
+      "line": 355,
+      "result": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.43s"
+    },
+    {
+      "section": "Running tests/task.rs (target/debug/deps/task-2d9032f895f6303b)",
+      "line": 364,
+      "result": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.37s"
+    },
+    {
+      "section": "Running unittests src/lib.rs (target/debug/deps/zobba_worker-e54df7e0e97ee733)",
+      "line": 377,
+      "result": "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.22s"
+    },
+    {
+      "section": "Running unittests src/main.rs (target/debug/deps/zobba_worker-570974ecfa7dc189)",
+      "line": 383,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "section": "Running tests/durable_process.rs (target/debug/deps/durable_process-0fdc4c21b60598ae)",
+      "line": 392,
+      "result": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 22.35s"
+    },
+    {
+      "section": "Running tests/gateway_process.rs (target/debug/deps/gateway_process-a72cd708b30020d9)",
+      "line": 402,
+      "result": "test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 14.86s"
+    },
+    {
+      "section": "Running tests/inert_process.rs (target/debug/deps/inert_process-18d35e050ef3a937)",
+      "line": 420,
+      "result": "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.71s"
+    },
+    {
+      "section": "Running tests/reliability_process.rs (target/debug/deps/reliability_process-d3de0de5ba08258b)",
+      "line": 446,
+      "result": "test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 56.52s"
+    },
+    {
+      "section": "Doc-tests zobba_api",
+      "line": 452,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "section": "Doc-tests zobba_application",
+      "line": 458,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "section": "Doc-tests zobba_domain",
+      "line": 466,
+      "result": "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s"
+    },
+    {
+      "section": "Doc-tests zobba_infrastructure",
+      "line": 472,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    },
+    {
+      "section": "Doc-tests zobba_worker",
+      "line": 478,
+      "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    }
+  ]
+}

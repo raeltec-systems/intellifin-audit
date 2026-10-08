@@ -1,0 +1,23 @@
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.12s
+     Running tests/membership.rs (target/debug/deps/membership-1a98411ea7abcea1)
+
+running 3 tests
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test postgres_membership_contract ... FAILED
+
+failures:
+
+---- postgres_membership_contract stdout ----
+
+thread 'postgres_membership_contract' (408122) panicked at crates/infrastructure/tests/membership/renewal_and_remove.rs:230:5:
+assertion failed: tasks.current(&preserved_basis).await.unwrap()
+
+
+failures:
+    postgres_membership_contract
+
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.83s
+
+error: test failed, to rerun pass `-p zobba-infrastructure --test membership`

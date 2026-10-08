@@ -1,0 +1,54 @@
+{
+  "source_gate": "gateway-review-final",
+  "gateway_timeout_ms": 2000,
+  "cases": [
+    {
+      "expiry": "Lease",
+      "refusal": "Fenced",
+      "dispatch_elapsed_ms": 967.21327,
+      "delay_phase": "final_model_validation",
+      "controlled_delay_ms": 854.374756,
+      "staged_flushes": 1,
+      "accepted_connections": 0,
+      "gateway_sends": 0,
+      "dispatch_rows": 0,
+      "historical_facts_unchanged": true
+    },
+    {
+      "expiry": "Approval",
+      "refusal": "NeedsDecision",
+      "dispatch_elapsed_ms": 982.682524,
+      "delay_phase": "final_model_validation",
+      "controlled_delay_ms": 857.377133,
+      "staged_flushes": 1,
+      "accepted_connections": 0,
+      "gateway_sends": 0,
+      "dispatch_rows": 0,
+      "historical_facts_unchanged": true
+    },
+    {
+      "expiry": "Request",
+      "refusal": "Denied",
+      "dispatch_elapsed_ms": 989.735534,
+      "delay_phase": "final_model_validation",
+      "controlled_delay_ms": 852.321926,
+      "staged_flushes": 1,
+      "accepted_connections": 0,
+      "gateway_sends": 0,
+      "dispatch_rows": 0,
+      "historical_facts_unchanged": true
+    },
+    {
+      "expiry": "SourceAssignment",
+      "refusal": "Denied",
+      "dispatch_elapsed_ms": 1004.097437,
+      "delay_phase": "final_policy_reads",
+      "controlled_delay_ms": 468.977189,
+      "staged_flushes": 1,
+      "accepted_connections": 0,
+      "gateway_sends": 0,
+      "dispatch_rows": 0,
+      "historical_facts_unchanged": true
+    }
+  ]
+}

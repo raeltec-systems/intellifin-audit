@@ -1,0 +1,2 @@
+# Verification receipts preserve exact executed bytes and their recorded hashes.
+*.log -text -whitespace

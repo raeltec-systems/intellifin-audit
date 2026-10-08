@@ -1,0 +1,170 @@
+column|_sqlx_migrations|1|version|bigint|true|||
+column|_sqlx_migrations|2|description|text|true|||
+column|_sqlx_migrations|3|installed_on|timestamp with time zone|true|now()||
+column|_sqlx_migrations|4|success|boolean|true|||
+column|_sqlx_migrations|5|checksum|bytea|true|||
+column|_sqlx_migrations|6|execution_time|bigint|true|||
+column|clients|1|organisation_id|text|true|||
+column|clients|2|id|text|true|||
+column|clients|3|name|text|true|||
+column|engagement_assignments|1|organisation_id|text|true|||
+column|engagement_assignments|2|client_id|text|true|||
+column|engagement_assignments|3|engagement_id|text|true|||
+column|engagement_assignments|4|actor_id|text|true|||
+column|engagement_assignments|5|active|boolean|true|true||
+column|engagement_assignments|6|expires_at|bigint|false|||
+column|engagements|1|organisation_id|text|true|||
+column|engagements|2|client_id|text|true|||
+column|engagements|3|id|text|true|||
+column|engagements|4|name|text|true|||
+column|identities|1|id|text|true|||
+column|identities|2|issuer|text|true|||
+column|identities|3|subject|text|true|||
+column|identities|4|display_name|text|true|||
+column|identities|5|active|boolean|true|true||
+column|login_attempts|1|state_hash|text|true|||
+column|login_attempts|2|browser_hash|text|true|||
+column|login_attempts|3|nonce|text|true|||
+column|login_attempts|4|pkce_verifier|text|true|||
+column|login_attempts|5|expires_at|bigint|true|||
+column|organisation_memberships|1|organisation_id|text|true|||
+column|organisation_memberships|2|actor_id|text|true|||
+column|organisation_memberships|3|roles|text[]|true|||
+column|organisation_memberships|4|active|boolean|true|true||
+column|organisation_memberships|5|expires_at|bigint|false|||
+column|organisations|1|id|text|true|||
+column|organisations|2|name|text|true|||
+column|sessions|1|token_hash|text|true|||
+column|sessions|2|actor_id|text|true|||
+column|sessions|3|csrf_token|text|true|||
+column|sessions|4|expires_at|bigint|true|||
+column|zobba_bootstrap|1|singleton|boolean|true|true||
+column|zobba_bootstrap|2|product|text|true|||
+column|zobba_bootstrap|3|schema_version|bigint|true|||
+column|zobba_bootstrap|4|local_fixture_issuer|text|false|||
+constraint|_sqlx_migrations|_sqlx_migrations_checksum_not_null|true|NOT NULL checksum
+constraint|_sqlx_migrations|_sqlx_migrations_description_not_null|true|NOT NULL description
+constraint|_sqlx_migrations|_sqlx_migrations_execution_time_not_null|true|NOT NULL execution_time
+constraint|_sqlx_migrations|_sqlx_migrations_installed_on_not_null|true|NOT NULL installed_on
+constraint|_sqlx_migrations|_sqlx_migrations_pkey|true|PRIMARY KEY (version)
+constraint|_sqlx_migrations|_sqlx_migrations_success_not_null|true|NOT NULL success
+constraint|_sqlx_migrations|_sqlx_migrations_version_not_null|true|NOT NULL version
+constraint|clients|clients_id_check|true|CHECK ((id ~ '^[A-Za-z0-9_-]{1,128}$'::text))
+constraint|clients|clients_id_not_null|true|NOT NULL id
+constraint|clients|clients_name_check|true|CHECK ((((char_length(name) >= 1) AND (char_length(name) <= 200)) AND (name = btrim(name, '	                   　'::text)) AND (name !~ '[--]'::text)))
+constraint|clients|clients_name_not_null|true|NOT NULL name
+constraint|clients|clients_organisation_id_fkey|true|FOREIGN KEY (organisation_id) REFERENCES organisations(id)
+constraint|clients|clients_organisation_id_not_null|true|NOT NULL organisation_id
+constraint|clients|clients_pkey|true|PRIMARY KEY (organisation_id, id)
+constraint|engagement_assignments|engagement_assignments_active_not_null|true|NOT NULL active
+constraint|engagement_assignments|engagement_assignments_actor_id_not_null|true|NOT NULL actor_id
+constraint|engagement_assignments|engagement_assignments_client_id_not_null|true|NOT NULL client_id
+constraint|engagement_assignments|engagement_assignments_engagement_id_not_null|true|NOT NULL engagement_id
+constraint|engagement_assignments|engagement_assignments_organisation_id_actor_id_fkey|true|FOREIGN KEY (organisation_id, actor_id) REFERENCES organisation_memberships(organisation_id, actor_id)
+constraint|engagement_assignments|engagement_assignments_organisation_id_client_id_engagemen_fkey|true|FOREIGN KEY (organisation_id, client_id, engagement_id) REFERENCES engagements(organisation_id, client_id, id)
+constraint|engagement_assignments|engagement_assignments_organisation_id_not_null|true|NOT NULL organisation_id
+constraint|engagement_assignments|engagement_assignments_pkey|true|PRIMARY KEY (organisation_id, client_id, engagement_id, actor_id)
+constraint|engagements|engagements_client_id_not_null|true|NOT NULL client_id
+constraint|engagements|engagements_id_check|true|CHECK ((id ~ '^[A-Za-z0-9_-]{1,128}$'::text))
+constraint|engagements|engagements_id_not_null|true|NOT NULL id
+constraint|engagements|engagements_name_check|true|CHECK ((((char_length(name) >= 1) AND (char_length(name) <= 200)) AND (name = btrim(name, '	                   　'::text)) AND (name !~ '[--]'::text)))
+constraint|engagements|engagements_name_not_null|true|NOT NULL name
+constraint|engagements|engagements_organisation_id_client_id_fkey|true|FOREIGN KEY (organisation_id, client_id) REFERENCES clients(organisation_id, id)
+constraint|engagements|engagements_organisation_id_not_null|true|NOT NULL organisation_id
+constraint|engagements|engagements_pkey|true|PRIMARY KEY (organisation_id, client_id, id)
+constraint|identities|identities_active_not_null|true|NOT NULL active
+constraint|identities|identities_display_name_not_null|true|NOT NULL display_name
+constraint|identities|identities_id_not_null|true|NOT NULL id
+constraint|identities|identities_issuer_not_null|true|NOT NULL issuer
+constraint|identities|identities_issuer_subject_key|true|UNIQUE (issuer, subject)
+constraint|identities|identities_pkey|true|PRIMARY KEY (id)
+constraint|identities|identities_subject_not_null|true|NOT NULL subject
+constraint|login_attempts|login_attempts_browser_hash_not_null|true|NOT NULL browser_hash
+constraint|login_attempts|login_attempts_expires_at_not_null|true|NOT NULL expires_at
+constraint|login_attempts|login_attempts_nonce_not_null|true|NOT NULL nonce
+constraint|login_attempts|login_attempts_pkce_verifier_not_null|true|NOT NULL pkce_verifier
+constraint|login_attempts|login_attempts_pkey|true|PRIMARY KEY (state_hash)
+constraint|login_attempts|login_attempts_state_hash_not_null|true|NOT NULL state_hash
+constraint|organisation_memberships|organisation_memberships_active_not_null|true|NOT NULL active
+constraint|organisation_memberships|organisation_memberships_actor_id_fkey|true|FOREIGN KEY (actor_id) REFERENCES identities(id)
+constraint|organisation_memberships|organisation_memberships_actor_id_not_null|true|NOT NULL actor_id
+constraint|organisation_memberships|organisation_memberships_organisation_id_fkey|true|FOREIGN KEY (organisation_id) REFERENCES organisations(id)
+constraint|organisation_memberships|organisation_memberships_organisation_id_not_null|true|NOT NULL organisation_id
+constraint|organisation_memberships|organisation_memberships_pkey|true|PRIMARY KEY (organisation_id, actor_id)
+constraint|organisation_memberships|organisation_memberships_roles_check|true|CHECK ((roles <@ ARRAY['auditor'::text, 'audit_manager'::text, 'admin'::text]))
+constraint|organisation_memberships|organisation_memberships_roles_not_null|true|NOT NULL roles
+constraint|organisations|organisations_id_check|true|CHECK ((id ~ '^[A-Za-z0-9_-]{1,128}$'::text))
+constraint|organisations|organisations_id_not_null|true|NOT NULL id
+constraint|organisations|organisations_name_check|true|CHECK ((((char_length(name) >= 1) AND (char_length(name) <= 200)) AND (name = btrim(name, '	                   　'::text)) AND (name !~ '[--]'::text)))
+constraint|organisations|organisations_name_not_null|true|NOT NULL name
+constraint|organisations|organisations_pkey|true|PRIMARY KEY (id)
+constraint|sessions|sessions_actor_id_fkey|true|FOREIGN KEY (actor_id) REFERENCES identities(id)
+constraint|sessions|sessions_actor_id_not_null|true|NOT NULL actor_id
+constraint|sessions|sessions_csrf_token_not_null|true|NOT NULL csrf_token
+constraint|sessions|sessions_expires_at_not_null|true|NOT NULL expires_at
+constraint|sessions|sessions_pkey|true|PRIMARY KEY (token_hash)
+constraint|sessions|sessions_token_hash_not_null|true|NOT NULL token_hash
+constraint|zobba_bootstrap|zobba_bootstrap_pkey|true|PRIMARY KEY (singleton)
+constraint|zobba_bootstrap|zobba_bootstrap_product_check|true|CHECK ((product = 'zobba'::text))
+constraint|zobba_bootstrap|zobba_bootstrap_product_not_null|true|NOT NULL product
+constraint|zobba_bootstrap|zobba_bootstrap_schema_version_check|true|CHECK ((schema_version = 2))
+constraint|zobba_bootstrap|zobba_bootstrap_schema_version_not_null|true|NOT NULL schema_version
+constraint|zobba_bootstrap|zobba_bootstrap_singleton_check|true|CHECK (singleton)
+constraint|zobba_bootstrap|zobba_bootstrap_singleton_not_null|true|NOT NULL singleton
+index|_sqlx_migrations|true|true|CREATE UNIQUE INDEX _sqlx_migrations_pkey ON public._sqlx_migrations USING btree (version)
+index|clients|true|true|CREATE UNIQUE INDEX clients_pkey ON public.clients USING btree (organisation_id, id)
+index|engagement_assignments|true|true|CREATE UNIQUE INDEX engagement_assignments_pkey ON public.engagement_assignments USING btree (organisation_id, client_id, engagement_id, actor_id)
+index|engagements|true|true|CREATE UNIQUE INDEX engagements_pkey ON public.engagements USING btree (organisation_id, client_id, id)
+index|identities|true|true|CREATE UNIQUE INDEX identities_issuer_subject_key ON public.identities USING btree (issuer, subject)
+index|identities|true|true|CREATE UNIQUE INDEX identities_pkey ON public.identities USING btree (id)
+index|login_attempts|true|true|CREATE INDEX login_attempts_expiry ON public.login_attempts USING btree (expires_at, state_hash)
+index|login_attempts|true|true|CREATE UNIQUE INDEX login_attempts_pkey ON public.login_attempts USING btree (state_hash)
+index|organisation_memberships|true|true|CREATE UNIQUE INDEX organisation_memberships_pkey ON public.organisation_memberships USING btree (organisation_id, actor_id)
+index|organisations|true|true|CREATE UNIQUE INDEX organisations_pkey ON public.organisations USING btree (id)
+index|sessions|true|true|CREATE INDEX sessions_expiry ON public.sessions USING btree (expires_at, token_hash)
+index|sessions|true|true|CREATE UNIQUE INDEX sessions_pkey ON public.sessions USING btree (token_hash)
+index|zobba_bootstrap|true|true|CREATE UNIQUE INDEX zobba_bootstrap_pkey ON public.zobba_bootstrap USING btree (singleton)
+policy|clients|assigned_client|r|true|{0}|(EXISTS ( SELECT 1    FROM engagement_assignments a   WHERE ((a.organisation_id = clients.organisation_id) AND (a.client_id = clients.id))))|
+policy|engagement_assignments|current_assignment|r|true|{0}|((actor_id = current_setting('zobba.actor_id'::text, true)) AND active AND ((expires_at IS NULL) OR (expires_at > (EXTRACT(epoch FROM statement_timestamp()))::bigint)) AND (EXISTS ( SELECT 1    FROM organisation_memberships m   WHERE ((m.organisation_id = engagement_assignments.organisation_id) AND (m.actor_id = engagement_assignments.actor_id)))) AND ((COALESCE(current_setting('zobba.client_id'::text, true), ''::text) = ''::text) OR (client_id = current_setting('zobba.client_id'::text, true))) AND ((COALESCE(current_setting('zobba.engagement_id'::text, true), ''::text) = ''::text) OR (engagement_id = current_setting('zobba.engagement_id'::text, true))))|
+policy|engagements|assigned_engagement|r|true|{0}|(EXISTS ( SELECT 1    FROM engagement_assignments a   WHERE ((a.organisation_id = engagements.organisation_id) AND (a.client_id = engagements.client_id) AND (a.engagement_id = engagements.id))))|
+policy|engagements|scoped_engagement_update|w|true|{0}|((organisation_id = current_setting('zobba.organisation_id'::text, true)) AND (client_id = current_setting('zobba.client_id'::text, true)) AND (id = current_setting('zobba.engagement_id'::text, true)) AND (EXISTS ( SELECT 1    FROM engagement_assignments a   WHERE ((a.organisation_id = engagements.organisation_id) AND (a.client_id = engagements.client_id) AND (a.engagement_id = engagements.id)))))|((organisation_id = current_setting('zobba.organisation_id'::text, true)) AND (client_id = current_setting('zobba.client_id'::text, true)) AND (id = current_setting('zobba.engagement_id'::text, true)) AND (EXISTS ( SELECT 1    FROM engagement_assignments a   WHERE ((a.organisation_id = engagements.organisation_id) AND (a.client_id = engagements.client_id) AND (a.engagement_id = engagements.id)))))
+policy|organisation_memberships|current_membership|r|true|{0}|((actor_id = current_setting('zobba.actor_id'::text, true)) AND active AND ((expires_at IS NULL) OR (expires_at > (EXTRACT(epoch FROM statement_timestamp()))::bigint)) AND (roles && ARRAY['auditor'::text, 'audit_manager'::text]) AND (EXISTS ( SELECT 1    FROM identities i   WHERE ((i.id = organisation_memberships.actor_id) AND i.active))) AND ((COALESCE(current_setting('zobba.organisation_id'::text, true), ''::text) = ''::text) OR (organisation_id = current_setting('zobba.organisation_id'::text, true))))|
+policy|organisations|assigned_organisation|r|true|{0}|(EXISTS ( SELECT 1    FROM engagement_assignments a   WHERE (a.organisation_id = organisations.id)))|
+table|_sqlx_migrations|r|p|false|false
+table|clients|r|p|true|true
+table|engagement_assignments|r|p|true|true
+table|engagements|r|p|true|true
+table|identities|r|p|false|false
+table|login_attempts|r|p|false|false
+table|organisation_memberships|r|p|true|true
+table|organisations|r|p|true|true
+table|sessions|r|p|false|false
+table|zobba_bootstrap|r|p|false|false
+trigger|clients|clients_organisation_id_fkey|O|17|false|false|"RI_FKey_check_upd"|organisations||
+trigger|clients|clients_organisation_id_fkey|O|5|false|false|"RI_FKey_check_ins"|organisations||
+trigger|clients|engagements_organisation_id_client_id_fkey|O|17|false|false|"RI_FKey_noaction_upd"|engagements||
+trigger|clients|engagements_organisation_id_client_id_fkey|O|9|false|false|"RI_FKey_noaction_del"|engagements||
+trigger|engagement_assignments|engagement_assignments_organisation_id_actor_id_fkey|O|17|false|false|"RI_FKey_check_upd"|organisation_memberships||
+trigger|engagement_assignments|engagement_assignments_organisation_id_actor_id_fkey|O|5|false|false|"RI_FKey_check_ins"|organisation_memberships||
+trigger|engagement_assignments|engagement_assignments_organisation_id_client_id_engagemen_fkey|O|17|false|false|"RI_FKey_check_upd"|engagements||
+trigger|engagement_assignments|engagement_assignments_organisation_id_client_id_engagemen_fkey|O|5|false|false|"RI_FKey_check_ins"|engagements||
+trigger|engagements|engagement_assignments_organisation_id_client_id_engagemen_fkey|O|17|false|false|"RI_FKey_noaction_upd"|engagement_assignments||
+trigger|engagements|engagement_assignments_organisation_id_client_id_engagemen_fkey|O|9|false|false|"RI_FKey_noaction_del"|engagement_assignments||
+trigger|engagements|engagements_organisation_id_client_id_fkey|O|17|false|false|"RI_FKey_check_upd"|clients||
+trigger|engagements|engagements_organisation_id_client_id_fkey|O|5|false|false|"RI_FKey_check_ins"|clients||
+trigger|identities|organisation_memberships_actor_id_fkey|O|17|false|false|"RI_FKey_noaction_upd"|organisation_memberships||
+trigger|identities|organisation_memberships_actor_id_fkey|O|9|false|false|"RI_FKey_noaction_del"|organisation_memberships||
+trigger|identities|sessions_actor_id_fkey|O|17|false|false|"RI_FKey_noaction_upd"|sessions||
+trigger|identities|sessions_actor_id_fkey|O|9|false|false|"RI_FKey_noaction_del"|sessions||
+trigger|organisation_memberships|engagement_assignments_organisation_id_actor_id_fkey|O|17|false|false|"RI_FKey_noaction_upd"|engagement_assignments||
+trigger|organisation_memberships|engagement_assignments_organisation_id_actor_id_fkey|O|9|false|false|"RI_FKey_noaction_del"|engagement_assignments||
+trigger|organisation_memberships|organisation_memberships_actor_id_fkey|O|17|false|false|"RI_FKey_check_upd"|identities||
+trigger|organisation_memberships|organisation_memberships_actor_id_fkey|O|5|false|false|"RI_FKey_check_ins"|identities||
+trigger|organisation_memberships|organisation_memberships_organisation_id_fkey|O|17|false|false|"RI_FKey_check_upd"|organisations||
+trigger|organisation_memberships|organisation_memberships_organisation_id_fkey|O|5|false|false|"RI_FKey_check_ins"|organisations||
+trigger|organisations|clients_organisation_id_fkey|O|17|false|false|"RI_FKey_noaction_upd"|clients||
+trigger|organisations|clients_organisation_id_fkey|O|9|false|false|"RI_FKey_noaction_del"|clients||
+trigger|organisations|organisation_memberships_organisation_id_fkey|O|17|false|false|"RI_FKey_noaction_upd"|organisation_memberships||
+trigger|organisations|organisation_memberships_organisation_id_fkey|O|9|false|false|"RI_FKey_noaction_del"|organisation_memberships||
+trigger|sessions|sessions_actor_id_fkey|O|17|false|false|"RI_FKey_check_upd"|identities||
+trigger|sessions|sessions_actor_id_fkey|O|5|false|false|"RI_FKey_check_ins"|identities||

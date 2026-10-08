@@ -1,0 +1,25 @@
+{
+  "gate": "python-guards-initial",
+  "command": [
+    "python3",
+    "-B",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "scripts",
+    "-p",
+    "test_*.py"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T03:30:35.886813+00:00",
+  "ended_at": "2026-10-03T03:30:36.832296+00:00",
+  "duration_seconds": 0.945,
+  "exit": 0,
+  "source_before": "python-guards-initial-source-before.json",
+  "source_after": "python-guards-initial-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "python-guards-initial.log",
+  "log_sha256": "bdf4cdcba512b0905336dc38c39ede0aa79e7e22736df9aaf616830ebb7399cb"
+}

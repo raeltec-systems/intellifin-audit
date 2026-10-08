@@ -1,0 +1,19 @@
+sequenceDiagram
+  participant G as Gateway
+  participant D as Durable records
+  participant X as External system
+  participant R as Recovering owner
+  participant U as Auditor
+  G->>D: Consume operation dispatch claim
+  G->>X: Submit request with idempotency key if supported
+  X->>X: Possibly commit effect
+  Note over G,D: Gateway fails before receipt is committed
+  R->>D: Acquire new epoch, find unresolved attempt
+  R->>X: Reconcile by operation key or authoritative lookup
+  alt Effect can be established
+    X-->>R: Confirmed result or guaranteed non-execution
+    R->>D: Commit reconciliation receipt
+  else Outcome cannot be established
+    R->>D: Preserve unknown effect and bound next actions
+    R-->>U: Targeted reconciliation request, no blind resubmission
+  end

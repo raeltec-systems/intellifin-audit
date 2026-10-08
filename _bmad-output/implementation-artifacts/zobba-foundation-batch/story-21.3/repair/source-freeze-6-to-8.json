@@ -1,0 +1,11 @@
+{
+  "from": "source-freeze-6.json",
+  "to": "source-freeze-8.json",
+  "files": [
+    {
+      "path": "zobba/web/tests/browser/account-binding.spec.ts",
+      "before": "e2ceef4812c225808c72dfd4aa6d4ceb0435a74cbf3e9e545869a9a0906b9fca",
+      "after": "a8a878b6767679d6066fe17b879a3dd51146657eb49d170d7649b818ebd47331"
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+--- conversation-review-before-P16.ts
++++ web/tests/browser/conversation-review.spec.ts
+@@ -197,3 +197,99 @@
+     expect(await page.locator('.conversation-history').evaluate(element => element.scrollTop)).toBe(0);
+   } finally { ack.release(); events.release(); }
+ });
++
++test('inner methodology disclosure survives cancelled reads and tab-away but withdraws on current failure', async ({ page }) => {
++  await signIn(page);
++  const task = await create(page, 'Retain the inspected methodology disclosure');
++  await page.getByRole('button', { name: `Open ${task.objective}`, exact: true }).click();
++  const methodology = page.locator('.task-methodology');
++  const template = methodology.locator('details').filter({ has: page.locator('summary', { hasText: /^Template: / }) });
++  const summary = template.locator('summary');
++  const refresh = methodology.getByRole('button', { name: 'Refresh methodology basis', exact: true });
++  await expect(summary).toHaveCount(1);
++  await summary.click(); await summary.focus();
++  await template.evaluate(element => { element.setAttribute('data-original-template', 'retained'); });
++  const retained = page.locator('[data-original-template="retained"]');
++  const basisRoute = `**/api/engagements/engagement-a/tasks/${task.id}/methodology?*`;
++
++  for (const tabAway of [false, true]) {
++    const basis = gate(), authority = gate(), projection = gate();
++    let basisHeld = false, authorityHeld = false, projectionHeld = false;
++    await page.route(basisRoute, async route => {
++      const response = await route.fetch(); expect(response.status()).toBe(200); basisHeld = true;
++      await basis.held; await route.fulfill({ response });
++    });
++    await page.route('**/api/auth/session', async route => {
++      const response = await route.fetch(); expect(response.status()).toBe(200); authorityHeld = true;
++      await authority.held; await route.fulfill({ response });
++    });
++    await page.route('**/api/engagements/engagement-a/conversation?*', async route => {
++      const response = await route.fetch(); expect(response.status()).toBe(200); projectionHeld = true;
++      await projection.held; await route.fulfill({ response });
++    });
++    try {
++      await refresh.click(); await expect.poll(() => basisHeld).toBe(true);
++      await summary.focus();
++      if (tabAway) {
++        // Deterministically deliver the browser's hidden/visible lifecycle in
++        // headless Chromium; App and TaskMethodology use the two paired values.
++        await page.evaluate(() => {
++          Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
++          Object.defineProperty(document, 'hidden', { configurable: true, value: true });
++          document.dispatchEvent(new Event('visibilitychange'));
++        });
++        await expect(page.locator('.protected-workspace')).toBeHidden();
++        await expect(retained).toHaveCount(1); await expect(retained).toHaveAttribute('open', '');
++        await expect(summary).toBeHidden();
++        await page.evaluate(() => {
++          Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
++          Object.defineProperty(document, 'hidden', { configurable: true, value: false });
++          document.dispatchEvent(new Event('visibilitychange'));
++        });
++      } else await page.evaluate(() => window.dispatchEvent(new Event('focus')));
++      await expect.poll(() => authorityHeld).toBe(true);
++      await expect(page.locator('.protected-workspace')).toBeHidden();
++      expect(await page.locator('body').innerText()).not.toMatch(/Retain the inspected methodology|Neutral working-paper starter|auditor-a|Alder Manufacturing/);
++      basis.release(); authority.release();
++      await expect.poll(() => projectionHeld).toBe(true);
++      await expect(retained).toHaveCount(1); await expect(retained).toHaveAttribute('open', '');
++      await expect(summary).toBeHidden();
++      projection.release();
++      await expect(page.getByText('Conversation up to date', { exact: true })).toBeVisible();
++      await expect(refresh).toBeEnabled();
++      await page.unrouteAll({ behavior: 'wait' });
++      await expect(retained).toHaveCount(1); await expect(retained).toHaveAttribute('open', '');
++      await expect(summary).toBeVisible(); await expect(summary).toBeFocused();
++    } finally {
++      basis.release(); authority.release(); projection.release();
++      if (tabAway) await page.evaluate(() => {
++        Reflect.deleteProperty(document, 'visibilityState'); Reflect.deleteProperty(document, 'hidden');
++        document.dispatchEvent(new Event('visibilitychange'));
++      });
++      await page.unrouteAll({ behavior: 'wait' });
++    }
++  }
++
++  // A current failed read must withdraw the retained inspection, unlike an
++  // intentionally superseded read. Recovery must read the real basis again.
++  await page.route(basisRoute, route => route.abort('connectionreset'));
++  try {
++    await refresh.click();
++    await expect(methodology.getByText('Current methodology basis is unavailable. Refresh to inspect it.', { exact: true })).toBeVisible();
++    await expect(retained).toHaveCount(0); await expect(template).toHaveCount(0);
++  } finally { await page.unrouteAll({ behavior: 'wait' }); }
++  await refresh.click(); await expect(summary).toBeVisible();
++  await summary.click(); await summary.focus();
++  await template.evaluate(element => { element.setAttribute('data-timeout-template', 'retained'); });
++  const deadline = gate(); let deadlineHeld = false;
++  await page.route(basisRoute, async route => {
++    const response = await route.fetch(); expect(response.status()).toBe(200); deadlineHeld = true;
++    await deadline.held; await route.fulfill({ response });
++  });
++  try {
++    await refresh.click(); await expect.poll(() => deadlineHeld).toBe(true);
++    await expect(methodology.getByText('Current methodology basis is unavailable. Refresh to inspect it.', { exact: true })).toBeVisible();
++    await expect(page.locator('[data-timeout-template="retained"]')).toHaveCount(0);
++    await expect(template).toHaveCount(0);
++  } finally { deadline.release(); await page.unrouteAll({ behavior: 'wait' }); }
++});

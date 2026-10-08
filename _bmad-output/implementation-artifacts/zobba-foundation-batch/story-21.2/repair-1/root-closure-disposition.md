@@ -1,0 +1,13 @@
+# Story 21.2 repair closure disposition
+
+2 October 2026. All three independent closure reviewers were launched before their findings were collected. Root read all three completed reports and the implicated assertion/evidence maps. This follows the initial three-layer BMAD review and consolidated P01–P15 patch request.
+
+The blind reviewer closes P05–P12; the edge reviewer closes P01–P04 and P13; the verification reviewer closes P14/P15 and audits the execution/assertions supporting all fifteen findings. No concrete remaining defect or weakened repair assertion was reported. Root accepts these finding closures on the reviewed frozen source and focused execution evidence. This does not turn incomplete or failing full gates into passes.
+
+Reviewed repaired complete diff: 990,341 bytes, SHA-256 `020b31f38931c5bccce617aa1e05f7ebb28b9c811741376fc89b8f5edc6179ab`. Root and reviewers independently checked all 201 implementation file hashes; root also verified all 14 published migration/catalogue files through schema 7 remain byte-identical. No production edits may be hidden behind this closure; subsequent deltas need explicit assessment.
+
+Evidence precision: P06 relies on the unit test's distinct historical/current content as well as the actual historical Edit browser action. P11's new later-page test proves cursor/focus/name retention before opening a draft; the retained Admin browser case separately proves draft retention, and the new case proves draft withdrawal after revocation. P13 confirms the deferred database barrier, live claim lease and complete durable rollback, rather than relying only on a Fenced return value.
+
+The full browser run exposed an additional test synchronization issue in bounded conversation history: an already displayed 100-row snapshot can satisfy the count assertion before the final accepted Guide appears. Loading Earlier then correctly uses that older snapshot's watermark. Source inspection by implementation and independent verification reviewers supports a test-only repair: wait for the exact final canonical command and assert the actual history request cursors, retaining the 100/6 row and content/audience assertions. Root authorized that bounded repair and a fresh full browser run. Preserve the initial failure and record the exact test-only delta; do not claim a product pagination fix or silently lower the expected counts.
+
+Final story acceptance still requires the completed specification gates, final source comparison, reviewed test-only delta and published verification record. No commit, push, merge or deployment is claimed by this note.

@@ -1,0 +1,12 @@
+   Compiling zobba-worker v0.1.0 (/workspace/intellifin-audit/zobba/crates/worker)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.23s
+     Running tests/gateway_process.rs (target/debug/deps/gateway_process-2fcfa9679d184157)
+
+running 4 tests
+test gateway_worker_helper ... ignored, owned helper process, invoked by gateway test with guarded fixture inputs
+test owned_gateway_process_recovery_preserves_source_facts_and_fences_late_sends ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 10.39s
+

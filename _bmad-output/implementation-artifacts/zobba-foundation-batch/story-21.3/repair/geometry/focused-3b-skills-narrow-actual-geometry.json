@@ -1,0 +1,36 @@
+{
+  "viewport": 390,
+  "documentWidth": 390,
+  "elements": [
+    {
+      "tag": "section",
+      "classes": "notice",
+      "left": 36,
+      "right": 354,
+      "width": 318,
+      "clientWidth": 314,
+      "scrollWidth": 314,
+      "textLength": 228
+    },
+    {
+      "tag": "p",
+      "classes": "",
+      "left": 57,
+      "right": 335,
+      "width": 278,
+      "clientWidth": 278,
+      "scrollWidth": 278,
+      "textLength": 103
+    },
+    {
+      "tag": "p",
+      "classes": "",
+      "left": 57,
+      "right": 335,
+      "width": 278,
+      "clientWidth": 278,
+      "scrollWidth": 278,
+      "textLength": 95
+    }
+  ]
+}

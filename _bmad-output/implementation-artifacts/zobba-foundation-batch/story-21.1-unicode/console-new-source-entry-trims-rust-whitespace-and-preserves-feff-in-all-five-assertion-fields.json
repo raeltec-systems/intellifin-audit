@@ -1,0 +1,5 @@
+{
+  "test": "new source entry trims Rust whitespace and preserves FEFF in all five assertion fields",
+  "status": "passed",
+  "unexpectedErrors": 0
+}

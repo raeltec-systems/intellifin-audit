@@ -1,0 +1,49 @@
+
+Running 3 tests using 1 worker
+
+(node:1166060) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/auth.spec.ts:408:1 › more than 100 assignments paginate by full scope with fresh back navigation and direct opening (5.0s)
+  ✓  2 tests/browser/conversation-review.spec.ts:251:1 › inner methodology disclosure survives cancelled reads and tab-away but withdraws on current failure (6.9s)
+  ✘  3 tests/browser/evidence-unicode.spec.ts:176:1 › mixed API-created normal and FEFF originals retain exact metadata and download bytes (18.4s)
+
+
+  1) tests/browser/evidence-unicode.spec.ts:176:1 › mixed API-created normal and FEFF originals retain exact metadata and download bytes 
+
+    Error: expect(locator).toBeInViewport() failed
+
+    Locator:  locator('[data-evidence-id="TIs6nwADYGUcFws6b-MTGEmaoGmC45G3NXx9PPqlqtE"]')
+    Expected: in viewport
+    Received: viewport ratio 0.9979292750358582
+    Timeout:  12000ms
+
+    Call log:
+      - Expect "toBeInViewport" with timeout 12000ms
+      - waiting for locator('[data-evidence-id="TIs6nwADYGUcFws6b-MTGEmaoGmC45G3NXx9PPqlqtE"]')
+        28 × locator resolved to <button type="button" class="evidence-open-item" data-evidence-id="TIs6nwADYGUcFws6b-MTGEmaoGmC45G3NXx9PPqlqtE">…</button>
+           - unexpected value "viewport ratio 0.9979292750358582"
+
+
+      204 |     const row = page.locator(`[data-evidence-id="${item.reservation.id}"]`);
+      205 |     await row.scrollIntoViewIfNeeded();
+    > 206 |     await expect(row).toBeInViewport({ ratio: 1 });
+          |                       ^
+      207 |   }
+      208 |   await page.screenshot({ path: info.outputPath('mixed-affected-registry.png'), fullPage: true });
+      209 | });
+        at /workspace/intellifin-audit/zobba/web/tests/browser/evidence-unicode.spec.ts:206:23
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-batch-21-6-22-1/browser-preconditions-focused-results/evidence-unicode-mixed-API-b7661-metadata-and-download-bytes/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-batch-21-6-22-1/browser-preconditions-focused-results/evidence-unicode-mixed-API-b7661-metadata-and-download-bytes/error-context.md
+
+    Error Context: ../../../../tmp/zobba-batch-21-6-22-1/browser-preconditions-focused-results/evidence-unicode-mixed-API-b7661-metadata-and-download-bytes/error-context.md
+
+  1 failed
+    tests/browser/evidence-unicode.spec.ts:176:1 › mixed API-created normal and FEFF originals retain exact metadata and download bytes 
+  2 passed (41.0s)
+undefined
+/workspace/intellifin-audit/zobba/web:
+[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command failed with exit code 1: playwright test tests/browser/auth.spec.ts tests/browser/conversation-review.spec.ts tests/browser/evidence-unicode.spec.ts --grep 'more than 100 assignments|inner methodology disclosure|mixed API-created normal' '--workers=1' '--retries=0'

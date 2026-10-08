@@ -1,0 +1,63 @@
+    Checking zobba-application v0.1.0 (/workspace/intellifin-audit/zobba/crates/application)
+    Checking zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+error: comparison to empty slice
+   --> crates/infrastructure/src/model/native.rs:959:24
+    |
+959 |                     if string(wire, "arguments")? != "" {
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: using `!is_empty` is clearer and more explicit: `!string(wire, "arguments")?.is_empty()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#comparison_to_empty
+    = note: `-D clippy::comparison-to-empty` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::comparison_to_empty)]`
+
+error: comparison to empty slice
+    --> crates/infrastructure/src/model/native.rs:1001:20
+     |
+1001 |                 if string(&value["part"], field)? != "" {
+     |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: using `!is_empty` is clearer and more explicit: `!string(&value["part"], field)?.is_empty()`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#comparison_to_empty
+
+error: this `if` statement can be collapsed
+    --> crates/infrastructure/src/model/native.rs:1077:17
+     |
+1077 | /                 if let Some(name) = value.get("name") {
+1078 | |                     if name.as_str() != item.name.as_deref() {
+1079 | |                         return Err(WireError::Identity);
+1080 | |                     }
+1081 | |                 }
+     | |_________________^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#collapsible_if
+     = note: `-D clippy::collapsible-if` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::collapsible_if)]`
+help: collapse nested if block
+     |
+1077 ~                 if let Some(name) = value.get("name")
+1078 ~                     && name.as_str() != item.name.as_deref() {
+1079 |                         return Err(WireError::Identity);
+1080 ~                     }
+     |
+
+error: this `if` statement can be collapsed
+    --> crates/infrastructure/src/model/native.rs:1348:17
+     |
+1348 | /                 if item.kind == "tool_use" {
+1349 | |                     if !strict_json(item.arguments.as_bytes(), MAX_ARGUMENT_BYTES)?.is_object() {
+1350 | |                         return Err(WireError::Malformed);
+1351 | |                     }
+1352 | |                 }
+     | |_________________^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#collapsible_if
+help: collapse nested if block
+     |
+1348 ~                 if item.kind == "tool_use"
+1349 ~                     && !strict_json(item.arguments.as_bytes(), MAX_ARGUMENT_BYTES)?.is_object() {
+1350 |                         return Err(WireError::Malformed);
+1351 ~                     }
+     |
+
+error: could not compile `zobba-infrastructure` (lib) due to 4 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `zobba-infrastructure` (lib test) due to 4 previous errors

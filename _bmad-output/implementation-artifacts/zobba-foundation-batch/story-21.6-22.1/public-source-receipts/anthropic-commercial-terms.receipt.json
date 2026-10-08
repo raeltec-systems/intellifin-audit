@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://www.anthropic.com/legal/commercial-terms",
+  "effective_url": "https://www.anthropic.com/legal/commercial-terms",
+  "retrieved_at_utc": "2026-10-03T04:36:08.316572+00:00",
+  "completed_at_utc": "2026-10-03T04:36:08.686827+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html; charset=utf-8",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "anthropic-commercial-terms.html",
+  "bytes": 167753,
+  "sha256": "3db716c5590065c6bfe6da095c5477e9ff1a9f3238289d9f0e8c6c9ef83ae9b9",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/anthropic-commercial-terms.txt",
+  "readable_extraction_sha256": "dcabb14392c638df99618f825809b94ea567a8ebd6da1268035d8764b06c6f34",
+  "raw_body_in_checkpoint": false
+}

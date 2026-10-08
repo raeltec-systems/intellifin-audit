@@ -1,110 +1,32 @@
-# Handoff · Zobba design system v1.0
+# Pair handoff · accepted revision 3
 
-Date: 25 Sep 2026. From: design. To: the BMAD agent and the product-planning and implementation teams.
+Use [DESIGN.md](../ux-Zobba-2026-09-25/DESIGN.md) for visual identity and [EXPERIENCE.md](../ux-Zobba-2026-09-25/EXPERIENCE.md) for behavior. The accepted product/architecture and active PRD/SPEC define scope and contracts. This folder is a reference prototype, not application code or a claim of implemented safeguards.
 
-This package is the authoritative **design input**. It is not application code, and it does not edit the approved BMAD/course-correction documents. Reconcile it into them using §4.
+## Open and inspect
 
-## 1. Index
+Open [zobba-working-environment.html](source/zobba-working-environment.html) directly, or serve this folder with a local static server. No build step, account or internet is required. The bundled Hanken Grotesk font carries its OFL license; existing Pair SVGs are used as supplied. Browser JavaScript drives in-memory sample states and discards everything on reload.
 
-| Document | Contents |
-|---|---|
-| [BRAND.md](BRAND.md) | Identity, Pair, logo system, colour rules, typography, Raeltec, voice |
-| [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) | Layout, surfaces, icons, motion, navigation, status, tables, forms, search, connections, states, responsive, accessibility |
-| [EXPERIENCE-RULES.md](EXPERIENCE-RULES.md) | Numbered interaction rules (R1–R12) |
-| [COMPONENT-INVENTORY.md](COMPONENT-INVENTORY.md) | Components by group |
-| [PATTERNS.md](PATTERNS.md) | End-to-end patterns P1–P16 |
-| [DESIGN-TOKENS.md](DESIGN-TOKENS.md) · [tokens/zobba-tokens.json](tokens/zobba-tokens.json) | Canonical tokens and calculated contrast (generated together) |
-| [reference-screens/](reference-screens/README.md) | 18 reference screens (PNG) and the scenario |
-| [ASSET-MANIFEST.md](ASSET-MANIFEST.md) · [assets/](assets/) | Logo, symbol, icon and favicon files |
-| [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md) | Q1–Q12 |
-| `source/` | Editable design sources |
+Use the scene selector, or click the work cards, sign-in actions, Pin/Expand/Close, evidence, Take over/Hand back and Task Pause/Stop. Transitions use explicit **Simulate** actions where a production receipt would come from an executor or account verifier. These buttons are design-harness controls, not intended product controls. Browser refresh restores the selected fixture from the URL fragment.
 
-## 2. Decisions preserved
+## Contract map
 
-Name **Zobba** · descriptor "The audit agent" · "by Raeltec" · Pair concept · title-case wordmark with stepped bb · Graphite, Linen and Iris `#4C3FB8` · Hanken Grotesk and IBM Plex Mono · Permissions · conversation-led harness with a contextual workspace · chrome is Zobba, the artifact is the methodology's · first-person conversation and "Zobba is…" chrome · harness navigation (Library removed from the first level, Skills under Settings › Methodology and skills).
+| Rule | Surface / scene | What a builder must preserve |
+|---|---|---|
+| UX-DR42 | RS24, RS33 | One engagement conversation; multiple attributable Tasks; active composer; exact command targets. |
+| UX-DR43 | RS24–25 | Needs you, stable outputs and return digest; requests survive scrolling and away-time. |
+| UX-DR44 | RS26, RS34 | Selected/pinned content survives incoming work until explicit Follow Zobba. |
+| UX-DR45 | RS27–30 | Private sign-in; separate submitted, verifying and account-verified facts; no credentials in chat. |
+| UX-DR46 | RS30–32 | Watching versus control; pending/confirmed takeover, handback, pause and stop; named Task/helpers/computer; honest reconnect. |
+| UX-DR47 | RS24–25 plus spine | Applicable method/skills/knowledge from first task; ordinary Admin Save. |
+| UX-DR48 | RS26 plus spine | Exact-version team/solo review; recurring method meaning; no fake approval. |
+| UX-DR49 | RS33–34 and every control | Keyboard/focus, responsive scope, separate activity/attention/connectivity and exact receipts. |
 
-## 3. Completed in this pass
+## Retained design values
 
-| Item | Rationale |
-|---|---|
-| Outlined wordmark and lockup SVGs; stepped b keeps 50% of the ascender (was about 35%); weight 600 (was 650 variable) | Readable as bb at 16px; UI maximum weight is 600; static outlines for implementation |
-| Optical channel variants (`-small`, `-micro`) exported as separate files | The forms must not merge at small sizes |
-| `color.border.input` `#8F8A7F`; placeholder `#716D64` | Earlier values failed 3:1 non-text and 4.5:1 text respectively |
-| Six separate status dimensions with a vocabulary | Prevents result, execution and review from being collapsed |
-| Workspace replacement rule (R2.2) | The panel must not replace what the auditor is inspecting |
-| Guidance queued → applied acknowledgement | Distinguishes guidance from Stop |
-| Per-operation outcomes, including unknown-after-dispatch and partial | Honest reporting of external actions |
-| UI motion table, layout modes, responsive breakpoints, forms, tables, search, connections, empty and degraded states | Previously unspecified |
-| Scenario corrected: auditor firm = Lumina Assurance, client = Northstar Bank plc; draft email no longer says the invitation "has been sent" | Internal consistency |
+Pair symbol and outlined wordmark; Graphite/Linen/Canvas/Paper/Iris; Hanken Grotesk and IBM Plex Mono roles; unboxed Zobba prose; Linen auditor bubble; firm-owned document design; typographic changes; source/claim inspection. No new brand or Dots artwork is introduced.
 
-### Added after the first handoff (25 Sep)
-- **Role-based screens** for the audit manager (Reviews queue, reviewing a paper) and administrator (Models and providers, Users and roles). See DESIGN-SYSTEM §5a, EXPERIENCE R8a, PATTERNS P18–P19, and reference screens 20–23.
-- **Model and reasoning-effort choice in the composer**, within admin policy and recorded in How it ran. See DESIGN-SYSTEM §5b, COMPONENT-INVENTORY › Composer, PATTERNS P17, and screens 19 and 22.
-- Every composer in the reference screens now shows the model chip.
+## Reference limits
 
-## 4. Reconciliation notes
+Screens describe intended product states. The computer shown here is explicitly a synthetic layout fixture, not a real or reconstructed live Zobba session. Production uses the actual managed computer; private input, observation exclusion, account verification, dispatch authority and cessation require backend enforcement. The prototype does not validate those mechanisms, model quality or performance.
 
-1. **Terminology.** **IntelliFin Audit → Zobba** everywhere in product copy and specifications. **Mandate → Permissions** everywhere. Access keeps its audit meaning only.
-2. **Earlier boards** (`Audit Agent Desktop v2`, the three-direction `Zobba Identity`) used the earlier accents and names. Where they conflict with this package, this package wins for visual rules. Interaction rules were preserved, not changed.
-3. **Scenario identities** changed. Earlier screens showed the auditor at a "northstar-audit.com" address auditing Northstar, which was contradictory. Update any story fixtures to Lumina Assurance / Northstar Bank plc.
-4. **Navigation.** If existing rules list Library or Skills at the first level, replace them with DESIGN-SYSTEM §5.
-5. **Serif.** Earlier boards used a serif for the Home greeting. The approved identity has no serif. The greeting is Hanken 38/46 600.
-6. **"Completed" vs result.** Any existing rule that treats a completed scheduled run as a pass must be split per DESIGN-SYSTEM §6.
-
-## 5. Rule → component → token → screen map
-
-| Rule | Components | Key tokens | Screens |
-|---|---|---|---|
-| R1 Conversation primary | Composer, Auditor message, Zobba response, Activity | `type.body`, `radius.composer`, `border.input` | 01, 02, 03 |
-| R1.4 Guidance vs Stop | Composer, Activity | `text.placeholder` | 02, 03 |
-| R1.5 Clarification | Question, Suggested replies, Presence (waiting) | mark waiting | 08 |
-| R2 Workspace | Workspace panel, Browser view, Working data | `layout.panel-*` | 03, 04 |
-| R3 Artifacts | Artifact page, Provenance footer, State chip | `surface.artifact-*`, `shadow.page` | 05, 07 |
-| R4 Evidence | Citation, Preview, Evidence drawer | `accent.wash`, `selection.*`, `shadow.drawer` | 05, 06 |
-| R5 Changes | Diff, System event | `diff.*` | 07 |
-| R6 Permissions | Summary, Detail, Activity record | — | 09, 10, 16 |
-| R7 Confirmation | Confirmation card | `action.primary.*` | 09 |
-| R9 Scheduled | Status chips, Presence | `status.*` | 12, 13, 18 |
-| R10 Search | Search results, Inline notice | `status.warning.*` | 11 |
-| R11 Honest state | Inline notice, Limitation, Empty state | `status.inconclusive.*` | 03, 11, 12, 14 |
-
-## 6. Acceptance checks for implementation stories
-
-Each story touching the UI should carry the relevant checks.
-
-**Identity and colour**
-- [ ] The logo, symbol and icons come from `assets/` SVGs. There is no live-text wordmark.
-- [ ] Iris appears only in its permitted uses (BRAND §3). No result, count or approval button uses Iris.
-- [ ] Every status shows a word and a glyph. Status dimensions are never merged into one chip.
-- [ ] The diff uses strikethrough and underline, with no red or green.
-
-**Conversation and activity**
-- [ ] Zobba replies are first person and unboxed. Chrome uses "Zobba …".
-- [ ] Exactly one animated mark appears per region, beside text. Reduced motion stops it.
-- [ ] There are no fabricated percentages or step counts.
-- [ ] Guidance shows queued and then applied states. Stop is a separate control and is always reachable.
-
-**Workspace, artifacts and evidence**
-- [ ] The panel never replaces pinned or recently used content (R2.2).
-- [ ] Artifacts render in the firm template. Prepared by and Reviewed by name people. The provenance footer does not imply review.
-- [ ] Citation → drawer → Back to claim works by mouse and keyboard, and focus returns to the citation.
-
-**Decisions and permissions**
-- [ ] One confirmation surface lists every material detail. Any change invalidates the decision.
-- [ ] Outcomes are reported per operation, including unknown and partial.
-- [ ] The Permissions view shows the seven sections and the Activity record, with no tokens or scopes.
-
-**Honesty**
-- [ ] An unavailable source is never shown as empty. A partial read is never shown as complete. An uncertain action is never shown as definitely failed or definitely done.
-
-**Accessibility**
-- [ ] Contrast meets DESIGN-TOKENS §3 for every pair used.
-- [ ] Focus is visible (2px Iris) and the keyboard order is logical.
-- [ ] Touch targets are 44px.
-- [ ] The DESIGN-SYSTEM §14 "must be verified" list has passed.
-
-## 7. Outstanding
-
-See [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md). The most important are Q1 (Kobba comparison), Q2 (type-designer drawing), Q3 (provenance default), Q4 (dark mode in the first release) and Q11 (trademark clearance).
-
-**A rendered mockup is not proof** that an integration, security control or execution behaviour works. Permissions enforcement, confirmation invalidation, per-operation outcome reporting and evidence capture must be verified in the implemented system.
+Home/search/settings/review/check configuration remain spine-only in this update. Their contracts remain in scope as specified; no mandatory capability is deferred because its screen was not redrawn here. Earlier RS01–23 are archived because their one-task entry, timer-based panel following, blanket permissions or configuration/review assumptions may conflict with the accepted design.

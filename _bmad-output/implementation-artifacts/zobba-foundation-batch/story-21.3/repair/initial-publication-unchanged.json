@@ -1,0 +1,90 @@
+{
+  "observed_at": "2026-10-02T16:31:07.232207+00:00",
+  "allowlist_sha256": "654ae164fd867a5eccd6b2b5cef967cfc7c00dcb1e5b6ca8b81d1a18b4864d07",
+  "files": [
+    {
+      "path": "handoff.md",
+      "unchanged": true
+    },
+    {
+      "path": "integration-contract.md",
+      "unchanged": true
+    },
+    {
+      "path": "matrix.md",
+      "unchanged": true
+    },
+    {
+      "path": "verification.md",
+      "unchanged": true
+    },
+    {
+      "path": "gate-receipts.json",
+      "unchanged": true
+    },
+    {
+      "path": "published-prefixes-1-8.json",
+      "unchanged": true
+    },
+    {
+      "path": "source-freeze-final.json",
+      "unchanged": true
+    },
+    {
+      "path": "source-rust-full2-start.json",
+      "unchanged": true
+    },
+    {
+      "path": "source-browser-full-start.json",
+      "unchanged": true
+    },
+    {
+      "path": "source-reconciliation.json",
+      "unchanged": true
+    },
+    {
+      "path": "receipts/rust-tests.log",
+      "unchanged": true
+    },
+    {
+      "path": "receipts/rust-tests.exit",
+      "unchanged": true
+    },
+    {
+      "path": "receipts/browser.log",
+      "unchanged": true
+    },
+    {
+      "path": "receipts/browser.exit",
+      "unchanged": true
+    },
+    {
+      "path": "receipts/smoke.log",
+      "unchanged": true
+    },
+    {
+      "path": "receipts/smoke.exit",
+      "unchanged": true
+    },
+    {
+      "path": "screenshots/skills-narrow.png",
+      "unchanged": true
+    },
+    {
+      "path": "screenshots/skills-recalled-history-narrow.png",
+      "unchanged": true
+    },
+    {
+      "path": "screenshots/skills-selection-recalled-history.png",
+      "unchanged": true
+    },
+    {
+      "path": "screenshots/skills-hostile-instructions-remain-evidence.png",
+      "unchanged": true
+    },
+    {
+      "path": "screenshots/skills-hostile-archive-download-only.png",
+      "unchanged": true
+    }
+  ]
+}

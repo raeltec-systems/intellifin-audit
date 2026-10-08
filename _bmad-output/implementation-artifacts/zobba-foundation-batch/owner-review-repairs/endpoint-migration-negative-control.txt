@@ -1,0 +1,37 @@
+
+Running 1 test using 1 worker
+
+(node:239072) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/browser/auth-database-endpoint.spec.ts:18:1 › portless PGPORT routes actual migration, admin SQL and authenticated recovery through an owned relay (2.3s)
+
+
+  1) tests/browser/auth-database-endpoint.spec.ts:18:1 › portless PGPORT routes actual migration, admin SQL and authenticated recovery through an owned relay
+
+    Error: The disconnected relay must block the actual migration command.
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      85 |     // Require the actual migration command to fail, not a later API startup.
+      86 |     expect(startupFailure instanceof Error && /^Owned browser fixture command failed: .*\/zobba-cli migrate$/.test(startupFailure.message),
+    > 87 |       'The disconnected relay must block the actual migration command.').toBe(true);
+         |                                                                          ^
+      88 |
+      89 |     runtime = await startAuthRuntime();
+      90 |     runtime.sql(restoreAuthority);
+        at /workspace/intellifin-audit/zobba/web/tests/browser/auth-database-endpoint.spec.ts:87:74
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-owner-endpoint-migrate-bypass-results/auth-database-endpoint-por-2ae13-very-through-an-owned-relay/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-owner-endpoint-migrate-bypass-results/auth-database-endpoint-por-2ae13-very-through-an-owned-relay/error-context.md
+
+  1 failed
+    tests/browser/auth-database-endpoint.spec.ts:18:1 › portless PGPORT routes actual migration, admin SQL and authenticated recovery through an owned relay
+undefined
+/workspace/intellifin-audit/zobba/web:
+[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command failed with exit code 1: playwright test tests/browser/auth-database-endpoint.spec.ts

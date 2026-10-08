@@ -1,0 +1,14 @@
+$ pnpm --filter @zobba/web test:browser --workers=1 --retries=0 --reporter=list,json account-binding.spec.ts auth.spec.ts conversation-review.spec.ts methodology.spec.ts --grep 'conversation mismatches after|an engagement mismatch and|role demotion, membership expiry|same-scope checks hide|Admin Save, frozen lost-receipt'
+$ playwright test --workers=1 --retries=0 --reporter=list,json account-binding.spec.ts auth.spec.ts conversation-review.spec.ts methodology.spec.ts --grep 'conversation mismatches after|an engagement mismatch and|role demotion, membership expiry|same-scope checks hide|Admin Save, frozen lost-receipt'
+
+Running 5 tests using 1 worker
+
+(node:1040625) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/account-binding.spec.ts:253:1 › conversation mismatches after successful engagement reads share one bounded recovery budget (4.1s)
+  ✓  2 tests/browser/account-binding.spec.ts:369:1 › an engagement mismatch and a later conversation mismatch consume the same recovery allowance (3.4s)
+  ✓  3 tests/browser/auth.spec.ts:152:1 › role demotion, membership expiry and session expiry clear previously opened scope (3.7s)
+  ✓  4 tests/browser/conversation-review.spec.ts:73:1 › same-scope checks hide every protected surface and restore mounted Task controls, disclosure and focus (4.8s)
+  ✓  5 tests/browser/methodology.spec.ts:152:1 › Admin Save, frozen lost-receipt retry, Undo, exact Task templates, new-only notice, recall and draft withdrawal (38.1s)
+
+  5 passed (1.1m)

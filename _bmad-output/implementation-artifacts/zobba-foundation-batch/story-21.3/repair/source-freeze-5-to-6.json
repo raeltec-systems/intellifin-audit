@@ -1,0 +1,26 @@
+{
+  "from": "source-freeze-5.json",
+  "to": "source-freeze-6.json",
+  "files": [
+    {
+      "path": "CLAUDE.md",
+      "before": "325258301f95cfc2c7f28065acb2f8e309f2612134552ed700a9b5eab2800815",
+      "after": "12de043d92373fa5322e5a8df92d0ac189cd77823cd3756f2e7dd9cbb59c74d9"
+    },
+    {
+      "path": "zobba/web/src/styles.css",
+      "before": "9c6b68714c54aacd53902142791c90a7675937e4eb42882b7b7a5cb7100438b9",
+      "after": "f3d2d981e1ab69af7dae834d2fa6ea822d84ac9f223aef80c93e42ff7f7186c9"
+    },
+    {
+      "path": "zobba/web/tests/browser/methodology.spec.ts",
+      "before": "557183c4a549f793ce60c1eb4cf641dba91da12ccf81ee9f303af557e218fb87",
+      "after": "bef4acbd79d45bbc092838e8d810b3945e1ae7e113eb794694039eac3c47fabc"
+    },
+    {
+      "path": "zobba/web/tests/browser/skills.spec.ts",
+      "before": "61f7b315e38266f3d1db45c72f2f3f48760c50f60dbcdf6cf95e4c52f8eb9f94",
+      "after": "a30c282bfa71dee3e3a36ca9bfc8f90ade6229f5fcc4475c15b145a78b66ef57"
+    }
+  ]
+}

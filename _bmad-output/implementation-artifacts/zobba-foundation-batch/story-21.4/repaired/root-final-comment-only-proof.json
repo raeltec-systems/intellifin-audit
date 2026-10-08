@@ -1,0 +1,12 @@
+{
+  "file": "zobba/crates/infrastructure/src/knowledge.rs",
+  "before_sha256": "a3906375bf0d42f8e6b2734b81f46546cdd438536ce94fea87ba89a2a8ab31de",
+  "after_sha256": "074a15f557996974e7d62d98ad92d45495e25591d8f13e3c56fafde4740ec94d",
+  "only_change": {
+    "before": "// affected engagement only once, in first-release order.",
+    "after": "// affected engagement only once, in publication-ID order."
+  },
+  "reverse_replacement_matches_complete_verified_source": true,
+  "executable_source_unchanged": true,
+  "verification_scope": "Independent whole-file byte comparison after reversing this exact one-line comment edit; no claim of a repeated Rust integration run."
+}

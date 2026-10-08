@@ -1,0 +1,26 @@
+{
+  "baseline_commit": "38d76b019db1e5cb637f8c66e6cde3947c3415b2",
+  "files_verified": 201,
+  "changed_since_repaired_rust_freeze": [
+    "zobba/web/tests/browser/conversation-review.spec.ts",
+    "zobba/web/tests/browser/conversation.spec.ts"
+  ],
+  "production_and_rust_tests_unchanged": true,
+  "published_prefix_files_unchanged": [
+    "zobba/migrations/0001_bootstrap.sql",
+    "zobba/crates/infrastructure/src/schema-v1.catalog",
+    "zobba/migrations/0002_identity_scope.sql",
+    "zobba/crates/infrastructure/src/schema-v2.catalog",
+    "zobba/migrations/0003_tasks.sql",
+    "zobba/crates/infrastructure/src/schema-v3.catalog",
+    "zobba/migrations/0004_permissions_operations.sql",
+    "zobba/crates/infrastructure/src/schema-v4.catalog",
+    "zobba/migrations/0005_membership_administration.sql",
+    "zobba/crates/infrastructure/src/schema-v5.catalog",
+    "zobba/migrations/0006_evidence.sql",
+    "zobba/crates/infrastructure/src/schema-v6.catalog",
+    "zobba/migrations/0007_admin_continuity.sql",
+    "zobba/crates/infrastructure/src/schema-v7.catalog"
+  ],
+  "full_browser_gate": "still running"
+}

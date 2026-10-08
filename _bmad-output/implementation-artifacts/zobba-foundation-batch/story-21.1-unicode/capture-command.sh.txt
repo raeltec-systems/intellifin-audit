@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+. /workspace/zobba-build-tools/activate-tests.sh
+cd /workspace/intellifin-audit
+export ZOBBA_TEST_ADMIN_DATABASE_URL=postgresql://zobba_local_admin@127.0.0.1:55434/zobba_story_20_test
+export ZOBBA_FIXTURE_DIR=/tmp/zobba-21-1-unicode-fixture
+export ZOBBA_BROWSER_EXECUTABLE=/usr/bin/chromium
+export ZOBBA_BROWSER_OUTPUT_DIR=/tmp/zobba-21-1-unicode-reviewed/capture-results
+capture_result=0
+pnpm --dir zobba/web test:browser evidence-unicode.spec.ts --workers=1 --retries=0 > /tmp/zobba-21-1-unicode-reviewed/browser-unicode-capture.log 2>&1 || capture_result=$?
+printf 'browser-unicode-capture exit=%s\n' "$capture_result" >> /tmp/zobba-21-1-unicode-reviewed/capture-exit-receipt.txt
+exit "$capture_result"

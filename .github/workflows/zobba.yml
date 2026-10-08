@@ -1,0 +1,137 @@
+name: Zobba foundation
+
+# Keep this name distinct from CI: the historical Release workflow listens for
+# that workflow name. This workflow only uses a disposable PostgreSQL service.
+on:
+  pull_request:
+    paths:
+      - 'zobba/**'
+      - '.github/workflows/zobba.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'zobba/**'
+      - '.github/workflows/zobba.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zobba-foundation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  foundation:
+    runs-on: ubuntu-24.04
+    # Includes the S3 protocol suite, schema-prefix refusals and full Chromium coverage.
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: zobba
+        shell: bash
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: disposable-ci-admin
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      CARGO_TERM_COLOR: always
+      ZOBBA_TEST_MIGRATION_DATABASE_URL: postgres://zobba_migrator:disposable-ci-migrator@127.0.0.1:5432/zobba_ci_test
+      ZOBBA_TEST_RUNTIME_DATABASE_URL: postgres://zobba_app:disposable-ci-runtime@127.0.0.1:5432/zobba_ci_test
+      ZOBBA_TEST_ADMIN_DATABASE_URL: postgres://postgres:disposable-ci-admin@127.0.0.1:5432/zobba_ci_test
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install pinned Rust tools
+        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+      - name: Cache only the Zobba Cargo workspace
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            zobba/target
+          key: ${{ runner.os }}-zobba-rust-1.98.1-${{ hashFiles('zobba/Cargo.lock') }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+          package_json_file: zobba/package.json
+          run_install: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.20.0
+          cache: pnpm
+          cache-dependency-path: zobba/pnpm-lock.yaml
+      - name: Provision separate migration and runtime roles
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: disposable-ci-admin
+          PGDATABASE: postgres
+        run: |
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE zobba_migrator LOGIN PASSWORD 'disposable-ci-migrator' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
+          CREATE ROLE zobba_app LOGIN PASSWORD 'disposable-ci-runtime' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
+          CREATE DATABASE zobba_ci_test OWNER zobba_migrator;
+          REVOKE ALL ON DATABASE zobba_ci_test FROM PUBLIC;
+          GRANT CONNECT ON DATABASE zobba_ci_test TO zobba_app;
+          SQL
+      - name: Install the independent locked web workspace
+        run: pnpm install --frozen-lockfile
+      - name: Prepare and verify the independent HTTPS identity fixture
+        run: |
+          export ZOBBA_FIXTURE_DIR="$RUNNER_TEMP/zobba-oidc-fixture"
+          printf 'ZOBBA_FIXTURE_DIR=%s\n' "$ZOBBA_FIXTURE_DIR" >> "$GITHUB_ENV"
+          pnpm fixture:setup
+          test -s "$ZOBBA_FIXTURE_DIR/env.sh"
+          test -s "$ZOBBA_FIXTURE_DIR/fixture.json"
+          pnpm fixture:test
+      - name: Test disposable-database guard regressions
+        run: python3 -B -m unittest discover -s scripts -p 'test_*.py'
+      - name: Verify crate and web isolation
+        run: python3 scripts/check-boundaries.py
+      - name: Check Rust formatting
+        run: cargo fmt --check
+      - name: Lint Rust
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test Rust, immutable S3 protocol and PostgreSQL refusal cases
+        run: |
+          source "$ZOBBA_FIXTURE_DIR/env.sh"
+          node fixtures/oidc/server.mjs > /tmp/zobba-oidc-fixture.log 2>&1 &
+          fixture_pid=$!
+          trap 'kill "$fixture_pid" 2>/dev/null || true' EXIT
+          curl --cacert "$ZOBBA_OIDC_CA_FILE" --retry 10 --retry-connrefused --retry-delay 1 --max-time 2 --fail --silent --output /dev/null "$ZOBBA_OIDC_ISSUER/.well-known/openid-configuration"
+          cargo test --workspace --locked
+      - name: Build Rust processes
+        run: cargo build --workspace --locked
+      - name: Test synthetic qualification approval guards without provider access
+        run: cargo test --locked -p zobba-infrastructure --example model_qualification
+      - name: Check owned web types and generated interface
+        run: pnpm check
+      - name: Build Pair web shell
+        run: pnpm build
+      - name: Exercise explicit migrations, process refusal, health and connection loss
+        run: python3 scripts/smoke.py
+      - name: Install Chromium for the owned browser regression
+        run: pnpm --filter @zobba/web exec playwright install --with-deps chromium
+      - name: Verify HTTPS sign-in, immutable evidence, audience fences and keyboard recovery
+        run: pnpm test:browser
+      - name: Preserve browser regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zobba-browser-regression
+          path: /tmp/zobba-browser-results
+          if-no-files-found: ignore
+      - name: Verify lockfiles and generated interface were not changed
+        run: git diff --exit-code -- Cargo.lock pnpm-lock.yaml openapi.json web/src/generated

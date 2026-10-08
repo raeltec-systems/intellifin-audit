@@ -1,0 +1,13 @@
+$ pnpm --filter @zobba/web test:browser --workers=1 --retries=0 --reporter=list,json --config web/playwright.knowledge-upgrade.config.ts
+$ playwright test --workers=1 --retries=0 --reporter=list,json --config web/playwright.knowledge-upgrade.config.ts
+Error: /workspace/intellifin-audit/zobba/web/web/playwright.knowledge-upgrade.config.ts does not exist
+    at resolveConfigFile2 (/workspace/intellifin-audit/zobba/node_modules/.pnpm/playwright@1.62.1/node_modules/playwright/lib/common/index.js:1536:11)
+    at resolveConfigLocation (/workspace/intellifin-audit/zobba/node_modules/.pnpm/playwright@1.62.1/node_modules/playwright/lib/common/index.js:1517:30)
+    at Object.loadConfigFromFile (/workspace/intellifin-audit/zobba/node_modules/.pnpm/playwright@1.62.1/node_modules/playwright/lib/common/index.js:1546:27)
+    at runTests (/workspace/intellifin-audit/zobba/node_modules/.pnpm/playwright@1.62.1/node_modules/playwright/lib/cli/testActions.js:46:51)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async _Command.<anonymous> (/workspace/intellifin-audit/zobba/node_modules/.pnpm/playwright@1.62.1/node_modules/playwright/lib/program.js:55:7)
+/workspace/intellifin-audit/zobba/web:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @zobba/web@0.1.0 test:browser: `playwright test --workers=1 --retries=0 --reporter=list,json --config web/playwright.knowledge-upgrade.config.ts`
+Exit status 1
+[ELIFECYCLE] Command failed with exit code 1.

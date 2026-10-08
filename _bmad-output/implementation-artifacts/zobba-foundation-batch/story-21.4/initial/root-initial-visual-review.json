@@ -1,0 +1,23 @@
+{
+  "scope": "Explicit initial-stage artifact inspection; not final repaired UI acceptance.",
+  "artifacts": [
+    {
+      "source": "/tmp/zobba-story-21-4/methodology-custody/negative-results/methodology-custody-unsent-4f227-ount-recovery-never-submits/test-failed-1.png",
+      "destination": "methodology-custody/visuals/prior-component-draft-missing.png",
+      "sha256": "7910c4d0d48dfc823fe2b5dabcd0d52ee4fffd26bf968e83063dd1183e676613",
+      "observation": "Exact old component after successful scoped read: saved history is present and unsent edit is absent. Synthetic fixture; no credentials or sign-in controls."
+    },
+    {
+      "source": "/tmp/zobba-story-21-4/methodology-custody/repaired-retry-2-results/methodology-custody-unsent-4f227-ount-recovery-never-submits/methodology-recovered-unsent-edit.png",
+      "destination": "methodology-custody/visuals/recovered-unsent-edit.png",
+      "sha256": "2139db4bebd1559416576175f6a1f2aa0522f883fff2445d397e71bd985e1d7c",
+      "observation": "Recovered exact unsent methodology editor; inspected earlier in root-methodology-visual-inspection.json. Synthetic fixture."
+    },
+    {
+      "source": "/tmp/zobba-story-21-4/knowledge-frontend-evidence/knowledge-narrow-source-inspection.png",
+      "destination": "initial/visuals/knowledge-narrow-source-inspection.png",
+      "sha256": "1c737464086c555c76f6c259ee99f82aef806cbb16c74b6c87144d58d25b3bdc",
+      "observation": "Registered source text and digest in narrow inspector; engagement navigation, Pause, Stop and work-product shelf remain visible. Synthetic fixture."
+    }
+  ]
+}

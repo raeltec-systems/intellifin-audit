@@ -1,0 +1,12 @@
+zobba/crates/infrastructure/src/schema-v1.catalog: OK
+zobba/crates/infrastructure/src/schema-v2.catalog: OK
+zobba/crates/infrastructure/src/schema-v3.catalog: OK
+zobba/crates/infrastructure/src/schema-v4.catalog: OK
+zobba/crates/infrastructure/src/schema-v5.catalog: OK
+zobba/crates/infrastructure/src/schema-v6.catalog: OK
+zobba/migrations/0001_bootstrap.sql: OK
+zobba/migrations/0002_identity_scope.sql: OK
+zobba/migrations/0003_tasks.sql: OK
+zobba/migrations/0004_permissions_operations.sql: OK
+zobba/migrations/0005_membership_administration.sql: OK
+zobba/migrations/0006_evidence.sql: OK

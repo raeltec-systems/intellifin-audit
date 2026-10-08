@@ -1,0 +1,9 @@
+$ playwright test tests/browser/account-binding.spec.ts --grep 'conversation mismatches after successful'
+
+Running 1 test using 1 worker
+
+(node:240118) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/account-binding.spec.ts:241:1 › conversation mismatches after successful engagement reads share one bounded recovery budget (8.1s)
+
+  1 passed (12.6s)

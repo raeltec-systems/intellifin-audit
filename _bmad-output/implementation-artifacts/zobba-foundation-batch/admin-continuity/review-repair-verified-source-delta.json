@@ -1,0 +1,7 @@
+{
+  "changed_files": [
+    "zobba/web/tests/browser/membership.spec.ts"
+  ],
+  "source_files": 184,
+  "production_rust_unchanged": true
+}

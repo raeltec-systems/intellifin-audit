@@ -1,0 +1,3 @@
+# Appendix to the Codex source study (2026-09-29)
+
+Evidence base for `../codex-source-study.md`. The `A*` files are the reviewer findings as delivered, edited only to replace absolute machine paths with the placeholders `<codex-checkout>`, `<study-scratchpad>`, `<study-target-dir>`, `<cargo-home>`, `<home>` and `<repo>`. The `B*` files are inputs and outputs of the runs executed during the study. Every Codex citation is relative to `openai/codex` at `8ffd91e42aa001b7e897bea812b02f89264f9fa0`; every Zobba citation is relative to this repository at `d9c72c80976dda5308353f9ce22e8e32fd1a11a9`. §9 of the report indexes and qualifies each file. Nothing here is product code, an approved contract or a sprint record.

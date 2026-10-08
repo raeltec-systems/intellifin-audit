@@ -1,0 +1,53 @@
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+   Compiling zobba-worker v0.1.0 (/workspace/intellifin-audit/zobba/crates/worker)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 24.05s
+     Running tests/gateway_process.rs (target/debug/deps/gateway_process-2fcfa9679d184157)
+
+running 7 tests
+test gateway_worker_helper ... ignored, owned helper process, invoked by gateway test with guarded fixture inputs
+expiry=Lease outcome=Err(Fenced) dispatch_elapsed=975.799965ms validation_delay=868.037502ms staged_flush=1 sends=0 dispatch_rows=0 historical_facts_unchanged=true
+test final_validation_expiry::lease_expiry_during_final_model_validation_refuses_gateway_dispatch ... ok
+
+thread 'support::destructive_guard_refuses_development_and_endpoint_aliases' (1194005) panicked at crates/worker/tests/../../infrastructure/tests/support/mod.rs:80:9:
+refusing destructive fixture against configured development database
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'support::destructive_guard_refuses_development_and_endpoint_aliases' (1194005) panicked at crates/worker/tests/../../infrastructure/tests/support/mod.rs:80:9:
+refusing destructive fixture against configured development database
+
+thread 'support::destructive_guard_refuses_development_and_endpoint_aliases' (1194005) panicked at crates/worker/tests/../../infrastructure/tests/support/mod.rs:80:9:
+refusing destructive fixture against configured development database
+
+thread 'support::destructive_guard_refuses_development_and_endpoint_aliases' (1194005) panicked at crates/worker/tests/../../infrastructure/tests/support/mod.rs:80:9:
+refusing destructive fixture against configured development database
+
+thread 'support::destructive_guard_refuses_development_and_endpoint_aliases' (1194005) panicked at crates/worker/tests/../../infrastructure/tests/support/mod.rs:80:9:
+refusing destructive fixture against configured development database
+
+thread 'support::destructive_guard_refuses_development_and_endpoint_aliases' (1194005) panicked at crates/worker/tests/../../infrastructure/tests/support/mod.rs:68:5:
+destructive fixtures require a dedicated *_test database
+
+thread 'support::destructive_guard_refuses_development_and_endpoint_aliases' (1194005) panicked at crates/worker/tests/../../infrastructure/tests/support/mod.rs:58:49:
+explicit safe test migration URL: InvalidConfiguration
+
+thread 'support::destructive_guard_refuses_development_and_endpoint_aliases' (1194005) panicked at crates/worker/tests/../../infrastructure/tests/support/mod.rs:58:49:
+explicit safe test migration URL: InvalidConfiguration
+
+thread 'support::destructive_guard_refuses_development_and_endpoint_aliases' (1194005) panicked at crates/worker/tests/../../infrastructure/tests/support/mod.rs:58:49:
+explicit safe test migration URL: InvalidConfiguration
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+
+thread 'support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap' (1194006) panicked at crates/worker/tests/../../infrastructure/tests/support/mod.rs:51:5:
+all test roles must share one complete effective endpoint set
+
+thread 'support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap' (1194006) panicked at crates/worker/tests/../../infrastructure/tests/support/mod.rs:51:5:
+all test roles must share one complete effective endpoint set
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+expiry=Request outcome=Err(Denied) dispatch_elapsed=976.330157ms validation_delay=857.642734ms staged_flush=1 sends=0 dispatch_rows=0 historical_facts_unchanged=true
+test final_validation_expiry::request_expiry_during_final_model_validation_refuses_gateway_dispatch ... ok
+expiry=Approval outcome=Err(NeedsDecision) dispatch_elapsed=981.665409ms validation_delay=764.354285ms staged_flush=1 sends=0 dispatch_rows=0 historical_facts_unchanged=true
+test final_validation_expiry::exact_approval_expiry_during_final_model_validation_refuses_gateway_dispatch ... ok
+test owned_gateway_process_recovery_preserves_source_facts_and_fences_late_sends ... ok
+
+test result: ok. 6 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 25.11s
+

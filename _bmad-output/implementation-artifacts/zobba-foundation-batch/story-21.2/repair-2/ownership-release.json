@@ -1,0 +1,13 @@
+{
+  "checked_at": "2026-10-02T11:33:38.177615+00:00",
+  "all_implementation_test_build_service_ownership_released": true,
+  "owned_browser_services_stopped": true,
+  "owned_idp_ports_9444_9446_absent": true,
+  "no_cargo_rustc_rustdoc_clippy_processes": true,
+  "development_ports_4310_9443_9445_preserved": true,
+  "safe_regenerable_cache_if_needed": "/workspace/intellifin-audit/zobba/target/debug/incremental",
+  "incremental_size_observed": "5.4 GiB",
+  "cache_deleted": false,
+  "preserve": "target binaries/deps; evidence; private fixtures; development DB and services",
+  "no_commit_or_push": true
+}

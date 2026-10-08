@@ -280,6 +280,9 @@ components:
     pressed-text: '{colors.text-inverse}'
 ---
 
+> **Historical compiler-1 reference.** Superseded for all new Zobba work by [the active Pair UX contract](../ux-Zobba-2026-09-25/DESIGN.md). Preserved below for existing implementation/test references; its procedure-first behavior is not the target design.
+
+
 # Brand & Style
 
 > Superseded on 2026-09-25 by revision 2 at `../ux-Zobba-2026-09-25/DESIGN.md` for the Zobba chrome. This document remains the visual contract for the compiler-1 Run-path surfaces until each surface's disposition story lands; `apps/web/src/design/tokens.test.ts` and `apps/web/src/design/status.test.ts` still read this file and move with their implementation stories. No token value or table row below was altered.

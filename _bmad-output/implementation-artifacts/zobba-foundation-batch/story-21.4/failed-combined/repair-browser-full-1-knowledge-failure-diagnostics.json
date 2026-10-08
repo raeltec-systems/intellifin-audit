@@ -1,0 +1,13 @@
+{
+  "location": "https://localhost:41603/",
+  "errors": [
+    "requestfailed: GET /api/auth/session net::ERR_ABORTED",
+    "response: 401 /api/auth/session",
+    "console: Failed to load resource: the server responded with a status of 401 ()"
+  ],
+  "health": 200,
+  "processes": {
+    "api": null,
+    "provider": null
+  }
+}

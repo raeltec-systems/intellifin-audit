@@ -1,0 +1,18 @@
+✔ every workspace read binds the current session and preserves mismatch status distinctly from command conflicts (46.29016ms)
+✔ decimal cursors retain precision and bounded canonical integer representation (0.387733ms)
+✔ snapshot validates audience, composite scope, author and command binding before exposure (2.82322ms)
+✔ latest activity is bounded and remains independent of the displayed message and Task pages (2.600896ms)
+✔ guidance and continuation retain source target and original receipt distinctions (0.6108ms)
+✔ history is complete bounded descending pagination with ascending immutable page rows (11.038867ms)
+✔ delivery validates contiguous bounded feed without advancing over omitted rows (0.777177ms)
+✔ content uses exact Rust whitespace, Unicode byte and control bounds (0.674756ms)
+✔ every command routes to its authoritative admission lane with exact body and fresh CSRF (7.093122ms)
+✔ future cursors, explicit gaps, and impossible Applied facts cannot become current state (0.447434ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 302.958162

@@ -1,0 +1,145 @@
+[
+  {
+    "id": "S1",
+    "url": "https://openai.com/index/introducing-dots/",
+    "retrieval_date": "2026-09-30",
+    "file": "introducing-dots.txt",
+    "bytes": 555,
+    "sha256": "bab6eb299984cb51be6afbde7e7467543af349e4f26aa38e27bc1988d315e508",
+    "scope": "Official announcement dated September 29, 2026; curated short excerpt for the revision 3 research bundle",
+    "original_extracted_bytes": 13006,
+    "original_extracted_sha256": "65ca4d9f34beda327d88189df02b1bb425d005f673193c42bb961c539d7cb8a1"
+  },
+  {
+    "id": "S2",
+    "url": "https://chatgpt.com/features/dots/",
+    "retrieval_date": "2026-09-30",
+    "file": "dots-feature.txt",
+    "bytes": 506,
+    "sha256": "7d16413b1791371507f3ae023746be923f948aef05f8673ab71d21f85180b6d4",
+    "scope": "Official product page; marketing examples; curated short excerpt for the revision 3 research bundle",
+    "original_extracted_bytes": 9753,
+    "original_extracted_sha256": "837cb89bd78f15a10e66c35e2a8c878372b0bce08109546c76fd95cbcd975cd8"
+  },
+  {
+    "id": "S3",
+    "url": "https://help.openai.com/en/articles/6825453-chatgpt-release-notes",
+    "retrieval_date": "2026-09-30",
+    "file": "chatgpt-release-dots-excerpt.txt",
+    "bytes": 575,
+    "sha256": "92fa2da59f540292bc364dd86452b8912fcf1cb4538c3f47c9a768c037dcdb1e",
+    "scope": "September 29 release-note excerpt; curated short excerpt for the revision 3 research bundle",
+    "original_extracted_bytes": 1005,
+    "original_extracted_sha256": "df68f896cd18c5f6a9d826596dd5a7ad63d413150b44e06ae53f6415722a8eff"
+  },
+  {
+    "id": "S4",
+    "url": "https://learn.chatgpt.com/docs/dots",
+    "retrieval_date": "2026-09-30",
+    "file": "learn-dots.md",
+    "bytes": 554,
+    "sha256": "ad0ce882c407e5085bf311311d1af42fa15bd2d954eaba12ea73866d0bbcb066",
+    "scope": "Official public learning guide; documented .md version; curated short excerpt for the revision 3 research bundle",
+    "original_extracted_bytes": 17611,
+    "original_extracted_sha256": "8c2ca0cbdf2d2b2b70e8d7dbd99977e9eee844310100a5894ca8dd8470d2d640"
+  },
+  {
+    "id": "S5",
+    "url": "https://learn.chatgpt.com/docs/dots/getting-started",
+    "retrieval_date": "2026-09-30",
+    "file": "learn-dots-start.md",
+    "bytes": 526,
+    "sha256": "45571582176a683da9666bbd7f80c85268fd9265e32d52314e9f14ef86507068",
+    "scope": "Official public learning guide; curated short excerpt for the revision 3 research bundle",
+    "original_extracted_bytes": 4173,
+    "original_extracted_sha256": "651233b87a737da52c4178712df1a47c5d08ebc0c77163608f2d080610485ec6"
+  },
+  {
+    "id": "S6",
+    "url": "https://learn.chatgpt.com/docs/dots/channels",
+    "retrieval_date": "2026-09-30",
+    "file": "learn-dots-channels.md",
+    "bytes": 550,
+    "sha256": "d1394dd7900fc6673ad337add4e663a9744e0ed78d976c729ff934b043925128",
+    "scope": "Official public learning guide; curated short excerpt for the revision 3 research bundle",
+    "original_extracted_bytes": 2469,
+    "original_extracted_sha256": "e14692f7b354a049a3715ad2c2e30da461c252e2bd556925203cdc93f5a44e0b"
+  },
+  {
+    "id": "S7",
+    "url": "https://learn.chatgpt.com/docs/dots/tasks-and-memory",
+    "retrieval_date": "2026-09-30",
+    "file": "learn-dots-tasks.md",
+    "bytes": 591,
+    "sha256": "6c010dcb2c221ec5a563921b97d3b24d25c2da95a0d7fcc4317ac3797d09876d",
+    "scope": "Official public learning guide; curated short excerpt for the revision 3 research bundle",
+    "original_extracted_bytes": 7540,
+    "original_extracted_sha256": "190a71e142ebef3033362ca4ba566664034504e0c05fab5118850314c4e1eff7"
+  },
+  {
+    "id": "S8",
+    "url": "https://learn.chatgpt.com/docs/dots/computers-and-apps",
+    "retrieval_date": "2026-09-30",
+    "file": "learn-dots-computers.md",
+    "bytes": 543,
+    "sha256": "e5539a7e40c4ce9cfe8226395409099bbc07f1b1c6e12ace95a02c37f9f07b8a",
+    "scope": "Official public learning guide; curated short excerpt for the revision 3 research bundle",
+    "original_extracted_bytes": 5648,
+    "original_extracted_sha256": "0b71214666f05bf7d4f438da5a2efd2ba2ccbd92196858ec83308e3cf4a6e537"
+  },
+  {
+    "id": "S9",
+    "url": "https://learn.chatgpt.com/docs/dots/controls",
+    "retrieval_date": "2026-09-30",
+    "file": "learn-dots-controls.md",
+    "bytes": 560,
+    "sha256": "6bbcfd3f6be164f4ff0c19523603d8435bae0faa5c59df149b8858a617625669",
+    "scope": "Official public learning guide; curated short excerpt for the revision 3 research bundle",
+    "original_extracted_bytes": 5618,
+    "original_extracted_sha256": "c175e2bfffa1936a79e15900ec7bb87aee0bb673486fd3f9caff13f2c2bf0283"
+  },
+  {
+    "id": "S10",
+    "url": "https://help.openai.com/en/articles/20001530-getting-started-with-your-dot",
+    "retrieval_date": "2026-09-30",
+    "file": "getting-started-dot.txt",
+    "bytes": 564,
+    "sha256": "741e6da8abee9da6e406186a2ac29305f2190b671dd57385e29c3859c86e3a10",
+    "scope": "Official Help Center; curated short excerpt for the revision 3 research bundle",
+    "original_extracted_bytes": 8804,
+    "original_extracted_sha256": "5fc544fe6bc4fff87fa47af3c2b532ce8f3cc4b545b3a63d2362dab4142be7a1"
+  },
+  {
+    "id": "S11",
+    "url": "https://help.openai.com/en/articles/20001529-dots-privacy-security-and-safety-faqs",
+    "retrieval_date": "2026-09-30",
+    "file": "dots-privacy.txt",
+    "bytes": 577,
+    "sha256": "4cf09ccfd9ec3b318956720410958e4bfd361d5a5af58bc28ecec8205e18f173",
+    "scope": "Official Help Center; curated short excerpt for the revision 3 research bundle",
+    "original_extracted_bytes": 12390,
+    "original_extracted_sha256": "aef49f13179630fe27559e19dcfd9f8c4056f0f9d6165542c95ad57c3feb12f9"
+  },
+  {
+    "id": "S12",
+    "url": "https://help.openai.com/en/articles/20001554-manage-dots-in-chatgpt-workspaces",
+    "retrieval_date": "2026-09-30",
+    "file": "manage-dots.txt",
+    "bytes": 594,
+    "sha256": "1c0b872fcaf1bacb790184e51bdb52942388410dc48ea5a982a40c3d8ac506d1",
+    "scope": "Official Help Center; curated short excerpt for the revision 3 research bundle",
+    "original_extracted_bytes": 5699,
+    "original_extracted_sha256": "9ed5e8bb8f66b8a5c5427144a69f8c849729728bbffe36ca3e3d5996d7707581"
+  },
+  {
+    "id": "S13",
+    "url": "https://chatgpt.com/dots",
+    "retrieval_date": "2026-09-30",
+    "file": "chatgpt-dots.txt",
+    "bytes": 455,
+    "sha256": "6a3797393b19392b02091b6369d4b349c36f4aae3ef14703fe3bfa5496eeb280",
+    "scope": "Public landing fetch; rendered text only ChatGPT, no usable UI evidence; curated short excerpt for the revision 3 research bundle",
+    "original_extracted_bytes": 7,
+    "original_extracted_sha256": "50a4122943273ad2f00ea92bff9c7cb6235e199f745321cb4272aa1857840463"
+  }
+]

@@ -1,0 +1,26 @@
+{
+  "baseline": "d38e1daed736415ef13e7606345dac71bd1d9f01",
+  "artifact_manifest": "schema9-browser-artifacts.json",
+  "source_manifest": "schema9-source-proof.json",
+  "command": [
+    "pnpm",
+    "test:browser",
+    "--workers=1",
+    "--retries=0",
+    "--reporter=list,json",
+    "--config",
+    "playwright.knowledge-upgrade.config.ts"
+  ],
+  "owned_wrapper": "run-repair-legacy-upgrade-3.sh",
+  "schema9_cli_sha256": "ef24b7e8f91bc41b2dba2bb254481af2b0e5610329dbc8572facf4f3bc95b902",
+  "schema9_api_sha256": "792408ae5b38c696803b3b07bdc78a1ab00f601b2ab638ba390f6d059c8c0099",
+  "scope": "Separate guarded disposable browser database and local object fixture; API owner restart only; no worker exists in this proof",
+  "state": "Passed:1 test,11.7seconds,one Chromium worker,zero retries; final common browser fixture",
+  "executed_log": "repair-legacy-upgrade-3.log",
+  "exit_receipt": "repair-legacy-upgrade-3.exit",
+  "public_proof": "repair-legacy-public-capture-final-proof.json",
+  "source_before": "source-repair-legacy-upgrade-3-start.json",
+  "source_after": "source-repair-legacy-upgrade-3-end.json",
+  "owned_wrapper_sha256": "68aafdeb34d42cfa240c9b4db7c6bb1db98fdb26543af0736bd152ca9ab82f00",
+  "earlier_invocation": "schema9-proof-invocation-first-repaired.json"
+}

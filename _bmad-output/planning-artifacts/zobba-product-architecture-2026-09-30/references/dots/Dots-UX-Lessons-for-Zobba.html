@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Dots UX Lessons for Zobba</title>
+  <style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+
+ul.task-list[class]{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+font-size: inherit;
+width: 0.8em;
+margin: 0 0.8em 0.2em -1.6em;
+vertical-align: middle;
+}
+.display.math{display: block; text-align: center; margin: 0.5rem auto;}
+</style>
+  <style type="text/css">:root { color-scheme: light; --ink:#1c1b19; --muted:#5e5a52; --iris:#4c3fb8; --line:#e3e0d8; }
+* { box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+body { margin:0 auto; max-width:1120px; padding:56px 48px 100px; background:#fbfaf7; color:var(--ink); font:16px/1.7 system-ui,-apple-system,"Segoe UI",sans-serif; }
+header { padding-bottom:24px; border-bottom:3px solid var(--iris); margin-bottom:30px; }
+h1,h2,h3 { line-height:1.2; letter-spacing:-.025em; }
+h1 { font-size:2.8rem; max-width:850px; }
+h2 { font-size:1.9rem; margin:64px 0 22px; padding-top:20px; border-top:1px solid var(--line); }
+h3 { font-size:1.25rem; margin-top:34px; }
+p { overflow-wrap:anywhere; max-width:86ch; margin:15px 0; }
+a { color:var(--iris); text-underline-offset:3px; overflow-wrap:anywhere; }
+table { width:100%; border-collapse:collapse; font-size:.9rem; margin:24px 0; background:white; }
+th { background:#efede8; font-weight:650; text-align:left; }
+th,td { vertical-align:top; padding:12px 14px; border:1px solid var(--line); }
+td p { margin:0; }
+li { margin:7px 0; }
+img,figure>svg { display:block; max-width:100%; height:auto; margin:24px auto; background:white; border:1px solid var(--line); padding:16px; }
+figure { margin:28px 0; }
+figcaption { color:var(--muted); font-size:.88rem; text-align:center; }
+#TOC { background:#efede8; padding:24px 32px; border-radius:8px; margin-bottom:40px; }
+#TOC>ul { list-style:none; padding-left:0; }
+#TOC>ul>li>a { font-weight:650; }
+#TOC>ul>li>ul { columns:2; column-gap:36px; list-style:none; padding-left:0; }
+#TOC ul ul ul { display:none; }
+#TOC li { break-inside:avoid; }
+#TOC a { color:var(--ink); text-decoration:none; }
+#TOC a:hover { color:var(--iris); text-decoration:underline; }
+code { overflow-wrap:anywhere; font-size:.9em; background:#efede8; padding:.1em .3em; border-radius:3px; }
+blockquote { border-left:3px solid var(--iris); margin-left:0; padding-left:20px; color:var(--muted); }
+@media(max-width:700px) { body { padding:26px 18px 60px; } h1 { font-size:2rem; } h2 { font-size:1.5rem; } table { display:block; overflow-x:auto; } th,td { min-width:145px; } #TOC>ul>li>ul { columns:1; } }
+@media print { body { max-width:none; padding:0; background:white; font-size:10pt; line-height:1.45; } a { color:inherit; text-decoration:none; } h2 { break-before:page; margin-top:0; } h3,th { break-after:avoid; } tr,img,figure { break-inside:avoid; } figure>svg { max-height:210mm; width:100%; object-fit:contain; } th,td { padding:7px 9px; } #TOC { background:none; } }
+</style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Dots UX Lessons for Zobba</h1>
+</header>
+<nav id="TOC" role="doc-toc">
+<ul>
+<li><a href="#dots-ux-lessons-for-zobba" id="toc-dots-ux-lessons-for-zobba">Dots UX lessons for Zobba</a>
+<ul>
+<li><a href="#evidence-and-scope" id="toc-evidence-and-scope">Evidence
+and scope</a></li>
+<li><a href="#the-experience-the-screenshots-reveal" id="toc-the-experience-the-screenshots-reveal">The experience the
+screenshots reveal</a></li>
+<li><a href="#what-current-public-information-adds" id="toc-what-current-public-information-adds">What current public
+information adds</a></li>
+<li><a href="#recommended-refinements-to-the-zobba-product" id="toc-recommended-refinements-to-the-zobba-product">Recommended
+refinements to the Zobba product</a></li>
+<li><a href="#a-reference-audit-journey" id="toc-a-reference-audit-journey">A reference audit journey</a></li>
+<li><a href="#what-this-changesand-what-remains-unverified" id="toc-what-this-changesand-what-remains-unverified">What this
+changes—and what remains unverified</a></li>
+<li><a href="#sources" id="toc-sources">Sources</a></li>
+</ul></li>
+</ul>
+</nav>
+<h1 id="dots-ux-lessons-for-zobba">Dots UX lessons for Zobba</h1>
+<p><strong>Research date: 30 September 2026.</strong> Product research
+first developed against the lead Zobba design, revision 2, and used for
+the integrated revision 3. See the <a href="../../Zobba-Product-and-Architecture-Design.md">current lead
+design</a>. This is not a build plan or a claim that the proposed Zobba
+behavior already exists.</p>
+<p>OpenAI officially launched Dots on <strong>29 September
+2026</strong>. The user’s screenshots and the public documentation
+establish a close reference for Zobba’s intended experience: an
+identifiable assistant that accepts responsibilities, keeps working
+between conversations, and brings back results or specific requests for
+help. The computer, activity and outputs remain within reach of that
+relationship. [1–5]</p>
+<p><strong>Recommendation: make this continuity the interaction standard
+for Zobba, with engagement boundaries and audit accountability built
+into the work.</strong> Retain the own Rust engine, fresh schema,
+continuing Task, real managed computer and standing Permissions. Dots
+provides evidence for a product experience; its public interface does
+not determine our implementation.</p>
+<h2 id="evidence-and-scope">Evidence and scope</h2>
+<p>This study combines four supplied screenshots, current official
+product/help/learning documentation, and dated launch reporting. It does
+not include a signed-in hands-on Dots test. No user-specific Dots URL or
+business application was accessed. Account details in screenshots are
+not reproduced.</p>
+<p>Evidence labels used below:</p>
+<ul>
+<li><strong>Visible:</strong> directly present in the supplied
+screenshots, numbered S1–S4 in upload order.</li>
+<li><strong>Documented:</strong> described by OpenAI as product
+behavior. This is stronger than inference but is not independent
+performance or security verification.</li>
+<li><strong>Recommended:</strong> a design choice for Zobba.</li>
+</ul>
+<p>Assistant messages visible in a screenshot are evidence of how the
+assistant communicates, not independent proof that its reported actions
+succeeded. Still images do not establish latency, background durability
+or credential isolation.</p>
+<h2 id="the-experience-the-screenshots-reveal">The experience the
+screenshots reveal</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Screen</th>
+<th>Visible interaction</th>
+<th>Useful lesson for Zobba</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>S1: conversation and profile</strong></td>
+<td>A named assistant, persistent composer, output link in the header,
+and a profile card containing Call, Slack, connected computer, recent
+activity and outputs.</td>
+<td>Keep the working relationship central. Work, access and results need
+nearby, stable homes after messages scroll away.</td>
+</tr>
+<tr class="even">
+<td><strong>S2: conversation beside computer</strong></td>
+<td>The conversation remains available while the desktop is open. The
+assistant describes useful work with its current account, then requests
+another role. A sign-in receipt appears. The desktop says who has
+control and offers Take over.</td>
+<td>Let people delegate, watch and steer in one place. Request access
+when its purpose is concrete. Watching must be distinct from
+controlling.</td>
+</tr>
+<tr class="odd">
+<td><strong>S3: a criterion conflict</strong></td>
+<td>The assistant names two conflicting approval rules, asks which
+governs the investigation, and receives a short answer.</td>
+<td>Ask narrow questions that a person can answer without rebuilding
+context. Preserve the answer’s meaning and who gave it.</td>
+</tr>
+<tr class="even">
+<td><strong>S4: private sign-in and permission</strong></td>
+<td>A domain-labelled sign-in dialog offers Sign in, Not now and Take
+over to sign in. Behind it is an upload request with one-time and
+standing choices.</td>
+<td>Keep authentication outside prose. Put exceptional authority
+requests beside the affected action, with a durable return path.</td>
+</tr>
+</tbody>
+</table>
+<p>A plausible sequence is: accept outcome → use available access →
+request another role → private sign-in → clarify a governing rule →
+continue tests → request the next role → return accessible outputs. This
+reconstructs the visible content; it is not a recording of a verified
+end-to-end run.</p>
+<p>The assistant’s useful updates are about work: a reproduced issue,
+what it affects, evidence gathered and what happens next. The visible
+“Thinking” overlay is less informative and sometimes overlaps content.
+Zobba should adopt the meaningful updates and unobtrusive activity
+indicators, while keeping its accepted Pair identity.</p>
+<h2 id="what-current-public-information-adds">What current public
+information adds</h2>
+<h3 id="one-conversation-can-coordinate-several-responsibilities">One
+conversation can coordinate several responsibilities</h3>
+<p>Official documentation explicitly says people can switch tasks, add
+details and change priorities in the same conversation. Dots can
+delegate parallel work and create visible task threads, while the main
+conversation remains available. People can open a task to inspect
+progress, results or requests and give further direction. Cloud work can
+continue while their own device is off. [2, 3]</p>
+<p>This is the most consequential finding for Zobba. A durable Task
+remains the right unit for audit work, but creating or visiting a
+separate task conversation should not be mandatory for every
+instruction. “Also investigate those exceptions” can create linked work
+and return a compact card while the person stays in conversation.</p>
+<h3 id="the-computer-is-accessible-without-taking-over-the-whole-experience">The
+computer is accessible without taking over the whole experience</h3>
+<p>The public computer guide documents Profile → Computers and
+contextual Open computer handoffs. Opening the desktop is ordinarily
+inspection; Take over transfers input, and Return control lets the
+assistant continue. It has its own browser sessions and files, separate
+from the person’s browser. Some websites may block cloud browsers or
+require further verification. [3]</p>
+<p>Dots also supports optional access to a person’s computer, which must
+remain online with the app open. That is a separate product capability,
+not a dependency of Zobba’s first complete managed-computer
+experience.</p>
+<h3 id="sign-in-is-a-focused-handoff">Sign-in is a focused handoff</h3>
+<p>Dots documents a private form that sends credentials to the remote
+browser outside the conversation, plus takeover to sign in directly on
+the website. OpenAI says supported forms do not expose credentials to
+the model. An active website session and a saved password are distinct:
+valid sessions can continue; using a saved login for a new sign-in needs
+confirmation. [3, 6]</p>
+<p>For Zobba, keep protected takeover as the general path, including
+MFA. A private form is a useful convenience only for a qualified
+integration that can meet the same containment guarantees. The visual
+simplicity of the modal does not establish that arbitrary website
+sign-in is simple or universally supported.</p>
+<h3 id="continuing-work-has-three-meanings">Continuing work has three
+meanings</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Mode documented for Dots</th>
+<th>Recommended Zobba equivalent</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Assigned ongoing work:</strong> pursue an objective between
+conversations; pause or wake as appropriate.</td>
+<td>A continuing engagement-bound Task, with outstanding dependencies,
+current authority and a budget.</td>
+</tr>
+<tr class="even">
+<td><strong>Recurring or supported event work:</strong> a saved schedule
+or supported trigger, with timing, notification conditions and
+destination.</td>
+<td>A scheduled or triggered Task, or a standing request. Evidence
+arrivals can resume existing work. For recurring assurance, use a Check
+based on the reviewed method; each occurrence has its own linked Task,
+period, evidence and result.</td>
+</tr>
+<tr class="odd">
+<td><strong>Proactive research:</strong> read permitted information and
+develop suggestions; its research tools do not send, mutate apps or
+control a computer.</td>
+<td>Optional discovery within an explicitly allowed engagement/source
+scope. Present a useful proposal; subsequent execution needs the
+applicable Task authority.</td>
+</tr>
+</tbody>
+</table>
+<p>Connecting an app does not itself create a monitoring schedule. A
+generic “keep an eye on this” should lead to a concise, inspectable
+agreement about what is watched and when an update matters. [2, 4]</p>
+<h3 id="channels-preserve-the-relationship-not-one-mirrored-transcript">Channels
+preserve the relationship, not one mirrored transcript</h3>
+<p>Dots supports ChatGPT, calls, Slack and Teams. The same assistant
+uses relevant context across them, but visible conversations remain
+distinct. Access to private information does not authorize disclosure to
+a wider channel. A person can type during a call; ending the call does
+not end assigned work. Calls are user-initiated at launch. [5]</p>
+<p>For Zobba, web conversation is sufficient for the first complete
+experience. Later channels should reach the same authorized work, with
+engagement and audience checks, instead of creating disconnected
+assistants. Voice and Slack are useful extensions, not substitutes for a
+complete audit workflow.</p>
+<h3 id="controls-deserve-precise-language">Controls deserve precise
+language</h3>
+<p>Dots documents rules for acting without asking, acting when
+explicitly requested, asking first, and handing the action to the
+person. It says users need not author a custom rule for each ordinary
+approval. Connected access and action authority remain distinct. [4]</p>
+<p>Its detailed controls guide also states that Pause stops the current
+main task, not every delegated task or future scheduled run. These are
+separately managed through Activity and Scheduled. Zobba should retain
+the lead design’s stronger Task-level control: stopping a Task stops its
+delegated execution, acknowledges unresolved effects, and says
+explicitly whether a future Check schedule remains enabled.</p>
+<p>At launch, the privacy help says individual dot memories cannot be
+directly viewed, edited or deleted. Disconnecting an app stops future
+access but does not remove already learned context. Zobba’s inspectable,
+scoped working knowledge and correction/invalidation behavior are
+valuable professional requirements to retain. [6]</p>
+<h2 id="recommended-refinements-to-the-zobba-product">Recommended
+refinements to the Zobba product</h2>
+<h3 id="let-the-conversation-coordinate-the-work">1. Let the
+conversation coordinate the work</h3>
+<p>Keep one familiar Zobba identity and a continuing conversation within
+the active engagement. That conversation accepts new objectives,
+follow-ups, priorities and questions across its Tasks. Show concise work
+cards with objective, state, owner and the next useful action. Open a
+Task’s dedicated history when deeper inspection is needed; returning
+restores the coordinating conversation.</p>
+<p>Keep engagement selection visible. A home view can show authorized
+work summaries across engagements, but bringing client content into a
+conversation requires selecting its scope. A familiar assistant identity
+must not silently pool client materials. Ambiguous references such as
+“send that to them” need resolution against the actual work product,
+audience and authority.</p>
+<p>This refines revision 2’s presentation of “Task and conversation.”
+The continuing Task remains the record of objective, decisions, evidence
+and execution; a separate chat is no longer the compulsory front door
+for every Task.</p>
+<h3 id="keep-the-conversation-available-while-work-happens">2. Keep the
+conversation available while work happens</h3>
+<p>From the conversation, open Computer, Data, Documents or Evidence
+alongside it. Keep Pin, Expand, Close and Follow Zobba. Incoming
+activity should offer an Open card rather than displace something the
+person is reading or editing. A compact companion panel contains active
+work, Needs you, computers, work products and Permissions.</p>
+<p>Show what is actually happening: “Matching the population,” “Checking
+three exceptions,” or “Waiting for source access.” Make independent
+progress explicit when one branch waits. Separate conversation
+availability, Task activity and computer connectivity so a busy desktop
+does not make the assistant appear unresponsive.</p>
+<h3 id="make-interruptions-specific-and-easy-to-finish">3. Make
+interruptions specific and easy to finish</h3>
+<p>An access request names the application, environment, required
+account/role and purpose. After private sign-in, distinguish Details
+submitted, Verifying access and Signed in as the verified role. A
+credentials-entered receipt alone must not resume dependent work.</p>
+<p>A substantive question names the conflicting sources or choices,
+explains the effect and recommends an answer when justified. Bind the
+response to that question and show the accepted meaning. Only the
+affected work waits. If a response would change required methodology,
+direct that configuration change to Admin’s ordinary versioned Save; do
+not turn a task answer into authority to override firm rules.</p>
+<h3 id="apply-standing-permissions-without-repeated-ceremonies">4. Apply
+standing Permissions without repeated ceremonies</h3>
+<p>Routine actions within existing authority proceed. When authority is
+missing, show the actual material, destination, account, environment and
+effect. Offer Allow this action and, where permitted, Set a standing
+rule. The standing rule has understandable scope, limits, duration and
+revocation; avoid a bare domain-wide “Always allow” for client
+information.</p>
+<p>The user should experience a short, relevant decision. Enforcement
+remains in Zobba’s backend, with the effective grant recorded against
+the operation. Dots’ natural-language custom rules are not evidence for
+replacing that authorization contract.</p>
+<h3 id="make-return-visits-and-outputs-useful">5. Make return visits and
+outputs useful</h3>
+<p>Provide a compact “Since your last visit” digest: what finished, what
+changed, what needs input and what remains inconclusive. Keep meaningful
+progress in the conversation and detailed activity one step away.</p>
+<p>Work products have stable identities, versions and review states.
+Chat links and the output shelf open the same object. Distinguish Draft,
+Ready for team review, Independently reviewed and Self-reviewed.
+Computer testing of an application’s approval role is not an independent
+audit review.</p>
+<h3 id="make-the-specialist-capability-present-from-the-first-task">6.
+Make the specialist capability present from the first task</h3>
+<p>The first complete experience binds the applicable methodology,
+required skills and authorized working knowledge before substantive
+evaluation. These shape the questions, coverage checks, analysis and
+working paper. They need not become a large setup questionnaire: use
+saved firm configuration, expose the applied basis and ask only about
+missing consequential choices.</p>
+<p>The specialist value is visible when the user asks “Why is this an
+exception?” Zobba opens the criterion, authoritative source, relevant
+records, calculation, contrary evidence and limitation. A confident
+answer alone is insufficient. Reviewed recurring methods preserve that
+basis across runs, and solo use remains honestly labelled.</p>
+<h2 id="a-reference-audit-journey">A reference audit journey</h2>
+<ol type="1">
+<li><strong>Delegate:</strong> “Check whether terminated users lost
+access on time this quarter. Investigate exceptions and prepare the
+working paper.” Zobba shows a compact working brief under the active
+engagement and starts permitted work.</li>
+<li><strong>Continue talking:</strong> “Also look for shared accounts.”
+Zobba relates this to the current scope, creates linked work where
+appropriate and identifies any material expansion that needs a
+decision.</li>
+<li><strong>Provide access:</strong> “I need the read-only auditor role
+in the access system. I can continue matching the files while you sign
+in.” Open protected sign-in; verify the account after handback.</li>
+<li><strong>Resolve a criterion:</strong> Zobba identifies two
+conflicting effective-date sources, cites them and recommends the
+applicable interpretation. The authorized person’s answer becomes an
+attributed decision. Required methodology changes remain Admin
+configuration.</li>
+<li><strong>Inspect during work:</strong> “Show cases with incomplete
+evidence.” The evidence view opens beside the same conversation. The
+person’s inspection stays pinned while independent work continues.</li>
+<li><strong>Return to results:</strong> Zobba reports population
+coverage, supported exceptions and unresolved limitations. The working
+paper remains in Work products with its actual review state. Team review
+or permitted self-review follows the engagement’s rules.</li>
+<li><strong>Make it recurring:</strong> “Run this monthly.” Zobba
+proposes a Check based on the reviewed method, with period, sources,
+schedule/time zone, owner, budget, standing authority and notification
+conditions. The saved Check is visible and each occurrence produces a
+draft assessment, not a fabricated human sign-off.</li>
+</ol>
+<p>This journey gives the user the Dots-like continuity they asked for
+while making Zobba’s audit specialization tangible.</p>
+<h2 id="what-this-changesand-what-remains-unverified">What this
+changes—and what remains unverified</h2>
+<p>The immediate design refinement is the conversational entry point and
+six reference interactions: parallel work, private access, a
+consequential question, bounded standing authority, returning after
+absence and reviewing an output. It does not justify replacing the
+recommended Rust engine or speculating about OpenAI’s hosting, queues,
+database, screen transport or memory system.</p>
+<p>The costed managed-computer design should continue to stand on our
+own operating assumptions and measurements. Dots being described as
+“always on,” or included in a subscription, reveals neither continuously
+provisioned desktop capacity nor per-task cost. No source reviewed
+establishes its interaction latency or task success rate. Zobba must
+validate its own responsiveness, control handoff and recovery behavior
+against the intended experience.</p>
+<p>OpenAI also announced <strong>specialist Dots for
+organizations</strong>, initially as focused enterprise pilots. That is
+consequential positioning: Zobba’s differentiated value should be firm
+methodology, defensible evaluation, evidence provenance, recurring
+methods and accountable review, delivered through this approachable
+experience. The launch does not itself establish audit-specific
+capabilities. [1]</p>
+<p>The public documentation is evolving. Labels for explicit-request
+rules and Delete/Reset differ; texting is described as coming soon in
+the learning guide and as a limited US beta in Help; mobile takeover
+differs from the general desktop description. These variations do not
+change the core interaction recommendation. No new business approval is
+required to use these UX findings as a design reference.</p>
+<h2 id="sources">Sources</h2>
+<p>All accessed 30 September 2026. Official detailed guides govern exact
+behavior where introductory or press wording is broader.</p>
+<ol type="1">
+<li><a href="https://openai.com/index/introducing-dots/">OpenAI —
+Introducing dots, 29 September 2026</a>: launch, ongoing relationship,
+computer, multiple responsibilities and specialist enterprise
+pilots.</li>
+<li><a href="https://learn.chatgpt.com/docs/dots/tasks-and-memory">ChatGPT
+Learn — Tasks and memory</a>: parallel tasks, continuing work,
+schedules, event monitoring, context and proactive research.</li>
+<li><a href="https://learn.chatgpt.com/docs/dots/computers-and-apps">ChatGPT
+Learn — Connect computers and apps</a>: inspection, takeover, private
+sign-in, browser sessions and app access.</li>
+<li><a href="https://learn.chatgpt.com/docs/dots/controls">ChatGPT Learn
+— Control your dot</a>: activity, custom rules, permissions and exact
+pause/stop scope.</li>
+<li><a href="https://learn.chatgpt.com/docs/dots/channels">ChatGPT Learn
+— Message your dot</a>: calls, Slack/Teams, audience limits and distinct
+channel conversations.</li>
+<li><a href="https://help.openai.com/en/articles/20001529-dots-privacy-security-and-safety-faqs">OpenAI
+Help — Dots privacy, security and safety FAQs</a>: sign-in claims,
+memory limitations and access/disconnection behavior.</li>
+<li><a href="https://help.openai.com/en/articles/20001530-getting-started-with-your-dot">OpenAI
+Help — Getting started with your dot</a>: onboarding, profile, activity
+and rollout details.</li>
+<li><a href="https://www.wired.com/story/openai-dots-always-on-ai-agents-that-proactively-help/">WIRED
+— OpenAI’s Dots Are Always-On AI Agents, 29 September 2026</a>: launch
+reporting and descriptions of demos; not independent hands-on
+validation.</li>
+<li><a href="https://9to5google.com/2026/09/29/openai-dots-agent/">9to5Google —
+OpenAI launches Dots, 29 September 2026</a>: corroborating launch
+report; examples attributed to OpenAI.</li>
+</ol>
+<p>Supporting notes in this research directory: <a href="screenshot-study.md">screenshot-study.md</a>, <a href="public-official.md">public-official.md</a>, <a href="public-secondary.md">public-secondary.md</a> and <a href="official-source-manifest.json">official-source-manifest.json</a>.
+Screenshots remain the user’s supplied conversation evidence; they are
+not reproduced in the artifact.</p>
+</body>
+</html>

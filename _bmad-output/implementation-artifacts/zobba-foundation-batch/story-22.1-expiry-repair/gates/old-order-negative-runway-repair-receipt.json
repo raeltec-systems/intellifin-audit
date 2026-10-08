@@ -1,0 +1,26 @@
+{
+  "gate": "old-order-negative-runway-repair",
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "zobba-worker",
+    "--test",
+    "gateway_process",
+    "final_validation_expiry",
+    "--",
+    "--nocapture"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T09:01:47.497972+00:00",
+  "ended_at": "2026-10-03T09:02:19.146039+00:00",
+  "duration_seconds": 31.648,
+  "exit": 101,
+  "source_before": "old-order-negative-runway-repair-source-before.json",
+  "source_after": "old-order-negative-runway-repair-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "old-order-negative-runway-repair.log",
+  "log_sha256": "84ed15d370dda8c77c4f32df101207a5939a740c31b6bf8397ec990d393d618c"
+}

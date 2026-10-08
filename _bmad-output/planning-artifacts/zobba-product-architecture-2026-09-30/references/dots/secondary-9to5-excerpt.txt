@@ -1,0 +1,12 @@
+Selected secondary-source evidence
+Source: https://9to5google.com/2026/09/29/openai-dots-agent/
+Published: Sep 29 2026, 10:55 am PT
+Retrieved: 2026-09-30
+
+Selected quotation:
+OpenAI launches Dots, new ‘always-on agents’ you can assign tasks to
+
+Research summary (not a quotation):
+Launch report attributed to OpenAI; its useful UX themes are ongoing work, visible computer, review and custom rules. Not an independent reliability test.
+
+This is a short relevant excerpt, not the complete article. See public-secondary.md for source-specific limits.

@@ -1,0 +1,11 @@
+S13: selected official-source evidence
+Source: https://chatgpt.com/dots
+Retrieved: 2026-09-30
+
+Selected quotation:
+ChatGPT
+
+Research summary (not a quotation):
+Public unauthenticated /dots returned only this readable shell text. This source establishes no signed-in interface or user-specific behavior.
+
+This package contains a short relevant excerpt, not the complete public page. See the source URL and public-official.md for interpretation and limits.

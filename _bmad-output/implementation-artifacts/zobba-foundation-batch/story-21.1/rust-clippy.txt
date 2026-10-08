@@ -1,0 +1,2 @@
+    Checking zobba-worker v0.1.0 (/workspace/intellifin-audit/zobba/crates/worker)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.31s

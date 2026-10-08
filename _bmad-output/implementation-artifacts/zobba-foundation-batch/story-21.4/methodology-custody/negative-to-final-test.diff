@@ -1,0 +1,14 @@
+--- negative-control-test
++++ final-test
+@@ -192,7 +192,10 @@
+     await page.getByLabel('Package name', { exact: true }).fill('Private logout edit');
+     await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+     await expect(page.getByRole('form', { name: 'Edit methodology', exact: true })).toHaveCount(0);
+-    await signIn(page, 'manager-a'); await settings(page); await expect(page.getByLabel('Package name', { exact: true })).toHaveCount(0); expect(posts).toBe(0);
++    await expect(page.getByText('You have signed out of Zobba.', { exact: true })).toBeVisible();
++    // Application logout leaves the IdP SSO cookie intact. Clear only that
++    // synthetic provider cookie before requesting its explicit account form.
++    await signIn(page, 'manager-a', true); await settings(page); await expect(page.getByLabel('Package name', { exact: true })).toHaveCount(0); expect(posts).toBe(0);
+   } finally { await replacement.close(); }
+ });
+ 

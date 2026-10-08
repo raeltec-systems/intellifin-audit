@@ -1,0 +1,10 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.71s
+     Running tests/evidence_contract.rs (target/debug/deps/evidence_contract-2f2c4d1d0ebaf912)
+
+running 3 tests
+test finite_reservation_limit_is_documented_as_conflict_without_retry_after ... ok
+test evidence_upload_and_download_describe_raw_binary_not_json_integer_arrays ... ok
+test shared_browser_metadata_matrix_preserves_rust_acceptance_and_exact_values ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+

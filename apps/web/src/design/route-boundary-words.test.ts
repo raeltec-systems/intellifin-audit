@@ -15,7 +15,7 @@ import { ROUTE_BOUNDARY_COPY, routeBoundarySentence } from './route-boundary-wor
  * change on either side fails here and the two are changed together.
  */
 const epics = readFileSync(
-  fileURLToPath(new URL('../../../../_bmad-output/planning-artifacts/epics.md', import.meta.url)),
+  fileURLToPath(new URL('../../../../_bmad-output/planning-artifacts/zobba-build-plan-2026-09-30/legacy/epics-before-rev3.md', import.meta.url)),
   'utf8',
 );
 const story = /### Story 10\.8:[\s\S]*?(?=\n### Story )/.exec(epics)?.[0] ?? '';

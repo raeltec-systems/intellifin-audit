@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd /workspace/intellifin-audit/zobba
+source /workspace/zobba-build-tools/activate-tests.sh
+export ZOBBA_TEST_MIGRATION_DATABASE_URL=postgresql://zobba_patch20_3_owner@127.0.0.1:55434/zobba_patch20_3_test
+export ZOBBA_TEST_RUNTIME_DATABASE_URL=postgresql://zobba_patch20_3_app@127.0.0.1:55434/zobba_patch20_3_test
+export ZOBBA_TEST_ADMIN_DATABASE_URL=postgresql://zobba_local_admin@127.0.0.1:55434/zobba_patch20_3_test
+source /tmp/zobba-20-6-idp/env.sh
+export ZOBBA_FIXTURE_DIR=/tmp/zobba-20-6-idp
+export ZOBBA_FIXTURE_PORT=9444
+export ZOBBA_OIDC_ISSUER=https://127.0.0.1:9444
+python3 - <<'CHECK_PORT'
+import socket
+with socket.socket() as probe:
+    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    probe.bind(('127.0.0.1', 9444))
+CHECK_PORT
+node fixtures/oidc/server.mjs > /tmp/zobba-20-6-final-full-idp.log 2>&1 &
+zobba_test_idp_pid=$!
+cleanup() {
+    kill "$zobba_test_idp_pid" 2>/dev/null || true
+    wait "$zobba_test_idp_pid" 2>/dev/null || true
+}
+trap cleanup EXIT
+python3 - <<'CHECK_READY'
+import os, ssl, time, urllib.request
+context=ssl.create_default_context(cafile=os.environ['ZOBBA_OIDC_CA_FILE'])
+for attempt in range(80):
+    try:
+        with urllib.request.urlopen(os.environ['ZOBBA_OIDC_ISSUER']+'/.well-known/openid-configuration',context=context,timeout=1) as response:
+            if response.status == 200:
+                break
+    except Exception:
+        time.sleep(0.1)
+else:
+    raise SystemExit('test_idp_not_ready')
+CHECK_READY
+RUST_BACKTRACE=1 cargo test --workspace --locked -- --test-threads=1 > /tmp/zobba-20-6-final-full-rust.log 2>&1

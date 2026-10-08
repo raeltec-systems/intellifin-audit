@@ -1,0 +1,26 @@
+[package]
+name = "zobba-worker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+zobba-application.workspace = true
+zobba-domain.workspace = true
+zobba-infrastructure.workspace = true
+axum.workspace = true
+tokio.workspace = true
+serde.workspace = true
+rand.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+base64.workspace = true
+sqlx.workspace = true
+
+[dev-dependencies]
+zobba-infrastructure = { workspace = true, features = ["test-loopback"] }
+
+[lints]
+workspace = true

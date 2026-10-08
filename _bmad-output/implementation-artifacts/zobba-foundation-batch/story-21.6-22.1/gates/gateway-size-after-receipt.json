@@ -1,0 +1,27 @@
+{
+  "gate": "gateway-size-after",
+  "command": [
+    "cargo",
+    "test",
+    "-p",
+    "zobba-worker",
+    "--test",
+    "gateway_process",
+    "--locked",
+    "operation_future_allocation_diagnostic",
+    "--",
+    "--nocapture",
+    "--exact"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T04:48:09.984757+00:00",
+  "ended_at": "2026-10-03T04:48:22.970893+00:00",
+  "duration_seconds": 12.986,
+  "exit": 0,
+  "source_before": "gateway-size-after-source-before.json",
+  "source_after": "gateway-size-after-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "gateway-size-after.log",
+  "log_sha256": "6a9e64ee3402acbb4fd3c0df83ad96ca5670909b8ee8b414b19ed1cb6e2f1ee0"
+}

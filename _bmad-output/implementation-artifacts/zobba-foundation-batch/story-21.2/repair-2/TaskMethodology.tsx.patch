@@ -1,0 +1,41 @@
+--- TaskMethodology-before-P16.tsx
++++ web/src/TaskMethodology.tsx
+@@ -36,10 +36,16 @@
+   const owner = JSON.stringify([session.identity.id, session.csrf_token, scope.organisation_id, scope.client_id, scope.engagement_id, taskId]);
+   const latest = useRef({ owner, accessReady }); latest.current = { owner, accessReady };
+   const request = useRef<AbortController | null>(null);
++  const cancelRead = useCallback(() => {
++    // Intentional lifecycle cancellation relinquishes ownership before abort:
++    // its catch must not withdraw this same-owner mounted inspection.
++    const cancelled = request.current; request.current = null; cancelled?.abort();
++  }, []);
+   const refresh = useCallback(async () => {
+     if (!latest.current.accessReady) return;
+-    request.current?.abort(); const controller = new AbortController(); request.current = controller;
++    cancelRead(); const controller = new AbortController(); request.current = controller;
+     setLoading(true); setError('');
++    // A deadline remains an owned failure and must clear the stale basis.
+     const deadline = setTimeout(() => controller.abort(), 8000);
+     try {
+       const value = await readTaskBasis(scope, taskId, session, controller.signal);
+@@ -49,15 +55,15 @@
+       setBasis(null); setError('Current methodology basis is unavailable. Refresh to inspect it.');
+       if (reason instanceof AccessError && [401, 403, 404, 412].includes(reason.status)) onAccessFailure(reason);
+     } finally { clearTimeout(deadline); if (request.current === controller) { request.current = null; setLoading(false); } }
+-  }, [owner, scope.organisation_id, scope.client_id, scope.engagement_id, taskId, session.csrf_token, session.identity.id, onAccessFailure]);
++  }, [owner, scope.organisation_id, scope.client_id, scope.engagement_id, taskId, session.csrf_token, session.identity.id, onAccessFailure, cancelRead]);
+   useEffect(() => {
+-    if (!accessReady) { request.current?.abort(); return; }
++    if (!accessReady) { cancelRead(); return; }
+     void refresh();
+-    const wake = () => { if (!document.hidden) void refresh(); else { request.current?.abort(); setBasis(null); } };
++    const wake = () => { if (!document.hidden) void refresh(); else cancelRead(); };
+     const timer = setInterval(() => { if (!document.hidden) void refresh(); }, 15000);
+     window.addEventListener('focus', wake); document.addEventListener('visibilitychange', wake);
+-    return () => { clearInterval(timer); request.current?.abort(); window.removeEventListener('focus', wake); document.removeEventListener('visibilitychange', wake); };
+-  }, [accessReady, taskRevision, refresh]);
++    return () => { clearInterval(timer); cancelRead(); window.removeEventListener('focus', wake); document.removeEventListener('visibilitychange', wake); };
++  }, [accessReady, taskRevision, refresh, cancelRead]);
+   const current = basis?.owner === owner ? basis.value : null;
+   return <section className="brief-section task-methodology" aria-label="What Zobba is using"><h3>What Zobba is using</h3><div hidden={!accessReady}>
+     {!current ? <p role="status">{error || 'Checking the recorded methodology basis…'}</p> : <>

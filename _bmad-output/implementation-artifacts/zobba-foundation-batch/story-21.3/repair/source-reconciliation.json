@@ -1,0 +1,309 @@
+{
+  "observed_at": "2026-10-02T16:31:07.232446+00:00",
+  "base": "643ed095314d42f576106effd287703824003c73",
+  "source_files": 221,
+  "final_manifest": "source-freeze-final.json",
+  "comparisons": [
+    {
+      "manifest": "source-rust-full-start.json",
+      "manifest_sha256": "a994db7552f57a494894ff38a16a190474c748e1bcba7445a402398d5e839cad",
+      "differences_from_final": [
+        {
+          "path": "CLAUDE.md",
+          "executed_sha256": "b23e953725f1d1d3c7c38b56217e41330992861b89dbb383a53df49ea6cffc83",
+          "final_sha256": "12de043d92373fa5322e5a8df92d0ac189cd77823cd3756f2e7dd9cbb59c74d9"
+        },
+        {
+          "path": "zobba/web/src/MethodologyWorkspace.tsx",
+          "executed_sha256": "48ba5db2cb86803343926bef8af170506786ba946cb19fae6860fd02f8440128",
+          "final_sha256": "c5b2b3f943cafc9c7b29f7f1c196e73df71c6458943c7a3e737ca777c84b304b"
+        },
+        {
+          "path": "zobba/web/src/SkillCatalog.tsx",
+          "executed_sha256": "e9eec784125a973b4e9d35c50716cfd8087a86d3b6674c76e89abceae9986472",
+          "final_sha256": "ae2f36b9d2cc49bc559e0a8518ffc8dcdc4ed484e1c959cc3ddc4f7578e31845"
+        },
+        {
+          "path": "zobba/web/src/TaskSkills.tsx",
+          "executed_sha256": "325296c9689266a70b0d259392dd5d8be2f972d5c51e085237a298d31957f3f4",
+          "final_sha256": "e45cf3c14890627ddef9b350f4d2568a0a5afcd71c62185b34f725ebab9b4ca5"
+        },
+        {
+          "path": "zobba/web/src/styles.css",
+          "executed_sha256": "506fc96e0255a64eba8b7df84e1fef0ea1b0287bb5925a3f5aa6755d8a0156e4",
+          "final_sha256": "f3d2d981e1ab69af7dae834d2fa6ea822d84ac9f223aef80c93e42ff7f7186c9"
+        },
+        {
+          "path": "zobba/web/src/useSkillInspection.ts",
+          "executed_sha256": "949409f2809b4aec1170e760570498730d9758001e13e9241fa33ead31999d28",
+          "final_sha256": "23026772b24f065ebe0c07a937ae578f6e1263569301c2b1d7db69b01cc8fc87"
+        },
+        {
+          "path": "zobba/web/tests/browser/account-binding.spec.ts",
+          "executed_sha256": "3f9800bfb05c6f3c01dd02e15ce1e2a4f1b967561e53df8be66b14d49090219a",
+          "final_sha256": "a8a878b6767679d6066fe17b879a3dd51146657eb49d170d7649b818ebd47331"
+        },
+        {
+          "path": "zobba/web/tests/browser/evidence-repairs.spec.ts",
+          "executed_sha256": "71bb1cfe7ca26115bab7448a9d6218f5989d330f3f6baef6d3c67b4c90b6f4ae",
+          "final_sha256": "14876043d556f8307d8777c6cffb8f9a3a8ec12e6ee32ca6b3ef93bb1b50274e"
+        },
+        {
+          "path": "zobba/web/tests/browser/methodology.spec.ts",
+          "executed_sha256": "557183c4a549f793ce60c1eb4cf641dba91da12ccf81ee9f303af557e218fb87",
+          "final_sha256": "bef4acbd79d45bbc092838e8d810b3945e1ae7e113eb794694039eac3c47fabc"
+        },
+        {
+          "path": "zobba/web/tests/browser/skills.spec.ts",
+          "executed_sha256": "b766ff852e806ad38dd06d08681171f8d7d06948b76815c9057cc7cdfcd4b019",
+          "final_sha256": "694b1257098a323b1424409b52977564852fa61589397b2d914965d5de698004"
+        }
+      ]
+    },
+    {
+      "manifest": "source-rust-full-end.json",
+      "manifest_sha256": "ee6171afa010b9ba1108a28aaf4eeba4400ab8a0146ad3a2bcc10c8f745cd382",
+      "differences_from_final": [
+        {
+          "path": "CLAUDE.md",
+          "executed_sha256": "9cc7fe9599f6e7986df0f18e23a12f22a8494982b459290dc2c20bf18f945118",
+          "final_sha256": "12de043d92373fa5322e5a8df92d0ac189cd77823cd3756f2e7dd9cbb59c74d9"
+        },
+        {
+          "path": "zobba/web/src/MethodologyWorkspace.tsx",
+          "executed_sha256": "48ba5db2cb86803343926bef8af170506786ba946cb19fae6860fd02f8440128",
+          "final_sha256": "c5b2b3f943cafc9c7b29f7f1c196e73df71c6458943c7a3e737ca777c84b304b"
+        },
+        {
+          "path": "zobba/web/src/TaskSkills.tsx",
+          "executed_sha256": "d8f310ff68ac2901ef2fc9478af10a969c70d78068d65743a1a91f6878fe096a",
+          "final_sha256": "e45cf3c14890627ddef9b350f4d2568a0a5afcd71c62185b34f725ebab9b4ca5"
+        },
+        {
+          "path": "zobba/web/src/styles.css",
+          "executed_sha256": "506fc96e0255a64eba8b7df84e1fef0ea1b0287bb5925a3f5aa6755d8a0156e4",
+          "final_sha256": "f3d2d981e1ab69af7dae834d2fa6ea822d84ac9f223aef80c93e42ff7f7186c9"
+        },
+        {
+          "path": "zobba/web/tests/browser/account-binding.spec.ts",
+          "executed_sha256": "3f9800bfb05c6f3c01dd02e15ce1e2a4f1b967561e53df8be66b14d49090219a",
+          "final_sha256": "a8a878b6767679d6066fe17b879a3dd51146657eb49d170d7649b818ebd47331"
+        },
+        {
+          "path": "zobba/web/tests/browser/evidence-repairs.spec.ts",
+          "executed_sha256": "71bb1cfe7ca26115bab7448a9d6218f5989d330f3f6baef6d3c67b4c90b6f4ae",
+          "final_sha256": "14876043d556f8307d8777c6cffb8f9a3a8ec12e6ee32ca6b3ef93bb1b50274e"
+        },
+        {
+          "path": "zobba/web/tests/browser/methodology.spec.ts",
+          "executed_sha256": "557183c4a549f793ce60c1eb4cf641dba91da12ccf81ee9f303af557e218fb87",
+          "final_sha256": "bef4acbd79d45bbc092838e8d810b3945e1ae7e113eb794694039eac3c47fabc"
+        },
+        {
+          "path": "zobba/web/tests/browser/skills.spec.ts",
+          "executed_sha256": "2cfab80dbe952d759e26406fbeadb15b0d093f1e37d4e1c3fc59e5a2add24270",
+          "final_sha256": "694b1257098a323b1424409b52977564852fa61589397b2d914965d5de698004"
+        }
+      ]
+    },
+    {
+      "manifest": "source-static-start.json",
+      "manifest_sha256": "7b0f024140cd9398d058243239e8a976948599e558a52d90f97d59bba3d93c6c",
+      "differences_from_final": [
+        {
+          "path": "CLAUDE.md",
+          "executed_sha256": "325258301f95cfc2c7f28065acb2f8e309f2612134552ed700a9b5eab2800815",
+          "final_sha256": "12de043d92373fa5322e5a8df92d0ac189cd77823cd3756f2e7dd9cbb59c74d9"
+        },
+        {
+          "path": "zobba/web/src/styles.css",
+          "executed_sha256": "9c6b68714c54aacd53902142791c90a7675937e4eb42882b7b7a5cb7100438b9",
+          "final_sha256": "f3d2d981e1ab69af7dae834d2fa6ea822d84ac9f223aef80c93e42ff7f7186c9"
+        },
+        {
+          "path": "zobba/web/tests/browser/account-binding.spec.ts",
+          "executed_sha256": "e2ceef4812c225808c72dfd4aa6d4ceb0435a74cbf3e9e545869a9a0906b9fca",
+          "final_sha256": "a8a878b6767679d6066fe17b879a3dd51146657eb49d170d7649b818ebd47331"
+        },
+        {
+          "path": "zobba/web/tests/browser/methodology.spec.ts",
+          "executed_sha256": "557183c4a549f793ce60c1eb4cf641dba91da12ccf81ee9f303af557e218fb87",
+          "final_sha256": "bef4acbd79d45bbc092838e8d810b3945e1ae7e113eb794694039eac3c47fabc"
+        },
+        {
+          "path": "zobba/web/tests/browser/skills.spec.ts",
+          "executed_sha256": "61f7b315e38266f3d1db45c72f2f3f48760c50f60dbcdf6cf95e4c52f8eb9f94",
+          "final_sha256": "694b1257098a323b1424409b52977564852fa61589397b2d914965d5de698004"
+        }
+      ]
+    },
+    {
+      "manifest": "source-static-end.json",
+      "manifest_sha256": "53537f3231e5a5181c0871a9f2f70c5fa2e6bc37b20b530d636f0ba5dc564bf2",
+      "differences_from_final": [
+        {
+          "path": "CLAUDE.md",
+          "executed_sha256": "325258301f95cfc2c7f28065acb2f8e309f2612134552ed700a9b5eab2800815",
+          "final_sha256": "12de043d92373fa5322e5a8df92d0ac189cd77823cd3756f2e7dd9cbb59c74d9"
+        },
+        {
+          "path": "zobba/web/src/styles.css",
+          "executed_sha256": "9c6b68714c54aacd53902142791c90a7675937e4eb42882b7b7a5cb7100438b9",
+          "final_sha256": "f3d2d981e1ab69af7dae834d2fa6ea822d84ac9f223aef80c93e42ff7f7186c9"
+        },
+        {
+          "path": "zobba/web/tests/browser/account-binding.spec.ts",
+          "executed_sha256": "e2ceef4812c225808c72dfd4aa6d4ceb0435a74cbf3e9e545869a9a0906b9fca",
+          "final_sha256": "a8a878b6767679d6066fe17b879a3dd51146657eb49d170d7649b818ebd47331"
+        },
+        {
+          "path": "zobba/web/tests/browser/methodology.spec.ts",
+          "executed_sha256": "557183c4a549f793ce60c1eb4cf641dba91da12ccf81ee9f303af557e218fb87",
+          "final_sha256": "bef4acbd79d45bbc092838e8d810b3945e1ae7e113eb794694039eac3c47fabc"
+        },
+        {
+          "path": "zobba/web/tests/browser/skills.spec.ts",
+          "executed_sha256": "61f7b315e38266f3d1db45c72f2f3f48760c50f60dbcdf6cf95e4c52f8eb9f94",
+          "final_sha256": "694b1257098a323b1424409b52977564852fa61589397b2d914965d5de698004"
+        }
+      ]
+    },
+    {
+      "manifest": "source-smoke-start.json",
+      "manifest_sha256": "b27c103e36ad3d4bf7ae5706fa260d22a4b2c9f769cf0832f8a870c299749f68",
+      "differences_from_final": [
+        {
+          "path": "CLAUDE.md",
+          "executed_sha256": "cfb417575d70d7989d0e0d0440fb59774f8d1b713456037e387a966aa834ae6e",
+          "final_sha256": "12de043d92373fa5322e5a8df92d0ac189cd77823cd3756f2e7dd9cbb59c74d9"
+        },
+        {
+          "path": "zobba/web/src/MethodologyWorkspace.tsx",
+          "executed_sha256": "48ba5db2cb86803343926bef8af170506786ba946cb19fae6860fd02f8440128",
+          "final_sha256": "c5b2b3f943cafc9c7b29f7f1c196e73df71c6458943c7a3e737ca777c84b304b"
+        },
+        {
+          "path": "zobba/web/src/TaskSkills.tsx",
+          "executed_sha256": "d8f310ff68ac2901ef2fc9478af10a969c70d78068d65743a1a91f6878fe096a",
+          "final_sha256": "e45cf3c14890627ddef9b350f4d2568a0a5afcd71c62185b34f725ebab9b4ca5"
+        },
+        {
+          "path": "zobba/web/src/styles.css",
+          "executed_sha256": "506fc96e0255a64eba8b7df84e1fef0ea1b0287bb5925a3f5aa6755d8a0156e4",
+          "final_sha256": "f3d2d981e1ab69af7dae834d2fa6ea822d84ac9f223aef80c93e42ff7f7186c9"
+        },
+        {
+          "path": "zobba/web/tests/browser/account-binding.spec.ts",
+          "executed_sha256": "3f9800bfb05c6f3c01dd02e15ce1e2a4f1b967561e53df8be66b14d49090219a",
+          "final_sha256": "a8a878b6767679d6066fe17b879a3dd51146657eb49d170d7649b818ebd47331"
+        },
+        {
+          "path": "zobba/web/tests/browser/evidence-repairs.spec.ts",
+          "executed_sha256": "71bb1cfe7ca26115bab7448a9d6218f5989d330f3f6baef6d3c67b4c90b6f4ae",
+          "final_sha256": "14876043d556f8307d8777c6cffb8f9a3a8ec12e6ee32ca6b3ef93bb1b50274e"
+        },
+        {
+          "path": "zobba/web/tests/browser/methodology.spec.ts",
+          "executed_sha256": "557183c4a549f793ce60c1eb4cf641dba91da12ccf81ee9f303af557e218fb87",
+          "final_sha256": "bef4acbd79d45bbc092838e8d810b3945e1ae7e113eb794694039eac3c47fabc"
+        },
+        {
+          "path": "zobba/web/tests/browser/skills.spec.ts",
+          "executed_sha256": "29b3360a047804c60656ac75cd2fc65f09bf545b913a2193bb5adefc45baf317",
+          "final_sha256": "694b1257098a323b1424409b52977564852fa61589397b2d914965d5de698004"
+        }
+      ]
+    },
+    {
+      "manifest": "source-smoke-end.json",
+      "manifest_sha256": "acf4f8e2cf467e071262377f8356313d11ec7ec649707f90c01f36161c877df2",
+      "differences_from_final": [
+        {
+          "path": "CLAUDE.md",
+          "executed_sha256": "cfb417575d70d7989d0e0d0440fb59774f8d1b713456037e387a966aa834ae6e",
+          "final_sha256": "12de043d92373fa5322e5a8df92d0ac189cd77823cd3756f2e7dd9cbb59c74d9"
+        },
+        {
+          "path": "zobba/web/src/MethodologyWorkspace.tsx",
+          "executed_sha256": "48ba5db2cb86803343926bef8af170506786ba946cb19fae6860fd02f8440128",
+          "final_sha256": "c5b2b3f943cafc9c7b29f7f1c196e73df71c6458943c7a3e737ca777c84b304b"
+        },
+        {
+          "path": "zobba/web/src/TaskSkills.tsx",
+          "executed_sha256": "d8f310ff68ac2901ef2fc9478af10a969c70d78068d65743a1a91f6878fe096a",
+          "final_sha256": "e45cf3c14890627ddef9b350f4d2568a0a5afcd71c62185b34f725ebab9b4ca5"
+        },
+        {
+          "path": "zobba/web/src/styles.css",
+          "executed_sha256": "506fc96e0255a64eba8b7df84e1fef0ea1b0287bb5925a3f5aa6755d8a0156e4",
+          "final_sha256": "f3d2d981e1ab69af7dae834d2fa6ea822d84ac9f223aef80c93e42ff7f7186c9"
+        },
+        {
+          "path": "zobba/web/tests/browser/account-binding.spec.ts",
+          "executed_sha256": "3f9800bfb05c6f3c01dd02e15ce1e2a4f1b967561e53df8be66b14d49090219a",
+          "final_sha256": "a8a878b6767679d6066fe17b879a3dd51146657eb49d170d7649b818ebd47331"
+        },
+        {
+          "path": "zobba/web/tests/browser/evidence-repairs.spec.ts",
+          "executed_sha256": "71bb1cfe7ca26115bab7448a9d6218f5989d330f3f6baef6d3c67b4c90b6f4ae",
+          "final_sha256": "14876043d556f8307d8777c6cffb8f9a3a8ec12e6ee32ca6b3ef93bb1b50274e"
+        },
+        {
+          "path": "zobba/web/tests/browser/methodology.spec.ts",
+          "executed_sha256": "557183c4a549f793ce60c1eb4cf641dba91da12ccf81ee9f303af557e218fb87",
+          "final_sha256": "bef4acbd79d45bbc092838e8d810b3945e1ae7e113eb794694039eac3c47fabc"
+        },
+        {
+          "path": "zobba/web/tests/browser/skills.spec.ts",
+          "executed_sha256": "29b3360a047804c60656ac75cd2fc65f09bf545b913a2193bb5adefc45baf317",
+          "final_sha256": "694b1257098a323b1424409b52977564852fa61589397b2d914965d5de698004"
+        }
+      ]
+    },
+    {
+      "manifest": "source-web-final-start.json",
+      "manifest_sha256": "4b2c2f474cb6b9dd43503c10df358f6ae93260d3a5f596fcc2628f054bf788d0",
+      "differences_from_final": [
+        {
+          "path": "zobba/web/tests/browser/account-binding.spec.ts",
+          "executed_sha256": "e2ceef4812c225808c72dfd4aa6d4ceb0435a74cbf3e9e545869a9a0906b9fca",
+          "final_sha256": "a8a878b6767679d6066fe17b879a3dd51146657eb49d170d7649b818ebd47331"
+        },
+        {
+          "path": "zobba/web/tests/browser/skills.spec.ts",
+          "executed_sha256": "a30c282bfa71dee3e3a36ca9bfc8f90ade6229f5fcc4475c15b145a78b66ef57",
+          "final_sha256": "694b1257098a323b1424409b52977564852fa61589397b2d914965d5de698004"
+        }
+      ]
+    },
+    {
+      "manifest": "source-web-final-end.json",
+      "manifest_sha256": "331fad35a6bf2ed8e0835f74d7b3327c5e45723fc0848328bd646575c82ce80e",
+      "differences_from_final": [
+        {
+          "path": "zobba/web/tests/browser/account-binding.spec.ts",
+          "executed_sha256": "e2ceef4812c225808c72dfd4aa6d4ceb0435a74cbf3e9e545869a9a0906b9fca",
+          "final_sha256": "a8a878b6767679d6066fe17b879a3dd51146657eb49d170d7649b818ebd47331"
+        },
+        {
+          "path": "zobba/web/tests/browser/skills.spec.ts",
+          "executed_sha256": "a30c282bfa71dee3e3a36ca9bfc8f90ade6229f5fcc4475c15b145a78b66ef57",
+          "final_sha256": "694b1257098a323b1424409b52977564852fa61589397b2d914965d5de698004"
+        }
+      ]
+    },
+    {
+      "manifest": "source-browser-start.json",
+      "manifest_sha256": "5516e4655d301095e07b702961b2eabb55427413cd4d5ce902a73bdfe7b02814",
+      "differences_from_final": []
+    },
+    {
+      "manifest": "source-browser-end.json",
+      "manifest_sha256": "3084ce1af7404d0fa6e6b472db23892c5d1e6583e3b80a439d8a0cc9293eb0ac",
+      "differences_from_final": []
+    }
+  ],
+  "published_prefixes_unchanged": 16,
+  "initial_published_artifacts_unchanged": 21,
+  "source_scope": "All tracked and untracked zobba files plus CLAUDE.md. Root-owned spec, status, companion context and review reporting are intentionally outside the implementation source manifest."
+}

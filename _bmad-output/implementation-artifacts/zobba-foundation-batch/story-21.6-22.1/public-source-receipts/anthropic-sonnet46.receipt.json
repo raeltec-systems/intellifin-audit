@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://platform.claude.com/docs/en/models/sonnet-4-6/overview",
+  "effective_url": "https://platform.claude.com/docs/en/models/sonnet-4-6/overview",
+  "retrieved_at_utc": "2026-10-03T04:30:50.261154+00:00",
+  "completed_at_utc": "2026-10-03T04:30:50.825477+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html; charset=utf-8",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "anthropic-sonnet46.html",
+  "bytes": 430868,
+  "sha256": "3e18fbde048309a010bf619b3f005a2e3677a567b2f5835f9f151fa988262280",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/anthropic-sonnet46.txt",
+  "readable_extraction_sha256": "77e144154f3c0e473c5ab77e030054a6006e8c1a97b227383548e842badb03d5",
+  "raw_body_in_checkpoint": false
+}

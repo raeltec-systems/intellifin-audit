@@ -1,0 +1,24 @@
+   Compiling zobba-application v0.1.0 (/workspace/intellifin-audit/zobba/crates/application)
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.06s
+     Running tests/membership.rs (target/debug/deps/membership-1a98411ea7abcea1)
+
+running 3 tests
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test postgres_membership_contract ... FAILED
+
+failures:
+
+---- postgres_membership_contract stdout ----
+
+thread 'postgres_membership_contract' (407556) panicked at crates/infrastructure/tests/membership/renewal_and_remove.rs:85:223:
+called `Result::unwrap()` on an `Err` value: Database(PgDatabaseError { severity: Error, code: "Z0003", message: "conflict", detail: None, hint: None, position: None, where: Some("PL/pgSQL function membership_write(text,text,text,text,jsonb,text,text,text) line 20 at RAISE"), schema: None, table: None, column: None, data_type: None, constraint: None, file: Some("pl_exec.c"), line: Some(3923), routine: Some("exec_stmt_raise") })
+
+
+failures:
+    postgres_membership_contract
+
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.85s
+
+error: test failed, to rerun pass `-p zobba-infrastructure --test membership`

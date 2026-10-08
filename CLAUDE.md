@@ -1,3 +1,895 @@
+## 2026-10-08 — Work-loop tests must renew the owner lease like production
+
+`execute_work` renews the Task's 5-second owner lease every 200 ms beside the loop. Tests
+that call `WorkLoop::run` directly renew it only at each pass boundary, so a pass over 5 s
+under load turns into `Fenced`. Plain work-cycle runs use the `owned(...)` helper in
+`work_cycle.rs`, which mirrors that renewal and cancels on a real loss of authority. Race
+tests that hold or fence on purpose keep calling `run` directly. Never lengthen the
+production lease to hide this.
+
+## 2026-10-08 — Claude thinking blocks are opaque replay material
+
+Current Claude models always think. The native Anthropic adapter accepts
+`thinking` (`thinking_delta`, `signature_delta`) and `redacted_thinking`
+blocks as `EventKind::Reasoning`; any other block or delta still fails closed.
+Content blocks must stream one at a time in index order, and no non-tool block
+may follow a `tool_use`. Reasoning is never answer text, evidence or context:
+`answer_text` reads only text deltas and failed outcomes keep no reasoning.
+`TransportOutcome::replay_blocks` is the ordered pre-tool content (reasoning
+and non-empty text) of a successful Anthropic tool response. The domain also
+refuses any reasoning or text event after a tool proposal. `ToolExchange.preceding`
+carries it only on the exchange of the invocation's first call, and at most once
+per invocation anywhere in the history. The planner cuts only at model turns, so
+a turn and its tool steps are compacted together; blocks are never moved to
+another exchange. A signature arrives once: a start value plus a delta is
+refused, not joined. Stored replay blocks are flat `{"kind":...}` documents,
+omitted when empty, so older requests keep their bytes and bindings. The store's
+`verify_replay` refuses altered blocks or a different provider/model.
+Receipts record only byte counts, block counts and hashes. No `thinking`, budget
+or effort parameter is sent. Anthropic fixture qualification is a separate
+`ClaudeFixtureQualification`; the ordinary fixture source still refuses it. The
+large `work_cycle::verify` debug future sits near the default 2 MiB test stack:
+return a new scenario already boxed, and box its inner runs.
+
+## 2026-10-08 — Story 22.3 context compaction boundaries
+
+The context budget counts UTF-8 bytes as tokens. That is a conservative bound, not
+a provider tokenizer. Tiers 1–2 (owned constraints, objective, method, brief,
+unresolved decisions) are never dropped. If they alone do not fit, or a hard
+limit (compactions per cycle, sources, message/entry/history caps) is reached,
+nothing is sent and the turn is a recorded `context_budget` failure. A cycle is
+never left unrecordable.
+
+`ContextEntry.depends_on` narrows the Story 22.1 disclosure refusal to content that
+is actually included. An earlier answer must be this Task's own answered invocation,
+carried with its exact labelled envelope text, and its sources must still be current.
+A withdrawn source makes dependent content a stale marker; it no longer refuses
+every later turn. The field is omitted when absent, so stored pre-14 requests and
+bindings keep their bytes.
+
+Capacity or unavailability while checking a source's standing is not proof of
+revocation. The turn ends unavailable, with no stale marker and no compaction. Only
+definite Denied/Ineligible facts become Invalidated.
+
+A compaction digest is a platform fact record only: step facts and knowledge
+revision identities. It is never a model summary and never evidence. Raw steps stay
+complete. The store rebuilds the digest, sources and the derivable omission count
+from immutable facts and refuses any other. Records are immutable (BEFORE UPDATE
+trigger). The SHA-256 is verified over the domain `canonical_json` serialiser, not
+over PostgreSQL's jsonb text.
+
+## 2026-10-07 — Provider tool schemas: no composite enum
+
+The first gpt-6-luna run failed its tool phase: OpenAI answers HTTP 400
+`invalid_function_parameters` for an `enum` member that is an array (`"enum": [[]]`).
+Prepared constants now render arrays/objects by shape (`minItems`/`maxItems`, `items`,
+`anyOf`, closed object); only scalar leaves use one-member `enum`. Returned arguments are
+still checked against the canonical operation locally. A consumed approval is never reused:
+a schema change moves the manifest hash and needs a new owner approval ID.
+
+## 2026-10-07 — OpenAI-only gpt-6-luna qualification
+
+Owner chose `gpt-6-luna` and an OpenAI-only first qualification within USD 10. Luna is a
+reasoning model (default effort medium), so a profile declaring the reasoning capability with
+request effort `None` now sends `reasoning.effort = "none"`; a non-reasoning profile sends no
+reasoning field. The runner accepts `--providers`, `--openai-reasoning` and `--max-usd` (1–20),
+all recorded in the reviewed manifest. Run 2 qualified OpenAI native transport (receipt in
+`qualification-receipts/`). Owner deferred Anthropic qualification (2026-10-07, no budget):
+do not run or request it until the owner reopens it; Anthropic stays unqualified. The adapter is
+provider-neutral, so one passed qualification closes Story 22.1 (now done). A provider is
+qualified per provider when the owner activates it (its keys plus its own approved run); an
+unqualified provider never blocks a story and must not be selectable.
+
+## 2026-10-03 — Final operation expiry checks follow validation
+
+Finish bounded model/history validation and flush deferred dispatch writes before
+the final fresh lease and Permissions checks. Either step can cross an expiry
+boundary while organisation/Task locks remain held. Lease, canonical request and
+required exact approval expiry must roll back all staged dispatch facts before
+the gateway can send; a gateway timeout is not proof of an authority refusal.
+Finish policy/material/decision reads before the final database fence as well.
+That fence refreshes the lease, permission time and all recorded knowledge-source
+scopes, including assignments in other engagements that may expire during reads.
+
+## 2026-10-03 — Story 22.1 native model boundaries
+
+Model configuration is Admin-owned history; an Admin-only identity needs a narrow
+session-bound configuration boundary, not audit membership or access to the
+owner-only membership helpers. Preserve published migrations and catalogues.
+Model and operation repositories must use the same trusted qualification source;
+ordinary configuration and local fixtures cannot establish live qualification.
+
+Bind the complete portable input and its declared data classifications to the
+canonical disclosure operation before the durable possible-disclosure cutoff.
+Typed tool-result provenance is distinct from the firm's data classifications.
+Recheck current knowledge, profile, catalogue, Task and Permissions at admission
+and consumption. A withdrawn source revokes unconsumed readiness; verification
+unavailability or capacity is not proof of revocation. Consumed receipts remain
+historical facts. Recover uncertain invocations without resending them.
+
+The initial tool catalogue describes exact prepared operations. Variable-argument
+tools need a trusted resolver and persisted canonical binding in a later story.
+Keep native transport qualification separate from audit quality and production
+availability. Live credentials, processing permissions and a reviewed spend bound
+remain explicit owner gates; a fixture pass or environment flag is not approval.
+
+## 2026-10-03 — Story 21.6 bounded source search
+
+Search registered evidence through one current-scope, C-ordered candidate stream.
+Examine at most 256 candidates, fetch one lookahead, and return at most 50 matches.
+The next cursor names the last candidate actually examined, including on an empty
+partial page; it must not skip the remainder of a fetched block. A changed query
+starts from the beginning. Reaching the end describes this metadata scan, never
+source completeness or absence of relevant material. Preserve Rust whitespace
+semantics and the already accepted Unicode filename/source values.
+
+Knowledge source navigation retains the original scope, evidence ID, storage
+version and digest. Reading knowledge does not grant access to its supporting
+original. Inspect and download under current source authority while keeping the
+coordinating conversation and Task owner unchanged.
+
+## 2026-10-02 — Story 21.4 scoped context and derivative custody
+
+Keep immutable source facts distinct from current eligibility. Guide projection
+is keyed by the accepted command and retains its original Task/cycle; it cannot
+become a second Task writer. Exact retries and explicit original recovery revisit
+missing derivatives after their source receipt already exists. Acquired UTF-8
+excerpts preserve original byte ranges, BOM and CRLF; populated source metadata
+remains actor assertions. Source correction is an explicit same-scope relation,
+never inferred from filenames or digests. Unknown source times/periods stay unknown.
+
+Current viewer authority and the existing Task accountable actor independently
+qualify every source and named same-client destination. Check dependencies before
+ranking/disclosure and again after staged work; source time expiry matters even
+while organisation locks exclude concurrent membership writers. Exact-reference
+verification must check references/status and the Task binding/epoch within one
+repository transaction. Separate exact and basis reads can straddle a correction
+or origin revocation. Browser disclosure verifies the shown bounded manifest;
+these POSTs are read verification, not commands, and return no protected text. Typed private
+layout releases disclose only the exact optional setting. They do not disclose
+private observations, rewrite a prior publication or grant Task execution scope.
+
+Preference Undo consumes observations and withdraws that exact revision’s active
+publications. Observe requests carry their captured preference revision: old
+requests delivered after Undo or Save cannot become new learning. Exact event
+replay returns current inspection without recreating the old inference. Bound the
+actual serialized response, including statuses and numeric strings, separately
+from per-record storage and per-field maxima. Keep exact lookup/recovery outside
+search pagination, and preserve source admission when optional capture is omitted.
+Page across one C-ordered candidate stream when combining source kinds. Filtering
+two separately limited lists and merging afterward can skip eligible records or
+hide filtered publications. A scan ceiling needs an explicit coverage omission;
+only a disclosed, fully examined prefix can supply a cursor. Exact lookup stays
+available when no access-safe continuation exists. Safe event receipt recovery
+must survive loss of separate supporting-source access by withholding the record,
+while current session and Task scope remain mandatory.
+
+Store accepted-command receipts as bounded event facts and exact immutable record
+references, then rebuild their disclosure view with current eligibility. Copying
+a large admitted record plus a valid restriction reason into its receipt can exceed
+the separate durable JSONB cap even when the HTTP envelope is safe. Bound and test
+the stored JSONB representation independently of both record and response sizes;
+restrictions and exact recovery must remain usable for already accepted records.
+Omission categories are sets: combine and deduplicate all producer causes before
+the strict response/parser boundary, including partial source capture.
+
+Methodology unsent edit/recall custody now follows the skills repair: bounded,
+exact actor/session/organisation memory survives App unmount, but disclosure waits
+for the editor’s own generation-bound scoped Admin read. Intentional cancellation
+relinquishes request ownership before aborting; actual denial clears custody even
+if a concurrent organisation-list read fails. Reserve memory before accepting a
+field change or transmitting, never evict uncertain submitted commands, and do not
+persist private drafts to browser storage or submit them on recovery.
+When an asynchronous source-status read supplies a draft's initial revision, merge
+only that revision into the latest custody-owned draft. A captured render can be
+older than a user's field edit; guard owner, activation and source identity so a
+late read cannot replace typed fields or initialize a cancelled/reopened editor.
+TypeScript's Scope annotation does not strip fields from a wider Engagement
+object at runtime. Spreading it into a strict wire scope also sends labels and
+roles, so a supported assertion can receive a real 400. Construct canonical
+wire scopes through `parseScope` before serialization, and verify the actual
+posted key set as well as the accepted response and retained support history.
+
+## 2026-10-02 — Story 21.3 installed technique boundaries
+
+Skills use explicit Admin installation of immutable manifest/resource bytes and
+SHA-256 digests; acquired instruction-like evidence never installs itself. A
+selection records the actual selector separately from the Task's accepted
+Permissions actor. Inspect the exact current methodology binding, including
+requirement-field and historical-template sources, never today's assignments.
+Catalogue status, Permissions changes and selection share organisation advisory205
+before engagement/Task locks. Flush staged/deferred writes before the final joint
+methodology, accepted-actor, viewer/session and server-time fence. Exact replay is
+the original selection receipt with separately refreshed current eligibility.
+
+Capability inspection intersects whole correlated hard-rule regions and uses the
+same structural/account predicates as exact Permissions evaluation. Empty standing
+coverage is not denial; compatibility still needs exact operation admission and
+any decision. An accepted source binding does not prove adapter availability. The
+default API has no qualified operation/analysis tool runtime; pure techniques can
+be selected, while unqualified required tools are unavailable (proven hard denials
+remain forbidden). Only explicit server-owned loopback qualification configuration
+supports the synthetic positive contract. No model calls, resource execution,
+claims, decisions, operations or wakeups are created by selection.
+
+Capture PostgreSQL catalogue signatures as raw bytes. Existing Unicode CHECK
+definitions contain literal carriage returns; text-mode subprocess decoding and
+read_text/write_text silently normalize them. Use byte-preserving psql capture
+and write_bytes, and compare rows using byte newline or Rust lines semantics
+rather than Python splitlines (which also splits other Unicode whitespace).
+
+Cursor IDs use the same explicit byte/ASCII ordering in SQL and browser validation.
+Apply COLLATE "C" to text cursor predicates, row and aggregate ordering, and the
+supporting indexes; database-default collation can reorder valid mixed-case,
+hyphen and underscore IDs. Prove complete pages on a disposable non-C locale
+database as well as ordinary fixtures, rather than assuming the test default.
+
+Separate catalogue availability from independently paged assignment choices and
+status history. More clients/engagements or transition events must not hide
+restriction controls. Impact navigation is an explicitly current-audit-scoped
+engagement read; configuration Admin counts never grant Task access. Keep current
+status attribution with each version and immutable events in bounded pages.
+
+A retained skills subtree needs its own fresh authorization when reactivated.
+Parent readiness permits a new read; it does not authorize cached contents. Keep
+cached data and actual hidden DOM separate from a verified activation generation,
+withdraw verification before rendering a new activation, and bind each request's
+completion to that generation. A paged organisation list omitting the selected
+organisation is not a scoped denial, and a Methodology transport failure cannot
+reauthorize an old skills editor. Test held fresh success and held real refusal,
+including a late response from the cancelled earlier activation.
+
+Skill drafts need custody above the authenticated App subtree because an actual
+transient session read unmounts it. Retain exact unsent text and expected basis in
+bounded memory only, hide until same actor/session/scope reauthorization, and
+clear denial/replacement/logout/cancel/success. Never evict uncertain submitted
+commands to admit a new draft. Scalar-bounded prose must not use HTML UTF-16
+maxlength; validate install/status/selection before freezing or sending, retaining
+invalid text with associated field errors. These repairs do not claim the separate
+methodology unsent-draft follow-up.
+
+Populated controlled textareas can contribute their initial text to Playwright's
+exact label-text matching. Use the textbox role with its accessible name for
+multiline authoring controls, including Edit forms and reusable fill helpers;
+verify the populated value instead of waiting for an exact enclosing label.
+
+Keep current-read errors separate from command delivery errors: a successful
+background refresh must not erase an unconfirmed command's retry explanation.
+Browser recovery-budget proofs should count unbound App session bootstrap reads
+separately from projection-owned bound session verification, using header presence
+only. Preserve exact recovery counts and observe the required bound postcheck.
+Opaque identifiers can exceed narrow receipt width depending on their random
+glyphs. Wrap complete skills text instead of clipping it; retain page-width
+assertions and a labelled local layout stress fixture alongside real receipts.
+Measure actual long-ID action buttons too: a scroll container can hide their
+overflow while document width still passes, and global nowrap overrides text
+wrapping. Run web checks/builds before browser suites sharing Vite's workspace
+cache; persist sanitized bootstrap paths/status/categories on failure, without
+callback queries or credentials, instead of labelling an unexplained blank page.
+
+## 2026-10-02 — Story 21.2 methodology binding boundaries
+
+Methodology Save and Task admission share organisation advisory205, then ordered
+engagement/Task locks. Capture and recheck the exact browser session after waits;
+configuration Admin authority never provides audit scope. Preserve published
+migration/catalogue prefix1–7; schema8 stores immutable configuration and Task
+binding history through owner-mediated scoped functions.
+
+Keep method availability distinct from business applicability, using floor of the
+UTC epoch for second-granularity activation (a bigint cast rounds). Optional
+Create/Guide context is exact retry meaning; echo it in conversation receipts so
+browser recovery compares the full command. Guide context is an explicit full
+replacement staged through immutable command attribution at a safe boundary;
+omission means no change. Freeze resolved context against later default changes.
+Each immutable binding retains eligible candidate IDs separately from selected
+version IDs, including Missing/Outside candidates for later context correction.
+Apply only explicit active-change candidates to existing pinned bindings—reading
+all current assignments would silently import intervening new-only Saves. Retain
+new-only notices separately. Pending active changes fence unused claims/new
+operations while consumed current()/receipt custody retains the original basis.
+Switch only after actual inert/external reconciliation; Pause/Stop persist.
+Keep future activation wakeups durable when the coordinator becomes idle, and
+enqueue scheduled active changes for Tasks created after Save before activation.
+Continue uses that same bounded enrollment for stopped Tasks resumed before the
+cutoff; it does not import missed activations or new-only Saves. Resolve and
+acknowledge with one captured cutoff, retaining later pending events and wakeups.
+Finish deferred writes before the final new-use check for inert consumption as
+well as operation dispatch, so crossing a cutoff rolls back receipt creation.
+Each immutable method binding owns its effective-from execution epoch, assigned
+by the database. Resolve an operation/attempt's recorded producing epoch to the
+greatest binding epoch not after it; never infer association from timestamps or
+current catalogue versions. Legacy migrated work remains labelled neutral at
+epoch zero. Operation and paginated attempt inspection retain the exact binding
+ID across Task controls, rebinding and recall; receipt capabilities remain private.
+
+Requirements retain stable IDs, mandatory standing and per-field source versions.
+Template references resolve exact stored content; missing/conflicting references
+remain incomplete/ambiguous. Neutral templates are visibly labelled. Missing
+criteria gates future dependent conclusions, not all conversation or inert work.
+Historical exact templates retain their separately scoped immutable source and
+its recall restriction without reimporting predecessor criteria. Derive neutral
+standing from contributing field/template sources, including mixed content;
+empty adopted overrides cannot relabel inherited starter criteria. Follow exact
+supersedes links for editor recovery and Undo, never matching scope/date fields.
+Template prose preserves exact multiline whitespace and Rust-accepted Unicode;
+never let browser trim semantics make a saved record unreadable. Configuration
+changes record impact facts but do not implement evaluation/review consumers.
+
+Browser fixtures must use native `datetime-local` strings with zero seconds
+omitted; preserve the intended epoch when normalizing the input. Count deliberately
+held requests by an explicit test marker while keeping all ordinary reads blocked:
+additional legitimate panel reads must not invalidate a reserved-control proof.
+If CDP cannot retain a response body, prove actual UI completion and correlate the
+exact request key through the current scoped canonical projection, retaining
+custody, metadata and original-download assertions. Do not replace these proofs
+with synthetic success or repeated mutations.
+
+Before paging browser history, await the exact canonical latest command in the
+rendered page; an older full page can already satisfy a row-count assertion.
+Choose the intended disclosure by its own summary when nested panels introduce
+additional details. Release held request gates and drain owned route handlers
+with `unrouteAll({ behavior: 'wait' })` before changing interception phases or
+teardown; keep callback errors visible instead of swallowing them.
+
+Intentional read cancellation must relinquish request ownership before aborting,
+so its rejection cannot destroy hidden same-owner inspection DOM during access
+revalidation or tab-away. Keep exact owner/session withdrawal and current-read
+failure or deadline handling distinct: genuine failures still remove stale
+content. Prove retention with the same marked inner disclosure, open state and
+focus; an unchanged outer panel alone does not prove its children survived.
+
+## 2026-10-01 — Approved Admin continuity policy
+
+Implemented in migration/catalogue 7; see the [checkpoint](_bmad-output/implementation-artifacts/zobba-foundation-batch/ADMIN-CONTINUITY-CHECKPOINT.md). After this checkpoint, preserve the published migration/catalogue prefix 1–7. Migration and explicit synthetic seeding must select READ COMMITTED before their first transaction read. The public last_admin response header contains only a fixed code; owner SQL diagnostics must remain private. Browser tests observe that header because the client deliberately cancels the optional body.
+
+Every organisation must retain an active, non-expiring Admin membership linked
+to an active application identity. Additional temporary Admins remain allowed.
+This is an explicit owner-approved follow-up to accepted Story 20.6 and Unicode
+checkpoint `9a76c5c`, not an implicit part of the Unicode repair. Cover membership
+and identity lifecycle changes at the database boundary, including concurrency;
+do not grant the runtime new global identity-administration authority. Preflight
+legacy organisations and require explicit remediation; never silently promote,
+reactivate or clear expiry during migration. Ordinary Save needs no second
+approver. External IdP availability and emergency recovery remain separate.
+
+Continuity checks must include direct owner identity writes and membership
+removal, not only the application Save function. Deferred checks support atomic
+organisation provisioning and replacement; shared organisation locks retain
+serialisation through commit. Newly qualifying memberships must lock identities
+FOR SHARE: FOR KEY SHARE does not conflict with an active-only identity update.
+Continuity mutations require READ COMMITTED; advisory waits do not refresh a
+REPEATABLE READ snapshot. Direct owner row updates can invert the application's
+organisation-to-identity lock order, so deadlock/timeout recovery must retry the
+whole transaction. Refuse TRUNCATE rather than bypassing row guards. Fingerprint
+the exact triggers and owner-only function authority without changing published
+catalogues 1–6 or allowing arbitrary public triggers.
+
+## 2026-10-01 — Evidence metadata Unicode compatibility
+
+Rust `str::trim` follows Unicode White_Space; JavaScript `trim()` also removes
+U+FEFF. Do not use ECMAScript trim as the validity test for Rust-accepted evidence
+metadata. Preserve immutable filename/source strings and recovery drafts exactly.
+Use shared Rust/browser parity cases and API-created mixed-record browser tests;
+assert raw strings because browser text matchers can normalise the affected value.
+Download attachment sanitation is separate from stored metadata. Admin continuity
+was pending during this compatibility repair and was subsequently approved as
+the separate change recorded above.
+
+## 2026-10-01 — Story 21.1 immutable evidence custody
+
+Reserve the server-owned identity once with actor/composite-scope idempotency;
+source facts remain attributed assertions and direct upload is the acquisition
+method. Keep reservation time distinct from verified acquisition completion.
+Persist the namespace fingerprint so endpoint/bucket/addressing changes cannot
+retarget old originals. Conditional writes, pinned independent read-back and
+measured identity precede registration; missing/null versions and changed bytes
+never publish. Two fail-fast I/O slots cover body collection through post-I/O
+session checks, with 120-second total and 20-second full-storage-request limits.
+
+Registration locks organisation then engagement, rechecks the captured exact
+session after waits and locks it against logout via the narrow inventoried
+`evidence_session_locked` function. Do not grant runtime session UPDATE merely to
+acquire row locks. No SQL transaction spans S3 I/O. Keep catalogue snapshots 1–5
+unchanged; inventory now refuses overflow at 4,097 rows before comparing schema 6.
+Explicit test-only S3 transport ignores proxies/redirects and accepts numeric
+loopback only; production always signs HTTPS and validates TLS. Browser-held
+metadata and Blob downloads must pass session/scope verification before release.
+Keep coordinating conversation state mounted during evidence inspection.
+Browser evidence fixtures must await real asynchronous admin SQL whenever it can
+contend with API authority locks: synchronous psql blocks the Node database proxy
+that must forward the API commit, creating a harness deadlock. Keep the same
+disposable-target guards and bounded child-process deadlines.
+For lock fixtures, own and correlate the holder, API and admin backend PIDs;
+release the barrier only after observing the intended blocking chain, then await
+actual child closure. Classify unbound App session checks separately from bound
+projection verification, and await owned route-handler settlement before cleanup.
+Opaque evidence cursor IDs use explicit PostgreSQL `COLLATE "C"` in predicates,
+ordering and supporting indexes so a locale-specific database cannot disagree
+with browser ASCII ordering. Test with a non-C database, not only the default
+local fixture. Namespace fingerprints preserve endpoint absence and raw spelling;
+SDK signed-URL proofs show that endpoint normalization can change actual routing.
+Keep the durable 100-incomplete-reservation limit distinct from transient I/O
+capacity: waiting does not free custody, while exact replay and completing an
+existing original remain available. There is no abandonment/deletion/expiry
+lifecycle in this story. Validate UTF-8 byte and encoded-draft envelopes before
+freezing an acquisition, and keep accepted registration separate from later list
+refresh success.
+
+## 2026-10-01 — Story 20.6 membership and recipient proof
+
+Keep organisation administration separate from audit RLS and engagement selection.
+Admin metadata comes through narrow inventoried owner functions, never an owner
+pool or runtime membership DML. Preserve FORCE RLS and the published migration and
+catalogue prefixes. Membership, operation consumption and Task controls share
+organisation advisory205 then engagement locks; scoped transactions explicitly use
+READ COMMITTED so authority refreshes after waiting. Recheck the exact session and
+current Admin after locks, and fence affected execution/unused claims/delegation
+durably. Do not globally log out an identity for one organisation's revocation.
+
+Invitation recipient proof comes only from a signed ID-token email with boolean
+email_verified=true and the configured issuer. Bind it to the exact rotated server
+session using database callback time, never browser profile or provider auth_time.
+Missing or unverified email, or an unsupported but well-typed email string,
+preserves sign-in without proof. Malformed claim JSON types (for example email
+as a number or email_verified as a string) retain the pinned OIDC decoder's
+sign-in refusal; never alter signed JWT bytes or introduce a fallback verifier.
+A later callback cannot inherit an earlier session's proof. Acceptance rechecks session
+hash, actor, expiry and the 300-second proof window inside its transaction. This
+does not assert forced password or MFA reauthentication.
+
+Private invitation secrets are browser-generated random 32-byte base64url values,
+fragment-only in links and body-only in requests. Scrub the fragment immediately,
+persist only its digest, and retain the exact in-memory command for explicit retry.
+An exact receipt replay is history and must never grant authority a second time.
+Use the local fixture's signed email scenarios to prove claim handling, separately
+from direct repository session fixtures used by HTTP/storage authority tests.
+
+Assignment renewal belongs to each newly selected command assignment. Retained
+selections preserve their expiry even when time passes during editing; missing
+renewal and false are the same durable meaning. Freeze assignment completeness
+and selection baseline with the opened draft, so an expiry-driven 101-to-100
+refresh cannot silently switch a legacy preserve/remove command to replacement.
+Use the same client/engagement tuple order for assignment page selection,
+aggregation and continuation; concatenated cursor text has a different ordering
+for otherwise valid identifiers such as `a` and `a-`.
+
+Fence explicit renewal of an existing finite assignment independently of whether
+its expiry has passed yet. Also fence all of a member's organisation scopes when
+extending or clearing an existing finite membership expiry. Separate wall-clock
+reads can straddle expiry between fence selection and UPDATE; conservative
+fencing prevents the restored grant from reviving old execution. Keep unchanged
+expiry and retained renew=false selections unaffected, and retain fresh
+post-lock checks rather than substituting a transaction-start timestamp.
+
+Use `/workspace/zobba-build-tools/activate-tests.sh` for disposable test work.
+Both test and general activation now unset development migration/runtime URLs;
+development requires the separate explicit `activate-development.sh`. Never
+diagnose a test migration with a bare `zobba-cli migrate`: first guard the effective
+`_test` target and bind `ZOBBA_MIGRATION_DATABASE_URL` to its test migration URL for
+that command. A stale unpublished migration checksum in a disposable fixture
+requires its guarded reset. Preserve an accidental migration's exact SQL, ledger
+and catalog and report it immediately; do not silently rewrite a ledger or roll
+back development data.
+
+Browser invitation tests target the exact invitation ID from the saved receipt,
+not the last row in a randomly ordered ID page. Resolve its textbox by role: the
+containing private-link region also has an accessible label. Opaque receipt IDs
+need wrapping at narrow widths.
+
+## 2026-10-01 — Story 20.5 standing Permissions and operation custody
+
+Keep logical operation keys independent of worker ownership, attempts and one-use
+claims. Admission retries under replacement ownership recover the same immutable
+operation for identical Task/cycle/intent/execution and canonical meaning. A
+never-consumed operation can dispatch under fresh ownership; a consumed attempt
+must query the source before another attempt. The local qualification source
+atomically fences absent attempt IDs and deduplicates operation fingerprints so a
+delayed old sender cannot invalidate absence or repeat an effect. This qualifies
+that source contract only; it makes no remote exactly-once claim.
+
+Intersect current organisation/engagement/member/account/Task/delegation records
+with the accepted Task snapshot. Organisation/member/account heads are shared
+across engagements. Explicit Task acceptance records widening; it never rewrites
+an admitted operation's snapshot. Scope readers recheck audience before returning
+material. Unconsumed stopped/stale operations project refused authority, while
+consumed attempts retain factual unknown/pending/completed/absent outcomes.
+
+Permission writes and consumption lock organisation advisory205 before the shared
+engagement row. Story 20.6 membership writers must join the same fence; do not widen
+runtime membership DML privileges or claim coordination with arbitrary privileged
+owner SQL. Existing RLS checks continue to refuse currently revoked membership.
+
+Receipt custody is persisted per exact attempt/producer, with only secret digests
+stored. Dispatch and reconciliation capability kinds cannot be changed by caller
+fields. Exact-capability readers can compare facts across producers for their one
+attempt; insertion remains bound to the exact producer. Separate scoped producer
+metadata bounds recovery issuance without disclosing capability hashes. A late
+receipt writes facts only; current Task ownership incorporates them later. An inert
+child receipt cannot confirm cessation while an external attempt remains unresolved.
+
+The gateway is an owned Rust library exercised by actual PostgreSQL/HTTP child
+process fault tests. The inert worker still proposes no business operation. Keep
+fault controls in tests, fixed numeric loopback configuration in qualification,
+no arbitrary request-selected host, and current source authority even for lookup.
+Exact permission decisions require the accountable Task actor or a current
+assigned Audit manager, including idempotent retries. Peer Auditor guidance does
+not grant decision authority; Admin alone remains insufficient. The HTTP
+decision/projection seam uses ordinary capacity, preserving reserved
+Guide/Pause/Stop. Full Needs you UI remains Story 25.2.
+
+Independent review repairs bind admission/consumption to the exact persisted Task
+claim/process, including terminal inert receipts not yet coordinated. Flush deferred
+writes before the final current-lease/policy/request/decision expiry check. Ordinary
+Task revisions preserve accepted authority; delegation updates require both old-root
+and new-lineage authority. A persisted exact refusal is terminal regardless of clock
+ordering. Source-terminal absence restores active execution only under the current
+producing intent/cycle/execution; Pause/Stop remain stopped until explicit commands.
+
+Pin durable source/ledger identity, trusted endpoint digest and protocol version in
+operations and attempts. Empty-ledger restarts cannot prove another ledger absent.
+Trusted material metadata is immutable and SELECT-only for runtime; the guarded
+fixture owner supplies it. No ingestion/registration product exists yet. The owned
+source rechecks actual attachment bytes/classification, resource version and expiry
+atomically before an effect. Never use caller classifications as trusted metadata.
+
+Recovery reuses exact receipt custody in memory and freshly checks actor/scope,
+account/policy and source before every lookup. Keep up to 1,000 cache entries without
+evicting unresolved custody. The 32-producer limit is a crash/replacement limit,
+not a normal polling budget. Use cursor pagination for unresolved attempts and
+independent decision/attempt/observation history. History is freshly scoped and
+secret-free; ID cursors enumerate immutable records, not a concurrent change feed.
+
+## 2026-10-01 — Foundation read binding and fixture setup
+
+Compose protected browser reads from one captured session, using its in-memory
+CSRF value as the optional `X-Expected-Session` refusal fence. The cookie remains
+the only identity authority. A mismatch returns412 `session_changed` without
+Set-Cookie; share one automatic recovery budget across engagement composition and
+conversation reads. Successful engagement reads alone cannot reset it while the
+conversation keeps returning412. Restore it only after a usable verified projection
+or explicit user recovery, and fail closed while exhausted. Generic401 must not
+expire a newer valid cookie through a delayed reply;
+explicit logout still expires it. Hold an actual completed old session response
+while another tab replaces the account to regress this race. Verify same-account
+session rotation retains the mounted draft/editor and focus after fresh bound
+reads, while another actor gets a new workspace even within the same engagement.
+
+Use `pnpm --filter @zobba/oidc-fixture run setup` explicitly. The shorter
+`pnpm ... setup` invokes pnpm's own shell setup and leaves the OIDC fixture absent.
+The workspace `pnpm fixture:setup` shortcut includes `run`. Set `ZOBBA_FIXTURE_DIR`
+to a new child path in a private temporary directory for isolated checks, then source
+that directory's `env.sh`; do not replace the development fixture. Repeating setup
+retains existing key/credential bytes and verifies certificate validity. CI keeps
+its fixture in runner temporary storage and exercises the root shortcut, checking
+the generated files before the fixture suite can create independent test material.
+Use `$RUNNER_TEMP` inside a workflow step; the `runner` expression context is not
+available in job-level `env`. The setup message names its configured `env.sh` path.
+
+## 2026-09-30 — Story 20.4 conversation, delivery and recovery boundaries
+
+Final 20.4 gates: 81 Rust tests passed (one explicit helper exercised by its parent),
+71 web unit tests, 46 actual browser cases, 46 OIDC fixture tests and 47 Python
+guards; formatter, Clippy, builds, inward boundaries and process smoke passed.
+Independent final repair acceptance passed 71 web tests, 15 browser cases and an
+additional commit-abort proof. Both negative controls failed their intended invariant.
+Keep the saved evidence's actual failures and compatibility limits when reporting.
+
+Project conversation messages from the accepted Task command/receipt authority.
+Never accept a browser message independently. Snapshot state, messages and watermark
+share one PostgreSQL statement snapshot; Received/Applied history uses a fixed
+through cursor. All cursors remain decimal strings. Feed pages contain at most100
+contiguous events; a gap, future cursor or backlog over1,000 requires explicit
+resynchronisation. Finite browser polling holds no database connection for a viewer.
+Bound displayed history and Task pages separately, and refresh a later Task page
+from its own cursor after invalidation. Exact Task inspection cannot depend on the
+Task appearing in the current100 rows.
+
+The Create author is the accountable human. Read their public label independently
+of the latest conversation page; a later Guide author must never become the Task
+owner. Preserve current-reader membership checks while retaining historical authors.
+An inert result means Waiting, never audit-objective completion. Applied means plain
+working-brief direction reached a work boundary, not model understanding.
+
+Persist exact actor/composite scope/key/meaning before any transmission, separately
+from the next editable draft. One IndexedDB transaction atomically checks immutable
+meaning and scoped/global quota, then resolves only on strict-durability commit.
+The independent native-Web-Lock proof exposed renderer-local storage staleness:
+two tabs each wrote 5→6 before any reconciliation removed a row, admitting seven.
+Do not repair that with sleeps or a second authoritative cache. Cap recovery at
+8 records per actor/scope (two reserved Pause/Stop places) and 64 per origin (four
+reserved places). Read only the bounded own-binding index. BroadcastChannel signals
+carry a binding only, never replay, and must not throw after a committed handoff.
+Status updates must not resurrect another tab's reconciled row. Controller disposal
+closes its database and channel; temporary access revalidation retains uncertainty.
+Preserve old unshipped preview bytes and fail closed for an own-binding preview
+record; do not silently migrate or resend it. Legacy detection bounds key-name scans
+at 2,048 without reading another binding's payload. Reconcile only an exact
+author/key/target/cycle/content echo; a 409 refusal can be dismissed, while uncertain
+requests retain their recovery key. Never persist CSRF/session material. Bound JSON
+response bytes before parsing, not only the number of validated rows afterwards.
+
+When suspending the real worker to prove pending controls, SIGSTOP can catch a
+transaction holding the engagement row and manufacture a control503. The observed
+PostgreSQL statement timeout occurred in TaskRepository::lock, not admission.
+Give each owned test worker a unique application_name; after its process is stopped,
+verify those exact connections are idle with no transaction or granted lock and
+that its actual inert child is alive. Thaw/retry a nonquiescent sample within a
+bounded deadline. Preserve 202, pending and observed assertions and attach the
+quiescence evidence. Never extend production deadlines to hide a fixture-held lock.
+
+Every browser mutation sends an expected-actor refusal fence (`X-Expected-Actor`)
+in addition to current in-memory session CSRF. The server remains the author source.
+Guide/Pause/Stop retries rely on the reserved POST's fresh session, actor, CSRF and
+membership check before idempotency lookup; an ordinary GET preflight would undo
+the independent control lane. Other retries refresh session and exact scope before
+sending. Session replacement refuses rather than adopting a new actor's authority
+into an old outbox item. No automatic browser replay after reload or access change.
+
+Keep the same actor/scope workspace mounted and hidden during access revalidation,
+preserving the local draft, explicit target, selected/pinned inspection and focus.
+Actual failure clears protected projections; actor/scope changes remount the bound
+controller. Fence all late snapshot/history/control callbacks. Restore the actual
+retained focused node and textarea selection before falling back to a stable focus
+identifier or the new view heading. Opening or following a Task never retargets the
+composer. Fence duplicate Enter synchronously while asynchronous storage admission
+runs, and clear only the submitted unchanged draft generation after persistence.
+A generation change during awaited reservation cannot undo that handoff: retain and
+surface the saved request in the current same-bound controller without an obsolete
+POST. Observe only current-binding storage signals across tabs, never replay automatically.
+Keep exact durable echo evidence while its POST remains in flight; a later lost reply
+cannot downgrade a known receipt. Associate unresolved notices with their operation
+so dismissing one refusal clears only that notice.
+
+Hide the entire protected surface during access checks, including identity, scope,
+roles and the picker. Keep Task detail/control nodes mounted but hidden through the
+following same-scope projection load, then restore focus once usable; actual failures
+withdraw them. Exact inspection success and failure share selection, lifetime and
+projection fences. Validate a retained composer cycle against an exact inspected
+Task even when it is outside the current bounded page.
+
+Follow uses the snapshot's latest scoped Received/Applied activity independently of
+the displayed history page. A later Applied event can belong to an older omitted
+command. Keep this narrow activity metadata in the same SQL snapshot as its cursor.
+A send scroll belongs to its exact persisted key and is consumed once; later receipts
+or storage changes must preserve deliberate history navigation.
+
+
+Concurrent local seeds must acquire their fixed transaction advisory lock before
+first validating/deparsing the PostgreSQL catalog. Taking it after validation lets
+one seed hold catalog-related locks while another holds transaction-local RLS DDL
+locks, creating a lock-order deadlock. The lock serializes only explicit synthetic
+fixture setup; it grants no runtime authority and must not regrant revoked fixture
+memberships. Retain the actual concurrent-seed/no-regrant database regression.
+
+A successful conversation read clears only the transient read-failure notice.
+Unresolved storage failures, uncertain commands and explicit refusals retain their
+own notice through reconnect; a read succeeding is not evidence that a write was
+received or local recovery storage became usable.
+
+## 2026-09-30 — Story 20.3 durable Task commands and factual recovery
+
+The original Received receipt is immutable. Applied guidance and observed child
+cessation are separate durable facts; retry rechecks current authority and returns
+the original receipt only for identical author/scope/key/meaning. Commit command,
+receipt, state, event and wakeup atomically. Engagement event cursors are strings
+and serialize with commit. Preserve the exact 0001/0002 migration bytes and catalog
+prefixes; schema3 upgrades must leave all historical SQLx ledger fields intact.
+Capture PostgreSQL catalog signatures as raw UTF-8 bytes and split only on LF.
+Python `text=True` universal-newline conversion and `splitlines()` alter embedded
+CR or Unicode whitespace intentionally present in the 20.2 constraints. Never
+recapture the published v1/v2 catalogs to accommodate those conversion errors.
+
+Owner epoch, execution epoch, intent revision and Task revision are distinct.
+Guide advances intent on admission; the owner applies it at the next work boundary.
+Current ownership cannot validate an old-intent proposal or unused claim. Paused or
+stopped guidance never resumes work; Resume retains the cycle, while Continue
+creates a new cycle after Stop. Old-cycle controls never affect that continuation.
+
+Consumption is the possible-dispatch cutoff. Abrupt process loss after consumption
+leaves reconciliation required; a replacement owner must not replay it or infer
+quiescence from expiry. Coordinator reentry without a tracked child must expose that
+uncertainty even when the same owner's lease remains valid. Join the exact child
+before recording cancellation or exit.
+A successful inert observation leaves the Task waiting/confirmed, never an audit
+objective completed. The executor is bounded test activity, with no model/tool or
+computer dispatch. Other Tasks continue while one Task needs reconciliation.
+
+Late receipt authority is an exact-attempt capability, stored only as a digest.
+Transaction-local receipt context admits bounded immutable inert facts from stale
+or revoked producers; it grants no Task read, transition, proposal or new activity.
+Identical receipt retries deduplicate, contradictory reuse refuses, and pooled
+context must reset. A currently authorized coordinator incorporates facts later.
+Dispatcher discovery is content-free and never establishes execution authority.
+Prioritize never-delivered wakeups, then older deliveries; sorting only by original
+availability lets repeatedly due work starve newer Tasks. The 100-open-Task limit
+also applies to Continue, because stopped history remains outside that capacity.
+
+Guide/Pause/Stop authentication and admission have two reserved database connections,
+separate from ordinary reads and worker work. Release every connection during
+inert child execution or waits. Run guarded database/process suites, smoke and the
+23 retained browser cases sequentially against the same disposable test database.
+Their commands are verification instructions, not evidence of an unexecuted pass.
+
+The Create author remains both accountable human and recorded execution actor.
+Other current members may control the Task without silently transferring background
+authority; reassignment belongs to a later capability. Receipt facts may be written
+by revoked producers, but transitions wait for current recorded authority. The worker
+retries an identical joined fact at most five times; a prolonged database outage can
+lose the local fact/capability and leaves consumed work requiring reconciliation.
+
+Story 20.3 review repairs separate `task_deliveries` from scoped scheduling:
+dispatcher context has lease writes only; direct runtime SQL must be unable to
+change wakeup `pending` or `available_at`. Scoped lease INSERT with ON CONFLICT
+also needs scoped SELECT visibility for PostgreSQL RLS. Preserve exact catalog and
+column-grant checks for both tables. A monotonic applied-command cursor plus the
+scoped partial open-task index keeps retained history out of locked admission work.
+
+All worker database ports have client deadlines; SQL statement timeouts do not
+bound a blackholed socket. Poll authority concurrently with child exit and shutdown,
+and supervise the coordinator itself. Cap cancellation join and graceful drain;
+unconfirmed outcomes remain uncertain. Fixed diagnostics are rate-limited per code,
+never interpolated with scope, payload, SQL errors, or receipt secrets.
+
+HTTP saturation proofs use real `Expect: 100-continue` barriers after permit
+acquisition. Prove the byte limit by whitespace-padding otherwise-valid JSON.
+Drain event pages using returned cursors and preserve the exact supplied cursor on
+empty pages. Test schema resets use the migration owner; the separate administrator
+only arranges guarded synthetic data. Re-run against a restricted migration owner,
+not only the convenient local superuser. Test-only port wrappers and process
+executables expose deterministic cutoff faults without production fault flags.
+
+## 2026-09-30 — Story 20.2 identity and current scope
+
+The Rust `zobba/` workspace owns OIDC verification and opaque server sessions.
+Use maintained `openidconnect`4.0.1 with bounded trusted-endpoint HTTP; its default
+authorized-party/issued-at handling and JWKS refresh need our explicit checks.
+Provider roles/email are never application authority. Every protected request
+rechecks current session, membership and assignment; Admin alone grants no audit
+access. Shared SQLx transactions set actor and exact composite scope locally;
+tenant repositories never reacquire another pool connection inside that unit.
+
+`0002_identity_scope.sql` upgrades only a physically verified20.1 prefix. Exact
+catalog checks include forced RLS, policy expressions, scoped references and FK
+enforcement triggers. A present FK definition does not prove its triggers are
+enabled. Runtime has only narrow control-plane writes and scoped engagement-name
+updates; roles/assignments remain owner-configured until their later story.
+
+Local sign-in uses the separate actual HTTPS `oidc-provider` fixture:
+`pnpm fixture:setup`, source `fixtures/oidc/.local/env.sh`, explicitly migrate and
+`cargo run -p zobba-cli --locked -- seed-local`, then `pnpm fixture:start` alongside
+API/Vite. App `localhost` and IdP `127.0.0.1` must differ: cookies ignore ports.
+The external callback retains `/api/auth/callback`; Axum receives `/auth/callback`.
+Generated CA/keys/passwords stay ignored; Rust TLS verification always remains on.
+The fixture is local test infrastructure, never production authentication bypass
+or customer Cognito/SSO qualification.
+
+Run protocol tests with the actual fixture environment and process, database
+tests sequentially against guarded `*_test`, then smoke, then the owned browser
+suite (separate IdP9444). Browser expiry/revocation arrangements require the same
+disposable test-admin binding. Wrong callback state must not clear a valid session;
+only successful replacement rotates it or authenticated CSRF-protected POST logout
+ends it. Bound whole auth requests, including mutex/pool queues, and coalesce failed
+discovery. Background authority refresh clears failed protected views and restores
+keyboard focus without changing the selected composite scope.
+
+Logout intent and its AbortController are independent of automatic reads. Focus,
+visibility and timer refresh must not cancel it or reopen protected work. Retry
+may read fresh session CSRF only to retry logout; 401 means already signed out.
+If a focused control disappears, move focus to the committed view's heading.
+Unrelated callbacks preserve both established sessions and current login bindings;
+only a matching consumed attempt clears its transient binding.
+
+JWKS entries have a five-minute lifetime. Coalesce one refresh/retry for relevant
+unknown-key or signature mismatch, and fail closed if expired-cache refresh fails.
+Keep actual-provider same-kid replacement, retirement and valid padded response
+tests: malformed oversize JSON cannot prove a byte cap. The recently expired token
+must still have valid issued-at age/lifetime; the old-issued-at case is separate.
+
+Login admission atomically caps 1,000 unexpired attempts under an advisory lock;
+cleanup uses fixed cutoffs and indexed batches of 128 physical rows. Scope IDs are
+1–128 ASCII alphanumeric/underscore/hyphen; labels are 1–200 Unicode scalars without
+C0/C1 controls or edge Unicode White_Space. JavaScript trim differs from Rust
+Unicode whitespace, so use the explicit shared set. Chooser pages hold 50 current
+assignments and complete composite cursors; saved scopes open independently.
+The first local seed records its issuer in owner-controlled bootstrap metadata. Reruns
+must preserve removed or disabled authority, even after fixture records are deleted.
+
+Native Chromium form redirects require the fixture's `Referrer-Policy:
+same-origin` and `form-action` allowing its own and the exact configured app
+origin. `no-referrer` produced `Origin: null` on its password POST; a scripted
+helper manually setting Origin did not expose that browser behavior. Preserve
+the strict Origin/CSRF checks. Restore focus in a layout effect after the React
+view commits; an animation-frame callback can run before the view exists.
+Vite's built-in proxy error handler logs callback query strings and error stacks;
+the owned proxy sanitizer runs first and retains only a fixed diagnostic. Keep
+the actual proxy failure test with credential/query sentinels, and keep fixture
+setup errors fixed even when its private JSON file is corrupt.
+
+## 2026-09-30 — Story 20.1 independent bootstrap boundary
+
+Use `zobba/` for the Rust1.98.1 and Node24.20.0/pnpm11.25.0 workspaces.
+Root pnpm commands and legacy CI remain historical. The new workflow is named
+`Zobba foundation`: naming it `CI` would trigger the legacy Release listener.
+Generate the owned OpenAPI through `zobba-cli openapi`; web checks compare both
+that document and generated TypeScript instead of trusting hand-edited types.
+
+Runtime and migration database credentials have separate names and roles.
+Runtime startup/readiness is read-only, bounded, and rejects owner/elevated roles,
+foreign schemas, incorrect metadata and mismatched migration checksums. Only the
+explicit CLI migrates. Story 20.1 supports empty or exact-current bootstrap;
+the next migration story must admit verified previous migration prefixes before
+applying its own changes. Bootstrap tests reset only dedicated `*_test` schemas.
+Process smoke interrupts its own TCP proxy to prove database-loss 503 responses
+without stopping the shared development server. Health establishes no audit work.
+
+The 20.1 review patch keeps preflight on qualified `pg_catalog` objects, checks
+inherited and SET ROLE authority (including column grants), and wraps the SQLx
+ledger, migration and grants in one transaction under a whole-session deadline.
+The migration target is checked both before writes and after grants. Inspect
+physical metadata tables before reading rows; return bounded comparisons instead
+of arbitrary metadata blobs. Integration resets first compare normalized complete
+test endpoints with every configured development binding, including mapped IPv6.
+Use a same-database test-admin binding only for unsafe-role/interruption fixtures;
+the normal CI migrator remains a non-superuser database owner.
+
+The source-boundary guard deliberately supports directly inspected configurations,
+not arbitrary JavaScript evaluation: inherited TypeScript resolver settings and
+composed/re-exported Vite configs need an explicit later boundary implementation.
+Run its concrete regression suite. Process smoke now requires the same processes
+to recover after proxy restoration; the owned browser regression checks the actual
+Unavailable label and preserves keyboard focus on recovery.
+
+## 2026-09-30 — Accepted Zobba revision 3 and brownfield course correction
+
+The owner accepted revision 3 and requested active-document consolidation,
+implementation planning, Pair screen updates and sized operating costs. Use
+[`ACTIVE-BASELINE.md`](_bmad-output/planning-artifacts/ACTIVE-BASELINE.md) as the
+current entry point. Existing PRD/architecture paths are updated in place; active
+UX is `ux-Zobba-2026-09-25`. The SPEC is re-derived through `bmad-spec` with CAP-17–30.
+Retired IDs retain historical meaning; exact prior artifacts are archived.
+
+This is the `bmad-correct-course` path, followed by `bmad-create-epics-and-stories`
+and `bmad-sprint-planning`. New stories start at Epic 20. Keep the standard
+`implementation-artifacts/sprint-status.yaml` as the active queue because
+`bmad-build` resolves that fixed name; a parallel named queue would be ignored.
+The old queue is archived without changing statuses. `bmad-build` should receive
+explicit new story IDs; legacy unfinished specs on disk are not new-build work.
+
+The operating budget lives in `zobba-operating-budget-2026-09-30/` and replaces
+the prior $300 allowance with sized shared services and explicit customer/model
+consumption. Region, app qualification and commercial terms are assumptions/gates,
+not deployment approval. The accepted revision3 package remains a dated design
+snapshot; the implementation handoff is the current delivery view. Pair screens
+are verified prototypes, not live computers or implemented audit capabilities.
+
+Use `UV_CACHE_DIR=/tmp/zobba-uv-cache` with `uv run` in the current cloud sandbox;
+the default home cache is read-only. Do not change HOME or disable verification.
+
+## 2026-09-30 — Zobba product and architecture recommendation (historical preparation)
+
+The review package lives in
+[`_bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/`](./_bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/README.md).
+Start with `Owner-Summary.md`; the integrated design includes the product experience,
+recommended Rust architecture, code disposition and consequential owner decisions.
+Revision 2 keeps the owner's confirmed lead direction: clean Rust/fresh schema,
+continuing Task, managed computer and standing Permissions. It adds costed computer
+readiness, typed audit evaluations/recurring methods and first-task methodology,
+skills and working knowledge. Admin configuration uses ordinary versioned Save;
+audit review supports teams and honestly labelled solo use. Remaining business
+choices are launch support, data terms and pricing. This is design, not an approved
+implementation plan or a rewrite of existing planning documents. Bundled references are research
+sources, not working instructions or application dependencies.
+Revision 3 integrates the user's Dots UX reference: a continuing engagement
+conversation coordinates distinct Tasks, with exact message/command targets,
+contextual private sign-in, meaningful updates and stable output navigation.
+The bounded research/source bundle is `references/dots/`; the integrated design
+governs over supporting notes. Prior reference screens and build plans require
+reconciliation before reuse. Product behavior is observed or documented; no
+Dots runtime, cost or performance claims are inferred from its interface.
+The package README links to `Zobba-Design-Package.zip` in the same folder. When updating
+the package, refresh `MANIFEST.json` and rebuild the ZIP; the manifest excludes itself
+and the archive, and the ZIP contains all manifest-listed files plus the manifest.
+
 ## 2026-09-29 — Story 10.12: one expression for an order, and the page shown gets its marks
 
 The eight Epic 10 owner items (`epic-10-follow-up-owner-items.md`), as one story. No

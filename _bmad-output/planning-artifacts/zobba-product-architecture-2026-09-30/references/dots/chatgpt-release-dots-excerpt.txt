@@ -1,0 +1,11 @@
+S3: selected official-source evidence
+Source: https://help.openai.com/en/articles/6825453-chatgpt-release-notes
+Retrieved: 2026-09-30
+
+Selected quotation:
+Dots are rolling out gradually to eligible Pro and Business Premium users aged 18 and older in supported markets.
+
+Research summary (not a quotation):
+The 29 September 2026 release-note entry confirms the launch and qualified rollout; product availability can change.
+
+This package contains a short relevant excerpt, not the complete public page. See the source URL and public-official.md for interpretation and limits.
