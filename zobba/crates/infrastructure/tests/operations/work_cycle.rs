@@ -2479,15 +2479,15 @@ impl Harness {
     }
 }
 
-/// Runs a loop the way the worker does. Every plain run in this suite uses
-/// it; the race cases that drive their own futures and fences keep a bare
-/// `run`. `execute_work` polls
+/// Runs a loop the way the worker does. The worker's `execute_work` polls
 /// `current` every 200 ms beside the loop: that poll renews the Task's
 /// 5-second owner lease, and a refusal or failed poll cancels the loop. A
 /// bare `run` renews the lease only at each boundary, so one iteration (turn,
 /// admission, dispatch, recording) that takes longer than the lease is fenced
 /// at the next boundary. That is a property of the test harness, not of the
-/// product loop, which never runs without the poll.
+/// product loop, which never runs without the poll. Every plain run in this
+/// suite uses it; the race cases that drive their own futures and fences keep
+/// a bare `run`.
 async fn owned<W, S, T, D>(f: &Fixture, work: &WorkLoop<W, S, T, D>, basis: &ClaimBasis) -> CycleEnd
 where
     W: zobba_application::work::WorkSteps,

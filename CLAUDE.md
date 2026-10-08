@@ -1,3 +1,12 @@
+## 2026-10-08 — Work-loop tests must renew the owner lease like production
+
+`execute_work` renews the Task's 5-second owner lease every 200 ms beside the loop. Tests
+that call `WorkLoop::run` directly renew it only at each pass boundary, so a pass over 5 s
+under load turns into `Fenced`. Plain work-cycle runs use the `owned(...)` helper in
+`work_cycle.rs`, which mirrors that renewal and cancels on a real loss of authority. Race
+tests that hold or fence on purpose keep calling `run` directly. Never lengthen the
+production lease to hide this.
+
 ## 2026-10-08 — Claude thinking blocks are opaque replay material
 
 Current Claude models always think. The native Anthropic adapter accepts

@@ -47,3 +47,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-22-1-anthropic-thinking-blocks.md`
   summary: Structured-output requests to a current Claude model always fail as Malformed, because the structured path treats any non-text event (including thinking) as invalid.
   evidence: native.rs outcome schema loop sets valid=false on Reasoning events; the spec deliberately kept that rule. Current Claude models always think, so structured output needs a reasoning-aware rule before any feature relies on it.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-22-3-compact-context-without-inventing-authority-or-evidence.md`
+  summary: One work-loop pass sends thousands of repeated knowledge, methodology and command lookups to the database, so a pass can take 4–5 seconds in a debug build.
+  evidence: A fully logged compaction test step ran about 83,000 short statements in 29 seconds (about 9.4 s inside the database). Production renews the 5-second owner lease every 200 ms, so this is cost and latency, not a correctness failure.
