@@ -2,7 +2,8 @@
 title: '22.3 — Compact context without inventing authority or evidence'
 type: 'feature'
 created: '2026-10-08'
-status: 'draft'
+status: 'in-progress'
+baseline_commit: '4bb2c70d0e9e6ea48e4baa4c42e5bdb922886b7f'
 story_key: 22-3-compact-context-without-inventing-authority-or-evidence
 review_loop_iteration: 0
 context:

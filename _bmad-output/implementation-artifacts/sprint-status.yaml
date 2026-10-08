@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-30-2026 16:09
-last_updated: 10-07-2026
+last_updated: 10-08-2026
 project: Zobba
 project_key: NOKEY
 tracking_system: file-system
@@ -57,7 +57,7 @@ development_status:
   epic-22: in-progress
   22-1-route-native-models-through-a-current-tool-catalog: done
   22-2-continue-a-real-task-under-changing-guidance: review
-  22-3-compact-context-without-inventing-authority-or-evidence: backlog
+  22-3-compact-context-without-inventing-authority-or-evidence: in-progress
   22-4-run-measured-analysis-in-an-isolated-workspace: backlog
   22-5-extract-usable-facts-with-stable-source-locations: backlog
   22-6-use-methods-and-installed-skills-during-investigation: backlog
