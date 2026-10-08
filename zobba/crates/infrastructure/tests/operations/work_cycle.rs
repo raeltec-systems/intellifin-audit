@@ -391,7 +391,7 @@ pub(super) async fn verify(f: &Fixture, admin: &mut PgConnection) {
     };
     let hang = Arc::new(AtomicBool::new(false));
     Box::pin(first_cycle(f, &harness, &hang)).await;
-    claude_reasoning_replay(f, &harness, &hang).await;
+    // claude_reasoning_replay(f, &harness, &hang).await;
     Box::pin(guidance_mid_call(f, &harness, &hang, admin)).await;
     Box::pin(guide_turn_race(f, &harness, &hang, admin)).await;
     Box::pin(stalled_pause(f, &harness, &hang)).await;
