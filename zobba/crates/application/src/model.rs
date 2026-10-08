@@ -210,7 +210,8 @@ impl ModelRequest {
         let mut history_bytes = 0usize;
         let mut history_calls = std::collections::BTreeSet::new();
         let mut history_attempts = std::collections::BTreeSet::new();
-        let mut previous: Option<&HistoryItem> = None;
+        // Invocations whose exchanges have already appeared in this history.
+        let mut seen_invocations = std::collections::BTreeSet::new();
         for item in &self.history {
             match item {
                 HistoryItem::Message(message) => history_bytes += message.text.len(),
@@ -221,10 +222,9 @@ impl ModelRequest {
                         if self.profile.provider != Provider::Anthropic {
                             return Err(ModelError::Conflict);
                         }
-                        // Rendered once per invocation group, by its first
-                        // exchange only.
-                        if matches!(previous, Some(HistoryItem::ToolExchange(prior)) if prior.invocation_id == exchange.invocation_id)
-                        {
+                        // Rendered once per invocation, by its first exchange
+                        // anywhere in this history.
+                        if seen_invocations.contains(&exchange.invocation_id) {
                             return Err(ModelError::Invalid);
                         }
                     }
@@ -259,7 +259,9 @@ impl ModelRequest {
                         + replay_bytes(&exchange.preceding).ok_or(ModelError::Capacity)?;
                 }
             }
-            previous = Some(item);
+            if let HistoryItem::ToolExchange(exchange) = item {
+                seen_invocations.insert(&exchange.invocation_id);
+            }
             if history_bytes > MAX_HISTORY_BYTES {
                 return Err(ModelError::Capacity);
             }
