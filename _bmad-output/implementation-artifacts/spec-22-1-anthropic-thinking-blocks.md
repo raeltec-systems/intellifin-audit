@@ -2,7 +2,8 @@
 title: '22.1 follow-up — Accept and replay Claude thinking blocks in the native Anthropic adapter'
 type: 'feature'
 created: '2026-10-08'
-status: 'draft'
+status: 'in-progress'
+baseline_commit: '44c4bbb74d805a6bd33c041321fd77c6a764e187'
 review_loop_iteration: 0
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-22-context.md'
