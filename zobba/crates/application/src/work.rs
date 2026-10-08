@@ -1401,7 +1401,7 @@ where
     async fn record(&self, basis: &ClaimBasis, step: &TaskStep) -> Result<TaskStep, CycleEnd> {
         match self.steps.record_step(basis, step).await {
             Ok(stored) => Ok(stored),
-            Err(TaskError::Fenced | TaskError::Denied) => {eprintln!("DEBUGX L1403"); Err(CycleEnd::Fenced)},
+            Err(TaskError::Fenced | TaskError::Denied) => Err(CycleEnd::Fenced),
             Err(_) => Err(CycleEnd::Unavailable),
         }
     }
@@ -1469,7 +1469,7 @@ where
                     {
                         Ok(operation) => (operation, false),
                         Err(TaskError::Fenced | TaskError::Denied) => {
-                            {eprintln!("DEBUGX L1471"); return Some(CycleEnd::Fenced)};
+                            return Some(CycleEnd::Fenced);
                         }
                         Err(_) => return Some(CycleEnd::Unavailable),
                     }
@@ -1489,7 +1489,7 @@ where
             let prior = match self.dispatch.settled(basis, &operation_id).await {
                 Ok(prior) => prior,
                 Err(OperationError::Fenced | OperationError::Denied) => {
-                    {eprintln!("DEBUGX L1491"); return Some(CycleEnd::Fenced)};
+                    return Some(CycleEnd::Fenced);
                 }
                 Err(_) => return Some(CycleEnd::Unavailable),
             };
@@ -1519,7 +1519,7 @@ where
                     Ok(Some(attempt)) => Ok(attempt),
                     Ok(None) => Err(error),
                     Err(OperationError::Fenced | OperationError::Denied) => {
-                        {eprintln!("DEBUGX L1521"); return Some(CycleEnd::Fenced)};
+                        return Some(CycleEnd::Fenced);
                     }
                     Err(_) => return Some(CycleEnd::Unavailable),
                 },
@@ -1632,7 +1632,7 @@ where
                 }
                 Ok(_) => return Err(CycleEnd::Reconcile),
                 Err(OperationError::Fenced | OperationError::Denied) => {
-                    {eprintln!("DEBUGX L1634"); return Err(CycleEnd::Fenced)};
+                    return Err(CycleEnd::Fenced);
                 }
                 Err(_) => return Err(CycleEnd::Unavailable),
             }
@@ -1645,11 +1645,11 @@ where
         let mut fenced = 0u32;
         loop {
             if cancellation.is_cancelled() {
-                {eprintln!("DEBUGX L1647"); return CycleEnd::Fenced};
+                return CycleEnd::Fenced;
             }
             let boundary = match self.steps.boundary(&basis).await {
                 Ok(boundary) => boundary,
-                Err(TaskError::Fenced | TaskError::Denied) => {eprintln!("DEBUGX L1651"); return CycleEnd::Fenced},
+                Err(TaskError::Fenced | TaskError::Denied) => return CycleEnd::Fenced,
                 Err(_) => return CycleEnd::Unavailable,
             };
             basis = boundary.basis.clone();
@@ -1674,7 +1674,7 @@ where
                 // recorded history and the rest are superseded, never run.
                 let invocation = match self.steps.invocation(&basis, invocation_id).await {
                     Ok(invocation) => invocation,
-                    Err(TaskError::Fenced | TaskError::Denied) => {eprintln!("DEBUGX L1676"); return CycleEnd::Fenced},
+                    Err(TaskError::Fenced | TaskError::Denied) => return CycleEnd::Fenced,
                     Err(_) => return CycleEnd::Unavailable,
                 };
                 let pending: Vec<_> = proposals(&invocation)
@@ -1744,9 +1744,8 @@ where
                         Err(end) => end,
                     };
                 }
-                Err(RequestEnd::Model(e @ (ModelError::Fenced | ModelError::Denied))) => {
-                    eprintln!("DEBUGX plan fenced {e:?}");
-                    {eprintln!("DEBUGX L1748"); return CycleEnd::Fenced};
+                Err(RequestEnd::Model(ModelError::Fenced | ModelError::Denied)) => {
+                    return CycleEnd::Fenced;
                 }
                 Err(RequestEnd::Model(ModelError::Unavailable)) => return CycleEnd::Unavailable,
                 Err(RequestEnd::Model(_)) => return CycleEnd::Failed,
@@ -1758,15 +1757,14 @@ where
                 // control fenced the epoch: the next boundary decides. A fence
                 // that keeps recurring ends the run instead of spinning.
                 Err(ModelError::Fenced) if !cancellation.is_cancelled() => {
-                    eprintln!("DEBUGX invoke fenced");
                     fenced += 1;
                     if fenced > MAX_FENCED_RETRIES {
-                        {eprintln!("DEBUGX L1763"); return CycleEnd::Fenced};
+                        return CycleEnd::Fenced;
                     }
                     (self.delay)(Duration::from_millis(100 * u64::from(fenced))).await;
                     continue;
                 }
-                Err(ModelError::Fenced) => {eprintln!("DEBUGX L1768"); return CycleEnd::Fenced},
+                Err(ModelError::Fenced) => return CycleEnd::Fenced,
                 Err(ModelError::Unavailable) => return CycleEnd::Unavailable,
                 Err(_) => {
                     let mut step = Self::step(

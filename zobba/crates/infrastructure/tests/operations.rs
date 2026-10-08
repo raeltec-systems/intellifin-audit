@@ -262,14 +262,12 @@ impl Fixture {
             .accept_authority("actor-a", &selected("a"), &receipt.task_id, &authority)
             .await
             .unwrap();
-        let t1 = std::time::Instant::now();
         let basis = execution(
             self.tasks
                 .coordinate(&route(&receipt), &format!("worker-{name}"))
                 .await
                 .unwrap(),
         );
-        eprintln!("DEBUGZ coordinate {name} took {:?}", t1.elapsed());
         Case {
             receipt,
             basis,

@@ -391,7 +391,6 @@ pub(super) async fn verify(f: &Fixture, admin: &mut PgConnection) {
     };
     let hang = Arc::new(AtomicBool::new(false));
     Box::pin(first_cycle(f, &harness, &hang)).await;
-    claude_reasoning_replay(f, &harness, &hang).await;
     Box::pin(guidance_mid_call(f, &harness, &hang, admin)).await;
     Box::pin(guide_turn_race(f, &harness, &hang, admin)).await;
     Box::pin(stalled_pause(f, &harness, &hang)).await;
@@ -449,6 +448,9 @@ pub(super) async fn verify(f: &Fixture, admin: &mut PgConnection) {
         &auditor_hash,
     ))
     .await;
+    // Last among the work scenarios: it adds a second (Claude) profile and
+    // must not change the state the earlier scenarios measure.
+    claude_reasoning_replay(f, &harness, &hang).await;
     Box::pin(routing(f, admin)).await;
     Box::pin(storage_guards(admin)).await;
 }
@@ -2779,9 +2781,7 @@ async fn compaction_by_bytes(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
     finish(f, &case, &attempt, Observation::Completed).await;
 
     let budget = fixed + exchange * 7 / 2 + 2_000;
-    let t0 = std::time::Instant::now();
     let (case, basis, attempt) = consumed(f, "work-compact-bytes").await;
-    eprintln!("DEBUGZ consumed took {:?}", t0.elapsed());
     let mut turns: Vec<Turn> = (0..8)
         .map(|i| Turn::Tool(leaked(format!("cb-{i}")), "send_exact"))
         .collect();
