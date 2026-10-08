@@ -807,16 +807,18 @@ impl TaskRepository {
     }
 
     pub async fn boundary(&self, b: &ClaimBasis) -> Result<WorkBoundary, TaskError> {
-        let mut tx = lock(self.pool(), &b.actor_id, &b.scope).await?;
+        let mut tx = lock(self.pool(), &b.actor_id, &b.scope).await.inspect_err(|e| eprintln!("DEBUGY lock {e:?}"))?;
         let row = task(&mut tx, &b.task_id).await?;
         if !continuation_current(&row, b)? {
+            eprintln!("DEBUGY cont1 basis={:?} owner={:?} live={:?} oe={:?} ee={:?} cyc={:?} state={:?}", (&b.task_id,&b.worker_id,b.owner_epoch,b.execution_epoch,&b.cycle_id),
+                sqlx::Row::try_get::<Option<String>,_>(&row,"owner_id"), sqlx::Row::try_get::<Option<bool>,_>(&row,"owner_live"), sqlx::Row::try_get::<i64,_>(&row,"owner_epoch"), sqlx::Row::try_get::<i64,_>(&row,"execution_epoch"), sqlx::Row::try_get::<String,_>(&row,"cycle_id"), sqlx::Row::try_get::<String,_>(&row,"state"));
             return Err(TaskError::Fenced);
         }
-        producer(&mut tx, b).await?;
+        producer(&mut tx, b).await.inspect_err(|e| eprintln!("DEBUGY producer {e:?}"))?;
         sqlx::query("INSERT INTO public.task_work_claims(organisation_id,client_id,engagement_id,claim_id,process_instance) VALUES($1,$2,$3,$4,$5) ON CONFLICT(claim_id) DO NOTHING")
             .bind(&b.scope.organisation_id).bind(&b.scope.client_id).bind(&b.scope.engagement_id).bind(&b.claim_id).bind(&b.process_instance)
             .execute(&mut *tx).await.map_err(unavailable)?;
-        apply_commands(&mut tx, &b.scope, &b.task_id, true).await?;
+        apply_commands(&mut tx, &b.scope, &b.task_id, true).await.inspect_err(|e| eprintln!("DEBUGY apply {e:?}"))?;
         sqlx::query("UPDATE public.tasks SET owner_until=clock_timestamp()+make_interval(secs=>$2) WHERE id=$1")
             .bind(&b.task_id)
             .bind(OWNER_LEASE_SECONDS)
@@ -827,6 +829,7 @@ impl TaskRepository {
         if !continuation_current(&row, b)?
             || !crate::methodology::new_use_allowed(&mut tx, &b.task_id).await?
         {
+            eprintln!("DEBUGY cont2/method");
             return Err(TaskError::Fenced);
         }
         let steps = cycle_steps(&mut tx, &b.task_id, &b.cycle_id).await?;
@@ -848,7 +851,7 @@ impl TaskRepository {
         )
         .await
         .map_err(|error| match error {
-            zobba_application::knowledge::KnowledgeError::Denied => TaskError::Fenced,
+            zobba_application::knowledge::KnowledgeError::Denied => {eprintln!("DEBUGY knowledge"); TaskError::Fenced},
             _ => TaskError::Unavailable,
         })?;
         let knowledge = knowledge
@@ -886,7 +889,7 @@ impl TaskRepository {
             open_questions,
             open_questions_omitted,
         };
-        admission_fence(&mut tx, &b.actor_id, &b.scope, None).await?;
+        admission_fence(&mut tx, &b.actor_id, &b.scope, None).await.inspect_err(|e| eprintln!("DEBUGY admission {e:?}"))?;
         tx.commit().await.map_err(unavailable)?;
         Ok(boundary)
     }
