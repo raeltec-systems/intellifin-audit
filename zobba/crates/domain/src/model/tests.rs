@@ -307,3 +307,144 @@ fn failed_http_classification_preserves_nonstandard_tier_and_known_usage() {
         assert_eq!(observed.validate(&profile()), Err(ModelError::Identity));
     }
 }
+
+fn thinking(text: &str, signature: &str) -> ReasoningBlock {
+    ReasoningBlock::Thinking {
+        thinking: text.into(),
+        signature: signature.into(),
+    }
+}
+
+fn claude(events: Vec<EventKind>) -> TransportOutcome {
+    TransportOutcome {
+        events: events
+            .into_iter()
+            .enumerate()
+            .map(|(sequence, kind)| ModelEvent {
+                sequence: sequence as u64,
+                kind,
+            })
+            .collect(),
+        actual_provider: Provider::Anthropic,
+        ..outcome()
+    }
+}
+
+#[test]
+fn reasoning_blocks_are_bounded_printable_and_never_debugged() {
+    assert!(thinking("", "EqQBCkYIBRgCKkB+/=").is_valid());
+    assert!(thinking("step one\nstep two", "sig").is_valid());
+    for invalid in [
+        thinking("", ""),
+        thinking("", "sig\nnature"),
+        thinking("", "sïg"),
+        thinking("", &"s".repeat(MAX_REASONING_SIGNATURE_BYTES + 1)),
+        thinking(&"t".repeat(MAX_REASONING_TEXT_BYTES + 1), "sig"),
+        thinking("bell\u{7}", "sig"),
+        ReasoningBlock::Redacted { data: String::new() },
+        ReasoningBlock::Redacted {
+            data: "d".repeat(MAX_REDACTED_REASONING_BYTES + 1),
+        },
+        ReasoningBlock::Redacted {
+            data: "tab\tdata".into(),
+        },
+    ] {
+        assert!(!invalid.is_valid(), "{invalid:?}");
+    }
+    let debug = format!("{:?}", thinking("secret reasoning", "secret-signature"));
+    assert!(!debug.contains("secret"));
+    assert!(debug.contains("thinking_bytes"));
+    let debug = format!("{:?}", ReasoningBlock::Redacted { data: "opaque".into() });
+    assert!(!debug.contains("opaque"));
+}
+
+#[test]
+fn replay_blocks_keep_original_pre_tool_order_for_claude_tool_calls_only() {
+    let proposal = EventKind::ToolProposal {
+        call_id: "call_1".into(),
+        name: "read_source".into(),
+        arguments: JsonValue::Null,
+    };
+    let text = |item: &str, value: &str| EventKind::TextDelta {
+        item_id: item.into(),
+        text: value.into(),
+    };
+    let reasoning = |item: &str, block: ReasoningBlock| EventKind::Reasoning {
+        item_id: item.into(),
+        block,
+    };
+    let interleaved = claude(vec![
+        reasoning("r:0", thinking("", "sig-a")),
+        text("r:1", "Let me "),
+        text("r:1", "check."),
+        reasoning(
+            "r:2",
+            ReasoningBlock::Redacted {
+                data: "opaque".into(),
+            },
+        ),
+        proposal.clone(),
+    ]);
+    assert!(interleaved.validate(&profile()).is_err()); // provider differs from profile
+    let mut anthropic = profile();
+    anthropic.provider = Provider::Anthropic;
+    assert_eq!(interleaved.validate(&anthropic), Ok(()));
+    assert_eq!(
+        interleaved.replay_blocks(),
+        vec![
+            ReplayBlock::Reasoning(thinking("", "sig-a")),
+            ReplayBlock::Text("Let me check.".into()),
+            ReplayBlock::Reasoning(ReasoningBlock::Redacted {
+                data: "opaque".into()
+            }),
+        ]
+    );
+    // A text-only answer keeps its reasoning in the outcome; nothing replays.
+    let answer = claude(vec![reasoning("r:0", thinking("", "sig")), text("r:1", "Done")]);
+    assert_eq!(answer.validate(&anthropic), Ok(()));
+    assert!(answer.replay_blocks().is_empty());
+    // Non-successful or OpenAI outcomes never replay.
+    let mut failed = interleaved.clone();
+    failed.completion = Completion::Incomplete;
+    assert!(failed.replay_blocks().is_empty());
+    let mut openai = interleaved.clone();
+    openai.actual_provider = Provider::OpenAi;
+    assert!(openai.replay_blocks().is_empty());
+    assert_eq!(openai.validate(&profile()), Err(ModelError::Malformed));
+    // Invalid reasoning and oversized reasoning fail closed.
+    let bad = claude(vec![reasoning("r:0", thinking("", "")), proposal.clone()]);
+    assert_eq!(bad.validate(&anthropic), Err(ModelError::Malformed));
+    let large = claude(vec![
+        reasoning("r:0", thinking(&"t".repeat(MAX_REASONING_TEXT_BYTES), "s")),
+        reasoning("r:1", thinking(&"t".repeat(MAX_REASONING_TEXT_BYTES), "s")),
+        reasoning("r:2", thinking(&"t".repeat(MAX_REASONING_TEXT_BYTES), "s")),
+        proposal,
+    ]);
+    assert_eq!(large.validate(&anthropic), Err(ModelError::Capacity));
+}
+
+#[test]
+fn exchange_replay_blocks_are_validated_and_bounded() {
+    let mut exchange = ToolExchange {
+        invocation_id: "invocation".into(),
+        call_id: "call_1".into(),
+        tool: tool(),
+        arguments: operation_arguments(&operation()),
+        result: ToolResult {
+            source_id: "source".into(),
+            operation_id: "operation".into(),
+            attempt_id: "attempt".into(),
+            fact: SourceFact::Completed,
+            content: "result".into(),
+            is_error: false,
+        },
+        preceding: vec![],
+    };
+    assert!(exchange.is_valid());
+    exchange.preceding = vec![ReplayBlock::Reasoning(thinking("", "sig"))];
+    assert!(exchange.is_valid());
+    exchange.preceding = vec![ReplayBlock::Text(String::new())];
+    assert!(!exchange.is_valid());
+    exchange.preceding = vec![ReplayBlock::Reasoning(thinking("", "sig")); MAX_REPLAY_BLOCKS + 1];
+    assert!(!exchange.is_valid());
+}

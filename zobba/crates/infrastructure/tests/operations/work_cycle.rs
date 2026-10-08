@@ -36,6 +36,8 @@ enum Turn {
     /// Several proposals in one turn.
     Tools(Vec<(&'static str, &'static str)>),
     Text(&'static str),
+    /// A Claude-shaped turn: opaque thinking and text, then one proposal.
+    Reasoned(&'static str, &'static str),
     /// Wait for the notify, then answer with the inner turn.
     Stall(Arc<Notify>, Box<Turn>),
     /// Never answer until cancelled.
@@ -85,6 +87,36 @@ fn outcome(turn: &Turn) -> TransportOutcome {
                 .collect(),
             Completion::Succeeded,
         ),
+        Turn::Reasoned(call, name) => (
+            vec![
+                ModelEvent {
+                    sequence: 0,
+                    kind: EventKind::Reasoning {
+                        item_id: "msg:0".into(),
+                        block: ReasoningBlock::Thinking {
+                            thinking: String::new(),
+                            signature: CLAUDE_SIGNATURE.into(),
+                        },
+                    },
+                },
+                ModelEvent {
+                    sequence: 1,
+                    kind: EventKind::TextDelta {
+                        item_id: "msg:1".into(),
+                        text: "Checking the prepared effect.".into(),
+                    },
+                },
+                ModelEvent {
+                    sequence: 2,
+                    kind: EventKind::ToolProposal {
+                        call_id: (*call).into(),
+                        name: (*name).into(),
+                        arguments: JsonValue::Null,
+                    },
+                },
+            ],
+            Completion::Succeeded,
+        ),
         Turn::Text(text) => (
             vec![ModelEvent {
                 sequence: 0,
@@ -109,6 +141,7 @@ fn outcome(turn: &Turn) -> TransportOutcome {
         completion,
     }
 }
+const CLAUDE_SIGNATURE: &str = "EqQBCkYIBRgCKkBWorkLoopSignature+/0123456789==";
 /// Input tokens the scripted provider reports for every completed turn.
 const FIXTURE_INPUT_TOKENS: u64 = 321;
 #[derive(Clone)]
@@ -152,6 +185,8 @@ impl ModelTransport for Shared {
             other => other,
         };
         let mut result = outcome(&turn);
+        // The scripted provider answers as the profile's own provider.
+        result.actual_provider = request.profile.provider;
         // Fill exact catalogue arguments for the named tool.
         for event in &mut result.events {
             if let EventKind::ToolProposal {
@@ -356,6 +391,7 @@ pub(super) async fn verify(f: &Fixture, admin: &mut PgConnection) {
     };
     let hang = Arc::new(AtomicBool::new(false));
     Box::pin(first_cycle(f, &harness, &hang)).await;
+    Box::pin(claude_reasoning_replay(f, &harness, &hang)).await;
     Box::pin(guidance_mid_call(f, &harness, &hang, admin)).await;
     Box::pin(guide_turn_race(f, &harness, &hang, admin)).await;
     Box::pin(stalled_pause(f, &harness, &hang)).await;
@@ -524,6 +560,83 @@ async fn first_cycle(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
         .await
         .unwrap();
     assert_eq!(work.attention, Some(Attention::AwaitingGuidance));
+}
+
+/// A production tool continuation replays the producing Claude response's
+/// pre-tool blocks unchanged, bound into its disclosure, never as answer text.
+async fn claude_reasoning_replay(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
+    let mut p = h.profile.clone();
+    p.id = "work-profile-claude".into();
+    p.provider = Provider::Anthropic;
+    h.repo
+        .save_profile("actor-manager", "org-a", &p)
+        .await
+        .unwrap();
+    let claude = Harness {
+        repo: h.repo.clone(),
+        operations: h.operations.clone(),
+        profile: p,
+        catalogue: h.catalogue.clone(),
+        hang_after_observe: h.hang_after_observe.clone(),
+        before_consume: h.before_consume.clone(),
+        dispatches: h.dispatches.clone(),
+        unknown: h.unknown.clone(),
+        context: h.context,
+    };
+    let (case, basis, attempt) = consumed(f, "work-claude-reasoning").await;
+    let script = Script::new(vec![
+        Turn::Reasoned("toolu-1", "send_exact"),
+        Turn::Text("Done for now."),
+    ]);
+    let end = claude
+        .work(f, &script, hang)
+        .run(&basis, &ModelCancellation::new())
+        .await;
+    assert_eq!(end, CycleEnd::Waiting);
+    assert_eq!(script.sends.load(Ordering::SeqCst), 2);
+    let requests = script.requests.lock().unwrap().clone();
+    let [HistoryItem::ToolExchange(exchange)] = &requests[1].history[..] else {
+        panic!("the continuation carries exactly the tool exchange");
+    };
+    assert_eq!(exchange.call_id, "toolu-1");
+    assert_eq!(
+        exchange.preceding,
+        vec![
+            ReplayBlock::Reasoning(ReasoningBlock::Thinking {
+                thinking: String::new(),
+                signature: CLAUDE_SIGNATURE.into(),
+            }),
+            ReplayBlock::Text("Checking the prepared effect.".into()),
+        ]
+    );
+    // The stored, disclosed request is exactly what was sent: its binding
+    // covers the replayed blocks.
+    let work = f
+        .tasks
+        .work("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    let continuation = h
+        .repo
+        .get(
+            "actor-a",
+            &selected("a"),
+            work.steps[2].invocation_id.as_ref().unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(continuation.request, requests[1]);
+    let mut unbound = continuation.request.clone();
+    unbound.history.iter_mut().for_each(|item| {
+        if let HistoryItem::ToolExchange(e) = item {
+            e.preceding.clear();
+        }
+    });
+    bind_disclosure(&mut unbound).unwrap();
+    assert_ne!(unbound.disclosure, continuation.request.disclosure);
+    // The thinking signature is never part of the step facts shown to users.
+    assert!(!format!("{:?}", work).contains(CLAUDE_SIGNATURE));
+    finish(f, &case, &attempt, Observation::Completed).await;
 }
 
 async fn guidance_mid_call(

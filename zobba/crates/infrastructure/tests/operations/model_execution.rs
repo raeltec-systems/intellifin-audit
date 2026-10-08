@@ -24,7 +24,7 @@ impl ModelQualificationSource for FixtureQualification {
     fn qualified(&self, p: &ModelProfile) -> bool {
         self.0.load(Ordering::SeqCst)
             && p.qualification == Qualification::Fixture
-            && p.provider == Provider::OpenAi
+            && matches!(p.provider, Provider::OpenAi | Provider::Anthropic)
             && p.model == "fixture-model"
             && p.destination == "owned-endpoint"
             && p.account_id == "audit-account"

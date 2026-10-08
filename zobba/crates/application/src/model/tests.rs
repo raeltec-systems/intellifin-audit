@@ -712,3 +712,171 @@ fn request_refuses_an_invalid_or_knowledge_bearing_dependency() {
     bound.context.entries[0].depends_on = Some("earlier_invocation".into());
     assert_eq!(bound.validate(), Err(ModelError::Invalid));
 }
+
+fn claude_request() -> ModelRequest {
+    let mut request = with_tool_history();
+    request.profile.provider = Provider::Anthropic;
+    request
+}
+fn sonnet_thinking() -> ReplayBlock {
+    ReplayBlock::Reasoning(ReasoningBlock::Thinking {
+        thinking: String::new(),
+        signature: "EqQBCkYIBRgCKkB+sig==".into(),
+    })
+}
+/// A Claude tool response: thinking, text, then the tool call.
+fn claude_tool_outcome(request: &ModelRequest) -> TransportOutcome {
+    let mut outcome = outcome(request);
+    let proposal = outcome.events.remove(0).kind;
+    outcome.events = [
+        EventKind::Reasoning {
+            item_id: "response:0".into(),
+            block: ReasoningBlock::Thinking {
+                thinking: String::new(),
+                signature: "EqQBCkYIBRgCKkB+sig==".into(),
+            },
+        },
+        EventKind::TextDelta {
+            item_id: "response:1".into(),
+            text: "Reading it.".into(),
+        },
+        proposal,
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(sequence, kind)| ModelEvent {
+        sequence: sequence as u64,
+        kind,
+    })
+    .collect();
+    outcome.actual_provider = Provider::Anthropic;
+    outcome.usage.actual_service_tier = Some("standard".into());
+    outcome
+}
+
+#[test]
+fn replay_blocks_are_claude_only_once_per_group_and_count_toward_history() {
+    let mut request = claude_request();
+    let HistoryItem::ToolExchange(exchange) = &mut request.history[0] else {
+        panic!("missing exchange")
+    };
+    exchange.preceding = vec![sonnet_thinking(), ReplayBlock::Text("Reading it.".into())];
+    assert_eq!(request.validate(), Ok(()));
+
+    // Never sent to another provider.
+    let mut openai = request.clone();
+    openai.profile.provider = Provider::OpenAi;
+    assert_eq!(openai.validate(), Err(ModelError::Conflict));
+
+    // Only the first exchange of one invocation group may carry them.
+    let mut grouped = request.clone();
+    let HistoryItem::ToolExchange(first) = &grouped.history[0] else {
+        panic!("missing exchange")
+    };
+    let mut second = first.clone();
+    second.call_id = "prior_call_2".into();
+    second.result.attempt_id = "prior_attempt_2".into();
+    grouped
+        .history
+        .push(HistoryItem::ToolExchange(second.clone()));
+    assert_eq!(grouped.validate(), Err(ModelError::Invalid));
+    let HistoryItem::ToolExchange(last) = grouped.history.last_mut().unwrap() else {
+        panic!("missing exchange")
+    };
+    last.preceding.clear();
+    assert_eq!(grouped.validate(), Ok(()));
+
+    // Replay bytes share the history cap.
+    let mut large = request.clone();
+    let HistoryItem::ToolExchange(exchange) = &mut large.history[0] else {
+        panic!("missing exchange")
+    };
+    exchange.preceding = (0..3)
+        .map(|_| {
+            ReplayBlock::Reasoning(ReasoningBlock::Thinking {
+                thinking: "t".repeat(MAX_REASONING_TEXT_BYTES / 2),
+                signature: "s".repeat(MAX_REASONING_SIGNATURE_BYTES),
+            })
+        })
+        .collect();
+    exchange.preceding.push(ReplayBlock::Reasoning(ReasoningBlock::Redacted {
+        data: "d".repeat(4 * 1024),
+    }));
+    assert!(replay_bytes(&exchange.preceding).is_some());
+    assert_eq!(large.validate(), Ok(()));
+    large.history.push(HistoryItem::Message(ModelMessage {
+        role: MessageRole::User,
+        text: "x".repeat(16 * 1024),
+        source_id: Some("brief".into()),
+    }));
+    assert_eq!(large.validate(), Err(ModelError::Capacity));
+}
+
+#[test]
+fn replay_must_be_the_producers_exact_blocks_for_the_same_model() {
+    let request = claude_request();
+    let original = invocation(request.clone(), Some(claude_tool_outcome(&request)));
+    let HistoryItem::ToolExchange(base) = &request.history[0] else {
+        panic!("missing exchange")
+    };
+    let mut exchange = (**base).clone();
+    exchange.invocation_id = original.id.clone();
+    // Omission is always permitted.
+    assert_eq!(verify_replay(&original, &exchange, &request.profile), Ok(()));
+    exchange.preceding = vec![sonnet_thinking(), ReplayBlock::Text("Reading it.".into())];
+    assert_eq!(verify_replay(&original, &exchange, &request.profile), Ok(()));
+
+    // Altered, reordered or partial blocks conflict.
+    for altered in [
+        vec![ReplayBlock::Text("Reading it.".into()), sonnet_thinking()],
+        vec![sonnet_thinking()],
+        vec![
+            ReplayBlock::Reasoning(ReasoningBlock::Thinking {
+                thinking: "summary".into(),
+                signature: "EqQBCkYIBRgCKkB+sig==".into(),
+            }),
+            ReplayBlock::Text("Reading it.".into()),
+        ],
+    ] {
+        let mut changed = exchange.clone();
+        changed.preceding = altered;
+        assert_eq!(
+            verify_replay(&original, &changed, &request.profile),
+            Err(ModelError::Conflict)
+        );
+    }
+    // A continuation on a different model or provider conflicts.
+    let mut other_model = request.profile.clone();
+    other_model.model = "model-v2".into();
+    assert_eq!(
+        verify_replay(&original, &exchange, &other_model),
+        Err(ModelError::Conflict)
+    );
+    let mut other_provider = request.profile.clone();
+    other_provider.provider = Provider::OpenAi;
+    assert_eq!(
+        verify_replay(&original, &exchange, &other_provider),
+        Err(ModelError::Conflict)
+    );
+    // An unknown outcome cannot vouch for any blocks.
+    let unknown = invocation(request.clone(), None);
+    assert_eq!(
+        verify_replay(&unknown, &exchange, &request.profile),
+        Err(ModelError::Conflict)
+    );
+}
+
+#[test]
+fn failed_outcomes_never_retain_reasoning_as_evidence() {
+    let request = claude_request();
+    let outcome = claude_tool_outcome(&request);
+    let retained = retain_failed_evidence(outcome, ModelError::Malformed);
+    assert!(
+        retained
+            .events
+            .iter()
+            .all(|event| matches!(event.kind, EventKind::TextDelta { .. }))
+    );
+    assert_eq!(retained.events.len(), 1);
+}
+

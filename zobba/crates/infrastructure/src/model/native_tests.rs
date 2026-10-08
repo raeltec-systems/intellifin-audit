@@ -1755,3 +1755,359 @@ fn a_context_entry_without_a_dependency_serialises_exactly_as_before_schema_14()
         r#"{"source_id":"brief","input_class":"task_brief","knowledge":null,"depends_on":"earlier"}"#
     );
 }
+
+/// Sonnet-5.5-shaped signature: base64 with `+`, `/` and padding.
+const SONNET_SIGNATURE: &str =
+    "EqQBCkYIBRgCKkBv6Pk+0/3s8Zq0FakeButShapedLikeARealSignatureXYZ0123456789abcdef==";
+
+/// A recorded Claude 5.5 stream: the listed content blocks, in order, then a
+/// tool call. Blocks are (kind, start, deltas).
+fn claude_stream(blocks: &[(Value, Vec<Value>)], reason: &str) -> Vec<Value> {
+    let mut values = vec![
+        json!({"type":"message_start","message":{"id":"msg_01Sonnet","type":"message","role":"assistant","model":"fixture-model-v1","content":[],"usage":{"input_tokens":17,"output_tokens":1,"service_tier":"standard"}}}),
+    ];
+    for (index, (start, deltas)) in blocks.iter().enumerate() {
+        values.push(json!({"type":"content_block_start","index":index,"content_block":start}));
+        for delta in deltas {
+            values.push(json!({"type":"content_block_delta","index":index,"delta":delta}));
+        }
+        values.push(json!({"type":"content_block_stop","index":index}));
+    }
+    values.push(json!({"type":"message_delta","delta":{"stop_reason":reason,"stop_sequence":null},"usage":{"output_tokens":40,"service_tier":"standard"}}));
+    values.push(json!({"type":"message_stop"}));
+    values
+}
+fn thinking_block(text: &str, signature: &str) -> (Value, Vec<Value>) {
+    let mut deltas = vec![];
+    if !text.is_empty() {
+        deltas.push(json!({"type":"thinking_delta","thinking":text}));
+    }
+    if !signature.is_empty() {
+        deltas.push(json!({"type":"signature_delta","signature":signature}));
+    }
+    (
+        json!({"type":"thinking","thinking":"","signature":""}),
+        deltas,
+    )
+}
+fn redacted_block(data: &str) -> (Value, Vec<Value>) {
+    (json!({"type":"redacted_thinking","data":data}), vec![])
+}
+fn text_block(text: &str) -> (Value, Vec<Value>) {
+    (
+        json!({"type":"text","text":""}),
+        vec![json!({"type":"text_delta","text":text})],
+    )
+}
+fn tool_block() -> (Value, Vec<Value>) {
+    (
+        json!({"type":"tool_use","id":"toolu_01Call","name":"source_read","input":{}}),
+        vec![json!({"type":"input_json_delta","partial_json":arguments()})],
+    )
+}
+/// The continuation of `outcome`'s single tool call, as the work loop records it.
+fn continuation_of(outcome: &TransportOutcome) -> ModelRequest {
+    let mut next = history_request(Provider::Anthropic);
+    let (call_id, arguments) = outcome
+        .events
+        .iter()
+        .find_map(|event| match &event.kind {
+            EventKind::ToolProposal {
+                call_id, arguments, ..
+            } => Some((call_id.clone(), arguments.clone())),
+            _ => None,
+        })
+        .unwrap();
+    let HistoryItem::ToolExchange(exchange) = &mut next.history[0] else {
+        panic!("fixture history");
+    };
+    exchange.call_id = call_id;
+    exchange.arguments = arguments;
+    exchange.tool = next.catalogue.tools[0].clone();
+    exchange.preceding = outcome.replay_blocks();
+    next
+}
+fn reasoning_events(outcome: &TransportOutcome) -> Vec<&ReasoningBlock> {
+    outcome
+        .events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            EventKind::Reasoning { block, .. } => Some(block),
+            _ => None,
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn sonnet_thinking_then_tool_call_replays_its_blocks_byte_for_byte() {
+    let request = request(Provider::Anthropic);
+    let stream = claude_stream(&[thinking_block("", SONNET_SIGNATURE), tool_block()], "tool_use");
+    let fixture = Fixture::stream(&stream).await;
+    let outcome = fixture.invoke(Provider::Anthropic, &request).await;
+    assert_eq!(outcome.completion, Completion::Succeeded);
+    assert_eq!(
+        zobba_application::model::validate_completion(&request, &outcome),
+        Ok(())
+    );
+    assert_eq!(proposals(&outcome), 1);
+    assert_eq!(
+        reasoning_events(&outcome),
+        vec![&ReasoningBlock::Thinking {
+            thinking: String::new(),
+            signature: SONNET_SIGNATURE.into()
+        }]
+    );
+    // Reasoning is never answer text.
+    assert!(
+        !outcome
+            .events
+            .iter()
+            .any(|event| matches!(event.kind, EventKind::TextDelta { .. }))
+    );
+
+    let next = continuation_of(&outcome);
+    assert_eq!(next.validate(), Ok(()));
+    let replay = Fixture::stream(&text_stream(Provider::Anthropic, "done")).await;
+    assert_eq!(
+        replay.invoke(Provider::Anthropic, &next).await.completion,
+        Completion::Succeeded
+    );
+    let seen = replay.requests.lock().await;
+    let body = &seen[0].body;
+    let assistant = &body["messages"][1];
+    assert_eq!(assistant["role"], "assistant");
+    assert_eq!(
+        assistant["content"],
+        json!([
+            {"type":"thinking","thinking":"","signature":SONNET_SIGNATURE},
+            {"type":"tool_use","id":"toolu_01Call","name":"source_read","input":json_value(&operation_arguments(&operation()))}
+        ])
+    );
+    // The exact provider bytes of the signature are what is sent back.
+    let raw = serde_json::to_vec(body).unwrap();
+    let signature = serde_json::to_vec(&Value::String(SONNET_SIGNATURE.into())).unwrap();
+    assert!(raw.windows(signature.len()).any(|w| w == signature));
+    // The request still asks for no reasoning configuration of its own.
+    for field in ["thinking", "temperature", "budget_tokens", "tool_choice", "reasoning"] {
+        assert!(body.get(field).is_none(), "{field}");
+    }
+}
+
+#[tokio::test]
+async fn claude_text_answer_keeps_reasoning_out_of_its_text() {
+    let request = request(Provider::Anthropic);
+    let stream = claude_stream(
+        &[
+            thinking_block("Private chain of thought.", SONNET_SIGNATURE),
+            text_block("qualification-ok"),
+        ],
+        "end_turn",
+    );
+    let fixture = Fixture::stream(&stream).await;
+    let outcome = fixture.invoke(Provider::Anthropic, &request).await;
+    assert_eq!(outcome.completion, Completion::Succeeded);
+    assert_eq!(reasoning_events(&outcome).len(), 1);
+    let text: String = outcome
+        .events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            EventKind::TextDelta { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(text, "qualification-ok");
+    assert!(outcome.replay_blocks().is_empty());
+}
+
+#[tokio::test]
+async fn redacted_and_interleaved_blocks_replay_in_original_order() {
+    let request = request(Provider::Anthropic);
+    for (blocks, expected) in [
+        (
+            vec![redacted_block("RedactedOpaqueData+/=="), tool_block()],
+            json!([{"type":"redacted_thinking","data":"RedactedOpaqueData+/=="}]),
+        ),
+        (
+            vec![
+                thinking_block("Plan the read.", SONNET_SIGNATURE),
+                text_block("I will read the resource."),
+                tool_block(),
+            ],
+            json!([
+                {"type":"thinking","thinking":"Plan the read.","signature":SONNET_SIGNATURE},
+                {"type":"text","text":"I will read the resource."}
+            ]),
+        ),
+    ] {
+        let fixture = Fixture::stream(&claude_stream(&blocks, "tool_use")).await;
+        let outcome = fixture.invoke(Provider::Anthropic, &request).await;
+        assert_eq!(outcome.completion, Completion::Succeeded);
+        let next = continuation_of(&outcome);
+        let replay = Fixture::stream(&text_stream(Provider::Anthropic, "done")).await;
+        assert_eq!(
+            replay.invoke(Provider::Anthropic, &next).await.completion,
+            Completion::Succeeded
+        );
+        let seen = replay.requests.lock().await;
+        let content = seen[0].body["messages"][1]["content"].as_array().unwrap().clone();
+        let count = expected.as_array().unwrap().len();
+        assert_eq!(Value::Array(content[..count].to_vec()), expected);
+        assert_eq!(content[count]["type"], "tool_use");
+        assert_eq!(content.len(), count + 1);
+    }
+}
+
+#[tokio::test]
+async fn invalid_reasoning_blocks_and_deltas_fail_closed() {
+    let long_signature = "s".repeat(zobba_domain::model::MAX_REASONING_SIGNATURE_BYTES + 1);
+    let cases: Vec<Vec<(Value, Vec<Value>)>> = vec![
+        // Missing signature.
+        vec![thinking_block("thought", ""), tool_block()],
+        // Oversized signature.
+        vec![thinking_block("", &long_signature), tool_block()],
+        // Signature outside printable ASCII.
+        vec![thinking_block("", "sig\u{1}nature"), tool_block()],
+        vec![thinking_block("", "sigñature"), tool_block()],
+        // Redacted data outside printable ASCII, or empty.
+        vec![redacted_block("bad\ndata"), tool_block()],
+        vec![redacted_block(""), tool_block()],
+        // Deltas for the wrong block type.
+        vec![
+            (
+                json!({"type":"thinking","thinking":"","signature":""}),
+                vec![json!({"type":"text_delta","text":"x"})],
+            ),
+            tool_block(),
+        ],
+        vec![
+            (
+                json!({"type":"text","text":""}),
+                vec![json!({"type":"thinking_delta","thinking":"x"})],
+            ),
+            tool_block(),
+        ],
+        vec![
+            (
+                json!({"type":"redacted_thinking","data":"abc"}),
+                vec![json!({"type":"signature_delta","signature":"abc"})],
+            ),
+            tool_block(),
+        ],
+        // Reasoning after a tool call has no replayable position.
+        vec![tool_block(), thinking_block("", SONNET_SIGNATURE)],
+        // An unknown block type still fails closed.
+        vec![(json!({"type":"server_tool_use","id":"x","name":"y","input":{}}), vec![]), tool_block()],
+    ];
+    for (case, blocks) in cases.iter().enumerate() {
+        let fixture = Fixture::stream(&claude_stream(blocks, "tool_use")).await;
+        let outcome = fixture
+            .invoke(Provider::Anthropic, &request(Provider::Anthropic))
+            .await;
+        assert!(
+            matches!(outcome.completion, Completion::Failed(_)),
+            "case {case}: {:?}",
+            outcome.completion
+        );
+        assert_eq!(proposals(&outcome), 0, "case {case}");
+        assert!(reasoning_events(&outcome).is_empty(), "case {case}");
+    }
+    // Overlapping blocks make the replay order ambiguous and are refused.
+    let mut stream = claude_stream(&[thinking_block("", SONNET_SIGNATURE), tool_block()], "tool_use");
+    let stop = stream.remove(3); // thinking stop after its signature delta
+    stream.insert(5, stop);
+    let fixture = Fixture::stream(&stream).await;
+    let outcome = fixture
+        .invoke(Provider::Anthropic, &request(Provider::Anthropic))
+        .await;
+    assert_eq!(outcome.completion, Completion::Failed(ModelError::Identity));
+}
+
+#[tokio::test]
+async fn replay_blocks_are_never_sent_to_another_provider() {
+    let fixture = Fixture::stream(&text_stream(Provider::OpenAi, "unused")).await;
+    let mut request = history_request(Provider::OpenAi);
+    let HistoryItem::ToolExchange(exchange) = &mut request.history[0] else {
+        panic!("fixture history");
+    };
+    exchange.preceding = vec![ReplayBlock::Reasoning(ReasoningBlock::Thinking {
+        thinking: String::new(),
+        signature: SONNET_SIGNATURE.into(),
+    })];
+    let outcome = fixture.invoke(Provider::OpenAi, &request).await;
+    assert_eq!(outcome.completion, Completion::Failed(ModelError::Conflict));
+    assert_eq!(fixture.sends.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn stored_requests_without_replay_keep_their_exact_bytes_and_binding() {
+    use zobba_application::model::wire::{StoredOutcome, StoredRequest};
+    // Golden pre-reasoning document: no `preceding` field anywhere.
+    let request = history_request(Provider::Anthropic);
+    let bytes = serde_json::to_vec(&StoredRequest(request.clone())).unwrap();
+    assert!(!String::from_utf8(bytes.clone()).unwrap().contains("preceding"));
+    let decoded: StoredRequest = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(decoded.0, request);
+    assert_eq!(serde_json::to_vec(&decoded).unwrap(), bytes);
+    let mut bound = request.clone();
+    crate::model::bind_disclosure(&mut bound).unwrap();
+    let mut rebound = decoded.0.clone();
+    rebound.disclosure = bound.disclosure.clone();
+    assert_eq!(crate::model::payload_attachments(&rebound).unwrap(), bound.disclosure.attachments);
+
+    // Replay blocks round-trip exactly and change the binding.
+    let mut claude = request.clone();
+    let HistoryItem::ToolExchange(exchange) = &mut claude.history[0] else {
+        panic!("fixture history");
+    };
+    exchange.preceding = vec![
+        ReplayBlock::Reasoning(ReasoningBlock::Thinking {
+            thinking: String::new(),
+            signature: SONNET_SIGNATURE.into(),
+        }),
+        ReplayBlock::Reasoning(ReasoningBlock::Redacted {
+            data: "opaque".into(),
+        }),
+        ReplayBlock::Text("Reading it.".into()),
+    ];
+    let value = serde_json::to_value(StoredRequest(claude.clone())).unwrap();
+    let preceding = &value["history"][0]["tool_exchange"]["preceding"];
+    assert_eq!(
+        preceding,
+        &json!([
+            {"reasoning": {"kind": "thinking", "thinking": "", "signature": SONNET_SIGNATURE}},
+            {"reasoning": {"kind": "redacted", "data": "opaque"}},
+            {"text": "Reading it."}
+        ])
+    );
+    let decoded: StoredRequest = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(decoded.0, claude);
+    assert_ne!(
+        crate::model::payload_attachments(&claude).unwrap(),
+        bound.disclosure.attachments
+    );
+    let mut unknown = value;
+    unknown["history"][0]["tool_exchange"]["preceding"][0]["reasoning"]["extra"] = json!(1);
+    assert!(serde_json::from_value::<StoredRequest>(unknown).is_err());
+
+    let outcome = TransportOutcome {
+        events: vec![ModelEvent {
+            sequence: 0,
+            kind: EventKind::Reasoning {
+                item_id: "msg:0".into(),
+                block: ReasoningBlock::Thinking {
+                    thinking: String::new(),
+                    signature: SONNET_SIGNATURE.into(),
+                },
+            },
+        }],
+        actual_provider: Provider::Anthropic,
+        actual_model: Some("fixture-model-v1".into()),
+        response_id: Some("msg".into()),
+        usage: Usage::default(),
+        completion: Completion::Succeeded,
+    };
+    let stored = serde_json::to_value(StoredOutcome(outcome.clone())).unwrap();
+    assert_eq!(stored["events"][0]["kind"]["kind"], "reasoning");
+    let decoded: StoredOutcome = serde_json::from_value(stored).unwrap();
+    assert_eq!(decoded.0, outcome);
+}

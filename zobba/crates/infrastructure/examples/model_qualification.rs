@@ -858,4 +858,107 @@ mod tests {
         assert_eq!(fs::read(directory.receipt_path()).unwrap(), original);
         assert!(directory.consume("manifest-one").is_err());
     }
+
+    #[test]
+    fn claude_continuation_replays_thinking_and_receipts_hold_only_hashes() {
+        const SIGNATURE: &str = "EqQBCkYIBRgCKkBSecretLookingSignature+/0123456789==";
+        let request = request(
+            Provider::Anthropic,
+            "claude-sonnet-5-5",
+            "fixture-account",
+            false,
+            "tool",
+        );
+        let transport = adapter(
+            Provider::Anthropic,
+            "unused-dry-run-marker",
+            "fixture-account",
+            &request.profile.destination,
+        )
+        .unwrap();
+        let arguments = operation_arguments(&request.catalogue.tools[0].operation);
+        // Dry run: the placeholder thinking block precedes tool_use and fits.
+        let preview = continuation(
+            &request,
+            "qualification-proposal",
+            "provider-call-placeholder",
+            arguments.clone(),
+            placeholder_blocks(Provider::Anthropic),
+        );
+        let body = transport.preview(&preview).unwrap();
+        assert!(body.len() <= MAX_BODY_BYTES);
+        let value: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            value["messages"][1]["content"][0],
+            json!({"type":"thinking","thinking":"","signature":PLACEHOLDER_SIGNATURE})
+        );
+        assert_eq!(value["messages"][1]["content"][1]["type"], "tool_use");
+        assert!(value.get("thinking").is_none());
+        assert!(placeholder_blocks(Provider::OpenAi).is_empty());
+
+        // Execute: the observed blocks replace the placeholder unchanged.
+        let directory = TestDirectory::new();
+        let mut receipt = directory.consume("reviewed-synthetic-manifest").unwrap();
+        let output = TransportOutcome {
+            events: vec![
+                ModelEvent {
+                    sequence: 0,
+                    kind: EventKind::Reasoning {
+                        item_id: "msg:0".into(),
+                        block: ReasoningBlock::Thinking {
+                            thinking: "private reasoning text".into(),
+                            signature: SIGNATURE.into(),
+                        },
+                    },
+                },
+                ModelEvent {
+                    sequence: 1,
+                    kind: EventKind::ToolProposal {
+                        call_id: "toolu_01".into(),
+                        name: "qualification_probe".into(),
+                        arguments: arguments.clone(),
+                    },
+                },
+            ],
+            actual_provider: Provider::Anthropic,
+            actual_model: Some("claude-sonnet-5-5".into()),
+            response_id: Some("msg".into()),
+            usage: Usage {
+                actual_service_tier: Some("standard".into()),
+                input_tokens: Some(100),
+                output_tokens: Some(100),
+            },
+            completion: Completion::Succeeded,
+        };
+        let output = observe(&request, output, 2, "tool", b"tool-body", &mut receipt).unwrap();
+        let next = continuation(
+            &request,
+            "qualification-proposal",
+            "toolu_01",
+            arguments,
+            output.replay_blocks(),
+        );
+        let body = transport.preview(&next).unwrap();
+        let value: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            value["messages"][1]["content"][0],
+            json!({"type":"thinking","thinking":"private reasoning text","signature":SIGNATURE})
+        );
+        // What a dispatch receipt would retain holds no text or signature.
+        let redacted = redact_reasoning(value).to_string();
+        assert!(!redacted.contains(SIGNATURE));
+        assert!(!redacted.contains("private reasoning text"));
+        assert!(redacted.contains(&hash(SIGNATURE.as_bytes())));
+        drop(receipt);
+        let records = fs::read_to_string(directory.receipt_path()).unwrap();
+        assert!(!records.contains(SIGNATURE));
+        assert!(!records.contains("private reasoning text"));
+        let last: Value = serde_json::from_str(records.lines().last().unwrap()).unwrap();
+        assert_eq!(last["reasoning"]["block_count"], 1);
+        assert_eq!(
+            last["reasoning"]["blocks"][0]["signature_bytes"],
+            SIGNATURE.len()
+        );
+    }
+
 }
