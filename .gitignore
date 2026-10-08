@@ -43,6 +43,7 @@ deployed-loancore-evidence/
 
 # Independent Rust foundation and local development state
 /zobba/target/
+/zobba/target-*/
 /zobba/.cargo-cache/
 /zobba/.pnpm-store/
 /zobba/.local/
