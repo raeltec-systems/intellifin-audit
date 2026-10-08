@@ -2496,8 +2496,8 @@ where
     D: zobba_application::work::ToolDispatch,
 {
     let cancellation = ModelCancellation::new();
-    let run = work.run(basis, &cancellation);
-    tokio::pin!(run);
+    // Boxed: the loop's future is large, as the other heap-pinned runs here.
+    let mut run = Box::pin(work.run(basis, &cancellation));
     let mut ticker = tokio::time::interval(std::time::Duration::from_millis(200));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let authority = async {
