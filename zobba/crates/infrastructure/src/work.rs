@@ -807,7 +807,9 @@ impl TaskRepository {
     }
 
     pub async fn boundary(&self, b: &ClaimBasis) -> Result<WorkBoundary, TaskError> {
+        let tl = std::time::Instant::now();
         let mut tx = lock(self.pool(), &b.actor_id, &b.scope).await.inspect_err(|e| eprintln!("DEBUGY lock {e:?}"))?;
+        if tl.elapsed() > std::time::Duration::from_secs(1) { eprintln!("DEBUGY slow lock {:?}", tl.elapsed()); }
         let row = task(&mut tx, &b.task_id).await?;
         if !continuation_current(&row, b)? {
             eprintln!("DEBUGY cont1 basis={:?} owner={:?} live={:?} oe={:?} ee={:?} cyc={:?} state={:?}", (&b.task_id,&b.worker_id,b.owner_epoch,b.execution_epoch,&b.cycle_id),
