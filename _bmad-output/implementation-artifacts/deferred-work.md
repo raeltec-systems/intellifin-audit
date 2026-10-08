@@ -35,3 +35,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-22-2-ac4-establish-engagement-conversationally.md`
   summary: Use the engagement's stored audit period as the default methodology context (period_start/period_end) for Tasks created in that engagement.
   evidence: Schema 13 stores the period on the engagement, but nothing reads it yet; the AC4 design note leaves methodology use to a later change without changing the Story 21.2 binding rules.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-22-3-compact-context-without-inventing-authority-or-evidence.md`
+  summary: The context budget has no production source: no model profile field and no per-Task setting feeds `ContextBudget`, and the budget reserves no output tokens.
+  evidence: `Composition.context` is supplied only as `ContextBudget::DEFAULT` (128,000); `ContextBudget::effective()` never subtracts `max_output_tokens`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-22-3-compact-context-without-inventing-authority-or-evidence.md`
+  summary: No test upgrades a populated schema-13 database (existing `task_steps` and `model_invocations` rows) to schema 14.
+  evidence: The upgrade tests reach 14 only from schemas 8, 9 and 10, and `model_upgrade_contract` asserts that the model tables are empty.
