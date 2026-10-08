@@ -461,10 +461,7 @@ async fn first_cycle(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
         Turn::Tool("call-2", "send_forbidden"),
         Turn::Text("Review complete for now; awaiting direction."),
     ]);
-    let end = h
-        .work(f, &script, hang)
-        .run(&basis, &ModelCancellation::new())
-        .await;
+    let end = owned(f, &h.work(f, &script, hang), &basis).await;
     assert_eq!(
         end,
         CycleEnd::Waiting,
@@ -768,10 +765,7 @@ async fn claude_group_compaction(f: &Fixture, claude: &Harness, hang: &Arc<Atomi
         Turn::Text("Measured."),
     ]);
     assert_eq!(
-        claude
-            .work(f, &script, hang)
-            .run(&basis, &ModelCancellation::new())
-            .await,
+        owned(f, &claude.work(f, &script, hang), &basis).await,
         CycleEnd::Waiting
     );
     let work = f
@@ -796,10 +790,12 @@ async fn claude_group_compaction(f: &Fixture, claude: &Harness, hang: &Arc<Atomi
     turns.push(Turn::Text("Reviewed the groups."));
     let script = Script::new(turns);
     assert_eq!(
-        claude
-            .budgeted(f, &script, hang, fixed + group * 3 / 2 + 2_000)
-            .run(&basis, &ModelCancellation::new())
-            .await,
+        owned(
+            f,
+            &claude.budgeted(f, &script, hang, fixed + group * 3 / 2 + 2_000),
+            &basis
+        )
+        .await,
         CycleEnd::Waiting
     );
     let requests = script.requests.lock().unwrap().clone();
@@ -1215,10 +1211,7 @@ async fn restart_recovery(
     assert_eq!(replacement.execution_epoch, basis.execution_epoch);
     let replacement_attempt = f.tasks.consume(&replacement).await.unwrap();
     let retry = Script::new(vec![]);
-    let end = h
-        .work(f, &retry, hang)
-        .run(&replacement, &ModelCancellation::new())
-        .await;
+    let end = owned(f, &h.work(f, &retry, hang), &replacement).await;
     assert_eq!(
         end,
         CycleEnd::Failed,
@@ -1382,10 +1375,7 @@ async fn completed_before_restart(
     );
     let replacement_attempt = f.tasks.consume(&replacement).await.unwrap();
     let retry = Script::new(vec![Turn::Text("Completed result considered.")]);
-    let end = h
-        .work(f, &retry, hang)
-        .run(&replacement, &ModelCancellation::new())
-        .await;
+    let end = owned(f, &h.work(f, &retry, hang), &replacement).await;
     assert_eq!(end, CycleEnd::Waiting);
     assert_eq!(
         h.dispatches.load(Ordering::SeqCst),
@@ -1452,10 +1442,7 @@ async fn fenced_after_admission(
         Turn::Tool("fenced-call", "send_exact"),
         Turn::Text("Reconsidered after the fence."),
     ]);
-    let end = h
-        .work(f, &script, hang)
-        .run(&basis, &ModelCancellation::new())
-        .await;
+    let end = owned(f, &h.work(f, &script, hang), &basis).await;
     assert_eq!(end, CycleEnd::Waiting);
     assert!(h.before_consume.lock().unwrap().is_none());
     let work = f
@@ -1666,10 +1653,7 @@ async fn knowledge_context(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>, ses
     // Revoked before the first turn: excluded from that turn's context.
     let revision = forget("work-knowledge-forget-gone", &gone, revision).await;
     let script = Script::new(vec![Turn::Text("Considered the verified knowledge.")]);
-    let end = h
-        .work(f, &script, hang)
-        .run(&basis, &ModelCancellation::new())
-        .await;
+    let end = owned(f, &h.work(f, &script, hang), &basis).await;
     assert_eq!(end, CycleEnd::Waiting);
     let sent = script.requests.lock().unwrap()[0].clone();
     assert!(
@@ -1725,10 +1709,7 @@ async fn knowledge_context(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>, ses
     forget("work-knowledge-forget-keep", &kept, revision).await;
     let (case, basis, attempt) = consumed(f, "work-knowledge-after").await;
     let script = Script::new(vec![Turn::Text("No withdrawn knowledge.")]);
-    let end = h
-        .work(f, &script, hang)
-        .run(&basis, &ModelCancellation::new())
-        .await;
+    let end = owned(f, &h.work(f, &script, hang), &basis).await;
     assert_eq!(end, CycleEnd::Waiting);
     let sent = script.requests.lock().unwrap()[0].clone();
     assert!(!disclosed(&sent, "KN-KEEP-7731"));
@@ -1847,10 +1828,7 @@ async fn absent_fact(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>, admin: &m
     );
     let replacement_attempt = f.tasks.consume(&replacement).await.unwrap();
     let retry = Script::new(vec![Turn::Text("Noted that it did not take effect.")]);
-    let end = h
-        .work(f, &retry, hang)
-        .run(&replacement, &ModelCancellation::new())
-        .await;
+    let end = owned(f, &h.work(f, &retry, hang), &replacement).await;
     assert_eq!(end, CycleEnd::Waiting);
     assert_eq!(
         task_attempts(&case, &mut *admin).await,
@@ -1983,9 +1961,7 @@ async fn responded_reclaim_waits(
     let (case, basis, _lost) = consumed(f, "work-responded-reclaim").await;
     let script = Script::new(vec![Turn::Text("Answered once.")]);
     assert_eq!(
-        h.work(f, &script, hang)
-            .run(&basis, &ModelCancellation::new())
-            .await,
+        owned(f, &h.work(f, &script, hang), &basis).await,
         CycleEnd::Waiting
     );
     // The producer is lost before observing; a replacement reclaims the work.
@@ -1999,9 +1975,7 @@ async fn responded_reclaim_waits(
     let replacement_attempt = f.tasks.consume(&replacement).await.unwrap();
     let retry = Script::new(vec![]);
     assert_eq!(
-        h.work(f, &retry, hang)
-            .run(&replacement, &ModelCancellation::new())
-            .await,
+        owned(f, &h.work(f, &retry, hang), &replacement).await,
         CycleEnd::Waiting
     );
     assert_eq!(retry.sends.load(Ordering::SeqCst), 0, "no new paid turn");
@@ -2014,9 +1988,7 @@ async fn waiting_guidance_resumes(f: &Fixture, h: &Harness, hang: &Arc<AtomicBoo
     let (case, basis, attempt) = consumed(f, "work-waiting-wake").await;
     let first = Script::new(vec![Turn::Text("Awaiting your direction.")]);
     assert_eq!(
-        h.work(f, &first, hang)
-            .run(&basis, &ModelCancellation::new())
-            .await,
+        owned(f, &h.work(f, &first, hang), &basis).await,
         CycleEnd::Waiting
     );
     finish(f, &case, &attempt, Observation::Completed).await;
@@ -2044,9 +2016,7 @@ async fn waiting_guidance_resumes(f: &Fixture, h: &Harness, hang: &Arc<AtomicBoo
     let resumed_attempt = f.tasks.consume(&resumed).await.unwrap();
     let second = Script::new(vec![Turn::Text("Accrual sample considered.")]);
     assert_eq!(
-        h.work(f, &second, hang)
-            .run(&resumed, &ModelCancellation::new())
-            .await,
+        owned(f, &h.work(f, &second, hang), &resumed).await,
         CycleEnd::Waiting
     );
     assert_eq!(second.sends.load(Ordering::SeqCst), 1);
@@ -2091,9 +2061,7 @@ async fn waiting_guidance_resumes(f: &Fixture, h: &Harness, hang: &Arc<AtomicBoo
 async fn record_step_replay(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
     let (case, basis, attempt) = consumed(f, "work-step-replay").await;
     let script = Script::new(vec![Turn::Text("Recorded once.")]);
-    h.work(f, &script, hang)
-        .run(&basis, &ModelCancellation::new())
-        .await;
+    owned(f, &h.work(f, &script, hang), &basis).await;
     let work = f
         .tasks
         .work("actor-a", &selected("a"), &case.receipt.task_id)
@@ -2167,9 +2135,7 @@ async fn configuration_change_after_crash(
     let replacement_attempt = f.tasks.consume(&replacement).await.unwrap();
     let retry = Script::new(vec![Turn::Text("Under the new configuration.")]);
     assert_eq!(
-        h.work(f, &retry, hang)
-            .run(&replacement, &ModelCancellation::new())
-            .await,
+        owned(f, &h.work(f, &retry, hang), &replacement).await,
         CycleEnd::Waiting
     );
     assert_eq!(retry.sends.load(Ordering::SeqCst), 1);
@@ -2513,18 +2479,22 @@ impl Harness {
     }
 }
 
-/// Runs a long multi-turn loop the way the worker does. `execute_work` polls
+/// Runs a loop the way the worker does. Every plain run in this suite uses
+/// it; the race cases that drive their own futures and fences keep a bare
+/// `run`. `execute_work` polls
 /// `current` every 200 ms beside the loop: that poll renews the Task's
 /// 5-second owner lease, and a refusal or failed poll cancels the loop. A
 /// bare `run` renews the lease only at each boundary, so one iteration (turn,
 /// admission, dispatch, recording) that takes longer than the lease is fenced
 /// at the next boundary. That is a property of the test harness, not of the
 /// product loop, which never runs without the poll.
-async fn owned(
-    f: &Fixture,
-    work: &WorkLoop<TaskRepository, ModelRepository, Shared, Dispatch>,
-    basis: &ClaimBasis,
-) -> CycleEnd {
+async fn owned<W, S, T, D>(f: &Fixture, work: &WorkLoop<W, S, T, D>, basis: &ClaimBasis) -> CycleEnd
+where
+    W: zobba_application::work::WorkSteps,
+    S: zobba_application::model::ModelStore,
+    T: zobba_application::model::ModelTransport,
+    D: zobba_application::work::ToolDispatch,
+{
     let cancellation = ModelCancellation::new();
     let run = work.run(basis, &cancellation);
     tokio::pin!(run);
@@ -3045,9 +3015,7 @@ async fn tier_one_overflow(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
     let (case, basis, attempt) = consumed(f, "work-tier-one").await;
     let script = Script::new(vec![Turn::Text("unsent")]);
     assert_eq!(
-        h.budgeted(f, &script, hang, 64)
-            .run(&basis, &ModelCancellation::new())
-            .await,
+        owned(f, &h.budgeted(f, &script, hang, 64), &basis).await,
         CycleEnd::Failed
     );
     assert_eq!(
@@ -3071,9 +3039,7 @@ async fn tier_one_overflow(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
     assert_eq!(work.attention, Some(Attention::StepFailed));
     // A reclaim under the same brief does not retry it.
     assert_eq!(
-        h.budgeted(f, &script, hang, 64)
-            .run(&basis, &ModelCancellation::new())
-            .await,
+        owned(f, &h.budgeted(f, &script, hang, 64), &basis).await,
         CycleEnd::Failed
     );
     assert_eq!(script.sends.load(Ordering::SeqCst), 0);
@@ -3105,9 +3071,7 @@ async fn stale_after_withdrawal(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>
         Turn::Text("Used KN-STALE-2201 and the completed send."),
     ]);
     assert_eq!(
-        h.work(f, &first, hang)
-            .run(&basis, &ModelCancellation::new())
-            .await,
+        owned(f, &h.work(f, &first, hang), &basis).await,
         CycleEnd::Waiting
     );
     let second = first.requests.lock().unwrap()[1].clone();
@@ -3146,10 +3110,7 @@ async fn stale_after_withdrawal(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>
         bind: base.bind,
         delay: base.delay,
     };
-    assert_eq!(
-        blocked.run(&resumed, &ModelCancellation::new()).await,
-        CycleEnd::Unavailable
-    );
+    assert_eq!(owned(f, &blocked, &resumed).await, CycleEnd::Unavailable);
     assert_eq!(unverified.sends.load(Ordering::SeqCst), 0, "nothing sent");
     assert!(unverified.requests.lock().unwrap().is_empty());
     assert_eq!(
@@ -3166,9 +3127,7 @@ async fn stale_after_withdrawal(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>
     assert_eq!(after.total_compactions, before.total_compactions);
     let next = Script::new(vec![Turn::Text("Continued without it.")]);
     assert_eq!(
-        h.work(f, &next, hang)
-            .run(&resumed, &ModelCancellation::new())
-            .await,
+        owned(f, &h.work(f, &next, hang), &resumed).await,
         CycleEnd::Waiting,
         "the turn runs; a withdrawn source does not refuse it"
     );
@@ -3222,9 +3181,7 @@ async fn stale_after_correction(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>
         Turn::Text("Considered."),
     ]);
     assert_eq!(
-        h.work(f, &first, hang)
-            .run(&basis, &ModelCancellation::new())
-            .await,
+        owned(f, &h.work(f, &first, hang), &basis).await,
         CycleEnd::Waiting
     );
     finish(f, &case, &attempt, Observation::Completed).await;
@@ -3250,9 +3207,7 @@ async fn stale_after_correction(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>
     .await;
     let next = Script::new(vec![Turn::Text("Used the corrected value.")]);
     assert_eq!(
-        h.work(f, &next, hang)
-            .run(&resumed, &ModelCancellation::new())
-            .await,
+        owned(f, &h.work(f, &next, hang), &resumed).await,
         CycleEnd::Waiting
     );
     let request = next.requests.lock().unwrap()[0].clone();
@@ -3294,9 +3249,7 @@ async fn hostile_knowledge(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>, ses
         Turn::Text("Noted the refusal."),
     ]);
     assert_eq!(
-        h.work(f, &script, hang)
-            .run(&basis, &ModelCancellation::new())
-            .await,
+        owned(f, &h.work(f, &script, hang), &basis).await,
         CycleEnd::Waiting
     );
     let request = script.requests.lock().unwrap()[0].clone();
@@ -3368,9 +3321,7 @@ async fn scope_negative_knowledge(
         .unwrap();
     let script = Script::new(vec![Turn::Text("Only this engagement.")]);
     assert_eq!(
-        h.work(f, &script, hang)
-            .run(&basis, &ModelCancellation::new())
-            .await,
+        owned(f, &h.work(f, &script, hang), &basis).await,
         CycleEnd::Waiting
     );
     let request = script.requests.lock().unwrap()[0].clone();
@@ -3416,9 +3367,7 @@ async fn open_question_decision(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>
     );
     let script = Script::new(vec![Turn::Text("Noted the open question.")]);
     assert_eq!(
-        h.work(f, &script, hang)
-            .run(&basis, &ModelCancellation::new())
-            .await,
+        owned(f, &h.work(f, &script, hang), &basis).await,
         CycleEnd::Waiting
     );
     let request = script.requests.lock().unwrap()[0].clone();
@@ -3457,9 +3406,7 @@ async fn knowledge_budget_drop(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>,
     knowledge.clear("work-kb-clear").await;
     let script = Script::new(vec![Turn::Text("Calibrated.")]);
     assert_eq!(
-        h.work(f, &script, hang)
-            .run(&calibrate_basis, &ModelCancellation::new())
-            .await,
+        owned(f, &h.work(f, &script, hang), &calibrate_basis).await,
         CycleEnd::Waiting
     );
     let fixed = stored_turns(
@@ -3484,9 +3431,7 @@ async fn knowledge_budget_drop(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>,
     let large = knowledge.assert("work-kb-large", &large_text).await;
     let script = Script::new(vec![Turn::Text("Used what fit.")]);
     assert_eq!(
-        h.budgeted(f, &script, hang, fixed + 800)
-            .run(&basis, &ModelCancellation::new())
-            .await,
+        owned(f, &h.budgeted(f, &script, hang, fixed + 800), &basis).await,
         CycleEnd::Waiting
     );
     let request = script.requests.lock().unwrap()[0].clone();
@@ -3549,9 +3494,7 @@ async fn answer_dependencies(
         .await;
     let first = Script::new(vec![Turn::Text("Answered using KN-ANSWER-2203.")]);
     assert_eq!(
-        h.work(f, &first, hang)
-            .run(&basis, &ModelCancellation::new())
-            .await,
+        owned(f, &h.work(f, &first, hang), &basis).await,
         CycleEnd::Waiting
     );
     finish(f, &case, &attempt, Observation::Completed).await;
@@ -3565,9 +3508,7 @@ async fn answer_dependencies(
     .await;
     let next = Script::new(vec![Turn::Text("Continued.")]);
     assert_eq!(
-        h.work(f, &next, hang)
-            .run(&resumed, &ModelCancellation::new())
-            .await,
+        owned(f, &h.work(f, &next, hang), &resumed).await,
         CycleEnd::Waiting
     );
     let carried = next.requests.lock().unwrap()[0].clone();
