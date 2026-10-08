@@ -1760,10 +1760,7 @@ async fn bounded_cycle(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
         .map(|i| Turn::Tool(leaked(format!("bound-call-{i}")), "send_forbidden"))
         .collect();
     let script = Script::new(turns);
-    let end = h
-        .work(f, &script, hang)
-        .run(&basis, &ModelCancellation::new())
-        .await;
+    let end = owned(f, &h.work(f, &script, hang), &basis).await;
     assert_eq!(end, CycleEnd::Bounded);
     assert_eq!(
         script.sends.load(Ordering::SeqCst),
@@ -2516,6 +2513,44 @@ impl Harness {
     }
 }
 
+/// Runs a long multi-turn loop the way the worker does. `execute_work` polls
+/// `current` every 200 ms beside the loop: that poll renews the Task's
+/// 5-second owner lease, and a refusal or failed poll cancels the loop. A
+/// bare `run` renews the lease only at each boundary, so one iteration (turn,
+/// admission, dispatch, recording) that takes longer than the lease is fenced
+/// at the next boundary. That is a property of the test harness, not of the
+/// product loop, which never runs without the poll.
+async fn owned(
+    f: &Fixture,
+    work: &WorkLoop<TaskRepository, ModelRepository, Shared, Dispatch>,
+    basis: &ClaimBasis,
+) -> CycleEnd {
+    let cancellation = ModelCancellation::new();
+    let run = work.run(basis, &cancellation);
+    tokio::pin!(run);
+    let mut ticker = tokio::time::interval(std::time::Duration::from_millis(200));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let authority = async {
+        loop {
+            ticker.tick().await;
+            match tokio::time::timeout(std::time::Duration::from_secs(2), f.tasks.current(basis))
+                .await
+            {
+                Ok(Ok(true)) => {}
+                _ => return,
+            }
+        }
+    };
+    tokio::pin!(authority);
+    tokio::select! {
+        biased;
+        end = &mut run => return end,
+        () = &mut authority => {}
+    }
+    cancellation.cancel();
+    run.await
+}
+
 fn message<'a>(request: &'a ModelRequest, source: &str) -> Option<&'a ModelMessage> {
     request
         .messages
@@ -2750,10 +2785,7 @@ async fn compaction_by_items(
         })
         .collect();
     let script = Script::new(turns);
-    let end = h
-        .work(f, &script, hang)
-        .run(&basis, &ModelCancellation::new())
-        .await;
+    let end = owned(f, &h.work(f, &script, hang), &basis).await;
     assert_eq!(end, CycleEnd::Bounded, "every turn ran; none was refused");
     assert_eq!(script.sends.load(Ordering::SeqCst), MAX_TURNS_PER_CYCLE);
     let requests = script.requests.lock().unwrap().clone();
@@ -2945,9 +2977,7 @@ async fn compaction_by_bytes(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
         Turn::Text("Calibrated."),
     ]);
     assert_eq!(
-        h.work(f, &script, hang)
-            .run(&basis, &ModelCancellation::new())
-            .await,
+        owned(f, &h.work(f, &script, hang), &basis).await,
         CycleEnd::Waiting
     );
     let work = f
@@ -2968,9 +2998,7 @@ async fn compaction_by_bytes(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
     turns.push(Turn::Text("Reviewed the exchanges."));
     let script = Script::new(turns);
     assert_eq!(
-        h.budgeted(f, &script, hang, budget)
-            .run(&basis, &ModelCancellation::new())
-            .await,
+        owned(f, &h.budgeted(f, &script, hang, budget), &basis).await,
         CycleEnd::Waiting
     );
     let requests = script.requests.lock().unwrap().clone();
