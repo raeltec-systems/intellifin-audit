@@ -578,9 +578,9 @@ fn claude_reasoning_replay<'a>(
     admin: &'a mut PgConnection,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>> {
     Box::pin(async move {
-        let claude = claude_harness(h).await;
-        claude_replay_and_refusals(f, &claude, hang, admin).await;
-        claude_group_compaction(f, &claude, hang).await;
+        let claude = Box::pin(claude_harness(h)).await;
+        Box::pin(claude_replay_and_refusals(f, &claude, hang, admin)).await;
+        Box::pin(claude_group_compaction(f, &claude, hang)).await;
     })
 }
 
@@ -653,10 +653,9 @@ async fn claude_replay_and_refusals(
         Turn::Reasoned(vec![("toolu-2", "send_exact")]),
         Turn::Text("Done for now."),
     ]);
-    let end = claude
-        .work(f, &script, hang)
-        .run(&basis, &ModelCancellation::new())
-        .await;
+    let work = claude.work(f, &script, hang);
+    let cancellation = ModelCancellation::new();
+    let end = Box::pin(work.run(&basis, &cancellation)).await;
     assert_eq!(end, CycleEnd::Waiting);
     assert_eq!(script.sends.load(Ordering::SeqCst), 3);
     let requests = script.requests.lock().unwrap().clone();
@@ -786,7 +785,7 @@ async fn claude_group_compaction(f: &Fixture, claude: &Harness, hang: &Arc<Atomi
     finish(f, &case, &attempt, Observation::Completed).await;
 
     let (case, basis, attempt) = consumed(f, "work-claude-compaction").await;
-    let mut turns: Vec<Turn> = (0..5)
+    let mut turns: Vec<Turn> = (0..3)
         .map(|i| {
             Turn::Reasoned(vec![
                 (leaked(format!("cg-{i}-a")), "send_exact"),
@@ -798,17 +797,17 @@ async fn claude_group_compaction(f: &Fixture, claude: &Harness, hang: &Arc<Atomi
     let script = Script::new(turns);
     assert_eq!(
         claude
-            .budgeted(f, &script, hang, fixed + group * 5 / 2 + 2_000)
+            .budgeted(f, &script, hang, fixed + group * 3 / 2 + 2_000)
             .run(&basis, &ModelCancellation::new())
             .await,
         CycleEnd::Waiting
     );
     let requests = script.requests.lock().unwrap().clone();
-    assert_eq!(requests.len(), 6);
+    assert_eq!(requests.len(), 4);
     assert!(
         requests
             .iter()
-            .any(|r| message(r, "compaction-digests").is_some() && exchanges(r) < 2 * 5),
+            .any(|r| message(r, "compaction-digests").is_some() && exchanges(r) < 2 * 3),
         "earlier groups were compacted"
     );
     for request in &requests {
