@@ -7,15 +7,20 @@ Content blocks must stream one at a time in index order, and no non-tool block
 may follow a `tool_use`. Reasoning is never answer text, evidence or context:
 `answer_text` reads only text deltas and failed outcomes keep no reasoning.
 `TransportOutcome::replay_blocks` is the ordered pre-tool content (reasoning
-and text) of a successful Anthropic tool response. `ToolExchange.preceding`
-carries it on the first exchange an invocation still has in context, and
-`native_history` replays it unchanged before the tool_use blocks. It is
-omitted from storage when empty, so older requests keep their bytes and
-bindings. The store's `verify_replay` refuses altered blocks or a different
-provider/model. Receipts record only byte counts, block counts and hashes. No
-`thinking`, budget or effort parameter is sent. The large `work_cycle::verify`
-debug future sits near the default 2 MiB test stack: return a new scenario
-already boxed (see `claude_reasoning_replay`) instead of growing its frame.
+and non-empty text) of a successful Anthropic tool response. The domain also
+refuses any reasoning or text event after a tool proposal. `ToolExchange.preceding`
+carries it only on the exchange of the invocation's first call, and at most once
+per invocation anywhere in the history. The planner cuts only at model turns, so
+a turn and its tool steps are compacted together; blocks are never moved to
+another exchange. A signature arrives once: a start value plus a delta is
+refused, not joined. Stored replay blocks are flat `{"kind":...}` documents,
+omitted when empty, so older requests keep their bytes and bindings. The store's
+`verify_replay` refuses altered blocks or a different provider/model.
+Receipts record only byte counts, block counts and hashes. No `thinking`, budget
+or effort parameter is sent. Anthropic fixture qualification is a separate
+`ClaudeFixtureQualification`; the ordinary fixture source still refuses it. The
+large `work_cycle::verify` debug future sits near the default 2 MiB test stack:
+return a new scenario already boxed, and box its inner runs.
 
 ## 2026-10-08 — Story 22.3 context compaction boundaries
 

@@ -2,7 +2,7 @@
 title: '22.1 follow-up — Accept and replay Claude thinking blocks in the native Anthropic adapter'
 type: 'feature'
 created: '2026-10-08'
-status: 'in-review'
+status: 'done'
 baseline_commit: '44c4bbb74d805a6bd33c041321fd77c6a764e187'
 review_loop_iteration: 0
 context:
@@ -136,19 +136,65 @@ Run first: `. /tmp/zobba-env.sh` (PostgreSQL at :55434; use `?sslmode=disable` f
 - `cargo run -q --locked -p zobba-infrastructure --example model_qualification -- --dry-run --providers anthropic --max-usd 1 --anthropic-account zobba-test --anthropic-model claude-sonnet-5-5 --spend-evidence owner-approved-2026-10-08-usd1-anthropic-credit --receipt-dir ../_bmad-output/implementation-artifacts/zobba-foundation-batch/qualification-receipts` -- expected: exit 0 and a manifest hash. Record the hash in the spec.
 - `cargo run -p zobba-cli --locked -- openapi`, then `pnpm check` -- expected: unchanged or regenerated cleanly. The only allowed failures are the two known IPv6 tests.
 
-## Verification record (2026-10-08, local, no provider calls)
+## Verification record (2026-10-08, local, no provider calls; after review fixes)
 
 - `cargo fmt --check` and `cargo clippy --locked --workspace --all-targets -- -D warnings`: clean.
-- New and changed tests pass: domain/application model tests, 47 native adapter tests
-  (every matrix row, old-bytes golden test, no `thinking`/`temperature`/`budget_tokens`/`tool_choice` in the body),
-  the qualification example tests, and the `work_cycle` Claude replay scenario.
-- Dry run (`--providers anthropic --anthropic-model claude-sonnet-5-5 --max-usd 1`): exit 0,
-  manifest SHA-256 `0d0b214f503aea6bb9fffbebc696fc7eb3fa104ec4e0336282fb1e2b9fb6fb31`.
-  The continuation is 2,811 bytes and has `[thinking{"",provider-signature-placeholder}, tool_use]`.
+- Workspace `cargo test --locked --workspace --no-fail-fast -- --test-threads=1`, with the OIDC fixture
+  running (`pnpm fixture:start`, fixture `env.sh` sourced) and the test URLs set to `?sslmode=disable`:
+  436 passed, 0 failed. `bootstrap_contract` and the 14 OIDC tests pass in that environment.
+- `standing_permissions_exact_operations_and_transaction_cutoffs` alone, 3 runs on the final code: 1 passed and
+  2 failed. Both failures were at `compaction_by_bytes` (`Fenced` vs `Waiting`, a pre-existing scenario), after the
+  new Claude scenarios had passed. The same test also passed in the full workspace run. The coordinator's baseline
+  runs on 44c4bbb also failed intermittently.
+- Guard checks: removing each of these guards makes its test fail: the whole-history once-per-invocation rule, the
+  signature start+delta refusal, the domain "no content after a tool call" rule, and `verify_replay` in the store's
+  history check (the `tampered` case gives `Fenced` instead of `Conflict`).
+- Dry run (`--providers anthropic --anthropic-model claude-sonnet-5-5 --max-usd 1`): exit 0, manifest SHA-256
+  `26e7e08a32668f2c9f6752053781a76502c14c66df2b7f29e4bf90978ba7c59c`. The continuation is 2,811 bytes,
+  with assistant content `[thinking(placeholder), tool_use]`.
 - `zobba-cli openapi`: unchanged. `pnpm check`: 193/195, and the 2 failures are the known IPv6 tests.
-- Workspace `cargo test --no-fail-fast -- --test-threads=1`: 415 passed, 16 failed. 14 are OIDC
-  `actual_provider_*`/signed-claim tests (no IdP fixture process running) and 1 is `bootstrap_contract` (expected
-  `DatabaseUnavailable` through its interrupting proxy). The last one is
-  `standing_permissions_exact_operations_and_transaction_cutoffs` at `compaction_by_bytes` (`Fenced` instead of
-  `Waiting`). There, the Task's 5-second owner lease has already expired at the first boundary. This failure is intermittent.
-  It also happens with the new scenario placed after it, so it is a timing failure, not this change.
+
+## Suggested Review Order
+
+**Parsing Claude's stream**
+
+- Entry point: thinking and redacted blocks are accepted, and every other block still fails closed.
+  [`native.rs:1556`](../../zobba/crates/infrastructure/src/model/native.rs#L1556)
+
+- A signature comes from the block start or from deltas, never both. Stops a corrupted replay.
+  [`native.rs:1668`](../../zobba/crates/infrastructure/src/model/native.rs#L1668)
+
+**Domain contract**
+
+- Opaque reasoning kept apart from answer text, with bounded, printable tokens.
+  [`model.rs:522`](../../zobba/crates/domain/src/model.rs#L522)
+
+- The ordered pre-tool blocks; empty text is skipped, nothing comes after a tool call.
+  [`model.rs:792`](../../zobba/crates/domain/src/model.rs#L792)
+
+**Replay and its guards**
+
+- Blocks are rendered once per invocation, before its tool_use blocks.
+  [`native.rs:443`](../../zobba/crates/infrastructure/src/model/native.rs#L443)
+
+- Replay must equal the producer's exact blocks, for the same provider and model.
+  [`model.rs:505`](../../zobba/crates/application/src/model.rs#L505)
+
+- The store re-verifies replay at dispatch, so forged or foreign blocks are refused.
+  [`mod.rs:283`](../../zobba/crates/infrastructure/src/model/mod.rs#L283)
+
+- The work loop attaches blocks only to the invocation's first call.
+  [`work.rs:954`](../../zobba/crates/application/src/work.rs#L954)
+
+**Qualification runner**
+
+- Every actual body, including the real substitution, is checked against the cap before sending.
+  [`model_qualification.rs:351`](../../zobba/crates/infrastructure/examples/model_qualification.rs#L351)
+
+**Tests**
+
+- A Sonnet-shaped stream is replayed byte for byte.
+  [`native_tests.rs:1842`](../../zobba/crates/infrastructure/src/model/native_tests.rs#L1842)
+
+- The database-backed Claude scenario: replay, refusals and compaction groups.
+  [`work_cycle.rs:574`](../../zobba/crates/infrastructure/tests/operations/work_cycle.rs#L574)
