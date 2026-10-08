@@ -695,7 +695,9 @@ impl ParsedStream {
                 }
                 // Replay material only. A response that did not succeed has
                 // nothing to continue, so its reasoning is not kept.
-                ParsedEvent::Reasoning { item_id, block } if completion == Completion::Succeeded => {
+                ParsedEvent::Reasoning { item_id, block }
+                    if completion == Completion::Succeeded =>
+                {
                     Some(EventKind::Reasoning { item_id, block })
                 }
                 ParsedEvent::Tool {

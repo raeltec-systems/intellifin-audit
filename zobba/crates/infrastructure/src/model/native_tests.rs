@@ -1841,7 +1841,10 @@ fn reasoning_events(outcome: &TransportOutcome) -> Vec<&ReasoningBlock> {
 #[tokio::test]
 async fn sonnet_thinking_then_tool_call_replays_its_blocks_byte_for_byte() {
     let request = request(Provider::Anthropic);
-    let stream = claude_stream(&[thinking_block("", SONNET_SIGNATURE), tool_block()], "tool_use");
+    let stream = claude_stream(
+        &[thinking_block("", SONNET_SIGNATURE), tool_block()],
+        "tool_use",
+    );
     let fixture = Fixture::stream(&stream).await;
     let outcome = fixture.invoke(Provider::Anthropic, &request).await;
     assert_eq!(outcome.completion, Completion::Succeeded);
@@ -1888,7 +1891,13 @@ async fn sonnet_thinking_then_tool_call_replays_its_blocks_byte_for_byte() {
     let signature = serde_json::to_vec(&Value::String(SONNET_SIGNATURE.into())).unwrap();
     assert!(raw.windows(signature.len()).any(|w| w == signature));
     // The request still asks for no reasoning configuration of its own.
-    for field in ["thinking", "temperature", "budget_tokens", "tool_choice", "reasoning"] {
+    for field in [
+        "thinking",
+        "temperature",
+        "budget_tokens",
+        "tool_choice",
+        "reasoning",
+    ] {
         assert!(body.get(field).is_none(), "{field}");
     }
 }
@@ -1949,7 +1958,10 @@ async fn redacted_and_interleaved_blocks_replay_in_original_order() {
             Completion::Succeeded
         );
         let seen = replay.requests.lock().await;
-        let content = seen[0].body["messages"][1]["content"].as_array().unwrap().clone();
+        let content = seen[0].body["messages"][1]["content"]
+            .as_array()
+            .unwrap()
+            .clone();
         let count = expected.as_array().unwrap().len();
         assert_eq!(Value::Array(content[..count].to_vec()), expected);
         assert_eq!(content[count]["type"], "tool_use");
@@ -1996,7 +2008,13 @@ async fn invalid_reasoning_blocks_and_deltas_fail_closed() {
         // Reasoning after a tool call has no replayable position.
         vec![tool_block(), thinking_block("", SONNET_SIGNATURE)],
         // An unknown block type still fails closed.
-        vec![(json!({"type":"server_tool_use","id":"x","name":"y","input":{}}), vec![]), tool_block()],
+        vec![
+            (
+                json!({"type":"server_tool_use","id":"x","name":"y","input":{}}),
+                vec![],
+            ),
+            tool_block(),
+        ],
     ];
     for (case, blocks) in cases.iter().enumerate() {
         let fixture = Fixture::stream(&claude_stream(blocks, "tool_use")).await;
@@ -2012,7 +2030,10 @@ async fn invalid_reasoning_blocks_and_deltas_fail_closed() {
         assert!(reasoning_events(&outcome).is_empty(), "case {case}");
     }
     // Overlapping blocks make the replay order ambiguous and are refused.
-    let mut stream = claude_stream(&[thinking_block("", SONNET_SIGNATURE), tool_block()], "tool_use");
+    let mut stream = claude_stream(
+        &[thinking_block("", SONNET_SIGNATURE), tool_block()],
+        "tool_use",
+    );
     let stop = stream.remove(3); // thinking stop after its signature delta
     stream.insert(5, stop);
     let fixture = Fixture::stream(&stream).await;
@@ -2044,7 +2065,11 @@ fn stored_requests_without_replay_keep_their_exact_bytes_and_binding() {
     // Golden pre-reasoning document: no `preceding` field anywhere.
     let request = history_request(Provider::Anthropic);
     let bytes = serde_json::to_vec(&StoredRequest(request.clone())).unwrap();
-    assert!(!String::from_utf8(bytes.clone()).unwrap().contains("preceding"));
+    assert!(
+        !String::from_utf8(bytes.clone())
+            .unwrap()
+            .contains("preceding")
+    );
     let decoded: StoredRequest = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(decoded.0, request);
     assert_eq!(serde_json::to_vec(&decoded).unwrap(), bytes);
@@ -2052,7 +2077,10 @@ fn stored_requests_without_replay_keep_their_exact_bytes_and_binding() {
     crate::model::bind_disclosure(&mut bound).unwrap();
     let mut rebound = decoded.0.clone();
     rebound.disclosure = bound.disclosure.clone();
-    assert_eq!(crate::model::payload_attachments(&rebound).unwrap(), bound.disclosure.attachments);
+    assert_eq!(
+        crate::model::payload_attachments(&rebound).unwrap(),
+        bound.disclosure.attachments
+    );
 
     // Replay blocks round-trip exactly and change the binding.
     let mut claude = request.clone();

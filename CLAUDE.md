@@ -1,3 +1,22 @@
+## 2026-10-08 — Claude thinking blocks are opaque replay material
+
+Current Claude models always think. The native Anthropic adapter accepts
+`thinking` (`thinking_delta`, `signature_delta`) and `redacted_thinking`
+blocks as `EventKind::Reasoning`; any other block or delta still fails closed.
+Content blocks must stream one at a time in index order, and no non-tool block
+may follow a `tool_use`. Reasoning is never answer text, evidence or context:
+`answer_text` reads only text deltas and failed outcomes keep no reasoning.
+`TransportOutcome::replay_blocks` is the ordered pre-tool content (reasoning
+and text) of a successful Anthropic tool response. `ToolExchange.preceding`
+carries it on the first exchange an invocation still has in context, and
+`native_history` replays it unchanged before the tool_use blocks. It is
+omitted from storage when empty, so older requests keep their bytes and
+bindings. The store's `verify_replay` refuses altered blocks or a different
+provider/model. Receipts record only byte counts, block counts and hashes. No
+`thinking`, budget or effort parameter is sent. The large `work_cycle::verify`
+debug future sits near the default 2 MiB test stack: return a new scenario
+already boxed (see `claude_reasoning_replay`) instead of growing its frame.
+
 ## 2026-10-08 — Story 22.3 context compaction boundaries
 
 The context budget counts UTF-8 bytes as tokens. That is a conservative bound, not

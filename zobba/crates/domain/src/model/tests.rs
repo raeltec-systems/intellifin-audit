@@ -341,7 +341,9 @@ fn reasoning_blocks_are_bounded_printable_and_never_debugged() {
         thinking("", &"s".repeat(MAX_REASONING_SIGNATURE_BYTES + 1)),
         thinking(&"t".repeat(MAX_REASONING_TEXT_BYTES + 1), "sig"),
         thinking("bell\u{7}", "sig"),
-        ReasoningBlock::Redacted { data: String::new() },
+        ReasoningBlock::Redacted {
+            data: String::new(),
+        },
         ReasoningBlock::Redacted {
             data: "d".repeat(MAX_REDACTED_REASONING_BYTES + 1),
         },
@@ -354,7 +356,12 @@ fn reasoning_blocks_are_bounded_printable_and_never_debugged() {
     let debug = format!("{:?}", thinking("secret reasoning", "secret-signature"));
     assert!(!debug.contains("secret"));
     assert!(debug.contains("thinking_bytes"));
-    let debug = format!("{:?}", ReasoningBlock::Redacted { data: "opaque".into() });
+    let debug = format!(
+        "{:?}",
+        ReasoningBlock::Redacted {
+            data: "opaque".into()
+        }
+    );
     assert!(!debug.contains("opaque"));
 }
 
@@ -400,7 +407,10 @@ fn replay_blocks_keep_original_pre_tool_order_for_claude_tool_calls_only() {
         ]
     );
     // A text-only answer keeps its reasoning in the outcome; nothing replays.
-    let answer = claude(vec![reasoning("r:0", thinking("", "sig")), text("r:1", "Done")]);
+    let answer = claude(vec![
+        reasoning("r:0", thinking("", "sig")),
+        text("r:1", "Done"),
+    ]);
     assert_eq!(answer.validate(&anthropic), Ok(()));
     assert!(answer.replay_blocks().is_empty());
     // Non-successful or OpenAI outcomes never replay.

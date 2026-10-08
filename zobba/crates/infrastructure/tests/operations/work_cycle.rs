@@ -391,7 +391,7 @@ pub(super) async fn verify(f: &Fixture, admin: &mut PgConnection) {
     };
     let hang = Arc::new(AtomicBool::new(false));
     Box::pin(first_cycle(f, &harness, &hang)).await;
-    Box::pin(claude_reasoning_replay(f, &harness, &hang)).await;
+    claude_reasoning_replay(f, &harness, &hang).await;
     Box::pin(guidance_mid_call(f, &harness, &hang, admin)).await;
     Box::pin(guide_turn_race(f, &harness, &hang, admin)).await;
     Box::pin(stalled_pause(f, &harness, &hang)).await;
@@ -564,7 +564,18 @@ async fn first_cycle(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
 
 /// A production tool continuation replays the producing Claude response's
 /// pre-tool blocks unchanged, bound into its disclosure, never as answer text.
-async fn claude_reasoning_replay(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
+///
+/// Returned already boxed: constructing it in `verify`'s own frame would add
+/// its whole state machine to a frame that already sits near the default
+/// test-thread stack in debug builds.
+fn claude_reasoning_replay<'a>(
+    f: &'a Fixture,
+    h: &'a Harness,
+    hang: &'a Arc<AtomicBool>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>> {
+    Box::pin(claude_reasoning_replay_inner(f, h, hang))
+}
+async fn claude_reasoning_replay_inner(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
     let mut p = h.profile.clone();
     p.id = "work-profile-claude".into();
     p.provider = Provider::Anthropic;

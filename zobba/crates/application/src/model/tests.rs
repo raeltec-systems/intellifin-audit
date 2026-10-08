@@ -799,9 +799,11 @@ fn replay_blocks_are_claude_only_once_per_group_and_count_toward_history() {
             })
         })
         .collect();
-    exchange.preceding.push(ReplayBlock::Reasoning(ReasoningBlock::Redacted {
-        data: "d".repeat(4 * 1024),
-    }));
+    exchange
+        .preceding
+        .push(ReplayBlock::Reasoning(ReasoningBlock::Redacted {
+            data: "d".repeat(4 * 1024),
+        }));
     assert!(replay_bytes(&exchange.preceding).is_some());
     assert_eq!(large.validate(), Ok(()));
     large.history.push(HistoryItem::Message(ModelMessage {
@@ -822,9 +824,15 @@ fn replay_must_be_the_producers_exact_blocks_for_the_same_model() {
     let mut exchange = (**base).clone();
     exchange.invocation_id = original.id.clone();
     // Omission is always permitted.
-    assert_eq!(verify_replay(&original, &exchange, &request.profile), Ok(()));
+    assert_eq!(
+        verify_replay(&original, &exchange, &request.profile),
+        Ok(())
+    );
     exchange.preceding = vec![sonnet_thinking(), ReplayBlock::Text("Reading it.".into())];
-    assert_eq!(verify_replay(&original, &exchange, &request.profile), Ok(()));
+    assert_eq!(
+        verify_replay(&original, &exchange, &request.profile),
+        Ok(())
+    );
 
     // Altered, reordered or partial blocks conflict.
     for altered in [
@@ -879,4 +887,3 @@ fn failed_outcomes_never_retain_reasoning_as_evidence() {
     );
     assert_eq!(retained.events.len(), 1);
 }
-
