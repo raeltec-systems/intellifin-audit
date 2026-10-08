@@ -43,3 +43,19 @@ cargo run -q --locked -p zobba-infrastructure --example model_qualification -- -
 
 The resulting `model-qualification-*.jsonl` receipt in this folder is the record to keep.
 
+
+# Anthropic claude-sonnet-5-5 qualification receipts
+
+Owner approval (2026-10-08): Anthropic, model `claude-sonnet-5-5`, project label `zobba-test`,
+synthetic test messages only, reservation USD 1 before taxes.
+
+## Run 1 (2026-10-08): not qualified, no tokens used
+
+Approval `owner-2026-10-08-zobba-anthropic-1`, manifest
+`26e7e08a32668f2c9f6752053781a76502c14c66df2b7f29e4bf90978ba7c59c`, is consumed. Receipt:
+`model-qualification-ffb22074….jsonl`. The first (text) request failed before any model
+output: `Failed(Provider)`, no response id, no usage. A free `GET /v1/models/claude-sonnet-5-5`
+with the same key returned HTTP 400: the API key is not scoped to a workspace, so every
+request needs an `anthropic-workspace-id` header. The adapter sends no such header. The fix is
+an owner action: replace `ZOBBA_ANTHROPIC_API_KEY` with a key created inside a workspace.
+Run 1 cannot be re-run; a new run needs a new approval ID.
