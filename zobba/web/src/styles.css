@@ -663,3 +663,12 @@ textarea:focus-visible, select:focus-visible, summary:focus-visible, [tabindex='
   .setup-summary dl div { grid-template-columns: 1fr; gap: 2px; }
   .setup-actions button, .setup-summary > button { width: 100%; white-space: normal; }
 }
+
+/* Story 22.3 context accounting: recorded facts only. */
+.task-context { display: grid; gap: 0.5rem; }
+.task-context h4 { margin: 0; }
+.context-note, .context-budget { margin: 0; color: var(--secondary); overflow-wrap: anywhere; }
+.compaction-records, .compaction-sources, .compaction-omissions { margin: 0; padding-left: 1.25rem; overflow-wrap: anywhere; }
+.compaction-records > li { margin-bottom: 0.5rem; }
+.compaction-records p { margin: 0; }
+.stale-source { font-weight: 600; }

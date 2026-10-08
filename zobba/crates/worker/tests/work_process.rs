@@ -343,6 +343,7 @@ fn composition(
         disclosure: disclosure(),
         input_class: "audit".into(),
         max_output_tokens: 128,
+        context: zobba_domain::context::ContextBudget::DEFAULT,
     })
 }
 

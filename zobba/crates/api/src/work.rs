@@ -12,10 +12,11 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use zobba_application::task::TaskError;
 use zobba_domain::{
+    context::{ContextCompaction, SourceStatus},
     identity::valid_scope_id,
     work::{
         Attention, BriefRevision, Direction, NextAction, RoutedGuide, RoutingQuestion, StepKind,
-        StepStatus, TaskStep, TaskWork,
+        StepReason, StepStatus, TaskStep, TaskWork,
     },
 };
 
@@ -50,6 +51,61 @@ pub enum AttentionResponse {
     CycleBounded,
 }
 
+#[derive(Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum StepReasonResponse {
+    /// The owned constraints, objective, method, brief and unresolved decisions
+    /// alone exceeded the context budget; nothing was sent to a model.
+    ContextBudget,
+}
+
+#[derive(Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceStatusResponse {
+    Current,
+    Withdrawn,
+    Corrected,
+    Invalidated,
+}
+
+/// A knowledge revision an earlier compacted turn used, with its standing when
+/// the record was made.
+#[derive(Serialize, ToSchema)]
+pub struct CompactionSourceResponse {
+    pub id: String,
+    #[schema(pattern = "^[0-9]+$")]
+    pub revision: String,
+    pub status: SourceStatusResponse,
+}
+
+/// Count of material left out by category. An omission never means absence.
+#[derive(Serialize, ToSchema)]
+pub struct OmissionResponse {
+    /// `steps_compacted`, `digests_omitted`, `knowledge_budget`,
+    /// `knowledge_unusable`, `stale_sources` or `stale_content`.
+    pub category: String,
+    pub count: u32,
+}
+
+/// A durable context compaction record: a deterministic digest of recorded step
+/// facts (never a model summary, never evidence). The covered raw steps remain
+/// inspectable.
+#[derive(Serialize, ToSchema)]
+pub struct CompactionResponse {
+    pub sequence: u32,
+    pub first_ordinal: u32,
+    pub last_ordinal: u32,
+    /// SHA-256 of the canonical digest, reproducible from the database.
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub digest_sha256: String,
+    #[schema(max_items = 512)]
+    pub sources: Vec<CompactionSourceResponse>,
+    #[schema(max_items = 6)]
+    pub omissions: Vec<OmissionResponse>,
+    #[schema(pattern = "^[0-9]+$")]
+    pub estimated_tokens: String,
+}
+
 /// One immutable recorded step. Labels are fixed platform text, never model output.
 #[derive(Serialize, ToSchema)]
 pub struct TaskStepResponse {
@@ -71,6 +127,15 @@ pub struct TaskStepResponse {
     pub current_work: String,
     /// Model turns: authorised knowledge records left out of the turn's context.
     pub knowledge_omitted: u32,
+    /// Fixed reason the platform ended a failed turn without sending it.
+    #[schema(required = true)]
+    pub reason: Option<StepReasonResponse>,
+    /// Model turns: conservative token estimate of the planned request.
+    #[schema(required = true, pattern = "^[0-9]+$")]
+    pub estimated_input_tokens: Option<String>,
+    /// Model turns: input tokens the provider reported, when known.
+    #[schema(required = true, pattern = "^[0-9]+$")]
+    pub actual_input_tokens: Option<String>,
 }
 
 /// An accepted brief revision. Received and applied are separate facts.
@@ -119,6 +184,43 @@ pub struct TaskWorkResponse {
     pub total_steps: u32,
     #[schema(max_items = 50)]
     pub briefs: Vec<BriefRevisionResponse>,
+    /// The most recent context compaction records of the current cycle, oldest first.
+    #[schema(max_items = 20)]
+    pub compactions: Vec<CompactionResponse>,
+    /// All compaction records of the current cycle.
+    pub total_compactions: u32,
+}
+
+fn compaction(record: ContextCompaction) -> CompactionResponse {
+    CompactionResponse {
+        sequence: record.sequence,
+        first_ordinal: record.first_ordinal,
+        last_ordinal: record.last_ordinal,
+        digest_sha256: record.digest_sha256,
+        sources: record
+            .sources
+            .into_iter()
+            .map(|source| CompactionSourceResponse {
+                id: source.id,
+                revision: source.revision.to_string(),
+                status: match source.status {
+                    SourceStatus::Current => SourceStatusResponse::Current,
+                    SourceStatus::Withdrawn => SourceStatusResponse::Withdrawn,
+                    SourceStatus::Corrected => SourceStatusResponse::Corrected,
+                    SourceStatus::Invalidated => SourceStatusResponse::Invalidated,
+                },
+            })
+            .collect(),
+        omissions: record
+            .omissions
+            .into_iter()
+            .map(|(category, count)| OmissionResponse {
+                category: category.as_str().into(),
+                count,
+            })
+            .collect(),
+        estimated_tokens: record.estimated_tokens.to_string(),
+    }
 }
 
 fn step(step: TaskStep) -> TaskStepResponse {
@@ -144,6 +246,11 @@ fn step(step: TaskStep) -> TaskStepResponse {
         next_action: step.next_action.as_ref().map(NextAction::descriptor),
         current_work: step.current_work,
         knowledge_omitted: step.knowledge_omitted,
+        reason: step.reason.map(|reason| match reason {
+            StepReason::ContextBudget => StepReasonResponse::ContextBudget,
+        }),
+        estimated_input_tokens: step.estimated_input_tokens.map(|v| v.to_string()),
+        actual_input_tokens: step.actual_input_tokens.map(|v| v.to_string()),
     }
 }
 
@@ -178,6 +285,8 @@ fn work_response(work: TaskWork, model_available: bool) -> TaskWorkResponse {
         steps: work.steps.into_iter().map(step).collect(),
         total_steps: work.total_steps,
         briefs: work.briefs.into_iter().map(brief).collect(),
+        compactions: work.compactions.into_iter().map(compaction).collect(),
+        total_compactions: work.total_compactions,
     }
 }
 

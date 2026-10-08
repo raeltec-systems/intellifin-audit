@@ -327,6 +327,10 @@ struct ContextEntryWire {
     source_id: String,
     input_class: String,
     knowledge: Option<RecordReference>,
+    /// Absent in requests stored before schema 14; omitted when none so their
+    /// exact stored documents and disclosure bindings are unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    depends_on: Option<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StoredContextEntry(#[serde(with = "ContextEntryWire")] pub ContextEntry);

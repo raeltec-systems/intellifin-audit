@@ -1157,6 +1157,78 @@ pub(crate) async fn task_context_in_transaction(
     }
     Ok((items, omitted))
 }
+/// Standing of exact revisions an earlier turn used, judged with the same
+/// predicate the disclosure gate applies (`verify_in_transaction`): Current
+/// only when the revision is still the current, applicable, accessible record.
+/// A record whose own source scope or applicability no longer holds is
+/// reported `Invalidated` rather than refusing the caller; loss of the viewer's
+/// or accountable actor's own scope is still `Denied`. Grants no use.
+pub(crate) async fn reference_statuses_in_transaction(
+    tx: &mut Tx,
+    actor: &str,
+    s: &Scope,
+    task_id: &str,
+    references: &[RecordReference],
+) -> Result<Vec<RecordStatus>, KnowledgeError> {
+    const MAX_REFERENCES: usize = 512;
+    if references.len() > MAX_REFERENCES
+        || references
+            .iter()
+            .any(|r| !valid_scope_id(&r.id) || r.revision == 0 || r.revision > i64::MAX as u64)
+    {
+        return Err(KnowledgeError::Invalid);
+    }
+    let (consumer, _, _) = task(tx, s, task_id).await?;
+    if consumer != actor || !audit(tx, &consumer, s).await? {
+        return Err(KnowledgeError::Denied);
+    }
+    let mut statuses = Vec::with_capacity(references.len());
+    for reference in references {
+        let publication:Option<Value>=sqlx::query_scalar("SELECT document FROM public.knowledge_publications WHERE organisation_id=$1 AND id=$2 AND client_id=$3 AND engagement_id=$4 AND kind='preference'").bind(&s.organisation_id).bind(&reference.id).bind(&s.client_id).bind(&s.engagement_id).fetch_optional(&mut **tx).await.map_err(db)?;
+        let checked = if let Some(publication) = publication {
+            publication_view(tx, &publication)
+                .await
+                .map(|view| (view, Applicability::default()))
+        } else {
+            match load(
+                tx,
+                &s.organisation_id,
+                &reference.id,
+                Some(reference.revision),
+            )
+            .await
+            {
+                Ok(record) => checked_context(tx, actor, &consumer, s, task_id, record).await,
+                Err(error) => Err(error),
+            }
+        };
+        statuses.push(match checked {
+            Ok((view, applicability))
+                if view.record.revision == reference.revision
+                    && view.status == RecordStatus::Current
+                    && applicability.omission.is_none() =>
+            {
+                RecordStatus::Current
+            }
+            Ok((view, _)) if view.status != RecordStatus::Current => view.status,
+            Ok(_) => RecordStatus::Invalidated,
+            Err(KnowledgeError::Denied | KnowledgeError::Ineligible | KnowledgeError::Capacity) => {
+                RecordStatus::Invalidated
+            }
+            Err(error) => return Err(error),
+        });
+    }
+    select_scope(tx, s).await?;
+    if !audit(tx, actor, s).await? || !audit(tx, &consumer, s).await? {
+        return Err(KnowledgeError::Denied);
+    }
+    let dependencies_current: bool = sqlx::query_scalar("SELECT NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(nullif(current_setting('zobba.knowledge_checks',true),''),'[]')::jsonb) c WHERE NOT public.knowledge_audit(c->>0,c->>1,c->>2,c->>3))")
+        .fetch_one(&mut **tx).await.map_err(db)?;
+    if !dependencies_current {
+        return Err(KnowledgeError::Denied);
+    }
+    Ok(statuses)
+}
 impl KnowledgeStore for KnowledgeRepository {
     async fn verify(
         &self,

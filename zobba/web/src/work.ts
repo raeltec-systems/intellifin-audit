@@ -11,6 +11,7 @@ import type { components } from './generated/api.ts';
 export type TaskWork = components['schemas']['TaskWorkResponse'];
 export type TaskStep = components['schemas']['TaskStepResponse'];
 export type BriefRevision = components['schemas']['BriefRevisionResponse'];
+export type Compaction = components['schemas']['CompactionResponse'];
 export type RoutingQuestion = components['schemas']['RoutingQuestionResponse'];
 export type RoutedGuide = components['schemas']['RoutedGuideResponse'];
 export type Direction =
@@ -65,6 +66,34 @@ export function parseStep(value: unknown): TaskStep {
     next_action: nullable(v.next_action, action),
     current_work: label(v.current_work),
     knowledge_omitted: knowledgeOmitted,
+    reason: nullable(v.reason, value => oneOf(value, ['context_budget'] as const)),
+    estimated_input_tokens: nullable(v.estimated_input_tokens, cursor),
+    actual_input_tokens: nullable(v.actual_input_tokens, cursor),
+  };
+}
+
+const omissionCategories = ['steps_compacted', 'digests_omitted', 'knowledge_budget', 'knowledge_unusable', 'stale_sources', 'stale_content'] as const;
+
+/** A compaction record lists platform facts only; it carries no model or source text. */
+export function parseCompaction(value: unknown): Compaction {
+  const v = record(value);
+  const first = count(v.first_ordinal, 4095);
+  const last = count(v.last_ordinal, 4095);
+  if (first > last || typeof v.digest_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(v.digest_sha256)) invalid();
+  return {
+    sequence: count(v.sequence, 255),
+    first_ordinal: first,
+    last_ordinal: last,
+    digest_sha256: v.digest_sha256,
+    sources: array(v.sources, 512).map(source => {
+      const s = record(source);
+      return { id: identifier(s.id), revision: cursor(s.revision), status: oneOf(s.status, ['current', 'withdrawn', 'corrected', 'invalidated'] as const) };
+    }),
+    omissions: array(v.omissions, omissionCategories.length).map(omission => {
+      const o = record(omission);
+      return { category: oneOf(o.category, omissionCategories), count: count(o.count, 4294967295) };
+    }),
+    estimated_tokens: cursor(v.estimated_tokens),
   };
 }
 
@@ -98,8 +127,10 @@ export function parseWork(value: unknown, taskId: string): TaskWork {
     steps: array(v.steps, 50).map(parseStep),
     briefs: array(v.briefs, 50).map(parseBrief),
     total_steps: count(v.total_steps, 4096),
+    compactions: array(v.compactions, 20).map(parseCompaction),
+    total_compactions: count(v.total_compactions, 256),
   };
-  if (work.task_id !== taskId || work.total_steps < work.steps.length) invalid();
+  if (work.task_id !== taskId || work.total_steps < work.steps.length || work.total_compactions < work.compactions.length) invalid();
   return work;
 }
 
@@ -183,4 +214,15 @@ export function attentionLabel(value: TaskWork['attention']): string | null {
     step_failed: 'A model turn did not complete — guide or retry the Task',
     cycle_bounded: 'This work cycle reached its turn limit',
   }[value];
+}
+
+export function omissionLabel(category: string): string {
+  return ({
+    steps_compacted: 'Steps represented only by a fact digest',
+    digests_omitted: 'Digests left out by the budget',
+    knowledge_budget: 'Knowledge records left out by the budget',
+    knowledge_unusable: 'Knowledge records not usable or beyond the limit',
+    stale_sources: 'Stale knowledge revisions',
+    stale_content: 'Earlier content replaced by a stale marker',
+  } as Record<string, string>)[category] ?? category;
 }

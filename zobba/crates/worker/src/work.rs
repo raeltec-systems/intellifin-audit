@@ -13,6 +13,7 @@ use zobba_application::{
     work::{CycleEnd, SettledAttempt, ToolDispatch, WorkLoop, WorkSettings, settled_attempt},
 };
 use zobba_domain::{
+    context::ContextBudget,
     permissions::{CanonicalOperation, SourceFact},
     task::ClaimBasis,
 };
@@ -87,6 +88,8 @@ pub struct Composition<T> {
     pub disclosure: CanonicalOperation,
     pub input_class: String,
     pub max_output_tokens: u32,
+    /// Trusted profile context limit and Task setting, in conservative tokens.
+    pub context: ContextBudget,
 }
 
 impl<T: ModelTransport + 'static> WorkRunner for Composition<T> {
@@ -123,6 +126,7 @@ impl<T: ModelTransport + 'static> WorkRunner for Composition<T> {
                     disclosure: self.disclosure.clone(),
                     input_class: self.input_class.clone(),
                     max_output_tokens,
+                    context: self.context,
                 },
                 bind: bind_disclosure,
                 delay: |duration| Box::pin(tokio::time::sleep(duration)),

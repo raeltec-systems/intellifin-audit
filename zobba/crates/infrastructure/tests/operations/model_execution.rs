@@ -100,6 +100,7 @@ async fn model_request(
                 source_id: "owned-task-objective".into(),
                 input_class: "audit".into(),
                 knowledge: None,
+                depends_on: None,
             }],
         },
         input_classes: vec!["audit".into()],
@@ -509,6 +510,7 @@ pub(super) async fn verify(f: &Fixture, admin: &mut PgConnection, holder: &mut P
             source_id: "owned-tool-result".into(),
             input_class: "audit".into(),
             knowledge: None,
+            depends_on: None,
         });
         continuation
             .history
@@ -869,6 +871,7 @@ pub(super) async fn verify(f: &Fixture, admin: &mut PgConnection, holder: &mut P
             source_id: "historical-result".into(),
             input_class: "audit".into(),
             knowledge: None,
+            depends_on: None,
         });
         historical
             .history
@@ -1102,6 +1105,7 @@ async fn cumulative_history(
             source_id: source_id.clone(),
             input_class: "audit".into(),
             knowledge: None,
+            depends_on: None,
         });
         request
             .history

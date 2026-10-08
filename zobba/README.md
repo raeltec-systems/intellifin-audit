@@ -1427,6 +1427,74 @@ recovery outbox before sending it, fences late replies, recovers an unconfirmed
 direction after reload for an explicit check, and verifies that an answer names
 exactly the chosen Tasks. The work card polls while the Task is ready or running.
 
+## Compacting context without inventing authority or evidence (Story 22.3)
+
+Schema 14 is additive; published migrations and catalogues 1–13 are unchanged.
+`task_steps` gains nullable `reason` (`context_budget` only, failed model turns
+only), `estimated_input_tokens` and `actual_input_tokens` (model turns only). New
+`task_context_compactions` holds immutable records: task, cycle, sequence,
+covered ordinal range, a bounded JSONB digest with its SHA-256, the knowledge
+sources with their status when the record was made, omission counts and the
+token estimate. Runtime has SELECT/INSERT only; the SECURITY INVOKER trigger
+`work_compaction_guard` refuses a record out of sequence, a non-contiguous range
+or a digest that names another record, and both ends of a range must be
+recorded steps.
+
+Each request is planned (`zobba_domain::context::plan`, pure) under a budget in
+conservative tokens: UTF-8 bytes, which are never fewer than the tokens they
+encode, plus a per-item allowance. The budget is the minimum of the trusted
+profile limit and the Task setting (`WorkSettings.context`, composition
+supplied) and never exceeds the request validation caps (128 messages, 64
+history items, 256 KiB of messages, 256 KiB of history). Tiers: (1) owned
+system constraints and (2) objective, method, brief and unresolved decisions
+(open targeting questions naming the Task, superseded proposals by catalogue
+name, reconciliation outcomes), plus the tool catalogue and an exact bound on
+the omission summary; (3) the newest complete turns as raw history; (4)
+compaction digests of older turns; (5) current knowledge; (6) the omission
+summary with counts by category. When the uncovered history does not fit
+beside the earlier digests, the oldest whole turns are compacted: the record is
+persisted before the send, and the request is planned again with it stored, so a
+recovering producer builds the identical request. Covered steps are never
+expanded again; a later record covers the next range and earlier records remain.
+If tiers 1–2 alone exceed the budget, nothing is sent and the turn is recorded
+`failed` with reason `context_budget`. Each turn records its estimate and the
+provider's reported input tokens.
+
+A digest is canonical JSON (sorted keys, no whitespace) of step facts only —
+ordinals, kinds, statuses, intent and epoch, invocation, call, operation and
+attempt identifiers, receipt facts and fixed reasons — plus the knowledge
+`{id, revision}` references the covered turns used and fixed limitations. It
+contains no model, tool or source text and no platform label, is never a
+summary and never evidence. The store rebuilds it from immutable step and
+invocation rows and refuses one it cannot reproduce byte for byte;
+`TaskRepository::rebuild_compaction` returns that rebuild for review. Raw steps,
+invocations and results are never altered.
+
+Before disclosure the loop computes, for every earlier invocation, the knowledge
+revisions its content depends on (its own verified context plus, transitively,
+the invocations whose exchanges or answers it carried) and asks the knowledge
+owner for their current standing under the same predicate as disclosure. An
+exchange or earlier answer that depends on a withdrawn, corrected or invalidated
+revision is replaced by fixed platform facts (tool name, operation, attempt and
+receipt fact) and a stale marker naming the source and its status; the current
+revision of a corrected record is used if it fits. Only content actually
+included carries dependency verification: a model answer's context entry now
+names its producing invocation (`depends_on`), and `prepare` verifies the
+context of every included exchange's and answer's origin, transitively. A
+withdrawn source therefore no longer refuses every later turn; loss of the
+viewer's or Task's own scope is still refused.
+
+Objective, brief, knowledge, tool results, digests and earlier model output are
+each wrapped in a `[zobba-data class=<input class> source=<id>]` envelope; any
+case of the keyword inside the content is escaped (`zobba\-data`). The input
+class is carried by the envelope and is distinct from the firm's data
+classification, which alone is bound to Permissions at disclosure (that binding
+format is unchanged). Only the owned constraints are System, and tool admission
+remains Permissions-only. `GET tasks/{id}/work` adds the step reason and token
+counts and the most recent 20 compaction records (no digest body); "What Zobba is
+using" shows them with stale sources and omissions, and the raw steps stay
+listed under Current work.
+
 ## Establishing an engagement conversationally (Story 22.2 AC4)
 
 Schema 13 is additive; published migrations and catalogues 1–12 are unchanged.

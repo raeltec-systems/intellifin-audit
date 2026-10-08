@@ -7,12 +7,16 @@ use crate::task::{
 };
 use sqlx::postgres::PgRow;
 use zobba_application::{
-    knowledge::RecordReference,
+    knowledge::{RecordReference, RecordStatus},
     model::Invocation,
     task::TaskError,
     work::{MAX_WORK_KNOWLEDGE, MAX_WORK_KNOWLEDGE_BYTES, WorkBoundary, WorkKnowledge, WorkSteps},
 };
 use zobba_domain::{
+    context::{
+        CompactionDigest, ContextCompaction, MAX_COMPACTIONS_PER_CYCLE, OmissionCategory,
+        SourceState, SourceStatus,
+    },
     identity::{Scope, valid_scope_id},
     permissions::SourceFact,
     task::{
@@ -22,8 +26,8 @@ use zobba_domain::{
     work::{
         AnswerError, BRIEF_PAGE_SIZE, BriefRevision, CALL_ID_MAX, Direction,
         MAX_ROUTING_CANDIDATES, NextAction, RoutedGuide, Routing, RoutingCandidate,
-        RoutingQuestion, StepKind, StepStatus, TaskStep, TaskWork, answer_selection, direction_key,
-        route_direction, routed_guide_key, summarise,
+        RoutingQuestion, StepKind, StepReason, StepStatus, TaskStep, TaskWork, answer_selection,
+        direction_key, route_direction, routed_guide_key, summarise,
     },
 };
 
@@ -52,12 +56,152 @@ fn step(row: &PgRow) -> Result<TaskStep, TaskError> {
         current_work: get(row, "current_work")?,
         knowledge_omitted: u32::try_from(get::<i32>(row, "knowledge_omitted")?)
             .map_err(|_| TaskError::Unavailable)?,
+        reason: get::<Option<String>>(row, "reason")?
+            .map(|reason| StepReason::parse(&reason).ok_or(TaskError::Unavailable))
+            .transpose()?,
+        estimated_input_tokens: tokens(get(row, "estimated_input_tokens")?)?,
+        actual_input_tokens: tokens(get(row, "actual_input_tokens")?)?,
     };
     if step.is_valid() {
         Ok(step)
     } else {
         Err(TaskError::Unavailable)
     }
+}
+
+fn tokens(value: Option<i64>) -> Result<Option<u64>, TaskError> {
+    value
+        .map(|v| u64::try_from(v).map_err(|_| TaskError::Unavailable))
+        .transpose()
+}
+
+const COMPACTION_PAGE_SIZE: i64 = 20;
+const OPEN_QUESTION_LIMIT: i64 = 20;
+
+fn source_status(status: RecordStatus) -> SourceStatus {
+    match status {
+        RecordStatus::Current => SourceStatus::Current,
+        RecordStatus::Corrected => SourceStatus::Corrected,
+        RecordStatus::Withdrawn | RecordStatus::Excluded | RecordStatus::Forgotten => {
+            SourceStatus::Withdrawn
+        }
+        RecordStatus::Invalidated => SourceStatus::Invalidated,
+    }
+}
+
+/// Decode a stored record. The JSONB digest is re-serialised canonically
+/// (sorted keys, compact) and must hash to the stored digest identity.
+fn compaction(row: &PgRow) -> Result<ContextCompaction, TaskError> {
+    let digest: serde_json::Value = get(row, "digest")?;
+    let digest = serde_json::to_string(&digest).map_err(|_| TaskError::Unavailable)?;
+    let sources: serde_json::Value = get(row, "sources")?;
+    let sources = sources
+        .as_array()
+        .ok_or(TaskError::Unavailable)?
+        .iter()
+        .map(|source| {
+            Some(SourceState {
+                id: source.get("id")?.as_str()?.into(),
+                revision: source.get("revision")?.as_u64()?,
+                status: SourceStatus::parse(source.get("status")?.as_str()?)?,
+            })
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or(TaskError::Unavailable)?;
+    let omissions: serde_json::Value = get(row, "omissions")?;
+    let omissions = omissions
+        .as_object()
+        .ok_or(TaskError::Unavailable)?
+        .iter()
+        .map(|(category, count)| {
+            Some((
+                OmissionCategory::parse(category)?,
+                u32::try_from(count.as_u64()?).ok()?,
+            ))
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or(TaskError::Unavailable)?;
+    let record = ContextCompaction {
+        task_id: get(row, "task_id")?,
+        cycle_id: get(row, "cycle_id")?,
+        sequence: u32::try_from(get::<i32>(row, "sequence")?)
+            .map_err(|_| TaskError::Unavailable)?,
+        first_ordinal: u32::try_from(get::<i32>(row, "first_ordinal")?)
+            .map_err(|_| TaskError::Unavailable)?,
+        last_ordinal: u32::try_from(get::<i32>(row, "last_ordinal")?)
+            .map_err(|_| TaskError::Unavailable)?,
+        digest,
+        digest_sha256: get(row, "digest_sha256")?,
+        sources,
+        omissions: zobba_domain::context::omissions(&omissions),
+        estimated_tokens: tokens(Some(get(row, "estimated_tokens")?))?.unwrap_or(0),
+    };
+    if record.is_valid() {
+        Ok(record)
+    } else {
+        Err(TaskError::Unavailable)
+    }
+}
+
+async fn cycle_compactions(
+    tx: &mut Tx,
+    task_id: &str,
+    cycle_id: &str,
+) -> Result<Vec<ContextCompaction>, TaskError> {
+    sqlx::query("SELECT * FROM public.task_context_compactions WHERE task_id=$1 AND cycle_id=$2 ORDER BY sequence LIMIT $3")
+        .bind(task_id)
+        .bind(cycle_id)
+        .bind(MAX_COMPACTIONS_PER_CYCLE as i64)
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(unavailable)?
+        .iter()
+        .map(compaction)
+        .collect()
+}
+
+/// Rebuild one record's canonical digest from immutable step facts and the
+/// exact knowledge references their invocations recorded. Reproducible: the
+/// same database facts always give byte-identical text.
+async fn rebuild_digest(
+    tx: &mut Tx,
+    task_id: &str,
+    cycle_id: &str,
+    sequence: u32,
+    first: u32,
+    last: u32,
+) -> Result<String, TaskError> {
+    let steps: Vec<TaskStep> = cycle_steps(tx, task_id, cycle_id)
+        .await?
+        .into_iter()
+        .filter(|s| s.ordinal >= first && s.ordinal <= last)
+        .collect();
+    if steps.len() as u64 != u64::from(last - first) + 1 {
+        return Err(TaskError::Conflict);
+    }
+    let mut invocations: Vec<&str> = steps
+        .iter()
+        .filter_map(|s| s.invocation_id.as_deref())
+        .collect();
+    invocations.sort();
+    invocations.dedup();
+    let mut sources = Vec::new();
+    for id in invocations {
+        sources.extend(
+            crate::model::verification_items(tx, task_id, cycle_id, id)
+                .await
+                .map_err(|_| TaskError::Unavailable)?,
+        );
+    }
+    CompactionDigest {
+        task_id,
+        cycle_id,
+        sequence,
+        steps: &steps,
+        sources: &sources,
+    }
+    .canonical()
+    .ok_or(TaskError::Unavailable)
 }
 
 async fn cycle_steps(
@@ -560,6 +704,25 @@ impl TaskRepository {
         {
             attention = Some(zobba_domain::work::Attention::CycleBounded);
         }
+        let mut compactions = sqlx::query("SELECT * FROM public.task_context_compactions WHERE task_id=$1 AND cycle_id=$2 ORDER BY sequence DESC LIMIT $3")
+            .bind(task_id)
+            .bind(&cycle_id)
+            .bind(COMPACTION_PAGE_SIZE)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(unavailable)?
+            .iter()
+            .map(compaction)
+            .collect::<Result<Vec<_>, _>>()?;
+        compactions.reverse();
+        let total_compactions: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM public.task_context_compactions WHERE task_id=$1 AND cycle_id=$2",
+        )
+        .bind(task_id)
+        .bind(&cycle_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(unavailable)?;
         tx.commit().await.map_err(unavailable)?;
         Ok(TaskWork {
             task_id: task_id.into(),
@@ -577,6 +740,9 @@ impl TaskRepository {
             next_action,
             next_action_invocation_id,
             attention,
+            compactions,
+            total_compactions: u32::try_from(total_compactions)
+                .map_err(|_| TaskError::Unavailable)?,
         })
     }
 
@@ -635,6 +801,15 @@ impl TaskRepository {
                 text: view.record.text,
             })
             .collect();
+        let compactions = cycle_compactions(&mut tx, &b.task_id, &b.cycle_id).await?;
+        // Unresolved targeting questions that list this Task. Only identifiers
+        // enter context; nothing a question asks has been applied.
+        let open_questions: Vec<String> = sqlx::query_scalar("SELECT q.id FROM public.task_routing_questions q WHERE q.candidates @> jsonb_build_array(jsonb_build_object('task_id',$1::text)) AND NOT EXISTS(SELECT 1 FROM public.task_routing_answers a WHERE a.question_id=q.id) ORDER BY q.asked_at, q.id COLLATE \"C\" LIMIT $2")
+            .bind(&b.task_id)
+            .bind(OPEN_QUESTION_LIMIT)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(unavailable)?;
         let mut basis = b.clone();
         basis.intent_revision = applied_intent;
         let boundary = WorkBoundary {
@@ -645,6 +820,8 @@ impl TaskRepository {
             steps,
             knowledge,
             knowledge_omitted,
+            compactions,
+            open_questions,
         };
         admission_fence(&mut tx, &b.actor_id, &b.scope, None).await?;
         tx.commit().await.map_err(unavailable)?;
@@ -705,7 +882,7 @@ impl TaskRepository {
         } else {
             input.clone()
         };
-        sqlx::query("INSERT INTO public.task_steps(organisation_id,client_id,engagement_id,task_id,cycle_id,ordinal,kind,intent_revision,execution_epoch,invocation_id,call_id,operation_id,attempt_id,fact,status,next_action,current_work,knowledge_omitted) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)")
+        sqlx::query("INSERT INTO public.task_steps(organisation_id,client_id,engagement_id,task_id,cycle_id,ordinal,kind,intent_revision,execution_epoch,invocation_id,call_id,operation_id,attempt_id,fact,status,next_action,current_work,knowledge_omitted,reason,estimated_input_tokens,actual_input_tokens) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)")
             .bind(&b.scope.organisation_id).bind(&b.scope.client_id).bind(&b.scope.engagement_id)
             .bind(&stored.task_id).bind(&stored.cycle_id).bind(stored.ordinal as i32).bind(stored.kind.as_str())
             .bind(stored.intent_revision as i64).bind(stored.execution_epoch as i64)
@@ -713,6 +890,9 @@ impl TaskRepository {
             .bind(stored.fact.map(|f| f.as_str())).bind(stored.status.as_str())
             .bind(stored.next_action.as_ref().map(NextAction::descriptor)).bind(&stored.current_work)
             .bind(i32::try_from(stored.knowledge_omitted).map_err(|_| TaskError::Invalid)?)
+            .bind(stored.reason.map(|r| r.as_str()))
+            .bind(stored.estimated_input_tokens.map(|v| v as i64))
+            .bind(stored.actual_input_tokens.map(|v| v as i64))
             .execute(&mut *tx).await.map_err(|error| {
                 // A storage guard (wrong Task/cycle binding) is a refusal, not an outage.
                 if error.as_database_error().and_then(|e| e.code()).as_deref() == Some("23514") {
@@ -769,7 +949,158 @@ impl TaskRepository {
     }
 }
 
+impl TaskRepository {
+    /// See `WorkSteps::source_statuses`.
+    pub async fn source_statuses(
+        &self,
+        b: &ClaimBasis,
+        references: &[RecordReference],
+    ) -> Result<Vec<SourceStatus>, TaskError> {
+        let mut tx = lock(self.pool(), &b.actor_id, &b.scope).await?;
+        producer(&mut tx, b).await?;
+        let statuses = crate::knowledge::reference_statuses_in_transaction(
+            &mut tx,
+            &b.actor_id,
+            &b.scope,
+            &b.task_id,
+            references,
+        )
+        .await
+        .map_err(|error| match error {
+            zobba_application::knowledge::KnowledgeError::Denied => TaskError::Fenced,
+            zobba_application::knowledge::KnowledgeError::Invalid => TaskError::Invalid,
+            _ => TaskError::Unavailable,
+        })?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(statuses.into_iter().map(source_status).collect())
+    }
+
+    /// See `WorkSteps::compact`. The digest is rebuilt here from immutable
+    /// facts and must match exactly; the store never accepts a digest it
+    /// cannot reproduce, so no model or source text can enter a record.
+    pub async fn compact(
+        &self,
+        b: &ClaimBasis,
+        record: &ContextCompaction,
+    ) -> Result<ContextCompaction, TaskError> {
+        if !record.is_valid() || record.task_id != b.task_id || record.cycle_id != b.cycle_id {
+            return Err(TaskError::Invalid);
+        }
+        let mut tx = lock(self.pool(), &b.actor_id, &b.scope).await?;
+        producer(&mut tx, b).await?;
+        let existing = cycle_compactions(&mut tx, &b.task_id, &b.cycle_id).await?;
+        if let Some(stored) = existing.iter().find(|c| c.sequence == record.sequence) {
+            if stored.first_ordinal != record.first_ordinal
+                || stored.last_ordinal != record.last_ordinal
+                || stored.digest != record.digest
+            {
+                return Err(TaskError::Conflict);
+            }
+            let stored = stored.clone();
+            tx.commit().await.map_err(unavailable)?;
+            return Ok(stored);
+        }
+        let rebuilt = rebuild_digest(
+            &mut tx,
+            &b.task_id,
+            &b.cycle_id,
+            record.sequence,
+            record.first_ordinal,
+            record.last_ordinal,
+        )
+        .await?;
+        if rebuilt != record.digest {
+            return Err(TaskError::Conflict);
+        }
+        let digest: serde_json::Value =
+            serde_json::from_str(&record.digest).map_err(|_| TaskError::Invalid)?;
+        let sources = serde_json::Value::Array(
+            record
+                .sources
+                .iter()
+                .map(|s| serde_json::json!({"id": s.id, "revision": s.revision, "status": s.status.as_str()}))
+                .collect(),
+        );
+        let omissions = serde_json::Value::Object(
+            record
+                .omissions
+                .iter()
+                .map(|(c, n)| (c.as_str().to_string(), serde_json::json!(n)))
+                .collect(),
+        );
+        sqlx::query("INSERT INTO public.task_context_compactions(organisation_id,client_id,engagement_id,task_id,cycle_id,sequence,first_ordinal,last_ordinal,digest,digest_sha256,sources,omissions,estimated_tokens) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)")
+            .bind(&b.scope.organisation_id).bind(&b.scope.client_id).bind(&b.scope.engagement_id)
+            .bind(&b.task_id).bind(&b.cycle_id).bind(record.sequence as i32)
+            .bind(record.first_ordinal as i32).bind(record.last_ordinal as i32)
+            .bind(digest).bind(&record.digest_sha256).bind(sources).bind(omissions)
+            .bind(record.estimated_tokens as i64)
+            .execute(&mut *tx).await.map_err(|error| {
+                if error.as_database_error().and_then(|e| e.code()).as_deref() == Some("23514") {
+                    TaskError::Conflict
+                } else {
+                    TaskError::Unavailable
+                }
+            })?;
+        let stored = cycle_compactions(&mut tx, &b.task_id, &b.cycle_id)
+            .await?
+            .into_iter()
+            .find(|c| c.sequence == record.sequence)
+            .ok_or(TaskError::Unavailable)?;
+        if stored.digest != record.digest {
+            return Err(TaskError::Unavailable);
+        }
+        tx.commit().await.map_err(unavailable)?;
+        Ok(stored)
+    }
+
+    /// Rebuild a stored record's digest from the database for review. The
+    /// result is byte-identical to the stored canonical digest.
+    pub async fn rebuild_compaction(
+        &self,
+        actor: &str,
+        s: &Scope,
+        task_id: &str,
+        cycle_id: &str,
+        sequence: u32,
+    ) -> Result<String, TaskError> {
+        if !valid_scope_id(task_id) || !valid_scope_id(cycle_id) {
+            return Err(TaskError::Invalid);
+        }
+        let mut tx = begin(self.pool(), actor, s).await?;
+        let record = cycle_compactions(&mut tx, task_id, cycle_id)
+            .await?
+            .into_iter()
+            .find(|c| c.sequence == sequence)
+            .ok_or(TaskError::Denied)?;
+        let rebuilt = rebuild_digest(
+            &mut tx,
+            task_id,
+            cycle_id,
+            sequence,
+            record.first_ordinal,
+            record.last_ordinal,
+        )
+        .await?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(rebuilt)
+    }
+}
+
 impl WorkSteps for TaskRepository {
+    async fn source_statuses(
+        &self,
+        basis: &ClaimBasis,
+        references: &[RecordReference],
+    ) -> Result<Vec<SourceStatus>, TaskError> {
+        TaskRepository::source_statuses(self, basis, references).await
+    }
+    async fn compact(
+        &self,
+        basis: &ClaimBasis,
+        record: &ContextCompaction,
+    ) -> Result<ContextCompaction, TaskError> {
+        TaskRepository::compact(self, basis, record).await
+    }
     async fn boundary(&self, basis: &ClaimBasis) -> Result<WorkBoundary, TaskError> {
         TaskRepository::boundary(self, basis).await
     }

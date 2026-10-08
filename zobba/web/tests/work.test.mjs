@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { attentionLabel, nextActionLabel, parseDirection, parseQuestion, parseQuestionPage, parseWork, verifyAnswer } from '../src/work.ts';
 import { OutboxStore, directionOutbox } from '../src/conversation-outbox.ts';
 
-const step = { ordinal: 0, kind: 'model_turn', status: 'proposed', intent_revision: '1', execution_epoch: '1', invocation_id: 'inv-a', operation_id: null, next_action: 'tool:send_exact', current_work: 'Model turn 1 proposed tools', knowledge_omitted: 2 };
+const step = { ordinal: 0, kind: 'model_turn', status: 'proposed', intent_revision: '1', execution_epoch: '1', invocation_id: 'inv-a', operation_id: null, next_action: 'tool:send_exact', current_work: 'Model turn 1 proposed tools', knowledge_omitted: 2, reason: null, estimated_input_tokens: '4096', actual_input_tokens: '3900' };
 const brief = { command_id: 'cmd-a', cycle_id: 'cycle-a', content: 'Objective', received_cursor: '1', applied_boundary: 0, applied_cursor: '2', superseded_by: null };
-const work = { task_id: 'task-a', cycle_id: 'cycle-a', model_available: true, methodology_binding_id: 'binding-a', methodology_status: 'neutral', current_work: 'Model turn 1 proposed tools', next_action: 'tool:send_exact', next_action_invocation_id: 'inv-a', attention: null, steps: [step], briefs: [brief], total_steps: 9 };
+const compaction = { sequence: 0, first_ordinal: 0, last_ordinal: 5, digest_sha256: 'a'.repeat(64), sources: [{ id: 'record-a', revision: '1', status: 'withdrawn' }], omissions: [{ category: 'steps_compacted', count: 6 }, { category: 'stale_sources', count: 1 }], estimated_tokens: '4096' };
+const work = { task_id: 'task-a', cycle_id: 'cycle-a', model_available: true, methodology_binding_id: 'binding-a', methodology_status: 'neutral', current_work: 'Model turn 1 proposed tools', next_action: 'tool:send_exact', next_action_invocation_id: 'inv-a', attention: null, steps: [step], briefs: [brief], total_steps: 9, compactions: [compaction], total_compactions: 1 };
 
 test('work projection is strictly parsed and bound to the requested Task', () => {
   assert.deepEqual(parseWork(work, 'task-a'), work);
@@ -22,6 +23,13 @@ test('work projection is strictly parsed and bound to the requested Task', () =>
     { ...work, total_steps: '9' },
     { ...work, steps: [{ ...step, knowledge_omitted: -1 }] },
     { ...work, steps: [{ ...step, kind: 'tool_step', knowledge_omitted: 1 }] },
+    { ...work, steps: [{ ...step, reason: 'model_wanted_to_stop' }] },
+    { ...work, steps: [{ ...step, estimated_input_tokens: 4096 }] },
+    { ...work, compactions: [{ ...compaction, first_ordinal: 6 }] },
+    { ...work, compactions: [{ ...compaction, digest_sha256: 'summary text' }] },
+    { ...work, compactions: [{ ...compaction, sources: [{ id: 'record-a', revision: '1', status: 'gone' }] }] },
+    { ...work, compactions: [{ ...compaction, omissions: [{ category: 'model_summary', count: 1 }] }] },
+    { ...work, compactions: [compaction], total_compactions: 0 },
   ]) assert.throws(() => parseWork(bad, 'task-a'));
 });
 

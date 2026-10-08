@@ -195,6 +195,12 @@ fn history_is_acyclic(
     visited == graph.len()
 }
 
+/// Verify, under the current consuming basis, every earlier invocation whose
+/// content this request actually carries: the origin of each included tool
+/// exchange and of each entry that names a dependency (an earlier answer),
+/// transitively through the content those invocations themselves carried.
+/// Content that is not sent needs no current authority; a withdrawn source can
+/// therefore stop being disclosed without refusing every later turn.
 async fn history_authority(
     tx: &mut Tx,
     actor: &str,
@@ -207,21 +213,36 @@ async fn history_authority(
     let mut contexts = Vec::new();
     let mut edges = 0usize;
     while let Some(part) = pending.pop() {
-        for item in &part.history {
-            let HistoryItem::ToolExchange(exchange) = item else {
-                continue;
-            };
-            let identity = (exchange.invocation_id.clone(), exchange.call_id.clone());
-            if let Some(previous) = exchanges.get(&identity) {
-                if previous != exchange.as_ref() {
-                    return Err(ModelError::Conflict);
+        let mut origins: Vec<(String, Option<&ToolExchange>)> = part
+            .history
+            .iter()
+            .filter_map(|item| match item {
+                HistoryItem::ToolExchange(exchange) => {
+                    Some((exchange.invocation_id.clone(), Some(exchange.as_ref())))
                 }
-                continue;
+                HistoryItem::Message(_) => None,
+            })
+            .collect();
+        origins.extend(
+            part.context
+                .entries
+                .iter()
+                .filter_map(|entry| entry.depends_on.clone().map(|id| (id, None))),
+        );
+        for (origin, exchange) in origins {
+            if let Some(exchange) = exchange {
+                let identity = (exchange.invocation_id.clone(), exchange.call_id.clone());
+                if let Some(previous) = exchanges.get(&identity) {
+                    if previous != exchange {
+                        return Err(ModelError::Conflict);
+                    }
+                    continue;
+                }
+                if exchanges.len() >= MAX_HISTORY_DEPENDENCIES {
+                    return Err(ModelError::Capacity);
+                }
             }
-            if exchanges.len() >= MAX_HISTORY_DEPENDENCIES {
-                return Err(ModelError::Capacity);
-            }
-            let original = load(tx, &exchange.invocation_id).await?;
+            let original = load(tx, &origin).await?;
             original.request.validate()?;
             if original.request.basis.scope != request.basis.scope
                 || original.request.basis.task_id != request.basis.task_id
@@ -229,30 +250,38 @@ async fn history_authority(
             {
                 return Err(ModelError::Denied);
             }
-            let (tool, canonical) = validated_tool(&original, &exchange.call_id)?;
-            if tool != exchange.tool || tool.resolve(&exchange.arguments)? != canonical {
+            if let Some(exchange) = exchange {
+                let (tool, canonical) = validated_tool(&original, &exchange.call_id)?;
+                if tool != exchange.tool || tool.resolve(&exchange.arguments)? != canonical {
+                    return Err(ModelError::Conflict);
+                }
+                let bound:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM public.model_tool_bindings WHERE operation_id=$1 AND invocation_id=$2 AND call_id=$3)")
+                    .bind(&exchange.result.operation_id).bind(&exchange.invocation_id).bind(&exchange.call_id).fetch_one(&mut **tx).await.map_err(db)?;
+                if !bound {
+                    return Err(ModelError::Conflict);
+                }
+                operation::model_history_access(
+                    tx,
+                    &request.basis.actor_id,
+                    &exchange.result.operation_id,
+                    &exchange.result.attempt_id,
+                    exchange.result.fact,
+                )
+                .await
+                .map_err(op)?;
+                exchanges.insert(
+                    (exchange.invocation_id.clone(), exchange.call_id.clone()),
+                    exchange.clone(),
+                );
+            } else if original.outcome.is_none() {
+                // A dependent answer must name an invocation that answered.
                 return Err(ModelError::Conflict);
             }
-            let bound:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM public.model_tool_bindings WHERE operation_id=$1 AND invocation_id=$2 AND call_id=$3)")
-                .bind(&exchange.result.operation_id).bind(&exchange.invocation_id).bind(&exchange.call_id).fetch_one(&mut **tx).await.map_err(db)?;
-            if !bound {
-                return Err(ModelError::Conflict);
-            }
-            operation::model_history_access(
-                tx,
-                &request.basis.actor_id,
-                &exchange.result.operation_id,
-                &exchange.result.attempt_id,
-                exchange.result.fact,
-            )
-            .await
-            .map_err(op)?;
-            exchanges.insert(identity, exchange.as_ref().clone());
             if !graph.contains_key(&original.id) {
                 if graph.len() >= MAX_HISTORY_DEPENDENCIES {
                     return Err(ModelError::Capacity);
                 }
-                let dependencies: BTreeSet<String> = original
+                let mut dependencies: BTreeSet<String> = original
                     .request
                     .history
                     .iter()
@@ -264,6 +293,14 @@ async fn history_authority(
                         }
                     })
                     .collect();
+                dependencies.extend(
+                    original
+                        .request
+                        .context
+                        .entries
+                        .iter()
+                        .filter_map(|entry| entry.depends_on.clone()),
+                );
                 edges += dependencies.len();
                 if edges > MAX_HISTORY_EDGES {
                     return Err(ModelError::Capacity);
@@ -299,6 +336,28 @@ async fn history_authority(
         return Err(ModelError::Denied);
     }
     Ok(())
+}
+/// Exact knowledge references one invocation of a Task cycle recorded as its
+/// verified context. Used to rebuild compaction digests from durable facts.
+pub(crate) async fn verification_items(
+    tx: &mut Tx,
+    task_id: &str,
+    cycle_id: &str,
+    id: &str,
+) -> Result<Vec<(String, u64)>, ModelError> {
+    let invocation = load(tx, id).await?;
+    let basis = &invocation.request.basis;
+    if basis.task_id != task_id || basis.cycle_id != cycle_id {
+        return Err(ModelError::Denied);
+    }
+    Ok(invocation
+        .request
+        .context
+        .verification
+        .items
+        .iter()
+        .map(|v| (v.id.clone(), v.revision))
+        .collect())
 }
 async fn audience(tx: &mut Tx, actor: &str, request: &ModelRequest) -> Result<(), ModelError> {
     let b = &request.basis;

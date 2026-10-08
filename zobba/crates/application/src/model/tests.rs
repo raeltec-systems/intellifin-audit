@@ -94,6 +94,7 @@ fn request() -> ModelRequest {
                 source_id: "brief".into(),
                 input_class: "task_brief".into(),
                 knowledge: None,
+                depends_on: None,
             }],
         },
         input_classes: vec!["task_brief".into()],
@@ -152,6 +153,7 @@ fn with_tool_history() -> ModelRequest {
         source_id: "tool_receipt".into(),
         input_class: "tool_result".into(),
         knowledge: None,
+        depends_on: None,
     });
     let tool = request.catalogue.tools[0].clone();
     request

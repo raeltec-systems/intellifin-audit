@@ -2,7 +2,7 @@
 title: '22.3 — Compact context without inventing authority or evidence'
 type: 'feature'
 created: '2026-10-08'
-status: 'in-progress'
+status: 'in-review'
 baseline_commit: '4bb2c70d0e9e6ea48e4baa4c42e5bdb922886b7f'
 story_key: 22-3-compact-context-without-inventing-authority-or-evidence
 review_loop_iteration: 0
@@ -113,29 +113,29 @@ All paths are under `zobba/`.
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `migrations/0014_context_compaction.sql`, `schema-v14.catalog`, schema plumbing
+- [x] `migrations/0014_context_compaction.sql`, `schema-v14.catalog`, schema plumbing
   - Add `task_context_compactions`: task, cycle, sequence, covered step range, a structured digest in JSONB (bounded), source refs with revisions and status, omission categories and counts, estimated tokens and created time. RLS, grants and immutability.
   - Add estimated and actual input tokens to `task_steps`.
-- [ ] `domain/src/context.rs` (new)
+- [x] `domain/src/context.rs` (new)
   - The tier planner, which is pure: it takes the inputs and a budget and returns the included items, a compaction plan and omissions.
   - The deterministic digest builder and canonical serialisation.
   - The data envelope and its escaping.
   - The conservative token estimate.
   - Unit tests for every row of the matrix.
-- [ ] `application/src/work.rs`
+- [x] `application/src/work.rs`
   - Use the planner in `request()`. Persist compaction before the send.
   - Record the `context_budget` failure step.
   - Emit stale markers.
   - Assign an input class to each source.
-- [ ] `infrastructure/src/{work.rs,knowledge.rs,model/mod.rs}`
+- [x] `infrastructure/src/{work.rs,knowledge.rs,model/mod.rs}`
   - Compaction repository.
   - Stale knowledge status in the context read.
   - Limit `history_authority` to included content; this verification stays the gate.
   - Record actual usage onto the step.
-- [ ] `api/src/work.rs`, web `TaskWorkPanel.tsx`
+- [x] `api/src/work.rs`, web `TaskWorkPanel.tsx`
   - Show the compaction records and omission and stale markers in "What Zobba is using".
   - Raw steps stay reachable.
-- [ ] Tests:
+- [x] Tests:
   - PostgreSQL: over-budget, repeated compaction rebuild identity, withdrawal and correction mid-cycle with a tool exchange in history, tier-1 overflow.
   - Adversarial injection fixtures through real admission.
   - Scope-negative retrieval, where another Task's or engagement's knowledge is never included.
@@ -160,3 +160,32 @@ Limiting the transitive check to included content keeps 22.1's rule that revoked
 - `cargo fmt --check && cargo clippy --locked --workspace --all-targets -- -D warnings` -- expected: clean.
 - `cargo test --locked --workspace -- --test-threads=1` -- expected: all pass.
 - `cargo run -p zobba-cli --locked -- openapi`, then `pnpm check && pnpm test:browser` -- expected: the types match and the suites pass with zero retries. The only allowed failures are the two known IPv6-only sandbox unit tests.
+
+## Implementation Notes (2026-10-08)
+
+- Schema 14 (`0014_context_compaction.sql`, `schema-v14.catalog` captured byte for
+  byte with psql from the migrated catalogue): `task_steps.reason`
+  (`context_budget`), `estimated_input_tokens`, `actual_input_tokens`; immutable
+  `task_context_compactions` (forced scoped RLS, SELECT/INSERT runtime grants,
+  SECURITY INVOKER `work_compaction_guard` for sequence, contiguity and
+  self-naming digests; both range ends are FKs to recorded steps). Migrations and
+  catalogues 1–13 unchanged.
+- `domain/src/context.rs` is the pure planner, canonical digest builder, data
+  envelope with delimiter escaping, and byte-based token estimate. Earlier digests
+  are kept before extra raw turns; only when every step is compacted are the
+  oldest digests omitted (and counted).
+- `application/src/work.rs`: tiered planning; compaction persisted before the
+  send and the request re-planned with the stored record (identical on recovery);
+  stale markers from transitive knowledge dependencies; `context_budget` failed
+  step; estimate and provider input tokens recorded on each turn.
+- Disclosure: `ContextEntry.depends_on` (optional, omitted from stored JSON when
+  absent, so old requests and bindings are unchanged) names the invocation an
+  earlier answer came from; `history_authority` verifies the origins of included
+  exchanges and answers, transitively. The disclosure-binding format and
+  Permissions classification are unchanged: the per-kind input class is carried
+  by the envelope, not as a new Permissions classification (that would be an
+  Ask First change).
+- Limitations: the "Task setting" and the profile context limit are both supplied
+  by the trusted composition (`WorkSettings.context`); there is no per-Task user
+  setting or profile field yet. No populated 13→14 upgrade test with existing
+  `task_steps` rows (existing upgrade tests reach 14 from 8, 9 and 10).

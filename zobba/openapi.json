@@ -10068,6 +10068,80 @@
           }
         }
       },
+      "CompactionResponse": {
+        "type": "object",
+        "description": "A durable context compaction record: a deterministic digest of recorded step\nfacts (never a model summary, never evidence). The covered raw steps remain\ninspectable.",
+        "required": [
+          "sequence",
+          "first_ordinal",
+          "last_ordinal",
+          "digest_sha256",
+          "sources",
+          "omissions",
+          "estimated_tokens"
+        ],
+        "properties": {
+          "digest_sha256": {
+            "type": "string",
+            "description": "SHA-256 of the canonical digest, reproducible from the database.",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "estimated_tokens": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "first_ordinal": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "last_ordinal": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "omissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OmissionResponse"
+            },
+            "maxItems": 6
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompactionSourceResponse"
+            },
+            "maxItems": 512
+          }
+        }
+      },
+      "CompactionSourceResponse": {
+        "type": "object",
+        "description": "A knowledge revision an earlier compacted turn used, with its standing when\nthe record was made.",
+        "required": [
+          "id",
+          "revision",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SourceStatusResponse"
+          }
+        }
+      },
       "ConfirmSetupRequest": {
         "type": "object",
         "required": [
@@ -13589,6 +13663,25 @@
           "reconciliation"
         ]
       },
+      "OmissionResponse": {
+        "type": "object",
+        "description": "Count of material left out by category. An omission never means absence.",
+        "required": [
+          "category",
+          "count"
+        ],
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "`steps_compacted`, `digests_omitted`, `knowledge_budget`,\n`knowledge_unusable`, `stale_sources` or `stale_content`."
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "OpenSetupRequest": {
         "type": "object",
         "required": [
@@ -15756,11 +15849,26 @@
           "authoritatively_absent"
         ]
       },
+      "SourceStatusResponse": {
+        "type": "string",
+        "enum": [
+          "current",
+          "withdrawn",
+          "corrected",
+          "invalidated"
+        ]
+      },
       "StepKindResponse": {
         "type": "string",
         "enum": [
           "model_turn",
           "tool_step"
+        ]
+      },
+      "StepReasonResponse": {
+        "type": "string",
+        "enum": [
+          "context_budget"
         ]
       },
       "StepStatusResponse": {
@@ -16073,12 +16181,31 @@
           "operation_id",
           "next_action",
           "current_work",
-          "knowledge_omitted"
+          "knowledge_omitted",
+          "reason",
+          "estimated_input_tokens",
+          "actual_input_tokens"
         ],
         "properties": {
+          "actual_input_tokens": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model turns: input tokens the provider reported, when known.",
+            "pattern": "^[0-9]+$"
+          },
           "current_work": {
             "type": "string",
             "maxLength": 200
+          },
+          "estimated_input_tokens": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model turns: conservative token estimate of the planned request.",
+            "pattern": "^[0-9]+$"
           },
           "execution_epoch": {
             "type": "string",
@@ -16121,6 +16248,17 @@
             "format": "int32",
             "minimum": 0
           },
+          "reason": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/StepReasonResponse",
+                "description": "Fixed reason the platform ended a failed turn without sending it."
+              }
+            ]
+          },
           "status": {
             "$ref": "#/components/schemas/StepStatusResponse"
           }
@@ -16140,7 +16278,9 @@
           "attention",
           "steps",
           "total_steps",
-          "briefs"
+          "briefs",
+          "compactions",
+          "total_compactions"
         ],
         "properties": {
           "attention": {
@@ -16159,6 +16299,14 @@
               "$ref": "#/components/schemas/BriefRevisionResponse"
             },
             "maxItems": 50
+          },
+          "compactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompactionResponse"
+            },
+            "description": "The most recent context compaction records of the current cycle, oldest first.",
+            "maxItems": 20
           },
           "current_work": {
             "type": [
@@ -16208,6 +16356,12 @@
           },
           "task_id": {
             "type": "string"
+          },
+          "total_compactions": {
+            "type": "integer",
+            "format": "int32",
+            "description": "All compaction records of the current cycle.",
+            "minimum": 0
           },
           "total_steps": {
             "type": "integer",

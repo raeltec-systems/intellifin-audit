@@ -430,6 +430,7 @@ async fn fixture(
                 source_id: "owned-objective".into(),
                 input_class: "public".into(),
                 knowledge: None,
+                depends_on: None,
             }],
         },
         input_classes: vec!["public".into()],

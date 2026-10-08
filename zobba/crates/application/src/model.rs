@@ -22,6 +22,10 @@ pub struct ContextEntry {
     pub source_id: String,
     pub input_class: String,
     pub knowledge: Option<RecordReference>,
+    /// The earlier invocation whose own context produced this entry's content
+    /// (for example, the model's earlier answer). Disclosure verifies that
+    /// invocation's context again, transitively, exactly as for a tool exchange.
+    pub depends_on: Option<String>,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ContextManifest {
@@ -156,6 +160,10 @@ impl ModelRequest {
                         .iter()
                         .any(|v| v.id == r.id && v.revision == r.revision)
                 })
+                || entry
+                    .depends_on
+                    .as_ref()
+                    .is_some_and(|id| !valid_scope_id(id) || entry.knowledge.is_some())
             {
                 return Err(ModelError::Invalid);
             }

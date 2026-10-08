@@ -12,7 +12,7 @@ import { readTaskBasis } from './methodology';
 import { TaskKnowledge } from './TaskKnowledge';
 import { InspectionPreference, useInspectionPreference } from './InspectionPreference';
 import type { MethodContext, SkillContext } from './knowledge-context';
-import { TaskWorkPanel } from './TaskWorkPanel';
+import { TaskContextUse, TaskWorkPanel } from './TaskWorkPanel';
 import { RoutingQuestions } from './RoutingQuestions';
 import { postDirection } from './work';
 import type { RoutingQuestion } from './work';
@@ -446,6 +446,7 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
               <TaskWorkPanel key={`${session.identity.id}/${session.csrf_token}/${selected.id}/work`} scope={engagement} taskId={selected.id} taskRevision={selected.revision} taskState={selected.state} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} />
               <section key={`${selected.id}/${opening ?? ''}`} className="working-context" aria-label="What Zobba is using"><h3>What Zobba is using</h3>
                 <TaskKnowledge key={`${session.identity.id}/${session.csrf_token}/${selected.id}/knowledge`} scope={engagement} task={selected} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} method={methodContext} skills={skillContext} onApplyLayout={layout => { explicitLayoutOpening.current = opening; setExpanded(layout === 'expanded' && window.matchMedia('(min-width: 1001px)').matches); }} onGuide={() => { draftGeneration.current += 1; chooseTarget({ kind: 'guide', task_id: selected.id, cycle_id: selected.cycle_id, objective: selected.objective }); setView('conversation'); requestAnimationFrame(() => textarea.current?.focus()); }} />
+                <TaskContextUse key={`${session.identity.id}/${session.csrf_token}/${selected.id}/context`} scope={engagement} taskId={selected.id} taskRevision={selected.revision} taskState={selected.state} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} />
                 <TaskMethodology scope={engagement} taskId={selected.id} taskRevision={selected.revision} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} onContext={setMethodContext} />
                 <TaskSkills key={`${session.identity.id}/${session.csrf_token}/${selected.id}`} scope={engagement} taskId={selected.id} taskRevision={selected.revision} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} onContext={setSkillContext} />
               </section>

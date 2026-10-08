@@ -1192,6 +1192,33 @@ export interface components {
             status: components["schemas"]["ReceiptStatusResponse"];
             task_id: string;
         };
+        /**
+         * @description A durable context compaction record: a deterministic digest of recorded step
+         *     facts (never a model summary, never evidence). The covered raw steps remain
+         *     inspectable.
+         */
+        CompactionResponse: {
+            /** @description SHA-256 of the canonical digest, reproducible from the database. */
+            digest_sha256: string;
+            estimated_tokens: string;
+            /** Format: int32 */
+            first_ordinal: number;
+            /** Format: int32 */
+            last_ordinal: number;
+            omissions: components["schemas"]["OmissionResponse"][];
+            /** Format: int32 */
+            sequence: number;
+            sources: components["schemas"]["CompactionSourceResponse"][];
+        };
+        /**
+         * @description A knowledge revision an earlier compacted turn used, with its standing when
+         *     the record was made.
+         */
+        CompactionSourceResponse: {
+            id: string;
+            revision: string;
+            status: components["schemas"]["SourceStatusResponse"];
+        };
         ConfirmSetupRequest: {
             key: string;
         };
@@ -1998,6 +2025,16 @@ export interface components {
         };
         /** @enum {string} */
         ObservationSourceResponse: "dispatch" | "reconciliation";
+        /** @description Count of material left out by category. An omission never means absence. */
+        OmissionResponse: {
+            /**
+             * @description `steps_compacted`, `digests_omitted`, `knowledge_budget`,
+             *     `knowledge_unusable`, `stale_sources` or `stale_content`.
+             */
+            category: string;
+            /** Format: int32 */
+            count: number;
+        };
         OpenSetupRequest: {
             /** @description Actor and organisation bind this key; an identical retry returns the original setup. */
             key: string;
@@ -2474,7 +2511,11 @@ export interface components {
         /** @enum {string} */
         SourceFactResponse: "unknown" | "accepted" | "completed" | "authoritatively_absent";
         /** @enum {string} */
+        SourceStatusResponse: "current" | "withdrawn" | "corrected" | "invalidated";
+        /** @enum {string} */
         StepKindResponse: "model_turn" | "tool_step";
+        /** @enum {string} */
+        StepReasonResponse: "context_budget";
         /** @enum {string} */
         StepStatusResponse: "proposed" | "responded" | "superseded" | "failed" | "completed" | "refused" | "reconciliation_required";
         TaskCommandRequest: {
@@ -2544,7 +2585,11 @@ export interface components {
         TaskStateResponse: "ready" | "running" | "paused" | "stopped" | "waiting";
         /** @description One immutable recorded step. Labels are fixed platform text, never model output. */
         TaskStepResponse: {
+            /** @description Model turns: input tokens the provider reported, when known. */
+            actual_input_tokens: string | null;
             current_work: string;
+            /** @description Model turns: conservative token estimate of the planned request. */
+            estimated_input_tokens: string | null;
             execution_epoch: string;
             intent_revision: string;
             invocation_id: string | null;
@@ -2559,11 +2604,14 @@ export interface components {
             operation_id: string | null;
             /** Format: int32 */
             ordinal: number;
+            reason: null | components["schemas"]["StepReasonResponse"];
             status: components["schemas"]["StepStatusResponse"];
         };
         TaskWorkResponse: {
             attention: null | components["schemas"]["AttentionResponse"];
             briefs: components["schemas"]["BriefRevisionResponse"][];
+            /** @description The most recent context compaction records of the current cycle, oldest first. */
+            compactions: components["schemas"]["CompactionResponse"][];
             current_work: string | null;
             cycle_id: string;
             methodology_binding_id: string | null;
@@ -2579,6 +2627,11 @@ export interface components {
             /** @description The most recent recorded steps of the current cycle, in order. */
             steps: components["schemas"]["TaskStepResponse"][];
             task_id: string;
+            /**
+             * Format: int32
+             * @description All compaction records of the current cycle.
+             */
+            total_compactions: number;
             /**
              * Format: int32
              * @description All steps recorded in the current cycle; earlier ones may be omitted above.

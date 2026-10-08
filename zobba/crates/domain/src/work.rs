@@ -165,6 +165,34 @@ pub struct TaskStep {
     /// Model turns only: authorised knowledge records left out of this turn's
     /// context by the context limit or because they were not usable.
     pub knowledge_omitted: u32,
+    /// Fixed reason for a failed model turn the platform did not send.
+    pub reason: Option<StepReason>,
+    /// Model turns only: conservative token estimate of the planned request.
+    pub estimated_input_tokens: Option<u64>,
+    /// Model turns only: input tokens the provider reported, when known.
+    pub actual_input_tokens: Option<u64>,
+}
+
+/// Why the platform itself ended a step. Fixed vocabulary, never model text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StepReason {
+    /// The owned constraints, objective, method, brief and unresolved
+    /// decisions alone exceed the context budget, so nothing was sent.
+    ContextBudget,
+}
+
+impl StepReason {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ContextBudget => "context_budget",
+        }
+    }
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "context_budget" => Some(Self::ContextBudget),
+            _ => None,
+        }
+    }
 }
 
 impl TaskStep {
@@ -198,6 +226,13 @@ impl TaskStep {
                 }
             }
             && self.knowledge_omitted <= MAX_KNOWLEDGE_OMITTED
+            && (self.reason.is_none()
+                || (self.kind == StepKind::ModelTurn && self.status == StepStatus::Failed))
+            && (self.kind == StepKind::ModelTurn
+                || (self.estimated_input_tokens.is_none() && self.actual_input_tokens.is_none()))
+            && [self.estimated_input_tokens, self.actual_input_tokens]
+                .iter()
+                .all(|v| v.is_none_or(|v| v <= i64::MAX as u64))
             && (self.invocation_id.is_some() || self.status == StepStatus::Failed)
             && match self.status {
                 StepStatus::Completed => {
@@ -297,6 +332,11 @@ pub struct TaskWork {
     /// The invocation that proposed `next_action`, when one did.
     pub next_action_invocation_id: Option<String>,
     pub attention: Option<Attention>,
+    /// Most recent context compaction records of the current cycle, oldest
+    /// first. Raw steps stay reachable; a record lists facts, never a summary.
+    pub compactions: Vec<crate::context::ContextCompaction>,
+    /// All compaction records of the current cycle.
+    pub total_compactions: u32,
 }
 
 /// Result of admitting an untargeted direction.
@@ -775,6 +815,9 @@ mod tests {
             next_action: Some(NextAction::ModelTurn),
             current_work: "Model turn 1".into(),
             knowledge_omitted: 0,
+            reason: None,
+            estimated_input_tokens: Some(10),
+            actual_input_tokens: None,
         };
         assert!(step.is_valid());
         step.attempt_id = Some("attempt".into());
@@ -790,6 +833,18 @@ mod tests {
         );
         step.status = StepStatus::Failed;
         assert!(step.is_valid());
+        step.reason = Some(StepReason::ContextBudget);
+        assert!(step.is_valid(), "a failed turn may name its fixed reason");
+        assert_eq!(
+            StepReason::parse("context_budget"),
+            Some(StepReason::ContextBudget)
+        );
+        step.status = StepStatus::Responded;
+        step.invocation_id = Some("invocation".into());
+        assert!(!step.is_valid(), "only a failed turn has a reason");
+        step.status = StepStatus::Failed;
+        step.invocation_id = None;
+        step.reason = None;
         step.current_work = "bad\u{0}label".into();
         assert!(!step.is_valid());
         let tool = TaskStep {
@@ -798,6 +853,7 @@ mod tests {
             call_id: Some("c".repeat(CALL_ID_MAX)),
             status: StepStatus::Failed,
             current_work: "Tool".into(),
+            estimated_input_tokens: None,
             ..step.clone()
         };
         assert!(tool.is_valid(), "a tool step can fail without dispatch");
@@ -811,10 +867,18 @@ mod tests {
         assert!(
             !TaskStep {
                 knowledge_omitted: 1,
-                ..tool
+                ..tool.clone()
             }
             .is_valid(),
             "knowledge omission belongs to model turns"
+        );
+        assert!(
+            !TaskStep {
+                actual_input_tokens: Some(1),
+                ..tool
+            }
+            .is_valid(),
+            "token accounting belongs to model turns"
         );
     }
 
@@ -848,6 +912,9 @@ mod tests {
             next_action: next,
             current_work: format!("Step {ordinal}"),
             knowledge_omitted: 0,
+            reason: None,
+            estimated_input_tokens: None,
+            actual_input_tokens: None,
         }
     }
 
