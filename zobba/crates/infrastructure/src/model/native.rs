@@ -6,8 +6,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 use zobba_application::model::{ModelCancellation, ModelRequest, ModelTransport};
 use zobba_domain::model::{
-    ArgumentSchema, Completion, Effort, EventKind, HistoryItem, JsonValue, MessageRole, ModelError,
-    ModelEvent, Provider, Qualification, ToolExchange, TransportOutcome, Usage,
+    ArgumentSchema, Completion, Effort, EventKind, HistoryItem, JsonValue,
+    MAX_REASONING_SIGNATURE_BYTES, MAX_REASONING_TEXT_BYTES, MAX_REDACTED_REASONING_BYTES,
+    MessageRole, ModelError, ModelEvent, Provider, Qualification, ReasoningBlock, ReplayBlock,
+    ToolExchange, TransportOutcome, Usage, valid_opaque_token,
 };
 
 const MAX_FRAME_BYTES: usize = 256 * 1024;
@@ -171,8 +173,10 @@ impl NativeAdapter {
         {
             return Err(ModelError::Unqualified);
         }
-        // Reasoning blocks need a separate portable contract. Declaring their
-        // capabilities cannot silently enable them.
+        // Requested reasoning effort needs a separate portable contract.
+        // Declaring the capability cannot silently enable it. Claude reasoning
+        // a model produces by itself is parsed and replayed opaquely; no
+        // `thinking` or budget parameter is ever sent.
         if request.effort != Effort::None {
             return Err(ModelError::Unsupported);
         }
@@ -473,10 +477,18 @@ fn native_history(request: &ModelRequest, provider: Provider) -> Vec<Value> {
                         }
                     }
                     Provider::Anthropic => {
-                        let calls: Vec<Value> = group.iter().map(|exchange| serde_json::json!({
+                        // The producing response's own pre-tool blocks precede
+                        // its tool_use blocks, unchanged and in original order.
+                        // Validation allows them only on the group's first
+                        // exchange, so they are rendered once per group.
+                        let mut calls: Vec<Value> = group
+                            .iter()
+                            .flat_map(|exchange| exchange.preceding.iter().map(replay_block))
+                            .collect();
+                        calls.extend(group.iter().map(|exchange| serde_json::json!({
                             "type": "tool_use", "id": exchange.call_id, "name": exchange.tool.name,
                             "input": json_value(&exchange.arguments)
-                        })).collect();
+                        })));
                         let results: Vec<Value> = group.into_iter().map(|exchange| serde_json::json!({
                             "type": "tool_result", "tool_use_id": exchange.call_id,
                             "content": result_content(exchange), "is_error": exchange.result.is_error
@@ -489,6 +501,19 @@ fn native_history(request: &ModelRequest, provider: Provider) -> Vec<Value> {
         }
     }
     wire
+}
+
+fn replay_block(block: &ReplayBlock) -> Value {
+    match block {
+        ReplayBlock::Reasoning(ReasoningBlock::Thinking {
+            thinking,
+            signature,
+        }) => serde_json::json!({"type": "thinking", "thinking": thinking, "signature": signature}),
+        ReplayBlock::Reasoning(ReasoningBlock::Redacted { data }) => {
+            serde_json::json!({"type": "redacted_thinking", "data": data})
+        }
+        ReplayBlock::Text(text) => serde_json::json!({"type": "text", "text": text}),
+    }
 }
 
 fn result_content(exchange: &ToolExchange) -> String {
@@ -668,6 +693,11 @@ impl ParsedStream {
                 ParsedEvent::Refusal { item_id, text } if !text.is_empty() => {
                     Some(EventKind::Refusal { item_id, text })
                 }
+                // Replay material only. A response that did not succeed has
+                // nothing to continue, so its reasoning is not kept.
+                ParsedEvent::Reasoning { item_id, block } if completion == Completion::Succeeded => {
+                    Some(EventKind::Reasoning { item_id, block })
+                }
                 ParsedEvent::Tool {
                     call_id,
                     name,
@@ -711,7 +741,9 @@ impl ParsedStream {
             events.retain(|event| {
                 !matches!(
                     event,
-                    EventKind::ToolProposal { .. } | EventKind::Structured { .. }
+                    EventKind::ToolProposal { .. }
+                        | EventKind::Structured { .. }
+                        | EventKind::Reasoning { .. }
                 )
             });
         }
@@ -942,6 +974,10 @@ enum ParsedEvent {
         name: String,
         arguments: JsonValue,
     },
+    Reasoning {
+        item_id: String,
+        block: ReasoningBlock,
+    },
 }
 
 #[derive(Default)]
@@ -967,6 +1003,8 @@ struct OutputItem {
     call_id: Option<String>,
     name: Option<String>,
     arguments: String,
+    /// Anthropic thinking signature, accumulated from `signature_delta`.
+    signature: String,
     parts: BTreeMap<u64, Part>,
     done: Option<Value>,
 }
@@ -1214,6 +1252,7 @@ impl ParsedStream {
                         call_id,
                         name,
                         arguments: String::new(),
+                        signature: String::new(),
                         parts: BTreeMap::new(),
                         done: None,
                     },
@@ -1469,11 +1508,22 @@ impl ParsedStream {
                     return Err(WireError::Identity);
                 }
                 let index = index(&value, "index")?;
-                if self.items.contains_key(&index) {
+                // Claude streams content blocks one at a time, in order. That
+                // order is replayed, so it must be unambiguous.
+                if self.items.contains_key(&index)
+                    || index != self.items.len() as u64
+                    || self.items.values().any(|item| item.done.is_none())
+                {
                     return Err(WireError::Identity);
                 }
                 let block = &value["content_block"];
                 let kind = string(block, "type")?;
+                // Content after a tool call has no replayable position before
+                // the tool_use blocks; it is not accepted.
+                if kind != "tool_use" && self.items.values().any(|item| item.kind == "tool_use") {
+                    return Err(WireError::Unsupported);
+                }
+                let mut signature = String::new();
                 let (id, call_id, name, parts) = match kind {
                     "text" => {
                         let id = format!(
@@ -1495,6 +1545,49 @@ impl ParsedStream {
                                 0,
                                 Part {
                                     kind: "text".into(),
+                                    text,
+                                    done: false,
+                                },
+                            )]),
+                        )
+                    }
+                    "thinking" | "redacted_thinking" => {
+                        let id = format!(
+                            "{}:{index}",
+                            self.response_id.as_deref().ok_or(WireError::Identity)?
+                        );
+                        let text = if kind == "thinking" {
+                            let thinking = string(block, "thinking")?;
+                            if thinking.len() > MAX_REASONING_TEXT_BYTES {
+                                return Err(WireError::Limit);
+                            }
+                            if let Some(initial) = block.get("signature") {
+                                let initial = initial.as_str().ok_or(WireError::Malformed)?;
+                                append_bounded(
+                                    &mut signature,
+                                    initial,
+                                    MAX_REASONING_SIGNATURE_BYTES,
+                                )?;
+                            }
+                            thinking.to_owned()
+                        } else {
+                            let data = string(block, "data")?;
+                            if data.len() > MAX_REDACTED_REASONING_BYTES {
+                                return Err(WireError::Limit);
+                            }
+                            if !valid_opaque_token(data, MAX_REDACTED_REASONING_BYTES) {
+                                return Err(WireError::Malformed);
+                            }
+                            data.to_owned()
+                        };
+                        (
+                            id,
+                            None,
+                            None,
+                            BTreeMap::from([(
+                                0,
+                                Part {
+                                    kind: kind.into(),
                                     text,
                                     done: false,
                                 },
@@ -1529,6 +1622,7 @@ impl ParsedStream {
                         call_id,
                         name,
                         arguments: String::new(),
+                        signature,
                         parts,
                         done: None,
                     },
@@ -1564,6 +1658,16 @@ impl ParsedStream {
                         string(delta, "partial_json")?,
                         MAX_ARGUMENT_BYTES,
                     )?,
+                    "thinking_delta" if item.kind == "thinking" => append_bounded(
+                        &mut item.parts.get_mut(&0).ok_or(WireError::Identity)?.text,
+                        string(delta, "thinking")?,
+                        MAX_REASONING_TEXT_BYTES,
+                    )?,
+                    "signature_delta" if item.kind == "thinking" => append_bounded(
+                        &mut item.signature,
+                        string(delta, "signature")?,
+                        MAX_REASONING_SIGNATURE_BYTES,
+                    )?,
                     _ => return Err(WireError::Unsupported),
                 }
             }
@@ -1583,7 +1687,26 @@ impl ParsedStream {
                 {
                     return Err(WireError::Malformed);
                 }
+                let reasoning = match item.kind.as_str() {
+                    "thinking" => Some(ReasoningBlock::Thinking {
+                        thinking: item.parts.get(&0).ok_or(WireError::Identity)?.text.clone(),
+                        signature: item.signature.clone(),
+                    }),
+                    "redacted_thinking" => Some(ReasoningBlock::Redacted {
+                        data: item.parts.get(&0).ok_or(WireError::Identity)?.text.clone(),
+                    }),
+                    _ => None,
+                };
                 item.done = Some(Value::Bool(true));
+                if let Some(block) = reasoning {
+                    // A missing signature, bad charset or overlong block fails
+                    // closed: it could never be replayed unchanged.
+                    if !block.is_valid() {
+                        return Err(WireError::Malformed);
+                    }
+                    let item_id = item.id.clone();
+                    self.events.push(ParsedEvent::Reasoning { item_id, block });
+                }
             }
             "message_delta" => {
                 self.require_started()?;

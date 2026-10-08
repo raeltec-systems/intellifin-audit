@@ -14,8 +14,9 @@ use crate::{
     model::{
         Completion, ContextEntry, ContextManifest, Effort, EventKind, HistoryItem, Invocation,
         MessageRole, ModelCancellation, ModelCoordinator, ModelError, ModelMessage, ModelProfile,
-        ModelRequest, ModelStore, ModelTransport, PreparedInvocation, ToolCatalog, ToolExchange,
-        ToolResult, TransportOutcome, Usage, retain_failed_evidence, validate_completion,
+        ModelRequest, ModelStore, ModelTransport, PreparedInvocation, ReplayBlock, ToolCatalog,
+        ToolExchange, ToolResult, TransportOutcome, Usage, replay_bytes, retain_failed_evidence,
+        validate_completion,
     },
     operation::{OperationError, OperationStore},
     task::TaskError,
@@ -358,7 +359,8 @@ fn item_tokens(item: &HistoryItem) -> Option<u64> {
                 + e.invocation_id.len()
                 + e.result.operation_id.len()
                 + e.result.attempt_id.len()
-                + e.result.source_id.len()) as u64
+                + e.result.source_id.len()
+                + replay_bytes(&e.preceding)?) as u64
                 + 2 * ITEM_OVERHEAD_TOKENS
         }
     })
@@ -397,6 +399,29 @@ fn stale_list(stale: &[&SourceState]) -> String {
         })
         .collect::<Vec<_>>()
         .join("; ")
+}
+
+/// The producing invocation's ordered pre-tool blocks (reasoning and text),
+/// for replay only to the exact provider and model that produced them. The
+/// blocks are never answer text, evidence or context of their own.
+fn replay_for(invocation: &Invocation, profile: &ModelProfile) -> Vec<ReplayBlock> {
+    invocation
+        .outcome
+        .as_ref()
+        .filter(|outcome| {
+            outcome.actual_provider == profile.provider
+                && invocation.request.profile.provider == profile.provider
+                && outcome.actual_model.as_deref() == Some(profile.model.as_str())
+        })
+        .map(TransportOutcome::replay_blocks)
+        .unwrap_or_default()
+}
+
+/// Whether `call_id` is the invocation's first proposed call.
+fn first_call(invocation: &Invocation, call_id: &str) -> bool {
+    proposals(invocation)
+        .first()
+        .is_some_and(|(first, _)| first == call_id)
 }
 
 /// The exact catalogue descriptor and arguments of one proposal.
@@ -918,6 +943,13 @@ where
                                 fact,
                                 is_error: false,
                             },
+                            // Costed with the invocation's first call; moved to
+                            // the first exchange actually sent at assembly.
+                            preceding: if first_call(invocation, call_id) {
+                                replay_for(invocation, &self.settings.profile)
+                            } else {
+                                vec![]
+                            },
                         }));
                         if item_tokens(&exchange).is_some() {
                             items.push((entry(&source_id, None), exchange));
@@ -1287,6 +1319,22 @@ where
             for (entry, item) in items {
                 entries.push(entry);
                 history.push(item);
+            }
+        }
+        // Each invocation's pre-tool blocks are replayed once, before its first
+        // tool call still in context, even when an earlier call was compacted.
+        let mut replayed = BTreeSet::new();
+        for item in &mut history {
+            if let HistoryItem::ToolExchange(exchange) = item {
+                if replayed.insert(exchange.invocation_id.clone()) {
+                    if exchange.preceding.is_empty()
+                        && let Some(invocation) = memo.get(&exchange.invocation_id)
+                    {
+                        exchange.preceding = replay_for(invocation, &self.settings.profile);
+                    }
+                } else {
+                    exchange.preceding.clear();
+                }
             }
         }
         let knowledge_omitted = counts

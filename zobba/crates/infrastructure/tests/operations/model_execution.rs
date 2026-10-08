@@ -528,6 +528,7 @@ pub(super) async fn verify(f: &Fixture, admin: &mut PgConnection, holder: &mut P
                         .into(),
                     is_error: false,
                 },
+                preceding: vec![],
             })));
         bind_disclosure(&mut continuation).unwrap();
         let continuation_permit = dispatch(&repo, &continuation).await;
@@ -890,6 +891,7 @@ pub(super) async fn verify(f: &Fixture, admin: &mut PgConnection, holder: &mut P
                             .into(),
                     is_error: false,
                 },
+                preceding: vec![],
             })));
         bind_disclosure(&mut historical).unwrap();
         assert!(historical.context.verification.items.is_empty());
@@ -1122,6 +1124,7 @@ async fn cumulative_history(
                     content: "Attributed synthetic completed result".into(),
                     is_error: false,
                 },
+                preceding: vec![],
             })));
     }
     request.key = "model-cumulative-final".into();

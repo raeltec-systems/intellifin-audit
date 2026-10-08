@@ -497,6 +497,28 @@ pub fn validate_completion(
     }
     Ok(())
 }
+/// Replayed blocks must be exactly the producing invocation's own pre-tool
+/// content, and only to the provider and model that produced them. Omitting
+/// them is always permitted; altering or redirecting them is a conflict.
+pub fn verify_replay(
+    original: &Invocation,
+    exchange: &ToolExchange,
+    profile: &ModelProfile,
+) -> Result<(), ModelError> {
+    if exchange.preceding.is_empty() {
+        return Ok(());
+    }
+    let outcome = original.outcome.as_ref().ok_or(ModelError::Conflict)?;
+    if original.id != exchange.invocation_id
+        || outcome.actual_provider != profile.provider
+        || original.request.profile.provider != profile.provider
+        || outcome.actual_model.as_deref() != Some(profile.model.as_str())
+        || exchange.preceding != outcome.replay_blocks()
+    {
+        return Err(ModelError::Conflict);
+    }
+    Ok(())
+}
 pub fn validated_tool(
     invocation: &Invocation,
     call_id: &str,

@@ -260,8 +260,32 @@ enum EventKindWire {
         item_id: String,
         text: String,
     },
+    Reasoning {
+        item_id: String,
+        #[serde(with = "ReasoningBlockWire")]
+        block: ReasoningBlock,
+    },
     Usage(#[serde(with = "UsageWire")] Usage),
 }
+#[derive(Serialize, Deserialize)]
+#[serde(
+    remote = "ReasoningBlock",
+    tag = "kind",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+enum ReasoningBlockWire {
+    Thinking { thinking: String, signature: String },
+    Redacted { data: String },
+}
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "ReplayBlock", rename_all = "snake_case", deny_unknown_fields)]
+enum ReplayBlockWire {
+    Reasoning(#[serde(with = "ReasoningBlockWire")] ReasoningBlock),
+    Text(String),
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StoredReplayBlock(#[serde(with = "ReplayBlockWire")] pub ReplayBlock);
 #[derive(Serialize, Deserialize)]
 #[serde(remote = "Completion", rename_all = "snake_case", deny_unknown_fields)]
 enum CompletionWire {
@@ -645,6 +669,10 @@ struct ToolExchangeWire {
     arguments: JsonValue,
     #[serde(with = "ToolResultWire")]
     result: ToolResult,
+    /// Absent in exchanges stored before reasoning replay; omitted when empty
+    /// so their exact stored documents and disclosure bindings are unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty", with = "replay_blocks")]
+    preceding: Vec<ReplayBlock>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StoredToolExchange(#[serde(with = "ToolExchangeWire")] pub ToolExchange);
@@ -668,6 +696,28 @@ mod boxed_exchange {
         deserializer: D,
     ) -> Result<Box<ToolExchange>, D::Error> {
         Ok(Box::new(StoredToolExchange::deserialize(deserializer)?.0))
+    }
+}
+mod replay_blocks {
+    use super::*;
+    pub fn serialize<S: serde::Serializer>(
+        value: &[ReplayBlock],
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        value
+            .iter()
+            .cloned()
+            .map(StoredReplayBlock)
+            .collect::<Vec<_>>()
+            .serialize(serializer)
+    }
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Vec<ReplayBlock>, D::Error> {
+        Ok(Vec::<StoredReplayBlock>::deserialize(deserializer)?
+            .into_iter()
+            .map(|v| v.0)
+            .collect())
     }
 }
 mod history_items {

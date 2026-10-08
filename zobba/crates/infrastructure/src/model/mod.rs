@@ -159,6 +159,12 @@ async fn current_configuration(tx: &mut Tx, request: &ModelRequest) -> Result<()
     }
     Ok(())
 }
+fn without_replay(exchange: &ToolExchange) -> ToolExchange {
+    ToolExchange {
+        preceding: vec![],
+        ..exchange.clone()
+    }
+}
 const MAX_HISTORY_DEPENDENCIES: usize = 256;
 const MAX_HISTORY_EDGES: usize = MAX_HISTORY_DEPENDENCIES * MAX_HISTORY_ITEMS;
 
@@ -248,8 +254,16 @@ async fn history_authority(
             if let Some(exchange) = exchange {
                 let identity = (exchange.invocation_id.clone(), exchange.call_id.clone());
                 if let Some(previous) = exchanges.get(&identity) {
-                    if previous != exchange {
+                    // Replay blocks move to the first exchange an invocation
+                    // still has in context, so they are compared separately:
+                    // each carried copy must be the producer's exact blocks,
+                    // sent to the provider and model that produced them.
+                    if without_replay(previous) != without_replay(exchange) {
                         return Err(ModelError::Conflict);
+                    }
+                    if !exchange.preceding.is_empty() {
+                        let original = load(tx, &origin).await?;
+                        verify_replay(&original, exchange, &part.profile)?;
                     }
                     continue;
                 }
@@ -266,6 +280,7 @@ async fn history_authority(
                 return Err(ModelError::Denied);
             }
             if let Some(exchange) = exchange {
+                verify_replay(&original, exchange, &part.profile)?;
                 let (tool, canonical) = validated_tool(&original, &exchange.call_id)?;
                 if tool != exchange.tool || tool.resolve(&exchange.arguments)? != canonical {
                     return Err(ModelError::Conflict);
