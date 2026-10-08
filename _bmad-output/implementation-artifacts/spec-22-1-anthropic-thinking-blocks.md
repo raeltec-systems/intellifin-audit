@@ -135,3 +135,20 @@ Run first: `. /tmp/zobba-env.sh` (PostgreSQL at :55434; use `?sslmode=disable` f
 - `cargo test --locked --workspace -- --test-threads=1` -- expected: all pass.
 - `cargo run -q --locked -p zobba-infrastructure --example model_qualification -- --dry-run --providers anthropic --max-usd 1 --anthropic-account zobba-test --anthropic-model claude-sonnet-5-5 --spend-evidence owner-approved-2026-10-08-usd1-anthropic-credit --receipt-dir ../_bmad-output/implementation-artifacts/zobba-foundation-batch/qualification-receipts` -- expected: exit 0 and a manifest hash. Record the hash in the spec.
 - `cargo run -p zobba-cli --locked -- openapi`, then `pnpm check` -- expected: unchanged or regenerated cleanly. The only allowed failures are the two known IPv6 tests.
+
+## Verification record (2026-10-08, local, no provider calls)
+
+- `cargo fmt --check` and `cargo clippy --locked --workspace --all-targets -- -D warnings`: clean.
+- New and changed tests pass: domain/application model tests, 47 native adapter tests
+  (every matrix row, old-bytes golden test, no `thinking`/`temperature`/`budget_tokens`/`tool_choice` in the body),
+  the qualification example tests, and the `work_cycle` Claude replay scenario.
+- Dry run (`--providers anthropic --anthropic-model claude-sonnet-5-5 --max-usd 1`): exit 0,
+  manifest SHA-256 `0d0b214f503aea6bb9fffbebc696fc7eb3fa104ec4e0336282fb1e2b9fb6fb31`.
+  The continuation is 2,811 bytes and has `[thinking{"",provider-signature-placeholder}, tool_use]`.
+- `zobba-cli openapi`: unchanged. `pnpm check`: 193/195, and the 2 failures are the known IPv6 tests.
+- Workspace `cargo test --no-fail-fast -- --test-threads=1`: 415 passed, 16 failed. 14 are OIDC
+  `actual_provider_*`/signed-claim tests (no IdP fixture process running) and 1 is `bootstrap_contract` (expected
+  `DatabaseUnavailable` through its interrupting proxy). The last one is
+  `standing_permissions_exact_operations_and_transaction_cutoffs` at `compaction_by_bytes` (`Fenced` instead of
+  `Waiting`). There, the Task's 5-second owner lease has already expired at the first boundary. This failure is intermittent.
+  It also happens with the new scenario placed after it, so it is a timing failure, not this change.
