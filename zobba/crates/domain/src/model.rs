@@ -19,6 +19,13 @@ pub const MAX_OUTPUT_TOKENS: u32 = 16_384;
 pub const MAX_HISTORY_ITEMS: usize = 64;
 pub const MAX_HISTORY_BYTES: usize = 256 * 1024;
 pub const MAX_TOOL_RESULT_BYTES: usize = 64 * 1024;
+/// Opaque provider reasoning kept only for exact replay. These bounds are
+/// separate from the 256-byte identity limit: a Claude signature is long.
+pub const MAX_REASONING_TEXT_BYTES: usize = 128 * 1024;
+pub const MAX_REASONING_SIGNATURE_BYTES: usize = 16 * 1024;
+pub const MAX_REDACTED_REASONING_BYTES: usize = 64 * 1024;
+/// Non-tool content blocks replayed before one invocation's tool calls.
+pub const MAX_REPLAY_BLOCKS: usize = 32;
 
 macro_rules! vocabulary {
     ($name:ident { $($variant:ident => $value:literal),+ $(,)? }) => {
@@ -451,6 +458,94 @@ pub enum HistoryItem {
     Message(ModelMessage),
     ToolExchange(Box<ToolExchange>),
 }
+/// Opaque provider reasoning (Claude `thinking` / `redacted_thinking`). It is
+/// never answer text, evidence or knowledge; it exists only so the exact
+/// block can be returned unchanged in the same assistant turn. Receipts and
+/// logs may record its byte counts and hashes, never its contents.
+#[derive(Clone, PartialEq, Eq)]
+pub enum ReasoningBlock {
+    Thinking { thinking: String, signature: String },
+    Redacted { data: String },
+}
+impl std::fmt::Debug for ReasoningBlock {
+    /// Contents are deliberately withheld from diagnostics.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Thinking {
+                thinking,
+                signature,
+            } => f
+                .debug_struct("Thinking")
+                .field("thinking_bytes", &thinking.len())
+                .field("signature_bytes", &signature.len())
+                .finish(),
+            Self::Redacted { data } => f
+                .debug_struct("Redacted")
+                .field("data_bytes", &data.len())
+                .finish(),
+        }
+    }
+}
+/// Signatures and redacted data are opaque provider tokens: printable ASCII.
+pub fn valid_opaque_token(value: &str, max: usize) -> bool {
+    !value.is_empty() && value.len() <= max && value.bytes().all(|b| (0x20..=0x7e).contains(&b))
+}
+impl ReasoningBlock {
+    pub fn is_valid(&self) -> bool {
+        match self {
+            // Current Claude models may omit displayed thinking: empty text
+            // with a signature is valid and must be replayed as such.
+            Self::Thinking {
+                thinking,
+                signature,
+            } => {
+                (thinking.is_empty() || valid_text(thinking, MAX_REASONING_TEXT_BYTES))
+                    && valid_opaque_token(signature, MAX_REASONING_SIGNATURE_BYTES)
+            }
+            Self::Redacted { data } => valid_opaque_token(data, MAX_REDACTED_REASONING_BYTES),
+        }
+    }
+    /// Bytes counted against output, history and request caps.
+    pub fn bytes(&self) -> usize {
+        match self {
+            Self::Thinking {
+                thinking,
+                signature,
+            } => thinking.len() + signature.len(),
+            Self::Redacted { data } => data.len(),
+        }
+    }
+}
+/// A non-tool content block that preceded an invocation's tool calls, in the
+/// model's original order. Replayed unchanged, once per invocation group.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ReplayBlock {
+    Reasoning(ReasoningBlock),
+    Text(String),
+}
+impl ReplayBlock {
+    pub fn is_valid(&self) -> bool {
+        match self {
+            Self::Reasoning(block) => block.is_valid(),
+            Self::Text(text) => valid_text(text, MAX_OUTPUT_BYTES),
+        }
+    }
+    pub fn bytes(&self) -> usize {
+        match self {
+            Self::Reasoning(block) => block.bytes(),
+            Self::Text(text) => text.len(),
+        }
+    }
+}
+/// Bounded total bytes of an ordered replay sequence, or None when invalid.
+pub fn replay_bytes(blocks: &[ReplayBlock]) -> Option<usize> {
+    if blocks.len() > MAX_REPLAY_BLOCKS || !blocks.iter().all(ReplayBlock::is_valid) {
+        return None;
+    }
+    let bytes = blocks.iter().map(ReplayBlock::bytes).sum::<usize>();
+    (bytes <= MAX_OUTPUT_BYTES).then_some(bytes)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ToolExchange {
     pub invocation_id: String,
@@ -460,6 +555,11 @@ pub struct ToolExchange {
     pub tool: ToolDescriptor,
     pub arguments: JsonValue,
     pub result: ToolResult,
+    /// The producing invocation's ordered non-tool blocks (reasoning or text)
+    /// that preceded its tool calls. Only the first exchange of an invocation
+    /// group may carry them; they are replayed only to the same provider and
+    /// model that produced them.
+    pub preceding: Vec<ReplayBlock>,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ToolResult {
@@ -491,6 +591,7 @@ impl ToolExchange {
             )
             && (self.result.content.is_empty()
                 || valid_text(&self.result.content, MAX_TOOL_RESULT_BYTES))
+            && replay_bytes(&self.preceding).is_some()
     }
 }
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -520,6 +621,12 @@ pub enum EventKind {
     Refusal {
         item_id: String,
         text: String,
+    },
+    /// One complete opaque reasoning block, in content order. Never answer
+    /// text or evidence; kept only for exact replay.
+    Reasoning {
+        item_id: String,
+        block: ReasoningBlock,
     },
     Usage(Usage),
 }
@@ -611,6 +718,17 @@ impl TransportOutcome {
                     bytes += text.len();
                     refusal |= matches!(event.kind, EventKind::Refusal { .. });
                 }
+                EventKind::Reasoning { item_id, block } => {
+                    // Only native Anthropic reasoning blocks are supported;
+                    // OpenAI reasoning items remain out of scope.
+                    if self.actual_provider != Provider::Anthropic
+                        || !valid_external_id(item_id)
+                        || !block.is_valid()
+                    {
+                        return Err(ModelError::Malformed);
+                    }
+                    bytes += block.bytes();
+                }
                 EventKind::Structured { item_id, value } => {
                     if !valid_external_id(item_id) || !value.is_valid() {
                         return Err(ModelError::Malformed);
@@ -647,7 +765,53 @@ impl TransportOutcome {
         {
             return Err(ModelError::Malformed);
         }
+        let replay = self.replay_blocks();
+        if !replay.is_empty() && replay_bytes(&replay).is_none() {
+            return Err(ModelError::Capacity);
+        }
         Ok(())
+    }
+
+    /// The ordered non-tool content blocks (reasoning and text) that preceded
+    /// this response's tool calls, exactly as produced. Empty unless the
+    /// response is a successful native Anthropic response with tool calls:
+    /// nothing else is ever replayed. Consecutive text deltas of one content
+    /// block form one text block; empty text is not a block.
+    pub fn replay_blocks(&self) -> Vec<ReplayBlock> {
+        let has_tools = self
+            .events
+            .iter()
+            .any(|e| matches!(e.kind, EventKind::ToolProposal { .. }));
+        if self.actual_provider != Provider::Anthropic
+            || self.completion != Completion::Succeeded
+            || !has_tools
+        {
+            return vec![];
+        }
+        let mut blocks = Vec::new();
+        let mut text_item: Option<&str> = None;
+        for event in &self.events {
+            match &event.kind {
+                EventKind::ToolProposal { .. } => break,
+                EventKind::Reasoning { block, .. } => {
+                    blocks.push(ReplayBlock::Reasoning(block.clone()));
+                    text_item = None;
+                }
+                EventKind::TextDelta { item_id, text } => {
+                    match (text_item, blocks.last_mut()) {
+                        (Some(current), Some(ReplayBlock::Text(existing)))
+                            if current == item_id =>
+                        {
+                            existing.push_str(text)
+                        }
+                        _ => blocks.push(ReplayBlock::Text(text.clone())),
+                    }
+                    text_item = Some(item_id);
+                }
+                _ => {}
+            }
+        }
+        blocks
     }
 }
 

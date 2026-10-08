@@ -210,10 +210,24 @@ impl ModelRequest {
         let mut history_bytes = 0usize;
         let mut history_calls = std::collections::BTreeSet::new();
         let mut history_attempts = std::collections::BTreeSet::new();
+        let mut previous: Option<&HistoryItem> = None;
         for item in &self.history {
             match item {
                 HistoryItem::Message(message) => history_bytes += message.text.len(),
                 HistoryItem::ToolExchange(exchange) => {
+                    if !exchange.preceding.is_empty() {
+                        // Replay blocks are native Anthropic content and are
+                        // never sent to another provider.
+                        if self.profile.provider != Provider::Anthropic {
+                            return Err(ModelError::Conflict);
+                        }
+                        // Rendered once per invocation group, by its first
+                        // exchange only.
+                        if matches!(previous, Some(HistoryItem::ToolExchange(prior)) if prior.invocation_id == exchange.invocation_id)
+                        {
+                            return Err(ModelError::Invalid);
+                        }
+                    }
                     if !exchange.is_valid()
                         || !history_calls.insert(&exchange.call_id)
                         || !history_attempts.insert(&exchange.result.attempt_id)
@@ -241,9 +255,11 @@ impl ModelRequest {
                             .tool
                             .output_schema
                             .bounded_bytes()
-                            .ok_or(ModelError::Capacity)?;
+                            .ok_or(ModelError::Capacity)?
+                        + replay_bytes(&exchange.preceding).ok_or(ModelError::Capacity)?;
                 }
             }
+            previous = Some(item);
             if history_bytes > MAX_HISTORY_BYTES {
                 return Err(ModelError::Capacity);
             }
@@ -399,6 +415,7 @@ pub(crate) fn retain_failed_evidence(
 ) -> TransportOutcome {
     // Reject executable/structured material but preserve attributable partial
     // text and known usage. A provider identity mismatch never erases a charge.
+    // Reasoning is never retained: it is replay material, not evidence.
     let mut bytes = 0usize;
     outcome.events = outcome
         .events
