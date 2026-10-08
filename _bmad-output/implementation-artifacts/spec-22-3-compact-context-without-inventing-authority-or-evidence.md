@@ -2,7 +2,7 @@
 title: '22.3 — Compact context without inventing authority or evidence'
 type: 'feature'
 created: '2026-10-08'
-status: 'in-review'
+status: 'done'
 baseline_commit: '4bb2c70d0e9e6ea48e4baa4c42e5bdb922886b7f'
 story_key: 22-3-compact-context-without-inventing-authority-or-evidence
 review_loop_iteration: 0
@@ -215,3 +215,65 @@ Limiting the transitive check to included content keeps 22.1's rule that revoked
   record's creation time is shown.
 - Not changed: no DELETE trigger. Runtime has no DELETE grant, and owner-mediated
   whole-aggregate removal (fixture resets) follows the existing append-only tables.
+
+## Suggested Review Order
+
+**Tier planning and budget**
+
+- Entry point: the pure tier planner decides what is sent, compacted and left out.
+  [`context.rs:528`](../../zobba/crates/domain/src/context.rs#L528)
+
+- The work loop plans, persists at most one compaction, then replans before the send.
+  [`work.rs:723`](../../zobba/crates/application/src/work.rs#L723)
+
+- The digest reserve must cover the real digest cost, so the plan stays stable.
+  [`context.rs:449`](../../zobba/crates/domain/src/context.rs#L449)
+
+- Unresolved decisions (tier 2) are always kept, with an omitted count for open questions.
+  [`work.rs:428`](../../zobba/crates/application/src/work.rs#L428)
+
+**Deterministic compaction record**
+
+- The digest holds only platform facts and is serialised canonically.
+  [`context.rs:250`](../../zobba/crates/domain/src/context.rs#L250)
+
+- The repository rebuilds the digest and sources from the raw rows and refuses any mismatch.
+  [`work.rs:1052`](../../zobba/crates/infrastructure/src/work.rs#L1052)
+
+- Schema 14: an additive table, an insert guard and an UPDATE refusal.
+  [`0014_context_compaction.sql:11`](../../zobba/migrations/0014_context_compaction.sql#L11)
+
+**Disclosure and stale sources**
+
+- The transitive check now covers only included content and the origin of each earlier answer.
+  [`mod.rs:204`](../../zobba/crates/infrastructure/src/model/mod.rs#L204)
+
+- The earlier-answer text must equal its origin's own answer envelope.
+  [`work.rs:369`](../../zobba/crates/application/src/work.rs#L369)
+
+- Source statuses are chunked; capacity fails the turn and is never treated as revocation.
+  [`knowledge.rs:1168`](../../zobba/crates/infrastructure/src/knowledge.rs#L1168)
+
+- The ancestor-set cycle check accepts diamonds and rejects real cycles.
+  [`work.rs`](../../zobba/crates/application/src/work.rs)
+
+**Untrusted text**
+
+- Each source gets its own input class inside a delimited data envelope, with forged delimiters escaped.
+  [`context.rs:149`](../../zobba/crates/domain/src/context.rs#L149)
+
+**Display**
+
+- "What Zobba is using" shows the records, stale markers and omissions from one shared poll.
+  [`TaskWorkPanel.tsx:106`](../../zobba/web/src/TaskWorkPanel.tsx#L106)
+
+**Tests**
+
+- Over-budget compaction and rebuild identity against PostgreSQL.
+  [`work_cycle.rs:2430`](../../zobba/crates/infrastructure/tests/operations/work_cycle.rs#L2430)
+
+- Withdrawal mid-cycle becomes a stale marker, not a refusal.
+  [`work_cycle.rs:2759`](../../zobba/crates/infrastructure/tests/operations/work_cycle.rs#L2759)
+
+- Browser display of the compaction context.
+  [`context.spec.ts`](../../zobba/web/tests/browser/context.spec.ts)
