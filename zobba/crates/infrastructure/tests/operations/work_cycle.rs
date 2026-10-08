@@ -2779,7 +2779,9 @@ async fn compaction_by_bytes(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
     finish(f, &case, &attempt, Observation::Completed).await;
 
     let budget = fixed + exchange * 7 / 2 + 2_000;
+    let t0 = std::time::Instant::now();
     let (case, basis, attempt) = consumed(f, "work-compact-bytes").await;
+    eprintln!("DEBUGZ consumed took {:?}", t0.elapsed());
     let mut turns: Vec<Turn> = (0..8)
         .map(|i| Turn::Tool(leaked(format!("cb-{i}")), "send_exact"))
         .collect();
