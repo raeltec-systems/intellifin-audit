@@ -34,6 +34,7 @@ project: Zobba
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
+# Build priority for the first demo: see demo-path-priority.md (owner decision 2026-10-08).
 development_status:
   epic-20: in-progress
   20-1-start-the-new-application-from-one-reproducible-workspace: done

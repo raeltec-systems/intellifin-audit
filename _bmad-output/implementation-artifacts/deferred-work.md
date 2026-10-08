@@ -43,3 +43,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-22-3-compact-context-without-inventing-authority-or-evidence.md`
   summary: No test upgrades a populated schema-13 database (existing `task_steps` and `model_invocations` rows) to schema 14.
   evidence: The upgrade tests reach 14 only from schemas 8, 9 and 10, and `model_upgrade_contract` asserts that the model tables are empty.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-22-1-anthropic-thinking-blocks.md`
+  summary: Structured-output requests to a current Claude model always fail as Malformed, because the structured path treats any non-text event (including thinking) as invalid.
+  evidence: native.rs outcome schema loop sets valid=false on Reasoning events; the spec deliberately kept that rule. Current Claude models always think, so structured output needs a reasoning-aware rule before any feature relies on it.
