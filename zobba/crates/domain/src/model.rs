@@ -710,6 +710,15 @@ impl TransportOutcome {
             if event.sequence != index as u64 {
                 return Err(ModelError::Malformed);
             }
+            // Content has a replayable position only before the tool calls.
+            if !calls.is_empty()
+                && matches!(
+                    event.kind,
+                    EventKind::Reasoning { .. } | EventKind::TextDelta { .. }
+                )
+            {
+                return Err(ModelError::Malformed);
+            }
             match &event.kind {
                 EventKind::TextDelta { item_id, text } | EventKind::Refusal { item_id, text } => {
                     if !valid_external_id(item_id) || !valid_text(text, MAX_OUTPUT_BYTES) {
@@ -766,7 +775,10 @@ impl TransportOutcome {
             return Err(ModelError::Malformed);
         }
         let replay = self.replay_blocks();
-        if !replay.is_empty() && replay_bytes(&replay).is_none() {
+        if replay.len() > MAX_REPLAY_BLOCKS || !replay.iter().all(ReplayBlock::is_valid) {
+            return Err(ModelError::Malformed);
+        }
+        if replay_bytes(&replay).is_none() {
             return Err(ModelError::Capacity);
         }
         Ok(())
@@ -797,6 +809,7 @@ impl TransportOutcome {
                     blocks.push(ReplayBlock::Reasoning(block.clone()));
                     text_item = None;
                 }
+                EventKind::TextDelta { text, .. } if text.is_empty() => {}
                 EventKind::TextDelta { item_id, text } => {
                     match (text_item, blocks.last_mut()) {
                         (Some(current), Some(ReplayBlock::Text(existing)))

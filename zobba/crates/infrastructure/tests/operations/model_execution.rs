@@ -24,8 +24,21 @@ impl ModelQualificationSource for FixtureQualification {
     fn qualified(&self, p: &ModelProfile) -> bool {
         self.0.load(Ordering::SeqCst)
             && p.qualification == Qualification::Fixture
-            && matches!(p.provider, Provider::OpenAi | Provider::Anthropic)
+            && p.provider == Provider::OpenAi
             && p.model == "fixture-model"
+            && p.destination == "owned-endpoint"
+            && p.account_id == "audit-account"
+            && p.capability_revision == "fixture-native-v1"
+    }
+}
+/// Trusted fixture registration for the Claude replay scenario only: the
+/// ordinary fixture source above keeps refusing every Anthropic profile.
+pub(super) struct ClaudeFixtureQualification;
+impl ModelQualificationSource for ClaudeFixtureQualification {
+    fn qualified(&self, p: &ModelProfile) -> bool {
+        p.qualification == Qualification::Fixture
+            && p.provider == Provider::Anthropic
+            && matches!(p.model.as_str(), "fixture-model" | "fixture-model-2")
             && p.destination == "owned-endpoint"
             && p.account_id == "audit-account"
             && p.capability_revision == "fixture-native-v1"

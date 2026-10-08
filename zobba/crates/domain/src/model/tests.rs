@@ -458,3 +458,56 @@ fn exchange_replay_blocks_are_validated_and_bounded() {
     exchange.preceding = vec![ReplayBlock::Reasoning(thinking("", "sig")); MAX_REPLAY_BLOCKS + 1];
     assert!(!exchange.is_valid());
 }
+
+#[test]
+fn opaque_tokens_are_non_empty_printable_ascii_within_their_bound() {
+    assert!(valid_opaque_token(" ", 8)); // 0x20
+    assert!(valid_opaque_token("~", 8)); // 0x7e
+    assert!(valid_opaque_token(" !+/=~", 8));
+    assert!(!valid_opaque_token("", 8));
+    assert!(valid_opaque_token(&"a".repeat(8), 8));
+    assert!(!valid_opaque_token(&"a".repeat(9), 8));
+    assert!(!valid_opaque_token("\u{1f}", 8)); // below 0x20
+    assert!(!valid_opaque_token("\u{7f}", 8)); // DEL
+    assert!(!valid_opaque_token("é", 8));
+    assert!(valid_opaque_token(
+        &"s".repeat(MAX_REASONING_SIGNATURE_BYTES),
+        MAX_REASONING_SIGNATURE_BYTES
+    ));
+}
+
+#[test]
+fn content_after_a_tool_call_and_bad_replay_blocks_are_malformed() {
+    let mut anthropic = profile();
+    anthropic.provider = Provider::Anthropic;
+    let proposal = EventKind::ToolProposal {
+        call_id: "call_1".into(),
+        name: "read_source".into(),
+        arguments: JsonValue::Null,
+    };
+    for late in [
+        EventKind::TextDelta {
+            item_id: "r:2".into(),
+            text: "late".into(),
+        },
+        EventKind::Reasoning {
+            item_id: "r:2".into(),
+            block: thinking("", "sig"),
+        },
+    ] {
+        let outcome = claude(vec![proposal.clone(), late]);
+        assert_eq!(outcome.validate(&anthropic), Err(ModelError::Malformed));
+    }
+    // Too many replay blocks is malformed, not a byte overflow.
+    let mut events: Vec<EventKind> = (0..=MAX_REPLAY_BLOCKS)
+        .map(|i| EventKind::Reasoning {
+            item_id: format!("r:{i}"),
+            block: thinking("", "sig"),
+        })
+        .collect();
+    events.push(proposal);
+    assert_eq!(
+        claude(events).validate(&anthropic),
+        Err(ModelError::Malformed)
+    );
+}

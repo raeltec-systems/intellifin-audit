@@ -1665,11 +1665,19 @@ impl ParsedStream {
                         string(delta, "thinking")?,
                         MAX_REASONING_TEXT_BYTES,
                     )?,
-                    "signature_delta" if item.kind == "thinking" => append_bounded(
-                        &mut item.signature,
-                        string(delta, "signature")?,
-                        MAX_REASONING_SIGNATURE_BYTES,
-                    )?,
+                    "signature_delta" if item.kind == "thinking" => {
+                        // A signature arrives whole, once. One already given at
+                        // the block start or by an earlier delta is never
+                        // extended: concatenation would forge a new token.
+                        if !item.signature.is_empty() {
+                            return Err(WireError::Malformed);
+                        }
+                        append_bounded(
+                            &mut item.signature,
+                            string(delta, "signature")?,
+                            MAX_REASONING_SIGNATURE_BYTES,
+                        )?
+                    }
                     _ => return Err(WireError::Unsupported),
                 }
             }

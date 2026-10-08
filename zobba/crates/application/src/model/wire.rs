@@ -278,14 +278,55 @@ enum ReasoningBlockWire {
     Thinking { thinking: String, signature: String },
     Redacted { data: String },
 }
+/// One flat, internally tagged document per replay block, using the same
+/// `kind` tag and names as a stored reasoning block:
+/// `{"kind":"thinking",...}`, `{"kind":"redacted",...}` or `{"kind":"text",...}`.
 #[derive(Serialize, Deserialize)]
-#[serde(remote = "ReplayBlock", rename_all = "snake_case", deny_unknown_fields)]
-enum ReplayBlockWire {
-    Reasoning(#[serde(with = "ReasoningBlockWire")] ReasoningBlock),
-    Text(String),
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum ReplayBlockDocument {
+    Thinking { thinking: String, signature: String },
+    Redacted { data: String },
+    Text { text: String },
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StoredReplayBlock(#[serde(with = "ReplayBlockWire")] pub ReplayBlock);
+#[derive(Clone, Debug)]
+pub struct StoredReplayBlock(pub ReplayBlock);
+impl Serialize for StoredReplayBlock {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self.0.clone() {
+            ReplayBlock::Reasoning(ReasoningBlock::Thinking {
+                thinking,
+                signature,
+            }) => ReplayBlockDocument::Thinking {
+                thinking,
+                signature,
+            },
+            ReplayBlock::Reasoning(ReasoningBlock::Redacted { data }) => {
+                ReplayBlockDocument::Redacted { data }
+            }
+            ReplayBlock::Text(text) => ReplayBlockDocument::Text { text },
+        }
+        .serialize(serializer)
+    }
+}
+impl<'de> Deserialize<'de> for StoredReplayBlock {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(Self(
+            match ReplayBlockDocument::deserialize(deserializer)? {
+                ReplayBlockDocument::Thinking {
+                    thinking,
+                    signature,
+                } => ReplayBlock::Reasoning(ReasoningBlock::Thinking {
+                    thinking,
+                    signature,
+                }),
+                ReplayBlockDocument::Redacted { data } => {
+                    ReplayBlock::Reasoning(ReasoningBlock::Redacted { data })
+                }
+                ReplayBlockDocument::Text { text } => ReplayBlock::Text(text),
+            },
+        ))
+    }
+}
 #[derive(Serialize, Deserialize)]
 #[serde(remote = "Completion", rename_all = "snake_case", deny_unknown_fields)]
 enum CompletionWire {

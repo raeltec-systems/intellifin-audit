@@ -2102,9 +2102,9 @@ fn stored_requests_without_replay_keep_their_exact_bytes_and_binding() {
     assert_eq!(
         preceding,
         &json!([
-            {"reasoning": {"kind": "thinking", "thinking": "", "signature": SONNET_SIGNATURE}},
-            {"reasoning": {"kind": "redacted", "data": "opaque"}},
-            {"text": "Reading it."}
+            {"kind": "thinking", "thinking": "", "signature": SONNET_SIGNATURE},
+            {"kind": "redacted", "data": "opaque"},
+            {"kind": "text", "text": "Reading it."}
         ])
     );
     let decoded: StoredRequest = serde_json::from_value(value.clone()).unwrap();
@@ -2113,8 +2113,11 @@ fn stored_requests_without_replay_keep_their_exact_bytes_and_binding() {
         crate::model::payload_attachments(&claude).unwrap(),
         bound.disclosure.attachments
     );
-    let mut unknown = value;
-    unknown["history"][0]["tool_exchange"]["preceding"][0]["reasoning"]["extra"] = json!(1);
+    let mut unknown = value.clone();
+    unknown["history"][0]["tool_exchange"]["preceding"][0]["extra"] = json!(1);
+    assert!(serde_json::from_value::<StoredRequest>(unknown).is_err());
+    let mut unknown = value.clone();
+    unknown["history"][0]["tool_exchange"]["preceding"][2]["kind"] = json!("summary");
     assert!(serde_json::from_value::<StoredRequest>(unknown).is_err());
 
     let outcome = TransportOutcome {
@@ -2138,4 +2141,168 @@ fn stored_requests_without_replay_keep_their_exact_bytes_and_binding() {
     assert_eq!(stored["events"][0]["kind"]["kind"], "reasoning");
     let decoded: StoredOutcome = serde_json::from_value(stored).unwrap();
     assert_eq!(decoded.0, outcome);
+}
+
+#[tokio::test]
+async fn unsuccessful_claude_responses_keep_no_reasoning() {
+    for (reason, expected) in [
+        ("max_tokens", Completion::Incomplete),
+        ("refusal", Completion::Refused),
+    ] {
+        let stream = claude_stream(
+            &[
+                thinking_block("Partial thought.", SONNET_SIGNATURE),
+                text_block("partial"),
+            ],
+            reason,
+        );
+        let fixture = Fixture::stream(&stream).await;
+        let outcome = fixture
+            .invoke(Provider::Anthropic, &request(Provider::Anthropic))
+            .await;
+        assert_eq!(outcome.completion, expected, "{reason}");
+        assert!(reasoning_events(&outcome).is_empty(), "{reason}");
+        assert!(outcome.replay_blocks().is_empty(), "{reason}");
+    }
+}
+
+#[tokio::test]
+async fn a_multi_call_group_renders_its_blocks_once_before_all_tool_calls() {
+    let fixture = Fixture::stream(&text_stream(Provider::Anthropic, "done")).await;
+    let mut request = history_request(Provider::Anthropic);
+    let HistoryItem::ToolExchange(first) = &mut request.history[0] else {
+        panic!("fixture history");
+    };
+    first.preceding = vec![
+        ReplayBlock::Reasoning(ReasoningBlock::Thinking {
+            thinking: "Read both.".into(),
+            signature: SONNET_SIGNATURE.into(),
+        }),
+        ReplayBlock::Text("Reading both.".into()),
+    ];
+    let mut second = first.clone();
+    second.preceding.clear();
+    second.call_id = "historical-call-2".into();
+    second.result.source_id = "owned-tool-source-2".into();
+    second.result.attempt_id = "owned-attempt-2".into();
+    request.context.entries.push(ContextEntry {
+        source_id: second.result.source_id.clone(),
+        input_class: "tool_result".into(),
+        knowledge: None,
+        depends_on: None,
+    });
+    request
+        .history
+        .push(HistoryItem::ToolExchange(second.clone()));
+    assert_eq!(
+        fixture
+            .invoke(Provider::Anthropic, &request)
+            .await
+            .completion,
+        Completion::Succeeded
+    );
+    let seen = fixture.requests.lock().await;
+    let content = seen[0].body["messages"][1]["content"].as_array().unwrap();
+    let kinds: Vec<&str> = content
+        .iter()
+        .map(|b| b["type"].as_str().unwrap())
+        .collect();
+    assert_eq!(kinds, ["thinking", "text", "tool_use", "tool_use"]);
+    assert_eq!(content[2]["id"], "historical-call");
+    assert_eq!(content[3]["id"], "historical-call-2");
+    // A second copy of the blocks, on a later exchange, is refused unsent.
+    drop(seen);
+    let HistoryItem::ToolExchange(later) = &mut request.history[1] else {
+        panic!("fixture history");
+    };
+    later.preceding = vec![ReplayBlock::Text("again".into())];
+    let fixture = Fixture::stream(&text_stream(Provider::Anthropic, "unused")).await;
+    assert_eq!(
+        fixture
+            .invoke(Provider::Anthropic, &request)
+            .await
+            .completion,
+        Completion::Failed(ModelError::Invalid)
+    );
+    assert_eq!(fixture.sends.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn plain_blocks_and_signatures_follow_the_strict_stream_order() {
+    // Text after a tool call, and a skipped content index.
+    let mut skipped = claude_stream(&[text_block("a"), tool_block()], "tool_use");
+    for value in &mut skipped {
+        if value["index"] == json!(1) {
+            value["index"] = json!(2);
+        }
+    }
+    let after_tool = claude_stream(&[tool_block(), text_block("after")], "tool_use");
+    // A signature given at the start and again by a delta is never joined.
+    let doubled = claude_stream(
+        &[
+            (
+                json!({"type":"thinking","thinking":"","signature":"StartSig"}),
+                vec![json!({"type":"signature_delta","signature":"DeltaSig"})],
+            ),
+            tool_block(),
+        ],
+        "tool_use",
+    );
+    let twice = claude_stream(
+        &[
+            (
+                json!({"type":"thinking","thinking":"","signature":""}),
+                vec![
+                    json!({"type":"signature_delta","signature":"One"}),
+                    json!({"type":"signature_delta","signature":"Two"}),
+                ],
+            ),
+            tool_block(),
+        ],
+        "tool_use",
+    );
+    // Thinking text with a control character cannot be replayed unchanged.
+    let control = claude_stream(
+        &[thinking_block("bell\u{7}", "sig"), tool_block()],
+        "tool_use",
+    );
+    for (name, stream, expected) in [
+        ("skipped index", skipped, ModelError::Identity),
+        ("text after tool", after_tool, ModelError::Unsupported),
+        ("start and delta signature", doubled, ModelError::Malformed),
+        ("two signature deltas", twice, ModelError::Malformed),
+        ("control character", control, ModelError::Malformed),
+    ] {
+        let fixture = Fixture::stream(&stream).await;
+        let outcome = fixture
+            .invoke(Provider::Anthropic, &request(Provider::Anthropic))
+            .await;
+        assert_eq!(outcome.completion, Completion::Failed(expected), "{name}");
+        assert_eq!(proposals(&outcome), 0, "{name}");
+        assert!(reasoning_events(&outcome).is_empty(), "{name}");
+    }
+    // A signature given only at the start is kept as is, and non-ASCII
+    // thinking text is accepted and replayed unchanged.
+    let start_only = claude_stream(
+        &[
+            (
+                json!({"type":"thinking","thinking":"Überlegung 🌍 思考","signature":"StartOnlySig"}),
+                vec![],
+            ),
+            tool_block(),
+        ],
+        "tool_use",
+    );
+    let fixture = Fixture::stream(&start_only).await;
+    let outcome = fixture
+        .invoke(Provider::Anthropic, &request(Provider::Anthropic))
+        .await;
+    assert_eq!(outcome.completion, Completion::Succeeded);
+    assert_eq!(
+        reasoning_events(&outcome),
+        vec![&ReasoningBlock::Thinking {
+            thinking: "Überlegung 🌍 思考".into(),
+            signature: "StartOnlySig".into()
+        }]
+    );
 }

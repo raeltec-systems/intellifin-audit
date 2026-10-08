@@ -785,6 +785,21 @@ fn replay_blocks_are_claude_only_once_per_group_and_count_toward_history() {
     };
     last.preceding.clear();
     assert_eq!(grouped.validate(), Ok(()));
+    // Not only adjacent copies: a later exchange of the same invocation,
+    // separated by a message, may not carry the blocks either.
+    let mut separated = grouped.clone();
+    let mut later = separated.history.pop().unwrap();
+    separated.history.push(HistoryItem::Message(ModelMessage {
+        role: MessageRole::User,
+        text: "Interleaved note".into(),
+        source_id: Some("brief".into()),
+    }));
+    let HistoryItem::ToolExchange(exchange) = &mut later else {
+        panic!("missing exchange")
+    };
+    exchange.preceding = vec![ReplayBlock::Text("again".into())];
+    separated.history.push(later);
+    assert_eq!(separated.validate(), Err(ModelError::Invalid));
 
     // Replay bytes share the history cap.
     let mut large = request.clone();

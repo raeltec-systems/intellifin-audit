@@ -356,7 +356,7 @@ async fn run() -> Result<(), String> {
         plans.push(json!({"provider":name,"proposed_model_id":model,"declared_reasoning_capability":reasoning,"account_binding":account,"account_binding_requires_operator_key_mapping":true,"destination":if provider==Provider::OpenAi{"https://api.openai.com/v1/responses"}else{"https://api.anthropic.com/v1/messages"},"qualification":"candidate_only","payloads":payloads}));
         candidates.push((provider, text, tool));
     }
-    let manifest = json!({"approval":"required_before_execute","providers":opts["providers"],"max_requests":3*candidates.len(),"max_body_bytes_per_request":MAX_BODY_BYTES,"max_output_tokens_per_request":OUTPUT_TOKENS,"input_classes":["synthetic","tool_result"],"max_usd":opts["max-usd"].parse::<u32>().map_err(|_| "invalid spend reservation")?,"taxes":"excluded; owner approval must name billing jurisdiction and any tax allowance","requested_service_tier":"standard","spend_enforcement":"external evidence required; environment confirmation is not enforcement","spend_evidence_reference":opts["spend-evidence"],"receipt_directory":receipt_directory,"execution_receipt":"The reviewed existing --receipt-dir must be retained. Each approval identity is atomically consumed before credential access or network I/O, with the manifest hash recorded inside; interrupted runs remain consumed. Directory or receipt deletion is an external deliberate reset that this guard cannot prevent.","continuation_preview":"template","approved_substitution":"Only the validated provider call_id replaces provider-call-placeholder; canonical arguments must be semantically identical to the exact prepared operation. For Anthropic, the placeholder thinking block (empty text, provider-signature-placeholder) is replaced by the tool response's own reasoning and text blocks that preceded its tool_use, unchanged and in original order; receipts record only their byte counts, block counts and hashes. Actual transmitted body SHA256 is recorded per call.","provider_owned_continuations":false,"external_tool_effects":false,"candidates":plans});
+    let manifest = json!({"approval":"required_before_execute","providers":opts["providers"],"max_requests":3*candidates.len(),"max_body_bytes_per_request":MAX_BODY_BYTES,"max_output_tokens_per_request":OUTPUT_TOKENS,"input_classes":["synthetic","tool_result"],"max_usd":opts["max-usd"].parse::<u32>().map_err(|_| "invalid spend reservation")?,"taxes":"excluded; owner approval must name billing jurisdiction and any tax allowance","requested_service_tier":"standard","spend_enforcement":"external evidence required; environment confirmation is not enforcement","spend_evidence_reference":opts["spend-evidence"],"receipt_directory":receipt_directory,"execution_receipt":"The reviewed existing --receipt-dir must be retained. Each approval identity is atomically consumed before credential access or network I/O, with the manifest hash recorded inside; interrupted runs remain consumed. Directory or receipt deletion is an external deliberate reset that this guard cannot prevent.","continuation_preview":"template","approved_substitution":"Only the validated provider call_id replaces provider-call-placeholder; canonical arguments must be semantically identical to the exact prepared operation. For Anthropic, the placeholder thinking block (empty text, provider-signature-placeholder) is replaced by the tool response's own reasoning and text blocks that preceded its tool_use, unchanged and in original order; receipts record only their byte counts, block counts and hashes. Every actual body, including the substituted continuation, is checked against max_body_bytes_per_request before it is sent; a larger body stops the run without sending. Actual transmitted body SHA256 is recorded per call.","provider_owned_continuations":false,"external_tool_effects":false,"candidates":plans});
     let bytes = serde_json::to_vec(&manifest).map_err(|_| "manifest encoding failed")?;
     let digest = hash(&bytes);
     if opts["mode"] == "dry-run" {
@@ -465,16 +465,36 @@ async fn call(
     receipt: &mut Receipt,
 ) -> Result<TransportOutcome, String> {
     let body = transport.preview(request).map_err(|e| e.to_string())?;
-    if *count >= 6 || body.len() > MAX_BODY_BYTES {
+    if *count >= 6 {
         return Err("qualification limit reached".into());
     }
+    // The actual body, including substituted reasoning blocks, is checked
+    // before anything is sent; nothing over the reviewed cap is transmitted.
+    if body.len() > MAX_BODY_BYTES {
+        return Err(format!(
+            "{phase} request body is {} bytes, over the reviewed {MAX_BODY_BYTES}-byte cap; not sent",
+            body.len()
+        ));
+    }
     *count += 1;
-    // This runner accepts only its own bounded synthetic requests. Retain their
-    // exact JSON so an owner can reconstruct the reviewed continuation and its
-    // one permitted provider-call substitution without any credentials.
-    receipt.record(&json!({"kind":"dispatch_cutoff","request_number":count,"phase":phase,"provider":request.profile.provider.as_str(),"requested_model":request.profile.model,"account_binding":request.profile.account_id,"destination":request.profile.destination,"body_bytes":body.len(),"body_sha256":hash(&body),"synthetic_body":redact_reasoning(serde_json::from_slice::<Value>(&body).map_err(|_|"invalid synthetic body")?),"max_output_tokens":request.max_output_tokens,"acceptance":"possibly_accepted_until_observed"}))?;
+    receipt.record(&dispatch_record(request, *count, phase, &body)?)?;
     let output = transport.invoke(request, &ModelCancellation::new()).await;
     observe(request, output, *count, phase, &body, receipt)
+}
+/// The pre-send receipt record. This runner accepts only its own bounded
+/// synthetic requests and retains their JSON so an owner can reconstruct the
+/// reviewed continuation and its permitted substitutions without credentials.
+/// Reasoning text, signatures and redacted data appear only as byte counts and
+/// hashes; `body_sha256` still covers the exact transmitted bytes.
+fn dispatch_record(
+    request: &ModelRequest,
+    count: usize,
+    phase: &str,
+    body: &[u8],
+) -> Result<Value, String> {
+    Ok(
+        json!({"kind":"dispatch_cutoff","request_number":count,"phase":phase,"provider":request.profile.provider.as_str(),"requested_model":request.profile.model,"account_binding":request.profile.account_id,"destination":request.profile.destination,"body_bytes":body.len(),"body_sha256":hash(body),"synthetic_body":redact_reasoning(serde_json::from_slice::<Value>(body).map_err(|_|"invalid synthetic body")?),"max_output_tokens":request.max_output_tokens,"acceptance":"possibly_accepted_until_observed"}),
+    )
 }
 fn observe(
     request: &ModelRequest,
@@ -944,11 +964,23 @@ mod tests {
             value["messages"][1]["content"][0],
             json!({"type":"thinking","thinking":"private reasoning text","signature":SIGNATURE})
         );
-        // What a dispatch receipt would retain holds no text or signature.
-        let redacted = redact_reasoning(value).to_string();
-        assert!(!redacted.contains(SIGNATURE));
-        assert!(!redacted.contains("private reasoning text"));
-        assert!(redacted.contains(&hash(SIGNATURE.as_bytes())));
+        // The dispatch record `call()` writes holds no text or signature, yet
+        // still hashes the exact body that would be transmitted.
+        let record = dispatch_record(&next, 3, "continuation", &body).unwrap();
+        let written = record.to_string();
+        assert!(!written.contains(SIGNATURE));
+        assert!(!written.contains("private reasoning text"));
+        assert!(written.contains(&hash(SIGNATURE.as_bytes())));
+        assert_eq!(record["body_sha256"], hash(&body));
+        assert_eq!(record["body_bytes"], body.len());
+        assert_eq!(
+            record["synthetic_body"]["messages"][1]["content"][0]["redacted_for_receipt"],
+            true
+        );
+        assert_eq!(
+            record["synthetic_body"]["messages"][1]["content"][1]["type"],
+            "tool_use"
+        );
         drop(receipt);
         let records = fs::read_to_string(directory.receipt_path()).unwrap();
         assert!(!records.contains(SIGNATURE));
@@ -959,5 +991,47 @@ mod tests {
             last["reasoning"]["blocks"][0]["signature_bytes"],
             SIGNATURE.len()
         );
+    }
+
+    #[tokio::test]
+    async fn oversized_actual_continuation_is_refused_before_sending() {
+        let request = request(
+            Provider::Anthropic,
+            "claude-sonnet-5-5",
+            "fixture-account",
+            false,
+            "tool",
+        );
+        let transport = adapter(
+            Provider::Anthropic,
+            "unused-dry-run-marker",
+            "fixture-account",
+            &request.profile.destination,
+        )
+        .unwrap();
+        let next = continuation(
+            &request,
+            "qualification-proposal",
+            "toolu_01",
+            operation_arguments(&request.catalogue.tools[0].operation),
+            vec![ReplayBlock::Reasoning(ReasoningBlock::Thinking {
+                thinking: "t".repeat(MAX_BODY_BYTES),
+                signature: "EqQBsig==".into(),
+            })],
+        );
+        let directory = TestDirectory::new();
+        let mut receipt = directory.consume("reviewed-synthetic-manifest").unwrap();
+        let before = fs::read(directory.receipt_path()).unwrap();
+        let mut count = 2;
+        let error = call(&transport, &next, &mut count, "continuation", &mut receipt)
+            .await
+            .unwrap_err();
+        assert!(
+            error.contains("over the reviewed 65536-byte cap; not sent"),
+            "{error}"
+        );
+        assert_eq!(count, 2, "nothing was dispatched");
+        drop(receipt);
+        assert_eq!(fs::read(directory.receipt_path()).unwrap(), before);
     }
 }

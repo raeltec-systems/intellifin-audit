@@ -943,8 +943,14 @@ where
                                 fact,
                                 is_error: false,
                             },
-                            // Costed with the invocation's first call; moved to
-                            // the first exchange actually sent at assembly.
+                            // Only the exchange of the invocation's first call
+                            // carries them, so they are costed with that step.
+                            // A model turn and its tool steps form one
+                            // compaction unit (the planner cuts only at model
+                            // turns), so the whole group is kept or compacted
+                            // together. If that first exchange is not sent as
+                            // an exchange, the blocks are not sent at all: a
+                            // signed block never precedes other tool calls.
                             preceding: if first_call(invocation, call_id) {
                                 replay_for(invocation, &self.settings.profile)
                             } else {
@@ -1319,22 +1325,6 @@ where
             for (entry, item) in items {
                 entries.push(entry);
                 history.push(item);
-            }
-        }
-        // Each invocation's pre-tool blocks are replayed once, before its first
-        // tool call still in context, even when an earlier call was compacted.
-        let mut replayed = BTreeSet::new();
-        for item in &mut history {
-            if let HistoryItem::ToolExchange(exchange) = item {
-                if replayed.insert(exchange.invocation_id.clone()) {
-                    if exchange.preceding.is_empty()
-                        && let Some(invocation) = memo.get(&exchange.invocation_id)
-                    {
-                        exchange.preceding = replay_for(invocation, &self.settings.profile);
-                    }
-                } else {
-                    exchange.preceding.clear();
-                }
             }
         }
         let knowledge_omitted = counts

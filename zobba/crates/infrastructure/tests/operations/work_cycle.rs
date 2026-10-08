@@ -3,6 +3,7 @@
 //! facts, guidance boundaries and routing are the production repositories.
 use super::model_execution::{FixtureQualification, catalogue, profile};
 use super::*;
+use std::collections::BTreeSet;
 use std::{
     collections::VecDeque,
     sync::{
@@ -36,8 +37,8 @@ enum Turn {
     /// Several proposals in one turn.
     Tools(Vec<(&'static str, &'static str)>),
     Text(&'static str),
-    /// A Claude-shaped turn: opaque thinking and text, then one proposal.
-    Reasoned(&'static str, &'static str),
+    /// A Claude-shaped turn: opaque thinking and text, then its proposals.
+    Reasoned(Vec<(&'static str, &'static str)>),
     /// Wait for the notify, then answer with the inner turn.
     Stall(Arc<Notify>, Box<Turn>),
     /// Never answer until cancelled.
@@ -87,34 +88,32 @@ fn outcome(turn: &Turn) -> TransportOutcome {
                 .collect(),
             Completion::Succeeded,
         ),
-        Turn::Reasoned(call, name) => (
-            vec![
-                ModelEvent {
-                    sequence: 0,
-                    kind: EventKind::Reasoning {
-                        item_id: "msg:0".into(),
-                        block: ReasoningBlock::Thinking {
-                            thinking: String::new(),
-                            signature: CLAUDE_SIGNATURE.into(),
-                        },
+        Turn::Reasoned(calls) => (
+            [
+                EventKind::Reasoning {
+                    item_id: "msg:0".into(),
+                    block: ReasoningBlock::Thinking {
+                        thinking: CLAUDE_THINKING.into(),
+                        signature: CLAUDE_SIGNATURE.into(),
                     },
                 },
-                ModelEvent {
-                    sequence: 1,
-                    kind: EventKind::TextDelta {
-                        item_id: "msg:1".into(),
-                        text: "Checking the prepared effect.".into(),
-                    },
+                EventKind::TextDelta {
+                    item_id: "msg:1".into(),
+                    text: "Checking the prepared effect.".into(),
                 },
-                ModelEvent {
-                    sequence: 2,
-                    kind: EventKind::ToolProposal {
-                        call_id: (*call).into(),
-                        name: (*name).into(),
-                        arguments: JsonValue::Null,
-                    },
-                },
-            ],
+            ]
+            .into_iter()
+            .chain(calls.iter().map(|(call, name)| EventKind::ToolProposal {
+                call_id: (*call).into(),
+                name: (*name).into(),
+                arguments: JsonValue::Null,
+            }))
+            .enumerate()
+            .map(|(sequence, kind)| ModelEvent {
+                sequence: sequence as u64,
+                kind,
+            })
+            .collect(),
             Completion::Succeeded,
         ),
         Turn::Text(text) => (
@@ -142,6 +141,8 @@ fn outcome(turn: &Turn) -> TransportOutcome {
     }
 }
 const CLAUDE_SIGNATURE: &str = "EqQBCkYIBRgCKkBWorkLoopSignature+/0123456789==";
+/// Distinctive thinking text: it must never leave the replay channel.
+const CLAUDE_THINKING: &str = "PRIVATE-THINKING-MARKER: weigh the prepared effect.";
 /// Input tokens the scripted provider reports for every completed turn.
 const FIXTURE_INPUT_TOKENS: u64 = 321;
 #[derive(Clone)]
@@ -391,6 +392,7 @@ pub(super) async fn verify(f: &Fixture, admin: &mut PgConnection) {
     };
     let hang = Arc::new(AtomicBool::new(false));
     Box::pin(first_cycle(f, &harness, &hang)).await;
+    claude_reasoning_replay(f, &harness, &hang, admin).await;
     Box::pin(guidance_mid_call(f, &harness, &hang, admin)).await;
     Box::pin(guide_turn_race(f, &harness, &hang, admin)).await;
     Box::pin(stalled_pause(f, &harness, &hang)).await;
@@ -448,9 +450,6 @@ pub(super) async fn verify(f: &Fixture, admin: &mut PgConnection) {
         &auditor_hash,
     ))
     .await;
-    // Last among the work scenarios: it adds a second (Claude) profile and
-    // must not change the state the earlier scenarios measure.
-    claude_reasoning_replay(f, &harness, &hang).await;
     Box::pin(routing(f, admin)).await;
     Box::pin(storage_guards(admin)).await;
 }
@@ -566,6 +565,8 @@ async fn first_cycle(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
 
 /// A production tool continuation replays the producing Claude response's
 /// pre-tool blocks unchanged, bound into its disclosure, never as answer text.
+/// It uses its own trusted Claude registration: the ordinary fixture source
+/// keeps refusing every Anthropic profile.
 ///
 /// Returned already boxed: constructing it in `verify`'s own frame would add
 /// its whole state machine to a frame that already sits near the default
@@ -574,20 +575,32 @@ fn claude_reasoning_replay<'a>(
     f: &'a Fixture,
     h: &'a Harness,
     hang: &'a Arc<AtomicBool>,
+    admin: &'a mut PgConnection,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>> {
-    Box::pin(claude_reasoning_replay_inner(f, h, hang))
+    Box::pin(async move {
+        let claude = claude_harness(h).await;
+        claude_replay_and_refusals(f, &claude, hang, admin).await;
+        claude_group_compaction(f, &claude, hang).await;
+    })
 }
-async fn claude_reasoning_replay_inner(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>) {
+
+async fn claude_harness(h: &Harness) -> Harness {
+    use super::model_execution::{ClaudeFixtureQualification, FixtureQualification};
     let mut p = h.profile.clone();
     p.id = "work-profile-claude".into();
     p.provider = Provider::Anthropic;
+    assert!(
+        !FixtureQualification(AtomicBool::new(true)).qualified(&p),
+        "the ordinary fixture registration refuses an unqualified provider"
+    );
     h.repo
         .save_profile("actor-manager", "org-a", &p)
         .await
         .unwrap();
-    let claude = Harness {
-        repo: h.repo.clone(),
-        operations: h.operations.clone(),
+    let source: Arc<dyn ModelQualificationSource> = Arc::new(ClaudeFixtureQualification);
+    Harness {
+        repo: h.repo.clone().with_qualification_source(source.clone()),
+        operations: h.operations.clone().with_model_qualification_source(source),
         profile: p,
         catalogue: h.catalogue.clone(),
         hang_after_observe: h.hang_after_observe.clone(),
@@ -595,10 +608,49 @@ async fn claude_reasoning_replay_inner(f: &Fixture, h: &Harness, hang: &Arc<Atom
         dispatches: h.dispatches.clone(),
         unknown: h.unknown.clone(),
         context: h.context,
-    };
+    }
+}
+
+fn claude_blocks() -> Vec<ReplayBlock> {
+    vec![
+        ReplayBlock::Reasoning(ReasoningBlock::Thinking {
+            thinking: CLAUDE_THINKING.into(),
+            signature: CLAUDE_SIGNATURE.into(),
+        }),
+        ReplayBlock::Text("Checking the prepared effect.".into()),
+    ]
+}
+fn exchange_at(request: &mut ModelRequest, index: usize) -> &mut ToolExchange {
+    match request
+        .history
+        .iter_mut()
+        .filter_map(|item| match item {
+            HistoryItem::ToolExchange(exchange) => Some(exchange),
+            HistoryItem::Message(_) => None,
+        })
+        .nth(index)
+    {
+        Some(exchange) => exchange,
+        None => panic!("missing exchange {index}"),
+    }
+}
+/// Nothing a person can read leaves the replay channel: step facts, cards and
+/// the context display are free of thinking text and signatures.
+fn assert_unexposed(text: &str) {
+    assert!(!text.contains(CLAUDE_SIGNATURE));
+    assert!(!text.contains("PRIVATE-THINKING-MARKER"));
+}
+
+async fn claude_replay_and_refusals(
+    f: &Fixture,
+    claude: &Harness,
+    hang: &Arc<AtomicBool>,
+    admin: &mut PgConnection,
+) {
     let (case, basis, attempt) = consumed(f, "work-claude-reasoning").await;
     let script = Script::new(vec![
-        Turn::Reasoned("toolu-1", "send_exact"),
+        Turn::Reasoned(vec![("toolu-1", "send_exact")]),
+        Turn::Reasoned(vec![("toolu-2", "send_exact")]),
         Turn::Text("Done for now."),
     ]);
     let end = claude
@@ -606,22 +658,18 @@ async fn claude_reasoning_replay_inner(f: &Fixture, h: &Harness, hang: &Arc<Atom
         .run(&basis, &ModelCancellation::new())
         .await;
     assert_eq!(end, CycleEnd::Waiting);
-    assert_eq!(script.sends.load(Ordering::SeqCst), 2);
+    assert_eq!(script.sends.load(Ordering::SeqCst), 3);
     let requests = script.requests.lock().unwrap().clone();
-    let [HistoryItem::ToolExchange(exchange)] = &requests[1].history[..] else {
-        panic!("the continuation carries exactly the tool exchange");
-    };
-    assert_eq!(exchange.call_id, "toolu-1");
-    assert_eq!(
-        exchange.preceding,
-        vec![
-            ReplayBlock::Reasoning(ReasoningBlock::Thinking {
-                thinking: String::new(),
-                signature: CLAUDE_SIGNATURE.into(),
-            }),
-            ReplayBlock::Text("Checking the prepared effect.".into()),
-        ]
-    );
+    let mut second = requests[1].clone();
+    assert_eq!(exchanges(&second), 1);
+    assert_eq!(exchange_at(&mut second, 0).call_id, "toolu-1");
+    assert_eq!(exchange_at(&mut second, 0).preceding, claude_blocks());
+    // Each invocation's blocks appear once, on its own first exchange.
+    let mut third = requests[2].clone();
+    assert_eq!(exchanges(&third), 2);
+    assert_eq!(exchange_at(&mut third, 0).preceding, claude_blocks());
+    assert_eq!(exchange_at(&mut third, 1).call_id, "toolu-2");
+    assert_eq!(exchange_at(&mut third, 1).preceding, claude_blocks());
     // The stored, disclosed request is exactly what was sent: its binding
     // covers the replayed blocks.
     let work = f
@@ -629,7 +677,7 @@ async fn claude_reasoning_replay_inner(f: &Fixture, h: &Harness, hang: &Arc<Atom
         .work("actor-a", &selected("a"), &case.receipt.task_id)
         .await
         .unwrap();
-    let continuation = h
+    let continuation = claude
         .repo
         .get(
             "actor-a",
@@ -640,15 +688,148 @@ async fn claude_reasoning_replay_inner(f: &Fixture, h: &Harness, hang: &Arc<Atom
         .unwrap();
     assert_eq!(continuation.request, requests[1]);
     let mut unbound = continuation.request.clone();
-    unbound.history.iter_mut().for_each(|item| {
-        if let HistoryItem::ToolExchange(e) = item {
-            e.preceding.clear();
-        }
-    });
+    exchange_at(&mut unbound, 0).preceding.clear();
     bind_disclosure(&mut unbound).unwrap();
     assert_ne!(unbound.disclosure, continuation.request.disclosure);
-    // The thinking signature is never part of the step facts shown to users.
-    assert!(!format!("{:?}", work).contains(CLAUDE_SIGNATURE));
+    // Thinking stays out of the step facts behind the work GET and out of
+    // every context message; only the replay channel carries it.
+    assert_unexposed(&format!("{work:?}"));
+    for request in &requests {
+        let mut stripped = request.clone();
+        for item in &mut stripped.history {
+            if let HistoryItem::ToolExchange(exchange) = item {
+                exchange.preceding.clear();
+            }
+        }
+        assert_unexposed(&format!("{:?}{:?}", stripped.messages, stripped.history));
+    }
+    finish(f, &case, &attempt, Observation::Completed).await;
+
+    // Altered, reordered or partial blocks, a different model, or a repeated
+    // exchange whose copy differs: refused before anything is stored.
+    let mut other = claude.profile.clone();
+    other.id = "work-profile-claude-2".into();
+    other.model = "fixture-model-2".into();
+    claude
+        .repo
+        .save_profile("actor-manager", "org-a", &other)
+        .await
+        .unwrap();
+    let altered = |blocks: Vec<ReplayBlock>| {
+        let mut request = requests[1].clone();
+        exchange_at(&mut request, 0).preceding = blocks;
+        request
+    };
+    let mut forged = claude_blocks();
+    forged[0] = ReplayBlock::Reasoning(ReasoningBlock::Thinking {
+        thinking: CLAUDE_THINKING.into(),
+        signature: "EqQBCkYIBRgCKkBForgedSignature==".into(),
+    });
+    let mut reordered = claude_blocks();
+    reordered.reverse();
+    let mut different_model = requests[1].clone();
+    different_model.profile = other;
+    let mut repeated = requests[2].clone();
+    exchange_at(&mut repeated, 0).preceding = vec![claude_blocks()[0].clone()];
+    let cases = [
+        ("tampered", altered(forged)),
+        ("reordered", altered(reordered)),
+        ("partial", altered(vec![claude_blocks()[0].clone()])),
+        ("different-model", different_model),
+        ("repeated-copy", repeated),
+    ];
+    for (name, mut request) in cases {
+        request.key = format!("claude-refused-{name}");
+        bind_disclosure(&mut request).unwrap();
+        assert_eq!(
+            claude
+                .repo
+                .prepare("actor-a", &selected("a"), &request)
+                .await
+                .err(),
+            Some(ModelError::Conflict),
+            "{name}"
+        );
+        let stored: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM public.model_invocations WHERE key=$1")
+                .bind(&request.key)
+                .fetch_one(&mut *admin)
+                .await
+                .unwrap();
+        assert_eq!(stored, 0, "{name}");
+    }
+}
+
+/// A two-call Claude turn is one compaction unit: its group is kept or
+/// compacted whole, and its blocks appear exactly once, before its calls.
+async fn claude_group_compaction(f: &Fixture, claude: &Harness, hang: &Arc<AtomicBool>) {
+    let (case, basis, attempt) = consumed(f, "work-claude-measure").await;
+    let script = Script::new(vec![
+        Turn::Reasoned(vec![("cm-a", "send_exact"), ("cm-b", "send_exact")]),
+        Turn::Text("Measured."),
+    ]);
+    assert_eq!(
+        claude
+            .work(f, &script, hang)
+            .run(&basis, &ModelCancellation::new())
+            .await,
+        CycleEnd::Waiting
+    );
+    let work = f
+        .tasks
+        .work("actor-a", &selected("a"), &case.receipt.task_id)
+        .await
+        .unwrap();
+    let turns = stored_turns(&work);
+    let fixed = turns[0].estimated_input_tokens.unwrap();
+    let group = turns[1].estimated_input_tokens.unwrap() - fixed;
+    finish(f, &case, &attempt, Observation::Completed).await;
+
+    let (case, basis, attempt) = consumed(f, "work-claude-compaction").await;
+    let mut turns: Vec<Turn> = (0..5)
+        .map(|i| {
+            Turn::Reasoned(vec![
+                (leaked(format!("cg-{i}-a")), "send_exact"),
+                (leaked(format!("cg-{i}-b")), "send_exact"),
+            ])
+        })
+        .collect();
+    turns.push(Turn::Text("Reviewed the groups."));
+    let script = Script::new(turns);
+    assert_eq!(
+        claude
+            .budgeted(f, &script, hang, fixed + group * 5 / 2 + 2_000)
+            .run(&basis, &ModelCancellation::new())
+            .await,
+        CycleEnd::Waiting
+    );
+    let requests = script.requests.lock().unwrap().clone();
+    assert_eq!(requests.len(), 6);
+    assert!(
+        requests
+            .iter()
+            .any(|r| message(r, "compaction-digests").is_some() && exchanges(r) < 2 * 5),
+        "earlier groups were compacted"
+    );
+    for request in &requests {
+        let sent: Vec<&ToolExchange> = request
+            .history
+            .iter()
+            .filter_map(|item| match item {
+                HistoryItem::ToolExchange(exchange) => Some(exchange.as_ref()),
+                HistoryItem::Message(_) => None,
+            })
+            .collect();
+        assert_eq!(sent.len() % 2, 0, "groups are kept whole");
+        for pair in sent.chunks(2) {
+            assert_eq!(pair[0].invocation_id, pair[1].invocation_id);
+            assert!(pair[0].call_id.ends_with("-a") && pair[1].call_id.ends_with("-b"));
+            assert_eq!(pair[0].preceding, claude_blocks());
+            assert!(pair[1].preceding.is_empty());
+        }
+        let ids: BTreeSet<&str> = sent.iter().map(|e| e.invocation_id.as_str()).collect();
+        assert_eq!(ids.len(), sent.len() / 2, "one group per invocation");
+    }
     finish(f, &case, &attempt, Observation::Completed).await;
 }
 
