@@ -149,3 +149,98 @@ impl<T: ModelTransport + 'static> WorkRunner for Composition<T> {
         })
     }
 }
+
+/// Story 22.5 trusted composition of the agent's reading tools: the same work
+/// loop, answering with cited answers, plus native page reads (one
+/// disclosure-bound request per page through the same qualified transport)
+/// and model-written programs, both run through the 22.4 analysis sandbox.
+/// The originals' classification, the analysis target and the sandbox come
+/// from trusted configuration, never from a model or a message.
+pub struct ReadingComposition<T, X, O> {
+    pub base: Composition<T>,
+    pub sandbox: Arc<X>,
+    pub objects: Arc<O>,
+    pub allowlist: Vec<zobba_domain::analysis::AnalysisEnvironment>,
+    pub analysis_settings: zobba_application::analysis::AnalysisSettings,
+    pub analysis: zobba_application::analysis::AnalysisTarget,
+    /// The firm's classification of registered originals, disclosed with a page.
+    pub classification: String,
+}
+
+impl<T, X, O> WorkRunner for ReadingComposition<T, X, O>
+where
+    T: ModelTransport + 'static,
+    X: zobba_application::analysis::AnalysisSandbox + 'static,
+    O: zobba_application::evidence::EvidenceObjects + 'static,
+{
+    fn run<'a>(
+        &'a self,
+        basis: &'a ClaimBasis,
+        cancellation: &'a ModelCancellation,
+    ) -> CycleFuture<'a> {
+        Box::pin(async move {
+            let base = &self.base;
+            let models = ModelRepository::new(base.pool.clone())
+                .with_qualification_source(base.qualifications.clone());
+            let (profile, catalogue) = match models.selection(&basis.actor_id, &basis.scope).await {
+                Ok(Some(selection)) => selection,
+                Ok(None) => return None,
+                Err(_) => return Some(CycleEnd::Unavailable),
+            };
+            let max_output_tokens = base.max_output_tokens.min(profile.max_output_tokens);
+            let readers = ModelCoordinator {
+                store: models.clone(),
+                transport: Shared(base.transport.clone()),
+            };
+            let store = zobba_infrastructure::citation::CitationRepository::new(base.pool.clone());
+            let operations = OperationRepository::new(base.pool.clone())
+                .with_model_qualification_source(base.qualifications.clone());
+            let jobs = zobba_infrastructure::analysis::AnalysisRepository::new(base.pool.clone());
+            let settings = zobba_application::reading::ReadingSettings {
+                profile: profile.clone(),
+                catalogue: catalogue.clone(),
+                disclosure: base.disclosure.clone(),
+                input_class: base.input_class.clone(),
+                classification: self.classification.clone(),
+                max_output_tokens,
+                analysis: self.analysis.clone(),
+                bind: bind_disclosure,
+            };
+            let reading = zobba_application::reading::Reading {
+                models: &readers,
+                store: &store,
+                operations: &operations,
+                jobs: &jobs,
+                sandbox: &*self.sandbox,
+                objects: &*self.objects,
+                allowlist: &self.allowlist,
+                analysis_settings: self.analysis_settings,
+                settings: &settings,
+            };
+            let work = WorkLoop {
+                steps: TaskRepository::new(base.pool.clone()),
+                coordinator: ModelCoordinator {
+                    store: models,
+                    transport: Shared(base.transport.clone()),
+                },
+                reading,
+                dispatch: GatewayDispatch {
+                    gateway: base.gateway.clone(),
+                    operations: OperationRepository::new(base.pool.clone())
+                        .with_model_qualification_source(base.qualifications.clone()),
+                },
+                settings: WorkSettings {
+                    profile,
+                    catalogue,
+                    disclosure: base.disclosure.clone(),
+                    input_class: base.input_class.clone(),
+                    max_output_tokens,
+                    context: base.context,
+                },
+                bind: bind_disclosure,
+                delay: |duration| Box::pin(tokio::time::sleep(duration)),
+            };
+            Some(Box::pin(work.run(basis, cancellation)).await)
+        })
+    }
+}

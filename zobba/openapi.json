@@ -4723,6 +4723,129 @@
         ]
       }
     },
+    "/engagements/{engagement_id}/tasks/{task_id}/answers": {
+      "get": {
+        "tags": [
+          "answers"
+        ],
+        "operationId": "get_task_answers",
+        "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cited answers with each source's trusted verification; the answer text is unchanged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskAnswersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
     "/engagements/{engagement_id}/tasks/{task_id}/knowledge": {
       "get": {
         "tags": [
@@ -9721,6 +9844,26 @@
         },
         "additionalProperties": false
       },
+      "AnswerSegmentResponse": {
+        "type": "object",
+        "required": [
+          "text",
+          "sources"
+        ],
+        "properties": {
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CitationSourceResponse"
+            },
+            "description": "Sources of this span, empty when the span is uncited."
+          },
+          "text": {
+            "type": "string",
+            "description": "Exact segment text. Concatenating all segments gives the answer."
+          }
+        }
+      },
       "AttachmentRequest": {
         "type": "object",
         "required": [
@@ -10026,6 +10169,129 @@
           }
         },
         "additionalProperties": false
+      },
+      "CitationSourceResponse": {
+        "type": "object",
+        "required": [
+          "original_id",
+          "readable",
+          "verification"
+        ],
+        "properties": {
+          "byte_end": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "byte_start": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Half-open byte range for a plain-text locator.",
+            "minimum": 0
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human label of the locator (`Page 2`, `Sheet1!B4`)."
+          },
+          "locator": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Canonical locator (`page:2`, `cell:Sheet1!B4`, `bytes:16-24`, ...)."
+          },
+          "original_id": {
+            "type": "string",
+            "description": "Exact registered original the model cited."
+          },
+          "quote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The model's quoted text, at most 1000 UTF-8 bytes."
+          },
+          "readable": {
+            "type": "boolean",
+            "description": "False when the current viewer cannot read this original. Its quote,\nfilename, version and digest are then withheld."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Closed reason when unverified: `not_found_at_location`,\n`location_missing`, `source_unreadable` or `page_only`."
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verification": {
+            "$ref": "#/components/schemas/CitationVerificationResponse"
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Exact storage version and SHA-256 for evidence navigation."
+          }
+        }
+      },
+      "CitationVerificationResponse": {
+        "type": "string",
+        "enum": [
+          "verified",
+          "unverified"
+        ]
+      },
+      "CitedAnswerResponse": {
+        "type": "object",
+        "required": [
+          "invocation_id",
+          "text",
+          "segments",
+          "limitations"
+        ],
+        "properties": {
+          "invocation_id": {
+            "type": "string"
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Limitations the model stated about what it could not read."
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnswerSegmentResponse"
+            }
+          },
+          "text": {
+            "type": "string",
+            "description": "The unchanged answer text."
+          }
+        }
       },
       "CommandKindRequest": {
         "type": "string",
@@ -15899,6 +16165,21 @@
           "refused",
           "reconciliation_required"
         ]
+      },
+      "TaskAnswersResponse": {
+        "type": "object",
+        "required": [
+          "answers"
+        ],
+        "properties": {
+          "answers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CitedAnswerResponse"
+            },
+            "description": "Verified answers of the current cycle, oldest first, at most 20."
+          }
+        }
       },
       "TaskCommandRequest": {
         "type": "object",

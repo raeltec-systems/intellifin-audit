@@ -544,6 +544,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/engagements/{engagement_id}/tasks/{task_id}/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_task_answers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/engagements/{engagement_id}/tasks/{task_id}/knowledge": {
         parameters: {
             query?: never;
@@ -1108,6 +1124,12 @@ export interface components {
             /** @description Candidate Task IDs from the question; at least one. */
             selected: string[];
         };
+        AnswerSegmentResponse: {
+            /** @description Sources of this span, empty when the span is uncited. */
+            sources: components["schemas"]["CitationSourceResponse"][];
+            /** @description Exact segment text. Concatenating all segments gives the answer. */
+            text: string;
+        };
         AttachmentRequest: {
             classification: string;
             digest: string;
@@ -1180,6 +1202,48 @@ export interface components {
             reason: string;
             status: components["schemas"]["SkillStatus"];
             version_id: string;
+        };
+        CitationSourceResponse: {
+            /** Format: int64 */
+            byte_end?: number | null;
+            /**
+             * Format: int64
+             * @description Half-open byte range for a plain-text locator.
+             */
+            byte_start?: number | null;
+            filename?: string | null;
+            /** @description Human label of the locator (`Page 2`, `Sheet1!B4`). */
+            location?: string | null;
+            /** @description Canonical locator (`page:2`, `cell:Sheet1!B4`, `bytes:16-24`, ...). */
+            locator?: string | null;
+            /** @description Exact registered original the model cited. */
+            original_id: string;
+            /** @description The model's quoted text, at most 1000 UTF-8 bytes. */
+            quote?: string | null;
+            /**
+             * @description False when the current viewer cannot read this original. Its quote,
+             *     filename, version and digest are then withheld.
+             */
+            readable: boolean;
+            /**
+             * @description Closed reason when unverified: `not_found_at_location`,
+             *     `location_missing`, `source_unreadable` or `page_only`.
+             */
+            reason?: string | null;
+            sha256?: string | null;
+            verification: components["schemas"]["CitationVerificationResponse"];
+            /** @description Exact storage version and SHA-256 for evidence navigation. */
+            version?: string | null;
+        };
+        /** @enum {string} */
+        CitationVerificationResponse: "verified" | "unverified";
+        CitedAnswerResponse: {
+            invocation_id: string;
+            /** @description Limitations the model stated about what it could not read. */
+            limitations: string[];
+            segments: components["schemas"]["AnswerSegmentResponse"][];
+            /** @description The unchanged answer text. */
+            text: string;
         };
         /** @enum {string} */
         CommandKindRequest: "create" | "guide" | "pause" | "resume" | "stop" | "continue";
@@ -2521,6 +2585,10 @@ export interface components {
         StepReasonResponse: "context_budget";
         /** @enum {string} */
         StepStatusResponse: "proposed" | "responded" | "superseded" | "failed" | "completed" | "refused" | "reconciliation_required";
+        TaskAnswersResponse: {
+            /** @description Verified answers of the current cycle, oldest first, at most 20. */
+            answers: components["schemas"]["CitedAnswerResponse"][];
+        };
         TaskCommandRequest: {
             /**
              * @description Exact retained text, at most 4000 UTF-8 bytes. Required only for Create and Guide.
@@ -5254,6 +5322,76 @@ export interface operations {
                 };
             };
             /** @description Session changed; compose fresh reads without replacing the current cookie */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_task_answers: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header?: {
+                /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cited answers with each source's trusted verification; the answer text is unchanged */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskAnswersResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed */
             412: {
                 headers: {
                     [name: string]: unknown;

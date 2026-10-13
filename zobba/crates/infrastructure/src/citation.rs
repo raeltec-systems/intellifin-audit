@@ -305,6 +305,37 @@ impl CitationRepository {
     }
 }
 
+impl CitationRepository {
+    /// The exact original as the current viewer may see it: its filename,
+    /// storage version and digest, or None when the viewer cannot read it now.
+    /// A citation never grants source access; the caller withholds the quote
+    /// and filename of a source this returns None for.
+    pub async fn viewer_original(
+        &self,
+        actor: &str,
+        s: &Scope,
+        id: &str,
+    ) -> Result<Option<(String, String, String)>, ReadingError> {
+        if !valid_scope_id(id) {
+            return Ok(None);
+        }
+        let mut tx = begin(&self.pool, actor, s).await?;
+        let row = sqlx::query("SELECT (request::jsonb)->>'filename' AS filename,version,digest FROM public.evidence_originals WHERE id=$1")
+            .bind(id).fetch_optional(&mut *tx).await.map_err(unavailable)?;
+        let original = row
+            .map(|row| {
+                Ok::<_, ReadingError>((
+                    field(&row, "filename")?,
+                    field(&row, "version")?,
+                    field(&row, "digest")?,
+                ))
+            })
+            .transpose()?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(original)
+    }
+}
+
 impl ReadingStore for CitationRepository {
     async fn original(
         &self,

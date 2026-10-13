@@ -34,6 +34,11 @@ pub(crate) struct TaskHttpState {
     /// Trusted qualification composition for availability reads. Production
     /// installs none, so `model_available` is honestly false.
     pub(crate) models: Option<zobba_infrastructure::model::ModelRepository>,
+    /// Story 22.5 cited answers: verified citations and the invocation reader.
+    pub(crate) answers: Option<(
+        zobba_infrastructure::citation::CitationRepository,
+        zobba_infrastructure::model::ModelRepository,
+    )>,
 }
 
 pub(crate) fn router(database: &RuntimeDatabase, identity: AuthState) -> Router {
@@ -60,6 +65,7 @@ pub(crate) fn router(database: &RuntimeDatabase, identity: AuthState) -> Router 
             repository: TaskRepository::new(control_pool),
             control: true,
             models: None,
+            answers: None,
         });
     let conversation = crate::conversation::router(database.pool().clone(), identity.clone());
     let operations = crate::operations::router(database.pool().clone(), identity.clone());
@@ -78,6 +84,10 @@ pub(crate) fn router(database: &RuntimeDatabase, identity: AuthState) -> Router 
             "/engagements/{engagement_id}/tasks/{task_id}/work",
             route_get(crate::work::get_work),
         )
+        .route(
+            "/engagements/{engagement_id}/tasks/{task_id}/answers",
+            route_get(crate::answers::get_answers),
+        )
         // Reading questions is ordinary traffic; only answers and directions
         // (which produce Guides) use the reserved control lane.
         .route(
@@ -89,6 +99,10 @@ pub(crate) fn router(database: &RuntimeDatabase, identity: AuthState) -> Router 
             repository: TaskRepository::new(database.pool().clone()),
             control: false,
             models: None,
+            answers: Some((
+                zobba_infrastructure::citation::CitationRepository::new(database.pool().clone()),
+                zobba_infrastructure::model::ModelRepository::new(database.pool().clone()),
+            )),
         })
         .merge(conversation)
         .merge(operations);

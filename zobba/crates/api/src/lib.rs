@@ -1,4 +1,5 @@
 //! Owned HTTP interface. OpenAPI is generated from these handler and wire types.
+pub mod answers;
 pub mod auth;
 pub mod conversation;
 pub mod engagement_setup;
@@ -191,6 +192,7 @@ pub fn authenticated_router_with_evidence(
         tasks::get,
         tasks::events,
         work::get_work,
+        answers::get_answers,
         work::direct,
         work::questions,
         work::answer,
@@ -283,6 +285,11 @@ pub fn authenticated_router_with_evidence(
         work::TaskStepResponse,
         work::BriefRevisionResponse,
         work::TaskWorkResponse,
+        answers::TaskAnswersResponse,
+        answers::CitedAnswerResponse,
+        answers::AnswerSegmentResponse,
+        answers::CitationSourceResponse,
+        answers::CitationVerificationResponse,
         work::StepReasonResponse,
         work::SourceStatusResponse,
         work::CompactionSourceResponse,
