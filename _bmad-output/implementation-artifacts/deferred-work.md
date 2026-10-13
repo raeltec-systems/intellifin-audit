@@ -75,3 +75,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-20-7a-qualification-environment-infrastructure.md`
   summary: The release workflow does not read ECR image scan findings (scan_on_push) before deploying, and the release role has no ecr:DescribeImageScanFindings.
   evidence: Scanning runs but its result never gates a release.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-22-4-run-measured-analysis-in-an-isolated-workspace.md`
+  summary: Live Fargate qualification of analysis jobs — a real isolated job in AWS with credential/metadata denial, terminate/restart reconciliation and staging/collection over real presigned S3 URLs.
+  evidence: Owner kept 22.4 as one story (2026-10-13) but no AWS account exists yet; the Fargate adapter is verified offline only and the live proof joins Story 20.7b.
