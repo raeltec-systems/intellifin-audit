@@ -12,7 +12,8 @@ use std::{
 use zobba_application::{BootstrapError, readiness};
 use zobba_infrastructure::RuntimeDatabase;
 use zobba_worker::{
-    coordinate,
+    analysis::{AnalysisComposition, SandboxChoice, sandbox_choice},
+    coordinate, coordinate_work,
     diagnostics::{Code, Diagnostics},
     executor,
     supervision::{supervise, wait_for_shutdown},
@@ -104,6 +105,33 @@ async fn run() -> Result<(), BootstrapError> {
     .await
     .map_err(|_| BootstrapError::DatabaseUnavailable)??;
     let config = executor::Config::from_environment()?;
+    // Analysis is composed only from explicit deployment configuration. The
+    // local Docker sandbox is test-only and cannot be selected here.
+    let analysis = match sandbox_choice(std::env::var("ZOBBA_ANALYSIS_SANDBOX").ok().as_deref())? {
+        SandboxChoice::None => None,
+        SandboxChoice::Fargate => {
+            use zobba_infrastructure::{
+                analysis::fargate::{CredentialSource, FargateConfig, FargateSandbox},
+                evidence::s3::S3EvidenceObjects,
+            };
+            let fargate =
+                FargateConfig::from_environment(zobba_domain::analysis::GENERAL_ENVIRONMENT_ID)
+                    .map_err(|_| BootstrapError::InvalidConfiguration)?
+                    .ok_or(BootstrapError::InvalidConfiguration)?;
+            let sandbox = FargateSandbox::new(fargate, CredentialSource::from_environment())
+                .map_err(|_| BootstrapError::InvalidConfiguration)?;
+            let bucket = std::env::var("ZOBBA_EVIDENCE_BUCKET")
+                .map_err(|_| BootstrapError::InvalidConfiguration)?;
+            let objects = S3EvidenceObjects::from_env(&bucket)
+                .map_err(|_| BootstrapError::InvalidConfiguration)?;
+            Some(Arc::new(AnalysisComposition::new(
+                database.pool().clone(),
+                Arc::new(sandbox),
+                Arc::new(objects),
+                config.diagnostics(),
+            )))
+        }
+    };
     let healthy = Arc::new(AtomicBool::new(true));
     let diagnostics = config.diagnostics();
     let panic_diagnostics = diagnostics.clone();
@@ -123,7 +151,15 @@ async fn run() -> Result<(), BootstrapError> {
         .map_err(|_| BootstrapError::ListenerUnavailable)?;
     eprintln!("worker: ready");
     let (shutdown_sender, shutdown_receiver) = tokio::sync::watch::channel(false);
-    let coordinator = coordinate(database, config, shutdown_receiver.clone());
+    let coordinator = {
+        let shutdown = shutdown_receiver.clone();
+        async move {
+            match analysis {
+                Some(runner) => coordinate_work(database, config, runner, shutdown).await,
+                None => coordinate(database, config, shutdown).await,
+            }
+        }
+    };
     let server = async move {
         axum::serve(listener, app)
             .with_graceful_shutdown(wait_for_shutdown(shutdown_receiver))

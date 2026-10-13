@@ -36,6 +36,16 @@ pub trait WorkRunner: Send + Sync {
         basis: &'a ClaimBasis,
         cancellation: &'a ModelCancellation,
     ) -> CycleFuture<'a>;
+    /// Reconcile durable external work for a Task the coordinator left waiting
+    /// (for example a lost analysis job). Never dispatches. True means a later
+    /// coordination should observe resolved facts.
+    fn reconcile<'a>(
+        &'a self,
+        route: &'a zobba_domain::task::WakeupRoute,
+    ) -> Pin<Box<dyn Future<Output = bool> + Send + 'a>> {
+        let _ = route;
+        Box::pin(async { false })
+    }
 }
 
 struct Shared<T>(Arc<T>);

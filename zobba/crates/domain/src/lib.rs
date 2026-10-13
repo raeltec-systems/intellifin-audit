@@ -1,4 +1,5 @@
 //! Owned identity, scope and durable Task meanings; no delivery or vendor types.
+pub mod analysis;
 pub mod context;
 pub mod conversation;
 pub mod engagement_setup;
@@ -16,4 +17,4 @@ pub mod work;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SchemaVersion(pub u32);
 
-pub const SCHEMA_VERSION: SchemaVersion = SchemaVersion(14);
+pub const SCHEMA_VERSION: SchemaVersion = SchemaVersion(15);

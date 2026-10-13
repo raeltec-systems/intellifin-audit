@@ -1,7 +1,8 @@
 # Least privilege per task. Each task has its own execution role, which is the
 # only identity that can read that task's secrets, so a runtime task can never
-# fetch the migrator URL or the RDS master secret. Only the API has a task role
-# (evidence S3); the worker, migration and bootstrap tasks get no AWS
+# fetch the migrator URL or the RDS master secret. The API has a task role
+# (evidence S3) and the worker has one only for analysis custody (Story 22.4,
+# analysis.tf). Migration, bootstrap and analysis job tasks get no AWS task
 # credentials at all.
 
 locals {
@@ -291,7 +292,7 @@ resource "aws_iam_role_policy" "release" {
         Action = "iam:PassRole"
         Resource = concat(
           [for family in local.release_task_families : aws_iam_role.execution[family].arn],
-          [aws_iam_role.api_task.arn],
+          [aws_iam_role.api_task.arn, aws_iam_role.worker_task.arn],
         )
         Condition = {
           StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" }

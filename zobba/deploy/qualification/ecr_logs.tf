@@ -33,7 +33,7 @@ resource "aws_ecr_lifecycle_policy" "this" {
 }
 
 locals {
-  log_groups = toset(["api", "worker", "migrate", "bootstrap", "vpc-flow"])
+  log_groups = toset(["api", "worker", "migrate", "bootstrap", "analysis", "vpc-flow"])
 }
 
 resource "aws_cloudwatch_log_group" "this" {

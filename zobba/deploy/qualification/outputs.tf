@@ -89,3 +89,16 @@ output "github_environment_variables" {
     CLOUDFRONT_DISTRIBUTION_ID = aws_cloudfront_distribution.this.id
   }
 }
+
+output "analysis_ecr_repository_url" {
+  description = "Repository the pinned analysis image is mirrored into by digest (Story 22.4)."
+  value       = aws_ecr_repository.analysis.repository_url
+}
+
+output "analysis_task_definition" {
+  value = "${aws_ecs_task_definition.analysis.family}:${aws_ecs_task_definition.analysis.revision}"
+}
+
+output "analysis_staging_bucket" {
+  value = aws_s3_bucket.analysis_staging.bucket
+}

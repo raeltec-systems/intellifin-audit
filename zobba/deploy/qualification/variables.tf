@@ -214,6 +214,26 @@ variable "image_digest" {
   }
 }
 
+variable "analysis_image_digest" {
+  description = "sha256 digest of the one server-allowlisted analysis image (general-python-3-13) mirrored into the analysis ECR repository. Null keeps analysis disabled: the worker composes no sandbox."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.analysis_image_digest == null || can(regex("^sha256:[0-9a-f]{64}$", var.analysis_image_digest))
+    error_message = "analysis_image_digest must be null or sha256:<64 hex characters>."
+  }
+
+  # The worker refuses a job whose image digest differs from the server
+  # allowlist (crates/domain/src/analysis.rs); deploying any other image would
+  # only make every job unavailable, so refuse it here instead.
+  validation {
+    condition     = var.analysis_image_digest == null || var.analysis_image_digest == "sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f"
+    error_message = "analysis_image_digest must equal the server-allowlisted general-python-3-13 digest."
+  }
+}
+
 variable "bootstrap_image" {
   description = "Pinned PostgreSQL client image used only by the one-off role bootstrap task."
   type        = string

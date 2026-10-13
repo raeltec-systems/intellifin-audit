@@ -24,9 +24,11 @@ pub enum Code {
     ProcessJoinUnconfirmed,
     ProcessStartFailed,
     DatabaseUnavailable,
+    AnalysisFailed,
+    AnalysisUnresolved,
 }
 impl Code {
-    const COUNT: usize = 14;
+    const COUNT: usize = 16;
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::DiscoveryFailed => "discovery_failed",
@@ -43,6 +45,8 @@ impl Code {
             Self::ProcessJoinUnconfirmed => "process_join_unconfirmed",
             Self::ProcessStartFailed => "process_start_failed",
             Self::DatabaseUnavailable => "database_unavailable",
+            Self::AnalysisFailed => "analysis_failed",
+            Self::AnalysisUnresolved => "analysis_unresolved",
         }
     }
 }

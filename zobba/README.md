@@ -1521,6 +1521,73 @@ Zobba is using" shows them with their creation time, stale sources and
 omissions, and the raw steps stay listed under Current work. One read serves both
 panels.
 
+## Measured analysis in an isolated workspace (Story 22.4)
+
+Schema 15 is additive; published migrations and catalogues 1–14 are unchanged.
+An analysis job is an exact recorded operation through the existing operation
+store: admission, the consume cutoff and dispatch/lookup are Story 20.5's, never
+a second ledger. The canonical meaning binds the environment ID and image
+digest, the program's SHA-256, every input as `{original id, digest}` and the
+limits (`zobba_domain::analysis::AnalysisRequest::canonical_material`). An exact
+retry returns the original job; a changed meaning conflicts. The server
+allowlist (`server_allowlist`) holds one general image, `general-python-3-13`,
+pinned by digest; a request naming anything else is refused before any write.
+Limits are bounded by the owner ceiling: 2 vCPU, 4 GiB, 256 PIDs, 15 minutes,
+100 MiB of outputs (10 MiB per file, 64 files).
+
+New tables: `analysis_jobs`, `analysis_job_events` (the durable status:
+`admitted`, `possibly_started`, `running`, `completed`, `failed`,
+`limit_exceeded`, `stopped`, `collected`, `unknown`, `absent`),
+`analysis_descendants` and `analysis_rejections`. Runtime has SELECT/INSERT
+only; `analysis_event_guard` refuses an out-of-sequence or impossible
+transition, `analysis_output_guard` admits outputs only for the latest
+collectable attempt with parents equal to the job's inputs, and
+`analysis_immutable` refuses every update.
+
+`possibly_started` is written before anything is staged. A sandbox that was
+never started (or is authoritatively absent) is `absent` and retryable under a
+fresh claim; a job whose termination cannot be confirmed is `unknown`: it is
+never retried automatically and no output is collected. Outputs are collected
+only after confirmed termination and validated: relative UTF-8 paths, no `..`,
+absolute, NUL or control characters, bounded length and depth, unique
+(including case-insensitively — every colliding member is refused), regular
+files only (symlinks, hard links, devices, FIFOs and sockets are refused),
+per-file, total and count limits, the allowlisted media types (`text/csv`,
+`application/json`, `text/markdown`, `text/plain`) and a trusted SHA-256.
+Accepted files are registered through 21.1 evidence custody as descendants of
+the pinned originals. Receipts and logs hold only IDs, digests, sizes, counts
+and closed reason codes, never program text, input bytes or output contents.
+Lost-job recovery (`WorkRunner::reconcile`) uses restricted receipt custody,
+looks the sandbox up and resumes the watch or collection; it never dispatches.
+
+Sandboxes. Production configures only Fargate (`ZOBBA_ANALYSIS_SANDBOX=fargate`
+with the `ZOBBA_ANALYSIS_*` variables Terraform sets). Any other value,
+including `docker`, refuses to start. The Fargate job task has no task role,
+runs in isolated subnets whose only route out is a dedicated S3 gateway
+endpoint restricted to the job's staging prefix and ECR layers, and receives
+only a presigned manifest URL in its trusted stage container; the untrusted
+program runs as 65534 with read-only inputs, `/output` and `/tmp` writable, no
+capabilities and no environment. The local Docker sandbox exists only behind
+the infrastructure `test-docker-sandbox` feature (`--network none`, read-only
+root, all capabilities dropped, `no-new-privileges`, non-root, PID/memory/CPU/
+file-size limits, tmpfs `/tmp` and output) and is used by the hostile fixtures.
+
+Verification (offline; no AWS call):
+
+```bash
+cd zobba
+cargo test -p zobba-domain analysis
+cargo test -p zobba-application analysis
+cargo test -p zobba-infrastructure --lib analysis      # SigV4 vectors, Fargate stub
+cargo test -p zobba-worker --test analysis_sandbox -- --test-threads=1   # guarded _test DB + Docker
+terraform -chdir=deploy/qualification test
+```
+
+The worker test pulls the pinned image by digest and runs real hostile programs:
+a credential probe, symlink/hard-link/FIFO/socket/case-collision outputs, a fork
+bomb, memory and output exhaustion, an endless loop, Stop during a run and
+lost-job recovery. Live Fargate qualification belongs to Story 20.7b.
+
 ## Establishing an engagement conversationally (Story 22.2 AC4)
 
 Schema 13 is additive; published migrations and catalogues 1–12 are unchanged.

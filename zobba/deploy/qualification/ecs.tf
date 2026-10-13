@@ -101,6 +101,9 @@ resource "aws_ecs_task_definition" "worker" {
   cpu                      = var.task_cpu
   memory                   = var.task_memory
   execution_role_arn       = aws_iam_role.execution["worker"].arn
+  # Analysis custody only (Story 22.4): RunTask/Describe/Stop of the analysis
+  # family, staging objects and evidence objects. See analysis.tf.
+  task_role_arn = aws_iam_role.worker_task.arn
 
   runtime_platform {
     operating_system_family = "LINUX"
@@ -114,7 +117,7 @@ resource "aws_ecs_task_definition" "worker" {
     image            = local.image
     entryPoint       = ["${local.bin}/zobba-worker"]
     command          = []
-    environment      = []
+    environment      = local.worker_analysis_environment
     secrets          = local.worker_secrets
     logConfiguration = local.log_options["worker"]
   })])

@@ -25,6 +25,9 @@ bytes.workspace = true
 [features]
 # Exposes the loopback fixture transport to worker process tests only.
 test-loopback = []
+# Local Docker analysis sandbox for hostile-fixture tests only. Production
+# builds never enable it, so the worker cannot construct a Docker sandbox.
+test-docker-sandbox = []
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

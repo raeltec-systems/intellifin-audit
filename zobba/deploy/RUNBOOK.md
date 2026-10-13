@@ -293,6 +293,33 @@ Amazon SES is an owner decision outside 20.7a.
 Check: open `terraform output -raw public_origin`, sign in, and
 `curl -fsS "$(terraform output -raw public_origin)/api/health/ready"`.
 
+## 6a. Analysis image (Story 22.4, optional)
+
+Analysis stays disabled until `analysis_image_digest` is set: the worker then
+composes no sandbox. To enable it:
+
+1. Mirror the one allowlisted image **by digest** into the analysis ECR
+   repository (`terraform output analysis_ecr_repository_url`), keeping the
+   manifest digest unchanged (for example `crane copy
+   docker.io/library/python@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f
+   <repository>@sha256:...`). Check the digest in ECR equals the allowlist in
+   `crates/domain/src/analysis.rs`; Terraform refuses any other value.
+2. Set `analysis_image_digest` in the reviewed tfvars and apply. The worker task
+   definition gains its task role environment; the next release carries it.
+3. No other image may be added without the owner (spec Ask First), and no limit
+   above 2 vCPU / 4 GiB / 15 minutes / 100 MiB.
+
+Residual risks, verified only offline until Story 20.7b:
+
+- A RunTask that ECS accepts after the worker lost its reply cannot be fenced.
+  A task that cannot be found is therefore recorded `unknown`, never `absent`:
+  no automatic retry and no outputs. An operator reconciles it.
+- Fargate does not enforce a kernel file-size or PID limit or a sized `/tmp`;
+  the trusted collector and the worker's validator enforce the output limits,
+  and the task's ephemeral storage bounds the rest.
+- The analysis subnets reach ECR and Logs interface endpoints (image pull and
+  log delivery); the job holds no credentials for them.
+
 ## 7. Rollback limits
 
 - **Application**: redeploy an earlier image by updating both services to an

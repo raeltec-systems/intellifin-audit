@@ -1,4 +1,5 @@
 //! Bounded inert execution for the durable Task foundation.
+pub mod analysis;
 pub mod diagnostics;
 pub mod executor;
 pub mod gateway;
@@ -163,6 +164,16 @@ async fn advance<D, E>(
     }
     if *shutdown.borrow() {
         return;
+    }
+    // A Task left waiting on durable external work (a lost analysis job) is
+    // reconciled from source facts only; nothing is dispatched here.
+    if let (Ok(Decision::Waiting), Some(runner)) = (&decision, &runner)
+        && runner.reconcile(&route).await
+        && database_call(repository.reconcile(&route, &worker_id))
+            .await
+            .is_err()
+    {
+        diagnostics.record(Code::ReconciliationFailed);
     }
     if let Ok(Decision::Execute(basis)) = decision {
         // A timeout may follow committed consumption. Never retry or spawn

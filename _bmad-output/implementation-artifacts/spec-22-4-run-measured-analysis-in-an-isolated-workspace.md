@@ -67,15 +67,15 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `zobba/crates/domain/src/analysis.rs` -- environment allowlist entry, job request/limits, canonical binding, job status machine, output path/type/size validator with closed refusal codes -- pure rules, unit-tested.
-- [ ] `zobba/crates/application/src/analysis.rs` -- `AnalysisSandbox` port (start/status/stop/collect), staging/collection flow, admission via `OperationStore`, recovery classification, descendant registration through `EvidenceObjects` -- one trusted path.
-- [ ] `zobba/migrations/0015_analysis.sql` + infrastructure repository + schema checks -- jobs, outputs/descendants, rejections; RLS, append-only facts, grants.
-- [ ] `zobba/crates/infrastructure/src/analysis/docker.rs` -- test-only local sandbox (`--network none --read-only --cap-drop ALL --security-opt no-new-privileges`, non-root, PID/memory/CPU/time limits, tmpfs `/tmp`), enabled only by explicit test configuration.
-- [ ] `zobba/crates/infrastructure/src/analysis/fargate.rs` -- ECS RunTask/DescribeTasks/StopTask adapter with presigned staging/collection; tested against a stub HTTP endpoint.
-- [ ] `zobba/crates/worker` -- compose the runner; lost-job recovery on restart.
-- [ ] Hostile fixtures + integration tests -- every matrix row, the local Docker sandbox for real, on guarded `_test` databases.
-- [ ] `zobba/deploy/qualification/*.tf` + tests -- analysis infrastructure with invariants (no task role, no egress route).
-- [ ] `zobba/README.md`, `zobba/deploy/RUNBOOK.md` -- what is qualified offline vs. needs 20.7b.
+- [x] `zobba/crates/domain/src/analysis.rs` -- environment allowlist entry, job request/limits, canonical binding, job status machine, output path/type/size validator with closed refusal codes -- pure rules, unit-tested.
+- [x] `zobba/crates/application/src/analysis.rs` -- `AnalysisSandbox` port (start/status/stop/collect), staging/collection flow, admission via `OperationStore`, recovery classification, descendant registration through `EvidenceObjects` -- one trusted path.
+- [x] `zobba/migrations/0015_analysis.sql` + infrastructure repository + schema checks -- jobs, outputs/descendants, rejections; RLS, append-only facts, grants.
+- [x] `zobba/crates/infrastructure/src/analysis/docker.rs` -- test-only local sandbox (`--network none --read-only --cap-drop ALL --security-opt no-new-privileges`, non-root, PID/memory/CPU/time limits, tmpfs `/tmp`), enabled only by explicit test configuration.
+- [x] `zobba/crates/infrastructure/src/analysis/fargate.rs` -- ECS RunTask/DescribeTasks/StopTask adapter with presigned staging/collection; tested against a stub HTTP endpoint.
+- [x] `zobba/crates/worker` -- compose the runner; lost-job recovery on restart.
+- [x] Hostile fixtures + integration tests -- every matrix row, the local Docker sandbox for real, on guarded `_test` databases.
+- [x] `zobba/deploy/qualification/*.tf` + tests -- analysis infrastructure with invariants (no task role, no egress route).
+- [x] `zobba/README.md`, `zobba/deploy/RUNBOOK.md` -- what is qualified offline vs. needs 20.7b.
 
 **Acceptance Criteria:**
 - Given any job, when its receipt and logs are inspected, then no program text, input bytes or output bytes appear.

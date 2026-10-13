@@ -103,6 +103,46 @@ override_resource {
 }
 
 override_resource {
+  target = aws_cloudwatch_log_group.this["analysis"]
+  values = { arn = "arn:aws:logs:eu-west-1:123456789012:log-group:/zobba-qualification/analysis", name = "/zobba-qualification/analysis" }
+}
+
+override_resource {
+  target = aws_iam_role.worker_task
+  values = { arn = "arn:aws:iam::123456789012:role/zobba-qualification-worker-task", id = "zobba-qualification-worker-task" }
+}
+
+override_resource {
+  target = aws_iam_role.analysis_execution
+  values = { arn = "arn:aws:iam::123456789012:role/zobba-qualification-analysis-execution", id = "zobba-qualification-analysis-execution" }
+}
+
+override_resource {
+  target = aws_s3_bucket.analysis_staging
+  values = { arn = "arn:aws:s3:::zobba-qualification-analysis-123456789012", bucket = "zobba-qualification-analysis-123456789012" }
+}
+
+override_resource {
+  target = aws_ecr_repository.analysis
+  values = { arn = "arn:aws:ecr:eu-west-1:123456789012:repository/zobba-qualification-analysis", repository_url = "123456789012.dkr.ecr.eu-west-1.amazonaws.com/zobba-qualification-analysis" }
+}
+
+override_resource {
+  target = aws_ecs_cluster.this
+  values = { arn = "arn:aws:ecs:eu-west-1:123456789012:cluster/zobba-qualification", name = "zobba-qualification" }
+}
+
+override_resource {
+  target = aws_route_table.analysis
+  values = { id = "rtb-analysis00000001" }
+}
+
+override_resource {
+  target = aws_vpc_endpoint.analysis_s3
+  values = { prefix_list_id = "pl-6da54004" }
+}
+
+override_resource {
   target = aws_route_table.db
   values = { id = "rtb-db000000000000001" }
 }
@@ -346,7 +386,7 @@ run "task_definitions_keep_secrets_out_of_environment" {
   # Every container's `environment` holds only non-secret names and values.
   assert {
     condition = alltrue(flatten([
-      for td in [aws_ecs_task_definition.api, aws_ecs_task_definition.worker, aws_ecs_task_definition.migrate, aws_ecs_task_definition.bootstrap] : [
+      for td in [aws_ecs_task_definition.api, aws_ecs_task_definition.worker, aws_ecs_task_definition.migrate, aws_ecs_task_definition.bootstrap, aws_ecs_task_definition.analysis] : [
         for c in jsondecode(td.container_definitions) : [
           for e in c.environment :
           length(regexall("(?i)(DATABASE_URL|SECRET|PASSWORD|PGPASS|TOKEN|KEY)", e.name)) == 0 &&
@@ -526,8 +566,13 @@ run "iam_is_least_privilege" {
   }
 
   assert {
-    condition     = jsondecode(aws_ecs_task_definition.worker.container_definitions)[0] != null && aws_ecs_task_definition.worker.task_role_arn == null && aws_ecs_task_definition.migrate.task_role_arn == null && aws_ecs_task_definition.bootstrap.task_role_arn == null
-    error_message = "worker, migration and bootstrap tasks get no AWS task credentials"
+    condition     = aws_ecs_task_definition.migrate.task_role_arn == null && aws_ecs_task_definition.bootstrap.task_role_arn == null && aws_ecs_task_definition.analysis.task_role_arn == null
+    error_message = "migration, bootstrap and analysis job tasks get no AWS task credentials"
+  }
+
+  assert {
+    condition     = aws_ecs_task_definition.worker.task_role_arn == aws_iam_role.worker_task.arn
+    error_message = "the worker's only task role is the analysis custody role"
   }
 
   assert {
@@ -696,5 +741,96 @@ run "optional_custom_domain_and_second_nat" {
   assert {
     condition     = length(aws_nat_gateway.this) == 2 && aws_route.app_egress[0].nat_gateway_id != aws_route.app_egress[1].nat_gateway_id
     error_message = "two NAT gateways give each zone its own egress"
+  }
+}
+
+run "analysis_jobs_are_isolated" {
+  command = apply
+
+  variables {
+    analysis_image_digest = "sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f"
+  }
+
+  assert {
+    condition     = aws_ecs_task_definition.analysis.task_role_arn == null && aws_ecs_task_definition.analysis.execution_role_arn == aws_iam_role.analysis_execution.arn
+    error_message = "an analysis job has no task role; its execution role only pulls and logs"
+  }
+
+  assert {
+    condition = alltrue([
+      for c in jsondecode(aws_ecs_task_definition.analysis.container_definitions) :
+      c.privileged == false && c.readonlyRootFilesystem == true && length(c.environment) == 0 && length(c.secrets) == 0 &&
+      c.linuxParameters.capabilities.drop == ["ALL"] && !contains(keys(c.linuxParameters.capabilities), "add") &&
+      endswith(c.image, "@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f")
+    ])
+    error_message = "every analysis container is unprivileged, read-only, capability-free, pinned by digest and receives no environment or secret"
+  }
+
+  assert {
+    condition = alltrue([
+      for c in jsondecode(aws_ecs_task_definition.analysis.container_definitions) :
+      c.user == "65534:65534" && alltrue([for m in c.mountPoints : m.readOnly if contains(["/input", "/job"], m.containerPath)]) &&
+      toset([for m in c.mountPoints : m.containerPath if !m.readOnly]) == toset(["/output", "/tmp"])
+      if c.name == "analysis"
+    ])
+    error_message = "the untrusted program runs non-root with read-only inputs and only /output and /tmp writable"
+  }
+
+  assert {
+    condition     = aws_ecs_task_definition.analysis.cpu == "2048" && aws_ecs_task_definition.analysis.memory == "4096"
+    error_message = "the analysis ceiling is the owner's 2 vCPU / 4 GiB"
+  }
+
+  assert {
+    condition     = aws_vpc_endpoint.analysis_s3.route_table_ids == toset([aws_route_table.analysis.id]) && !contains(aws_vpc_endpoint.s3.route_table_ids, aws_route_table.analysis.id)
+    error_message = "the analysis subnets reach only their own restricted S3 endpoint"
+  }
+
+  assert {
+    condition = alltrue([
+      for s in jsondecode(aws_vpc_endpoint.analysis_s3.policy).Statement :
+      s.Effect == "Allow" && !contains(flatten([s.Action]), "s3:*") && (
+        s.Resource == "arn:aws:s3:::zobba-qualification-analysis-123456789012/analysis/*" ||
+        s.Resource == "arn:aws:s3:::prod-eu-west-1-starport-layer-bucket/*"
+      )
+    ])
+    error_message = "the analysis endpoint admits only job staging objects and ECR layers"
+  }
+
+  assert {
+    condition     = aws_vpc_security_group_egress_rule.analysis_s3.cidr_ipv4 == null && aws_vpc_security_group_egress_rule.analysis_endpoints.cidr_ipv4 == null && aws_vpc_security_group_egress_rule.analysis_s3.prefix_list_id == "pl-6da54004"
+    error_message = "analysis egress names no CIDR, only the endpoint prefix list and the endpoint security group"
+  }
+
+  assert {
+    condition     = alltrue([for s in aws_subnet.analysis : s.map_public_ip_on_launch == false])
+    error_message = "analysis subnets assign no public address"
+  }
+
+  assert {
+    condition = alltrue([
+      for s in jsondecode(aws_iam_role_policy.worker_task.policy).Statement :
+      !contains(flatten([s.Action]), "*") && !contains(flatten([s.Action]), "s3:*") && !contains(flatten([s.Action]), "ecs:*") &&
+      (s.Action != "iam:PassRole" || s.Resource == aws_iam_role.analysis_execution.arn) &&
+      (s.Action != "ecs:RunTask" || endswith(s.Resource, "task-definition/zobba-qualification-analysis:*"))
+    ])
+    error_message = "the worker may run only the analysis family and pass only the analysis execution role"
+  }
+
+  assert {
+    condition = (
+      contains([for e in jsondecode(aws_ecs_task_definition.worker.container_definitions)[0].environment : e.name], "ZOBBA_ANALYSIS_SANDBOX") &&
+      [for e in jsondecode(aws_ecs_task_definition.worker.container_definitions)[0].environment : e.value if e.name == "ZOBBA_ANALYSIS_SANDBOX"] == ["fargate"]
+    )
+    error_message = "a released environment with a pinned analysis image composes the Fargate sandbox"
+  }
+}
+
+run "analysis_disabled_without_a_pinned_image" {
+  command = apply
+
+  assert {
+    condition     = length(jsondecode(aws_ecs_task_definition.worker.container_definitions)[0].environment) == 0
+    error_message = "without analysis_image_digest the worker composes no sandbox"
   }
 }

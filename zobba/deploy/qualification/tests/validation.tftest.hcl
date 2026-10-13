@@ -147,3 +147,19 @@ run "short_secret_recovery_window_is_refused" {
   }
   expect_failures = [var.secret_recovery_window_days]
 }
+
+run "unpinned_analysis_image_is_refused" {
+  command = plan
+  variables {
+    analysis_image_digest = "latest"
+  }
+  expect_failures = [var.analysis_image_digest]
+}
+
+run "unallowlisted_analysis_image_is_refused" {
+  command = plan
+  variables {
+    analysis_image_digest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  }
+  expect_failures = [var.analysis_image_digest]
+}
