@@ -134,6 +134,7 @@ resource "aws_vpc_endpoint" "analysis_interface" {
 }
 
 resource "aws_security_group" "analysis" {
+  #checkov:skip=CKV2_AWS_5:attached at run time by the worker's RunTask network configuration, not by a Terraform resource
   name        = "${local.name}-analysis"
   description = "Analysis jobs: no inbound; HTTPS only to the staging endpoint and the analysis endpoints"
   vpc_id      = aws_vpc.analysis.id
@@ -272,6 +273,14 @@ resource "aws_s3_bucket_lifecycle_configuration" "analysis_staging" {
     expiration {
       days = 1
     }
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+  rule {
+    id     = "abort-incomplete-uploads"
+    status = "Enabled"
+    filter {}
     abort_incomplete_multipart_upload {
       days_after_initiation = 1
     }

@@ -263,6 +263,74 @@ pub fn sandbox_choice(value: Option<&str>) -> Result<SandboxChoice, BootstrapErr
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zobba_application::analysis::{AnalysisJob, JobFact};
+    use zobba_domain::{
+        analysis::{AnalysisLimits, GENERAL_ENVIRONMENT_ID, GENERAL_IMAGE_DIGEST},
+        identity::Scope,
+    };
+
+    fn record(status: JobStatus) -> Result<Option<JobRecord>, AnalysisError> {
+        Ok(Some(JobRecord {
+            job: AnalysisJob {
+                id: "job".into(),
+                scope: Scope {
+                    organisation_id: "o".into(),
+                    client_id: "c".into(),
+                    engagement_id: "e".into(),
+                },
+                actor_id: "a".into(),
+                task_id: "t".into(),
+                cycle_id: "y".into(),
+                operation_id: "op".into(),
+                request: zobba_domain::analysis::AnalysisRequest {
+                    environment_id: GENERAL_ENVIRONMENT_ID.into(),
+                    image_digest: GENERAL_IMAGE_DIGEST.into(),
+                    program: "print(1)".into(),
+                    program_sha256: "0".repeat(64),
+                    inputs: vec![],
+                    limits: AnalysisLimits::DEFAULT,
+                },
+            },
+            latest: JobFact {
+                sequence: 1,
+                status,
+                attempt_id: Some("attempt".into()),
+                reason: None,
+                exit_code: None,
+                at: 0,
+            },
+            started_at: None,
+            running_at: None,
+            attempts: 1,
+            now: 0,
+        }))
+    }
+
+    #[test]
+    fn every_run_result_maps_to_one_cycle_end() {
+        assert_eq!(
+            step(&record(JobStatus::Unknown)),
+            Step::End(CycleEnd::Reconcile, Some(Code::AnalysisUnresolved))
+        );
+        assert_eq!(
+            step(&record(JobStatus::Absent)),
+            Step::End(CycleEnd::Bounded, None)
+        );
+        assert_eq!(
+            step(&record(JobStatus::Stopped)),
+            Step::End(CycleEnd::Fenced, None)
+        );
+        assert_eq!(step(&record(JobStatus::Collected)), Step::Continue);
+        assert_eq!(
+            step(&record(JobStatus::Running)),
+            Step::End(CycleEnd::Bounded, None)
+        );
+        assert_eq!(step(&Ok(None)), Step::Idle);
+        assert_eq!(
+            step(&Err(AnalysisError::Unavailable)),
+            Step::End(CycleEnd::Failed, Some(Code::AnalysisFailed))
+        );
+    }
 
     #[test]
     fn only_the_deployment_sandbox_is_selectable_by_configuration() {
