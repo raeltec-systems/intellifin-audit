@@ -2,7 +2,8 @@
 title: '22.5 — Read documents natively and cite every claim cleanly'
 type: 'feature'
 created: '2026-10-13'
-status: 'draft'
+status: 'in-progress'
+baseline_commit: 'ab500cfde5240df54c88775aca6458a30d8978ab'
 review_loop_iteration: 0
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-22-context.md'
