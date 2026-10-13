@@ -106,7 +106,23 @@ jobs:
         run: cargo fmt --check
       - name: Lint Rust
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - name: Test Rust, immutable S3 protocol and PostgreSQL refusal cases
+      - name: Release builds carry no Docker sandbox or test-only loopback adapter
+        run: |
+          # Normal and build edges only: dev-dependencies (which enable the
+          # test sandbox for the hostile fixtures) never reach a release binary.
+          features="$(cargo tree --locked --workspace -e normal,build,features)"
+          if grep -E 'test-docker-sandbox|test-loopback' <<<"$features"; then
+            echo "::error::a test-only feature reaches a release build"
+            exit 1
+          fi
+          # Control: the dev graph does enable it, so the check above is live.
+          cargo tree --locked -p zobba-worker -e normal,dev,features | grep -q 'test-docker-sandbox'
+      - name: Pull the pinned analysis image by digest (hostile Docker fixtures)
+        # Must equal zobba_domain::analysis::GENERAL_IMAGE_DIGEST; the fixture
+        # suite (crates/worker/tests/analysis_sandbox.rs) runs real hostile
+        # programs in it and fails, never skips, without Docker or the image.
+        run: docker pull mirror.gcr.io/library/python@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f
+      - name: Test Rust, immutable S3 protocol, PostgreSQL refusal cases and hostile analysis fixtures
         run: |
           source "$ZOBBA_FIXTURE_DIR/env.sh"
           node fixtures/oidc/server.mjs > /tmp/zobba-oidc-fixture.log 2>&1 &

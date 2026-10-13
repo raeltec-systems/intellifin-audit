@@ -214,6 +214,17 @@ variable "image_digest" {
   }
 }
 
+variable "analysis_vpc_cidr" {
+  description = "CIDR of the dedicated analysis VPC (no peering, no internet route; two /26 subnets are carved from it)."
+  type        = string
+  default     = "10.250.0.0/24"
+
+  validation {
+    condition     = can(cidrhost(var.analysis_vpc_cidr, 0)) && tonumber(split("/", var.analysis_vpc_cidr)[1]) >= 16 && tonumber(split("/", var.analysis_vpc_cidr)[1]) <= 24
+    error_message = "analysis_vpc_cidr must be an IPv4 CIDR between /16 and /24."
+  }
+}
+
 variable "analysis_image_digest" {
   description = "sha256 digest of the one server-allowlisted analysis image (general-python-3-13) mirrored into the analysis ECR repository. Null keeps analysis disabled: the worker composes no sandbox."
   type        = string

@@ -21,6 +21,10 @@ struct Stub {
     exit_code: Option<i64>,
     reason: Option<String>,
     fail_run: bool,
+    fail_put: bool,
+    /// ECS forgot the task (STOPPED tasks expire after about an hour).
+    forgotten: bool,
+    expiration: Option<String>,
 }
 type Shared = Arc<Mutex<Stub>>;
 
@@ -41,6 +45,7 @@ async fn handle(
             .unwrap_or_default()
             .starts_with("AWS4-HMAC-SHA256 Credential=AKID/")
     });
+    let if_none_match = request.headers().get("if-none-match").is_some();
     let body = request
         .into_body()
         .collect()
@@ -56,10 +61,14 @@ async fn handle(
             .unwrap())
     };
     if path == "/creds" {
+        let expiration = stub
+            .expiration
+            .clone()
+            .unwrap_or_else(|| "2026-01-01T00:00:00Z".into());
         return reply(
             200,
-            br#"{"AccessKeyId":"AKID","SecretAccessKey":"secret-value","Token":"session-token"}"#
-                .to_vec(),
+            format!(r#"{{"AccessKeyId":"AKID","SecretAccessKey":"secret-value","Token":"session-token","Expiration":"{expiration}"}}"#)
+                .into_bytes(),
         );
     }
     if let Some(target) = target {
@@ -77,6 +86,10 @@ async fn handle(
                 stub.started_by = value["startedBy"].as_str().map(str::to_owned);
                 stub.last_status = "PENDING".into();
                 json!({"tasks": [task], "failures": []})
+            }
+            "ListTasks" if stub.forgotten => json!({"taskArns": []}),
+            "DescribeTasks" if stub.forgotten => {
+                json!({"tasks": [], "failures": [{"reason": "MISSING"}]})
             }
             "ListTasks" => {
                 let matches = stub.started_by.as_deref() == value["startedBy"].as_str()
@@ -103,7 +116,11 @@ async fn handle(
         signed || presigned,
     ));
     match method.as_str() {
+        "PUT" if stub.fail_put => reply(503, vec![]),
         "PUT" => {
+            if if_none_match && stub.objects.contains_key(&path) {
+                return reply(412, vec![]);
+            }
             stub.objects.insert(path, body);
             reply(200, vec![])
         }
@@ -268,12 +285,28 @@ async fn run_task_stages_through_presigned_urls_with_no_task_role_or_public_addr
     assert_eq!(body["clientToken"], "a".repeat(64));
     assert_eq!(body["taskDefinition"], "zobba-qualification-analysis:3");
     let overrides = body["overrides"]["containerOverrides"].as_array().unwrap();
-    assert_eq!(
-        overrides.len(),
-        1,
-        "only the trusted stage container receives the manifest URL"
-    );
+    assert_eq!(overrides.len(), 2);
     assert_eq!(overrides[0]["name"], STAGE_CONTAINER);
+    // The program container gets only its in-job wall limit and fixed argv,
+    // never an environment, URL or credential.
+    assert_eq!(overrides[1]["name"], ANALYSIS_CONTAINER);
+    assert!(overrides[1].get("environment").is_none());
+    assert_eq!(
+        overrides[1]["command"],
+        json!(["300s", "python3", "-I", "-B", "/job/program"])
+    );
+    assert_eq!(
+        body["tags"],
+        json!([{"key": "zobba:analysis", "value": "1"}])
+    );
+    let lifetime = url_lifetime_seconds(&AnalysisLimits::DEFAULT);
+    assert_eq!(lifetime, 600 + 300 + 300 + 600);
+    assert!(
+        overrides[0]["environment"][0]["value"]
+            .as_str()
+            .unwrap()
+            .contains(&format!("X-Amz-Expires={lifetime}"))
+    );
     assert!(
         overrides[0]["environment"][0]["value"]
             .as_str()
@@ -315,31 +348,62 @@ async fn status_stop_and_collect_follow_the_task() {
     let sandbox = sandbox(&endpoint);
     let handle = "a".repeat(64);
     assert_eq!(
-        sandbox.status(&handle).await.unwrap(),
+        sandbox
+            .status(&handle, &server_allowlist()[0])
+            .await
+            .unwrap(),
         SandboxState::Unconfirmed,
         "an unfindable task is never absent"
     );
     sandbox.start(&spec()).await.unwrap();
     assert_eq!(
-        sandbox.status(&handle).await.unwrap(),
+        sandbox
+            .status(&handle, &server_allowlist()[0])
+            .await
+            .unwrap(),
         SandboxState::Starting
     );
     state.lock().unwrap().last_status = "RUNNING".into();
     assert_eq!(
-        sandbox.status(&handle).await.unwrap(),
+        sandbox
+            .status(&handle, &server_allowlist()[0])
+            .await
+            .unwrap(),
         SandboxState::Running
     );
-    sandbox.stop(&handle).await.unwrap();
+    sandbox.stop(&handle, &server_allowlist()[0]).await.unwrap();
     assert_eq!(
-        sandbox.status(&handle).await.unwrap(),
+        sandbox
+            .status(&handle, &server_allowlist()[0])
+            .await
+            .unwrap(),
         SandboxState::Exited {
             exit_code: Some(137),
             out_of_memory: false
         }
     );
+    // The first observed terminal facts are durable and win over later reads.
     state.lock().unwrap().reason = Some("OutOfMemoryError: Container killed".into());
     assert_eq!(
-        sandbox.status(&handle).await.unwrap(),
+        sandbox
+            .status(&handle, &server_allowlist()[0])
+            .await
+            .unwrap(),
+        SandboxState::Exited {
+            exit_code: Some(137),
+            out_of_memory: false
+        }
+    );
+    state
+        .lock()
+        .unwrap()
+        .objects
+        .retain(|k, _| !k.ends_with("/terminal.json"));
+    assert_eq!(
+        sandbox
+            .status(&handle, &server_allowlist()[0])
+            .await
+            .unwrap(),
         SandboxState::Exited {
             exit_code: Some(137),
             out_of_memory: true
@@ -376,4 +440,214 @@ async fn capacity_failure_is_a_refusal_and_nothing_is_running() {
         sandbox(&endpoint).start(&spec()).await,
         Err(SandboxError::Refused)
     );
+}
+
+#[tokio::test]
+async fn every_failure_before_run_task_is_a_refusal() {
+    let (endpoint, state) = stub().await;
+    state.lock().unwrap().fail_put = true;
+    assert_eq!(
+        sandbox(&endpoint).start(&spec()).await,
+        Err(SandboxError::Refused)
+    );
+    assert!(
+        !state
+            .lock()
+            .unwrap()
+            .calls
+            .iter()
+            .any(|c| c.0.ends_with(".RunTask")),
+        "a staging failure dispatches nothing"
+    );
+    // A signing session that ends before the URLs would: refused, nothing staged.
+    let (endpoint, state) = stub().await;
+    state.lock().unwrap().expiration = Some("2025-10-09T08:00:00Z".into());
+    assert_eq!(
+        sandbox(&endpoint).start(&spec()).await,
+        Err(SandboxError::Refused)
+    );
+    assert!(state.lock().unwrap().objects.is_empty());
+    // Credentials that cannot be fetched: refused.
+    let config = FargateConfig::new(
+        "eu-west-1",
+        "cluster",
+        BTreeMap::from([("general-python-3-13".to_owned(), "f:1".to_owned())]),
+        vec!["s".into()],
+        vec!["sg".into()],
+        "bucket",
+    )
+    .unwrap()
+    .with_stub_endpoint(&endpoint);
+    let missing = CredentialSource::Container {
+        endpoint: Url::parse(&format!("{endpoint}no-credentials")).unwrap(),
+    };
+    let sandbox = FargateSandbox::new(config, missing).unwrap();
+    assert_eq!(sandbox.start(&spec()).await, Err(SandboxError::Refused));
+}
+
+#[tokio::test]
+async fn a_finished_task_stays_known_after_ecs_forgets_it() {
+    let (endpoint, state) = stub().await;
+    let sandbox = sandbox(&endpoint);
+    let handle = "a".repeat(64);
+    let environment = server_allowlist().remove(0);
+    sandbox.start(&spec()).await.unwrap();
+    assert!(
+        state
+            .lock()
+            .unwrap()
+            .objects
+            .keys()
+            .any(|k| k.ends_with(&format!("{handle}/task.json"))),
+        "the task identity is persisted"
+    );
+    {
+        let mut stub = state.lock().unwrap();
+        stub.last_status = "STOPPED".into();
+        stub.exit_code = Some(0);
+    }
+    let finished = SandboxState::Exited {
+        exit_code: Some(0),
+        out_of_memory: false,
+    };
+    assert_eq!(
+        sandbox.status(&handle, &environment).await.unwrap(),
+        finished
+    );
+    // ECS forgets the task; its first-observed terminal facts remain.
+    {
+        let mut stub = state.lock().unwrap();
+        stub.forgotten = true;
+        stub.exit_code = Some(9);
+    }
+    assert_eq!(
+        sandbox.status(&handle, &environment).await.unwrap(),
+        finished
+    );
+    // A task never recorded and not found is never claimed absent.
+    assert_eq!(
+        sandbox.status(&"b".repeat(64), &environment).await.unwrap(),
+        SandboxState::Unconfirmed
+    );
+}
+
+#[test]
+fn deployment_environment_names_are_the_terraform_contract() {
+    let contract: Vec<String> = serde_json::from_str(include_str!(
+        "../../../../deploy/qualification/analysis/worker-environment.json"
+    ))
+    .unwrap();
+    let mut names: Vec<String> = ENVIRONMENT_NAMES.iter().map(|n| (*n).to_owned()).collect();
+    let mut expected = contract.clone();
+    names.sort();
+    expected.sort();
+    assert_eq!(names, expected);
+}
+
+#[test]
+fn from_environment_reads_exactly_the_contract_names() {
+    let values = [
+        ("ZOBBA_ANALYSIS_SANDBOX", "fargate"),
+        ("ZOBBA_ANALYSIS_REGION", "eu-west-1"),
+        (
+            "ZOBBA_ANALYSIS_CLUSTER",
+            "arn:aws:ecs:eu-west-1:123456789012:cluster/zobba-qualification",
+        ),
+        (
+            "ZOBBA_ANALYSIS_TASK_DEFINITION",
+            "zobba-qualification-analysis:3",
+        ),
+        ("ZOBBA_ANALYSIS_SUBNETS", "subnet-a,subnet-b"),
+        ("ZOBBA_ANALYSIS_SECURITY_GROUPS", "sg-analysis"),
+        (
+            "ZOBBA_ANALYSIS_STAGING_BUCKET",
+            "zobba-qualification-analysis-123456789012",
+        ),
+        (
+            "ZOBBA_EVIDENCE_BUCKET",
+            "zobba-qualification-evidence-123456789012",
+        ),
+        ("AWS_REGION", "eu-west-1"),
+    ];
+    assert_eq!(
+        values.iter().map(|(n, _)| *n).collect::<Vec<_>>(),
+        ENVIRONMENT_NAMES
+    );
+    // The sandbox selection and evidence bucket are read by the worker
+    // composition; the rest build the Fargate configuration.
+    let required = [
+        "ZOBBA_ANALYSIS_CLUSTER",
+        "ZOBBA_ANALYSIS_TASK_DEFINITION",
+        "ZOBBA_ANALYSIS_SUBNETS",
+        "ZOBBA_ANALYSIS_SECURITY_GROUPS",
+        "ZOBBA_ANALYSIS_STAGING_BUCKET",
+    ];
+    // Edition 2024 makes `set_var` unsafe and this workspace forbids unsafe
+    // code, so the contract is checked in a child process with its own env.
+    let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+    command
+        .args([
+            "--exact",
+            "analysis::fargate::tests::from_environment_child",
+            "--nocapture",
+        ])
+        .env_clear()
+        .env("ZOBBA_FARGATE_CONTRACT_CHILD", "1");
+    for (name, value) in values {
+        command.env(name, value);
+    }
+    let output = command.output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("contract-ok"));
+    for missing in required {
+        let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "analysis::fargate::tests::from_environment_child",
+                "--nocapture",
+            ])
+            .env_clear()
+            .env("ZOBBA_FARGATE_CONTRACT_CHILD", "1");
+        for (name, value) in values.iter().filter(|(n, _)| *n != missing) {
+            command.env(name, value);
+        }
+        let output = command.output().unwrap();
+        let text = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            text.contains("contract-missing"),
+            "{missing} must be required: {text}"
+        );
+    }
+}
+
+#[test]
+fn from_environment_child() {
+    if std::env::var_os("ZOBBA_FARGATE_CONTRACT_CHILD").is_none() {
+        return;
+    }
+    match FargateConfig::from_environment("general-python-3-13") {
+        Ok(Some(config)) => {
+            assert_eq!(config.region, "eu-west-1");
+            assert_eq!(config.subnets, ["subnet-a", "subnet-b"]);
+            println!("contract-ok");
+        }
+        Ok(None) | Err(_) => println!("contract-missing"),
+    }
+}
+
+#[test]
+fn the_pinned_image_digest_is_the_same_everywhere() {
+    let digest = zobba_domain::analysis::GENERAL_IMAGE_DIGEST;
+    let terraform = include_str!("../../../../deploy/qualification/variables.tf");
+    let ci = include_str!("../../../../../.github/workflows/zobba.yml");
+    assert!(
+        terraform.contains(&format!("\"{digest}\"")),
+        "Terraform allowlist"
+    );
+    assert!(ci.contains(&format!("python@{digest}")), "CI fixture image");
 }

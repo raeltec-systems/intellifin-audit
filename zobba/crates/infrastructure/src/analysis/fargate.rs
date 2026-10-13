@@ -19,7 +19,9 @@ use url::Url;
 use zobba_application::analysis::{
     AnalysisSandbox, Collection, SandboxError, SandboxSpec, SandboxState,
 };
-use zobba_domain::analysis::{AnalysisLimits, OutputEntry, OutputKind};
+use zobba_domain::analysis::{
+    AnalysisEnvironment, AnalysisLimits, COLLECT_PATH_BYTES_MAX, OutputEntry, OutputKind, Withheld,
+};
 
 const ECS_TARGET: &str = "AmazonEC2ContainerServiceV20141113";
 const API_RESPONSE_LIMIT: usize = 1024 * 1024;
@@ -29,6 +31,41 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 pub const STAGE_CONTAINER: &str = "stage";
 pub const ANALYSIS_CONTAINER: &str = "analysis";
 pub const COLLECT_CONTAINER: &str = "collect";
+/// Tag every analysis task carries from RunTask; the worker's task role may
+/// describe and stop only tasks with this tag.
+pub const ANALYSIS_TAG: (&str, &str) = ("zobba:analysis", "1");
+/// The analysis container enforces the wall limit itself (`timeout -s KILL`)
+/// so the trusted collector still runs afterwards; the worker's own StopTask
+/// is only a backstop this much later.
+pub const WALL_GRACE: Duration = Duration::from_secs(300);
+/// Presigned URLs must outlive provisioning, the run, the grace and collection.
+const PROVISIONING_SECONDS: u32 = 600;
+const COLLECTION_SECONDS: u32 = 600;
+/// Signing-session headroom beyond the URL lifetime (clock skew).
+const SESSION_SKEW_SECONDS: i64 = 60;
+/// SigV4 query-string signatures are limited to seven days.
+const PRESIGN_MAX_SECONDS: u32 = 604_800;
+
+/// Exactly the deployment environment names the worker reads for Fargate
+/// analysis. Terraform sets exactly these (tests compare both against
+/// `deploy/qualification/analysis/worker-environment.json`).
+pub const ENVIRONMENT_NAMES: &[&str] = &[
+    "ZOBBA_ANALYSIS_SANDBOX",
+    "ZOBBA_ANALYSIS_REGION",
+    "ZOBBA_ANALYSIS_CLUSTER",
+    "ZOBBA_ANALYSIS_TASK_DEFINITION",
+    "ZOBBA_ANALYSIS_SUBNETS",
+    "ZOBBA_ANALYSIS_SECURITY_GROUPS",
+    "ZOBBA_ANALYSIS_STAGING_BUCKET",
+    "ZOBBA_EVIDENCE_BUCKET",
+    "AWS_REGION",
+];
+
+/// URL lifetime for one job: provisioning + wall + grace + collection.
+pub fn url_lifetime_seconds(limits: &AnalysisLimits) -> u32 {
+    (PROVISIONING_SECONDS + limits.wall_seconds + WALL_GRACE.as_secs() as u32 + COLLECTION_SECONDS)
+        .min(PRESIGN_MAX_SECONDS)
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FargateConfig {
@@ -42,7 +79,6 @@ pub struct FargateConfig {
     ecs_endpoint: Url,
     s3_endpoint: Url,
     s3_path_prefix: String,
-    pub url_lifetime_seconds: u32,
 }
 fn listed(value: &str) -> Vec<String> {
     value
@@ -106,7 +142,6 @@ impl FargateConfig {
             ))
             .map_err(|_| SandboxError::Unavailable)?,
             s3_path_prefix: String::new(),
-            url_lifetime_seconds: 3_600,
         })
     }
     /// Reads the explicit deployment configuration. Absent means "no sandbox".
@@ -165,11 +200,16 @@ impl CredentialSource {
         match self {
             Self::Environment => {
                 let read = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty());
+                let expires = match read("AWS_CREDENTIAL_EXPIRATION") {
+                    Some(value) => Some(sigv4::parse_utc(&value).ok_or(SandboxError::Unavailable)?),
+                    None => None,
+                };
                 Ok(Credentials::new(
                     read("AWS_ACCESS_KEY_ID").ok_or(SandboxError::Unavailable)?,
                     read("AWS_SECRET_ACCESS_KEY").ok_or(SandboxError::Unavailable)?,
                     read("AWS_SESSION_TOKEN"),
-                ))
+                )
+                .expiring(expires))
             }
             Self::Container { endpoint } => {
                 let response = http
@@ -186,11 +226,15 @@ impl CredentialSource {
                         .map(str::to_owned)
                         .ok_or(SandboxError::Unavailable)
                 };
+                // A container session always expires; an unknown expiry is refused.
+                let expires =
+                    sigv4::parse_utc(&text("Expiration")?).ok_or(SandboxError::Unavailable)?;
                 Ok(Credentials::new(
                     text("AccessKeyId")?,
                     text("SecretAccessKey")?,
                     Some(text("Token")?),
-                ))
+                )
+                .expiring(Some(expires)))
             }
         }
     }
@@ -276,7 +320,7 @@ impl FargateSandbox {
         };
         (url, host, path)
     }
-    fn presign(&self, credentials: &Credentials, method: &str, key: &str) -> String {
+    fn presign(&self, credentials: &Credentials, method: &str, key: &str, lifetime: u32) -> String {
         let (mut url, host, path) = self.object_url(key);
         let query = sigv4::presign_query(
             credentials,
@@ -288,7 +332,7 @@ impl FargateSandbox {
             &host,
             &path,
             &sigv4::amz_date((self.clock)()),
-            self.config.url_lifetime_seconds,
+            lifetime,
         );
         url.set_query(Some(&query));
         url.into()
@@ -464,33 +508,162 @@ fn prefix(handle: &str) -> String {
     format!("analysis/{handle}")
 }
 
+/// State of a described task; STOPPED facts come from the analysis container.
+fn task_state(task: &Value) -> SandboxState {
+    match task["lastStatus"].as_str() {
+        Some("PROVISIONING" | "PENDING" | "ACTIVATING") => SandboxState::Starting,
+        Some("RUNNING" | "DEACTIVATING" | "STOPPING" | "DEPROVISIONING") => SandboxState::Running,
+        Some("STOPPED") => {
+            let container = task["containers"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|c| c["name"] == ANALYSIS_CONTAINER);
+            let exit_code = container
+                .and_then(|c| c["exitCode"].as_i64())
+                .and_then(|c| i32::try_from(c).ok());
+            let out_of_memory = container
+                .and_then(|c| c["reason"].as_str())
+                .is_some_and(|r| r.contains("OutOfMemory"));
+            SandboxState::Exited {
+                exit_code,
+                out_of_memory,
+            }
+        }
+        _ => SandboxState::Unconfirmed,
+    }
+}
+
+impl FargateSandbox {
+    /// The task this attempt started, recorded durably after RunTask, if any.
+    async fn recorded_arn(
+        &self,
+        credentials: &Credentials,
+        handle: &str,
+    ) -> Result<Option<String>, SandboxError> {
+        let Some(bytes) = self
+            .get(credentials, &format!("{}/task.json", prefix(handle)), 4096)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let value: Value = serde_json::from_slice(&bytes).map_err(|_| SandboxError::Unavailable)?;
+        value["taskArn"]
+            .as_str()
+            .filter(|arn| aws_id(arn))
+            .map(|arn| Some(arn.to_owned()))
+            .ok_or(SandboxError::Unavailable)
+    }
+    /// The first terminal facts observed for this attempt, persisted so a
+    /// finished job stays known after ECS forgets its STOPPED task.
+    async fn recorded_terminal(
+        &self,
+        credentials: &Credentials,
+        handle: &str,
+    ) -> Result<Option<SandboxState>, SandboxError> {
+        let Some(bytes) = self
+            .get(
+                credentials,
+                &format!("{}/terminal.json", prefix(handle)),
+                4096,
+            )
+            .await?
+        else {
+            return Ok(None);
+        };
+        let value: Value = serde_json::from_slice(&bytes).map_err(|_| SandboxError::Unavailable)?;
+        let exit_code = match &value["exit_code"] {
+            Value::Null => None,
+            code => Some(
+                code.as_i64()
+                    .and_then(|c| i32::try_from(c).ok())
+                    .ok_or(SandboxError::Unavailable)?,
+            ),
+        };
+        let out_of_memory = value["out_of_memory"]
+            .as_bool()
+            .ok_or(SandboxError::Unavailable)?;
+        Ok(Some(SandboxState::Exited {
+            exit_code,
+            out_of_memory,
+        }))
+    }
+    async fn describe(
+        &self,
+        credentials: &Credentials,
+        arn: &str,
+    ) -> Result<Option<Value>, SandboxError> {
+        let described = self
+            .ecs(
+                credentials,
+                "DescribeTasks",
+                json!({"cluster": self.config.cluster, "tasks": [arn]}),
+            )
+            .await
+            .map_err(|_| SandboxError::Unavailable)?;
+        let tasks = described["tasks"].as_array().cloned().unwrap_or_default();
+        match tasks.len() {
+            0 => Ok(None),
+            1 => Ok(tasks.into_iter().next()),
+            _ => Err(SandboxError::Unavailable),
+        }
+    }
+    async fn task(
+        &self,
+        credentials: &Credentials,
+        handle: &str,
+    ) -> Result<Option<Value>, SandboxError> {
+        match self.recorded_arn(credentials, handle).await? {
+            Some(arn) => self.describe(credentials, &arn).await,
+            None => self.find(credentials, handle).await,
+        }
+    }
+}
+
 impl AnalysisSandbox for FargateSandbox {
     async fn start(&self, spec: &SandboxSpec) -> Result<(), SandboxError> {
+        // Everything before RunTask is pre-dispatch: any failure means no task
+        // exists, so it is Refused and the attempt is retryable.
+        let refused = |_| SandboxError::Refused;
         let definition = self
             .config
             .task_definitions
             .get(&spec.environment.id)
             .ok_or(SandboxError::Refused)?;
         let (cpu, memory) = task_size(&spec.limits).ok_or(SandboxError::Refused)?;
-        let credentials = self.credentials.credentials(&self.http).await?;
+        let credentials = self
+            .credentials
+            .credentials(&self.http)
+            .await
+            .map_err(refused)?;
+        let lifetime = url_lifetime_seconds(&spec.limits);
+        if credentials.expires_at.is_some_and(|expires| {
+            expires - (self.clock)() < i64::from(lifetime) + SESSION_SKEW_SECONDS
+        }) {
+            // The URLs would outlive the session that signs them.
+            return Err(SandboxError::Refused);
+        }
         let base = prefix(&spec.handle);
         let mut inputs = Vec::new();
         for input in &spec.inputs {
             let key = format!("{base}/stage/input/{}", input.name);
-            self.put(&credentials, &key, input.bytes.clone()).await?;
-            inputs.push(json!({"name": input.name, "size": input.bytes.len(), "sha256": sigv4::sha256_hex(&input.bytes), "url": self.presign(&credentials, "GET", &key)}));
+            self.put(&credentials, &key, input.bytes.clone())
+                .await
+                .map_err(refused)?;
+            inputs.push(json!({"name": input.name, "size": input.bytes.len(), "sha256": sigv4::sha256_hex(&input.bytes), "url": self.presign(&credentials, "GET", &key, lifetime)}));
         }
         let program_key = format!("{base}/stage/program");
         self.put(&credentials, &program_key, spec.program.clone())
-            .await?;
+            .await
+            .map_err(refused)?;
         let slots: Vec<String> = (0..spec.limits.output_files)
-            .map(|i| self.presign(&credentials, "PUT", &format!("{base}/out/{i}")))
+            .map(|i| self.presign(&credentials, "PUT", &format!("{base}/out/{i}"), lifetime))
             .collect();
         let manifest = json!({
             "inputs": inputs,
-            "program": {"size": spec.program.len(), "sha256": sigv4::sha256_hex(&spec.program), "url": self.presign(&credentials, "GET", &program_key)},
+            "program": {"size": spec.program.len(), "sha256": sigv4::sha256_hex(&spec.program), "url": self.presign(&credentials, "GET", &program_key, lifetime)},
             "collect": {
-                "manifest": self.presign(&credentials, "PUT", &format!("{base}/out/manifest.json")),
+                "manifest": self.presign(&credentials, "PUT", &format!("{base}/out/manifest.json"), lifetime),
                 "slots": slots,
                 "output_file_bytes": spec.limits.output_file_bytes,
                 "output_total_bytes": spec.limits.output_total_bytes,
@@ -502,7 +675,12 @@ impl AnalysisSandbox for FargateSandbox {
             &manifest_key,
             manifest.to_string().into_bytes(),
         )
-        .await?;
+        .await
+        .map_err(refused)?;
+        // The program command: the trusted in-job wall limit, then the fixed
+        // interpreter argv. Only numbers and allowlisted words, no secret.
+        let mut command = vec![format!("{}s", spec.limits.wall_seconds)];
+        command.extend(spec.environment.argv());
         let body = json!({
             "cluster": self.config.cluster,
             "taskDefinition": definition,
@@ -512,6 +690,8 @@ impl AnalysisSandbox for FargateSandbox {
             "clientToken": spec.handle,
             "startedBy": started_by(&spec.handle),
             "enableExecuteCommand": false,
+            "propagateTags": "NONE",
+            "tags": [{"key": ANALYSIS_TAG.0, "value": ANALYSIS_TAG.1}],
             "networkConfiguration": {"awsvpcConfiguration": {
                 "subnets": self.config.subnets,
                 "securityGroups": self.config.security_groups,
@@ -521,58 +701,76 @@ impl AnalysisSandbox for FargateSandbox {
                 "cpu": cpu.to_string(),
                 "memory": memory.to_string(),
                 "containerOverrides": [
-                    {"name": STAGE_CONTAINER, "environment": [{"name": "ZOBBA_STAGE_URL", "value": self.presign(&credentials, "GET", &manifest_key)}]},
+                    {"name": STAGE_CONTAINER, "environment": [{"name": "ZOBBA_STAGE_URL", "value": self.presign(&credentials, "GET", &manifest_key, lifetime)}]},
+                    {"name": ANALYSIS_CONTAINER, "command": command},
                 ],
             },
         });
         let response = self.ecs(&credentials, "RunTask", body).await?;
-        let started = response["tasks"].as_array().is_some_and(|t| t.len() == 1);
+        let tasks = response["tasks"].as_array().cloned().unwrap_or_default();
         let failed = response["failures"]
             .as_array()
             .is_some_and(|f| !f.is_empty());
-        match (started, failed) {
-            (true, _) => Ok(()),
-            (false, true) => Err(SandboxError::Refused),
-            (false, false) => Err(SandboxError::Uncertain),
+        match (tasks.len(), failed) {
+            (1, _) => {
+                // Durable task identity for lookups after ECS forgets the task.
+                // Losing this write is tolerated: lookup falls back to ListTasks.
+                if let Some(arn) = tasks[0]["taskArn"].as_str() {
+                    let _ = self
+                        .put(
+                            &credentials,
+                            &format!("{base}/task.json"),
+                            json!({"taskArn": arn}).to_string().into_bytes(),
+                        )
+                        .await;
+                }
+                Ok(())
+            }
+            (0, true) => Err(SandboxError::Refused),
+            _ => Err(SandboxError::Uncertain),
         }
     }
 
-    async fn status(&self, handle: &str) -> Result<SandboxState, SandboxError> {
+    async fn status(
+        &self,
+        handle: &str,
+        _: &AnalysisEnvironment,
+    ) -> Result<SandboxState, SandboxError> {
         let credentials = self.credentials.credentials(&self.http).await?;
-        let Some(task) = self.find(&credentials, handle).await? else {
+        if let Some(state) = self.recorded_terminal(&credentials, handle).await? {
+            return Ok(state);
+        }
+        let Some(task) = self.task(&credentials, handle).await? else {
             // A delayed RunTask cannot be fenced: never claim absence.
             return Ok(SandboxState::Unconfirmed);
         };
-        Ok(match task["lastStatus"].as_str() {
-            Some("PROVISIONING" | "PENDING" | "ACTIVATING") => SandboxState::Starting,
-            Some("RUNNING" | "DEACTIVATING" | "STOPPING" | "DEPROVISIONING") => {
-                SandboxState::Running
+        let state = task_state(&task);
+        if let SandboxState::Exited {
+            exit_code,
+            out_of_memory,
+        } = state
+        {
+            // First-observed terminal facts; an existing record wins.
+            let _ = self
+                .put(
+                    &credentials,
+                    &format!("{}/terminal.json", prefix(handle)),
+                    json!({"exit_code": exit_code, "out_of_memory": out_of_memory})
+                        .to_string()
+                        .into_bytes(),
+                )
+                .await;
+            if let Some(recorded) = self.recorded_terminal(&credentials, handle).await? {
+                return Ok(recorded);
             }
-            Some("STOPPED") => {
-                let container = task["containers"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .find(|c| c["name"] == ANALYSIS_CONTAINER);
-                let exit_code = container
-                    .and_then(|c| c["exitCode"].as_i64())
-                    .and_then(|c| i32::try_from(c).ok());
-                let out_of_memory = container
-                    .and_then(|c| c["reason"].as_str())
-                    .is_some_and(|r| r.contains("OutOfMemory"));
-                SandboxState::Exited {
-                    exit_code,
-                    out_of_memory,
-                }
-            }
-            _ => SandboxState::Unconfirmed,
-        })
+        }
+        Ok(state)
     }
 
-    async fn stop(&self, handle: &str) -> Result<(), SandboxError> {
+    async fn stop(&self, handle: &str, _: &AnalysisEnvironment) -> Result<(), SandboxError> {
         let credentials = self.credentials.credentials(&self.http).await?;
         let task = self
-            .find(&credentials, handle)
+            .task(&credentials, handle)
             .await?
             .ok_or(SandboxError::Unavailable)?;
         let arn = task["taskArn"].as_str().ok_or(SandboxError::Unavailable)?;
@@ -583,6 +781,10 @@ impl AnalysisSandbox for FargateSandbox {
         )
         .await
         .map(|_| ())
+    }
+
+    fn wall_grace(&self) -> Duration {
+        WALL_GRACE
     }
 
     async fn collect(
@@ -620,6 +822,15 @@ impl AnalysisSandbox for FargateSandbox {
                 .and_then(OutputKind::parse)
                 .ok_or(SandboxError::Unavailable)?;
             let size = entry["size"].as_u64().ok_or(SandboxError::Unavailable)?;
+            let withheld = match entry.get("withheld") {
+                None => None,
+                Some(value) => Some(
+                    value
+                        .as_str()
+                        .and_then(Withheld::parse)
+                        .ok_or(SandboxError::Unavailable)?,
+                ),
+            };
             let content = match entry["slot"].as_u64() {
                 Some(slot)
                     if slot < u64::from(limits.output_files)
@@ -636,6 +847,7 @@ impl AnalysisSandbox for FargateSandbox {
                 links: entry["links"].as_u64().ok_or(SandboxError::Unavailable)?,
                 size,
                 content,
+                withheld,
             });
         }
         Ok(collection)
@@ -648,7 +860,7 @@ impl AnalysisSandbox for FargateSandbox {
 }
 
 fn decode_hex(value: &str) -> Option<Vec<u8>> {
-    if !value.len().is_multiple_of(2) || value.len() > 2048 {
+    if !value.len().is_multiple_of(2) || value.len() > 2 * COLLECT_PATH_BYTES_MAX {
         return None;
     }
     (0..value.len())

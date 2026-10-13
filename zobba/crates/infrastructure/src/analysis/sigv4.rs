@@ -8,6 +8,8 @@ pub struct Credentials {
     pub access_key_id: String,
     secret_access_key: String,
     pub session_token: Option<String>,
+    /// Unix time the signing session expires, when it is a temporary session.
+    pub expires_at: Option<i64>,
 }
 impl Credentials {
     pub fn new(access_key_id: String, secret: String, session_token: Option<String>) -> Self {
@@ -15,7 +17,12 @@ impl Credentials {
             access_key_id,
             secret_access_key: secret,
             session_token,
+            expires_at: None,
         }
+    }
+    pub fn expiring(mut self, expires_at: Option<i64>) -> Self {
+        self.expires_at = expires_at;
+        self
     }
 }
 impl std::fmt::Debug for Credentials {
@@ -75,6 +82,56 @@ pub fn uri_encode(value: &str, path: bool) -> String {
 }
 
 /// `yyyymmddThhmmssZ` for a Unix time, without a calendar dependency.
+/// Strict `YYYY-MM-DDTHH:MM:SS[.fff]Z` (the form AWS credential providers
+/// return) to Unix seconds.
+pub fn parse_utc(value: &str) -> Option<i64> {
+    let value = value.strip_suffix('Z')?;
+    let (date, time) = value.split_once('T')?;
+    let time = time.split_once('.').map_or(time, |(whole, fraction)| {
+        if fraction.is_empty() || !fraction.bytes().all(|b| b.is_ascii_digit()) {
+            ""
+        } else {
+            whole
+        }
+    });
+    let number = |text: &str, len: usize| -> Option<i64> {
+        (text.len() == len && text.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| text.parse().ok())
+            .flatten()
+    };
+    let mut d = date.split('-');
+    let (year, month, day) = (
+        number(d.next()?, 4)?,
+        number(d.next()?, 2)?,
+        number(d.next()?, 2)?,
+    );
+    let mut t = time.split(':');
+    let (hour, minute, second) = (
+        number(t.next()?, 2)?,
+        number(t.next()?, 2)?,
+        number(t.next()?, 2)?,
+    );
+    if d.next().is_some()
+        || t.next().is_some()
+        || !(1..=12).contains(&month)
+        || !(1..=31).contains(&day)
+        || hour > 23
+        || minute > 59
+        || second > 60
+    {
+        return None;
+    }
+    // Howard Hinnant's days-from-civil.
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let mp = (month + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    Some(days * 86_400 + hour * 3_600 + minute * 60 + second)
+}
+
 pub fn amz_date(unix: i64) -> String {
     let days = unix.div_euclid(86_400);
     let seconds = unix.rem_euclid(86_400);
@@ -211,6 +268,25 @@ pub fn presign_query(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn credential_expiration_parses_exactly() {
+        assert_eq!(parse_utc("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(parse_utc("2026-10-13T20:00:00Z"), Some(1_791_921_600));
+        assert_eq!(parse_utc("2026-10-13T20:00:00.123Z"), Some(1_791_921_600));
+        assert_eq!(
+            amz_date(parse_utc("2015-08-30T12:36:00Z").unwrap()),
+            "20150830T123600Z"
+        );
+        for bad in [
+            "2026-10-13 20:00:00Z",
+            "2026-13-01T00:00:00Z",
+            "2026-10-13T20:00:00",
+            "",
+        ] {
+            assert_eq!(parse_utc(bad), None, "{bad:?}");
+        }
+    }
 
     #[test]
     fn signing_key_and_request_signature_match_the_aws_example() {

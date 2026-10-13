@@ -296,7 +296,9 @@ Check: open `terraform output -raw public_origin`, sign in, and
 ## 6a. Analysis image (Story 22.4, optional)
 
 Analysis stays disabled until `analysis_image_digest` is set: the worker then
-composes no sandbox. To enable it:
+composes no sandbox. No production entry point admits analysis jobs yet (a
+later model-tool story adds admission), so enabling it only lets the worker run
+and recover jobs. To enable it:
 
 1. Mirror the one allowlisted image **by digest** into the analysis ECR
    repository (`terraform output analysis_ecr_repository_url`), keeping the
@@ -305,20 +307,42 @@ composes no sandbox. To enable it:
    <repository>@sha256:...`). Check the digest in ECR equals the allowlist in
    `crates/domain/src/analysis.rs`; Terraform refuses any other value.
 2. Set `analysis_image_digest` in the reviewed tfvars and apply. The worker task
-   definition gains its task role environment; the next release carries it.
+   definition gains its task role and exactly the environment names in
+   `analysis/worker-environment.json`; the next release carries them.
 3. No other image may be added without the owner (spec Ask First), and no limit
    above 2 vCPU / 4 GiB / 15 minutes / 100 MiB.
+
+What isolates a job: a dedicated analysis VPC (`analysis_vpc_cidr`) with no
+internet route and no peering; a S3 gateway endpoint whose policy admits only
+the job's staging prefix and the ECR layer bucket; ECR API, ECR registry and
+Logs interface endpoints reachable only from the analysis security group; a
+Route 53 Resolver DNS Firewall that answers only those endpoint, staging and
+layer names, returns NXDOMAIN for everything else and fails closed; no task
+role; the program container has no environment and no log configuration. The
+worker's task role may run only the analysis family, tag only at RunTask,
+describe and stop only tasks tagged `zobba:analysis=1`, pass only the analysis
+execution role, and write only staging objects and `evidence/analysis-*`.
 
 Residual risks, verified only offline until Story 20.7b:
 
 - A RunTask that ECS accepts after the worker lost its reply cannot be fenced.
-  A task that cannot be found is therefore recorded `unknown`, never `absent`:
-  no automatic retry and no outputs. An operator reconciles it.
+  A task that cannot be found (and was never recorded) is therefore `unknown`,
+  never `absent`: no automatic retry and no outputs. There is no operator
+  reconciliation command yet.
 - Fargate does not enforce a kernel file-size or PID limit or a sized `/tmp`;
   the trusted collector and the worker's validator enforce the output limits,
   and the task's ephemeral storage bounds the rest.
-- The analysis subnets reach ECR and Logs interface endpoints (image pull and
-  log delivery); the job holds no credentials for them.
+- The wall limit is enforced inside the task (`timeout -s KILL`); the worker's
+  own StopTask after the grace stops the collector too, so such a job is closed
+  `limit_exceeded:wall_time` with `collection_unavailable` and no outputs.
+- DNS: the allowed names still resolve, so a program can encode data in queries
+  for them; those queries go only to AWS's resolvers for AWS-owned names, not to
+  a resolver the program chooses. The rules and the redirection-trust setting
+  are untested against live AWS behaviour.
+- The ECS task metadata endpoint (`169.254.170.2`) is reachable from the job and
+  discloses task metadata, but no credentials (there is no task role).
+- The `ecs:TagResource`/`aws:ResourceTag` conditions and the S3 endpoint policy
+  are checked only by `terraform test` against a mocked provider.
 
 ## 7. Rollback limits
 

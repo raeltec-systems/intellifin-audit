@@ -19,59 +19,21 @@ use zobba_application::analysis::{
     AnalysisSandbox, Collection, SandboxError, SandboxSpec, SandboxState,
 };
 use zobba_domain::{
-    analysis::{AnalysisLimits, INPUT_DIR, OUTPUT_DIR, OutputEntry, OutputKind, PROGRAM_PATH},
+    analysis::{
+        AnalysisEnvironment, AnalysisLimits, INPUT_DIR, OUTPUT_DIR, OutputEntry, OutputKind,
+        PROGRAM_PATH, Withheld,
+    },
     identity::valid_scope_id,
 };
 
 const CLI_TIMEOUT: Duration = Duration::from_secs(60);
 const CLI_OUTPUT_LIMIT: usize = 1024 * 1024;
 const TMP_BYTES: u64 = 64 * 1024 * 1024;
-/// The collector stops after this many entries and reports truncation.
-pub const COLLECT_ENTRIES: usize = 1024;
+/// The trusted collector shared with the Fargate `collect` container, run in
+/// the holder container over the read-only output volume after the job
+/// stopped. `lstat` only; links are never followed.
 const LABEL: &str = "zobba.analysis.test-sandbox";
-
-/// Trusted collector, run in the holder container over the read-only output
-/// volume after the job stopped. `lstat` only; links are never followed.
-const COLLECTOR: &str = r#"
-import base64, json, os, stat, sys
-root = b"/output"
-per, total, entries_max = int(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3])
-vfs = os.statvfs(root)
-free = vfs.f_bavail * vfs.f_frsize
-out = []
-budget = total
-truncated = False
-def walk(relative, depth):
-    global budget, truncated
-    directory = os.path.join(root, relative) if relative else root
-    for name in sorted(os.listdir(directory)):
-        if len(out) >= entries_max:
-            truncated = True
-            return
-        path = os.path.join(relative, name) if relative else name
-        full = os.path.join(root, path)
-        info = os.lstat(full)
-        mode = info.st_mode
-        kind = ("directory" if stat.S_ISDIR(mode) else "regular" if stat.S_ISREG(mode)
-                else "symlink" if stat.S_ISLNK(mode) else "fifo" if stat.S_ISFIFO(mode)
-                else "socket" if stat.S_ISSOCK(mode) else "device" if (stat.S_ISCHR(mode) or stat.S_ISBLK(mode)) else "other")
-        entry = {"path": path.hex(), "kind": kind, "links": info.st_nlink, "size": info.st_size}
-        if kind == "regular" and info.st_nlink == 1 and info.st_size <= per and info.st_size <= budget:
-            fd = os.open(full, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-            try:
-                again = os.fstat(fd)
-                if stat.S_ISREG(again.st_mode) and again.st_ino == info.st_ino:
-                    data = os.read(fd, info.st_size + 1)
-                    entry["content"] = base64.b64encode(data).decode()
-                    budget -= len(data)
-            finally:
-                os.close(fd)
-        out.append(entry)
-        if kind == "directory" and depth < 16:
-            walk(path, depth + 1)
-walk(b"", 0)
-json.dump({"free": free, "truncated": truncated, "entries": out}, sys.stdout)
-"#;
+pub const COLLECTOR: &str = include_str!("../../../../deploy/qualification/analysis/collect.py");
 
 pub struct DockerSandbox {
     repository: String,
@@ -233,14 +195,31 @@ impl DockerSandbox {
     }
 
     /// Fence a never-started handle: a container with the job's exact name
-    /// makes any delayed `docker create` for this attempt fail.
-    async fn fence(&self, container: &str, digest: &str) -> Result<(), SandboxError> {
+    /// makes any delayed `docker create` for this attempt fail. The fence uses
+    /// the job's own pinned image. True only when this call created it.
+    async fn fence(&self, container: &str, digest: &str) -> Result<bool, SandboxError> {
         let mut arguments = vec!["create".to_owned(), "--name".into(), container.into()];
         arguments.extend(Self::hardening(None));
         arguments.extend(["--label".into(), "zobba.analysis.fence=1".into()]);
         arguments.extend([self.image(digest), "true".into()]);
-        let _ = self.docker(&arguments, None).await?;
-        Ok(())
+        Ok(self.docker(&arguments, None).await?.success)
+    }
+
+    /// Remove everything a failed start created before the job container.
+    async fn undo_start(&self, container: &str) {
+        let _ = self.run(&["rm", "-f", &format!("{container}-hold")]).await;
+        let _ = self
+            .run(&["volume", "rm", "-f", &format!("{container}-out")])
+            .await;
+        self.remove_staging(container);
+    }
+    fn remove_staging(&self, container: &str) {
+        use std::os::unix::fs::PermissionsExt;
+        let root = self.staging_root.join(container);
+        for dir in [root.join("input"), root.join("job"), root.clone()] {
+            let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755));
+        }
+        let _ = std::fs::remove_dir_all(root);
     }
 
     fn stage(&self, spec: &SandboxSpec, container: &str) -> Result<PathBuf, SandboxError> {
@@ -281,10 +260,18 @@ impl AnalysisSandbox for DockerSandbox {
         if !self.run(&["image", "inspect", &image]).await?.success {
             return Err(SandboxError::Refused);
         }
-        let root = self.stage(spec, &container)?;
+        let root = match self.stage(spec, &container) {
+            Ok(root) => root,
+            Err(error) => {
+                self.remove_staging(&container);
+                return Err(error);
+            }
+        };
         let volume = format!("{container}-out");
         let size = spec.limits.output_total_bytes + 1024 * 1024;
-        if !self
+        // Nothing below the job container has started anything: every failure
+        // before `docker create` of the job removes what it made and is Refused.
+        let created_volume = self
             .run(&[
                 "volume",
                 "create",
@@ -300,9 +287,9 @@ impl AnalysisSandbox for DockerSandbox {
                 LABEL,
                 &volume,
             ])
-            .await?
-            .success
-        {
+            .await;
+        if !created_volume.is_ok_and(|o| o.success) {
+            self.undo_start(&container).await;
             return Err(SandboxError::Refused);
         }
         let mut hold = vec![
@@ -320,7 +307,8 @@ impl AnalysisSandbox for DockerSandbox {
             image.clone(),
             "infinity".into(),
         ]);
-        if !self.docker(&hold, None).await?.success {
+        if !self.docker(&hold, None).await.is_ok_and(|o| o.success) {
+            self.undo_start(&container).await;
             return Err(SandboxError::Refused);
         }
         let argv = spec.environment.argv();
@@ -349,9 +337,18 @@ impl AnalysisSandbox for DockerSandbox {
         ]);
         create.extend(argv[1..].iter().cloned());
         debug_assert_eq!(argv.last().map(String::as_str), Some(PROGRAM_PATH));
-        let created = self.docker(&create, None).await?;
+        let created = match self.docker(&create, None).await {
+            Ok(created) => created,
+            Err(_) => return Err(SandboxError::Uncertain),
+        };
         if !created.success {
-            // A fence or a concurrent create owns the name: not ours to start.
+            // A fence owns the name: nothing of this attempt can start.
+            if let Ok(Some(info)) = self.inspect(&container).await
+                && info["Config"]["Labels"]["zobba.analysis.fence"] == "1"
+            {
+                self.undo_start(&container).await;
+                return Err(SandboxError::Refused);
+            }
             return Err(SandboxError::Uncertain);
         }
         let started = self.run(&["start", &container]).await?;
@@ -361,18 +358,24 @@ impl AnalysisSandbox for DockerSandbox {
         Ok(())
     }
 
-    async fn status(&self, handle: &str) -> Result<SandboxState, SandboxError> {
+    async fn status(
+        &self,
+        handle: &str,
+        environment: &AnalysisEnvironment,
+    ) -> Result<SandboxState, SandboxError> {
         let container = name(handle)?;
-        let Some(info) = self.inspect(&container).await? else {
-            // Fence first, then report absence only once the fence exists.
-            let digest = zobba_domain::analysis::GENERAL_IMAGE_DIGEST;
-            self.fence(&container, digest).await?;
-            return match self.inspect(&container).await? {
-                Some(info) if info["Config"]["Labels"]["zobba.analysis.fence"] == "1" => {
-                    Ok(SandboxState::Absent)
+        let info = match self.inspect(&container).await? {
+            Some(info) => info,
+            None => {
+                // Fence first, then report absence only once a fence exists. A
+                // failed fence create with no container left is never absence.
+                let fenced = self.fence(&container, &environment.image_digest).await?;
+                match self.inspect(&container).await? {
+                    Some(info) => info,
+                    None if !fenced => return Ok(SandboxState::Unconfirmed),
+                    None => return Ok(SandboxState::Unconfirmed),
                 }
-                _ => Ok(SandboxState::Unconfirmed),
-            };
+            }
         };
         if info["Config"]["Labels"]["zobba.analysis.fence"] == "1" {
             return Ok(SandboxState::Absent);
@@ -391,16 +394,21 @@ impl AnalysisSandbox for DockerSandbox {
         })
     }
 
-    async fn stop(&self, handle: &str) -> Result<(), SandboxError> {
+    async fn stop(
+        &self,
+        handle: &str,
+        environment: &AnalysisEnvironment,
+    ) -> Result<(), SandboxError> {
         let container = name(handle)?;
         let _ = self.run(&["kill", &container]).await?;
         if let Some(info) = self.inspect(&container).await?
             && info["State"]["Status"] == "created"
         {
             // Never started: remove (refused if it started meanwhile) and fence.
-            if self.run(&["rm", &container]).await?.success {
-                self.fence(&container, zobba_domain::analysis::GENERAL_IMAGE_DIGEST)
-                    .await?;
+            if self.run(&["rm", &container]).await?.success
+                && !self.fence(&container, &environment.image_digest).await?
+            {
+                return Err(SandboxError::Unavailable);
             }
         }
         Ok(())
@@ -412,8 +420,14 @@ impl AnalysisSandbox for DockerSandbox {
         limits: &AnalysisLimits,
     ) -> Result<Collection, SandboxError> {
         let container = name(handle)?;
-        match self.status(handle).await? {
-            SandboxState::Exited { .. } => {}
+        match self
+            .inspect(&container)
+            .await?
+            .as_ref()
+            .and_then(|info| info["State"]["Status"].as_str().map(str::to_owned))
+            .as_deref()
+        {
+            Some("exited" | "dead") => {}
             _ => return Err(SandboxError::Unavailable),
         }
         let output = self
@@ -425,9 +439,10 @@ impl AnalysisSandbox for DockerSandbox {
                     "python3".into(),
                     "-I".into(),
                     "-".into(),
+                    "local".into(),
                     limits.output_file_bytes.to_string(),
                     limits.output_total_bytes.to_string(),
-                    COLLECT_ENTRIES.to_string(),
+                    limits.output_files.to_string(),
                 ],
                 Some(COLLECTOR.as_bytes()),
             )
@@ -452,10 +467,19 @@ impl AnalysisSandbox for DockerSandbox {
             .as_array()
             .ok_or(SandboxError::Unavailable)?
         {
-            let path = entry["path"]
+            let path = entry["path_hex"]
                 .as_str()
                 .and_then(decode_hex)
                 .ok_or(SandboxError::Unavailable)?;
+            let withheld = match entry.get("withheld") {
+                None => None,
+                Some(value) => Some(
+                    value
+                        .as_str()
+                        .and_then(Withheld::parse)
+                        .ok_or(SandboxError::Unavailable)?,
+                ),
+            };
             let kind = entry["kind"]
                 .as_str()
                 .and_then(OutputKind::parse)
@@ -474,13 +498,13 @@ impl AnalysisSandbox for DockerSandbox {
                 links: entry["links"].as_u64().ok_or(SandboxError::Unavailable)?,
                 size: entry["size"].as_u64().ok_or(SandboxError::Unavailable)?,
                 content,
+                withheld,
             });
         }
         Ok(collection)
     }
 
     async fn discard(&self, handle: &str) -> Result<(), SandboxError> {
-        use std::os::unix::fs::PermissionsExt;
         let container = name(handle)?;
         let _ = self
             .run(&["rm", "-f", &container, &format!("{container}-hold")])
@@ -488,17 +512,15 @@ impl AnalysisSandbox for DockerSandbox {
         let _ = self
             .run(&["volume", "rm", "-f", &format!("{container}-out")])
             .await?;
-        let root = self.staging_root.join(&container);
-        for dir in [root.join("input"), root.join("job"), root.clone()] {
-            let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755));
-        }
-        let _ = std::fs::remove_dir_all(root);
+        self.remove_staging(&container);
         Ok(())
     }
 }
 
 fn decode_hex(value: &str) -> Option<Vec<u8>> {
-    if !value.len().is_multiple_of(2) || value.len() > 2048 {
+    if !value.len().is_multiple_of(2)
+        || value.len() > 2 * zobba_domain::analysis::COLLECT_PATH_BYTES_MAX
+    {
         return None;
     }
     (0..value.len())

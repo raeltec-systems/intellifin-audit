@@ -27,6 +27,8 @@ rand = "=0.8.8"
 object_store = { version = "=0.14.2", default-features = false, features = ["aws"] }
 futures-util = "=0.3.34"
 bytes = "=1.12.1"
+caseless = "=0.2.2"
+unicode-normalization = "=0.1.25"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

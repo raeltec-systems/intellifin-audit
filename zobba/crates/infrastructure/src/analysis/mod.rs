@@ -19,7 +19,9 @@ use zobba_application::{
     operation::wire::StoredCanonical,
 };
 use zobba_domain::{
-    analysis::{AnalysisInput, AnalysisLimits, AnalysisRequest, JobStatus},
+    analysis::{
+        AnalysisInput, AnalysisLimits, AnalysisRequest, JobStatus, RECEIPT_REJECTION_SAMPLE,
+    },
     evidence::ContentIdentity,
     identity::{Scope, valid_scope_id},
     task::ClaimBasis,
@@ -183,11 +185,22 @@ async fn read(tx: &mut Tx, job_id: &str) -> Result<JobRecord, AnalysisError> {
     .map_err(unavailable)?
     .ok_or(AnalysisError::Integrity)?;
     let latest = fact_row(&latest)?;
-    let started_at: Option<i64> = match &latest.attempt_id {
-        Some(attempt) => sqlx::query_scalar("SELECT created_at FROM public.analysis_job_events WHERE job_id=$1 AND attempt_id=$2 AND status='possibly_started'")
-            .bind(job_id).bind(attempt).fetch_optional(&mut **tx).await.map_err(unavailable)?,
-        None => None,
+    let (started_at, running_at): (Option<i64>, Option<i64>) = match &latest.attempt_id {
+        Some(attempt) => (
+            sqlx::query_scalar("SELECT created_at FROM public.analysis_job_events WHERE job_id=$1 AND attempt_id=$2 AND status='possibly_started'")
+                .bind(job_id).bind(attempt).fetch_optional(&mut **tx).await.map_err(unavailable)?,
+            sqlx::query_scalar("SELECT created_at FROM public.analysis_job_events WHERE job_id=$1 AND attempt_id=$2 AND status='running'")
+                .bind(job_id).bind(attempt).fetch_optional(&mut **tx).await.map_err(unavailable)?,
+        ),
+        None => (None, None),
     };
+    let attempts: i64 = sqlx::query_scalar(
+        "SELECT count(DISTINCT attempt_id) FROM public.analysis_job_events WHERE job_id=$1",
+    )
+    .bind(job_id)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(unavailable)?;
     let now: i64 =
         sqlx::query_scalar("SELECT floor(extract(epoch FROM clock_timestamp()))::bigint")
             .fetch_one(&mut **tx)
@@ -197,6 +210,8 @@ async fn read(tx: &mut Tx, job_id: &str) -> Result<JobRecord, AnalysisError> {
         job,
         latest,
         started_at,
+        running_at,
+        attempts: u32::try_from(attempts).map_err(|_| AnalysisError::Integrity)?,
         now,
     })
 }
@@ -215,12 +230,23 @@ async fn insert_fact(
         .execute(&mut **tx).await.map_err(refusal)?;
     Ok(())
 }
-/// Receipts carry only IDs, digests, sizes, counts and closed codes.
+/// Receipts carry only IDs, digests, sizes, counts and closed codes. Every
+/// rejection is its own row; the receipt holds exact counts per reason and a
+/// bounded sample, so a hostile tree of any collected size still fits.
 pub fn receipt_document(attempt_id: &str, receipt: &CollectionReceipt) -> Value {
+    let mut by_reason = serde_json::Map::new();
+    for (_, reason) in &receipt.rejected {
+        let count = by_reason
+            .entry(reason.as_str().to_owned())
+            .or_insert(Value::from(0u64));
+        *count = Value::from(count.as_u64().unwrap_or(0) + 1);
+    }
     json!({
         "attempt_id": attempt_id,
         "descendants": receipt.descendants.iter().map(|(id, digest, size)| json!({"id": id, "sha256": digest, "size": size})).collect::<Vec<_>>(),
-        "rejected": receipt.rejected.iter().map(|(digest, reason)| json!({"path_sha256": digest, "reason": reason.as_str()})).collect::<Vec<_>>(),
+        "rejected_count": receipt.rejected.len(),
+        "rejected_by_reason": by_reason,
+        "rejected_sample": receipt.rejected.iter().take(RECEIPT_REJECTION_SAMPLE).map(|(digest, reason)| json!({"path_sha256": digest, "reason": reason.as_str()})).collect::<Vec<_>>(),
         "output_bytes": receipt.output_bytes,
         "truncated": receipt.truncated,
     })
@@ -435,6 +461,22 @@ impl AnalysisJobs for AnalysisRepository {
         Ok(record)
     }
 
+    async fn latest_attempt(
+        &self,
+        actor: &str,
+        s: &Scope,
+        job_id: &str,
+    ) -> Result<Option<String>, AnalysisError> {
+        if !valid_scope_id(job_id) {
+            return Err(AnalysisError::Denied);
+        }
+        let mut tx = begin(&self.pool, actor, s).await?;
+        let latest: Option<String> = sqlx::query_scalar("SELECT a.id FROM public.operation_attempts a JOIN public.analysis_jobs j ON j.operation_id=a.operation_id WHERE j.id=$1 ORDER BY a.attempt_number DESC LIMIT 1")
+            .bind(job_id).fetch_optional(&mut *tx).await.map_err(unavailable)?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(latest)
+    }
+
     async fn job(&self, actor: &str, s: &Scope, id: &str) -> Result<JobRecord, AnalysisError> {
         let mut tx = begin(&self.pool, actor, s).await?;
         let record = read(&mut tx, id).await?;
@@ -452,7 +494,9 @@ impl AnalysisJobs for AnalysisRepository {
             return Err(AnalysisError::Invalid);
         }
         let mut tx = begin(&self.pool, actor, s).await?;
-        let ids: Vec<String> = sqlx::query_scalar("SELECT j.id FROM public.analysis_jobs j WHERE j.task_id=$1 AND (SELECT e.status FROM public.analysis_job_events e WHERE e.job_id=j.id ORDER BY e.sequence DESC LIMIT 1) NOT IN ('collected','stopped','unknown') ORDER BY j.created_at, j.id COLLATE \"C\" LIMIT $2")
+        // Unfinished jobs, plus settled jobs whose source fact was never
+        // recorded (a lost observe after a committed settled transition).
+        let ids: Vec<String> = sqlx::query_scalar("SELECT j.id FROM public.analysis_jobs j CROSS JOIN LATERAL (SELECT e.status,e.attempt_id FROM public.analysis_job_events e WHERE e.job_id=j.id ORDER BY e.sequence DESC LIMIT 1) l WHERE j.task_id=$1 AND (l.status NOT IN ('collected','stopped','unknown') OR (l.status IN ('collected','stopped') AND NOT EXISTS(SELECT 1 FROM public.operation_receipts r WHERE r.attempt_id=l.attempt_id AND r.outcome IN ('completed','absent'))) OR (l.status='unknown' AND NOT EXISTS(SELECT 1 FROM public.operation_receipts r WHERE r.attempt_id=l.attempt_id))) ORDER BY j.admitted_us, j.id COLLATE \"C\" LIMIT $2")
             .bind(task_id).bind(PENDING_LIMIT).fetch_all(&mut *tx).await.map_err(unavailable)?;
         let mut records = Vec::new();
         for id in ids {
@@ -515,9 +559,9 @@ impl AnalysisJobs for AnalysisRepository {
                 .collect(),
         );
         for d in descendants {
-            sqlx::query("INSERT INTO public.analysis_descendants(organisation_id,client_id,engagement_id,id,job_id,attempt_id,path,parents,digest,size,media_type,namespace,version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)")
+            sqlx::query("INSERT INTO public.analysis_descendants(organisation_id,client_id,engagement_id,id,job_id,attempt_id,path,fold_key,parents,digest,size,media_type,namespace,version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)")
                 .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id).bind(&d.id)
-                .bind(job_id).bind(attempt_id).bind(&d.path).bind(&parents)
+                .bind(job_id).bind(attempt_id).bind(&d.path).bind(&d.fold_key).bind(&parents)
                 .bind(&d.identity.sha256).bind(d.identity.size as i64).bind(d.media_type)
                 .bind(&d.namespace).bind(&d.version)
                 .execute(&mut *tx).await.map_err(refusal)?;
@@ -536,7 +580,7 @@ impl AnalysisJobs for AnalysisRepository {
             &Transition {
                 status: JobStatus::Collected,
                 attempt_id: Some(attempt_id.into()),
-                reason: None,
+                reason: receipt.reason,
                 exit_code: None,
             },
             Some(&document),

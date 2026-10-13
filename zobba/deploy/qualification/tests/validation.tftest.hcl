@@ -163,3 +163,11 @@ run "unallowlisted_analysis_image_is_refused" {
   }
   expect_failures = [var.analysis_image_digest]
 }
+
+run "invalid_analysis_vpc_cidr_is_refused" {
+  command = plan
+  variables {
+    analysis_vpc_cidr = "10.0.0.0/8"
+  }
+  expect_failures = [var.analysis_vpc_cidr]
+}

@@ -7,10 +7,16 @@ use crate::{
     work::{CycleFuture, WorkRunner},
 };
 use sqlx::PgPool;
-use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
+use std::{
+    future::Future,
+    pin::Pin,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use tokio::sync::watch;
 use zobba_application::{
     BootstrapError,
-    analysis::{Analysis, AnalysisSandbox, AnalysisSettings, JobRecord},
+    analysis::{Analysis, AnalysisError, AnalysisSandbox, AnalysisSettings, JobRecord, Watch},
     evidence::EvidenceObjects,
     model::ModelCancellation,
     work::CycleEnd,
@@ -23,6 +29,9 @@ use zobba_infrastructure::{analysis::AnalysisRepository, operation::OperationRep
 
 /// One claim processes at most this many jobs before yielding.
 const JOBS_PER_CLAIM: usize = 16;
+/// Recovery outside a claim follows a running job at most this long, then
+/// detaches (the job keeps running) so it never blocks the coordinator.
+pub const RECONCILE_WATCH: Duration = Duration::from_secs(30);
 
 fn delay(duration: Duration) -> Pin<Box<dyn Future<Output = ()> + Send>> {
     Box::pin(tokio::time::sleep(duration))
@@ -30,6 +39,8 @@ fn delay(duration: Duration) -> Pin<Box<dyn Future<Output = ()> + Send>> {
 pub const SETTINGS: AnalysisSettings = AnalysisSettings {
     poll: Duration::from_millis(500),
     stop_confirmation: Duration::from_secs(60),
+    provisioning: Duration::from_secs(600),
+    collect_attempts: 3,
     delay,
 };
 
@@ -41,6 +52,7 @@ pub struct AnalysisComposition<X, O> {
     pub objects: Arc<O>,
     pub allowlist: Vec<AnalysisEnvironment>,
     pub settings: AnalysisSettings,
+    pub reconcile_watch: Duration,
     pub diagnostics: Diagnostics,
 }
 impl<X, O> AnalysisComposition<X, O> {
@@ -51,6 +63,7 @@ impl<X, O> AnalysisComposition<X, O> {
             objects,
             allowlist: server_allowlist(),
             settings: SETTINGS,
+            reconcile_watch: RECONCILE_WATCH,
             diagnostics,
         }
     }
@@ -62,6 +75,33 @@ fn settled(record: &JobRecord) -> bool {
         record.latest.status,
         JobStatus::Collected | JobStatus::Stopped | JobStatus::Unknown
     )
+}
+
+/// What one `run_next` result means for the claim's cycle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Step {
+    /// Settled; continue with the next job.
+    Continue,
+    /// No job needs work.
+    Idle,
+    /// End the cycle (and record this diagnostic, if any).
+    End(CycleEnd, Option<Code>),
+}
+pub fn step(result: &Result<Option<JobRecord>, AnalysisError>) -> Step {
+    match result {
+        Ok(None) => Step::Idle,
+        Ok(Some(record)) if record.latest.status == JobStatus::Unknown => {
+            Step::End(CycleEnd::Reconcile, Some(Code::AnalysisUnresolved))
+        }
+        Ok(Some(record)) if record.latest.status == JobStatus::Stopped => {
+            Step::End(CycleEnd::Fenced, None)
+        }
+        Ok(Some(record)) if settled(record) => Step::Continue,
+        // Absent and retryable under a new claim, or not yet settled: end
+        // this cycle without guessing.
+        Ok(Some(_)) => Step::End(CycleEnd::Bounded, None),
+        Err(_) => Step::End(CycleEnd::Failed, Some(Code::AnalysisFailed)),
+    }
 }
 
 impl<X, O> AnalysisComposition<X, O>
@@ -85,30 +125,24 @@ where
             settings: self.settings,
         };
         let mut worked = false;
+        // A job whose recovery fails is skipped for the rest of this claim.
+        let mut skip = Vec::new();
         for _ in 0..JOBS_PER_CLAIM {
             if cancellation.is_cancelled() {
                 return Some(CycleEnd::Fenced);
             }
-            match analysis.run_next(basis, cancellation).await {
-                Ok(None) => break,
-                Ok(Some(record)) => {
-                    worked = true;
-                    if record.latest.status == JobStatus::Unknown {
-                        self.diagnostics.record(Code::AnalysisUnresolved);
-                        return Some(CycleEnd::Reconcile);
+            let result = analysis.run_next(basis, cancellation, &mut skip).await;
+            if !skip.is_empty() {
+                self.diagnostics.record(Code::AnalysisFailed);
+            }
+            match step(&result) {
+                Step::Idle => break,
+                Step::Continue => worked = true,
+                Step::End(end, code) => {
+                    if let Some(code) = code {
+                        self.diagnostics.record(code);
                     }
-                    if record.latest.status == JobStatus::Stopped {
-                        return Some(CycleEnd::Fenced);
-                    }
-                    if !settled(&record) {
-                        // Absent and retryable under a new claim, or awaiting
-                        // collection: end this cycle without guessing.
-                        return Some(CycleEnd::Bounded);
-                    }
-                }
-                Err(_) => {
-                    self.diagnostics.record(Code::AnalysisFailed);
-                    return Some(CycleEnd::Failed);
+                    return Some(end);
                 }
             }
         }
@@ -117,9 +151,10 @@ where
     }
 
     /// Lost-job recovery for a Task whose consumed attempts left it waiting:
-    /// restricted receipt custody, sandbox lookup, resumed watch or collection.
-    /// Never dispatches. True when every unfinished job reached a settled fact.
-    pub async fn recover_task(&self, route: &WakeupRoute) -> bool {
+    /// restricted receipt custody, sandbox lookup, a bounded resumed watch or
+    /// collection. Never dispatches, never stops a job, and detaches on
+    /// shutdown. True when every job reached a settled or retryable fact.
+    pub async fn recover_task(&self, route: &WakeupRoute, shutdown: &ModelCancellation) -> bool {
         let store = OperationRepository::new(self.pool.clone());
         let jobs = AnalysisRepository::new(self.pool.clone());
         let analysis = Analysis {
@@ -141,11 +176,25 @@ where
         if pending.is_empty() {
             return false;
         }
+        let watch = Watch {
+            until: Some(Instant::now() + self.reconcile_watch),
+            detach: Some(shutdown),
+        };
         let mut resolved = true;
-        let cancellation = ModelCancellation::new();
+        // Recovery never requests a stop: this token is never cancelled.
+        let no_stop = ModelCancellation::new();
         for record in pending {
+            if shutdown.is_cancelled() {
+                return false;
+            }
             match analysis
-                .recover(&route.actor_id, &route.scope, &record.job.id, &cancellation)
+                .recover(
+                    &route.actor_id,
+                    &route.scope,
+                    &record.job.id,
+                    &no_stop,
+                    watch,
+                )
                 .await
             {
                 Ok(record) if settled(&record) || record.latest.status.retryable() => {}
@@ -175,8 +224,24 @@ where
     fn reconcile<'a>(
         &'a self,
         route: &'a WakeupRoute,
+        shutdown: watch::Receiver<bool>,
     ) -> Pin<Box<dyn Future<Output = bool> + Send + 'a>> {
-        Box::pin(self.recover_task(route))
+        Box::pin(async move {
+            let detach = ModelCancellation::new();
+            let signal = detach.clone();
+            let mut shutdown = shutdown;
+            let watcher = tokio::spawn(async move {
+                while !*shutdown.borrow() {
+                    if shutdown.changed().await.is_err() {
+                        return;
+                    }
+                }
+                signal.cancel();
+            });
+            let resolved = self.recover_task(route, &detach).await;
+            watcher.abort();
+            resolved
+        })
     }
 }
 

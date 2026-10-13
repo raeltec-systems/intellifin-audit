@@ -39,11 +39,14 @@ pub trait WorkRunner: Send + Sync {
     /// Reconcile durable external work for a Task the coordinator left waiting
     /// (for example a lost analysis job). Never dispatches. True means a later
     /// coordination should observe resolved facts.
+    /// Bounded and shutdown-aware: it must never follow a long external job
+    /// inline, because the coordinator awaits it.
     fn reconcile<'a>(
         &'a self,
         route: &'a zobba_domain::task::WakeupRoute,
+        shutdown: tokio::sync::watch::Receiver<bool>,
     ) -> Pin<Box<dyn Future<Output = bool> + Send + 'a>> {
-        let _ = route;
+        let _ = (route, shutdown);
         Box::pin(async { false })
     }
 }

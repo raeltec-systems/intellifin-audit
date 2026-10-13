@@ -13,7 +13,7 @@ use std::{
 use zobba_application::{
     analysis::{
         Analysis, AnalysisError, AnalysisJobs, AnalysisSandbox, AnalysisSettings, AnalysisTarget,
-        JobRecord, SandboxState,
+        JobRecord, SandboxState, Watch,
     },
     evidence::EvidenceObjects,
     model::ModelCancellation,
@@ -139,6 +139,8 @@ fn delay(duration: Duration) -> std::pin::Pin<Box<dyn std::future::Future<Output
 const SETTINGS: AnalysisSettings = AnalysisSettings {
     poll: Duration::from_millis(200),
     stop_confirmation: Duration::from_secs(20),
+    provisioning: Duration::from_secs(60),
+    collect_attempts: 3,
     delay,
 };
 fn limits(wall_seconds: u32) -> AnalysisLimits {
@@ -254,7 +256,7 @@ impl World {
             .await
             .unwrap();
         self.analysis()
-            .run_next(&basis, &ModelCancellation::new())
+            .run_next(&basis, &ModelCancellation::new(), &mut Vec::new())
             .await
             .unwrap()
             .unwrap()
@@ -435,7 +437,12 @@ async fn measured_analysis_runs_hostile_programs_in_an_isolated_sandbox() {
     lost_job_recovery(&mut world).await;
     absent_before_start_is_retryable(&mut world).await;
     changed_retry_and_unlisted_environment(&mut world).await;
+    hostile_tree_is_always_recorded(&mut world).await;
+    collectors_agree_on_one_tree().await;
+    stage_script_verifies_pinned_inputs().await;
     nothing_sensitive_is_recorded(&mut world).await;
+    database_guards_refuse_owner_writes(&mut world).await;
+    coordinator_reconciles_a_lost_running_job(&mut world).await;
     production_worker_refuses_the_docker_sandbox(&configuration).await;
 
     zobba_infrastructure::analysis::docker::remove_all_test_resources().await;
@@ -465,16 +472,12 @@ open('/output/summary.csv', 'w').write(f'rows,total\n{{len(rows)}},{{total}}\n# 
         .await
         .into_iter()
         .map(|s| s.0)
+        // A fast program may exit before any poll observes it running.
+        .filter(|s| s != "running")
         .collect();
     assert_eq!(
         statuses,
-        [
-            "admitted",
-            "possibly_started",
-            "running",
-            "completed",
-            "collected"
-        ]
+        ["admitted", "possibly_started", "completed", "collected"]
     );
     let descendants = world
         .jobs
@@ -680,7 +683,8 @@ s = socket.socket(socket.AF_UNIX); s.bind('/output/sock.csv')
             "receipt names rejected content {name}"
         );
     }
-    assert_eq!(receipt["rejected"].as_array().unwrap().len(), 9);
+    assert_eq!(receipt["rejected_count"], 9);
+    assert_eq!(receipt["rejected_by_reason"]["hardlink"], 2);
 }
 
 async fn exhaustion(world: &mut World) {
@@ -802,7 +806,11 @@ async fn stop_during_run(world: &mut World) {
     let running = wait_for(world, &job.job.id, JobStatus::Running).await;
     let handle = running.latest.attempt_id.clone().unwrap();
     assert_eq!(
-        world.sandbox.status(&handle).await.unwrap(),
+        world
+            .sandbox
+            .status(&handle, &server_allowlist()[0])
+            .await
+            .unwrap(),
         SandboxState::Running
     );
     world
@@ -859,7 +867,8 @@ async fn lost_job_recovery(world: &mut World) {
     {
         let cancellation = ModelCancellation::new();
         let analysis = world.analysis();
-        let run = analysis.run_next(&basis, &cancellation);
+        let mut skip = Vec::new();
+        let run = analysis.run_next(&basis, &cancellation, &mut skip);
         tokio::pin!(run);
         tokio::select! {
             _ = &mut run => panic!("the long job finished before the simulated loss"),
@@ -879,13 +888,18 @@ async fn lost_job_recovery(world: &mut World) {
         .unwrap();
     let handle = record.latest.attempt_id.clone().unwrap();
     assert_eq!(
-        world.sandbox.status(&handle).await.unwrap(),
+        world
+            .sandbox
+            .status(&handle, &server_allowlist()[0])
+            .await
+            .unwrap(),
         SandboxState::Running,
         "the job outlived its worker"
     );
     // The worker's reconciliation path after a restart: lookup and resumed watch.
     let composition = world.composition();
-    assert!(composition.reconcile(&route(&receipt)).await);
+    let (_shutdown, receiver) = tokio::sync::watch::channel(false);
+    assert!(composition.reconcile(&route(&receipt), receiver).await);
     let record = world
         .jobs
         .job("actor-a", &scope(), &job.job.id)
@@ -931,7 +945,13 @@ async fn absent_before_start_is_retryable(world: &mut World) {
         .unwrap();
     let recovered = world
         .analysis()
-        .recover("actor-a", &scope(), &job.job.id, &ModelCancellation::new())
+        .recover(
+            "actor-a",
+            &scope(),
+            &job.job.id,
+            &ModelCancellation::new(),
+            Watch::default(),
+        )
         .await
         .unwrap();
     assert_eq!(recovered.latest.status, JobStatus::Absent);
@@ -948,7 +968,7 @@ async fn absent_before_start_is_retryable(world: &mut World) {
     assert_eq!(
         world
             .analysis()
-            .run_next(&basis, &ModelCancellation::new())
+            .run_next(&basis, &ModelCancellation::new(), &mut Vec::new())
             .await
             .err(),
         Some(AnalysisError::Fenced)
@@ -970,7 +990,7 @@ async fn absent_before_start_is_retryable(world: &mut World) {
     let (replacement, _) = world.claim(&receipt, "worker-replacement").await;
     let done = world
         .analysis()
-        .run_next(&replacement, &ModelCancellation::new())
+        .run_next(&replacement, &ModelCancellation::new(), &mut Vec::new())
         .await
         .unwrap()
         .unwrap();
@@ -980,6 +1000,8 @@ async fn absent_before_start_is_retryable(world: &mut World) {
         .await
         .into_iter()
         .map(|s| s.0)
+        // A fast program may exit before any poll observes it running.
+        .filter(|s| s != "running")
         .collect();
     assert_eq!(
         statuses,
@@ -987,7 +1009,6 @@ async fn absent_before_start_is_retryable(world: &mut World) {
             "admitted",
             "absent",
             "possibly_started",
-            "running",
             "completed",
             "collected"
         ]
@@ -1127,5 +1148,515 @@ async fn production_worker_refuses_the_docker_sandbox(configuration: &support::C
             String::from_utf8_lossy(&output.stderr).trim(),
             "worker: invalid_configuration"
         );
+    }
+}
+
+async fn hostile_tree_is_always_recorded(world: &mut World) {
+    // More entries than a collector reports, names past the path bound, an
+    // unreadable directory and more regular files than slots: collection still
+    // happens and the receipt (counts plus a bounded sample) still fits.
+    let program = r#"
+import os
+os.makedirs('/output/a-locked/inner')
+open('/output/a-locked/inner/x.txt', 'w').write('x')
+os.chmod('/output/a-locked', 0)
+deep = '/output/b-' + 'x' * 200
+os.makedirs(deep)
+open(deep + '/' + 'y' * 200 + '.txt', 'w').write('long')
+for i in range(20):
+    open(f'/output/c-{i:02}.txt', 'w').write(str(i))
+os.makedirs('/output/z-many')
+for i in range(1100):
+    open(f'/output/z-many/{i:04}.txt', 'w').close()
+"#;
+    let record = world
+        .run(
+            "hostile-tree",
+            program,
+            AnalysisLimits {
+                output_files: 16,
+                ..limits(120)
+            },
+        )
+        .await;
+    assert_eq!(
+        record.latest.status,
+        JobStatus::Collected,
+        "{:?}",
+        world.statuses(&record.job.id).await
+    );
+    let (receipt, reasons) = world
+        .jobs
+        .receipt("actor-a", &scope(), &record.job.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(receipt["truncated"], true);
+    assert_eq!(receipt["rejected_count"], reasons.len());
+    assert!(receipt["rejected_sample"].as_array().unwrap().len() <= RECEIPT_REJECTION_SAMPLE);
+    assert!(receipt.to_string().len() < 65_536);
+    for reason in [
+        "collection_truncated",
+        "too_long",
+        "not_regular",
+        "too_many_files",
+    ] {
+        assert!(
+            reasons.iter().any(|r| r == reason),
+            "missing {reason}: {:?}",
+            receipt["rejected_by_reason"]
+        );
+    }
+    let descendants = world
+        .jobs
+        .descendants("actor-a", &scope(), &record.job.id)
+        .await
+        .unwrap();
+    assert_eq!(descendants.len(), 16, "every slot holds a safe sibling");
+}
+
+async fn docker_python(arguments: &[&str], stdin: &str) -> (bool, String) {
+    use tokio::io::AsyncWriteExt;
+    let image = format!("{REPOSITORY}@{GENERAL_IMAGE_DIGEST}");
+    let mut command = tokio::process::Command::new("docker");
+    command
+        .arg("run")
+        .arg("--rm")
+        .arg("-i")
+        .args(arguments)
+        .args([&image, "python3", "-I", "-"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = command.spawn().unwrap();
+    let mut pipe = child.stdin.take().unwrap();
+    pipe.write_all(stdin.as_bytes()).await.unwrap();
+    drop(pipe);
+    let output = tokio::time::timeout(Duration::from_secs(120), child.wait_with_output())
+        .await
+        .unwrap()
+        .unwrap();
+    (
+        output.status.success(),
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        ),
+    )
+}
+
+/// The Fargate collector (uploads) and the Docker collector (stdout) are one
+/// script: run both modes over the same hostile tree and compare every fact.
+async fn collectors_agree_on_one_tree() {
+    let harness = format!(
+        r#"
+import base64, contextlib, io, json, os, socket, types
+COLLECT = {source:?}
+m = types.ModuleType("collect")
+exec(COLLECT, m.__dict__)
+os.makedirs('/output/nested/deeper')
+open('/output/nested/deeper/a.csv', 'w').write('a\n')
+open('/output/safe.txt', 'w').write('safe')
+open('/output/big.txt', 'wb').write(b'b' * 5000)
+os.symlink('/etc/passwd', '/output/link.txt')
+os.mkfifo('/output/pipe.txt')
+open('/output/hard.txt', 'w').write('h')
+os.link('/output/hard.txt', '/output/hard2.txt')
+socket.socket(socket.AF_UNIX).bind('/output/sock.txt')
+deep = '/output/l-' + 'x' * 200
+os.makedirs(deep)
+open(deep + '/' + 'y' * 100 + '.txt', 'w').write('long')
+os.makedirs('/output/locked/inner')
+os.chmod('/output/locked', 0)
+for i in range(6):
+    open(f'/output/s-{{i}}.txt', 'w').write('s' * 10)
+for i in range(3):
+    open(f'/output/t-{{i}}.txt', 'w').write('t')
+per, total, files = 4096, 40, 5
+buffer = io.StringIO()
+with contextlib.redirect_stdout(buffer):
+    m.local(per, total, files)
+local = json.loads(buffer.getvalue())
+captured = {{}}
+m.upload = lambda url, data: captured.__setitem__(url, data)
+json.dump({{"slots": [f"slot-{{i}}" for i in range(files)], "manifest": "manifest",
+           "output_file_bytes": per, "output_total_bytes": total}}, open('/control/collect.json', 'w'))
+m.fargate()
+remote = json.loads(captured['manifest'])
+def from_local(e):
+    return ({{k: v for k, v in e.items() if k != 'content'}},
+            base64.b64decode(e['content']) if 'content' in e else None)
+def from_remote(e):
+    return ({{k: v for k, v in e.items() if k != 'slot'}},
+            captured[f"slot-{{e['slot']}}"] if 'slot' in e else None)
+agree = (local['truncated'] == remote['truncated'] and local['used'] == remote['used']
+         and [from_local(e) for e in local['entries']] == [from_remote(e) for e in remote['entries']])
+print(json.dumps({{"agree": agree,
+    "kinds": sorted({{e['kind'] for e in local['entries']}}),
+    "withheld": sorted({{e['withheld'] for e in local['entries'] if 'withheld' in e}})}}))
+"#,
+        source = zobba_infrastructure::analysis::docker::COLLECTOR
+    );
+    let (ok, output) = docker_python(
+        &[
+            "--network",
+            "none",
+            "--user",
+            "65534:65534",
+            "--cap-drop",
+            "ALL",
+            "--tmpfs",
+            "/output:uid=65534,gid=65534,mode=0700",
+            "--tmpfs",
+            "/control:uid=65534,gid=65534,mode=0700",
+        ],
+        &harness,
+    )
+    .await;
+    assert!(ok, "{output}");
+    let result: serde_json::Value =
+        serde_json::from_str(output.lines().last().unwrap_or_default()).unwrap();
+    assert_eq!(result["agree"], true, "{output}");
+    assert_eq!(
+        result["kinds"],
+        serde_json::json!(["directory", "fifo", "other", "regular", "socket", "symlink"])
+    );
+    assert_eq!(
+        result["withheld"],
+        serde_json::json!(["budget", "slots", "too_long", "unreadable"])
+    );
+}
+
+/// The trusted Fargate stage script, run against a local manifest server:
+/// pinned inputs and program land read-only, and a digest mismatch stops it.
+async fn stage_script_verifies_pinned_inputs() {
+    use http_body_util::Full;
+    use hyper::{Response, body::Bytes, server::conn::http1, service::service_fn};
+    use hyper_util::rt::TokioIo;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let input = b"account,amount\nA-1,10\n".to_vec();
+    let program = b"print('staged')\n".to_vec();
+    let manifest = |input_sha: &str| {
+        serde_json::json!({
+            "inputs": [{"name": "orig-a", "size": input.len(), "sha256": input_sha, "url": format!("http://127.0.0.1:{port}/input")}],
+            "program": {"size": program.len(), "sha256": sha(&program), "url": format!("http://127.0.0.1:{port}/program")},
+            "collect": {"manifest": "m", "slots": ["s0"], "output_file_bytes": 10, "output_total_bytes": 10},
+        })
+        .to_string()
+        .into_bytes()
+    };
+    let files = Arc::new(std::collections::HashMap::from([
+        ("/good".to_owned(), manifest(&sha(&input))),
+        ("/tampered".to_owned(), manifest(&"0".repeat(64))),
+        ("/input".to_owned(), input.clone()),
+        ("/program".to_owned(), program.clone()),
+    ]));
+    let server = tokio::spawn(async move {
+        loop {
+            let (stream, _) = listener.accept().await.unwrap();
+            let files = files.clone();
+            tokio::spawn(async move {
+                let _ = http1::Builder::new()
+                    .serve_connection(
+                        TokioIo::new(stream),
+                        service_fn(move |request: hyper::Request<hyper::body::Incoming>| {
+                            let body = files.get(request.uri().path()).cloned();
+                            async move {
+                                Ok::<_, std::convert::Infallible>(match body {
+                                    Some(bytes) => Response::new(Full::new(Bytes::from(bytes))),
+                                    None => Response::builder()
+                                        .status(404)
+                                        .body(Full::new(Bytes::new()))
+                                        .unwrap(),
+                                })
+                            }
+                        }),
+                    )
+                    .await;
+            });
+        }
+    });
+    let stage = include_str!("../../../deploy/qualification/analysis/stage.py");
+    let check = r#"
+import hashlib, json, os, stat
+def info(path):
+    mode = stat.S_IMODE(os.stat(path).st_mode)
+    return [oct(mode), hashlib.sha256(open(path, 'rb').read()).hexdigest() if os.path.isfile(path) else None]
+print(json.dumps({p: info(p) for p in ['/input', '/input/orig-a', '/job', '/job/program', '/control/collect.json', '/output']}))
+"#;
+    let mounts = [
+        "--network",
+        "host",
+        "--user",
+        "0:0",
+        "--cap-drop",
+        "ALL",
+        "--tmpfs",
+        "/input",
+        "--tmpfs",
+        "/job",
+        "--tmpfs",
+        "/control",
+        "--tmpfs",
+        "/output",
+    ];
+    let run = |path: &str| {
+        let mut arguments: Vec<String> = mounts.iter().map(|v| (*v).to_owned()).collect();
+        arguments.extend([
+            "-e".into(),
+            format!("ZOBBA_STAGE_URL=http://127.0.0.1:{port}{path}"),
+        ]);
+        arguments
+    };
+    let good = run("/good");
+    let good: Vec<&str> = good.iter().map(String::as_str).collect();
+    let (ok, output) = docker_python(
+        &good,
+        &format!("exec(compile({stage:?}, 'stage', 'exec'))\nexec({check:?})"),
+    )
+    .await;
+    assert!(ok, "{output}");
+    let facts: serde_json::Value =
+        serde_json::from_str(output.lines().last().unwrap_or_default()).unwrap();
+    assert_eq!(
+        facts["/input/orig-a"],
+        serde_json::json!(["0o444", sha(&input)])
+    );
+    assert_eq!(
+        facts["/job/program"],
+        serde_json::json!(["0o444", sha(&program)])
+    );
+    assert_eq!(facts["/input"][0], "0o555");
+    assert_eq!(facts["/control/collect.json"][0], "0o444");
+    let tampered = run("/tampered");
+    let tampered: Vec<&str> = tampered.iter().map(String::as_str).collect();
+    let (ok, output) = docker_python(
+        &tampered,
+        &format!("exec(compile({stage:?}, 'stage', 'exec'))"),
+    )
+    .await;
+    assert!(!ok, "a digest mismatch must stop staging: {output}");
+    server.abort();
+}
+
+/// Each guard refuses a direct owner write that the trusted path never makes.
+async fn database_guards_refuse_owner_writes(world: &mut World) {
+    async fn fabricated(world: &mut World, name: &str, last: &[&str]) -> (String, String) {
+        let (_, basis) = world.task(name).await;
+        let job = world
+            .analysis()
+            .admit(
+                &target(),
+                &basis,
+                name,
+                &world.request("print(1)\n", limits(60)),
+            )
+            .await
+            .unwrap();
+        let consumed = world
+            .store
+            .consume(&basis, &job.job.operation_id)
+            .await
+            .unwrap();
+        for (sequence, status) in last.iter().enumerate() {
+            sqlx::query("INSERT INTO public.analysis_job_events(organisation_id,client_id,engagement_id,job_id,sequence,status,attempt_id) VALUES('org-a','client-a','engagement-a',$1,$2,$3,$4)")
+                .bind(&job.job.id).bind(sequence as i32 + 1).bind(status).bind(&consumed.attempt_id)
+                .execute(&mut world.admin).await.unwrap();
+        }
+        (job.job.id, consumed.attempt_id)
+    }
+    async fn descendant(
+        world: &mut World,
+        job: &str,
+        attempt: &str,
+        path: &str,
+        fold: &str,
+        parents: &str,
+    ) -> Result<(), sqlx::Error> {
+        let id = format!("guard-{}", &sha(format!("{job}{path}").as_bytes())[..24]);
+        sqlx::query("INSERT INTO public.analysis_descendants(organisation_id,client_id,engagement_id,id,job_id,attempt_id,path,fold_key,parents,digest,size,media_type,namespace,version) VALUES('org-a','client-a','engagement-a',$1,$2,$3,$4,$5,$6::jsonb,$7,1,'text/plain',$8,'v1')")
+            .bind(id).bind(job).bind(attempt).bind(path).bind(fold).bind(parents)
+            .bind("e".repeat(64)).bind(NAMESPACE)
+            .execute(&mut world.admin).await.map(|_| ())
+    }
+    let parents = r#"["analysis-input-a"]"#;
+    // Outputs exist only after confirmed termination of the current attempt.
+    let (stopped, stopped_attempt) =
+        fabricated(world, "guard-stopped", &["possibly_started", "stopped"]).await;
+    assert!(
+        descendant(world, &stopped, &stopped_attempt, "a.txt", "a.txt", parents)
+            .await
+            .is_err()
+    );
+    let (unknown, unknown_attempt) =
+        fabricated(world, "guard-unknown", &["possibly_started", "unknown"]).await;
+    assert!(
+        descendant(world, &unknown, &unknown_attempt, "a.txt", "a.txt", parents)
+            .await
+            .is_err()
+    );
+    let (job, attempt) =
+        fabricated(world, "guard-completed", &["possibly_started", "completed"]).await;
+    // Wrong parents and a non-current attempt are refused.
+    assert!(
+        descendant(world, &job, &attempt, "a.txt", "a.txt", r#"["other"]"#)
+            .await
+            .is_err()
+    );
+    assert!(
+        descendant(world, &job, &stopped_attempt, "a.txt", "a.txt", parents)
+            .await
+            .is_err()
+    );
+    // A valid descendant, then a case-fold duplicate of it, is refused.
+    descendant(
+        world,
+        &job,
+        &attempt,
+        "Stra\u{df}e.txt",
+        &fold_key("Stra\u{df}e.txt"),
+        parents,
+    )
+    .await
+    .unwrap();
+    assert!(
+        descendant(
+            world,
+            &job,
+            &attempt,
+            "STRASSE.txt",
+            &fold_key("STRASSE.txt"),
+            parents
+        )
+        .await
+        .is_err(),
+        "the folded key is unique per job"
+    );
+    // A collection receipt that does not match its rows is refused.
+    let mismatch = sqlx::query("INSERT INTO public.analysis_job_events(organisation_id,client_id,engagement_id,job_id,sequence,status,attempt_id,receipt) VALUES('org-a','client-a','engagement-a',$1,3,'collected',$2,$3::jsonb)")
+        .bind(&job).bind(&attempt)
+        .bind(r#"{"descendants":[],"rejected_count":1,"rejected_sample":[]}"#)
+        .execute(&mut world.admin).await;
+    assert!(mismatch.is_err());
+    // A start refusal needs MAX_START_ATTEMPTS attempts.
+    let (absent, absent_attempt) = fabricated(world, "guard-absent", &["absent"]).await;
+    let refused = sqlx::query("INSERT INTO public.analysis_job_events(organisation_id,client_id,engagement_id,job_id,sequence,status,attempt_id,reason) VALUES('org-a','client-a','engagement-a',$1,2,'failed',$2,'start_refused')")
+        .bind(&absent).bind(&absent_attempt).execute(&mut world.admin).await;
+    assert!(refused.is_err());
+    // Every analysis record is immutable, even for the owner.
+    for statement in [
+        "UPDATE public.analysis_jobs SET program=program WHERE id=$1",
+        "UPDATE public.analysis_job_events SET reason=reason WHERE job_id=$1",
+        "UPDATE public.analysis_descendants SET path=path WHERE job_id=$1",
+    ] {
+        assert!(
+            sqlx::query(statement)
+                .bind(&job)
+                .execute(&mut world.admin)
+                .await
+                .is_err(),
+            "{statement}"
+        );
+    }
+}
+
+/// End to end through the coordinator: a Task left waiting on a lost running
+/// job is reconciled by `advance` (bounded watch, collection), never re-run.
+async fn coordinator_reconciles_a_lost_running_job(world: &mut World) {
+    let (receipt, basis) = world.task("coordinated-loss").await;
+    let program = format!(
+        "import time\ntime.sleep(3)\nopen('/output/late.txt', 'w').write('{OUTPUT_SENTINEL}')\n"
+    );
+    let job = world
+        .analysis()
+        .admit(
+            &target(),
+            &basis,
+            "coordinated-loss",
+            &world.request(&program, limits(60)),
+        )
+        .await
+        .unwrap();
+    {
+        let cancellation = ModelCancellation::new();
+        let analysis = world.analysis();
+        let mut skip = Vec::new();
+        let run = analysis.run_next(&basis, &cancellation, &mut skip);
+        tokio::pin!(run);
+        tokio::select! {
+            _ = &mut run => panic!("the job finished before the simulated loss"),
+            _ = async {
+                loop {
+                    if world.jobs.job("actor-a", &scope(), &job.job.id).await.unwrap().latest.status == JobStatus::Running { break; }
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+            } => {}
+        }
+    }
+    // The lost worker's Task lease runs out.
+    sqlx::query(
+        "UPDATE public.tasks SET owner_until=clock_timestamp()-interval '1 second' WHERE id=$1",
+    )
+    .bind(&receipt.task_id)
+    .execute(&mut world.admin)
+    .await
+    .unwrap();
+    let mut composition = world.composition();
+    composition.reconcile_watch = Duration::from_secs(20);
+    let config = executor::Config::new(PathBuf::from("/bin/false"), 10).unwrap();
+    let (shutdown, receiver) = tokio::sync::watch::channel(false);
+    let coordinator = tokio::spawn(zobba_worker::coordinate_runner(
+        zobba_infrastructure::dispatcher::Dispatcher::new(world.pool.clone()),
+        world.tasks.clone(),
+        config,
+        Some(Arc::new(composition) as Arc<dyn WorkRunner>),
+        receiver,
+    ));
+    let collected = wait_for_long(world, &job.job.id, JobStatus::Collected, 120).await;
+    shutdown.send(true).unwrap();
+    tokio::time::timeout(Duration::from_secs(60), coordinator)
+        .await
+        .unwrap()
+        .unwrap();
+    let history = world
+        .store
+        .history(
+            "actor-a",
+            &scope(),
+            &job.job.operation_id,
+            &OperationHistoryQuery::default(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(history.attempts.len(), 1, "never re-run");
+    assert!(history.observations.iter().any(|o| o.attempt_id
+        == collected.latest.attempt_id.clone().unwrap()
+        && o.fact == SourceFact::Completed));
+    assert_eq!(
+        world
+            .jobs
+            .descendants("actor-a", &scope(), &job.job.id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+async fn wait_for_long(world: &World, job_id: &str, wanted: JobStatus, seconds: u64) -> JobRecord {
+    let deadline = Instant::now() + Duration::from_secs(seconds);
+    loop {
+        let record = world.jobs.job("actor-a", &scope(), job_id).await.unwrap();
+        if record.latest.status == wanted {
+            return record;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "job did not reach {wanted:?}: {:?}",
+            record.latest
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
     }
 }

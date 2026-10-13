@@ -138,6 +138,21 @@ override_resource {
 }
 
 override_resource {
+  target = aws_vpc.analysis
+  values = { id = "vpc-analysis00000001" }
+}
+
+override_resource {
+  target = aws_security_group.analysis
+  values = { id = "sg-analysis000000001" }
+}
+
+override_resource {
+  target = aws_security_group.analysis_endpoints
+  values = { id = "sg-analysisendpoints1" }
+}
+
+override_resource {
   target = aws_vpc_endpoint.analysis_s3
   values = { prefix_list_id = "pl-6da54004" }
 }
@@ -782,8 +797,68 @@ run "analysis_jobs_are_isolated" {
   }
 
   assert {
-    condition     = aws_vpc_endpoint.analysis_s3.route_table_ids == toset([aws_route_table.analysis.id]) && !contains(aws_vpc_endpoint.s3.route_table_ids, aws_route_table.analysis.id)
+    condition = alltrue([
+      for c in jsondecode(aws_ecs_task_definition.analysis.container_definitions) :
+      (c.name == "analysis") == !contains(keys(c), "logConfiguration")
+    ])
+    error_message = "the untrusted program has no log configuration; only the trusted stage and collect containers log"
+  }
+
+  assert {
+    condition = [
+      for c in jsondecode(aws_ecs_task_definition.analysis.container_definitions) : c.entryPoint if c.name == "analysis"
+    ] == [["timeout", "-s", "KILL"]]
+    error_message = "the program runs under the in-job wall limit so collection still happens after it"
+  }
+
+  assert {
+    condition = (
+      aws_vpc.analysis.cidr_block == "10.250.0.0/24" &&
+      alltrue([for s in aws_subnet.analysis : s.vpc_id == aws_vpc.analysis.id]) &&
+      aws_route_table.analysis.vpc_id == aws_vpc.analysis.id &&
+      aws_security_group.analysis.vpc_id == aws_vpc.analysis.id &&
+      aws_security_group.analysis_endpoints.vpc_id == aws_vpc.analysis.id
+    )
+    error_message = "analysis tasks run in a dedicated VPC that shares no subnet, route table or security group with the application"
+  }
+
+  assert {
+    condition     = aws_vpc_endpoint.analysis_s3.vpc_id == aws_vpc.analysis.id && aws_vpc_endpoint.analysis_s3.route_table_ids == toset([aws_route_table.analysis.id])
     error_message = "the analysis subnets reach only their own restricted S3 endpoint"
+  }
+
+  assert {
+    condition = (
+      toset(keys(aws_vpc_endpoint.analysis_interface)) == toset(["ecr.api", "ecr.dkr", "logs"]) &&
+      alltrue([for e in aws_vpc_endpoint.analysis_interface : e.vpc_id == aws_vpc.analysis.id && e.security_group_ids == toset([aws_security_group.analysis_endpoints.id])])
+    )
+    error_message = "the only reachable interface endpoints are ECR API, ECR registry and Logs, behind their own security group"
+  }
+
+  assert {
+    condition     = aws_vpc_security_group_ingress_rule.analysis_endpoints_from_analysis.referenced_security_group_id == aws_security_group.analysis.id && aws_vpc_security_group_ingress_rule.analysis_endpoints_from_analysis.security_group_id == aws_security_group.analysis_endpoints.id && aws_vpc_security_group_egress_rule.analysis_endpoints.referenced_security_group_id == aws_security_group.analysis_endpoints.id
+    error_message = "analysis tasks reach only the analysis endpoints, and those admit only analysis tasks"
+  }
+
+  assert {
+    condition = (
+      aws_route53_resolver_firewall_rule_group_association.analysis.vpc_id == aws_vpc.analysis.id &&
+      aws_route53_resolver_firewall_config.analysis.resource_id == aws_vpc.analysis.id &&
+      aws_route53_resolver_firewall_config.analysis.firewall_fail_open == "DISABLED" &&
+      aws_route53_resolver_firewall_rule.analysis_allow.action == "ALLOW" &&
+      aws_route53_resolver_firewall_rule.analysis_block.action == "BLOCK" &&
+      aws_route53_resolver_firewall_rule.analysis_block.block_response == "NXDOMAIN" &&
+      aws_route53_resolver_firewall_rule.analysis_allow.priority < aws_route53_resolver_firewall_rule.analysis_block.priority &&
+      aws_route53_resolver_firewall_domain_list.analysis_everything.domains == toset(["*."]) &&
+      aws_route53_resolver_firewall_domain_list.analysis_allowed.domains == toset([
+        "api.ecr.eu-west-1.amazonaws.com.",
+        "123456789012.dkr.ecr.eu-west-1.amazonaws.com.",
+        "logs.eu-west-1.amazonaws.com.",
+        "zobba-qualification-analysis-123456789012.s3.eu-west-1.amazonaws.com.",
+        "prod-eu-west-1-starport-layer-bucket.s3.eu-west-1.amazonaws.com.",
+      ])
+    )
+    error_message = "the analysis resolver answers only the endpoint, staging and layer names and blocks everything else, failing closed"
   }
 
   assert {
@@ -815,6 +890,27 @@ run "analysis_jobs_are_isolated" {
       (s.Action != "ecs:RunTask" || endswith(s.Resource, "task-definition/zobba-qualification-analysis:*"))
     ])
     error_message = "the worker may run only the analysis family and pass only the analysis execution role"
+  }
+
+  assert {
+    condition = alltrue([
+      for s in jsondecode(aws_iam_role_policy.worker_task.policy).Statement :
+      s.Condition.StringEquals["aws:ResourceTag/zobba:analysis"] == "1" && s.Condition.ArnEquals["ecs:cluster"] == aws_ecs_cluster.this.arn
+      if contains(flatten([s.Action]), "ecs:StopTask") || contains(flatten([s.Action]), "ecs:DescribeTasks")
+    ]) && anytrue([for s in jsondecode(aws_iam_role_policy.worker_task.policy).Statement : s.Action == "ecs:TagResource" && s.Condition.StringEquals["ecs:CreateAction"] == "RunTask"])
+    error_message = "the worker may describe and stop only tagged analysis tasks, and tag only at RunTask"
+  }
+
+  assert {
+    condition = toset(flatten([
+      for s in jsondecode(aws_iam_role_policy.worker_task.policy).Statement : s.Resource if contains(flatten([s.Action]), "s3:PutObject")
+    ])) == toset(["arn:aws:s3:::zobba-qualification-analysis-123456789012/analysis/*", "arn:aws:s3:::zobba-qualification-evidence-123456789012/evidence/analysis-*"])
+    error_message = "the worker writes only job staging objects and analysis descendants"
+  }
+
+  assert {
+    condition     = toset([for e in jsondecode(aws_ecs_task_definition.worker.container_definitions)[0].environment : e.name]) == toset(jsondecode(file("${path.module}/analysis/worker-environment.json")))
+    error_message = "the worker environment is exactly the Rust FargateConfig contract (analysis/worker-environment.json)"
   }
 
   assert {

@@ -4,11 +4,12 @@ column|_sqlx_migrations|3|installed_on|timestamp with time zone|true|now()||
 column|_sqlx_migrations|4|success|boolean|true|||
 column|_sqlx_migrations|5|checksum|bytea|true|||
 column|_sqlx_migrations|6|execution_time|bigint|true|||
-column|analysis_descendants|10|size|bigint|true|||
-column|analysis_descendants|11|media_type|text|true|||
-column|analysis_descendants|12|namespace|text|true|||
-column|analysis_descendants|13|version|text|true|||
-column|analysis_descendants|14|registered_at|bigint|true|(floor(EXTRACT(epoch FROM clock_timestamp())))::bigint||
+column|analysis_descendants|10|digest|text|true|||
+column|analysis_descendants|11|size|bigint|true|||
+column|analysis_descendants|12|media_type|text|true|||
+column|analysis_descendants|13|namespace|text|true|||
+column|analysis_descendants|14|version|text|true|||
+column|analysis_descendants|15|registered_at|bigint|true|(floor(EXTRACT(epoch FROM clock_timestamp())))::bigint||
 column|analysis_descendants|1|organisation_id|text|true|||
 column|analysis_descendants|2|client_id|text|true|||
 column|analysis_descendants|3|engagement_id|text|true|||
@@ -16,8 +17,8 @@ column|analysis_descendants|4|id|text|true|||
 column|analysis_descendants|5|job_id|text|true|||
 column|analysis_descendants|6|attempt_id|text|true|||
 column|analysis_descendants|7|path|text|true|||
-column|analysis_descendants|8|parents|jsonb|true|||
-column|analysis_descendants|9|digest|text|true|||
+column|analysis_descendants|8|fold_key|text|true|||
+column|analysis_descendants|9|parents|jsonb|true|||
 column|analysis_job_events|10|receipt|jsonb|false|||
 column|analysis_job_events|11|created_at|bigint|true|(floor(EXTRACT(epoch FROM clock_timestamp())))::bigint||
 column|analysis_job_events|1|organisation_id|text|true|||
@@ -35,6 +36,7 @@ column|analysis_jobs|12|program_sha256|text|true|||
 column|analysis_jobs|13|inputs|jsonb|true|||
 column|analysis_jobs|14|limits|jsonb|true|||
 column|analysis_jobs|15|created_at|bigint|true|(floor(EXTRACT(epoch FROM clock_timestamp())))::bigint||
+column|analysis_jobs|16|admitted_us|bigint|true|(floor((EXTRACT(epoch FROM clock_timestamp()) * (1000000)::numeric)))::bigint||
 column|analysis_jobs|1|organisation_id|text|true|||
 column|analysis_jobs|2|client_id|text|true|||
 column|analysis_jobs|3|engagement_id|text|true|||
@@ -601,8 +603,11 @@ constraint|analysis_descendants|analysis_descendants_client_id_not_null|true|NOT
 constraint|analysis_descendants|analysis_descendants_digest_check|true|CHECK ((digest ~ '^[0-9a-f]{64}$'::text))
 constraint|analysis_descendants|analysis_descendants_digest_not_null|true|NOT NULL digest
 constraint|analysis_descendants|analysis_descendants_engagement_id_not_null|true|NOT NULL engagement_id
+constraint|analysis_descendants|analysis_descendants_fold_key_check|true|CHECK ((((octet_length(fold_key) >= 1) AND (octet_length(fold_key) <= 1024)) AND (fold_key !~ '[[:cntrl:]]'::text)))
+constraint|analysis_descendants|analysis_descendants_fold_key_not_null|true|NOT NULL fold_key
 constraint|analysis_descendants|analysis_descendants_id_check|true|CHECK ((id ~ '^[A-Za-z0-9_-]{1,128}$'::text))
 constraint|analysis_descendants|analysis_descendants_id_not_null|true|NOT NULL id
+constraint|analysis_descendants|analysis_descendants_job_id_fold_key_key|true|UNIQUE (job_id, fold_key)
 constraint|analysis_descendants|analysis_descendants_job_id_not_null|true|NOT NULL job_id
 constraint|analysis_descendants|analysis_descendants_job_id_path_key|true|UNIQUE (job_id, path)
 constraint|analysis_descendants|analysis_descendants_media_type_check|true|CHECK ((media_type = ANY (ARRAY['application/json'::text, 'image/png'::text, 'text/csv'::text, 'text/markdown'::text, 'text/plain'::text])))
@@ -643,6 +648,7 @@ constraint|analysis_job_events|analysis_job_events_status_check|true|CHECK ((sta
 constraint|analysis_job_events|analysis_job_events_status_not_null|true|NOT NULL status
 constraint|analysis_jobs|analysis_jobs_actor_id_fkey|true|FOREIGN KEY (actor_id) REFERENCES identities(id)
 constraint|analysis_jobs|analysis_jobs_actor_id_not_null|true|NOT NULL actor_id
+constraint|analysis_jobs|analysis_jobs_admitted_us_not_null|true|NOT NULL admitted_us
 constraint|analysis_jobs|analysis_jobs_client_id_not_null|true|NOT NULL client_id
 constraint|analysis_jobs|analysis_jobs_created_at_not_null|true|NOT NULL created_at
 constraint|analysis_jobs|analysis_jobs_cycle_id_not_null|true|NOT NULL cycle_id
@@ -681,7 +687,7 @@ constraint|analysis_rejections|analysis_rejections_organisation_id_not_null|true
 constraint|analysis_rejections|analysis_rejections_path_sha256_check|true|CHECK ((path_sha256 ~ '^[0-9a-f]{64}$'::text))
 constraint|analysis_rejections|analysis_rejections_path_sha256_not_null|true|NOT NULL path_sha256
 constraint|analysis_rejections|analysis_rejections_pkey|true|PRIMARY KEY (organisation_id, client_id, engagement_id, job_id, ordinal)
-constraint|analysis_rejections|analysis_rejections_reason_check|true|CHECK ((reason = ANY (ARRAY['encoding'::text, 'nul'::text, 'control_character'::text, 'reserved_character'::text, 'absolute'::text, 'parent_reference'::text, 'not_normalized'::text, 'too_long'::text, 'too_deep'::text, 'duplicate'::text, 'case_collision'::text, 'symlink'::text, 'hardlink'::text, 'fifo'::text, 'socket'::text, 'device'::text, 'not_regular'::text, 'file_too_large'::text, 'size_mismatch'::text, 'too_many_files'::text, 'total_too_large'::text, 'media_type'::text, 'collection_truncated'::text])))
+constraint|analysis_rejections|analysis_rejections_reason_check|true|CHECK ((reason = ANY (ARRAY['encoding'::text, 'nul'::text, 'control_character'::text, 'reserved_character'::text, 'absolute'::text, 'parent_reference'::text, 'not_normalized'::text, 'too_long'::text, 'too_deep'::text, 'duplicate'::text, 'case_collision'::text, 'symlink'::text, 'hardlink'::text, 'fifo'::text, 'socket'::text, 'device'::text, 'not_regular'::text, 'file_too_large'::text, 'size_mismatch'::text, 'too_many_files'::text, 'total_too_large'::text, 'media_type'::text, 'collection_truncated'::text, 'collection_unavailable'::text])))
 constraint|analysis_rejections|analysis_rejections_reason_not_null|true|NOT NULL reason
 constraint|clients|clients_id_check|true|CHECK ((id ~ '^[A-Za-z0-9_-]{1,128}$'::text))
 constraint|clients|clients_id_not_null|true|NOT NULL id
@@ -1640,7 +1646,7 @@ function|admin_continuity_assert|org text|842219bdacd00ff0b0c1720e13ccaafd019e7b
 function|admin_continuity_check||d8fc6c7344c841a992e5b06b6d8c300fd81bb5fbacb4f021e5cb9277b27932b2
 function|admin_continuity_lock||99fb65e7340be8f3501f2d4854ba467ad513ef6dad59c6e7fe34bbdf7e9426a8
 function|admin_continuity_truncate||6bea74cc8431d06fb2fd40997d232413296617d27ded413eefac643257f517a2
-function|analysis_event_guard||667edf19ea9ee246304d5ac4342fc01d5e6b60bb8669a8ca2037f8283902fad2
+function|analysis_event_guard||47260112bfca2557bf2aab93be9b6c4383fca71b5b86a082df60909fcc29042b
 function|analysis_immutable||fa2453f087139d68e2d1db8d325a07b7fac0cbb92c9b74f75bfb09eeb3c9e6d2
 function|analysis_output_guard||aa5d5785ef9de0f9290e83adf052d997d3c04a33169a7a83516f70e7b4f45dcb
 function|engagement_establish|actor text, session_hash text, org text, setup text, new_client text, new_engagement text, daily_limit integer|960fca846b8cd4992c83b64ac764ca1b462d20c43f280e2559697b928f377478
@@ -1679,13 +1685,13 @@ function|work_compaction_immutable||d8025618108e3d3a5628b7b487d463383d2cc8da014d
 function|work_guidance_guard||153d18fef71d6092792f9967cc8debe5d8a16e4c2240140a4f7e39dac2ead6f3
 function|work_step_guard||46277efcc79528dcccf556af0a90526c816592a2ca7965dc60eb82096d6132fb
 index|_sqlx_migrations|true|true|CREATE UNIQUE INDEX _sqlx_migrations_pkey ON public._sqlx_migrations USING btree (version)
-index|analysis_descendants|true|true|CREATE UNIQUE INDEX analysis_descendants_folded ON public.analysis_descendants USING btree (job_id, lower(path))
+index|analysis_descendants|true|true|CREATE UNIQUE INDEX analysis_descendants_job_id_fold_key_key ON public.analysis_descendants USING btree (job_id, fold_key)
 index|analysis_descendants|true|true|CREATE UNIQUE INDEX analysis_descendants_job_id_path_key ON public.analysis_descendants USING btree (job_id, path)
 index|analysis_descendants|true|true|CREATE UNIQUE INDEX analysis_descendants_organisation_id_client_id_engagement_i_key ON public.analysis_descendants USING btree (organisation_id, client_id, engagement_id, id)
 index|analysis_descendants|true|true|CREATE UNIQUE INDEX analysis_descendants_pkey ON public.analysis_descendants USING btree (id)
 index|analysis_job_events|true|true|CREATE UNIQUE INDEX analysis_job_events_job_id_sequence_key ON public.analysis_job_events USING btree (job_id, sequence)
 index|analysis_job_events|true|true|CREATE UNIQUE INDEX analysis_job_events_pkey ON public.analysis_job_events USING btree (organisation_id, client_id, engagement_id, job_id, sequence)
-index|analysis_jobs|true|true|CREATE INDEX analysis_jobs_task ON public.analysis_jobs USING btree (organisation_id, client_id, engagement_id, task_id, id COLLATE "C")
+index|analysis_jobs|true|true|CREATE INDEX analysis_jobs_task ON public.analysis_jobs USING btree (organisation_id, client_id, engagement_id, task_id, admitted_us, id COLLATE "C")
 index|analysis_jobs|true|true|CREATE UNIQUE INDEX analysis_jobs_operation_id_key ON public.analysis_jobs USING btree (operation_id)
 index|analysis_jobs|true|true|CREATE UNIQUE INDEX analysis_jobs_organisation_id_client_id_engagement_id_id_key ON public.analysis_jobs USING btree (organisation_id, client_id, engagement_id, id)
 index|analysis_jobs|true|true|CREATE UNIQUE INDEX analysis_jobs_pkey ON public.analysis_jobs USING btree (id)

@@ -29,6 +29,7 @@ fn regular(path: &str, content: &[u8]) -> OutputEntry {
         links: 1,
         size: content.len() as u64,
         content: Some(content.to_vec()),
+        withheld: None,
     }
 }
 
@@ -328,4 +329,78 @@ fn media_types_are_decided_by_trusted_extension_mapping() {
         RejectReason::MediaType,
         "png is not allowed by the general environment"
     );
+}
+
+#[test]
+fn case_collisions_use_nfc_and_full_case_folding() {
+    // NFC before folding: a decomposed "é" collides with the composed "É".
+    assert_eq!(fold_key("Cafe\u{301}.txt"), fold_key("CAF\u{c9}.TXT"));
+    // Full folding, not lowercasing: "ß" folds to "ss".
+    assert_eq!(fold_key("stra\u{df}e.csv"), fold_key("STRASSE.csv"));
+    assert_ne!(
+        "stra\u{df}e.csv".to_lowercase(),
+        "STRASSE.csv".to_lowercase(),
+        "lowercasing alone would miss this collision"
+    );
+    let environment = environment();
+    let entries = [
+        regular("stra\u{df}e.csv", b"1"),
+        regular("STRASSE.csv", b"2"),
+        regular("Cafe\u{301}.txt", b"3"),
+        regular("caf\u{e9}.txt", b"4"),
+        regular("other.txt", b"5"),
+    ];
+    let result = validate_outputs(&entries, &AnalysisLimits::DEFAULT, &environment);
+    let accepted: Vec<&str> = result.accepted.iter().map(|a| a.path.as_str()).collect();
+    assert_eq!(accepted, ["other.txt"]);
+    assert_eq!(result.accepted[0].fold_key, fold_key("other.txt"));
+    assert!(
+        result
+            .rejected
+            .iter()
+            .all(|r| r.reason == RejectReason::CaseCollision)
+    );
+    assert_eq!(result.rejected.len(), 4);
+}
+
+#[test]
+fn withheld_entries_carry_the_collector_reason_not_a_size_mismatch() {
+    let environment = environment();
+    let withheld = |path: &str, why| OutputEntry {
+        content: None,
+        withheld: Some(why),
+        ..regular(path, b"abc")
+    };
+    let entries = [
+        withheld("budget.txt", Withheld::Budget),
+        withheld("slots.txt", Withheld::Slots),
+        withheld("unreadable.txt", Withheld::Unreadable),
+        OutputEntry {
+            path: vec![b'n'; COLLECT_PATH_BYTES_MAX],
+            ..withheld("", Withheld::TooLong)
+        },
+        OutputEntry {
+            content: None,
+            ..regular("short.txt", b"abc")
+        },
+    ];
+    let result = validate_outputs(&entries, &AnalysisLimits::DEFAULT, &environment);
+    let reasons: Vec<RejectReason> = result.rejected.iter().map(|r| r.reason).collect();
+    assert_eq!(
+        reasons,
+        [
+            RejectReason::TotalTooLarge,
+            RejectReason::TooManyFiles,
+            RejectReason::NotRegular,
+            RejectReason::TooLong,
+            RejectReason::SizeMismatch,
+        ]
+    );
+}
+
+#[test]
+fn start_refusal_is_the_only_exit_from_absence_besides_a_new_attempt() {
+    assert!(JobStatus::Failed.can_follow(JobStatus::Absent));
+    assert!(!JobStatus::Completed.can_follow(JobStatus::Absent));
+    assert!(!JobStatus::Collected.can_follow(JobStatus::Absent));
 }

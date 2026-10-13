@@ -15,11 +15,13 @@ CREATE TABLE public.analysis_jobs (
  inputs jsonb NOT NULL CHECK(jsonb_typeof(inputs)='array' AND jsonb_array_length(inputs)<=16 AND octet_length(inputs::text)<=8192),
  limits jsonb NOT NULL CHECK(jsonb_typeof(limits)='object' AND octet_length(limits::text)<=1024),
  created_at bigint NOT NULL DEFAULT floor(extract(epoch FROM clock_timestamp()))::bigint,
+ -- Admission order within a Task (microseconds): pending work is oldest first.
+ admitted_us bigint NOT NULL DEFAULT floor(extract(epoch FROM clock_timestamp())*1000000)::bigint,
  UNIQUE(organisation_id,client_id,engagement_id,id),
  FOREIGN KEY(organisation_id,client_id,engagement_id,task_id,cycle_id) REFERENCES public.task_cycles(organisation_id,client_id,engagement_id,task_id,id),
  FOREIGN KEY(organisation_id,client_id,engagement_id,operation_id) REFERENCES public.operations(organisation_id,client_id,engagement_id,id)
 );
-CREATE INDEX analysis_jobs_task ON public.analysis_jobs(organisation_id,client_id,engagement_id,task_id,id COLLATE "C");
+CREATE INDEX analysis_jobs_task ON public.analysis_jobs(organisation_id,client_id,engagement_id,task_id,admitted_us,id COLLATE "C");
 CREATE TABLE public.analysis_job_events (
  organisation_id text NOT NULL, client_id text NOT NULL, engagement_id text NOT NULL,
  job_id text NOT NULL,
@@ -43,6 +45,9 @@ CREATE TABLE public.analysis_descendants (
  job_id text NOT NULL,
  attempt_id text NOT NULL,
  path text NOT NULL CHECK(octet_length(path) BETWEEN 1 AND 255 AND path !~ '[[:cntrl:]]' AND path !~ '^/' AND path !~ '(^|/)\.{0,2}(/|$)' AND strpos(path, '\') = 0),
+ -- Computed by the trusted Rust validator (zobba_domain::analysis::fold_key:
+ -- NFC, full case folding, NFC), so the database key and the validator agree.
+ fold_key text NOT NULL CHECK(octet_length(fold_key) BETWEEN 1 AND 1024 AND fold_key !~ '[[:cntrl:]]'),
  parents jsonb NOT NULL CHECK(jsonb_typeof(parents)='array' AND jsonb_array_length(parents)<=16),
  digest text NOT NULL CHECK(digest ~ '^[0-9a-f]{64}$'),
  size bigint NOT NULL CHECK(size BETWEEN 0 AND 10485760),
@@ -52,18 +57,18 @@ CREATE TABLE public.analysis_descendants (
  registered_at bigint NOT NULL DEFAULT floor(extract(epoch FROM clock_timestamp()))::bigint,
  UNIQUE(organisation_id,client_id,engagement_id,id),
  UNIQUE(job_id,path),
+ -- Case-insensitive uniqueness is part of the output contract, not only of collection.
+ UNIQUE(job_id,fold_key),
  FOREIGN KEY(organisation_id,client_id,engagement_id,job_id) REFERENCES public.analysis_jobs(organisation_id,client_id,engagement_id,id),
  FOREIGN KEY(organisation_id,client_id,engagement_id,attempt_id) REFERENCES public.operation_attempts(organisation_id,client_id,engagement_id,id)
 );
--- Case-insensitive uniqueness is part of the output contract, not only of collection.
-CREATE UNIQUE INDEX analysis_descendants_folded ON public.analysis_descendants(job_id,lower(path));
 CREATE TABLE public.analysis_rejections (
  organisation_id text NOT NULL, client_id text NOT NULL, engagement_id text NOT NULL,
  job_id text NOT NULL,
  attempt_id text NOT NULL,
  ordinal integer NOT NULL CHECK(ordinal BETWEEN 0 AND 4095),
  path_sha256 text NOT NULL CHECK(path_sha256 ~ '^[0-9a-f]{64}$'),
- reason text NOT NULL CHECK(reason IN ('encoding','nul','control_character','reserved_character','absolute','parent_reference','not_normalized','too_long','too_deep','duplicate','case_collision','symlink','hardlink','fifo','socket','device','not_regular','file_too_large','size_mismatch','too_many_files','total_too_large','media_type','collection_truncated')),
+ reason text NOT NULL CHECK(reason IN ('encoding','nul','control_character','reserved_character','absolute','parent_reference','not_normalized','too_long','too_deep','duplicate','case_collision','symlink','hardlink','fifo','socket','device','not_regular','file_too_large','size_mismatch','too_many_files','total_too_large','media_type','collection_truncated','collection_unavailable')),
  PRIMARY KEY(organisation_id,client_id,engagement_id,job_id,ordinal),
  FOREIGN KEY(organisation_id,client_id,engagement_id,job_id) REFERENCES public.analysis_jobs(organisation_id,client_id,engagement_id,id),
  FOREIGN KEY(organisation_id,client_id,engagement_id,attempt_id) REFERENCES public.operation_attempts(organisation_id,client_id,engagement_id,id)
@@ -89,6 +94,8 @@ BEGIN
  allowed := CASE previous.status
   WHEN 'admitted' THEN NEW.status IN ('possibly_started','absent')
   WHEN 'absent' THEN NEW.status IN ('possibly_started','absent')
+   OR (NEW.status='failed' AND NEW.reason='start_refused'
+       AND (SELECT count(DISTINCT e.attempt_id) FROM public.analysis_job_events e WHERE e.job_id=NEW.job_id) >= 8)
   WHEN 'possibly_started' THEN NEW.status IN ('running','completed','failed','limit_exceeded','stopped','absent','unknown')
   WHEN 'running' THEN NEW.status IN ('completed','failed','limit_exceeded','stopped','unknown')
   WHEN 'completed' THEN NEW.status IN ('collected','unknown')
@@ -112,9 +119,11 @@ BEGIN
  END IF;
  IF NEW.status='collected' AND (
    jsonb_typeof(NEW.receipt->'descendants') IS DISTINCT FROM 'array'
-   OR jsonb_typeof(NEW.receipt->'rejected') IS DISTINCT FROM 'array'
+   OR jsonb_typeof(NEW.receipt->'rejected_count') IS DISTINCT FROM 'number'
+   OR jsonb_typeof(NEW.receipt->'rejected_sample') IS DISTINCT FROM 'array'
+   OR jsonb_array_length(NEW.receipt->'rejected_sample') > 32
    OR jsonb_array_length(NEW.receipt->'descendants') <> (SELECT count(*) FROM public.analysis_descendants d WHERE d.job_id=NEW.job_id)
-   OR jsonb_array_length(NEW.receipt->'rejected') <> (SELECT count(*) FROM public.analysis_rejections r WHERE r.job_id=NEW.job_id)) THEN
+   OR (NEW.receipt->>'rejected_count')::numeric <> (SELECT count(*) FROM public.analysis_rejections r WHERE r.job_id=NEW.job_id)) THEN
   RAISE EXCEPTION 'an analysis collection receipt matches its records' USING ERRCODE='23514';
  END IF;
  RETURN NEW;

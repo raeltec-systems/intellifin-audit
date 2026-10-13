@@ -385,7 +385,7 @@ async fn bootstrap_contract() {
         "ALTER TABLE public.analysis_descendants NO FORCE ROW LEVEL SECURITY",
         "ALTER POLICY scoped_insert ON public.analysis_job_events WITH CHECK (true)",
         "ALTER TABLE public.analysis_job_events DROP CONSTRAINT analysis_job_events_check",
-        "DROP INDEX public.analysis_descendants_folded",
+        "ALTER TABLE public.analysis_descendants DROP CONSTRAINT analysis_descendants_job_id_fold_key_key",
         "ALTER TABLE public.model_profiles NO FORCE ROW LEVEL SECURITY",
         "ALTER TABLE public.model_catalogues NO FORCE ROW LEVEL SECURITY",
         "ALTER TABLE public.model_invocations NO FORCE ROW LEVEL SECURITY",

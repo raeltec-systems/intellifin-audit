@@ -23,6 +23,16 @@ pub const OUTPUT_DEPTH_MAX: usize = 8;
 /// A descendant is registered through the same immutable evidence path as an
 /// original, so one output file cannot exceed an original's bound.
 pub const OUTPUT_FILE_CEILING: u64 = crate::evidence::MAX_ORIGINAL_BYTES as u64;
+/// Trusted collectors stop after this many entries and report truncation.
+pub const COLLECT_ENTRIES_MAX: usize = 1024;
+/// Collectors report at most this many path bytes; a longer name is withheld
+/// as too long, so a hostile tree can never make the manifest unbounded.
+pub const COLLECT_PATH_BYTES_MAX: usize = OUTPUT_PATH_MAX + 1;
+/// A job is refused for good after this many attempts that never started.
+pub const MAX_START_ATTEMPTS: u32 = 8;
+/// A receipt names at most this many rejected entries; every rejection is a
+/// separate row and the receipt also carries exact counts per reason.
+pub const RECEIPT_REJECTION_SAMPLE: usize = 32;
 
 /// Owner-approved ceilings (Story 22.4 "Ask First"): 2 vCPU, 4 GiB, 15 minutes,
 /// 100 MiB total output. A request may only narrow them.
@@ -301,7 +311,8 @@ impl JobStatus {
         use JobStatus::*;
         match previous {
             Admitted => matches!(self, PossiblyStarted | Absent),
-            Absent => matches!(self, PossiblyStarted | Absent),
+            // Failed only as `start_refused`, after MAX_START_ATTEMPTS.
+            Absent => matches!(self, PossiblyStarted | Absent | Failed),
             PossiblyStarted => matches!(
                 self,
                 Running | Completed | Failed | LimitExceeded | Stopped | Absent | Unknown
@@ -355,7 +366,24 @@ vocabulary!(RejectReason {
     TotalTooLarge => "total_too_large",
     MediaType => "media_type",
     CollectionTruncated => "collection_truncated",
+    CollectionUnavailable => "collection_unavailable",
 });
+
+vocabulary!(Withheld {
+    TooLong => "too_long",
+    Unreadable => "unreadable",
+    Budget => "budget",
+    Slots => "slots",
+});
+
+/// The one case-insensitive identity of an output path, shared by the trusted
+/// validator and the database unique key: NFC, Unicode full case folding,
+/// then NFC again (folding can denormalize).
+pub fn fold_key(path: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    let normalized: String = path.nfc().collect();
+    caseless::default_case_fold_str(&normalized).nfc().collect()
+}
 
 /// Untrusted collector report of one filesystem entry under the output
 /// directory, gathered with `lstat` semantics (links never followed).
@@ -368,12 +396,16 @@ pub struct OutputEntry {
     pub size: u64,
     /// Present only for regular files the collector read within limits.
     pub content: Option<Vec<u8>>,
+    /// Why a trusted collector reported this entry without its content.
+    pub withheld: Option<Withheld>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AcceptedOutput {
     pub index: usize,
     pub path: String,
+    /// [`fold_key`] of the path, stored as the database unique key.
+    pub fold_key: String,
     pub media_type: &'static str,
     pub size: u64,
 }
@@ -418,10 +450,6 @@ fn path_shape(raw: &[u8]) -> Result<String, RejectReason> {
     Ok(path.to_owned())
 }
 
-fn case_key(path: &str) -> String {
-    path.chars().flat_map(char::to_lowercase).collect()
-}
-
 /// Trusted output rules. Directories are structure, not outputs. Every other
 /// entry is either accepted (later measured and registered) or refused with a
 /// closed reason; a refusal never removes a safe sibling. Paths are examined in
@@ -438,6 +466,10 @@ pub fn validate_outputs(
     for index in order {
         let entry = &entries[index];
         let reject = |reason| RejectedOutput { index, reason };
+        if entry.withheld == Some(Withheld::TooLong) {
+            result.rejected.push(reject(RejectReason::TooLong));
+            continue;
+        }
         let path = match path_shape(&entry.path) {
             Ok(path) => path,
             Err(reason) => {
@@ -463,16 +495,17 @@ pub fn validate_outputs(
     }
     // Exact and case-insensitive uniqueness: no member of a colliding group is
     // canonical, so every member is refused.
+    let keys: Vec<String> = candidates.iter().map(|(_, p)| fold_key(p)).collect();
     let mut keep = Vec::new();
     for (position, (index, path)) in candidates.iter().enumerate() {
         let exact = candidates
             .iter()
             .enumerate()
             .any(|(other, (_, p))| other != position && p == path);
-        let folded = candidates
+        let folded = keys
             .iter()
             .enumerate()
-            .any(|(other, (_, p))| other != position && case_key(p) == case_key(path));
+            .any(|(other, k)| other != position && *k == keys[position]);
         if exact {
             result.rejected.push(RejectedOutput {
                 index: *index,
@@ -484,11 +517,11 @@ pub fn validate_outputs(
                 reason: RejectReason::CaseCollision,
             });
         } else {
-            keep.push((*index, path.clone()));
+            keep.push((*index, path.clone(), keys[position].clone()));
         }
     }
     let mut total: u64 = 0;
-    for (index, path) in keep {
+    for (index, path, fold_key) in keep {
         let entry = &entries[index];
         let reject = |reason| RejectedOutput { index, reason };
         let media = media_type_for(&path)
@@ -500,6 +533,23 @@ pub fn validate_outputs(
         if entry.size > limits.output_file_bytes {
             result.rejected.push(reject(RejectReason::FileTooLarge));
             continue;
+        }
+        // A collector withheld the bytes for a reason of its own budget; that
+        // reason, not a size mismatch, is the refusal.
+        match entry.withheld {
+            Some(Withheld::Budget) => {
+                result.rejected.push(reject(RejectReason::TotalTooLarge));
+                continue;
+            }
+            Some(Withheld::Slots) => {
+                result.rejected.push(reject(RejectReason::TooManyFiles));
+                continue;
+            }
+            Some(Withheld::Unreadable) => {
+                result.rejected.push(reject(RejectReason::NotRegular));
+                continue;
+            }
+            Some(Withheld::TooLong) | None => {}
         }
         if entry.content.as_ref().map(|c| c.len() as u64) != Some(entry.size) {
             result.rejected.push(reject(RejectReason::SizeMismatch));
@@ -517,6 +567,7 @@ pub fn validate_outputs(
         result.accepted.push(AcceptedOutput {
             index,
             path,
+            fold_key,
             media_type,
             size: entry.size,
         });

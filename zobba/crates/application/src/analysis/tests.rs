@@ -4,13 +4,13 @@ use super::*;
 use crate::evidence::MeasuredObject;
 use std::{
     collections::HashMap,
-    sync::Mutex,
+    sync::{Arc, Mutex},
     task::{Context, Poll, Waker},
 };
 use zobba_domain::permissions::{
     AttemptHistoryEntry, AuthoritySnapshot, DecisionCommand, Operation, OperationAttemptPage,
-    OperationCustody, OperationDecision, OperationHistory, OperationPage, OperationState,
-    PolicyDocument, PolicyReference, RevocationCommand, SourceBinding,
+    OperationCustody, OperationDecision, OperationHistory, OperationHistoryQuery, OperationPage,
+    OperationState, PolicyDocument, PolicyReference, RevocationCommand, SourceBinding,
 };
 
 fn run<F: Future>(future: F) -> F::Output {
@@ -91,6 +91,7 @@ struct StoreState {
     attempts: Vec<(String, String, String)>, // (operation, attempt, process)
     facts: HashMap<String, Vec<(OperationCustody, SourceFact)>>,
     consumed: usize,
+    fail_next_observe: bool,
 }
 #[derive(Default)]
 struct Store(Mutex<StoreState>);
@@ -291,6 +292,9 @@ impl OperationStore for Store {
     }
     async fn observe(&self, a: &ConsumedOperation, fact: SourceFact) -> Result<(), OperationError> {
         let mut state = self.0.lock().unwrap();
+        if std::mem::take(&mut state.fail_next_observe) {
+            return Err(OperationError::Unavailable);
+        }
         let facts = state.facts.entry(a.attempt_id.clone()).or_default();
         let observed = facts.last().map_or(SourceFact::Unknown, |v| v.1);
         if a.custody == OperationCustody::Dispatch && fact == SourceFact::AuthoritativelyAbsent {
@@ -349,8 +353,12 @@ type StoredJob = (
 
 #[derive(Default)]
 struct Jobs {
+    store: Arc<Store>,
     jobs: Mutex<Vec<StoredJob>>,
     fail_next_append: Mutex<bool>,
+    fail_next_collect: Mutex<bool>,
+    /// Job IDs whose reads fail (an unavailable job record).
+    broken: Mutex<Vec<String>>,
 }
 impl Jobs {
     fn record_of(&self, index: usize) -> JobRecord {
@@ -362,10 +370,21 @@ impl Jobs {
             .rev()
             .find(|f| f.status == JobStatus::PossiblyStarted && f.attempt_id == latest.attempt_id)
             .map(|f| f.at);
+        let running_at = facts
+            .iter()
+            .rev()
+            .find(|f| f.status == JobStatus::Running && f.attempt_id == latest.attempt_id)
+            .map(|f| f.at);
+        let mut attempts: Vec<&String> =
+            facts.iter().filter_map(|f| f.attempt_id.as_ref()).collect();
+        attempts.sort();
+        attempts.dedup();
         JobRecord {
             job: job.clone(),
             latest,
             started_at,
+            running_at,
+            attempts: attempts.len() as u32,
             now: 100,
         }
     }
@@ -434,7 +453,35 @@ impl AnalysisJobs for Jobs {
         };
         Ok(self.record_of(position))
     }
+    async fn latest_attempt(
+        &self,
+        _: &str,
+        _: &Scope,
+        job_id: &str,
+    ) -> Result<Option<String>, AnalysisError> {
+        let operation = self
+            .jobs
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|j| j.0.id == job_id)
+            .map(|j| j.0.operation_id.clone())
+            .ok_or(AnalysisError::Denied)?;
+        Ok(self
+            .store
+            .0
+            .lock()
+            .unwrap()
+            .attempts
+            .iter()
+            .rev()
+            .find(|a| a.0 == operation)
+            .map(|a| a.1.clone()))
+    }
     async fn job(&self, _: &str, _: &Scope, id: &str) -> Result<JobRecord, AnalysisError> {
+        if self.broken.lock().unwrap().iter().any(|b| b == id) {
+            return Err(AnalysisError::Unavailable);
+        }
         let index = self
             .jobs
             .lock()
@@ -454,11 +501,20 @@ impl AnalysisJobs for Jobs {
         Ok((0..count)
             .map(|i| self.record_of(i))
             .filter(|r| {
+                let facts = r
+                    .latest
+                    .attempt_id
+                    .as_deref()
+                    .map(|a| self.store.facts(a))
+                    .unwrap_or_default();
                 r.job.task_id == task_id
-                    && !matches!(
-                        r.latest.status,
-                        JobStatus::Collected | JobStatus::Stopped | JobStatus::Unknown
-                    )
+                    && match r.latest.status {
+                        JobStatus::Collected | JobStatus::Stopped => {
+                            !facts.iter().any(|f| f.is_resolved())
+                        }
+                        JobStatus::Unknown => facts.is_empty(),
+                        _ => true,
+                    }
             })
             .collect())
     }
@@ -494,7 +550,7 @@ impl AnalysisJobs for Jobs {
                 attempt_id: t.attempt_id.clone(),
                 reason: t.reason.map(Into::into),
                 exit_code: t.exit_code,
-                at: 10,
+                at: 100,
             });
             index
         };
@@ -512,6 +568,9 @@ impl AnalysisJobs for Jobs {
         receipt: &CollectionReceipt,
     ) -> Result<JobRecord, AnalysisError> {
         assert!(self.job(a, s, job_id).await?.latest.status.collectable());
+        if std::mem::take(&mut *self.fail_next_collect.lock().unwrap()) {
+            return Err(AnalysisError::Unavailable);
+        }
         let record = self
             .append(
                 a,
@@ -521,7 +580,7 @@ impl AnalysisJobs for Jobs {
                 &Transition {
                     status: JobStatus::Collected,
                     attempt_id: Some(attempt.into()),
-                    reason: None,
+                    reason: receipt.reason,
                     exit_code: None,
                 },
             )
@@ -544,6 +603,11 @@ enum Behaviour {
     StartUncertainAbsent,
     StartUncertainUnconfirmed,
     StopNeverConfirms,
+    /// Never leaves Starting; a stop removes and fences it.
+    NeverRuns,
+    /// Exit after a run, but an external stop also lost the collection
+    /// (Fargate StopTask stops the collector too).
+    ForeverCollectionLostOnStop,
 }
 struct Sandbox {
     behaviour: Behaviour,
@@ -553,6 +617,9 @@ struct Sandbox {
     stopped: Mutex<bool>,
     discarded: Mutex<Vec<String>>,
     seen_spec: Mutex<Option<SandboxSpec>>,
+    collect_fails: Mutex<bool>,
+    collects: Mutex<u32>,
+    truncated: Mutex<bool>,
 }
 impl Sandbox {
     fn new(behaviour: Behaviour, entries: Vec<OutputEntry>) -> Self {
@@ -564,6 +631,9 @@ impl Sandbox {
             stopped: Mutex::default(),
             discarded: Mutex::default(),
             seen_spec: Mutex::default(),
+            collect_fails: Mutex::default(),
+            collects: Mutex::default(),
+            truncated: Mutex::default(),
         }
     }
 }
@@ -581,7 +651,12 @@ impl AnalysisSandbox for Sandbox {
             }
         }
     }
-    async fn status(&self, handle: &str) -> Result<SandboxState, SandboxError> {
+    async fn status(
+        &self,
+        handle: &str,
+        environment: &AnalysisEnvironment,
+    ) -> Result<SandboxState, SandboxError> {
+        assert_eq!(environment.image_digest, GENERAL_IMAGE_DIGEST);
         if !self.started.lock().unwrap().iter().any(|h| h == handle) {
             return Ok(match self.behaviour {
                 Behaviour::StartUncertainUnconfirmed => SandboxState::Unconfirmed,
@@ -593,6 +668,8 @@ impl AnalysisSandbox for Sandbox {
         *polls += 1;
         Ok(match self.behaviour {
             Behaviour::StopNeverConfirms => SandboxState::Running,
+            Behaviour::NeverRuns if stopped => SandboxState::Absent,
+            Behaviour::NeverRuns => SandboxState::Starting,
             _ if stopped => SandboxState::Exited {
                 exit_code: Some(137),
                 out_of_memory: false,
@@ -608,15 +685,22 @@ impl AnalysisSandbox for Sandbox {
             _ => SandboxState::Running,
         })
     }
-    async fn stop(&self, _: &str) -> Result<(), SandboxError> {
+    async fn stop(&self, _: &str, _: &AnalysisEnvironment) -> Result<(), SandboxError> {
         *self.stopped.lock().unwrap() = true;
         Ok(())
     }
     async fn collect(&self, _: &str, _: &AnalysisLimits) -> Result<Collection, SandboxError> {
+        *self.collects.lock().unwrap() += 1;
+        if *self.collect_fails.lock().unwrap()
+            || (self.behaviour == Behaviour::ForeverCollectionLostOnStop
+                && *self.stopped.lock().unwrap())
+        {
+            return Err(SandboxError::Unavailable);
+        }
         Ok(Collection {
             entries: self.entries.clone(),
             full: false,
-            truncated: false,
+            truncated: *self.truncated.lock().unwrap(),
         })
     }
     async fn discard(&self, handle: &str) -> Result<(), SandboxError> {
@@ -673,10 +757,11 @@ fn regular(path: &str, content: &[u8]) -> OutputEntry {
         links: 1,
         size: content.len() as u64,
         content: Some(content.to_vec()),
+        withheld: None,
     }
 }
 struct World {
-    store: Store,
+    store: Arc<Store>,
     jobs: Jobs,
     sandbox: Sandbox,
     objects: Objects,
@@ -684,9 +769,13 @@ struct World {
 }
 impl World {
     fn new(behaviour: Behaviour, entries: Vec<OutputEntry>) -> Self {
+        let store = Arc::new(Store::default());
         Self {
-            store: Store::default(),
-            jobs: Jobs::default(),
+            jobs: Jobs {
+                store: store.clone(),
+                ..Jobs::default()
+            },
+            store,
             sandbox: Sandbox::new(behaviour, entries),
             objects: Objects::default(),
             allowlist: server_allowlist(),
@@ -694,7 +783,7 @@ impl World {
     }
     fn analysis(&self) -> Analysis<'_, Store, Jobs, Sandbox, Objects> {
         Analysis {
-            store: &self.store,
+            store: &*self.store,
             jobs: &self.jobs,
             sandbox: &self.sandbox,
             objects: &self.objects,
@@ -702,6 +791,8 @@ impl World {
             settings: AnalysisSettings {
                 poll: Duration::ZERO,
                 stop_confirmation: Duration::from_millis(50),
+                provisioning: Duration::from_millis(200),
+                collect_attempts: 3,
                 delay: no_delay,
             },
         }
@@ -722,7 +813,7 @@ fn happy_path_registers_measured_descendants_only_after_termination() {
         .clone();
     assert!(!operation.material.contains("SECRET-PROGRAM-TEXT"));
     assert_eq!(operation.attachments[0].id, "orig-a");
-    let done = run(analysis.run_next(&basis("p1"), &ModelCancellation::new()))
+    let done = run(analysis.run_next(&basis("p1"), &ModelCancellation::new(), &mut vec![]))
         .unwrap()
         .unwrap();
     assert_eq!(done.latest.status, JobStatus::Collected);
@@ -846,7 +937,7 @@ fn hostile_outputs_are_refused_by_reason_while_safe_siblings_register() {
     let world = World::new(Behaviour::Exit(0), entries);
     let analysis = world.analysis();
     run(analysis.admit(&target(), &basis("p1"), "job-key", &request())).unwrap();
-    run(analysis.run_next(&basis("p1"), &ModelCancellation::new())).unwrap();
+    run(analysis.run_next(&basis("p1"), &ModelCancellation::new(), &mut vec![])).unwrap();
     let jobs = world.jobs.jobs.lock().unwrap();
     let (_, _, descendants, rejections, receipt) = &jobs[0];
     assert_eq!(
@@ -887,7 +978,7 @@ fn limits_are_classified_and_wall_time_stops_the_job() {
     .unwrap();
     let done = run(world
         .analysis()
-        .run_next(&basis("p1"), &ModelCancellation::new()))
+        .run_next(&basis("p1"), &ModelCancellation::new(), &mut vec![]))
     .unwrap()
     .unwrap();
     assert_eq!(world.jobs.statuses()[3], JobStatus::LimitExceeded);
@@ -904,7 +995,7 @@ fn limits_are_classified_and_wall_time_stops_the_job() {
     .unwrap();
     run(world
         .analysis()
-        .run_next(&basis("p1"), &ModelCancellation::new()))
+        .run_next(&basis("p1"), &ModelCancellation::new(), &mut vec![]))
     .unwrap();
     assert_eq!(
         world.jobs.jobs.lock().unwrap()[0].1[3].reason.as_deref(),
@@ -918,7 +1009,7 @@ fn limits_are_classified_and_wall_time_stops_the_job() {
     .unwrap();
     run(world
         .analysis()
-        .run_next(&basis("p1"), &ModelCancellation::new()))
+        .run_next(&basis("p1"), &ModelCancellation::new(), &mut vec![]))
     .unwrap();
     assert_eq!(world.jobs.statuses()[3], JobStatus::Failed);
 
@@ -928,7 +1019,7 @@ fn limits_are_classified_and_wall_time_stops_the_job() {
     run(world.analysis().admit(&target(), &basis("p1"), "k", &short)).unwrap();
     run(world
         .analysis()
-        .run_next(&basis("p1"), &ModelCancellation::new()))
+        .run_next(&basis("p1"), &ModelCancellation::new(), &mut vec![]))
     .unwrap();
     assert_eq!(world.jobs.statuses()[3], JobStatus::LimitExceeded);
     assert_eq!(
@@ -948,9 +1039,11 @@ fn stop_terminates_confirms_and_discards_without_registration() {
     let cancellation = ModelCancellation::new();
     cancellation.cancel();
     // A cancelled claim does not start new work.
-    let record = run(world.analysis().run_next(&basis("p1"), &cancellation))
-        .unwrap()
-        .unwrap();
+    let record = run(world
+        .analysis()
+        .run_next(&basis("p1"), &cancellation, &mut vec![]))
+    .unwrap()
+    .unwrap();
     assert_eq!(record.latest.status, JobStatus::Admitted);
     // Cancelled during the run: the started job is stopped and confirmed.
     let world = World::new(Behaviour::Forever, vec![regular("partial.txt", b"x")]);
@@ -987,6 +1080,7 @@ fn stop_terminates_confirms_and_discards_without_registration() {
         SandboxState::Running,
         Instant::now(),
         &cancellation,
+        Watch::default(),
     ))
     .unwrap();
     assert_eq!(stopped.latest.status, JobStatus::Stopped);
@@ -1007,11 +1101,12 @@ fn unconfirmed_stop_or_start_is_unknown_and_never_retried() {
     let mut short = request();
     short.limits.wall_seconds = 1;
     run(world.analysis().admit(&target(), &basis("p1"), "k", &short)).unwrap();
-    let record = run(world
-        .analysis()
-        .run_next(&basis("p1"), &ModelCancellation::new()))
-    .unwrap()
-    .unwrap();
+    let record =
+        run(world
+            .analysis()
+            .run_next(&basis("p1"), &ModelCancellation::new(), &mut vec![]))
+        .unwrap()
+        .unwrap();
     assert_eq!(record.latest.status, JobStatus::Unknown);
     let facts = world
         .store
@@ -1023,7 +1118,7 @@ fn unconfirmed_stop_or_start_is_unknown_and_never_retried() {
     assert!(
         run(world
             .analysis()
-            .run_next(&basis("p2"), &ModelCancellation::new()))
+            .run_next(&basis("p2"), &ModelCancellation::new(), &mut vec![]))
         .unwrap()
         .is_none(),
         "unknown is not pending work"
@@ -1034,11 +1129,12 @@ fn unconfirmed_stop_or_start_is_unknown_and_never_retried() {
         .analysis()
         .admit(&target(), &basis("p1"), "k", &request()))
     .unwrap();
-    let record = run(world
-        .analysis()
-        .run_next(&basis("p1"), &ModelCancellation::new()))
-    .unwrap()
-    .unwrap();
+    let record =
+        run(world
+            .analysis()
+            .run_next(&basis("p1"), &ModelCancellation::new(), &mut vec![]))
+        .unwrap()
+        .unwrap();
     assert_eq!(record.latest.status, JobStatus::Unknown);
 }
 
@@ -1050,11 +1146,12 @@ fn absence_before_start_is_retryable_under_a_new_attempt() {
             .analysis()
             .admit(&target(), &basis("p1"), "k", &request()))
         .unwrap();
-        let record = run(world
-            .analysis()
-            .run_next(&basis("p1"), &ModelCancellation::new()))
-        .unwrap()
-        .unwrap();
+        let record =
+            run(world
+                .analysis()
+                .run_next(&basis("p1"), &ModelCancellation::new(), &mut vec![]))
+            .unwrap()
+            .unwrap();
         assert_eq!(record.latest.status, JobStatus::Absent, "{behaviour:?}");
         let attempt = record.latest.attempt_id.clone().unwrap();
         assert_eq!(
@@ -1065,7 +1162,7 @@ fn absence_before_start_is_retryable_under_a_new_attempt() {
         assert_eq!(
             run(world
                 .analysis()
-                .run_next(&basis("p1"), &ModelCancellation::new())),
+                .run_next(&basis("p1"), &ModelCancellation::new(), &mut vec![])),
             Err(AnalysisError::Fenced)
         );
     }
@@ -1083,7 +1180,7 @@ fn lost_job_recovery_resumes_marks_absent_or_collects_without_a_duplicate_run() 
     assert_eq!(
         run(world
             .analysis()
-            .run_next(&basis("p1"), &ModelCancellation::new())),
+            .run_next(&basis("p1"), &ModelCancellation::new(), &mut vec![])),
         Err(AnalysisError::Unavailable)
     );
     assert!(
@@ -1093,7 +1190,7 @@ fn lost_job_recovery_resumes_marks_absent_or_collects_without_a_duplicate_run() 
     // A replacement claim recovers the attempt as absent and runs once.
     let done = run(world
         .analysis()
-        .run_next(&basis("p2"), &ModelCancellation::new()))
+        .run_next(&basis("p2"), &ModelCancellation::new(), &mut vec![]))
     .unwrap()
     .unwrap();
     assert_eq!(done.latest.status, JobStatus::Collected);
@@ -1137,11 +1234,14 @@ fn lost_job_recovery_resumes_marks_absent_or_collects_without_a_duplicate_run() 
         .lock()
         .unwrap()
         .push(consumed.attempt_id.clone());
-    let recovered =
-        run(world
-            .analysis()
-            .recover("actor", &scope(), &job.job.id, &ModelCancellation::new()))
-        .unwrap();
+    let recovered = run(world.analysis().recover(
+        "actor",
+        &scope(),
+        &job.job.id,
+        &ModelCancellation::new(),
+        Watch::default(),
+    ))
+    .unwrap();
     assert_eq!(recovered.latest.status, JobStatus::Collected);
     assert_eq!(
         world.sandbox.started.lock().unwrap().len(),
@@ -1170,11 +1270,14 @@ fn lost_job_recovery_resumes_marks_absent_or_collects_without_a_duplicate_run() 
         },
     ))
     .unwrap();
-    let recovered =
-        run(world
-            .analysis()
-            .recover("actor", &scope(), &job.job.id, &ModelCancellation::new()))
-        .unwrap();
+    let recovered = run(world.analysis().recover(
+        "actor",
+        &scope(),
+        &job.job.id,
+        &ModelCancellation::new(),
+        Watch::default(),
+    ))
+    .unwrap();
     assert_eq!(recovered.latest.status, JobStatus::Absent);
     // A late fact for the fenced attempt is refused.
     assert_eq!(
@@ -1214,10 +1317,414 @@ fn lost_job_recovery_resumes_marks_absent_or_collects_without_a_duplicate_run() 
         },
     ))
     .unwrap();
-    let recovered =
+    let recovered = run(world.analysis().recover(
+        "actor",
+        &scope(),
+        &job.job.id,
+        &ModelCancellation::new(),
+        Watch::default(),
+    ))
+    .unwrap();
+    assert_eq!(recovered.latest.status, JobStatus::Unknown);
+}
+
+fn admit_one(world: &World, request: &AnalysisRequest) -> JobRecord {
+    run(world
+        .analysis()
+        .admit(&target(), &basis("p1"), "k", request))
+    .unwrap()
+}
+fn collected_reason(world: &World) -> Option<String> {
+    world.jobs.jobs.lock().unwrap()[0]
+        .1
+        .last()
+        .filter(|f| f.status == JobStatus::Collected)
+        .and_then(|f| f.reason.clone())
+}
+
+#[test]
+fn recovery_of_a_terminated_uncollected_job_collects_once_with_the_same_descendants() {
+    for (behaviour, terminal) in [
+        (Behaviour::Exit(0), JobStatus::Completed),
+        (Behaviour::Exit(3), JobStatus::Failed),
+        (Behaviour::Oom, JobStatus::LimitExceeded),
+    ] {
+        let world = World::new(behaviour, vec![regular("out.txt", b"result")]);
+        admit_one(&world, &request());
+        // Objects are written, then the collection fact is lost.
+        *world.jobs.fail_next_collect.lock().unwrap() = true;
+        assert_eq!(
+            run(world
+                .analysis()
+                .run_next(&basis("p1"), &ModelCancellation::new(), &mut vec![])),
+            Err(AnalysisError::Unavailable)
+        );
+        assert_eq!(world.jobs.statuses().last(), Some(&terminal));
+        let stored: Vec<String> = world.objects.0.lock().unwrap().keys().cloned().collect();
+        assert_eq!(stored.len(), 1, "{behaviour:?}");
+        // Recovery reconciles the existing immutable object (AlreadyExists)
+        // and records exactly one collection; nothing starts again.
+        let done =
+            run(world
+                .analysis()
+                .run_next(&basis("p2"), &ModelCancellation::new(), &mut vec![]))
+            .unwrap()
+            .unwrap();
+        assert_eq!(done.latest.status, JobStatus::Collected, "{behaviour:?}");
+        let statuses = world.jobs.statuses();
+        assert_eq!(
+            statuses
+                .iter()
+                .filter(|s| **s == JobStatus::Collected)
+                .count(),
+            1
+        );
+        assert_eq!(world.sandbox.started.lock().unwrap().len(), 1);
+        let jobs = world.jobs.jobs.lock().unwrap();
+        let descendants = &jobs[0].2;
+        assert_eq!(descendants.len(), 1);
+        assert_eq!(
+            descendants[0].id, stored[0],
+            "same deterministic descendant ID"
+        );
+        assert_eq!(descendants[0].version, "v1", "the original version");
+        drop(jobs);
+        assert!(
+            run(world
+                .analysis()
+                .run_next(&basis("p3"), &ModelCancellation::new(), &mut vec![]))
+            .unwrap()
+            .is_none()
+        );
+    }
+}
+
+#[test]
+fn truncated_collection_is_a_rejection_and_marked_in_the_receipt() {
+    let world = World::new(Behaviour::Exit(0), vec![regular("a.txt", b"1")]);
+    *world.sandbox.truncated.lock().unwrap() = true;
+    admit_one(&world, &request());
+    run(world
+        .analysis()
+        .run_next(&basis("p1"), &ModelCancellation::new(), &mut vec![]))
+    .unwrap();
+    let jobs = world.jobs.jobs.lock().unwrap();
+    let (_, _, descendants, rejections, receipt) = &jobs[0];
+    assert_eq!(descendants.len(), 1);
+    assert_eq!(
+        rejections.iter().map(|r| r.reason).collect::<Vec<_>>(),
+        [RejectReason::CollectionTruncated]
+    );
+    assert!(receipt.as_ref().unwrap().truncated);
+}
+
+#[test]
+fn a_clean_exit_with_an_oversized_file_is_an_output_file_limit() {
+    let world = World::new(
+        Behaviour::Exit(0),
+        vec![OutputEntry {
+            size: AnalysisLimits::DEFAULT.output_file_bytes + 1,
+            content: None,
+            ..regular("big.txt", b"")
+        }],
+    );
+    admit_one(&world, &request());
+    run(world
+        .analysis()
+        .run_next(&basis("p1"), &ModelCancellation::new(), &mut vec![]))
+    .unwrap();
+    let jobs = world.jobs.jobs.lock().unwrap();
+    assert_eq!(jobs[0].1[3].status, JobStatus::LimitExceeded);
+    assert_eq!(jobs[0].1[3].reason.as_deref(), Some("output_file"));
+    assert_eq!(jobs[0].3[0].reason, RejectReason::FileTooLarge);
+}
+
+#[test]
+fn collection_that_keeps_failing_is_closed_durably_and_never_blocks() {
+    let world = World::new(Behaviour::Exit(0), vec![regular("a.txt", b"1")]);
+    *world.sandbox.collect_fails.lock().unwrap() = true;
+    admit_one(&world, &request());
+    let done = run(world
+        .analysis()
+        .run_next(&basis("p1"), &ModelCancellation::new(), &mut vec![]))
+    .unwrap()
+    .unwrap();
+    assert_eq!(done.latest.status, JobStatus::Collected);
+    assert_eq!(
+        *world.sandbox.collects.lock().unwrap(),
+        3,
+        "bounded attempts"
+    );
+    assert_eq!(world.jobs.statuses()[3], JobStatus::Completed);
+    assert_eq!(
+        collected_reason(&world).as_deref(),
+        Some(COLLECTION_UNAVAILABLE)
+    );
+    assert_eq!(
+        world.jobs.jobs.lock().unwrap()[0].3[0].reason,
+        RejectReason::CollectionUnavailable
+    );
+    assert!(world.jobs.jobs.lock().unwrap()[0].2.is_empty());
+
+    // The same holds when a terminal fact was recorded by an earlier claim.
+    let world = World::new(Behaviour::Exit(0), vec![regular("a.txt", b"1")]);
+    admit_one(&world, &request());
+    *world.jobs.fail_next_collect.lock().unwrap() = true;
+    let _ = run(world
+        .analysis()
+        .run_next(&basis("p1"), &ModelCancellation::new(), &mut vec![]));
+    *world.sandbox.collect_fails.lock().unwrap() = true;
+    let done = run(world
+        .analysis()
+        .run_next(&basis("p2"), &ModelCancellation::new(), &mut vec![]))
+    .unwrap()
+    .unwrap();
+    assert_eq!(done.latest.status, JobStatus::Collected);
+    assert_eq!(
+        collected_reason(&world).as_deref(),
+        Some(COLLECTION_UNAVAILABLE)
+    );
+}
+
+#[test]
+fn a_wall_time_stop_that_also_loses_collection_is_still_limit_exceeded() {
+    let world = World::new(Behaviour::ForeverCollectionLostOnStop, vec![]);
+    let mut short = request();
+    short.limits.wall_seconds = 1;
+    admit_one(&world, &short);
+    let done = run(world
+        .analysis()
+        .run_next(&basis("p1"), &ModelCancellation::new(), &mut vec![]))
+    .unwrap()
+    .unwrap();
+    assert_eq!(done.latest.status, JobStatus::Collected);
+    let jobs = world.jobs.jobs.lock().unwrap();
+    assert_eq!(jobs[0].1[3].status, JobStatus::LimitExceeded);
+    assert_eq!(jobs[0].1[3].reason.as_deref(), Some("wall_time"));
+    assert_eq!(jobs[0].3[0].reason, RejectReason::CollectionUnavailable);
+}
+
+#[test]
+fn a_job_that_never_reaches_running_is_stopped_after_provisioning_and_retryable() {
+    let world = World::new(Behaviour::NeverRuns, vec![]);
+    admit_one(&world, &request());
+    let record =
         run(world
             .analysis()
-            .recover("actor", &scope(), &job.job.id, &ModelCancellation::new()))
+            .run_next(&basis("p1"), &ModelCancellation::new(), &mut vec![]))
+        .unwrap()
         .unwrap();
-    assert_eq!(recovered.latest.status, JobStatus::Unknown);
+    assert!(*world.sandbox.stopped.lock().unwrap());
+    assert_eq!(record.latest.status, JobStatus::Absent);
+    assert!(
+        !world.jobs.statuses().contains(&JobStatus::Running),
+        "the wall clock never started"
+    );
+}
+
+#[test]
+fn one_failing_job_is_skipped_so_later_jobs_run() {
+    let world = World::new(Behaviour::Exit(0), vec![regular("a.txt", b"1")]);
+    let analysis = world.analysis();
+    run(analysis.admit(&target(), &basis("p1"), "first", &request())).unwrap();
+    let mut second = request();
+    second.limits.wall_seconds = 3;
+    run(analysis.admit(&target(), &basis("p1"), "second", &second)).unwrap();
+    world.jobs.broken.lock().unwrap().push("job-0".into());
+    let mut skip = Vec::new();
+    let done = run(analysis.run_next(&basis("p1"), &ModelCancellation::new(), &mut skip))
+        .unwrap()
+        .unwrap();
+    assert_eq!(done.job.id, "job-1");
+    assert_eq!(done.latest.status, JobStatus::Collected);
+    assert_eq!(skip, ["job-0"]);
+    // With every remaining job failing, the error surfaces.
+    assert_eq!(
+        run(analysis.run_next(&basis("p1"), &ModelCancellation::new(), &mut Vec::new())),
+        Err(AnalysisError::Unavailable)
+    );
+}
+
+#[test]
+fn repeated_start_refusals_end_in_a_durable_start_refused_failure() {
+    let world = World::new(Behaviour::StartRefused, vec![]);
+    admit_one(&world, &request());
+    for attempt in 0..MAX_START_ATTEMPTS {
+        let record = run(world.analysis().run_next(
+            &basis(&format!("p{attempt}")),
+            &ModelCancellation::new(),
+            &mut vec![],
+        ))
+        .unwrap()
+        .unwrap();
+        assert_eq!(record.latest.status, JobStatus::Absent);
+    }
+    let record =
+        run(world
+            .analysis()
+            .run_next(&basis("final"), &ModelCancellation::new(), &mut vec![]))
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.latest.status, JobStatus::Collected);
+    let statuses = world.jobs.statuses();
+    assert_eq!(statuses[statuses.len() - 2], JobStatus::Failed);
+    assert_eq!(
+        world.jobs.jobs.lock().unwrap()[0].1[statuses.len() - 2]
+            .reason
+            .as_deref(),
+        Some(START_REFUSED)
+    );
+    assert_eq!(
+        world.store.0.lock().unwrap().consumed,
+        MAX_START_ATTEMPTS as usize
+    );
+    assert!(
+        run(world
+            .analysis()
+            .run_next(&basis("later"), &ModelCancellation::new(), &mut vec![]))
+        .unwrap()
+        .is_none()
+    );
+}
+
+#[test]
+fn a_lost_observation_after_a_settled_fact_is_reissued_by_recovery() {
+    // Stopped is committed, then its observation is lost.
+    let world = World::new(Behaviour::Forever, vec![]);
+    admit_one(&world, &request());
+    let job = world.jobs.record_of(0);
+    let consumed = run(world.store.consume(&basis("p1"), &job.job.operation_id)).unwrap();
+    let record = run(world.jobs.append(
+        "actor",
+        &scope(),
+        &job.job.id,
+        0,
+        &Transition {
+            status: JobStatus::PossiblyStarted,
+            attempt_id: Some(consumed.attempt_id.clone()),
+            reason: None,
+            exit_code: None,
+        },
+    ))
+    .unwrap();
+    world
+        .sandbox
+        .started
+        .lock()
+        .unwrap()
+        .push(consumed.attempt_id.clone());
+    let cancellation = ModelCancellation::new();
+    cancellation.cancel();
+    let analysis = world.analysis();
+    let record =
+        run(analysis.transition("actor", &scope(), &record, JobStatus::Running, None, None))
+            .unwrap();
+    // The observation that follows the committed Stopped fact is lost.
+    world.store.0.lock().unwrap().fail_next_observe = true;
+    let stopped = run(analysis.follow(
+        "actor",
+        &scope(),
+        record,
+        &consumed,
+        SandboxState::Running,
+        Instant::now(),
+        &cancellation,
+        Watch::default(),
+    ));
+    assert_eq!(stopped, Err(AnalysisError::Unavailable));
+    assert_eq!(world.jobs.statuses().last(), Some(&JobStatus::Stopped));
+    assert!(world.store.facts(&consumed.attempt_id).is_empty());
+    // Recovery finds the settled job lacking its fact and records it.
+    let recovered = run(analysis.run_next(&basis("p2"), &ModelCancellation::new(), &mut vec![]))
+        .unwrap()
+        .unwrap();
+    assert_eq!(recovered.latest.status, JobStatus::Stopped);
+    assert_eq!(
+        world.store.facts(&consumed.attempt_id),
+        [SourceFact::Completed]
+    );
+    assert!(
+        run(analysis.run_next(&basis("p3"), &ModelCancellation::new(), &mut vec![]))
+            .unwrap()
+            .is_none()
+    );
+
+    // Repeated identical absence is idempotent.
+    let world = World::new(Behaviour::StartRefused, vec![]);
+    admit_one(&world, &request());
+    let record =
+        run(world
+            .analysis()
+            .run_next(&basis("p1"), &ModelCancellation::new(), &mut vec![]))
+        .unwrap()
+        .unwrap();
+    for _ in 0..2 {
+        let again = run(world.analysis().recover(
+            "actor",
+            &scope(),
+            &record.job.id,
+            &ModelCancellation::new(),
+            Watch::default(),
+        ))
+        .unwrap();
+        assert_eq!(again.latest.status, JobStatus::Absent);
+    }
+}
+
+#[test]
+fn bounded_recovery_detaches_without_stopping_a_running_job() {
+    let world = World::new(Behaviour::Forever, vec![]);
+    admit_one(&world, &request());
+    let job = world.jobs.record_of(0);
+    let consumed = run(world.store.consume(&basis("p1"), &job.job.operation_id)).unwrap();
+    run(world.jobs.append(
+        "actor",
+        &scope(),
+        &job.job.id,
+        0,
+        &Transition {
+            status: JobStatus::PossiblyStarted,
+            attempt_id: Some(consumed.attempt_id.clone()),
+            reason: None,
+            exit_code: None,
+        },
+    ))
+    .unwrap();
+    world
+        .sandbox
+        .started
+        .lock()
+        .unwrap()
+        .push(consumed.attempt_id.clone());
+    let shutdown = ModelCancellation::new();
+    shutdown.cancel();
+    let record = run(world.analysis().recover(
+        "actor",
+        &scope(),
+        &job.job.id,
+        &ModelCancellation::new(),
+        Watch {
+            until: None,
+            detach: Some(&shutdown),
+        },
+    ))
+    .unwrap();
+    assert_eq!(record.latest.status, JobStatus::Running);
+    assert!(
+        !*world.sandbox.stopped.lock().unwrap(),
+        "detaching never stops"
+    );
+    let record = run(world.analysis().recover(
+        "actor",
+        &scope(),
+        &job.job.id,
+        &ModelCancellation::new(),
+        Watch {
+            until: Some(Instant::now()),
+            detach: None,
+        },
+    ))
+    .unwrap();
+    assert_eq!(record.latest.status, JobStatus::Running);
+    assert!(!*world.sandbox.stopped.lock().unwrap());
 }

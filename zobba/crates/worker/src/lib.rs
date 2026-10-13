@@ -168,7 +168,7 @@ async fn advance<D, E>(
     // A Task left waiting on durable external work (a lost analysis job) is
     // reconciled from source facts only; nothing is dispatched here.
     if let (Ok(Decision::Waiting), Some(runner)) = (&decision, &runner)
-        && runner.reconcile(&route).await
+        && runner.reconcile(&route, shutdown.clone()).await
         && database_call(repository.reconcile(&route, &worker_id))
             .await
             .is_err()

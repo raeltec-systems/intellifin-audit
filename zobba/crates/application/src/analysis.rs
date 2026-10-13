@@ -25,8 +25,7 @@ use zobba_domain::{
     evidence::ContentIdentity,
     identity::{Scope, valid_scope_id},
     permissions::{
-        Action, CanonicalOperation, ConsumedOperation, OPERATION_VERSION, OperationHistoryQuery,
-        Purpose, SourceFact,
+        Action, CanonicalOperation, ConsumedOperation, OPERATION_VERSION, Purpose, SourceFact,
     },
     task::ClaimBasis,
 };
@@ -153,6 +152,10 @@ pub struct JobRecord {
     pub latest: JobFact,
     /// When the current attempt was durably marked possibly started.
     pub started_at: Option<i64>,
+    /// When the current attempt was first durably observed running.
+    pub running_at: Option<i64>,
+    /// Distinct attempts this job has consumed.
+    pub attempts: u32,
     /// Database clock at the read.
     pub now: i64,
 }
@@ -168,6 +171,8 @@ pub struct Transition {
 pub struct Descendant {
     pub id: String,
     pub path: String,
+    /// The validator's [`fold_key`], the database case-insensitive key.
+    pub fold_key: String,
     pub media_type: &'static str,
     pub identity: ContentIdentity,
     pub namespace: String,
@@ -185,6 +190,9 @@ pub struct CollectionReceipt {
     pub rejected: Vec<(String, RejectReason)>,
     pub output_bytes: u64,
     pub truncated: bool,
+    /// Closed reason recorded on the collection fact (for example
+    /// `collection_unavailable`), when outputs could not be collected.
+    pub reason: Option<&'static str>,
 }
 
 /// Job persistence. Every call is scoped and freshly authorized; the
@@ -210,7 +218,15 @@ pub trait AnalysisJobs: Send + Sync {
         scope: &Scope,
         id: &str,
     ) -> impl Future<Output = Result<JobRecord, AnalysisError>> + Send;
-    /// Bounded unfinished jobs of one Task, oldest first.
+    /// The job operation's highest-numbered consumed attempt, if any.
+    fn latest_attempt(
+        &self,
+        actor: &str,
+        scope: &Scope,
+        job_id: &str,
+    ) -> impl Future<Output = Result<Option<String>, AnalysisError>> + Send;
+    /// Bounded jobs of one Task needing automatic work, oldest admitted first:
+    /// unfinished jobs, and settled jobs whose source fact is not yet recorded.
     fn pending(
         &self,
         actor: &str,
@@ -293,12 +309,19 @@ pub struct Collection {
 
 pub trait AnalysisSandbox: Send + Sync {
     fn start(&self, spec: &SandboxSpec) -> impl Future<Output = Result<(), SandboxError>> + Send;
+    /// Look the attempt up. `environment` is the job's allowlisted environment
+    /// (an adapter that fences a never-started handle uses its pinned image).
     fn status(
         &self,
         handle: &str,
+        environment: &AnalysisEnvironment,
     ) -> impl Future<Output = Result<SandboxState, SandboxError>> + Send;
     /// Request termination. Confirmation is only ever a later `status`.
-    fn stop(&self, handle: &str) -> impl Future<Output = Result<(), SandboxError>> + Send;
+    fn stop(
+        &self,
+        handle: &str,
+        environment: &AnalysisEnvironment,
+    ) -> impl Future<Output = Result<(), SandboxError>> + Send;
     /// Only after confirmed termination; reads, never trusts, the outputs.
     fn collect(
         &self,
@@ -307,6 +330,12 @@ pub trait AnalysisSandbox: Send + Sync {
     ) -> impl Future<Output = Result<Collection, SandboxError>> + Send;
     /// Release sandbox resources after collection or a confirmed stop.
     fn discard(&self, handle: &str) -> impl Future<Output = Result<(), SandboxError>> + Send;
+    /// Extra time beyond the wall limit before the worker's own backstop stop,
+    /// for a sandbox that enforces the wall limit inside the job itself (and
+    /// still collects after that in-job kill).
+    fn wall_grace(&self) -> Duration {
+        Duration::ZERO
+    }
 }
 
 pub type Delay = fn(Duration) -> Pin<Box<dyn Future<Output = ()> + Send>>;
@@ -316,7 +345,27 @@ pub struct AnalysisSettings {
     pub poll: Duration,
     /// Bound on waiting for a requested stop to be confirmed.
     pub stop_confirmation: Duration,
+    /// Bound on a started sandbox first reporting Running.
+    pub provisioning: Duration,
+    /// Collection attempts after confirmed termination before the job is
+    /// durably closed with `collection_unavailable`.
+    pub collect_attempts: u32,
     pub delay: Delay,
+}
+
+/// How long a caller follows a running attempt. Recovery outside a claim
+/// watches only briefly and detaches (never stops) on shutdown; the job keeps
+/// running and is looked up again later.
+#[derive(Clone, Copy, Default)]
+pub struct Watch<'a> {
+    pub until: Option<Instant>,
+    pub detach: Option<&'a ModelCancellation>,
+}
+impl Watch<'_> {
+    fn detached(&self) -> bool {
+        self.until.is_some_and(|until| Instant::now() >= until)
+            || self.detach.is_some_and(ModelCancellation::is_cancelled)
+    }
 }
 
 pub struct Analysis<'a, S, J, X, O> {
@@ -337,6 +386,25 @@ fn unix_now() -> i64 {
 /// Exit code of a process killed by SIGXFSZ (128 + 25): a file exceeded its
 /// per-file limit.
 const SIGXFSZ_EXIT: i32 = 153;
+/// Exit code of a process killed by SIGKILL (128 + 9), as an in-job wall-time
+/// enforcement reports it.
+const SIGKILL_EXIT: i32 = 137;
+pub const START_REFUSED: &str = "start_refused";
+pub const COLLECTION_UNAVAILABLE: &str = "collection_unavailable";
+
+fn ago(seconds: i64) -> Instant {
+    Instant::now()
+        .checked_sub(Duration::from_secs(seconds.max(0) as u64))
+        .unwrap_or_else(Instant::now)
+}
+
+/// How the program's run ended, decided by trusted facts only.
+struct Ending {
+    killed: Option<(JobStatus, Option<&'static str>)>,
+    exit_code: Option<i32>,
+    out_of_memory: bool,
+    ran_for: Option<Duration>,
+}
 
 impl<S, J, X, O> Analysis<'_, S, J, X, O>
 where
@@ -384,28 +452,58 @@ where
         self.jobs.record(basis, &admitted.id, request).await
     }
 
-    /// Run the Task's next unfinished job under the current claim. Earlier
-    /// unresolved attempts are recovered first; a retryable job is consumed
-    /// and started. Returns None when the Task has no unfinished job.
+    /// Work on the Task's oldest job needing automatic work under the current
+    /// claim. Earlier unresolved attempts are recovered first; a retryable job
+    /// is consumed and started. A job whose recovery fails is added to `skip`
+    /// and the next one is tried, so one failing job never blocks the rest.
+    /// Returns None when no job (outside `skip`) needs work, and the last error
+    /// only when every remaining job failed.
     pub async fn run_next(
         &self,
         basis: &ClaimBasis,
         cancellation: &ModelCancellation,
+        skip: &mut Vec<String>,
     ) -> Result<Option<JobRecord>, AnalysisError> {
         let pending = self
             .jobs
             .pending(&basis.actor_id, &basis.scope, &basis.task_id)
             .await?;
-        let Some(first) = pending.into_iter().next() else {
-            return Ok(None);
-        };
-        let record = self
-            .recover(&basis.actor_id, &basis.scope, &first.job.id, cancellation)
-            .await?;
-        if record.latest.status.retryable() && !cancellation.is_cancelled() {
-            return self.start(basis, record, cancellation).await.map(Some);
+        let mut failure = None;
+        let ids: Vec<String> = pending
+            .into_iter()
+            .map(|r| r.job.id)
+            .filter(|id| !skip.contains(id))
+            .collect();
+        for id in ids {
+            let result = match self
+                .recover(
+                    &basis.actor_id,
+                    &basis.scope,
+                    &id,
+                    cancellation,
+                    Watch::default(),
+                )
+                .await
+            {
+                Ok(record) if record.latest.status.retryable() && !cancellation.is_cancelled() => {
+                    if record.attempts >= MAX_START_ATTEMPTS {
+                        self.refuse_start(&basis.actor_id, &basis.scope, record)
+                            .await
+                    } else {
+                        self.start(basis, record, cancellation).await
+                    }
+                }
+                other => other,
+            };
+            match result {
+                Ok(record) => return Ok(Some(record)),
+                Err(error) => {
+                    skip.push(id);
+                    failure = Some(error);
+                }
+            }
         }
-        Ok(Some(record))
+        failure.map_or(Ok(None), Err)
     }
 
     async fn start(
@@ -451,13 +549,13 @@ where
         };
         let started = Instant::now();
         let state = match self.sandbox.start(&spec).await {
-            Ok(()) => SandboxState::Running,
+            Ok(()) => SandboxState::Starting,
             Err(SandboxError::Refused) => {
                 return self.absent(actor, scope, &record, &attempt).await;
             }
             Err(_) => self
                 .sandbox
-                .status(&attempt)
+                .status(&attempt, &environment)
                 .await
                 .unwrap_or(SandboxState::Unconfirmed),
         };
@@ -469,6 +567,7 @@ where
             state,
             started,
             cancellation,
+            Watch::default(),
         )
         .await
     }
@@ -520,26 +619,38 @@ where
     }
 
     /// Recovery under fresh audience authority with restricted receipt custody.
-    /// Never dispatches; looks the sandbox up, resumes a running watch,
-    /// collects a confirmed termination, or records absence or uncertainty.
+    /// Never dispatches; looks the sandbox up, resumes a running watch (bounded
+    /// by `watch`), collects a confirmed termination, re-issues a lost source
+    /// observation, or records absence or uncertainty.
     pub async fn recover(
         &self,
         actor: &str,
         scope: &Scope,
         job_id: &str,
         cancellation: &ModelCancellation,
+        watch: Watch<'_>,
     ) -> Result<JobRecord, AnalysisError> {
         let record = self.jobs.job(actor, scope, job_id).await?;
+        let environment = record
+            .job
+            .request
+            .environment(self.allowlist)
+            .ok_or(AnalysisError::Unlisted)?
+            .clone();
         match record.latest.status {
             JobStatus::Admitted | JobStatus::Absent => {
                 // A consumed attempt with no fact naming it was never handed to
                 // a sandbox: recording it absent also fences a late starter.
-                let latest = self.latest_attempt(actor, scope, &record).await?;
-                match latest {
+                match self
+                    .jobs
+                    .latest_attempt(actor, scope, &record.job.id)
+                    .await?
+                {
                     Some(attempt) if Some(&attempt) != record.latest.attempt_id.as_ref() => {
                         self.absent(actor, scope, &record, &attempt).await
                     }
                     Some(attempt) => {
+                        // Identical repeated absence is idempotent at the store.
                         let custody = self.store.recover(actor, scope, &attempt).await?;
                         self.store
                             .observe(&custody, SourceFact::AuthoritativelyAbsent)
@@ -558,17 +669,23 @@ where
                 let custody = self.store.recover(actor, scope, &attempt).await?;
                 let state = self
                     .sandbox
-                    .status(&attempt)
+                    .status(&attempt, &environment)
                     .await
                     .unwrap_or(SandboxState::Unconfirmed);
-                let elapsed = record
+                let started = ago(record
                     .now
-                    .saturating_sub(record.started_at.unwrap_or(record.now));
-                let started = Instant::now()
-                    .checked_sub(Duration::from_secs(elapsed.max(0) as u64))
-                    .unwrap_or_else(Instant::now);
-                self.follow(actor, scope, record, &custody, state, started, cancellation)
-                    .await
+                    .saturating_sub(record.started_at.unwrap_or(record.now)));
+                self.follow(
+                    actor,
+                    scope,
+                    record,
+                    &custody,
+                    state,
+                    started,
+                    cancellation,
+                    watch,
+                )
+                .await
             }
             status if status.collectable() => {
                 let attempt = record
@@ -577,36 +694,87 @@ where
                     .clone()
                     .ok_or(AnalysisError::Integrity)?;
                 let custody = self.store.recover(actor, scope, &attempt).await?;
-                self.collect(actor, scope, record, &custody).await
+                if record.latest.reason.as_deref() == Some(START_REFUSED) {
+                    // Nothing ever ran: close without outputs.
+                    return self.close(actor, scope, record, None, None).await;
+                }
+                // The terminal fact may have committed before its observation.
+                match self.store.observe(&custody, SourceFact::Completed).await {
+                    Ok(()) | Err(OperationError::Conflict) => {}
+                    Err(error) => return Err(error.into()),
+                }
+                match self
+                    .collect_bounded(&attempt, &record.job.request.limits)
+                    .await
+                {
+                    Some(collection) => self.register(actor, scope, record, collection).await,
+                    None => {
+                        self.close(
+                            actor,
+                            scope,
+                            record,
+                            Some(RejectReason::CollectionUnavailable),
+                            Some(COLLECTION_UNAVAILABLE),
+                        )
+                        .await
+                    }
+                }
+            }
+            JobStatus::Collected | JobStatus::Stopped => {
+                // Settled, but its source fact may never have been recorded.
+                let attempt = record
+                    .latest
+                    .attempt_id
+                    .clone()
+                    .ok_or(AnalysisError::Integrity)?;
+                let custody = self.store.recover(actor, scope, &attempt).await?;
+                match self.store.observe(&custody, SourceFact::Completed).await {
+                    Ok(()) => Ok(record),
+                    // A start refusal closes an attempt that was never started.
+                    Err(OperationError::Conflict) => {
+                        self.store
+                            .observe(&custody, SourceFact::AuthoritativelyAbsent)
+                            .await?;
+                        Ok(record)
+                    }
+                    Err(error) => Err(error.into()),
+                }
+            }
+            JobStatus::Unknown => {
+                let attempt = record
+                    .latest
+                    .attempt_id
+                    .clone()
+                    .ok_or(AnalysisError::Integrity)?;
+                let custody = self.store.recover(actor, scope, &attempt).await?;
+                match self.store.observe(&custody, SourceFact::Unknown).await {
+                    Ok(()) | Err(OperationError::Conflict) => Ok(record),
+                    Err(error) => Err(error.into()),
+                }
             }
             _ => Ok(record),
         }
     }
 
-    async fn latest_attempt(
+    /// After MAX_START_ATTEMPTS attempts that never started, the job is
+    /// refused for good: a durable failure and an empty collection.
+    async fn refuse_start(
         &self,
         actor: &str,
         scope: &Scope,
-        record: &JobRecord,
-    ) -> Result<Option<String>, AnalysisError> {
-        let mut query = OperationHistoryQuery::default();
-        let mut latest: Option<(u64, String)> = None;
-        for _ in 0..4 {
-            let page = self
-                .store
-                .history(actor, scope, &record.job.operation_id, &query)
-                .await?;
-            for attempt in &page.attempts {
-                if latest.as_ref().is_none_or(|(n, _)| attempt.number > *n) {
-                    latest = Some((attempt.number, attempt.id.clone()));
-                }
-            }
-            match page.attempt_next_cursor {
-                Some(cursor) => query.after_attempt_id = Some(cursor),
-                None => return Ok(latest.map(|(_, id)| id)),
-            }
-        }
-        Err(AnalysisError::Capacity)
+        record: JobRecord,
+    ) -> Result<JobRecord, AnalysisError> {
+        let record = self
+            .transition(
+                actor,
+                scope,
+                &record,
+                JobStatus::Failed,
+                Some(START_REFUSED),
+                None,
+            )
+            .await?;
+        self.close(actor, scope, record, None, None).await
     }
 
     async fn absent(
@@ -663,7 +831,8 @@ where
             .await
     }
 
-    /// Follow a started or recovered attempt to a durable fact.
+    /// Follow a started or recovered attempt to a durable fact. The wall
+    /// deadline starts when the sandbox first reports Running.
     #[allow(clippy::too_many_arguments)]
     async fn follow(
         &self,
@@ -674,22 +843,49 @@ where
         mut state: SandboxState,
         started: Instant,
         cancellation: &ModelCancellation,
+        watch: Watch<'_>,
     ) -> Result<JobRecord, AnalysisError> {
         let attempt = record
             .latest
             .attempt_id
             .clone()
             .ok_or(AnalysisError::Integrity)?;
+        let environment = record
+            .job
+            .request
+            .environment(self.allowlist)
+            .ok_or(AnalysisError::Unlisted)?
+            .clone();
         let limits = record.job.request.limits;
-        let deadline = started + Duration::from_secs(u64::from(limits.wall_seconds));
+        let wall = Duration::from_secs(u64::from(limits.wall_seconds));
+        let mut running_since = record
+            .running_at
+            .map(|at| ago(record.now.saturating_sub(at)));
         let mut killed: Option<(JobStatus, Option<&'static str>)> = None;
         loop {
             match state {
-                SandboxState::Absent if killed.is_none() => {
-                    return if record.latest.status == JobStatus::Running {
-                        // A running job is never declared absent.
+                SandboxState::Absent => {
+                    return if killed.is_some_and(|(status, _)| status == JobStatus::Stopped) {
+                        // A stop removed a never-started sandbox: confirmed stopped.
+                        let record = self
+                            .transition(
+                                actor,
+                                scope,
+                                &record,
+                                JobStatus::Stopped,
+                                Some("stopped"),
+                                None,
+                            )
+                            .await?;
+                        self.store.observe(custody, SourceFact::Completed).await?;
+                        let _ = self.sandbox.discard(&attempt).await;
+                        Ok(record)
+                    } else if record.latest.status == JobStatus::Running {
+                        // A job that was seen running is never declared absent.
                         self.unknown(actor, scope, &record, custody).await
                     } else {
+                        // Never ran (including a provisioning timeout that removed
+                        // and fenced it): absent, so a fresh attempt may start.
                         let record = self
                             .transition(actor, scope, &record, JobStatus::Absent, None, None)
                             .await?;
@@ -699,22 +895,6 @@ where
                             .await?;
                         Ok(record)
                     };
-                }
-                SandboxState::Absent => {
-                    // A stop removed a never-started sandbox: confirmed stopped.
-                    let record = self
-                        .transition(
-                            actor,
-                            scope,
-                            &record,
-                            JobStatus::Stopped,
-                            Some("stopped"),
-                            None,
-                        )
-                        .await?;
-                    self.store.observe(custody, SourceFact::Completed).await?;
-                    let _ = self.sandbox.discard(&attempt).await;
-                    return Ok(record);
                 }
                 SandboxState::Unconfirmed => {
                     return self.unknown(actor, scope, &record, custody).await;
@@ -738,61 +918,47 @@ where
                         let _ = self.sandbox.discard(&attempt).await;
                         return Ok(record);
                     }
-                    let collection = match self.sandbox.collect(&attempt, &limits).await {
-                        Ok(collection) => collection,
-                        Err(_) => return Err(AnalysisError::Unavailable),
+                    let ending = Ending {
+                        killed,
+                        exit_code,
+                        out_of_memory,
+                        ran_for: running_since.map(|since| since.elapsed()),
                     };
-                    let (status, reason) = if let Some((status, reason)) = killed {
-                        (status, reason)
-                    } else if out_of_memory {
-                        (JobStatus::LimitExceeded, Some(LimitReason::Memory.as_str()))
-                    } else if exit_code == Some(SIGXFSZ_EXIT)
-                        || collection.entries.iter().any(|e| {
-                            e.kind == OutputKind::Regular && e.size > limits.output_file_bytes
-                        })
-                    {
-                        (
-                            JobStatus::LimitExceeded,
-                            Some(LimitReason::OutputFile.as_str()),
-                        )
-                    } else if collection.full {
-                        (
-                            JobStatus::LimitExceeded,
-                            Some(LimitReason::OutputTotal.as_str()),
-                        )
-                    } else if exit_code == Some(0) {
-                        (JobStatus::Completed, None)
-                    } else {
-                        (JobStatus::Failed, Some("exit_status"))
-                    };
-                    let record = self
-                        .transition(actor, scope, &record, status, reason, exit_code)
-                        .await?;
-                    // Confirmed termination resolves the dispatched attempt;
-                    // registration is then trusted collection, retried if lost.
-                    self.store.observe(custody, SourceFact::Completed).await?;
-                    return self.register(actor, scope, record, collection).await;
+                    return self.terminate(actor, scope, record, custody, ending).await;
                 }
                 SandboxState::Starting | SandboxState::Running => {
-                    if record.latest.status == JobStatus::PossiblyStarted {
-                        record = self
-                            .transition(actor, scope, &record, JobStatus::Running, None, None)
-                            .await?;
-                        self.store.observe(custody, SourceFact::Accepted).await?;
+                    if state == SandboxState::Running {
+                        if record.latest.status == JobStatus::PossiblyStarted {
+                            record = self
+                                .transition(actor, scope, &record, JobStatus::Running, None, None)
+                                .await?;
+                            self.store.observe(custody, SourceFact::Accepted).await?;
+                        }
+                        if running_since.is_none() {
+                            running_since = Some(Instant::now());
+                        }
                     }
                     if killed.is_none() {
                         if cancellation.is_cancelled() {
                             killed = Some((JobStatus::Stopped, Some("stopped")));
-                        } else if Instant::now() >= deadline {
+                        } else if running_since.is_some_and(|since| {
+                            since.elapsed() >= wall + self.sandbox.wall_grace()
+                        }) || (running_since.is_none()
+                            && started.elapsed() >= self.settings.provisioning)
+                        {
                             killed = Some((
                                 JobStatus::LimitExceeded,
                                 Some(LimitReason::WallTime.as_str()),
                             ));
+                        } else if watch.detached() {
+                            // Stop following; the job continues and is looked
+                            // up again by later recovery.
+                            return Ok(record);
                         }
                         if killed.is_some() {
-                            let _ = self.sandbox.stop(&attempt).await;
+                            let _ = self.sandbox.stop(&attempt, &environment).await;
                             let confirm = Instant::now() + self.settings.stop_confirmation;
-                            state = self.confirm_stop(&attempt, confirm).await;
+                            state = self.confirm_stop(&attempt, &environment, confirm).await;
                             continue;
                         }
                     } else {
@@ -804,17 +970,154 @@ where
             (self.settings.delay)(self.settings.poll).await;
             state = self
                 .sandbox
-                .status(&attempt)
+                .status(&attempt, &environment)
                 .await
                 .unwrap_or(SandboxState::Unconfirmed);
         }
     }
 
-    async fn confirm_stop(&self, attempt: &str, until: Instant) -> SandboxState {
+    /// Confirmed termination: collect (bounded), classify, record the terminal
+    /// fact and its source observation, then register or close.
+    async fn terminate(
+        &self,
+        actor: &str,
+        scope: &Scope,
+        record: JobRecord,
+        custody: &ConsumedOperation,
+        ending: Ending,
+    ) -> Result<JobRecord, AnalysisError> {
+        let attempt = record
+            .latest
+            .attempt_id
+            .clone()
+            .ok_or(AnalysisError::Integrity)?;
+        let limits = record.job.request.limits;
+        let collection = self.collect_bounded(&attempt, &limits).await;
+        let wall = Duration::from_secs(u64::from(limits.wall_seconds));
+        let (status, reason) = if let Some((status, reason)) = ending.killed {
+            (status, reason)
+        } else if ending.out_of_memory {
+            (JobStatus::LimitExceeded, Some(LimitReason::Memory.as_str()))
+        } else if ending.exit_code == Some(SIGKILL_EXIT)
+            && ending.ran_for.is_some_and(|ran| ran >= wall)
+        {
+            // Killed by the in-job wall-time enforcement.
+            (
+                JobStatus::LimitExceeded,
+                Some(LimitReason::WallTime.as_str()),
+            )
+        } else if ending.exit_code == Some(SIGXFSZ_EXIT)
+            || collection.as_ref().is_some_and(|c| {
+                c.entries
+                    .iter()
+                    .any(|e| e.kind == OutputKind::Regular && e.size > limits.output_file_bytes)
+            })
+        {
+            (
+                JobStatus::LimitExceeded,
+                Some(LimitReason::OutputFile.as_str()),
+            )
+        } else if collection.as_ref().is_some_and(|c| c.full) {
+            (
+                JobStatus::LimitExceeded,
+                Some(LimitReason::OutputTotal.as_str()),
+            )
+        } else if ending.exit_code == Some(0) {
+            (JobStatus::Completed, None)
+        } else {
+            (JobStatus::Failed, Some("exit_status"))
+        };
+        let record = self
+            .transition(actor, scope, &record, status, reason, ending.exit_code)
+            .await?;
+        // Confirmed termination resolves the dispatched attempt; registration
+        // is then trusted collection, retried by recovery if lost.
+        self.store.observe(custody, SourceFact::Completed).await?;
+        match collection {
+            Some(collection) => self.register(actor, scope, record, collection).await,
+            None => {
+                self.close(
+                    actor,
+                    scope,
+                    record,
+                    Some(RejectReason::CollectionUnavailable),
+                    Some(COLLECTION_UNAVAILABLE),
+                )
+                .await
+            }
+        }
+    }
+
+    /// Bounded collection after confirmed termination. None: the outputs could
+    /// not be read (for example no manifest after an external stop).
+    async fn collect_bounded(&self, attempt: &str, limits: &AnalysisLimits) -> Option<Collection> {
+        for round in 0..self.settings.collect_attempts.max(1) {
+            if round > 0 {
+                (self.settings.delay)(self.settings.poll).await;
+            }
+            if let Ok(collection) = self.sandbox.collect(attempt, limits).await {
+                return Some(collection);
+            }
+        }
+        None
+    }
+
+    /// Durably close a terminated job with no registered outputs.
+    async fn close(
+        &self,
+        actor: &str,
+        scope: &Scope,
+        record: JobRecord,
+        rejection: Option<RejectReason>,
+        reason: Option<&'static str>,
+    ) -> Result<JobRecord, AnalysisError> {
+        let attempt = record
+            .latest
+            .attempt_id
+            .clone()
+            .ok_or(AnalysisError::Integrity)?;
+        let rejections: Vec<Rejection> = rejection
+            .map(|reason| Rejection {
+                path_sha256: self.objects.measure(b"").sha256,
+                reason,
+            })
+            .into_iter()
+            .collect();
+        let receipt = CollectionReceipt {
+            rejected: rejections
+                .iter()
+                .map(|r| (r.path_sha256.clone(), r.reason))
+                .collect(),
+            reason,
+            ..CollectionReceipt::default()
+        };
+        let record = self
+            .jobs
+            .collect(
+                actor,
+                scope,
+                &record.job.id,
+                record.latest.sequence,
+                &attempt,
+                &[],
+                &rejections,
+                &receipt,
+            )
+            .await?;
+        let _ = self.sandbox.discard(&attempt).await;
+        Ok(record)
+    }
+
+    async fn confirm_stop(
+        &self,
+        attempt: &str,
+        environment: &AnalysisEnvironment,
+        until: Instant,
+    ) -> SandboxState {
         loop {
             let state = self
                 .sandbox
-                .status(attempt)
+                .status(attempt, environment)
                 .await
                 .unwrap_or(SandboxState::Unconfirmed);
             match state {
@@ -823,7 +1126,7 @@ where
                 }
                 _ if Instant::now() >= until => return state,
                 _ => {
-                    let _ = self.sandbox.stop(attempt).await;
+                    let _ = self.sandbox.stop(attempt, environment).await;
                     (self.settings.delay)(self.settings.poll).await;
                 }
             }
@@ -853,34 +1156,6 @@ where
             Ok(()) | Err(OperationError::Conflict) => Ok(record),
             Err(error) => Err(error.into()),
         }
-    }
-
-    async fn collect(
-        &self,
-        actor: &str,
-        scope: &Scope,
-        record: JobRecord,
-        custody: &ConsumedOperation,
-    ) -> Result<JobRecord, AnalysisError> {
-        let attempt = record
-            .latest
-            .attempt_id
-            .clone()
-            .ok_or(AnalysisError::Integrity)?;
-        match self.sandbox.status(&attempt).await {
-            Ok(SandboxState::Exited { .. }) => {}
-            // Terminated outputs that cannot be read again are not registered.
-            Ok(SandboxState::Absent | SandboxState::Unconfirmed) => {
-                return self.unknown(actor, scope, &record, custody).await;
-            }
-            _ => return Err(AnalysisError::Unavailable),
-        }
-        let collection = self
-            .sandbox
-            .collect(&attempt, &record.job.request.limits)
-            .await
-            .map_err(|_| AnalysisError::Unavailable)?;
-        self.register(actor, scope, record, collection).await
     }
 
     /// Validate, measure and register descendants through the immutable
@@ -940,6 +1215,7 @@ where
             descendants.push(Descendant {
                 id,
                 path: accepted.path.clone(),
+                fold_key: accepted.fold_key.clone(),
                 media_type: accepted.media_type,
                 identity,
                 namespace: self.objects.namespace().into(),

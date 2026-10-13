@@ -1523,6 +1523,11 @@ panels.
 
 ## Measured analysis in an isolated workspace (Story 22.4)
 
+**No production entry point admits an analysis job yet.** No HTTP route, model
+tool or composition builds an analysis target, so `Analysis::admit` is called
+only by tests. The worker can run and recover jobs that a later model-tool
+story will create, with its own admission, policy and attachment classification.
+
 Schema 15 is additive; published migrations and catalogues 1–14 are unchanged.
 An analysis job is an exact recorded operation through the existing operation
 store: admission, the consume cutoff and dispatch/lookup are Story 20.5's, never
@@ -1535,42 +1540,100 @@ pinned by digest; a request naming anything else is refused before any write.
 Limits are bounded by the owner ceiling: 2 vCPU, 4 GiB, 256 PIDs, 15 minutes,
 100 MiB of outputs (10 MiB per file, 64 files).
 
-New tables: `analysis_jobs`, `analysis_job_events` (the durable status:
-`admitted`, `possibly_started`, `running`, `completed`, `failed`,
+New tables: `analysis_jobs` (with `admitted_us`, the microsecond admission
+order that makes pending work oldest-first), `analysis_job_events` (the durable
+status: `admitted`, `possibly_started`, `running`, `completed`, `failed`,
 `limit_exceeded`, `stopped`, `collected`, `unknown`, `absent`),
 `analysis_descendants` and `analysis_rejections`. Runtime has SELECT/INSERT
 only; `analysis_event_guard` refuses an out-of-sequence or impossible
-transition, `analysis_output_guard` admits outputs only for the latest
+transition (a `failed` after `absent` only as `start_refused` after eight
+attempts), `analysis_output_guard` admits outputs only for the latest
 collectable attempt with parents equal to the job's inputs, and
 `analysis_immutable` refuses every update.
 
-`possibly_started` is written before anything is staged. A sandbox that was
-never started (or is authoritatively absent) is `absent` and retryable under a
-fresh claim; a job whose termination cannot be confirmed is `unknown`: it is
-never retried automatically and no output is collected. Outputs are collected
-only after confirmed termination and validated: relative UTF-8 paths, no `..`,
-absolute, NUL or control characters, bounded length and depth, unique
-(including case-insensitively — every colliding member is refused), regular
-files only (symlinks, hard links, devices, FIFOs and sockets are refused),
-per-file, total and count limits, the allowlisted media types (`text/csv`,
-`application/json`, `text/markdown`, `text/plain`) and a trusted SHA-256.
-Accepted files are registered through 21.1 evidence custody as descendants of
-the pinned originals. Receipts and logs hold only IDs, digests, sizes, counts
-and closed reason codes, never program text, input bytes or output contents.
-Lost-job recovery (`WorkRunner::reconcile`) uses restricted receipt custody,
-looks the sandbox up and resumes the watch or collection; it never dispatches.
+Every job reaches a durable outcome:
+
+- `possibly_started` is written before anything is staged. Any failure before
+  the sandbox is dispatched (staging, credentials, presigning) is a refusal: the
+  attempt is `absent` and retryable under a fresh claim. After
+  `MAX_START_ATTEMPTS` (8) such attempts the job is `failed:start_refused` and
+  closed with an empty collection.
+- The wall limit starts when the sandbox first reports Running; a sandbox that
+  never reaches Running within the provisioning bound is stopped. A job whose
+  termination cannot be confirmed is `unknown`: never retried automatically and
+  no outputs are collected (operator reconciliation is a later story).
+- After confirmed termination, collection is attempted a bounded number of
+  times. If the outputs cannot be read (for example no collector manifest) the
+  terminal fact is still recorded (`completed`, `failed` or
+  `limit_exceeded:<reason>`) and the job is closed `collected` with reason
+  `collection_unavailable` and no descendants.
+- A settled fact whose source observation was lost is found again by
+  `pending()` and the observation is re-issued; identical observations are
+  idempotent. A job whose recovery fails is skipped so the Task's other jobs
+  still run.
+- Lost-job recovery (`WorkRunner::reconcile`) uses restricted receipt custody,
+  looks the sandbox up and resumes the watch or collection for at most
+  `RECONCILE_WATCH` (30 s), detaching (never stopping) on worker shutdown; it
+  never dispatches and never blocks the coordinator for a long job.
+
+Outputs are validated by the trusted Rust validator: relative UTF-8 paths, no
+`..`, absolute, NUL or control characters, bounded length (255 bytes) and depth
+(8), unique — including case-insensitively by one folding rule
+(`fold_key`: NFC, Unicode full case folding, NFC), which is also the database
+unique key (`analysis_descendants.fold_key`) — regular files only (symlinks,
+hard links, devices, FIFOs and sockets are refused), per-file, total and count
+limits, the allowlisted media types (`text/csv`, `application/json`,
+`text/markdown`, `text/plain`) and a trusted SHA-256. One trusted collector
+script (`deploy/qualification/analysis/collect.py`) serves both sandboxes; it
+never fails on a hostile entry (unreadable entries are kind `other`, names past
+the path bound are withheld as `too_long`, at most 1,024 entries) and says why it
+withheld bytes (`slots`, `budget`, `unreadable`), which become `too_many_files`,
+`total_too_large` and `not_regular`. Accepted files are registered through 21.1
+evidence custody as descendants of the pinned originals.
+
+Receipts and logs hold only IDs, digests, sizes, counts and closed reason codes,
+never program text, input bytes or output contents. A receipt carries exact
+rejection counts per reason and a sample of at most 32 rejections (every
+rejection is its own row), so any collected tree fits its bound. **Accepted
+output paths are stored in plain text** in `analysis_descendants.path`: they are
+the descendant's name for inspection and provenance. A path is program-chosen
+(bounded to 255 bytes) and must be treated as untrusted text; rejected paths are
+stored only as SHA-256.
+
+What the job sees. In both sandboxes the program receives no Zobba, AWS, proxy
+or model variable, no credential and no task role:
+
+- Docker test sandbox: only the pinned image's own defaults (`PATH`, `LANG`,
+  `GPG_KEY`, `PYTHON_VERSION`, `PYTHON_SHA256`) plus `HOSTNAME` and `HOME`;
+  `--network none`, so no endpoint at all is reachable.
+- Fargate: the image defaults plus what ECS injects into every container
+  (`ECS_CONTAINER_METADATA_URI`, `ECS_CONTAINER_METADATA_URI_V4`,
+  `ECS_AGENT_URI`, `AWS_EXECUTION_ENV`, `AWS_REGION`, `AWS_DEFAULT_REGION`).
+  The ECS task metadata endpoint (`169.254.170.2/v4/...`) is reachable: it
+  discloses task metadata (task and container ARNs, image, limits, network,
+  stats) but no credentials, because the task has no task role
+  (`AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` is never set). Fargate offers no
+  way to block it.
 
 Sandboxes. Production configures only Fargate (`ZOBBA_ANALYSIS_SANDBOX=fargate`
-with the `ZOBBA_ANALYSIS_*` variables Terraform sets). Any other value,
-including `docker`, refuses to start. The Fargate job task has no task role,
-runs in isolated subnets whose only route out is a dedicated S3 gateway
-endpoint restricted to the job's staging prefix and ECR layers, and receives
-only a presigned manifest URL in its trusted stage container; the untrusted
-program runs as 65534 with read-only inputs, `/output` and `/tmp` writable, no
-capabilities and no environment. The local Docker sandbox exists only behind
-the infrastructure `test-docker-sandbox` feature (`--network none`, read-only
-root, all capabilities dropped, `no-new-privileges`, non-root, PID/memory/CPU/
-file-size limits, tmpfs `/tmp` and output) and is used by the hostile fixtures.
+with exactly the names in `deploy/qualification/analysis/worker-environment.json`,
+which Terraform sets and the Rust tests check). Any other value, including
+`docker`, refuses to start. The Fargate job task has no task role and runs in a
+dedicated analysis VPC: no internet route, a S3 gateway endpoint restricted to
+the job's staging prefix and ECR layers, ECR and Logs interface endpoints only,
+and a resolver DNS firewall that answers only those names (fail closed). Only
+the trusted stage container receives a presigned manifest URL (lifetime =
+provisioning + wall + grace + collection, refused if the signing session ends
+sooner); the program runs as 65534 under an in-job `timeout -s KILL <wall>` so
+the trusted collector still runs afterwards, with read-only inputs, only
+`/output` and `/tmp` writable, no capabilities, no environment and no log
+configuration (its stdout and stderr never reach CloudWatch). The task ARN and
+the first observed terminal facts are persisted to the staging prefix, so a
+finished task stays known after ECS forgets it. The local Docker sandbox exists
+only behind the infrastructure `test-docker-sandbox` feature (`--network none`,
+read-only root, all capabilities dropped, `no-new-privileges`, non-root,
+PID/memory/CPU/file-size limits, tmpfs `/tmp` and output); CI checks that no
+release build enables it.
 
 Verification (offline; no AWS call):
 
@@ -1578,15 +1641,18 @@ Verification (offline; no AWS call):
 cd zobba
 cargo test -p zobba-domain analysis
 cargo test -p zobba-application analysis
-cargo test -p zobba-infrastructure --lib analysis      # SigV4 vectors, Fargate stub
+cargo test -p zobba-infrastructure --lib analysis      # SigV4 vectors, Fargate stub, env contract
 cargo test -p zobba-worker --test analysis_sandbox -- --test-threads=1   # guarded _test DB + Docker
 terraform -chdir=deploy/qualification test
 ```
 
 The worker test pulls the pinned image by digest and runs real hostile programs:
 a credential probe, symlink/hard-link/FIFO/socket/case-collision outputs, a fork
-bomb, memory and output exhaustion, an endless loop, Stop during a run and
-lost-job recovery. Live Fargate qualification belongs to Story 20.7b.
+bomb, memory and output exhaustion, an endless loop, a hostile tree past every
+collector bound, Stop during a run, lost-job recovery (directly and through the
+coordinator), both collector modes over one tree, the stage script against a
+local manifest server, and owner SQL each database guard refuses. Live Fargate
+qualification belongs to Story 20.7b.
 
 ## Establishing an engagement conversationally (Story 22.2 AC4)
 
