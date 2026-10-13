@@ -318,16 +318,28 @@ fn media_types_are_decided_by_trusted_extension_mapping() {
     assert_eq!(media_type_for(".csv"), None);
     assert_eq!(media_type_for("noext"), None);
     assert_eq!(media_type_for("image.png"), Some("image/png"));
+    // Story 22.5: the general environment admits page images (the trusted
+    // document program writes them); an environment without them refuses.
     let environment = environment();
     let result = validate_outputs(
         &[regular("image.png", b"x")],
         &AnalysisLimits::DEFAULT,
         &environment,
     );
+    assert!(result.rejected.is_empty(), "png is a general page image");
+    let narrow = AnalysisEnvironment {
+        media_types: vec!["text/csv".into()],
+        ..environment
+    };
+    let result = validate_outputs(
+        &[regular("image.png", b"x")],
+        &AnalysisLimits::DEFAULT,
+        &narrow,
+    );
     assert_eq!(
         result.rejected[0].reason,
         RejectReason::MediaType,
-        "png is not allowed by the general environment"
+        "png is not allowed by an environment that does not list it"
     );
 }
 
