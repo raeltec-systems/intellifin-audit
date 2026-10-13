@@ -287,6 +287,14 @@ pub trait ReadingStore: Send + Sync {
         scope: &Scope,
         job_id: &str,
     ) -> impl Future<Output = Result<Vec<Descendant>, ReadingError>> + Send;
+    /// The terminal status of a collected job whose program itself failed or
+    /// hit a limit (`failed`, `limit_exceeded`), or None when it completed.
+    fn job_failure(
+        &self,
+        actor: &str,
+        scope: &Scope,
+        job_id: &str,
+    ) -> impl Future<Output = Result<Option<String>, ReadingError>> + Send;
     /// Page reads of one Task, oldest first.
     fn page_reads(
         &self,
@@ -911,6 +919,16 @@ where
         if let Some(read) = same.iter().find(|r| r.status == ReadStatus::Read) {
             return Ok((*read).clone());
         }
+        // A failure that is a fact about the document, not the model, is
+        // settled: asking again (for example on a reclaim) reads nothing new.
+        if let Some(read) = same.iter().find(|r| {
+            matches!(
+                r.reason.as_deref(),
+                Some("page_not_found" | "page_too_large" | "not_a_paged_document" | "source_unreadable")
+            )
+        }) {
+            return Ok((*read).clone());
+        }
         let distinct = reads
             .iter()
             .filter(|r| r.original_id == original.id)
@@ -1175,7 +1193,22 @@ where
                 )
                 .await;
         }
-        // The job's own terminal fact: completed, failed or a limit.
+        // The job's own terminal fact: a program that failed or hit a limit
+        // produced no validated outputs to rely on.
+        if let Some(reason) = self
+            .store
+            .job_failure(&basis.actor_id, &basis.scope, &record.job.id)
+            .await?
+        {
+            let reason = match reason.as_str() {
+                "failed" => "program_failed",
+                _ => "program_limit",
+            };
+            return self
+                .store
+                .record_program_run(basis, &refused(reason, Some(record.job.id.clone())))
+                .await;
+        }
         let outputs = self
             .store
             .job_outputs(&basis.actor_id, &basis.scope, &record.job.id)

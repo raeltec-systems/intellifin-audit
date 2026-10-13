@@ -295,7 +295,7 @@ fn segment(text: &str, sources: Vec<serde_json::Value>) -> serde_json::Value {
     serde_json::json!({"text": text, "sources": sources})
 }
 
-const PROGRAM: &str = "import openpyxl\nbook = openpyxl.load_workbook('/input/trial-balance', data_only=True)\nopen('/output/total.txt', 'w').write(f\"Total {book['Sheet1']['B4'].value}\\n\")\n";
+const PROGRAM: &str = "import openpyxl\nbook = openpyxl.load_workbook(open('/input/trial-balance', 'rb'), data_only=True)\nopen('/output/total.txt', 'w').write(f\"Total {book['Sheet1']['B4'].value}\\n\")\n";
 
 /// The model's first answer asks to read a scanned page natively, a page past
 /// the end of a PDF, and to run its own analysis program.
@@ -613,6 +613,7 @@ async fn cited_answers_are_read_and_verified_against_exact_originals() {
         .collect();
     assert_eq!(images, [0, 1, 0], "no whole document is sent in any request");
     assert!(bodies[1].contains("data:image/png;base64,"));
+    std::fs::write(std::env::temp_dir().join("zobba-citations-turn2.json"), &bodies[2]).unwrap();
     assert!(
         bodies[2].contains("Signed by A. Auditor") && bodies[2].contains("Total 1250"),
         "the next turn reads the transcription and the program's validated output"

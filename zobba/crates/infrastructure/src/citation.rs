@@ -434,6 +434,18 @@ impl ReadingStore for CitationRepository {
         tx.commit().await.map_err(unavailable)?;
         Ok(stored)
     }
+    async fn job_failure(
+        &self,
+        actor: &str,
+        s: &Scope,
+        job_id: &str,
+    ) -> Result<Option<String>, ReadingError> {
+        let mut tx = begin(&self.pool, actor, s).await?;
+        let status: Option<String> = sqlx::query_scalar("SELECT status FROM public.analysis_job_events WHERE job_id=$1 AND status IN ('failed','limit_exceeded') ORDER BY sequence DESC LIMIT 1")
+            .bind(job_id).fetch_optional(&mut *tx).await.map_err(unavailable)?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(status)
+    }
     async fn job_outputs(
         &self,
         actor: &str,

@@ -209,6 +209,9 @@ impl ReadingStore for Store<'_> {
     async fn job_outputs(&self, _: &str, _: &Scope, job_id: &str) -> Result<Vec<Descendant>, ReadingError> {
         Ok(self.world.jobs.descendants_of(job_id))
     }
+    async fn job_failure(&self, _: &str, _: &Scope, _: &str) -> Result<Option<String>, ReadingError> {
+        Ok(None)
+    }
     async fn page_reads(&self, _: &str, _: &Scope, _: &str) -> Result<Vec<PageRead>, ReadingError> {
         Ok(self.facts.reads.lock().unwrap().clone())
     }
