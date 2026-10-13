@@ -79,3 +79,19 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-22-4-run-measured-analysis-in-an-isolated-workspace.md`
   summary: Live Fargate qualification of analysis jobs — a real isolated job in AWS with credential/metadata denial, terminate/restart reconciliation and staging/collection over real presigned S3 URLs.
   evidence: Owner kept 22.4 as one story (2026-10-13) but no AWS account exists yet; the Fargate adapter is verified offline only and the live proof joins Story 20.7b.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-22-4-run-measured-analysis-in-an-isolated-workspace.md`
+  summary: No production entry point admits an analysis job yet — no HTTP route, model tool or composition builds an analysis target, so the worker can run and recover jobs nothing can create.
+  evidence: The 22.4 spec put model-tool exposure out of scope; Analysis::admit is called only from tests. The later model-tool story must add admission, policy and attachment classification.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-22-4-run-measured-analysis-in-an-isolated-workspace.md`
+  summary: There is no operator command, endpoint or runbook procedure to reconcile an analysis job recorded as unknown, although the domain and database allow unknown → terminal for explicit reconciliation.
+  evidence: pending() excludes unknown jobs, so they leave automatic handling; the Task gets only a Reconcile cycle end and an analysis_unresolved diagnostic.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-22-4-run-measured-analysis-in-an-isolated-workspace.md`
+  summary: Analysis admission sets operation expires_at from the worker's local clock (unix_now) instead of database time used by the other authority checks.
+  evidence: Clock skew between worker and database could admit an operation with a wrong expiry.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-22-4-run-measured-analysis-in-an-isolated-workspace.md`
+  summary: The analysis application tests use the real wall clock (busy-loops of 1–2 s) instead of an injected clock.
+  evidence: Instant::now() is called directly; the wall-time tests are slow and timing-dependent.
