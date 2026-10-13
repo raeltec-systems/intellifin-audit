@@ -139,13 +139,13 @@ variable "db_instance_class" {
 }
 
 variable "db_engine_version" {
-  description = "RDS PostgreSQL engine version. Major version 18 is required."
+  description = "Exact RDS PostgreSQL 18 minor version. Minor upgrades are explicit changes to this value (RUNBOOK section 7), never automatic."
   type        = string
-  default     = "18"
+  default     = "18.6"
 
   validation {
-    condition     = can(regex("^18(\\.[0-9]+)?$", var.db_engine_version))
-    error_message = "db_engine_version must be PostgreSQL 18 (for example 18 or 18.4)."
+    condition     = can(regex("^18\\.[0-9]+$", var.db_engine_version))
+    error_message = "db_engine_version must be an exact PostgreSQL 18 minor version such as 18.6."
   }
 }
 
@@ -175,12 +175,31 @@ variable "task_cpu" {
   description = "Fargate CPU units per task."
   type        = number
   default     = 256
+
+  validation {
+    condition     = contains([256, 512, 1024, 2048, 4096, 8192, 16384], var.task_cpu)
+    error_message = "task_cpu must be a Fargate CPU value: 256, 512, 1024, 2048, 4096, 8192 or 16384."
+  }
 }
 
 variable "task_memory" {
-  description = "Fargate memory (MiB) per task."
+  description = "Fargate memory (MiB) per task; must be valid for task_cpu."
   type        = number
   default     = 512
+
+  validation {
+    condition = (
+      var.task_cpu == 256 ? contains([512, 1024, 2048], var.task_memory) :
+      var.task_cpu == 512 ? contains([1024, 2048, 3072, 4096], var.task_memory) :
+      var.task_cpu == 1024 ? var.task_memory >= 2048 && var.task_memory <= 8192 && var.task_memory % 1024 == 0 :
+      var.task_cpu == 2048 ? var.task_memory >= 4096 && var.task_memory <= 16384 && var.task_memory % 1024 == 0 :
+      var.task_cpu == 4096 ? var.task_memory >= 8192 && var.task_memory <= 30720 && var.task_memory % 1024 == 0 :
+      var.task_cpu == 8192 ? var.task_memory >= 16384 && var.task_memory <= 61440 && var.task_memory % 4096 == 0 :
+      var.task_cpu == 16384 ? var.task_memory >= 32768 && var.task_memory <= 122880 && var.task_memory % 8192 == 0 :
+      false
+    )
+    error_message = "task_memory is not a valid Fargate memory size for task_cpu (for 256 CPU: 512, 1024 or 2048)."
+  }
 }
 
 variable "image_digest" {
@@ -255,5 +274,44 @@ variable "log_retention_days" {
   validation {
     condition     = contains([7, 14, 30, 60, 90, 180, 365], var.log_retention_days)
     error_message = "log_retention_days must be one of 7, 14, 30, 60, 90, 180 or 365."
+  }
+}
+
+variable "restrict_alb_to_vpc_origin_sg" {
+  description = "Second apply: replace the CloudFront prefix-list ALB rule with the AWS service-managed CloudFront-VPCOrigins-Service-SG, which exists only after the VPC origin is created (RUNBOOK section 3)."
+  type        = bool
+  default     = false
+}
+
+variable "deployment_generation" {
+  description = "Increase when this environment is recreated after a destroy, so the RDS final snapshot name does not collide with a retained one."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.deployment_generation >= 1 && floor(var.deployment_generation) == var.deployment_generation
+    error_message = "deployment_generation must be a whole number of at least 1."
+  }
+}
+
+variable "secret_recovery_window_days" {
+  description = "Secrets Manager recovery window after a secret is deleted. 0 deletes at once (only for a deliberate re-apply after destroy, RUNBOOK section 9)."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.secret_recovery_window_days == 0 || (var.secret_recovery_window_days >= 7 && var.secret_recovery_window_days <= 30)
+    error_message = "secret_recovery_window_days must be 0 or between 7 and 30."
+  }
+}
+
+variable "release_branch" {
+  description = "The only branch the release workflow may deploy (GitHub variable RELEASE_BRANCH; also set as the qualification environment's deployment-branch rule)."
+  type        = string
+  default     = "main"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9._/-]+$", var.release_branch)) && !startswith(var.release_branch, "refs/")
+    error_message = "release_branch must be a branch name (without refs/heads/)."
   }
 }

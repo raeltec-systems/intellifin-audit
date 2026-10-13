@@ -18,3 +18,4 @@ github_repository        = "OWNER/intellifin-audit"
 
 # Set after the first successful release (see ../RUNBOOK.md "First release"):
 # image_digest = "sha256:..."
+# restrict_alb_to_vpc_origin_sg = true   # second apply (RUNBOOK section 3)

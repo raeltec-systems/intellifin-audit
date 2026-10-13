@@ -11,14 +11,49 @@ resource "aws_security_group" "alb" {
   tags        = { Name = "${local.name}-alb" }
 }
 
+# CloudFront VPC origin ingress (AWS docs, "Restrict access with VPC origins",
+# Security Group Configuration). Two documented options:
+#   1. the CloudFront origin-facing managed prefix list - usable before the VPC
+#      origin exists, so it is what the first apply uses;
+#   2. the AWS service-managed group "CloudFront-VPCOrigins-Service-SG", which
+#      CloudFront creates in this VPC when the VPC origin is created. It admits
+#      only CloudFront VPC-origin traffic and is the stricter rule.
+# After the first apply, set restrict_alb_to_vpc_origin_sg = true and apply
+# again (RUNBOOK section 3): the prefix-list rule is then replaced by a rule
+# referencing the service-managed group. Neither option opens 0.0.0.0/0 or the
+# VPC CIDR.
+
+data "aws_security_group" "cloudfront_vpc_origin" {
+  count  = var.restrict_alb_to_vpc_origin_sg ? 1 : 0
+  vpc_id = aws_vpc.this.id
+
+  filter {
+    name   = "group-name"
+    values = ["CloudFront-VPCOrigins-Service-SG*"]
+  }
+
+  depends_on = [aws_cloudfront_vpc_origin.api]
+}
+
 resource "aws_vpc_security_group_ingress_rule" "alb_from_cloudfront" {
   #checkov:skip=CKV_AWS_260:source is the CloudFront origin-facing managed prefix list, not 0.0.0.0/0
+  count             = var.restrict_alb_to_vpc_origin_sg ? 0 : 1
   security_group_id = aws_security_group.alb.id
-  description       = "HTTP from the CloudFront origin-facing prefix list (VPC origin)"
+  description       = "HTTP from the CloudFront origin-facing prefix list (VPC origin, first apply)"
   prefix_list_id    = data.aws_ec2_managed_prefix_list.cloudfront_origin.id
   ip_protocol       = "tcp"
   from_port         = 80
   to_port           = 80
+}
+
+resource "aws_vpc_security_group_ingress_rule" "alb_from_vpc_origin_sg" {
+  count                        = var.restrict_alb_to_vpc_origin_sg ? 1 : 0
+  security_group_id            = aws_security_group.alb.id
+  description                  = "HTTP from the CloudFront service-managed VPC origin security group"
+  referenced_security_group_id = data.aws_security_group.cloudfront_vpc_origin[0].id
+  ip_protocol                  = "tcp"
+  from_port                    = 80
+  to_port                      = 80
 }
 
 resource "aws_vpc_security_group_egress_rule" "alb_to_api" {

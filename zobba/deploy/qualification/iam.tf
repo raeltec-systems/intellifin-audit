@@ -237,11 +237,31 @@ resource "aws_iam_role_policy" "release" {
         }
       },
       {
-        # These ECS actions do not support resource-level scoping.
+        # These ECS actions do not support resource-level scoping. PassRole
+        # below limits which roles a registered revision can carry, but cannot
+        # bind a role to a family (RUNBOOK "Release" residual risk).
         Sid      = "TaskDefinitions"
         Effect   = "Allow"
-        Action   = ["ecs:DescribeTaskDefinition", "ecs:RegisterTaskDefinition"]
+        Action   = ["ecs:DescribeTaskDefinition", "ecs:RegisterTaskDefinition", "ecs:ListTaskDefinitions"]
         Resource = "*"
+      },
+      {
+        Sid      = "TagReleaseRevisions"
+        Effect   = "Allow"
+        Action   = "ecs:TagResource"
+        Resource = [for family in local.release_task_families : "arn:${local.partition}:ecs:${var.region}:${local.account_id}:task-definition/${local.name}-${family}:*"]
+        Condition = {
+          StringEquals = { "ecs:CreateAction" = "RegisterTaskDefinition" }
+        }
+      },
+      {
+        Sid      = "FindRunningMigrations"
+        Effect   = "Allow"
+        Action   = "ecs:ListTasks"
+        Resource = "*"
+        Condition = {
+          ArnEquals = { "ecs:cluster" = aws_ecs_cluster.this.arn }
+        }
       },
       {
         # Only the release migration task can be run; never the role bootstrap.
@@ -256,7 +276,7 @@ resource "aws_iam_role_policy" "release" {
       {
         Sid      = "ObserveMigration"
         Effect   = "Allow"
-        Action   = "ecs:DescribeTasks"
+        Action   = ["ecs:DescribeTasks", "ecs:StopTask"]
         Resource = "arn:${local.partition}:ecs:${var.region}:${local.account_id}:task/${aws_ecs_cluster.this.name}/*"
       },
       {

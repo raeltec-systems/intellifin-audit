@@ -114,3 +114,36 @@ run "unpinned_bootstrap_image_is_refused" {
   }
   expect_failures = [var.bootstrap_image]
 }
+
+run "invalid_fargate_memory_is_refused" {
+  command = plan
+  variables {
+    task_cpu    = 256
+    task_memory = 4096
+  }
+  expect_failures = [var.task_memory]
+}
+
+run "invalid_fargate_cpu_is_refused" {
+  command = plan
+  variables {
+    task_cpu = 300
+  }
+  expect_failures = [var.task_cpu]
+}
+
+run "major_only_engine_version_is_refused" {
+  command = plan
+  variables {
+    db_engine_version = "18"
+  }
+  expect_failures = [var.db_engine_version]
+}
+
+run "short_secret_recovery_window_is_refused" {
+  command = plan
+  variables {
+    secret_recovery_window_days = 3
+  }
+  expect_failures = [var.secret_recovery_window_days]
+}

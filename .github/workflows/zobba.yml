@@ -186,12 +186,18 @@ jobs:
           python -m pip install --disable-pip-version-check "checkov==$CHECKOV_VERSION"
           checkov -d zobba/deploy/qualification --framework terraform --skip-path tests --quiet --compact
           checkov -f .github/workflows/zobba-qualification-release.yml --framework github_actions --quiet --compact
-          if grep -rhoE '#checkov:skip=[A-Z0-9_]+(:)?' zobba/deploy/qualification --include='*.tf' | grep -v ':$'; then
+          # Every suppression needs an ID, a colon and a non-empty reason.
+          if grep -rhE '#checkov:skip=' zobba/deploy/qualification --include='*.tf' \
+             | grep -vE '#checkov:skip=[A-Z0-9_]+:[[:space:]]*[^[:space:]]'; then
             echo "::error::every checkov suppression must carry a reason"
             exit 1
           fi
       - name: Release workflow order, trigger and pinning (static)
         run: python zobba/deploy/qualification/tests/check_release_workflow.py
+      - name: Release scripts against a stubbed aws CLI (exit 1/None/empty, timeout, rollback)
+        run: |
+          python -m pip install --disable-pip-version-check "jmespath==1.0.1"
+          zobba/deploy/release/tests/release-scripts.test.sh
       - name: Lint workflows (actionlint with shellcheck)
         run: |
           archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
@@ -201,6 +207,7 @@ jobs:
           tar xzf "$archive" actionlint
           ./actionlint .github/workflows/zobba.yml .github/workflows/zobba-qualification-release.yml
           shellcheck -s sh zobba/deploy/qualification/bootstrap-roles.sh
+          shellcheck zobba/deploy/release/*.sh zobba/deploy/release/tests/*.sh zobba/deploy/qualification/tests/*.sh
       - name: Build the qualification image
         run: docker build -f zobba/deploy/Containerfile -t zobba-qualification:ci zobba
       - name: Image smoke (openapi matches, non-root, no default process)
@@ -209,27 +216,25 @@ jobs:
           cmp "$RUNNER_TEMP/openapi.json" zobba/openapi.json
           test "$(docker inspect zobba-qualification:ci --format '{{.Config.User}}')" = "10001:10001"
           test "$(docker inspect zobba-qualification:ci --format '{{json .Config.Cmd}}{{json .Config.Entrypoint}}')" = "nullnull"
-      - name: Role bootstrap as a non-superuser master, then migrate and readiness from the image
+      - name: Role bootstrap as a non-superuser master, including refusal cases
         env:
           PGHOST: 127.0.0.1
           PGPORT: '5432'
-          PGDATABASE: postgres
+          SUPERUSER_PASSWORD: disposable-ci-admin
+        run: zobba/deploy/qualification/tests/bootstrap-roles.test.sh
+      - name: Migrate, then API and worker readiness from the image (read-only, worker with no arguments)
         run: |
-          # RDS gives the master CREATEROLE/CREATEDB, not SUPERUSER; mirror that.
-          PGUSER=postgres PGPASSWORD=disposable-ci-admin \
-            psql -v ON_ERROR_STOP=1 -c "CREATE ROLE ci_master LOGIN CREATEROLE CREATEDB PASSWORD 'disposable-ci-master'"
           migrator_url='postgres://zobba_migrator:ciMigratorPassword1@127.0.0.1:5432/zobba?sslmode=prefer'
           runtime_url='postgres://zobba_app:ciRuntimePassword1@127.0.0.1:5432/zobba?sslmode=prefer'
-          for attempt in 1 2; do
-            PGUSER=ci_master PGPASSWORD=disposable-ci-master ZOBBA_DATABASE_NAME=zobba \
-              ZOBBA_MIGRATION_DATABASE_URL="$migrator_url" ZOBBA_RUNTIME_DATABASE_URL="$runtime_url" \
-              sh zobba/deploy/qualification/bootstrap-roles.sh
-            echo "bootstrap run $attempt passed"
-          done
           docker run --rm --read-only --network host -e ZOBBA_MIGRATION_DATABASE_URL="$migrator_url" \
             zobba-qualification:ci /usr/local/bin/zobba-cli migrate --runtime-role zobba_app
           docker run -d --name zobba-api-smoke --read-only --network host \
             -e ZOBBA_API_BIND=127.0.0.1:4310 -e ZOBBA_RUNTIME_DATABASE_URL="$runtime_url" \
             --entrypoint /usr/local/bin/zobba-api zobba-qualification:ci
+          docker run -d --name zobba-worker-smoke --read-only --network host \
+            -e ZOBBA_WORKER_BIND=127.0.0.1:4311 -e ZOBBA_RUNTIME_DATABASE_URL="$runtime_url" \
+            --entrypoint /usr/local/bin/zobba-worker zobba-qualification:ci
+          test "$(docker inspect zobba-worker-smoke --format '{{json .Args}}')" = "[]"
           curl --retry 10 --retry-connrefused --retry-delay 1 --max-time 3 --fail --silent http://127.0.0.1:4310/health/ready
-          docker rm -f zobba-api-smoke
+          curl --retry 10 --retry-connrefused --retry-delay 1 --max-time 3 --fail --silent http://127.0.0.1:4311/health/ready
+          docker rm -f zobba-api-smoke zobba-worker-smoke

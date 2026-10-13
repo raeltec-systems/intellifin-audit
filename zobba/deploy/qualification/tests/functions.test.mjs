@@ -26,6 +26,10 @@ test('the query string is untouched', () => {
 
 test('client-side routes are served index.html; files are not rewritten', () => {
   const routes = load('web-routes');
-  for (const uri of ['/', '/status', '/membership', '/methodology/x']) assert.equal(run(routes, uri), '/index.html', uri);
-  for (const uri of ['/index.html', '/assets/index-abc123.js', '/favicon.svg']) assert.equal(run(routes, uri), uri, uri);
+  for (const uri of ['/', '/status', '/membership', '/methodology/x', '/engagements/acme.co', '/v1.2/review', '/a.b']) {
+    assert.equal(run(routes, uri), '/index.html', uri);
+  }
+  for (const uri of ['/index.html', '/assets/index-abc123.js', '/assets/fonts/x.woff2', '/assets/data', '/favicon.svg', '/robots.txt']) {
+    assert.equal(run(routes, uri), uri, uri);
+  }
 });

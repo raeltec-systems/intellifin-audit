@@ -37,7 +37,10 @@ locals {
         Resource  = "*"
         Condition = {
           ArnLike = {
-            "kms:EncryptionContext:aws:logs:arn" = "arn:${local.partition}:logs:${var.region}:${local.account_id}:log-group:/${local.name}/*"
+            "kms:EncryptionContext:aws:logs:arn" = [
+              "arn:${local.partition}:logs:${var.region}:${local.account_id}:log-group:/${local.name}/*",
+              "arn:${local.partition}:logs:${var.region}:${local.account_id}:log-group:/aws/rds/instance/${local.name}/*",
+            ]
           }
         }
       },

@@ -7,16 +7,28 @@ set -eu
 # secrets always agree. Generated passwords are alphanumeric, so they appear
 # in the URLs without percent-encoding.
 
-migrator_rest="${ZOBBA_MIGRATION_DATABASE_URL#postgres://zobba_migrator:}"
-runtime_rest="${ZOBBA_RUNTIME_DATABASE_URL#postgres://zobba_app:}"
-if [ "$migrator_rest" = "$ZOBBA_MIGRATION_DATABASE_URL" ] || [ "$runtime_rest" = "$ZOBBA_RUNTIME_DATABASE_URL" ]; then
-  echo "bootstrap: unexpected database URL form" >&2
-  exit 2
-fi
-ZOBBA_MIGRATOR_PASSWORD="${migrator_rest%%@*}"
-ZOBBA_RUNTIME_PASSWORD="${runtime_rest%%@*}"
+# Refuse anything but postgres://<role>:<alphanumeric password>@<host...>.
+url_password() {
+  case "$2" in
+    "postgres://$1:"*@*) ;;
+    *) echo "bootstrap: $1 URL secret is malformed" >&2; exit 2 ;;
+  esac
+  rest="${2#"postgres://$1:"}"
+  password="${rest%%@*}"
+  host="${rest#*@}"
+  case "$password" in
+    "" | *[!A-Za-z0-9]*) echo "bootstrap: $1 URL secret is malformed" >&2; exit 2 ;;
+  esac
+  case "$host" in
+    "" | /* | @*) echo "bootstrap: $1 URL secret is malformed" >&2; exit 2 ;;
+  esac
+  printf '%s' "$password"
+}
+
+ZOBBA_MIGRATOR_PASSWORD="$(url_password zobba_migrator "${ZOBBA_MIGRATION_DATABASE_URL:-}")"
+ZOBBA_RUNTIME_PASSWORD="$(url_password zobba_app "${ZOBBA_RUNTIME_DATABASE_URL:-}")"
 export ZOBBA_MIGRATOR_PASSWORD ZOBBA_RUNTIME_PASSWORD
-unset ZOBBA_MIGRATION_DATABASE_URL ZOBBA_RUNTIME_DATABASE_URL migrator_rest runtime_rest
+unset ZOBBA_MIGRATION_DATABASE_URL ZOBBA_RUNTIME_DATABASE_URL
 
 psql --no-psqlrc --quiet -v ON_ERROR_STOP=1 <<'SQL'
 \getenv migrator_password ZOBBA_MIGRATOR_PASSWORD
@@ -46,14 +58,21 @@ RESET ROLE;
 REVOKE zobba_migrator FROM CURRENT_USER;
 
 -- Refuse to finish unless both roles have exactly the required attributes,
--- belong to no role (in particular not rds_superuser) and the migrator owns
--- the database.
+-- belong to no role (in particular not rds_superuser), and have no members
+-- except the one PostgreSQL 16+ creates for a CREATEROLE (non-superuser)
+-- master: the creator itself with ADMIN only (no INHERIT, no SET). Any other
+-- member, or a leftover SET/INHERIT grant to the master, is refused.
 SELECT count(*) = 2 AS roles_safe
   FROM pg_roles
  WHERE rolname IN ('zobba_migrator', 'zobba_app')
    AND rolcanlogin AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole
    AND NOT rolinherit AND NOT rolbypassrls AND NOT rolreplication
-   AND NOT EXISTS (SELECT FROM pg_auth_members m WHERE m.member = pg_roles.oid) \gset
+   AND NOT EXISTS (SELECT FROM pg_auth_members m WHERE m.member = pg_roles.oid)
+   AND NOT EXISTS (
+     SELECT FROM pg_auth_members m
+      WHERE m.roleid = pg_roles.oid
+        AND NOT (m.member = (SELECT oid FROM pg_roles WHERE rolname = current_user)
+                 AND m.admin_option AND NOT m.inherit_option AND NOT m.set_option)) \gset
 \if :roles_safe
 \else
   DO $$ BEGIN RAISE EXCEPTION 'bootstrap: role attributes or memberships are unsafe'; END $$;

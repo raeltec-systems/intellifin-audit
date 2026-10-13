@@ -136,3 +136,10 @@ mock_resource "aws_ecs_service" {
     id = "arn:aws:ecs:eu-west-1:123456789012:service/zobba-qualification/zobba-qualification-mock"
   }
 }
+
+mock_data "aws_security_group" {
+  defaults = {
+    id   = "sg-0cf0vpcorigin00001"
+    name = "CloudFront-VPCOrigins-Service-SG_abc123"
+  }
+}

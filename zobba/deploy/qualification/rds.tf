@@ -14,10 +14,36 @@ resource "aws_db_parameter_group" "this" {
     value = "1"
   }
 
+  # Statement text is never logged: the role bootstrap sends
+  # ALTER ROLE ... PASSWORD, and a failing statement would otherwise be logged
+  # with its text (log_min_error_statement defaults to ERROR).
+  parameter {
+    name  = "log_statement"
+    value = "none"
+  }
+
+  parameter {
+    name  = "log_min_error_statement"
+    value = "panic"
+  }
+
   tags = { Name = local.name }
+
+  depends_on = [aws_cloudwatch_log_group.rds]
+}
+
+# RDS exports to these groups; declaring them sets retention and the CMK
+# instead of the never-expiring, AWS-key defaults RDS would create.
+resource "aws_cloudwatch_log_group" "rds" {
+  #checkov:skip=CKV_AWS_338:qualification logs keep log_retention_days (default 30) to bound cost; audit records live in PostgreSQL, not telemetry
+  for_each          = toset(["postgresql", "upgrade"])
+  name              = "/aws/rds/instance/${local.name}/${each.key}"
+  retention_in_days = var.log_retention_days
+  kms_key_id        = aws_kms_key.this.arn
 }
 
 resource "aws_db_instance" "this" {
+  #checkov:skip=CKV_AWS_226:minor versions are pinned (db_engine_version) and upgraded only by a reviewed change (RUNBOOK section 7), so a plan is reproducible
   #checkov:skip=CKV_AWS_353:Performance Insights is outside the smallest cost profile; owner decision
   #checkov:skip=CKV_AWS_118:enhanced monitoring is outside the smallest cost profile; owner decision
   #checkov:skip=CKV_AWS_161:the application authenticates with distinct password roles held in Secrets Manager (zobba/README.md role model)
@@ -53,9 +79,10 @@ resource "aws_db_instance" "this" {
   delete_automated_backups  = false
   deletion_protection       = true
   skip_final_snapshot       = false
-  final_snapshot_identifier = "${local.name}-final"
+  final_snapshot_identifier = "${local.name}-final-g${var.deployment_generation}"
 
-  auto_minor_version_upgrade      = true
+  # Minor versions change only through db_engine_version (RUNBOOK section 7).
+  auto_minor_version_upgrade      = false
   enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
 
   # Performance Insights and enhanced monitoring stay off in the smallest cost
@@ -66,4 +93,6 @@ resource "aws_db_instance" "this" {
   iam_database_authentication_enabled = false
 
   tags = { Name = local.name }
+
+  depends_on = [aws_cloudwatch_log_group.rds]
 }

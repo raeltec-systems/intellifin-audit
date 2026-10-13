@@ -12,7 +12,7 @@ name: Zobba qualification release
 #   4. sync the built web shell and invalidate CloudFront
 #
 # Required `qualification` environment variables (non-secret; copy them from the
-# Terraform output `github_environment_variables`): AWS_REGION,
+# Terraform output `github_environment_variables`): RELEASE_BRANCH, AWS_REGION,
 # AWS_RELEASE_ROLE_ARN, ECR_REPOSITORY_URL, ECS_CLUSTER, ECS_API_SERVICE,
 # ECS_WORKER_SERVICE, ECS_API_FAMILY, ECS_WORKER_FAMILY, ECS_MIGRATION_FAMILY,
 # ECS_TASK_NETWORK, WEB_BUCKET, CLOUDFRONT_DISTRIBUTION_ID.
@@ -35,6 +35,7 @@ jobs:
       contents: read
       id-token: write
     env:
+      RELEASE_BRANCH: ${{ vars.RELEASE_BRANCH }}
       AWS_REGION: ${{ vars.AWS_REGION }}
       ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
       ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
@@ -50,7 +51,7 @@ jobs:
       - name: Refuse a run with missing environment configuration
         run: |
           missing=0
-          for name in AWS_REGION ECR_REPOSITORY_URL ECS_CLUSTER ECS_API_SERVICE ECS_WORKER_SERVICE \
+          for name in RELEASE_BRANCH AWS_REGION ECR_REPOSITORY_URL ECS_CLUSTER ECS_API_SERVICE ECS_WORKER_SERVICE \
                       ECS_API_FAMILY ECS_WORKER_FAMILY ECS_MIGRATION_FAMILY ECS_TASK_NETWORK \
                       WEB_BUCKET CLOUDFRONT_DISTRIBUTION_ID; do
             if [ -z "${!name}" ]; then
@@ -58,7 +59,13 @@ jobs:
               missing=1
             fi
           done
-          exit "$missing"
+          if [ "$missing" -ne 0 ]; then exit 1; fi
+          # Only the configured release branch may be released (the environment's
+          # deployment-branch rule enforces the same; this refuses early).
+          if [ "$GITHUB_REF" != "refs/heads/$RELEASE_BRANCH" ]; then
+            echo "::error::release runs only from refs/heads/$RELEASE_BRANCH, not $GITHUB_REF"
+            exit 1
+          fi
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -94,73 +101,26 @@ jobs:
         env:
           IMAGE: ${{ vars.ECR_REPOSITORY_URL }}@${{ steps.image.outputs.digest }}
         run: |
-          docker run --rm "$IMAGE" /usr/local/bin/zobba-cli openapi > /tmp/openapi.json
+          docker run --rm --read-only "$IMAGE" /usr/local/bin/zobba-cli openapi > /tmp/openapi.json
           cmp /tmp/openapi.json zobba/openapi.json
           echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
 
-      # Register a new revision of a family with only the image changed.
-      - name: Prepare task definition helper
-        run: |
-          cat > /tmp/register-revision.sh <<'SH'
-          #!/usr/bin/env bash
-          set -euo pipefail
-          family="$1"
-          aws ecs describe-task-definition --task-definition "$family" --query taskDefinition --output json \
-            | jq --arg image "$IMAGE" '
-                .containerDefinitions |= map(.image = $image)
-                | {family, taskRoleArn, executionRoleArn, networkMode, containerDefinitions,
-                   requiresCompatibilities, cpu, memory, runtimePlatform}
-                | with_entries(select(.value != null))' > "/tmp/$family.json"
-          aws ecs register-task-definition --cli-input-json "file:///tmp/$family.json" \
-            --query taskDefinition.taskDefinitionArn --output text
-          SH
-          chmod +x /tmp/register-revision.sh
-
-      # 2. Release migration. The only place the migrator credential is used.
+      # 2. Release migration (zobba/deploy/release/migrate.sh): the only use of
+      # the migrator credential. Refuses while an earlier release migration
+      # runs, polls with a deadline, and fails on any exit code but 0
+      # (None/empty included) before any service changes.
       - name: Run the release migration and require exit 0
-        run: |
-          set -euo pipefail
-          migration_definition="$(/tmp/register-revision.sh "$ECS_MIGRATION_FAMILY")"
-          task_arn="$(aws ecs run-task \
-            --cluster "$ECS_CLUSTER" \
-            --task-definition "$migration_definition" \
-            --launch-type FARGATE \
-            --network-configuration "$ECS_TASK_NETWORK" \
-            --started-by "release-${GITHUB_RUN_ID}" \
-            --query 'tasks[0].taskArn' --output text)"
-          if [ -z "$task_arn" ] || [ "$task_arn" = "None" ]; then
-            echo "::error::migration task did not start"
-            exit 1
-          fi
-          echo "migration task: $task_arn"
-          aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$task_arn"
-          exit_code="$(aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$task_arn" \
-            --query "tasks[0].containers[?name=='migrate'].exitCode | [0]" --output text)"
-          if [ "$exit_code" != "0" ]; then
-            reason="$(aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$task_arn" \
-              --query 'tasks[0].stoppedReason' --output text)"
-            echo "::error::migration exited with '$exit_code' ($reason); services were not changed"
-            exit 1
-          fi
-          echo "migration exited 0"
+        env:
+          MIGRATION_DEADLINE_SECONDS: '900'
+        run: zobba/deploy/release/migrate.sh
 
-      # 3. Deploy services (only reached after a successful migration).
+      # 3. Deploy services (only reached after a successful migration). Both
+      # must reach PRIMARY = new revision and rolloutState COMPLETED; on any
+      # failure both return to their previous revisions and the job fails.
       - name: Deploy the API and worker
-        run: |
-          set -euo pipefail
-          api_definition="$(/tmp/register-revision.sh "$ECS_API_FAMILY")"
-          worker_definition="$(/tmp/register-revision.sh "$ECS_WORKER_FAMILY")"
-          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_API_SERVICE" \
-            --task-definition "$api_definition" --query service.serviceArn --output text
-          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_WORKER_SERVICE" \
-            --task-definition "$worker_definition" --query service.serviceArn --output text
-          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_API_SERVICE" "$ECS_WORKER_SERVICE"
-          desired="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_API_SERVICE" \
-            --query 'services[0].desiredCount' --output text)"
-          if [ "$desired" = "0" ]; then
-            echo "::warning::the API service has 0 desired tasks: set image_digest and apply Terraform (RUNBOOK, first release)"
-          fi
-          echo "Released image digest: ${IMAGE#*@}" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          DEPLOY_DEADLINE_SECONDS: '1200'
+        run: zobba/deploy/release/deploy-services.sh
 
       # 4. Web shell.
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0

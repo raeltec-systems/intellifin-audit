@@ -82,8 +82,19 @@ aws s3api put-public-access-block --bucket "$STATE_BUCKET" --public-access-block
 aws s3api put-bucket-versioning --bucket "$STATE_BUCKET" --versioning-configuration Status=Enabled
 aws s3api put-bucket-encryption --bucket "$STATE_BUCKET" --server-side-encryption-configuration \
   "{\"Rules\":[{\"ApplyServerSideEncryptionByDefault\":{\"SSEAlgorithm\":\"aws:kms\",\"KMSMasterKeyID\":\"$KEY_ID\"},\"BucketKeyEnabled\":true}]}"
-aws s3api put-bucket-policy --bucket "$STATE_BUCKET" --policy \
-  "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"DenyInsecureTransport\",\"Effect\":\"Deny\",\"Principal\":\"*\",\"Action\":\"s3:*\",\"Resource\":[\"arn:aws:s3:::$STATE_BUCKET\",\"arn:aws:s3:::$STATE_BUCKET/*\"],\"Condition\":{\"Bool\":{\"aws:SecureTransport\":\"false\"}}}]}"
+# Only the administrator role(s) may touch state. ADMIN_ROLE_PATTERN is the
+# IAM role ARN of your administrator SSO permission set, for example
+# arn:aws:iam::$ACCOUNT:role/aws-reserved/sso.amazonaws.com/*/AWSReservedSSO_AdministratorAccess_*
+ADMIN_ROLE_PATTERN='<administrator role ARN pattern>'
+aws s3api put-bucket-policy --bucket "$STATE_BUCKET" --policy "$(jq -n \
+  --arg b "arn:aws:s3:::$STATE_BUCKET" --arg admin "$ADMIN_ROLE_PATTERN" --arg root "arn:aws:iam::$ACCOUNT:root" '{
+  Version: "2012-10-17",
+  Statement: [
+    {Sid: "DenyInsecureTransport", Effect: "Deny", Principal: "*", Action: "s3:*",
+     Resource: [$b, "\($b)/*"], Condition: {Bool: {"aws:SecureTransport": "false"}}},
+    {Sid: "OnlyAdministrators", Effect: "Deny", Principal: "*", Action: "s3:*",
+     Resource: [$b, "\($b)/*"], Condition: {StringNotLike: {"aws:PrincipalArn": [$admin, $root]}}}
+  ]}')"
 aws s3api put-bucket-tagging --bucket "$STATE_BUCKET" --tagging \
   'TagSet=[{Key=Project,Value=zobba},{Key=Environment,Value=qualification}]'
 ```
@@ -93,6 +104,9 @@ Write the backend configuration to the ignored file
 your bucket, region and `kms_key_id = "alias/zobba-qualification-tfstate"`.
 Write owner-approved variables to the ignored `terraform.tfvars` (template:
 `example.tfvars`). Neither file is committed.
+
+The release role has no access to the state bucket: releases never run
+Terraform.
 
 State contents: resource identifiers and the Cognito app client secret (the
 provider reads it back from Cognito). Database passwords are **not** in state:
@@ -120,10 +134,30 @@ RDS Multi-AZ creation takes about 20–40 minutes.
 If the account already has a GitHub OIDC provider, set
 `create_github_oidc_provider = false`.
 
+**Second apply (restrict the ALB to CloudFront VPC origins).** AWS documents
+two ways to admit CloudFront VPC-origin traffic to the internal ALB: the
+CloudFront origin-facing managed prefix list (works before the VPC origin
+exists, so the first apply uses it), or the service-managed security group
+`CloudFront-VPCOrigins-Service-SG`, which CloudFront creates in the VPC only
+when the VPC origin is created and which admits only CloudFront VPC-origin
+traffic. After the first apply succeeds:
+
+```sh
+aws ec2 describe-security-groups --filters Name=vpc-id,Values=<vpc id> \
+  Name=group-name,Values='CloudFront-VPCOrigins-Service-SG*' --query 'SecurityGroups[].GroupId'   # exactly one
+terraform apply -var restrict_alb_to_vpc_origin_sg=true    # or set it in terraform.tfvars
+```
+
+This replaces the prefix-list rule with a rule referencing that group. Keep
+`restrict_alb_to_vpc_origin_sg = true` from then on. Neither option opens
+0.0.0.0/0 or the VPC CIDR.
+
 ## 4. Role bootstrap (once, and after any password rotation)
 
 Gate: G5. Cost: one short Fargate task (cents). Uses the RDS-managed master
-secret, which only this task's execution role can read. Creates
+secret. Readers of that secret: this task's execution role and account
+administrators (IAM delegation through the key policy); no application role
+and not the release role. Creates
 `zobba_migrator` (owner of database `zobba`) and `zobba_app`, both `LOGIN
 NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS`, with no role
 memberships (so neither is in `rds_superuser`), sets their passwords from the
@@ -146,18 +180,34 @@ aws logs tail /zobba-qualification/bootstrap --since 30m   # expect "bootstrap: 
 
 The release role cannot run this task; only an administrator can.
 
-Password rotation: increase `database_password_version`, `terraform apply`
-(writes new URL secrets), rerun this bootstrap task, then force a new
-deployment of both services (`aws ecs update-service --force-new-deployment`)
-so tasks read the new secret. Tasks started before the bootstrap fail
-readiness until redeployed.
+**Any new password version requires this bootstrap again.** The URL secrets
+are rewritten (with new passwords) when `database_password_version` increases
+**and when the RDS address or port changes** (the write-only version folds in
+a hash of `address:port`). Each rewrite leaves the database on the old
+passwords until the bootstrap runs. Order:
+
+1. `terraform apply` (writes new URL secrets).
+2. Rerun this bootstrap task at once (sets the new passwords).
+3. Force a new deployment of both services
+   (`aws ecs update-service --cluster ... --service ... --force-new-deployment`).
+
+Rotation window: between steps 1 and 2, any task that starts (scale-out,
+replacement) reads the new URL and cannot connect; between steps 2 and 3,
+running tasks keep their open connections but any new connection with the old
+password fails, so readiness can fail until step 3 completes. Rotate in a
+quiet period and finish all three steps together.
 
 ## 5. GitHub environment (once)
 
 Gate: G6. Costs nothing.
 
 1. Create the GitHub environment `qualification` with required reviewers (G6)
-   and restrict it to the branch you release from.
+   and a **deployment branch rule** that allows only `release_branch`
+   (default `main`; Settings → Environments → qualification → Deployment
+   branches and tags → Selected branches). The workflow also refuses any ref
+   other than `refs/heads/$RELEASE_BRANCH`, and the AWS role trusts only the
+   OIDC subject `repo:<owner>/<repo>:environment:qualification`, so only a job
+   that passed this environment's rules can assume it.
 2. Add each key/value from `terraform output -json github_environment_variables`
    as an environment **variable** (none is secret).
 3. Add no AWS keys. The workflow assumes `AWS_RELEASE_ROLE_ARN` through GitHub
@@ -174,11 +224,39 @@ push. Order, each step stopping the run on failure:
 
 1. Build and push the image (tag `<sha>-<run id>-<attempt>`; everything after
    uses the digest). Smoke: `zobba-cli openapi` must equal `zobba/openapi.json`.
-2. Register a migration task revision with the new digest and run
-   `zobba-cli migrate --runtime-role zobba_app` (the only use of the migrator
-   URL). **A non-zero exit fails the job before any service changes.**
-3. Register API and worker revisions and update both services; wait until
-   stable (circuit breaker rolls back a failed deployment).
+2. `zobba/deploy/release/migrate.sh`: refuse if an earlier release migration
+   is still RUNNING/PENDING; register a migration revision with the new digest;
+   run `zobba-cli migrate --runtime-role zobba_app` (the only use of the
+   migrator URL); poll with a 15-minute deadline. **Any exit code other than 0
+   (including none) fails the job before any service changes.** On timeout the
+   task is stopped and the run summary says "migration outcome unknown": check
+   the schema (`/api/health/ready` of the running release, or a manual
+   migration task) before retrying.
+3. `zobba/deploy/release/deploy-services.sh`: update the API, then the worker.
+   Each must end with the new revision as the PRIMARY deployment and
+   `rolloutState = COMPLETED`. If either fails, **both** services are returned
+   to the revisions they had before the release and the job fails without
+   syncing the web shell.
+
+Task definition revisions: `register-revision.sh` bases every new revision on
+the **latest revision Terraform registered** for the same family (revisions
+without a `ReleasedBy` tag) and changes only the image; it removes read-only
+fields and carries the tags over, adding `ReleasedBy`, `ReleaseRun` and
+`ReleaseBase`. Consequences:
+
+- Terraform changes to a task's environment, secrets, roles or size reach the
+  running services **only at the next release** (services ignore
+  `task_definition` so the release owns which revision runs). After such an
+  apply, run a release.
+- Residual risk: `ecs:RegisterTaskDefinition` cannot be scoped, and
+  `iam:PassRole` limits *which* roles a revision can carry (the API, worker and
+  migration execution roles and the API task role, never the bootstrap role)
+  but cannot bind a role to a family. A compromised release run could
+  therefore register, for example, an API revision with the migration execution
+  role. The mitigations are the environment approval (G6), the branch rule, the
+  workflow taking roles only from Terraform's revision, and review of
+  `ReleaseBase` tags; treat a revision whose roles differ from Terraform's as an
+  incident.
 4. Build `zobba/web`, sync `web/dist` to the web bucket, invalidate CloudFront.
 
 There are no startup migrations: the API and worker refuse an unmigrated or
@@ -207,7 +285,10 @@ aws cognito-idp admin-create-user --user-pool-id "$(terraform output -raw cognit
 ```
 
 Cognito establishes identity only; Zobba access still comes from Zobba's own
-membership records.
+membership records. The pool uses Cognito's default email sender, which has a
+low daily sending limit (on the order of 50 messages per day) and a Cognito
+sender address; invitations and recovery mails beyond it fail. Configuring
+Amazon SES is an owner decision outside 20.7a.
 
 Check: open `terraform output -raw public_origin`, sign in, and
 `curl -fsS "$(terraform output -raw public_origin)/api/health/ready"`.
@@ -224,6 +305,12 @@ Check: open `terraform output -raw public_origin`, sign in, and
   (section 10), which loses writes after the restore point.
 - **Web shell**: rerun the release from the earlier commit, or restore earlier
   object versions in the versioned web bucket and invalidate.
+- **Database minor version**: `auto_minor_version_upgrade` is off. Upgrade by
+  changing `db_engine_version` (an exact `18.x` that RDS lists:
+  `aws rds describe-db-engine-versions --engine postgres --engine-version 18`)
+  in a reviewed change, applying in the maintenance window (Multi-AZ fails
+  over once), then checking `/api/health/ready`. A minor version cannot be
+  downgraded in place; going back means a restore (section 10).
 - **Infrastructure**: revert the Terraform commit and apply. Some changes
   (RDS engine major version, KMS key, bucket names, region, Cognito pool) cannot
   be reverted in place.
@@ -233,12 +320,12 @@ Check: open `terraform output -raw public_origin`, sign in, and
 | Resource | Retention |
 |----------|-----------|
 | RDS automated backups / PITR | `backup_retention_days` (default 7, minimum 7). Kept after deletion (`delete_automated_backups = false`). |
-| RDS final snapshot | `zobba-qualification-final`, created on delete, kept until manually deleted. |
+| RDS final snapshot | `zobba-qualification-final-g<deployment_generation>`, created on delete, kept until manually deleted. |
 | Evidence bucket | All object versions; no expiry rule. Terraform cannot delete a non-empty bucket (`force_destroy = false`). The bucket name, region and default endpoint are the evidence namespace fingerprint: never change them for this environment. |
 | Web bucket | Non-current versions expire after 30 days. |
 | KMS key | 30-day deletion window; while pending deletion, data encrypted with it cannot be read. |
-| Secrets | 30-day recovery window after deletion. |
-| Logs | `log_retention_days` (default 30). Audit records are in PostgreSQL, not logs. |
+| Secrets | `secret_recovery_window_days` (default 30) recovery window after deletion. |
+| Logs | `log_retention_days` (default 30), including the declared RDS `postgresql` and `upgrade` groups; all encrypted with the environment key. Statement text is never logged (`log_statement = none`, `log_min_error_statement = panic`), so `ALTER ROLE ... PASSWORD` from the bootstrap never reaches logs. Audit records are in PostgreSQL, not logs. |
 | Cognito pool | Deletion protection on. |
 
 ## 9. Destroy boundaries
@@ -254,6 +341,12 @@ Gate: G7, in writing, naming what may be lost. Never run a plain
 - Scheduling the KMS key for deletion makes every snapshot and evidence object
   encrypted with it unreadable after the window. Do not schedule it while any
   retained snapshot or evidence must stay readable.
+- Re-applying after a destroy: increase `deployment_generation` so the new
+  final snapshot name does not collide with the retained one; deleted secrets
+  keep their names for the recovery window, so either restore them
+  (`aws secretsmanager restore-secret`) and import them, or wait out the
+  window. Set `secret_recovery_window_days = 0` only for a deliberate,
+  approved (G7) teardown where the secrets must not be recoverable.
 - To stop spend without losing data: set the services to 0 tasks
   (`image_digest = null` and apply), stop the database
   (`aws rds stop-db-instance`, auto-restarts after 7 days), and remove the NAT

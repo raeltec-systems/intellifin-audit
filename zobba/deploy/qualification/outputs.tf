@@ -74,6 +74,7 @@ output "release_role_arn" {
 # (not secrets: none of them is secret).
 output "github_environment_variables" {
   value = {
+    RELEASE_BRANCH             = var.release_branch
     AWS_REGION                 = var.region
     AWS_RELEASE_ROLE_ARN       = aws_iam_role.release.arn
     ECR_REPOSITORY_URL         = aws_ecr_repository.this.repository_url

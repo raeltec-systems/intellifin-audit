@@ -57,6 +57,7 @@ locals {
 # Security headers on every response. `override = false` keeps any stricter
 # value the API itself sets.
 resource "aws_cloudfront_response_headers_policy" "security" {
+  #checkov:skip=CKV_AWS_259:HSTS is enforced (1 year, includeSubDomains, override); preload is omitted deliberately because *.cloudfront.net cannot be preloaded
   name    = "${local.name}-security"
   comment = "Security headers for the web shell and API"
 
@@ -64,7 +65,6 @@ resource "aws_cloudfront_response_headers_policy" "security" {
     strict_transport_security {
       access_control_max_age_sec = 31536000
       include_subdomains         = true
-      preload                    = true
       override                   = true
     }
     content_type_options {

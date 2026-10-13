@@ -4,6 +4,7 @@ Run: python3 zobba/deploy/qualification/tests/check_release_workflow.py
 Requires PyYAML (installed with checkov in CI).
 """
 import pathlib
+import re
 import sys
 
 import yaml
@@ -45,16 +46,35 @@ def main() -> int:
     ]
     if -1 not in order and order != sorted(order):
         errors.append(f"release order must be build, migrate, deploy, web; got step indexes {order}")
-    migrate = job["steps"][order[1]]["run"] if order[1] != -1 else ""
-    for required in ('exit_code" != "0"', "exit 1", "--started-by", "aws ecs wait tasks-stopped"):
+    steps = job["steps"]
+    migrate_run = steps[order[1]].get("run", "") if order[1] != -1 else ""
+    deploy_run = steps[order[2]].get("run", "") if order[2] != -1 else ""
+    if "zobba/deploy/release/migrate.sh" not in migrate_run:
+        errors.append("migration step must run zobba/deploy/release/migrate.sh")
+    if "zobba/deploy/release/deploy-services.sh" not in deploy_run:
+        errors.append("deploy step must run zobba/deploy/release/deploy-services.sh")
+    release = ROOT / "zobba/deploy/release"
+    migrate = (release / "migrate.sh").read_text(encoding="utf-8")
+    for required in ('"$exit_code" != "0"', "migration outcome unknown", "stop-task", "--started-by", "MIGRATION_DEADLINE_SECONDS"):
         if required not in migrate:
-            errors.append(f"migration step must contain {required!r}")
-    for step in job["steps"]:
+            errors.append(f"migrate.sh must contain {required!r}")
+    deploy = (release / "deploy-services.sh").read_text(encoding="utf-8")
+    for required in ('"PRIMARY"', '"COMPLETED"', "roll_back", "previous_api", "previous_worker"):
+        if required not in deploy:
+            errors.append(f"deploy-services.sh must contain {required!r}")
+    if not any("refs/heads/$RELEASE_BRANCH" in step.get("run", "") for step in steps[:1]):
+        errors.append("the first step must refuse a ref other than the release branch")
+    for step in steps:
         uses = step.get("uses")
-        if uses and "@" in uses:
-            ref = uses.split("@", 1)[1]
-            if len(ref) != 40 or any(c not in "0123456789abcdef" for c in ref):
-                errors.append(f"action not pinned to a commit SHA: {uses}")
+        if not uses or uses.startswith("./"):
+            continue
+        if uses.startswith("docker://"):
+            if not re.search(r"@sha256:[0-9a-f]{64}$", uses):
+                errors.append(f"docker action not pinned by digest: {uses}")
+            continue
+        ref = uses.split("@", 1)[1] if "@" in uses else ""
+        if not re.fullmatch(r"[0-9a-f]{40}", ref):
+            errors.append(f"action not pinned to a commit SHA: {uses}")
     for forbidden in ("aws-access-key-id", "aws-secret-access-key", "AWS_SECRET_ACCESS_KEY", "secrets."):
         if forbidden in text:
             errors.append(f"release must not use long-lived keys or repository secrets ({forbidden})")

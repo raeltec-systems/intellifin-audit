@@ -27,6 +27,91 @@ override_resource {
   values = { arn = "arn:aws:iam::123456789012:role/zobba-qualification-api-task" }
 }
 
+override_resource {
+  target = aws_s3_bucket.evidence
+  values = { arn = "arn:aws:s3:::zobba-qualification-evidence-123456789012", bucket = "zobba-qualification-evidence-123456789012" }
+}
+
+override_resource {
+  target = aws_s3_bucket.web
+  values = { arn = "arn:aws:s3:::zobba-qualification-web-123456789012", bucket = "zobba-qualification-web-123456789012" }
+}
+
+override_resource {
+  target = aws_iam_role.execution["api"]
+  values = { arn = "arn:aws:iam::123456789012:role/zobba-qualification-api-execution", id = "zobba-qualification-api-execution" }
+}
+
+override_resource {
+  target = aws_iam_role.execution["worker"]
+  values = { arn = "arn:aws:iam::123456789012:role/zobba-qualification-worker-execution", id = "zobba-qualification-worker-execution" }
+}
+
+override_resource {
+  target = aws_iam_role.execution["migrate"]
+  values = { arn = "arn:aws:iam::123456789012:role/zobba-qualification-migrate-execution", id = "zobba-qualification-migrate-execution" }
+}
+
+override_resource {
+  target = aws_iam_role.execution["bootstrap"]
+  values = { arn = "arn:aws:iam::123456789012:role/zobba-qualification-bootstrap-execution", id = "zobba-qualification-bootstrap-execution" }
+}
+
+override_resource {
+  target = aws_iam_role.release
+  values = { arn = "arn:aws:iam::123456789012:role/zobba-qualification-release", id = "zobba-qualification-release" }
+}
+
+override_resource {
+  target = aws_iam_role.flow_logs
+  values = { arn = "arn:aws:iam::123456789012:role/zobba-qualification-flow-logs", id = "zobba-qualification-flow-logs" }
+}
+
+override_resource {
+  target = aws_cloudwatch_log_group.this["api"]
+  values = { arn = "arn:aws:logs:eu-west-1:123456789012:log-group:/zobba-qualification/api", name = "/zobba-qualification/api" }
+}
+
+override_resource {
+  target = aws_cloudwatch_log_group.this["worker"]
+  values = { arn = "arn:aws:logs:eu-west-1:123456789012:log-group:/zobba-qualification/worker", name = "/zobba-qualification/worker" }
+}
+
+override_resource {
+  target = aws_cloudwatch_log_group.this["migrate"]
+  values = { arn = "arn:aws:logs:eu-west-1:123456789012:log-group:/zobba-qualification/migrate", name = "/zobba-qualification/migrate" }
+}
+
+override_resource {
+  target = aws_cloudwatch_log_group.this["bootstrap"]
+  values = { arn = "arn:aws:logs:eu-west-1:123456789012:log-group:/zobba-qualification/bootstrap", name = "/zobba-qualification/bootstrap" }
+}
+
+override_resource {
+  target = aws_cloudwatch_log_group.this["vpc-flow"]
+  values = { arn = "arn:aws:logs:eu-west-1:123456789012:log-group:/zobba-qualification/vpc-flow", name = "/zobba-qualification/vpc-flow" }
+}
+
+override_resource {
+  target = aws_cloudwatch_log_group.rds["postgresql"]
+  values = { arn = "arn:aws:logs:eu-west-1:123456789012:log-group:/aws/rds/instance/zobba-qualification/postgresql", name = "/aws/rds/instance/zobba-qualification/postgresql" }
+}
+
+override_resource {
+  target = aws_cloudwatch_log_group.rds["upgrade"]
+  values = { arn = "arn:aws:logs:eu-west-1:123456789012:log-group:/aws/rds/instance/zobba-qualification/upgrade", name = "/aws/rds/instance/zobba-qualification/upgrade" }
+}
+
+override_resource {
+  target = aws_route_table.db
+  values = { id = "rtb-db000000000000001" }
+}
+
+override_resource {
+  target = aws_route_table.public
+  values = { id = "rtb-public0000000001" }
+}
+
 variables {
   region                   = "eu-west-1"
   budget_monthly_limit_usd = 150
@@ -64,7 +149,12 @@ run "network_is_private_and_two_zone" {
   }
 
   assert {
-    condition     = length(aws_route_table.db.route) == 0
+    condition = (
+      length(aws_route_table.db.route) == 0 &&
+      aws_route.public_internet.route_table_id != aws_route_table.db.id &&
+      alltrue([for r in aws_route.app_egress : r.route_table_id != aws_route_table.db.id]) &&
+      alltrue([for a in aws_route_table_association.db : a.route_table_id == aws_route_table.db.id])
+    )
     error_message = "database subnets must have no route out of the VPC"
   }
 }
@@ -78,8 +168,13 @@ run "api_is_internal_behind_cloudfront" {
   }
 
   assert {
-    condition     = aws_vpc_security_group_ingress_rule.alb_from_cloudfront.prefix_list_id == data.aws_ec2_managed_prefix_list.cloudfront_origin.id && aws_vpc_security_group_ingress_rule.alb_from_cloudfront.cidr_ipv4 == null
-    error_message = "ALB ingress must come only from the CloudFront origin-facing prefix list"
+    condition = (
+      length(aws_vpc_security_group_ingress_rule.alb_from_cloudfront) == 1 &&
+      aws_vpc_security_group_ingress_rule.alb_from_cloudfront[0].prefix_list_id == data.aws_ec2_managed_prefix_list.cloudfront_origin.id &&
+      aws_vpc_security_group_ingress_rule.alb_from_cloudfront[0].cidr_ipv4 == null &&
+      length(aws_vpc_security_group_ingress_rule.alb_from_vpc_origin_sg) == 0
+    )
+    error_message = "first apply: ALB ingress only from the CloudFront origin-facing prefix list"
   }
 
   assert {
@@ -158,6 +253,34 @@ run "database_is_multi_az_encrypted_and_retained" {
   assert {
     condition     = anytrue([for p in aws_db_parameter_group.this.parameter : p.name == "rds.force_ssl" && p.value == "1"])
     error_message = "rds.force_ssl must be 1"
+  }
+
+  assert {
+    condition = (
+      anytrue([for p in aws_db_parameter_group.this.parameter : p.name == "log_statement" && p.value == "none"]) &&
+      anytrue([for p in aws_db_parameter_group.this.parameter : p.name == "log_min_error_statement" && p.value == "panic"])
+    )
+    error_message = "statement text (including ALTER ROLE ... PASSWORD) must never be logged"
+  }
+
+  assert {
+    condition     = aws_db_instance.this.engine_version == "18.6" && aws_db_instance.this.auto_minor_version_upgrade == false
+    error_message = "an exact PostgreSQL 18 minor, upgraded only explicitly"
+  }
+
+  assert {
+    condition     = aws_db_instance.this.final_snapshot_identifier == "zobba-qualification-final-g1"
+    error_message = "the final snapshot name carries the deployment generation"
+  }
+
+  assert {
+    condition = alltrue([
+      for k in ["postgresql", "upgrade"] :
+      aws_cloudwatch_log_group.rds[k].name == "/aws/rds/instance/${aws_db_instance.this.identifier}/${k}" &&
+      aws_cloudwatch_log_group.rds[k].kms_key_id == aws_kms_key.this.arn &&
+      aws_cloudwatch_log_group.rds[k].retention_in_days == 30
+    ]) && toset(aws_db_instance.this.enabled_cloudwatch_logs_exports) == toset(["postgresql", "upgrade"])
+    error_message = "RDS log groups are declared with retention and the CMK"
   }
 
   assert {
@@ -328,7 +451,9 @@ run "secrets_are_encrypted_and_never_outputs" {
     condition = (
       aws_secretsmanager_secret_version.migration_database_url.secret_string == null &&
       aws_secretsmanager_secret_version.runtime_database_url.secret_string == null &&
-      aws_secretsmanager_secret_version.migration_database_url.secret_string_wo_version == 1
+      floor(aws_secretsmanager_secret_version.migration_database_url.secret_string_wo_version / 268435456) == 1 &&
+      aws_secretsmanager_secret_version.migration_database_url.secret_string_wo_version == aws_secretsmanager_secret_version.runtime_database_url.secret_string_wo_version &&
+      aws_secretsmanager_secret_version.migration_database_url.secret_string_wo_version % 268435456 == parseint(substr(sha256("${aws_db_instance.this.address}:${aws_db_instance.this.port}"), 0, 7), 16)
     )
     error_message = "database URLs are write-only and never stored in state"
   }
@@ -420,6 +545,100 @@ run "iam_is_least_privilege" {
       s.Action == "ecs:RunTask" && endswith(s.Resource, "task-definition/zobba-qualification-migrate:*")
     ]) && !strcontains(aws_iam_role_policy.release.policy, "bootstrap")
     error_message = "release may run only the migration task, never the role bootstrap"
+  }
+}
+
+run "permissions_target_their_own_resources" {
+  command = apply
+
+  assert {
+    condition = alltrue([
+      for k in ["api", "worker", "migrate", "bootstrap"] :
+      one([for st in jsondecode(aws_iam_role_policy.execution[k].policy).Statement : st.Resource if st.Sid == "Logs"]) == "${aws_cloudwatch_log_group.this[k].arn}:*" &&
+      aws_iam_role_policy.execution[k].role == aws_iam_role.execution[k].id
+    ])
+    error_message = "each execution role writes only its own log group"
+  }
+
+  assert {
+    condition = (
+      toset(one([for st in jsondecode(aws_iam_role_policy.execution["bootstrap"].policy).Statement : st.Resource if st.Sid == "Secrets"])) ==
+      toset([aws_db_instance.this.master_user_secret[0].secret_arn, aws_secretsmanager_secret.migration_database_url.arn, aws_secretsmanager_secret.runtime_database_url.arn]) &&
+      toset(one([for st in jsondecode(aws_iam_role_policy.execution["migrate"].policy).Statement : st.Resource if st.Sid == "Secrets"])) ==
+      toset([aws_secretsmanager_secret.migration_database_url.arn])
+    )
+    error_message = "migration and bootstrap execution roles read only their own secrets"
+  }
+
+  assert {
+    condition = (
+      aws_ecs_task_definition.api.execution_role_arn == aws_iam_role.execution["api"].arn &&
+      aws_ecs_task_definition.worker.execution_role_arn == aws_iam_role.execution["worker"].arn &&
+      aws_ecs_task_definition.migrate.execution_role_arn == aws_iam_role.execution["migrate"].arn &&
+      aws_ecs_task_definition.bootstrap.execution_role_arn == aws_iam_role.execution["bootstrap"].arn &&
+      aws_ecs_task_definition.api.task_role_arn == aws_iam_role.api_task.arn
+    )
+    error_message = "each task definition uses its own roles"
+  }
+
+  assert {
+    condition = alltrue([
+      for st in jsondecode(aws_iam_role_policy.api_task.policy).Statement :
+      st.Sid == "EvidenceKey" || startswith(st.Resource, aws_s3_bucket.evidence.arn)
+    ]) && !strcontains(aws_iam_role_policy.api_task.policy, aws_s3_bucket.web.arn)
+    error_message = "the API task role reaches only the evidence bucket"
+  }
+
+  assert {
+    condition = (
+      one([for st in jsondecode(aws_iam_role_policy.release.policy).Statement : st.Resource if st.Sid == "WebSync"]) == "${aws_s3_bucket.web.arn}/*" &&
+      one([for st in jsondecode(aws_iam_role_policy.release.policy).Statement : st.Resource if st.Sid == "WebList"]) == aws_s3_bucket.web.arn &&
+      !strcontains(aws_iam_role_policy.release.policy, aws_s3_bucket.evidence.arn) &&
+      !strcontains(aws_iam_role_policy.release.policy, aws_iam_role.execution["bootstrap"].arn)
+    )
+    error_message = "release syncs only the web bucket and cannot pass the bootstrap role"
+  }
+
+  assert {
+    condition     = aws_flow_log.this.log_destination == aws_cloudwatch_log_group.this["vpc-flow"].arn && aws_flow_log.this.iam_role_arn == aws_iam_role.flow_logs.arn
+    error_message = "flow logs go to their own group with their own role"
+  }
+}
+
+run "alb_restricted_to_vpc_origin_security_group" {
+  command = apply
+
+  variables {
+    restrict_alb_to_vpc_origin_sg = true
+  }
+
+  assert {
+    condition = (
+      length(aws_vpc_security_group_ingress_rule.alb_from_cloudfront) == 0 &&
+      length(aws_vpc_security_group_ingress_rule.alb_from_vpc_origin_sg) == 1 &&
+      aws_vpc_security_group_ingress_rule.alb_from_vpc_origin_sg[0].referenced_security_group_id == "sg-0cf0vpcorigin00001" &&
+      aws_vpc_security_group_ingress_rule.alb_from_vpc_origin_sg[0].cidr_ipv4 == null &&
+      aws_vpc_security_group_ingress_rule.alb_from_vpc_origin_sg[0].from_port == 80
+    )
+    error_message = "second apply: ALB ingress only from CloudFront-VPCOrigins-Service-SG"
+  }
+
+  assert {
+    condition     = contains(one(data.aws_security_group.cloudfront_vpc_origin[0].filter).values, "CloudFront-VPCOrigins-Service-SG*") && data.aws_security_group.cloudfront_vpc_origin[0].vpc_id == aws_vpc.this.id
+    error_message = "the service-managed group is looked up by its reserved name in this VPC"
+  }
+}
+
+run "password_version_moves_the_secret_version" {
+  command = apply
+
+  variables {
+    database_password_version = 2
+  }
+
+  assert {
+    condition     = floor(aws_secretsmanager_secret_version.runtime_database_url.secret_string_wo_version / 268435456) == 2
+    error_message = "a new password version rewrites the URL secrets"
   }
 }
 
