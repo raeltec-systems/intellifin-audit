@@ -1,5 +1,5 @@
 ---
-title: '22.5 — Extract usable facts with stable source locations'
+title: '22.5 — Read documents natively and cite every claim cleanly'
 type: 'feature'
 created: '2026-10-13'
 status: 'draft'
@@ -14,74 +14,74 @@ context:
 
 ## Intent
 
-**Problem:** Zobba cannot read the documents auditors actually receive — spreadsheets, Word files, emails, text PDFs, scanned PDFs and photos — into facts that say exactly where each value came from. Without stable locators and honest limitations, later evaluation cannot cite or check anything.
+**Problem:** Zobba's agent cannot read the documents auditors receive (PDFs, scans, photos, spreadsheets, Word, email), and nothing lets an auditor see exactly where a claim came from. A fixed extraction pipeline would be mechanical; the agent should read with its own tools, as Claude Code and Codex do, while every claim stays traceable and checkable.
 
-**Approach:** Two readers, one fact model. Deterministic parsers (XLSX, DOCX, email, CSV, PDF text layer) run as a server-owned, versioned extractor in a second 22.4 sandbox image; they also render image-only pages to page images. Scanned pages and photos are read natively by the qualified model (as Claude Code and Codex do — no OCR engine, no numeric confidence scores), one page per request, as a recorded disclosure. Every fact carries its source locator, extractor or model version, input digest and how it was read; limitations are explicit words, never silent gaps. The full result is a separate descendant artifact; previews are bounded.
+**Approach:** Give the agent two reading tools: (1) native reading — PDF and image pages are sent to the qualified model as image input, one page per request, as a recorded disclosure; (2) its own analysis code in the 22.4 sandbox, whose general image gains standard document libraries. The agent answers with structured citations; trusted code re-checks each citation against the original and marks it verified or unverified. The web shows citations the ChatGPT way: a quiet chip at the end of the sentence, a hover/focus card, and Open at the exact place.
 
 ## Boundaries & Constraints
 
 **Always:**
-- One fact model: value text, locator (`page`, `sheet!cell` or cell range, `paragraph`/table cell, `message part`/header, byte range), `read_by` = `parser:<name>@<version>` or `model:<provider>/<model>@<profile>`, input original id + digest, and zero or more closed limitations (unreadable, cut_off, ambiguous, structure_unavailable, truncated, unsupported_format, formula_without_cached_value, encrypted, mismatch_between_readers).
-- Parser output is the authority for exact values in structured formats; formulas report their cached value and say so, never recalculate. Model-read facts are labelled as model readings and carry the model's own stated limitations; they never become parser-grade facts.
-- Where a page has both a text layer and a model reading, compare them and record `mismatch_between_readers` on facts that differ; neither silently wins.
-- The extractor program is server-owned (constant or baked into the pinned image, versioned, its SHA bound into the operation); the model never writes it. Extraction is admitted by a trusted server path, not a model tool.
-- Model reading reuses 22.1 disclosure custody: one `Send` operation per page with the page image as an attachment bound by digest and the original's classification; the profile must be qualified and support image input and strict structured output. Add image input parts to the model request types and the OpenAI encoder only; the Anthropic encoder refuses them as unsupported until qualified. Size bounds are explicit and per page.
-- Full result (all facts, locators, limitations, reader versions) is one JSON descendant; previews are bounded to the existing preview limits and say when they are partial.
-- Hostile or oversized input fails the job safely with a closed reason (zip bomb, too many pages/sheets/cells/parts, encrypted, malformed, timeout) and registers no partial facts as complete; macros, external links and embedded objects are never executed or fetched.
+- The agent decides how to read; no fixed server extraction pipeline. Model-written programs run only in the 22.4 sandbox under its rules.
+- Citation contract: each cited claim span in an answer points to one or more sources `{original id, locator, quoted text}`. Locators: `page` (1-based), `sheet!cell` or range, `paragraph`/table cell, email part/header, byte range for text.
+- Trusted verification opens the original and confirms the quoted text at the locator (text layers, cells, paragraphs, email parts, byte ranges; normalized only for whitespace and Unicode NFC). Native page reads verify the page exists and was the page actually sent to the model (by digest). Result per source: `verified` or `unverified` with a closed reason (`not_found_at_location`, `location_missing`, `source_unreadable`, `page_only`). Verification never edits the answer.
+- Native reading reuses 22.1 disclosure custody: one `Send` operation per page with the page image digest and the original's classification as an attachment; profile must be qualified with image input and strict structured output. Add image input parts to the model request types and the OpenAI encoder; the Anthropic encoder refuses them until qualified. Explicit per-page bounds. Page images are rendered by trusted code in the sandbox, never by the model's own program.
+- The model states unreadable or ambiguous regions in words; these appear in the card as a limitation. No numeric confidence scores, no OCR engine.
+- Hostile files stay inside 22.4 limits; macros, external links and embedded objects are never run or fetched.
+- Web: a reusable `Citation` chip shows the short file name (`+N` for more sources); hover or keyboard focus opens a card with file, location, quoted text (bounded), an Open button to the evidence viewer at that location, and, only if unverified, the single quiet word "unverified" with its reason. Keyboard and screen-reader accessible (WCAG 2.2 AA); no colour-only meaning. Shown on agent answers in the Task work panel.
 
-**Ask First:** Any parser library beyond those needed for XLSX, DOCX, EML, CSV and PDF text/page rendering; any per-page model request above 4 MB image or 200 pages per document.
+**Ask First:** Any library beyond pandas, openpyxl, python-docx, a PDF text/render library and the standard email package in the general image; page images above 4 MB or more than 200 pages per document per Task.
 
-**Never:** An OCR engine or numeric confidence scores; macro execution; lossless Office editing; sending a whole document to the model in one request; model-written extraction code; any live provider call in tests (fixtures only, using the existing synthetic transport).
+**Never:** A fixed pre-extraction fact database; numeric confidence; sending a whole document in one model request; trusting an unverified citation silently; live provider calls in tests (synthetic transport only); exposing the citation card's quoted text beyond the current viewer's authority.
 
 ## I/O & Edge-Case Matrix
 
 | Scenario | Input / State | Expected Output / Behavior | Error Handling |
 |----------|--------------|---------------------------|----------------|
-| XLSX table | sheet with values, a formula, merged cells | facts per cell with `Sheet1!B4`; formula fact uses cached value + limitation | N/A |
-| DOCX | paragraphs and a table | facts with paragraph / table-cell locators | N/A |
-| Email | .eml with headers, body, attachment | header and body facts with part locators; attachment listed, not parsed | N/A |
-| Text PDF | PDF with text layer | facts with page locators from the parser | N/A |
-| Scanned PDF | image-only pages | page images rendered; one model read per page; model facts with page locators and stated limitations | unreadable region → `unreadable`, not a guess |
-| Both readers disagree | text layer says 1,250.00, model reads 1,280.00 | both facts kept, `mismatch_between_readers` | N/A |
-| Hostile file | zip bomb, 10k-sheet XLSX, encrypted PDF, macro file | job fails safely with closed reason; no fact registered as complete | bounded by sandbox limits |
-| Model refusal or failure | provider error or invalid structured output | page marked `unreadable` with reason; other pages unaffected | no retry loop beyond the existing bounded policy |
-| Locator round trip | any registered fact | resolving its locator against the original returns the same value (parser facts) or the same page (model facts) | mismatch fails the test |
+| Spreadsheet claim | answer cites `Sheet1!B4` = "1,250.00" | verified; chip `Trial balance.xlsx`; card shows sheet, cell, value | N/A |
+| Wrong value | cites `B4` = "1,280.00", cell holds 1,250.00 | unverified `not_found_at_location` | answer unchanged |
+| Scanned page | agent reads page 3 natively, cites page 3 | one disclosure for page 3; source `unverified page_only` unless a text layer confirms the quote | unreadable region shown as limitation |
+| Multiple sources | sentence cites PDF p.2 and an email | one chip `Contract.pdf +1`; card lists both | N/A |
+| Missing locator | citation has no locator | unverified `location_missing` | N/A |
+| Hostile file | zip bomb / encrypted / macro file read in sandbox | sandbox limit or safe refusal; no citation verified from it | closed reason |
+| Model failure | provider error or invalid structure for a page | page reading recorded as failed; no fabricated text | bounded existing retry policy |
+| Keyboard user | tabs to a chip | card opens on focus, Escape closes, focus returns | N/A |
 
 </frozen-after-approval>
 
 ## Code Map
 
-- `zobba/crates/domain/src/analysis.rs:107-238` -- `AnalysisEnvironment`, `server_allowlist()` (add the extraction environment), `AnalysisRequest`, `canonical_material()`, `MEDIA_TYPES` (:166, add json-only for extraction).
-- `zobba/crates/application/src/analysis.rs:89-121,418,1170-1260` -- `AnalysisTarget::operation`, `admit`, `collect`/descendant registration; no production admission caller exists yet.
-- `zobba/crates/infrastructure/src/analysis/fargate.rs:75,148-164` and `zobba/crates/worker/src/main.rs:118` -- single-environment Fargate config; must become multi-environment.
-- `zobba/crates/infrastructure/src/analysis/mod.rs:269,314,341` -- `descendants()`, `receipt()`, `original()` (inputs only from `evidence_originals`).
-- `zobba/crates/domain/src/model.rs:10,445` -- `ModelMessage` is text only; `MAX_INPUT_BYTES`.
-- `zobba/crates/application/src/model.rs:38-160` -- `ModelRequest` validation, disclosure binding (`Action::Send`, destination/account match), input classes.
-- `zobba/crates/infrastructure/src/model/native.rs:16,171,236-247,445,627` -- `MAX_STREAM_BYTES`, qualification check, OpenAI strict json_schema, wire encoders.
-- `zobba/crates/domain/src/permissions.rs:60-120` -- `CanonicalOperation`, `Attachment{id,digest,classification}`.
-- `zobba/crates/application/src/knowledge.rs:221,357` and `zobba/crates/domain/src/evidence.rs:3,136` -- existing byte-range excerpts, `Omission`, `plain_preview`, `MAX_ORIGINAL_BYTES`.
-- `zobba/migrations/0015_analysis.sql`; `zobba/crates/infrastructure/src/lib.rs:119-149,477-503,1448` -- next migration 0016 and every schema check to extend.
+- `zobba/crates/domain/src/analysis.rs:147-172` -- general environment allowlist and `GENERAL_IMAGE_DIGEST`; the general image gains document libraries (new pinned digest everywhere it is asserted).
+- `zobba/crates/application/src/analysis.rs:418,1170-1260` -- sandbox admission and descendant registration to reuse for page rendering and agent programs.
+- `zobba/crates/domain/src/model.rs:10,445` -- `ModelMessage` is text only; add image parts.
+- `zobba/crates/application/src/model.rs:38-160` -- `ModelRequest` validation and disclosure binding (`Action::Send`).
+- `zobba/crates/infrastructure/src/model/native.rs:16,171,236-247,445,627` -- body bound, qualification, OpenAI strict schema and wire encoders.
+- `zobba/crates/domain/src/permissions.rs:60-120` -- `CanonicalOperation`, `Attachment`.
+- `zobba/crates/application/src/work.rs:598,1018` -- `answer_text`; where answers leave the work loop.
+- `zobba/crates/application/src/knowledge.rs:357` and `zobba/crates/application/src/evidence.rs:286,362` -- byte-range excerpts, `read_original`, `capture_range` (reuse for text verification).
+- `zobba/web/src/TaskWorkPanel.tsx`, `zobba/web/src/EvidenceNavigation.tsx`, `zobba/web/src/design/zobba-tokens.json` -- work panel, evidence viewer navigation, design tokens.
+- `zobba/migrations/0015_analysis.sql`; `zobba/crates/infrastructure/src/lib.rs:119-149,477-503,1448` -- next migration 0016 and schema checks.
 
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `zobba/crates/domain/src/extraction.rs` -- fact, locator, reader, limitation types; result document schema and validation; locator resolution rules.
-- [ ] `zobba/deploy/extraction/` -- pinned extraction image (parsers + page renderer, digest-pinned) and the versioned server-owned extractor program.
-- [ ] `zobba/crates/domain/src/analysis.rs` + Fargate/worker config -- second allowlisted environment; multi-environment task definitions.
-- [ ] `zobba/crates/application/src/extraction.rs` -- trusted admission of extraction jobs, result validation, per-page model reading via disclosure custody, reader comparison, registration of facts and full result.
-- [ ] `zobba/crates/domain/src/model.rs`, `application/src/model.rs`, `infrastructure/src/model/native.rs` -- image input part, per-page bounds, OpenAI encoding, Anthropic refusal.
-- [ ] `zobba/migrations/0016_extraction.sql` + repository + schema checks -- facts and limitations, immutable, RLS.
-- [ ] Fixtures + tests -- one per matrix row, including locator round trips, hostile files and synthetic-transport model reads.
-- [ ] `zobba/deploy/qualification/*.tf` + tests, `zobba/README.md`, `zobba/deploy/RUNBOOK.md` -- extraction task definition, what is proven offline.
+- [ ] `zobba/crates/domain/src/citation.rs` -- locator, citation, verification result types and validation.
+- [ ] `zobba/crates/application/src/citation.rs` -- trusted verification against originals (XLSX cells, DOCX paragraphs/cells, email parts, PDF text layer, byte ranges) and page-read checks.
+- [ ] Model image input -- domain parts, request bounds, OpenAI encoding, Anthropic refusal; per-page native reading with disclosure custody.
+- [ ] General sandbox image -- document libraries, new pinned digest, trusted page renderer.
+- [ ] `zobba/migrations/0016_citations.sql` + repository + schema checks -- citations and verification results, immutable, RLS.
+- [ ] API + generated client -- answers with citations, scoped to current viewer authority.
+- [ ] `zobba/web/src/Citation.tsx` + use in the work panel -- chip, `+N`, hover/focus card, Open at location, quiet "unverified".
+- [ ] Fixtures + tests -- every matrix row (Rust, web unit, browser), locator round trips, synthetic-transport page reads.
+- [ ] `zobba/README.md`, `zobba/deploy/RUNBOOK.md` -- what is proven offline.
 
 **Acceptance Criteria:**
-- Given any registered fact, when it is inspected, then its reader, input digest and locator are present and a model reading is never presented as a parser fact.
-- Given an extraction, when its full result is requested, then it is a separate descendant and previews state when they are partial.
-- Given the production composition, when a model-read page is sent, then exactly one recorded disclosure operation covers it and its digest.
+- Given a verified citation, when the auditor clicks Open, then the evidence viewer opens at the cited location of that exact original.
+- Given any citation, when inspected through the API, then its verification result and reason are present and the answer text is unchanged by verification.
+- Given a native page read, when audited, then exactly one disclosure operation covers that page image digest.
 
 ## Verification
 
 **Commands:**
 - `cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings` -- expected: clean.
-- `cargo test --workspace` on guarded `_test` databases with Docker live -- expected: all pass; extraction fixtures run for real in the extraction image.
-- `terraform -chdir=zobba/deploy/qualification test` -- expected: all pass.
+- `cargo test --workspace` on guarded `_test` databases with Docker live -- expected: all pass.
+- `pnpm --dir zobba/web check` and the browser suite for citations -- expected: pass, including keyboard and accessibility checks.
