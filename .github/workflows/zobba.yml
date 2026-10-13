@@ -117,11 +117,16 @@ jobs:
           fi
           # Control: the dev graph does enable it, so the check above is live.
           cargo tree --locked -p zobba-worker -e normal,dev,features | grep -q 'test-docker-sandbox'
-      - name: Pull the pinned analysis image by digest (hostile Docker fixtures)
-        # Must equal zobba_domain::analysis::GENERAL_IMAGE_DIGEST; the fixture
-        # suite (crates/worker/tests/analysis_sandbox.rs) runs real hostile
-        # programs in it and fails, never skips, without Docker or the image.
-        run: docker pull mirror.gcr.io/library/python@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f
+      - name: Build the pinned general analysis image reproducibly (hostile Docker and reading fixtures)
+        # The digest must equal zobba_domain::analysis::GENERAL_IMAGE_DIGEST.
+        # build.sh fetches hash-pinned wheels and builds with fixed timestamps;
+        # the worker suites (analysis_sandbox.rs, citations.rs) run real programs
+        # in it from a local registry and fail, never skip, without it.
+        run: |
+          docker run -d --name zobba-registry -p 127.0.0.1:5000:5000 mirror.gcr.io/library/registry:2
+          digest=$(zobba/deploy/qualification/analysis/general/build.sh 127.0.0.1:5000/zobba/analysis-general:ci | tail -n 1)
+          test "$digest" = "sha256:8241deca19d20b576c0d4b2ad75deac753492d335de45d284766df3d5666ea5f"
+          docker pull "127.0.0.1:5000/zobba/analysis-general@$digest"
       - name: Test Rust, immutable S3 protocol, PostgreSQL refusal cases and hostile analysis fixtures
         run: |
           source "$ZOBBA_FIXTURE_DIR/env.sh"

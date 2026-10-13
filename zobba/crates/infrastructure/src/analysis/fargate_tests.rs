@@ -649,5 +649,5 @@ fn the_pinned_image_digest_is_the_same_everywhere() {
         terraform.contains(&format!("\"{digest}\"")),
         "Terraform allowlist"
     );
-    assert!(ci.contains(&format!("python@{digest}")), "CI fixture image");
+    assert!(ci.contains(&format!("\"{digest}\"")), "CI reproducible image build");
 }
