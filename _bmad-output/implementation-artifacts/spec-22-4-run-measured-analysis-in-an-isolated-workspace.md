@@ -2,7 +2,8 @@
 title: '22.4 — Run measured analysis in an isolated workspace'
 type: 'feature'
 created: '2026-10-13'
-status: 'draft'
+status: 'in-progress'
+baseline_commit: '794a8af2396fe96acd9638a6ccef7f90a48008af'
 review_loop_iteration: 0
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-22-context.md'
