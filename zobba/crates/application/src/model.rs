@@ -118,11 +118,7 @@ impl ModelRequest {
         // only on an attributed User message, only to a profile qualified for
         // image input and strict structured output, and disclosed as its own
         // attachment with the original's classification.
-        let images: Vec<&ImagePart> = self
-            .messages
-            .iter()
-            .flat_map(|m| m.images.iter())
-            .collect();
+        let images: Vec<&ImagePart> = self.messages.iter().flat_map(|m| m.images.iter()).collect();
         if !images.is_empty() {
             if !self.profile.capabilities.image_input || self.structured_output.is_none() {
                 return Err(ModelError::Unsupported);
@@ -142,11 +138,15 @@ impl ModelRequest {
                 }
             }
         }
-        if self.messages.iter().any(|m| {
-            !m.images.is_empty() && (m.role != MessageRole::User || m.source_id.is_none())
-        }) || self.history.iter().any(
-            |item| matches!(item, HistoryItem::Message(m) if !m.images.is_empty()),
-        ) {
+        if self
+            .messages
+            .iter()
+            .any(|m| !m.images.is_empty() && (m.role != MessageRole::User || m.source_id.is_none()))
+            || self
+                .history
+                .iter()
+                .any(|item| matches!(item, HistoryItem::Message(m) if !m.images.is_empty()))
+        {
             return Err(ModelError::Invalid);
         }
         if self.messages.is_empty()

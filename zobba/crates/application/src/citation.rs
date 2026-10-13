@@ -182,7 +182,11 @@ async fn decide_one<C: CitationReader>(
                 Ok(found) => Some(found),
                 Err(error) => unreadable::<Located>(error)?,
             };
-            Ok(decide(source, Some(&found.unwrap_or(Located::Unreadable)), None))
+            Ok(decide(
+                source,
+                Some(&found.unwrap_or(Located::Unreadable)),
+                None,
+            ))
         }
         _ => Ok(decide(
             source,

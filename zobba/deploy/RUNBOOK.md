@@ -300,17 +300,26 @@ composes no sandbox. No production entry point admits analysis jobs yet (a
 later model-tool story adds admission), so enabling it only lets the worker run
 and recover jobs. To enable it:
 
-1. Mirror the one allowlisted image **by digest** into the analysis ECR
-   repository (`terraform output analysis_ecr_repository_url`), keeping the
-   manifest digest unchanged (for example `crane copy
-   docker.io/library/python@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f
-   <repository>@sha256:...`). Check the digest in ECR equals the allowlist in
-   `crates/domain/src/analysis.rs`; Terraform refuses any other value.
+1. Build the one allowlisted general image reproducibly and push it to the
+   analysis ECR repository (`terraform output analysis_ecr_repository_url`):
+   `deploy/qualification/analysis/general/build.sh <repository>:22.5` fetches
+   the hash-pinned wheels (pandas, openpyxl, python-docx, pypdfium2) and builds
+   with `SOURCE_DATE_EPOCH=0` and rewritten layer timestamps, then prints the
+   manifest digest. It must equal `GENERAL_IMAGE_DIGEST` in
+   `crates/domain/src/analysis.rs`
+   (`sha256:8241deca19d20b576c0d4b2ad75deac753492d335de45d284766df3d5666ea5f`,
+   Story 22.5); Terraform refuses any other value. The base is
+   `python:3.13-slim@sha256:70729b46…` (`GENERAL_BASE_IMAGE_DIGEST`). If the
+   digest differs, do not change the allowlist: report it (a changed wheel or
+   build tool is an owner decision).
 2. Set `analysis_image_digest` in the reviewed tfvars and apply. The worker task
    definition gains its task role and exactly the environment names in
    `analysis/worker-environment.json`; the next release carries them.
-3. No other image may be added without the owner (spec Ask First), and no limit
-   above 2 vCPU / 4 GiB / 15 minutes / 100 MiB.
+3. No other image or library may be added without the owner (spec Ask First),
+   and no limit above 2 vCPU / 4 GiB / 15 minutes / 100 MiB. The Story 22.5
+   trusted document program runs in this image too (render and locate jobs,
+   1 vCPU / 1 GiB / 120 s / 80 MiB); native page reading also needs a qualified
+   profile with `image_input`, which production does not compose yet.
 
 What isolates a job: a dedicated analysis VPC (`analysis_vpc_cidr`) with no
 internet route and no peering; a S3 gateway endpoint whose policy admits only

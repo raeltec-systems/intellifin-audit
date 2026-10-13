@@ -9,8 +9,8 @@ use zobba_application::{
     analysis::Descendant,
     citation::{ReadingError, StoredCitation},
     reading::{
-        DocumentStatus, PageImage, PageRead, ProgramRun, ProgramStatus, ReadStatus,
-        ReadingOriginal, ReadingStore, RenderBatch, RenderedPage, MAX_CONTEXT_ORIGINALS,
+        DocumentStatus, MAX_CONTEXT_ORIGINALS, PageImage, PageRead, ProgramRun, ProgramStatus,
+        ReadStatus, ReadingOriginal, ReadingStore, RenderBatch, RenderedPage,
     },
 };
 use zobba_domain::{
@@ -81,7 +81,10 @@ async fn lock(tx: &mut Tx, key: &str) -> Result<(), ReadingError> {
     Ok(())
 }
 fn static_media(value: &str) -> Option<&'static str> {
-    MEDIA_TYPES.iter().find(|(_, m)| *m == value).map(|(_, m)| *m)
+    MEDIA_TYPES
+        .iter()
+        .find(|(_, m)| *m == value)
+        .map(|(_, m)| *m)
 }
 fn transcript_json(transcript: &PageTranscript) -> Value {
     json!({"text": transcript.text, "unreadable": transcript.unreadable})
@@ -196,7 +199,9 @@ fn page_read_from(row: &PgRow) -> Result<PageRead, ReadingError> {
         },
         reason: field(row, "reason")?,
     };
-    read.is_valid().then_some(read).ok_or(ReadingError::Unavailable)
+    read.is_valid()
+        .then_some(read)
+        .ok_or(ReadingError::Unavailable)
 }
 fn program_run_from(row: &PgRow) -> Result<ProgramRun, ReadingError> {
     Ok(ProgramRun {
@@ -405,9 +410,18 @@ impl ReadingStore for CitationRepository {
         }
         let s = &basis.scope;
         let mut tx = begin(&self.pool, &basis.actor_id, s).await?;
-        lock(&mut tx, &format!("render:{}:{}", batch.original_sha256, batch.batch)).await?;
-        if let Some(existing) =
-            load_batch(&mut tx, &batch.original_id, &batch.original_sha256, batch.batch).await?
+        lock(
+            &mut tx,
+            &format!("render:{}:{}", batch.original_sha256, batch.batch),
+        )
+        .await?;
+        if let Some(existing) = load_batch(
+            &mut tx,
+            &batch.original_id,
+            &batch.original_sha256,
+            batch.batch,
+        )
+        .await?
         {
             // Another job may have rendered the same pages first; its facts stand.
             tx.commit().await.map_err(unavailable)?;
@@ -428,9 +442,14 @@ impl ReadingStore for CitationRepository {
                 .bind(&page.text_layer)
                 .execute(&mut *tx).await.map_err(refusal)?;
         }
-        let stored = load_batch(&mut tx, &batch.original_id, &batch.original_sha256, batch.batch)
-            .await?
-            .ok_or(ReadingError::Unavailable)?;
+        let stored = load_batch(
+            &mut tx,
+            &batch.original_id,
+            &batch.original_sha256,
+            batch.batch,
+        )
+        .await?
+        .ok_or(ReadingError::Unavailable)?;
         tx.commit().await.map_err(unavailable)?;
         Ok(stored)
     }
@@ -497,7 +516,14 @@ impl ReadingStore for CitationRepository {
         }
         let s = &basis.scope;
         let mut tx = begin(&self.pool, &basis.actor_id, s).await?;
-        lock(&mut tx, &format!("read:{}:{}:{}", read.task_id, read.original_sha256, read.page)).await?;
+        lock(
+            &mut tx,
+            &format!(
+                "read:{}:{}:{}",
+                read.task_id, read.original_sha256, read.page
+            ),
+        )
+        .await?;
         let existing = sqlx::query("SELECT * FROM public.task_page_reads WHERE task_id=$1 AND original_id=$2 AND original_sha256=$3 AND page=$4 AND attempt=$5")
             .bind(&read.task_id).bind(&read.original_id).bind(&read.original_sha256).bind(read.page as i32).bind(read.attempt as i32)
             .fetch_optional(&mut *tx).await.map_err(unavailable)?;
@@ -528,7 +554,10 @@ impl ReadingStore for CitationRepository {
         let mut tx = begin(&self.pool, actor, s).await?;
         let rows = sqlx::query("SELECT * FROM public.task_program_runs WHERE task_id=$1 ORDER BY created_at, invocation_id COLLATE \"C\", ordinal LIMIT 256")
             .bind(task_id).fetch_all(&mut *tx).await.map_err(unavailable)?;
-        let runs = rows.iter().map(program_run_from).collect::<Result<_, _>>()?;
+        let runs = rows
+            .iter()
+            .map(program_run_from)
+            .collect::<Result<_, _>>()?;
         tx.commit().await.map_err(unavailable)?;
         Ok(runs)
     }
@@ -542,9 +571,19 @@ impl ReadingStore for CitationRepository {
         }
         let s = &basis.scope;
         let mut tx = begin(&self.pool, &basis.actor_id, s).await?;
-        lock(&mut tx, &format!("program:{}:{}", run.invocation_id, run.index)).await?;
-        let existing = sqlx::query("SELECT * FROM public.task_program_runs WHERE invocation_id=$1 AND ordinal=$2")
-            .bind(&run.invocation_id).bind(run.index as i32).fetch_optional(&mut *tx).await.map_err(unavailable)?;
+        lock(
+            &mut tx,
+            &format!("program:{}:{}", run.invocation_id, run.index),
+        )
+        .await?;
+        let existing = sqlx::query(
+            "SELECT * FROM public.task_program_runs WHERE invocation_id=$1 AND ordinal=$2",
+        )
+        .bind(&run.invocation_id)
+        .bind(run.index as i32)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(unavailable)?;
         if let Some(row) = existing {
             let stored = program_run_from(&row)?;
             tx.commit().await.map_err(unavailable)?;

@@ -141,11 +141,7 @@ impl CellRange {
         if self.is_single() {
             first
         } else {
-            format!(
-                "{first}:{}{}",
-                column_name(self.last_column),
-                self.last_row
-            )
+            format!("{first}:{}{}", column_name(self.last_column), self.last_row)
         }
     }
 }

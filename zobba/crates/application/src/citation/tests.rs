@@ -277,7 +277,11 @@ fn a_fence_ends_verification_but_a_failed_read_is_only_unreadable() {
     );
     // A scanned page with no text layer and no native read is not found there.
     let mut unread = reader();
-    unread.pages.get_mut(&("scan".into(), 3)).unwrap().read_natively = false;
+    unread
+        .pages
+        .get_mut(&("scan".into(), 3))
+        .unwrap()
+        .read_natively = false;
     let page = answer(vec![(
         "Claim.",
         vec![source("scan", "page:3", "Signed by A. Auditor")],

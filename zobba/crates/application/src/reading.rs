@@ -212,7 +212,10 @@ impl PageRead {
                 ReadStatus::Read => {
                     self.image_sha256.is_some()
                         && self.invocation_id.is_some()
-                        && self.transcript.as_ref().is_some_and(PageTranscript::is_valid)
+                        && self
+                            .transcript
+                            .as_ref()
+                            .is_some_and(PageTranscript::is_valid)
                         && self.reason.is_none()
                 }
                 ReadStatus::Failed => {
@@ -347,6 +350,10 @@ pub struct ReadingSettings {
     pub bind: fn(&mut ModelRequest) -> Result<(), ModelError>,
 }
 
+/// One attributed reading for the next turn: source ID, input class, labelled
+/// envelope text and the invocation it depends on, if it is model output.
+pub type ContextReading = (String, InputClass, String, Option<String>);
+
 /// Bounded context the work loop adds when cited answers are enabled.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ReadingContext {
@@ -354,7 +361,7 @@ pub struct ReadingContext {
     pub originals: Option<String>,
     /// Attributed readings, oldest first: (source ID, input class, text,
     /// the producing page-read invocation when the text is model output).
-    pub readings: Vec<(String, InputClass, String, Option<String>)>,
+    pub readings: Vec<ContextReading>,
 }
 
 impl From<AnalysisError> for ReadingError {
@@ -636,8 +643,7 @@ mod manifest {
                             'u' => {
                                 let high = self.hex()?;
                                 let code = if (0xD800..0xDC00).contains(&high) {
-                                    if self.chars.next()?.1 != '\\' || self.chars.next()?.1 != 'u'
-                                    {
+                                    if self.chars.next()?.1 != '\\' || self.chars.next()?.1 != 'u' {
                                         return None;
                                     }
                                     let low = self.hex()?;
@@ -832,7 +838,9 @@ where
             .get_version(&output.id, &output.namespace, &output.version)
             .await
             .map_err(|_| ReadingError::Unavailable)?;
-        if object.identity != output.identity || self.objects.measure(&object.bytes) != output.identity {
+        if object.identity != output.identity
+            || self.objects.measure(&object.bytes) != output.identity
+        {
             return Err(ReadingError::Unavailable);
         }
         Ok(object.bytes)
@@ -848,13 +856,24 @@ where
     ) -> Result<RenderBatch, ReadingError> {
         if let Some(stored) = self
             .store
-            .render_batch(&basis.actor_id, &basis.scope, &original.id, &original.sha256, batch)
+            .render_batch(
+                &basis.actor_id,
+                &basis.scope,
+                &original.id,
+                &original.sha256,
+                batch,
+            )
             .await?
         {
             return Ok(stored);
         }
         let (record, outputs) = self
-            .document_job(basis, original, &render_request(&original.id, batch), cancellation)
+            .document_job(
+                basis,
+                original,
+                &render_request(&original.id, batch),
+                cancellation,
+            )
             .await?;
         let manifest = match outputs.iter().find(|o| o.path == "pages.json") {
             Some(output) => Some(self.output_bytes(output).await?),
@@ -913,7 +932,9 @@ where
         let same: Vec<&PageRead> = reads
             .iter()
             .filter(|r| {
-                r.original_id == original.id && r.original_sha256 == original.sha256 && r.page == page
+                r.original_id == original.id
+                    && r.original_sha256 == original.sha256
+                    && r.page == page
             })
             .collect();
         if let Some(read) = same.iter().find(|r| r.status == ReadStatus::Read) {
@@ -924,7 +945,12 @@ where
         if let Some(read) = same.iter().find(|r| {
             matches!(
                 r.reason.as_deref(),
-                Some("page_not_found" | "page_too_large" | "not_a_paged_document" | "source_unreadable")
+                Some(
+                    "page_not_found"
+                        | "page_too_large"
+                        | "not_a_paged_document"
+                        | "source_unreadable"
+                )
             )
         }) {
             return Ok((*read).clone());
@@ -1063,7 +1089,10 @@ where
         if let Err(error) = (self.settings.bind)(&mut request) {
             return self
                 .store
-                .record_page_read(basis, &failed(&model_reason(error), Some(image.sha256), None))
+                .record_page_read(
+                    basis,
+                    &failed(&model_reason(error), Some(image.sha256), None),
+                )
                 .await;
         }
         let invocation = match self
@@ -1078,7 +1107,10 @@ where
             Err(error) => {
                 return self
                     .store
-                    .record_page_read(basis, &failed(&model_reason(error), Some(image.sha256), None))
+                    .record_page_read(
+                        basis,
+                        &failed(&model_reason(error), Some(image.sha256), None),
+                    )
                     .await;
             }
         };
@@ -1087,7 +1119,11 @@ where
                 status: ReadStatus::Read,
                 transcript: Some(transcript),
                 reason: None,
-                ..failed("model_failed", Some(image.sha256), Some(invocation.id.clone()))
+                ..failed(
+                    "model_failed",
+                    Some(image.sha256),
+                    Some(invocation.id.clone()),
+                )
             },
             None => {
                 let reason = match invocation.outcome.as_ref().map(|o| o.completion) {
@@ -1100,11 +1136,7 @@ where
                     Some(Completion::Succeeded) => "invalid_transcript".into(),
                     None => "model_unknown".into(),
                 };
-                failed(
-                    &reason,
-                    Some(image.sha256),
-                    Some(invocation.id.clone()),
-                )
+                failed(&reason, Some(image.sha256), Some(invocation.id.clone()))
             }
         };
         self.store.record_page_read(basis, &read).await
@@ -1141,7 +1173,11 @@ where
         };
         let mut inputs = Vec::new();
         for id in &program.inputs {
-            match self.store.original(&basis.actor_id, &basis.scope, id).await? {
+            match self
+                .store
+                .original(&basis.actor_id, &basis.scope, id)
+                .await?
+            {
                 Some(original) => inputs.push(AnalysisInput {
                     original_id: original.id,
                     digest: original.sha256,
@@ -1254,11 +1290,11 @@ where
     }
 
     /// Bounded originals and readings the next cited turn may use.
-    pub async fn reading_context(&self, basis: &ClaimBasis) -> Result<ReadingContext, ReadingError> {
-        let originals = self
-            .store
-            .originals(&basis.actor_id, &basis.scope)
-            .await?;
+    pub async fn reading_context(
+        &self,
+        basis: &ClaimBasis,
+    ) -> Result<ReadingContext, ReadingError> {
+        let originals = self.store.originals(&basis.actor_id, &basis.scope).await?;
         let listing = if originals.is_empty() {
             None
         } else {
@@ -1281,7 +1317,7 @@ where
                 &lines.join("\n"),
             ))
         };
-        let mut readings: Vec<(u64, (String, InputClass, String, Option<String>))> = Vec::new();
+        let mut readings: Vec<(u64, ContextReading)> = Vec::new();
         for (order, read) in self
             .store
             .page_reads(&basis.actor_id, &basis.scope, &basis.task_id)
@@ -1309,7 +1345,12 @@ where
             let source = format!("page-read-fact-{order}");
             readings.push((
                 order as u64 * 2,
-                (source.clone(), InputClass::ToolResult, envelope(InputClass::ToolResult, &source, &fact), None),
+                (
+                    source.clone(),
+                    InputClass::ToolResult,
+                    envelope(InputClass::ToolResult, &source, &fact),
+                    None,
+                ),
             ));
             if let (ReadStatus::Read, Some(invocation_id)) = (read.status, &read.invocation_id) {
                 // The transcription is the reading invocation's own output.
@@ -1323,7 +1364,12 @@ where
                 {
                     readings.push((
                         order as u64 * 2 + 1,
-                        (source, InputClass::ModelOutput, text, Some(invocation_id.clone())),
+                        (
+                            source,
+                            InputClass::ModelOutput,
+                            text,
+                            Some(invocation_id.clone()),
+                        ),
                     ));
                 }
             }
@@ -1354,7 +1400,12 @@ where
             };
             readings.push((
                 base + order as u64,
-                (source.clone(), InputClass::AnalysisOutput, envelope(InputClass::AnalysisOutput, &source, &text), None),
+                (
+                    source.clone(),
+                    InputClass::AnalysisOutput,
+                    envelope(InputClass::AnalysisOutput, &source, &text),
+                    None,
+                ),
             ));
         }
         readings.sort_by_key(|(order, _)| *order);
@@ -1362,7 +1413,9 @@ where
         let mut kept = Vec::new();
         let mut bytes = 0usize;
         for (_, reading) in readings.into_iter().rev() {
-            if kept.len() >= MAX_CONTEXT_READINGS || bytes + reading.2.len() > MAX_CONTEXT_READING_BYTES {
+            if kept.len() >= MAX_CONTEXT_READINGS
+                || bytes + reading.2.len() > MAX_CONTEXT_READING_BYTES
+            {
                 break;
             }
             bytes += reading.2.len();
@@ -1468,7 +1521,9 @@ where
             .get_version(&original.id, &stored.namespace, &stored.version)
             .await
             .map_err(|_| ReadingError::Unavailable)?;
-        if object.identity != stored.identity || self.objects.measure(&object.bytes) != stored.identity {
+        if object.identity != stored.identity
+            || self.objects.measure(&object.bytes) != stored.identity
+        {
             return Ok(Located::Unreadable);
         }
         Ok(match capture_range(&object.bytes, start, end) {

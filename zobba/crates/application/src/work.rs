@@ -10,6 +10,7 @@ use std::{
 };
 
 use crate::{
+    citation::ReadingError,
     knowledge::{RecordReference, RecordStatus, VerificationItem, VerifyKnowledge},
     model::{
         Completion, ContextEntry, ContextManifest, Effort, EventKind, HistoryItem, Invocation,
@@ -21,16 +22,15 @@ use crate::{
     operation::{OperationError, OperationStore},
     reading::{CITATION_CONSTRAINTS, ReadingContext},
     task::TaskError,
-    citation::ReadingError,
 };
 use zobba_domain::{
+    citation::CitedAnswer,
     context::{
         self, CompactionDigest, ContextBudget, ContextCompaction, ITEM_OVERHEAD_TOKENS, InputClass,
         MAX_COMPACTION_SOURCES, MAX_COMPACTIONS_PER_CYCLE, MAX_CONTEXT_TOKENS, OmissionCategory,
         Plan, PlanError, PlanInput, SourceState, SourceStatus, StepCost, digest_overhead_tokens,
         digest_step, envelope, estimate_tokens, omission_summary,
     },
-    citation::CitedAnswer,
     identity::Scope,
     model::{
         JsonValue, MAX_HISTORY_BYTES, MAX_HISTORY_ITEMS, MAX_INPUT_BYTES, MAX_MESSAGES,
@@ -2007,7 +2007,10 @@ where
                 (
                     StepStatus::Responded,
                     Some(NextAction::ModelTurn),
-                    format!("Model turn {} responded and asked to read further", ordinal + 1),
+                    format!(
+                        "Model turn {} responded and asked to read further",
+                        ordinal + 1
+                    ),
                 )
             } else if calls.is_empty() {
                 (

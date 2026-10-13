@@ -17,9 +17,8 @@ use zobba_domain::{
     identity::Scope,
     model::{
         CancellationSemantics, Capabilities, Effect, IdempotencySemantics, ImageMediaType,
-        ImagePart, ModelMessage,
-        ModelProfile, OutputCompleteness, ReconciliationSemantics, ToolCatalog, ToolDescriptor,
-        operation_arguments,
+        ImagePart, ModelMessage, ModelProfile, OutputCompleteness, ReconciliationSemantics,
+        ToolCatalog, ToolDescriptor, operation_arguments,
     },
     permissions::{Action, CanonicalOperation, Purpose, SourceFact},
     task::ClaimBasis,
@@ -2366,7 +2365,10 @@ async fn openai_sends_one_page_image_and_anthropic_refuses_before_any_send() {
     let anthropic = page_request(Provider::Anthropic, png.clone());
     let fixture = Fixture::stream(&text_stream(Provider::Anthropic, "{}")).await;
     assert_eq!(
-        fixture.invoke(Provider::Anthropic, &anthropic).await.completion,
+        fixture
+            .invoke(Provider::Anthropic, &anthropic)
+            .await
+            .completion,
         Completion::Failed(ModelError::Unsupported)
     );
     assert_eq!(fixture.sends.load(Ordering::SeqCst), 0);
@@ -2386,7 +2388,10 @@ async fn page_images_need_capability_schema_binding_and_their_exact_bytes() {
     assert_eq!(free.validate(), Err(ModelError::Unsupported));
     // Not disclosed as its own attachment.
     let mut unbound = page_request(Provider::OpenAi, png.clone());
-    unbound.disclosure.attachments.retain(|a| a.id != "page-image");
+    unbound
+        .disclosure
+        .attachments
+        .retain(|a| a.id != "page-image");
     assert_eq!(unbound.validate(), Err(ModelError::Invalid));
     // Bytes that are not the measured page image.
     let mut swapped = page_request(Provider::OpenAi, png.clone());
@@ -2401,7 +2406,10 @@ async fn page_images_need_capability_schema_binding_and_their_exact_bytes() {
     assert!(recovered.validate().is_ok());
     assert_eq!(recovered, page_request(Provider::OpenAi, png.clone()));
     assert_eq!(
-        fixture.invoke(Provider::OpenAi, &recovered).await.completion,
+        fixture
+            .invoke(Provider::OpenAi, &recovered)
+            .await
+            .completion,
         Completion::Failed(ModelError::Invalid)
     );
     // Two pages are two requests.
@@ -2409,12 +2417,16 @@ async fn page_images_need_capability_schema_binding_and_their_exact_bytes() {
     let mut second = two.messages[1].images[0].clone();
     second.attachment_id = "page-image-2".into();
     two.messages[1].images.push(second);
-    assert_eq!(crate::model::bind_disclosure(&mut two), Err(ModelError::Capacity));
+    assert_eq!(
+        crate::model::bind_disclosure(&mut two),
+        Err(ModelError::Capacity)
+    );
     assert_eq!(fixture.sends.load(Ordering::SeqCst), 0);
     // Stored documents never contain image bytes and old messages keep theirs.
-    let stored = serde_json::to_value(zobba_application::model::wire::StoredRequest(
-        page_request(Provider::OpenAi, png),
-    ))
+    let stored = serde_json::to_value(zobba_application::model::wire::StoredRequest(page_request(
+        Provider::OpenAi,
+        png,
+    )))
     .unwrap();
     assert!(stored["messages"][1]["images"][0].get("bytes").is_none());
     assert!(stored["messages"][0].get("images").is_none());

@@ -272,7 +272,10 @@ def locate_xlsx(path, locators):
 
     try:
         # Values only; macros are never loaded and external links never kept.
-        workbook = openpyxl.load_workbook(path, data_only=True, keep_vba=False, keep_links=False)
+        # Staged inputs carry no extension; openpyxl refuses a path without one,
+        # so it reads the already bounded package from an open handle.
+        with open(path, "rb") as handle:
+            workbook = openpyxl.load_workbook(handle, data_only=True, keep_vba=False, keep_links=False)
     except Exception:
         return None
     results = []

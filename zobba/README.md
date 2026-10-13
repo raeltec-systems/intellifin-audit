@@ -1583,7 +1583,8 @@ Outputs are validated by the trusted Rust validator: relative UTF-8 paths, no
 unique key (`analysis_descendants.fold_key`) — regular files only (symlinks,
 hard links, devices, FIFOs and sockets are refused), per-file, total and count
 limits, the allowlisted media types (`text/csv`, `application/json`,
-`text/markdown`, `text/plain`) and a trusted SHA-256. One trusted collector
+`text/markdown`, `text/plain`, and since Story 22.5 `image/png` for the
+general environment's rendered pages) and a trusted SHA-256. One trusted collector
 script (`deploy/qualification/analysis/collect.py`) serves both sandboxes; it
 never fails on a hostile entry (unreadable entries are kind `other`, names past
 the path bound are withheld as `too_long`, at most 1,024 entries) and says why it
@@ -1653,6 +1654,91 @@ collector bound, Stop during a run, lost-job recovery (directly and through the
 coordinator), both collector modes over one tree, the stage script against a
 local manifest server, and owner SQL each database guard refuses. Live Fargate
 qualification belongs to Story 20.7b.
+
+## Reading documents and citing exact source locations (Story 22.5)
+
+Schema 16 is additive; published migrations and catalogues 1–15 are unchanged.
+The agent has two reading tools, both chosen through the fields of its own
+structured cited answer (`read_pages`, `programs`); no variable-argument
+catalogue tool is added.
+
+- **Native reading.** Trusted code (`crates/application/src/reading/document.py`,
+  server-owned, never model-written) renders a PDF or image original to PNG
+  pages in the 22.4 sandbox, recording each page's text layer if it has one.
+  One page is sent per model request as image input. Each request is its own
+  recorded `Send` disclosure operation whose attachments include the page
+  image (`page-image`, its SHA-256 and the original's classification);
+  `reading_guard` refuses a read whose invocation does not disclose exactly
+  that rendered image. The OpenAI encoder sends `input_image`; the Anthropic
+  encoder refuses image input before any send. At most 4 pages per answer,
+  200 pages per document per Task, 2 MiB per page image (rendering retries at lower
+  scales; a page that still exceeds the bound is `page_too_large`), 3
+  attempts per page. A failure that is a fact about the document (`page_not_found`,
+  `page_too_large`, `not_a_paged_document`, `source_unreadable`) is settled
+  and never asked again. The transcription enters later turns only as
+  labelled model output that depends on the reading invocation; it is never
+  evidence. No OCR and no fixed pre-extraction fact database.
+- **The model's own analysis program.** One program per answer runs in the
+  22.4 sandbox over named registered originals. The general image now carries
+  pandas, openpyxl, python-docx, pypdfium2 and the standard `email` package
+  (`deploy/qualification/analysis/general/`, hash-pinned wheels, reproducible
+  build). Validated text outputs reach the next turn as analysis output; a
+  program that fails or hits a limit is recorded as `program_failed` or
+  `program_limit` with no outputs.
+
+A cited answer is segments of text, each with up to 8 sources
+`{original id, locator, quoted text}`. Locators are canonical: `page:N`,
+`cell:Sheet!B4[:C6]`, `paragraph:N`, `table:T:R:C`, `header:Name`, `part:N`,
+`bytes:S-E`. After every answer, trusted verification reads the exact cited
+original — byte ranges in process; cells, paragraphs, table cells and email
+headers/parts by the trusted document program in the sandbox (macros never
+run, external links never kept, bounded package expansion); pages from the
+stored render's text layer — and records `verified`, or `unverified` with one
+closed reason: `not_found_at_location`, `location_missing`,
+`source_unreadable` (including an unregistered original, an encrypted or
+oversized package, or any failed read) or `page_only` (the page was read
+natively as an image, so only the page is confirmed). Normalization is only
+whitespace collapsing and NFC. Verification never edits the answer and gives
+no confidence score.
+
+New tables: `document_renders`, `document_pages`, `task_page_reads`,
+`task_program_runs`, `answer_verifications`, `answer_citations`,
+`citation_sources`. Runtime has SELECT/INSERT only; `reading_guard` checks each
+insert against the facts it depends on and `reading_immutable` refuses every
+update. `GET /engagements/{id}/tasks/{task}/answers` returns the current
+cycle's verified answers with the text unchanged and each source's
+verification and reason. A citation never grants source access: for an
+original the viewer cannot read now, the quote, filename, version and digest
+are withheld. The Task work panel shows each cited span with a `Citation`
+chip (short filename, `+N` further sources); hover or keyboard focus shows a
+card with the file, location, a bounded quote, Open (the evidence viewer at
+the cited location of the exact original, a cited byte range marked in the
+preview) and, only for an unverified source, "Unverified" with its reason.
+Escape dismisses the card and keeps focus on the chip.
+
+The production worker still composes no qualification source, so no model
+reads documents in production; `zobba_worker::work::ReadingComposition` is the
+trusted composition that tests run.
+
+Verification (offline; no provider call):
+
+```bash
+cd zobba
+cargo test -p zobba-domain citation
+cargo test -p zobba-application citation reading
+cargo test -p zobba-infrastructure --lib model::native   # image encoding, Anthropic refusal
+cargo test -p zobba-worker --test citations -- --test-threads=1   # guarded _test DB + Docker
+pnpm --dir web check
+pnpm --dir web exec playwright test tests/browser/citations.spec.ts
+```
+
+The worker test runs the production coordinator with the reading composition,
+a native OpenAI loopback provider, real S3-protocol originals and the pinned
+image: a native page read (one image, one disclosure), a page past the end of a
+PDF, the model's program, every verification result above over real xlsx,
+docx, PDF, email, plain-text, zip-bomb and encrypted fixtures
+(`fixtures/documents/generate.py`), the cited-answer API including withheld
+sources, and the database guards.
 
 ## Establishing an engagement conversationally (Story 22.2 AC4)
 

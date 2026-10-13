@@ -24,20 +24,27 @@ export function Citation({ scope, sources, accessReady, onSourceAccessFailure }:
   const chip = useRef<HTMLButtonElement>(null);
   const wrapper = useRef<HTMLSpanElement>(null);
   const closing = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const panel = useRef<HTMLSpanElement>(null);
   const card = useId();
   const { label, more } = chipLabel(sources);
   const cancelClose = () => { if (closing.current) { clearTimeout(closing.current); closing.current = null; } };
   const scheduleClose = () => { cancelClose(); closing.current = setTimeout(() => setOpen(false), 200); };
   useEffect(() => cancelClose, []);
+  // Keep a shown card inside the scrolled Task details, without moving focus.
+  useEffect(() => { if (open) panel.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [open]);
   useEffect(() => {
     if (!open) return;
+    // Captured first: while the card is shown, Escape dismisses only the card
+    // and never also closes the Task details around it.
     const escape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
       setOpen(false);
       if (wrapper.current?.contains(document.activeElement)) chip.current?.focus();
     };
-    document.addEventListener('keydown', escape);
-    return () => document.removeEventListener('keydown', escape);
+    window.addEventListener('keydown', escape, true);
+    return () => window.removeEventListener('keydown', escape, true);
   }, [open]);
   const name = `Citation: ${sources.map(source => source.readable && source.filename ? source.filename : 'a source you cannot open').join(', ')}`;
   return <span ref={wrapper} className="citation" onMouseEnter={() => { cancelClose(); setOpen(true); }} onMouseLeave={scheduleClose}
@@ -46,7 +53,7 @@ export function Citation({ scope, sources, accessReady, onSourceAccessFailure }:
       onFocus={() => setOpen(true)} onClick={() => setOpen(true)}>
       <span className="citation-name">{label}</span>{more ? <span className="citation-more" aria-hidden="true">+{more}</span> : null}
     </button>
-    <span id={card} role="group" aria-label="Citation sources" className="citation-card" hidden={!open}>
+    <span ref={panel} id={card} role="group" aria-label="Citation sources" className="citation-card" hidden={!open}>
       {sources.map((source, index) => <span key={index} className="citation-source">
         <span className="citation-file">{source.readable && source.filename ? source.filename : 'A source you cannot open'}</span>
         {source.location ? <span className="citation-location">{source.location}</span> : <span className="citation-location">No location given</span>}

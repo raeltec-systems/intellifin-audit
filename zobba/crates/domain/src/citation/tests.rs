@@ -213,7 +213,10 @@ fn answer_json() -> JsonValue {
                 ]),
             ]),
         ),
-        ("limitations", JsonValue::Array(vec![s("Page 4 is smudged.")])),
+        (
+            "limitations",
+            JsonValue::Array(vec![s("Page 4 is smudged.")]),
+        ),
         (
             "read_pages",
             JsonValue::Array(vec![object(vec![
@@ -254,7 +257,10 @@ fn cited_answer_decodes_spans_and_requests() {
     let spans = answer.spans();
     assert_eq!(spans.len(), 2);
     assert_eq!(spans[0].1, Span { start: 0, end: 39 });
-    assert_eq!(&answer.text()[spans[1].1.start as usize..], " The contract and email agree.");
+    assert_eq!(
+        &answer.text()[spans[1].1.start as usize..],
+        " The contract and email agree."
+    );
     assert_eq!(answer.segments[1].sources[1].locator, None);
     assert_eq!(answer.read_pages[0].page, 3);
     assert_eq!(answer.programs[0].inputs, vec!["contract", "trial-balance"]);
@@ -265,7 +271,10 @@ fn cited_answer_decodes_spans_and_requests() {
 fn transcript_schema_and_bounds() {
     let value = object(vec![
         ("text", s("Invoice 42")),
-        ("unreadable", JsonValue::Array(vec![s("Lower half is torn")])),
+        (
+            "unreadable",
+            JsonValue::Array(vec![s("Lower half is torn")]),
+        ),
     ]);
     assert!(PageTranscript::schema().accepts(&value));
     let transcript = PageTranscript::from_json(&value).unwrap();

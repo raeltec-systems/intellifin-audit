@@ -64,6 +64,16 @@ const REPOSITORY: &str = "127.0.0.1:5000/zobba/analysis-general";
 const NAMESPACE: &str = "6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e";
 const ISSUER: &str = "https://127.0.0.1:4443";
 
+/// original, page, status, reason, image digest, invocation.
+type PageReadRow = (
+    String,
+    i32,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
 fn scope() -> Scope {
     Scope {
         organisation_id: "org-a".into(),
@@ -263,7 +273,12 @@ fn sse_reply(mut values: Vec<serde_json::Value>) -> Vec<u8> {
     }
     let body: String = values
         .iter()
-        .map(|v| format!("event: {}\r\ndata: {v}\r\n\r\n", v["type"].as_str().unwrap()))
+        .map(|v| {
+            format!(
+                "event: {}\r\ndata: {v}\r\n\r\n",
+                v["type"].as_str().unwrap()
+            )
+        })
         .collect();
     format!(
         "HTTP/1.1 200 Fixture\r\nContent-Type: text/event-stream; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -314,24 +329,58 @@ fn first_answer() -> String {
 /// The final cited answer: one segment per matrix row.
 fn final_answer() -> (String, Vec<&'static str>) {
     let segments = vec![
-        ("The trial balance total is 1,250.00.", vec![src("trial-balance", "cell:Sheet1!B4", "1,250.00")]),
-        (" Receivables are 500.00.", vec![src("trial-balance", "cell:Sheet1!B3", "500.00")]),
+        (
+            "The trial balance total is 1,250.00.",
+            vec![src("trial-balance", "cell:Sheet1!B4", "1,250.00")],
+        ),
+        (
+            " Receivables are 500.00.",
+            vec![src("trial-balance", "cell:Sheet1!B3", "500.00")],
+        ),
         (
             " Payment is due within 30 days.",
             vec![
-                src("contract-docx", "paragraph:2", "Payment is due within 30 days"),
+                src(
+                    "contract-docx",
+                    "paragraph:2",
+                    "Payment is due within 30 days",
+                ),
                 src("email", "part:1", "payment within 30 days"),
                 src("contract-pdf", "page:2", "Payment is due within 30 days."),
             ],
         ),
-        (" The fee is 1,250.00.", vec![src("contract-docx", "table:1:1:2", "1,250.00")]),
-        (" The letter is signed.", vec![src("scan", "page:3", "Signed by A. Auditor")]),
-        (" The email is about payment terms.", vec![src("email", "header:Subject", "Payment terms")]),
-        (" The notes agree the balance.", vec![src("notes", "bytes:16-24", "1,250.00")]),
-        (" No location was given here.", vec![src("contract-pdf", "", "Payment terms")]),
-        (" The oversized workbook could not be checked.", vec![src("zip-bomb", "cell:Sheet1!A1", "anything")]),
-        (" The encrypted workbook could not be checked.", vec![src("encrypted", "cell:Sheet1!A1", "anything")]),
-        (" An unregistered source is cited.", vec![src("not-registered", "page:1", "secret quote")]),
+        (
+            " The fee is 1,250.00.",
+            vec![src("contract-docx", "table:1:1:2", "1,250.00")],
+        ),
+        (
+            " The letter is signed.",
+            vec![src("scan", "page:3", "Signed by A. Auditor")],
+        ),
+        (
+            " The email is about payment terms.",
+            vec![src("email", "header:Subject", "Payment terms")],
+        ),
+        (
+            " The notes agree the balance.",
+            vec![src("notes", "bytes:16-24", "1,250.00")],
+        ),
+        (
+            " No location was given here.",
+            vec![src("contract-pdf", "", "Payment terms")],
+        ),
+        (
+            " The oversized workbook could not be checked.",
+            vec![src("zip-bomb", "cell:Sheet1!A1", "anything")],
+        ),
+        (
+            " The encrypted workbook could not be checked.",
+            vec![src("encrypted", "cell:Sheet1!A1", "anything")],
+        ),
+        (
+            " An unregistered source is cited.",
+            vec![src("not-registered", "page:1", "secret quote")],
+        ),
         (" This closing sentence is not cited.", vec![]),
     ];
     let texts = segments.iter().map(|(t, _)| *t).collect();
@@ -611,26 +660,37 @@ async fn cited_answers_are_read_and_verified_against_exact_originals() {
         .iter()
         .map(|b| b.matches("\"input_image\"").count())
         .collect();
-    assert_eq!(images, [0, 1, 0], "no whole document is sent in any request");
+    assert_eq!(
+        images,
+        [0, 1, 0],
+        "no whole document is sent in any request"
+    );
     assert!(bodies[1].contains("data:image/png;base64,"));
-    std::fs::write(std::env::temp_dir().join("zobba-citations-turn2.json"), &bodies[2]).unwrap();
     assert!(
         bodies[2].contains("Signed by A. Auditor") && bodies[2].contains("Total 1250"),
         "the next turn reads the transcription and the program's validated output"
     );
 
     // The native read and the page past the end are recorded facts.
-    let reads: Vec<(String, i32, String, Option<String>, Option<String>, Option<String>)> =
+    let reads: Vec<PageReadRow> =
         sqlx::query_as("SELECT original_id,page,status,reason,image_sha256,invocation_id FROM public.task_page_reads ORDER BY original_id,page")
             .fetch_all(&mut admin)
             .await
             .unwrap();
     assert_eq!(reads.len(), 2, "{reads:?}");
     assert_eq!(
-        (reads[0].0.as_str(), reads[0].1, reads[0].2.as_str(), reads[0].3.as_deref()),
+        (
+            reads[0].0.as_str(),
+            reads[0].1,
+            reads[0].2.as_str(),
+            reads[0].3.as_deref()
+        ),
         ("contract-pdf", 9, "failed", Some("page_not_found"))
     );
-    assert_eq!((reads[1].0.as_str(), reads[1].1, reads[1].2.as_str()), ("scan", 3, "read"));
+    assert_eq!(
+        (reads[1].0.as_str(), reads[1].1, reads[1].2.as_str()),
+        ("scan", 3, "read")
+    );
     let image = reads[1].4.clone().unwrap();
     let page_invocation = reads[1].5.clone().unwrap();
     // Exactly one disclosure operation covers this page image digest.
@@ -662,9 +722,14 @@ async fn cited_answers_are_read_and_verified_against_exact_originals() {
         .find(|a| a["id"] == "page-image")
         .unwrap()
         .clone();
-    assert_eq!(attachment["classification"], "audit", "the original's classification");
+    assert_eq!(
+        attachment["classification"], "audit",
+        "the original's classification"
+    );
     assert!(
-        !requests.iter().any(|(_, r)| r.to_string().contains("iVBORw0KGgo")),
+        !requests
+            .iter()
+            .any(|(_, r)| r.to_string().contains("iVBORw0KGgo")),
         "image bytes are never stored in the request"
     );
     // The program ran once in the sandbox; its output reached the next turn.
@@ -703,7 +768,11 @@ async fn cited_answers_are_read_and_verified_against_exact_originals() {
     let answers = body["answers"].as_array().unwrap();
     assert_eq!(answers.len(), 2);
     let last = &answers[1];
-    assert_eq!(last["text"], final_segments.concat(), "the answer text is unchanged");
+    assert_eq!(
+        last["text"],
+        final_segments.concat(),
+        "the answer text is unchanged"
+    );
     let segments = last["segments"].as_array().unwrap();
     let results: Vec<Vec<(String, Option<String>)>> = segments
         .iter()
@@ -755,12 +824,20 @@ async fn cited_answers_are_read_and_verified_against_exact_originals() {
     );
     assert!(cell["version"].is_string());
     let bytes = &segments[6]["sources"][0];
-    assert_eq!((bytes["byte_start"].as_u64(), bytes["byte_end"].as_u64()), (Some(16), Some(24)));
+    assert_eq!(
+        (bytes["byte_start"].as_u64(), bytes["byte_end"].as_u64()),
+        (Some(16), Some(24))
+    );
     let hidden = &segments[10]["sources"][0];
     assert_eq!(hidden["readable"], false);
-    assert!(hidden["quote"].is_null() && hidden["filename"].is_null() && hidden["version"].is_null());
+    assert!(
+        hidden["quote"].is_null() && hidden["filename"].is_null() && hidden["version"].is_null()
+    );
     assert!(!body.to_string().contains("secret quote"));
-    assert_eq!(last["limitations"][0], "Page 9 of the contract does not exist.");
+    assert_eq!(
+        last["limitations"][0],
+        "Page 9 of the contract does not exist."
+    );
     // Without a session nothing is returned.
     let anonymous = client
         .get(format!(
@@ -774,6 +851,17 @@ async fn cited_answers_are_read_and_verified_against_exact_originals() {
     server.abort();
 
     database_guards_refuse_altered_reading_facts(&mut admin).await;
+    // The runtime role can only read and append; it can never delete a fact.
+    for table in [
+        "answer_verifications",
+        "citation_sources",
+        "task_page_reads",
+    ] {
+        let refused = sqlx::query(&format!("DELETE FROM public.{table}"))
+            .execute(&pool)
+            .await;
+        assert!(refused.is_err(), "runtime deleted from {table}");
+    }
 
     stop.send(true).unwrap();
     let _ = tokio::time::timeout(Duration::from_secs(15), worker).await;
@@ -788,7 +876,6 @@ async fn database_guards_refuse_altered_reading_facts(admin: &mut PgConnection) 
         "UPDATE public.citation_sources SET verification='verified', reason=NULL",
         "UPDATE public.task_page_reads SET status='read'",
         "UPDATE public.document_pages SET text_layer='forged'",
-        "DELETE FROM public.answer_verifications",
         "INSERT INTO public.task_page_reads SELECT * FROM public.task_page_reads WHERE status='read'",
         "INSERT INTO public.answer_citations(organisation_id,client_id,engagement_id,invocation_id,segment,span_start,span_end) SELECT organisation_id,client_id,engagement_id,invocation_id,63,0,1 FROM public.answer_verifications LIMIT 1",
     ] {

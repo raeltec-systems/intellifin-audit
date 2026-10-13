@@ -9,7 +9,9 @@ use crate::{
 use std::sync::Mutex;
 use zobba_domain::{
     citation::{Segment, UnverifiedReason, Verification},
-    model::{Capabilities, JsonValue, ModelEvent, Provider, Qualification, TransportOutcome, Usage},
+    model::{
+        Capabilities, JsonValue, ModelEvent, Provider, Qualification, TransportOutcome, Usage,
+    },
     permissions::{Action, Attachment, OPERATION_VERSION, Purpose},
 };
 
@@ -120,7 +122,10 @@ impl ModelTransport for Transport {
         let completion = self.outcome.lock().unwrap().remove(0);
         let value = JsonValue::Object(
             [
-                ("text".to_string(), JsonValue::String("Signed by A. Auditor".into())),
+                (
+                    "text".to_string(),
+                    JsonValue::String("Signed by A. Auditor".into()),
+                ),
                 (
                     "unreadable".to_string(),
                     JsonValue::Array(vec![JsonValue::String("The stamp is illegible.".into())]),
@@ -182,7 +187,11 @@ impl ReadingStore for Store<'_> {
         }))
     }
     async fn originals(&self, _: &str, _: &Scope) -> Result<Vec<ReadingOriginal>, ReadingError> {
-        Ok(vec![self.original("", &crate::analysis::tests::scope(), ORIGINAL).await?.unwrap()])
+        Ok(vec![
+            self.original("", &crate::analysis::tests::scope(), ORIGINAL)
+                .await?
+                .unwrap(),
+        ])
     }
     async fn render_batch(
         &self,
@@ -201,33 +210,65 @@ impl ReadingStore for Store<'_> {
             .find(|r| r.original_id == original_id && r.original_sha256 == sha && r.batch == batch)
             .cloned())
     }
-    async fn record_render(&self, _: &ClaimBasis, batch: &RenderBatch) -> Result<RenderBatch, ReadingError> {
+    async fn record_render(
+        &self,
+        _: &ClaimBasis,
+        batch: &RenderBatch,
+    ) -> Result<RenderBatch, ReadingError> {
         assert!(batch.is_valid());
         self.facts.renders.lock().unwrap().push(batch.clone());
         Ok(batch.clone())
     }
-    async fn job_outputs(&self, _: &str, _: &Scope, job_id: &str) -> Result<Vec<Descendant>, ReadingError> {
+    async fn job_outputs(
+        &self,
+        _: &str,
+        _: &Scope,
+        job_id: &str,
+    ) -> Result<Vec<Descendant>, ReadingError> {
         Ok(self.world.jobs.descendants_of(job_id))
     }
-    async fn job_failure(&self, _: &str, _: &Scope, _: &str) -> Result<Option<String>, ReadingError> {
+    async fn job_failure(
+        &self,
+        _: &str,
+        _: &Scope,
+        _: &str,
+    ) -> Result<Option<String>, ReadingError> {
         Ok(None)
     }
     async fn page_reads(&self, _: &str, _: &Scope, _: &str) -> Result<Vec<PageRead>, ReadingError> {
         Ok(self.facts.reads.lock().unwrap().clone())
     }
-    async fn record_page_read(&self, _: &ClaimBasis, read: &PageRead) -> Result<PageRead, ReadingError> {
+    async fn record_page_read(
+        &self,
+        _: &ClaimBasis,
+        read: &PageRead,
+    ) -> Result<PageRead, ReadingError> {
         assert!(read.is_valid(), "{read:?}");
         self.facts.reads.lock().unwrap().push(read.clone());
         Ok(read.clone())
     }
-    async fn program_runs(&self, _: &str, _: &Scope, _: &str) -> Result<Vec<ProgramRun>, ReadingError> {
+    async fn program_runs(
+        &self,
+        _: &str,
+        _: &Scope,
+        _: &str,
+    ) -> Result<Vec<ProgramRun>, ReadingError> {
         Ok(self.facts.runs.lock().unwrap().clone())
     }
-    async fn record_program_run(&self, _: &ClaimBasis, run: &ProgramRun) -> Result<ProgramRun, ReadingError> {
+    async fn record_program_run(
+        &self,
+        _: &ClaimBasis,
+        run: &ProgramRun,
+    ) -> Result<ProgramRun, ReadingError> {
         self.facts.runs.lock().unwrap().push(run.clone());
         Ok(run.clone())
     }
-    async fn citations(&self, _: &str, _: &Scope, id: &str) -> Result<Option<Vec<StoredCitation>>, ReadingError> {
+    async fn citations(
+        &self,
+        _: &str,
+        _: &Scope,
+        id: &str,
+    ) -> Result<Option<Vec<StoredCitation>>, ReadingError> {
         Ok(self
             .facts
             .citations
@@ -342,8 +383,16 @@ impl Harness {
     fn reading<'a>(
         &'a self,
         store: &'a Store<'a>,
-    ) -> Reading<'a, Models, Transport, Store<'a>, crate::analysis::tests::Store, crate::analysis::tests::Jobs, crate::analysis::tests::Sandbox, crate::analysis::tests::Objects>
-    {
+    ) -> Reading<
+        'a,
+        Models,
+        Transport,
+        Store<'a>,
+        crate::analysis::tests::Store,
+        crate::analysis::tests::Jobs,
+        crate::analysis::tests::Sandbox,
+        crate::analysis::tests::Objects,
+    > {
         let analysis = self.world.analysis();
         Reading {
             models: &self.models,
@@ -359,7 +408,10 @@ impl Harness {
     }
 }
 fn rendered(text_layer: Option<&str>) -> Vec<zobba_domain::analysis::OutputEntry> {
-    vec![regular("pages.json", &manifest(text_layer)), regular("pages/0003.png", PNG)]
+    vec![
+        regular("pages.json", &manifest(text_layer)),
+        regular("pages/0003.png", PNG),
+    ]
 }
 
 #[test]
@@ -386,7 +438,11 @@ fn a_native_page_read_renders_once_and_discloses_exactly_that_page_image() {
     let requests = h.models.store.requests.lock().unwrap().clone();
     assert_eq!(requests.len(), 1);
     let request = &requests[0];
-    let images: Vec<_> = request.messages.iter().flat_map(|m| m.images.iter()).collect();
+    let images: Vec<_> = request
+        .messages
+        .iter()
+        .flat_map(|m| m.images.iter())
+        .collect();
     assert_eq!(images.len(), 1);
     assert_eq!(images[0].sha256, digest(PNG));
     assert_eq!(
@@ -400,7 +456,10 @@ fn a_native_page_read_renders_once_and_discloses_exactly_that_page_image() {
         vec![("page-image", "confidential")]
     );
     assert_eq!(request.structured_output, Some(PageTranscript::schema()));
-    assert_eq!(*h.models.transport.images.lock().unwrap(), vec![(digest(PNG), PNG.len())]);
+    assert_eq!(
+        *h.models.transport.images.lock().unwrap(),
+        vec![(digest(PNG), PNG.len())]
+    );
     // Reading again discloses nothing new and renders nothing new.
     let again = run(reading.read_page(&basis("p1"), "methodology", ORIGINAL, 3, &cancel)).unwrap();
     assert_eq!(again, read);
@@ -440,7 +499,8 @@ fn model_failure_records_a_failed_read_without_text_and_retries_are_bounded() {
     let reading = h.reading(&store);
     let cancel = ModelCancellation::new();
     for attempt in 1..=MAX_PAGE_READ_ATTEMPTS {
-        let read = run(reading.read_page(&basis("p1"), "methodology", ORIGINAL, 3, &cancel)).unwrap();
+        let read =
+            run(reading.read_page(&basis("p1"), "methodology", ORIGINAL, 3, &cancel)).unwrap();
         assert_eq!((read.status, read.attempt), (ReadStatus::Failed, attempt));
         assert_eq!(read.transcript, None, "no fabricated text");
         assert!(read.reason.is_some());
@@ -452,9 +512,16 @@ fn model_failure_records_a_failed_read_without_text_and_retries_are_bounded() {
     // A page the renderer could not fit is refused without any disclosure.
     let large = run(reading.read_page(&basis("p1"), "methodology", ORIGINAL, 1, &cancel)).unwrap();
     assert_eq!(large.reason.as_deref(), Some("page_too_large"));
-    let missing = run(reading.read_page(&basis("p1"), "methodology", ORIGINAL, 2, &cancel)).unwrap();
+    let missing =
+        run(reading.read_page(&basis("p1"), "methodology", ORIGINAL, 2, &cancel)).unwrap();
     assert_eq!(missing.reason.as_deref(), Some("page_not_found"));
     assert_eq!(h.models.store.requests.lock().unwrap().len(), 3);
+    // A document fact is settled: asking again (as a reclaim does) records
+    // no second attempt.
+    let reads = store.facts.reads.lock().unwrap().len();
+    let again = run(reading.read_page(&basis("p1"), "methodology", ORIGINAL, 2, &cancel)).unwrap();
+    assert_eq!(again, missing);
+    assert_eq!(store.facts.reads.lock().unwrap().len(), reads);
     // Out of the per-document bound is refused before anything happens.
     assert_eq!(
         run(reading.read_page(&basis("p1"), "methodology", ORIGINAL, 201, &cancel)),
@@ -526,7 +593,9 @@ fn a_scanned_page_is_page_only_and_a_text_layer_verifies_it() {
         page: 3,
     }];
     let invocation = answer_invocation();
-    let more = run(reading.after_answer(&basis("p1"), "methodology", &invocation, &answer, &cancel)).unwrap();
+    let more =
+        run(reading.after_answer(&basis("p1"), "methodology", &invocation, &answer, &cancel))
+            .unwrap();
     assert!(more, "the answer asked to read further");
     // Verification ran before the read: the page was not yet sent.
     let citations = store.facts.citations.lock().unwrap()[0].1.clone();
@@ -535,7 +604,12 @@ fn a_scanned_page_is_page_only_and_a_text_layer_verifies_it() {
         Verification::Unverified(UnverifiedReason::NotFoundAtLocation)
     );
     // After the native read, the same citation is page-only.
-    let after = run(crate::citation::verify(&reading, &basis("p1"), &cited("page:3", "Signed by A. Auditor"))).unwrap();
+    let after = run(crate::citation::verify(
+        &reading,
+        &basis("p1"),
+        &cited("page:3", "Signed by A. Auditor"),
+    ))
+    .unwrap();
     assert_eq!(
         after[0].sources[0].verification,
         Verification::Unverified(UnverifiedReason::PageOnly)
@@ -543,19 +617,36 @@ fn a_scanned_page_is_page_only_and_a_text_layer_verifies_it() {
     // Verification is recorded once per answer, and never re-run.
     run(reading.after_answer(&basis("p1"), "methodology", &invocation, &answer, &cancel)).unwrap();
     assert_eq!(store.facts.citations.lock().unwrap().len(), 1);
-    assert_eq!(h.models.store.requests.lock().unwrap().len(), 1, "one disclosure for page 3");
+    assert_eq!(
+        h.models.store.requests.lock().unwrap().len(),
+        1,
+        "one disclosure for page 3"
+    );
 
     // A real text layer confirms the quote at the page.
-    let layered = Harness::new(rendered(Some("Signatures\\r\\nSigned  by A. Auditor")), vec![]);
+    let layered = Harness::new(
+        rendered(Some("Signatures\\r\\nSigned  by A. Auditor")),
+        vec![],
+    );
     let store = Store {
         facts: Facts::default(),
         world: &layered.world,
     };
     let reading = layered.reading(&store);
-    let verified = run(crate::citation::verify(&reading, &basis("p1"), &cited("page:3", "Signed by A. Auditor"))).unwrap();
+    let verified = run(crate::citation::verify(
+        &reading,
+        &basis("p1"),
+        &cited("page:3", "Signed by A. Auditor"),
+    ))
+    .unwrap();
     assert_eq!(verified[0].sources[0].verification, Verification::Verified);
     assert_eq!(verified[0].sources[0].original_sha256, Some(digest(INPUT)));
-    let absent = run(crate::citation::verify(&reading, &basis("p1"), &cited("page:9", "x"))).unwrap();
+    let absent = run(crate::citation::verify(
+        &reading,
+        &basis("p1"),
+        &cited("page:9", "x"),
+    ))
+    .unwrap();
     assert_eq!(
         absent[0].sources[0].verification,
         Verification::Unverified(UnverifiedReason::NotFoundAtLocation)
@@ -565,7 +656,10 @@ fn a_scanned_page_is_page_only_and_a_text_layer_verifies_it() {
 
 #[test]
 fn trusted_requests_escape_every_unsafe_character_and_manifests_are_strict() {
-    let locate = locate_request("orig-a", &[Locator::parse("cell:Bad \"sheet\u{e9}!B4").unwrap()]);
+    let locate = locate_request(
+        "orig-a",
+        &[Locator::parse("cell:Bad \"sheet\u{e9}!B4").unwrap()],
+    );
     assert_eq!(
         locate,
         "{\"locators\":[\"cell:Bad \\\"sheet\u{e9}!B4\"],\"mode\":\"locate\",\"original\":\"orig-a\"}"
@@ -612,7 +706,9 @@ fn trusted_requests_escape_every_unsafe_character_and_manifests_are_strict() {
         world: &h.world,
     };
     let reading = h.reading(&store);
-    let original = run(store.original("", &crate::analysis::tests::scope(), ORIGINAL)).unwrap().unwrap();
+    let original = run(store.original("", &crate::analysis::tests::scope(), ORIGINAL))
+        .unwrap()
+        .unwrap();
     let batch = run(reading.render(&basis("p1"), &original, 0, &ModelCancellation::new())).unwrap();
     assert_eq!(batch.status, DocumentStatus::Unreadable);
     assert_eq!(batch.reason.as_deref(), Some("no_manifest"));
