@@ -55,3 +55,23 @@
 - source_spec: none
   summary: Story 20.7b — live qualification proof: disposable apply/destroy evidence, actual Cognito login, release-only migration refusal against the deployed database, backup/PITR restore to a separate environment with restored scope/receipt verification, the beyond-horizon effect reconciliation fixture, and actual spend reporting.
   evidence: Owner chose to split Story 20.7 (2026-10-13). No AWS account or budget exists yet (AWS startup credit application pending); 20.7a delivers the Terraform, image, release workflow and runbook verified offline. 25.4 still requires 20.7b.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-20-7a-qualification-environment-infrastructure.md`
+  summary: Database TLS uses sslmode=require, so no runtime, migrator or bootstrap connection verifies the RDS server certificate (verify-full with the RDS CA bundle in the image).
+  evidence: The URL parser allows only sslmode/application_name query keys, so sslrootcert cannot be passed today; the spec chose require on purpose and 20.7b must decide before real data.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-20-7a-qualification-environment-infrastructure.md`
+  summary: The evidence bucket relies on versioning only; there is no S3 Object Lock, deny-delete bucket policy or MFA delete for original evidence versions.
+  evidence: Review found any administrator can delete evidence versions; immutable custody needs a storage-level control and a retention decision from the owner.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-20-7a-qualification-environment-infrastructure.md`
+  summary: The qualification account has no CloudTrail trail, no CloudWatch alarms (ALB 5xx, unhealthy targets, task failures, RDS storage/CPU), no SNS topic and no RDS storage autoscaling; the budget is the only alert.
+  evidence: Each adds monthly cost, so it needs an owner cost decision together with the AWS credit budget.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-20-7a-qualification-environment-infrastructure.md`
+  summary: The CloudFront response headers policy sets no Content-Security-Policy or Permissions-Policy for the web shell.
+  evidence: A correct CSP needs the web app's actual script, style and connect sources; it was not in the 20.7a spec.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-20-7a-qualification-environment-infrastructure.md`
+  summary: The release workflow does not read ECR image scan findings (scan_on_push) before deploying, and the release role has no ecr:DescribeImageScanFindings.
+  evidence: Scanning runs but its result never gates a release.
