@@ -1328,4 +1328,4 @@ fn valid_version(version: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

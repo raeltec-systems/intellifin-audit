@@ -13,7 +13,7 @@ use zobba_domain::permissions::{
     OperationState, PolicyDocument, PolicyReference, RevocationCommand, SourceBinding,
 };
 
-fn run<F: Future>(future: F) -> F::Output {
+pub(crate) fn run<F: Future>(future: F) -> F::Output {
     let mut future = std::pin::pin!(future);
     let mut context = Context::from_waker(Waker::noop());
     loop {
@@ -22,10 +22,10 @@ fn run<F: Future>(future: F) -> F::Output {
         }
     }
 }
-fn no_delay(_: Duration) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+pub(crate) fn no_delay(_: Duration) -> Pin<Box<dyn Future<Output = ()> + Send>> {
     Box::pin(async {})
 }
-fn digest(bytes: &[u8]) -> String {
+pub(crate) fn digest(bytes: &[u8]) -> String {
     // Deterministic stand-in for SHA-256: the application never hashes itself.
     let mut state: [u64; 4] = [0xcbf29ce484222325, 0x84222325cbf29ce4, 7, 11];
     for (i, b) in bytes.iter().enumerate() {
@@ -34,14 +34,14 @@ fn digest(bytes: &[u8]) -> String {
     }
     state.iter().map(|v| format!("{v:016x}")).collect()
 }
-fn scope() -> Scope {
+pub(crate) fn scope() -> Scope {
     Scope {
         organisation_id: "org".into(),
         client_id: "client".into(),
         engagement_id: "engagement".into(),
     }
 }
-fn basis(process: &str) -> ClaimBasis {
+pub(crate) fn basis(process: &str) -> ClaimBasis {
     ClaimBasis {
         actor_id: "actor".into(),
         scope: scope(),
@@ -55,7 +55,7 @@ fn basis(process: &str) -> ClaimBasis {
         intent_revision: 1,
     }
 }
-fn target() -> AnalysisTarget {
+pub(crate) fn target() -> AnalysisTarget {
     AnalysisTarget {
         account_id: "analysis-account".into(),
         environment_id: "analysis-environment".into(),
@@ -67,7 +67,7 @@ fn target() -> AnalysisTarget {
     }
 }
 const PROGRAM: &str = "SECRET-PROGRAM-TEXT = open('/input/orig-a').read()\n";
-const INPUT: &[u8] = b"SECRET-INPUT-BYTES";
+pub(crate) const INPUT: &[u8] = b"SECRET-INPUT-BYTES";
 fn request() -> AnalysisRequest {
     AnalysisRequest {
         environment_id: GENERAL_ENVIRONMENT_ID.into(),
@@ -86,7 +86,7 @@ fn request() -> AnalysisRequest {
 }
 
 #[derive(Default)]
-struct StoreState {
+pub(crate) struct StoreState {
     operations: HashMap<String, (String, CanonicalOperation)>,
     attempts: Vec<(String, String, String)>, // (operation, attempt, process)
     facts: HashMap<String, Vec<(OperationCustody, SourceFact)>>,
@@ -94,7 +94,7 @@ struct StoreState {
     fail_next_observe: bool,
 }
 #[derive(Default)]
-struct Store(Mutex<StoreState>);
+pub(crate) struct Store(Mutex<StoreState>);
 impl Store {
     fn facts(&self, attempt: &str) -> Vec<SourceFact> {
         self.0
@@ -352,7 +352,7 @@ type StoredJob = (
 );
 
 #[derive(Default)]
-struct Jobs {
+pub(crate) struct Jobs {
     store: Arc<Store>,
     jobs: Mutex<Vec<StoredJob>>,
     fail_next_append: Mutex<bool>,
@@ -361,6 +361,16 @@ struct Jobs {
     broken: Mutex<Vec<String>>,
 }
 impl Jobs {
+    /// Descendants registered for a job (Story 22.5 reading tests).
+    pub(crate) fn descendants_of(&self, job_id: &str) -> Vec<Descendant> {
+        self.jobs
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|j| j.0.id == job_id)
+            .map(|j| j.2.clone())
+            .unwrap_or_default()
+    }
     fn record_of(&self, index: usize) -> JobRecord {
         let jobs = self.jobs.lock().unwrap();
         let (job, facts, ..) = &jobs[index];
@@ -595,7 +605,7 @@ impl AnalysisJobs for Jobs {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Behaviour {
+pub(crate) enum Behaviour {
     Exit(i32),
     Oom,
     Forever,
@@ -609,17 +619,17 @@ enum Behaviour {
     /// (Fargate StopTask stops the collector too).
     ForeverCollectionLostOnStop,
 }
-struct Sandbox {
-    behaviour: Behaviour,
-    entries: Vec<OutputEntry>,
-    started: Mutex<Vec<String>>,
-    polls: Mutex<u32>,
-    stopped: Mutex<bool>,
-    discarded: Mutex<Vec<String>>,
-    seen_spec: Mutex<Option<SandboxSpec>>,
-    collect_fails: Mutex<bool>,
-    collects: Mutex<u32>,
-    truncated: Mutex<bool>,
+pub(crate) struct Sandbox {
+    pub(crate) behaviour: Behaviour,
+    pub(crate) entries: Vec<OutputEntry>,
+    pub(crate) started: Mutex<Vec<String>>,
+    pub(crate) polls: Mutex<u32>,
+    pub(crate) stopped: Mutex<bool>,
+    pub(crate) discarded: Mutex<Vec<String>>,
+    pub(crate) seen_spec: Mutex<Option<SandboxSpec>>,
+    pub(crate) collect_fails: Mutex<bool>,
+    pub(crate) collects: Mutex<u32>,
+    pub(crate) truncated: Mutex<bool>,
 }
 impl Sandbox {
     fn new(behaviour: Behaviour, entries: Vec<OutputEntry>) -> Self {
@@ -710,7 +720,7 @@ impl AnalysisSandbox for Sandbox {
 }
 
 #[derive(Default)]
-struct Objects(Mutex<HashMap<String, Vec<u8>>>);
+pub(crate) struct Objects(Mutex<HashMap<String, Vec<u8>>>);
 impl EvidenceObjects for Objects {
     fn namespace(&self) -> &str {
         "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"
@@ -750,7 +760,7 @@ impl EvidenceObjects for Objects {
     }
 }
 
-fn regular(path: &str, content: &[u8]) -> OutputEntry {
+pub(crate) fn regular(path: &str, content: &[u8]) -> OutputEntry {
     OutputEntry {
         path: path.as_bytes().to_vec(),
         kind: OutputKind::Regular,
@@ -760,15 +770,15 @@ fn regular(path: &str, content: &[u8]) -> OutputEntry {
         withheld: None,
     }
 }
-struct World {
-    store: Arc<Store>,
-    jobs: Jobs,
-    sandbox: Sandbox,
-    objects: Objects,
-    allowlist: Vec<AnalysisEnvironment>,
+pub(crate) struct World {
+    pub(crate) store: Arc<Store>,
+    pub(crate) jobs: Jobs,
+    pub(crate) sandbox: Sandbox,
+    pub(crate) objects: Objects,
+    pub(crate) allowlist: Vec<AnalysisEnvironment>,
 }
 impl World {
-    fn new(behaviour: Behaviour, entries: Vec<OutputEntry>) -> Self {
+    pub(crate) fn new(behaviour: Behaviour, entries: Vec<OutputEntry>) -> Self {
         let store = Arc::new(Store::default());
         Self {
             jobs: Jobs {
@@ -781,7 +791,7 @@ impl World {
             allowlist: server_allowlist(),
         }
     }
-    fn analysis(&self) -> Analysis<'_, Store, Jobs, Sandbox, Objects> {
+    pub(crate) fn analysis(&self) -> Analysis<'_, Store, Jobs, Sandbox, Objects> {
         Analysis {
             store: &*self.store,
             jobs: &self.jobs,

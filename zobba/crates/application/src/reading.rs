@@ -718,19 +718,19 @@ fn render_manifest(
 }
 
 /// The two reading tools and citation verification, composed by trusted code.
-pub struct Reading<M, T, R, S, J, X, O> {
-    pub models: ModelCoordinator<M, T>,
-    pub store: R,
-    pub operations: S,
-    pub jobs: J,
-    pub sandbox: X,
-    pub objects: O,
-    pub allowlist: Vec<AnalysisEnvironment>,
+pub struct Reading<'a, M, T, R, S, J, X, O> {
+    pub models: &'a ModelCoordinator<M, T>,
+    pub store: &'a R,
+    pub operations: &'a S,
+    pub jobs: &'a J,
+    pub sandbox: &'a X,
+    pub objects: &'a O,
+    pub allowlist: &'a [AnalysisEnvironment],
     pub analysis_settings: AnalysisSettings,
-    pub settings: ReadingSettings,
+    pub settings: &'a ReadingSettings,
 }
 
-impl<M, T, R, S, J, X, O> Reading<M, T, R, S, J, X, O>
+impl<M, T, R, S, J, X, O> Reading<'_, M, T, R, S, J, X, O>
 where
     M: ModelStore,
     T: ModelTransport,
@@ -742,11 +742,11 @@ where
 {
     fn analysis(&self) -> Analysis<'_, S, J, X, O> {
         Analysis {
-            store: &self.operations,
-            jobs: &self.jobs,
-            sandbox: &self.sandbox,
-            objects: &self.objects,
-            allowlist: &self.allowlist,
+            store: self.operations,
+            jobs: self.jobs,
+            sandbox: self.sandbox,
+            objects: self.objects,
+            allowlist: self.allowlist,
             settings: self.analysis_settings,
         }
     }
@@ -1386,7 +1386,7 @@ where
     }
 }
 
-impl<M, T, R, S, J, X, O> CitationReader for Reading<M, T, R, S, J, X, O>
+impl<M, T, R, S, J, X, O> CitationReader for Reading<'_, M, T, R, S, J, X, O>
 where
     M: ModelStore,
     T: ModelTransport,

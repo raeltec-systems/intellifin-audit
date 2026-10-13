@@ -597,7 +597,7 @@ impl WorkReading for NoReading {
         Ok(false)
     }
 }
-impl<M, T, R, S, J, X, O> WorkReading for crate::reading::Reading<M, T, R, S, J, X, O>
+impl<M, T, R, S, J, X, O> WorkReading for crate::reading::Reading<'_, M, T, R, S, J, X, O>
 where
     M: ModelStore,
     T: ModelTransport,
