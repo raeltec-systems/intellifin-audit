@@ -2,7 +2,7 @@
 title: '20.7a — Qualification environment as code, verified offline'
 type: 'feature'
 created: '2026-10-13'
-status: 'in-review'
+status: 'done'
 baseline_commit: '05e1b58cacdd35756944de156cb801ca7b851693'
 review_loop_iteration: 0
 context:
@@ -84,3 +84,74 @@ Why a VPC origin: the API must be HTTPS on a real domain, and a TLS certificate 
 **Commands:**
 - `terraform -chdir=zobba/deploy/qualification fmt -check -recursive && terraform -chdir=zobba/deploy/qualification init -backend=false && terraform -chdir=zobba/deploy/qualification validate && terraform -chdir=zobba/deploy/qualification test` -- expected: all pass (install pinned Terraform into the scratchpad, not the repo).
 - `docker build -f zobba/deploy/Containerfile zobba` then run `zobba-cli openapi` and compare with `zobba/openapi.json` -- expected: identical (if no local Docker daemon, rely on the CI job and say so).
+
+## Suggested Review Order
+
+**Single public origin and the private API path**
+
+- Entry point: CloudFront serves the web and sends `/api/*` to a private ALB.
+  [`cloudfront.tf:84`](../../zobba/deploy/qualification/cloudfront.tf#L84)
+
+- VPC origin reaches the internal ALB without a public load balancer or custom domain.
+  [`cloudfront.tf:6`](../../zobba/deploy/qualification/cloudfront.tf#L6)
+
+- ALB ingress: prefix list first, CloudFront service security group after the second apply.
+  [`security_groups.tf:21`](../../zobba/deploy/qualification/security_groups.tf#L21)
+
+- Removes the `/api` prefix exactly as the dev proxy does.
+  [`strip-api-prefix.js:7`](../../zobba/deploy/qualification/functions/strip-api-prefix.js#L7)
+
+**Database and secret custody**
+
+- Multi-AZ PostgreSQL 18.6, PITR, forced TLS, statement logging off.
+  [`rds.tf:45`](../../zobba/deploy/qualification/rds.tf#L45)
+
+- Write-only URL secrets; version follows password version and endpoint.
+  [`secrets.tf:31`](../../zobba/deploy/qualification/secrets.tf#L31)
+
+- Role bootstrap refuses unsafe roles, memberships and malformed URLs.
+  [`bootstrap-roles.sh:65`](../../zobba/deploy/qualification/bootstrap-roles.sh#L65)
+
+**Processes and least privilege**
+
+- API, worker and migration task definitions; only migration gets the migrator URL.
+  [`ecs.tf:71`](../../zobba/deploy/qualification/ecs.tf#L71)
+
+- Release role via GitHub OIDC; PassRole residual risk stated here.
+  [`iam.tf:185`](../../zobba/deploy/qualification/iam.tf#L185)
+
+- Cognito client with callback exactly `<origin>/api/auth/callback`.
+  [`cognito.tf:49`](../../zobba/deploy/qualification/cognito.tf#L49)
+
+**Release-only migrations**
+
+- Manual, approved, ref-checked release in fixed order.
+  [`zobba-qualification-release.yml:20`](../../.github/workflows/zobba-qualification-release.yml#L20)
+
+- Migration gate: bounded wait, refuses concurrent runs, only exit 0 passes.
+  [`migrate.sh:50`](../../zobba/deploy/release/migrate.sh#L50)
+
+- Deploy verifies new revision is primary and COMPLETED, else rolls both back.
+  [`deploy-services.sh:4`](../../zobba/deploy/release/deploy-services.sh#L4)
+
+- New revision copies the Terraform revision; only the image changes.
+  [`register-revision.sh:24`](../../zobba/deploy/release/register-revision.sh#L24)
+
+- One pinned, non-root image with the three binaries and no default command.
+  [`Containerfile:11`](../../zobba/deploy/Containerfile#L11)
+
+**Operator path**
+
+- Runbook: owner gates, apply, bootstrap, release, rollback, destroy, spend; restore is 20.7b.
+  [`RUNBOOK.md:5`](../../zobba/deploy/RUNBOOK.md#L5)
+
+**Verification**
+
+- Offline CI job: Terraform tests, checkov, actionlint, script and image smokes.
+  [`zobba.yml:143`](../../.github/workflows/zobba.yml#L143)
+
+- Invariants against a mocked AWS provider.
+  [`invariants.tftest.hcl:123`](../../zobba/deploy/qualification/tests/invariants.tftest.hcl#L123)
+
+- Unsafe or missing variables are refused.
+  [`validation.tftest.hcl:14`](../../zobba/deploy/qualification/tests/validation.tftest.hcl#L14)
