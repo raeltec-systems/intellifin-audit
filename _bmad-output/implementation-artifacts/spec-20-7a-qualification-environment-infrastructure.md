@@ -2,7 +2,7 @@
 title: '20.7a — Qualification environment as code, verified offline'
 type: 'feature'
 created: '2026-10-13'
-status: 'in-progress'
+status: 'in-review'
 baseline_commit: '05e1b58cacdd35756944de156cb801ca7b851693'
 review_loop_iteration: 0
 context:
