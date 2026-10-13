@@ -3721,6 +3721,7 @@ dependencies = [
  "sqlx",
  "tokio",
  "url",
+ "zobba-api",
  "zobba-application",
  "zobba-domain",
  "zobba-infrastructure",

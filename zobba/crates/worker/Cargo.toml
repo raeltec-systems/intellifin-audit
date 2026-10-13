@@ -20,6 +20,8 @@ base64.workspace = true
 sqlx.workspace = true
 
 [dev-dependencies]
+# Story 22.5 proves the cited-answer API over the same real database.
+zobba-api = { path = "../api" }
 # The Docker analysis sandbox is compiled only into test builds; the
 # production worker binary never enables it.
 zobba-infrastructure = { workspace = true, features = ["test-loopback", "test-docker-sandbox"] }

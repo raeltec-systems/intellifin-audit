@@ -6,6 +6,7 @@ import type { Preview } from './evidence';
 import type { EvidenceReference } from './EvidenceNavigation';
 import { EvidenceProvenance } from './EvidenceProvenance';
 import { useSkillInspection } from './useSkillInspection';
+import { splitAtBytes } from './citation';
 
 export interface EvidenceSourceInspectorProps extends EvidenceReference {
   session: Session;
@@ -17,7 +18,7 @@ export interface EvidenceSourceInspectorProps extends EvidenceReference {
 
 /** Resolve the exact source using its own scope and current viewer. Knowledge
  * access never grants source access, including when opened in another library. */
-export function EvidenceSourceInspector({ scope, evidenceId, version, sha256, session, accessReady, onAccessFailure, onSourceAccessFailure, onClose }: EvidenceSourceInspectorProps) {
+export function EvidenceSourceInspector({ scope, evidenceId, version, sha256, location, session, accessReady, onAccessFailure, onSourceAccessFailure, onClose }: EvidenceSourceInspectorProps) {
   const [retry, setRetry] = useState(0);
   const owner = JSON.stringify([session.identity.id, session.csrf_token, scope.organisation_id, scope.client_id, scope.engagement_id, evidenceId, version, sha256, retry]);
   const [preview, setPreview] = useState<{ owner: string; value: Preview } | null>(null);
@@ -145,6 +146,13 @@ export function EvidenceSourceInspector({ scope, evidenceId, version, sha256, se
     previouslyVerified.current = verified;
   }, [accessReady, verified]);
 
+  // A cited plain-text byte range is marked in the bounded preview only when it
+  // lies wholly inside it on character boundaries; otherwise only the label shows.
+  function highlighted(text: string) {
+    const parts = location && location.byteStart !== null && location.byteEnd !== null ? splitAtBytes(text, location.byteStart, location.byteEnd) : null;
+    return parts ? <>{parts[0]}<mark className="cited-range">{parts[1]}</mark>{parts[2]}</> : text;
+  }
+
   function recheck() {
     cancelTransfer(); setSuspended(true); setPreview(null); setNotice(''); setWorking(false); setRetry(value => value + 1);
   }
@@ -155,9 +163,10 @@ export function EvidenceSourceInspector({ scope, evidenceId, version, sha256, se
     {onClose ? <button type="button" className="text-button" onClick={onClose}>Back to knowledge source</button> : null}
     {!verified ? <p role="status">{suspended && notice || (inspection.error ? 'This original is currently unavailable or inaccessible. No source content is shown.' : 'Checking current access to this original…')}</p> : null}
     {verified && inspection.value ? <>
+      {location ? <p className="cited-location" role="note">Cited location · {location.label}</p> : null}
       <EvidenceProvenance evidence={inspection.value} />
       <button type="button" className="quiet-button" disabled={working} onClick={() => void download()}>Download verified original</button>
-      {visiblePreview?.kind === 'plain_text' ? <><h4>Bounded plain-text preview</h4><p className="field-help">Up to 64 KiB and 100 lines. {visiblePreview.truncated ? 'Truncated; download the original for all bytes.' : 'Original text fits this preview.'}</p><pre className="evidence-preview" tabIndex={0}>{visiblePreview.text}</pre></> : visiblePreview?.kind === 'download_only' ? <p role="status">Download only. This original has no supported inert plain-text preview.</p> : null}
+      {visiblePreview?.kind === 'plain_text' ? <><h4>Bounded plain-text preview</h4><p className="field-help">Up to 64 KiB and 100 lines. {visiblePreview.truncated ? 'Truncated; download the original for all bytes.' : 'Original text fits this preview.'}</p><pre className="evidence-preview" tabIndex={0}>{highlighted(visiblePreview.text ?? '')}</pre></> : visiblePreview?.kind === 'download_only' ? <p role="status">Download only. This original has no supported inert plain-text preview.</p> : null}
       {notice ? <p role="status">{notice}</p> : null}
     </> : null}
     <button type="button" className="text-button" disabled={!accessReady || inspection.loading || working} onClick={recheck}>Recheck source access</button>

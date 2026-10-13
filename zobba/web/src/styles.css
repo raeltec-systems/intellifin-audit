@@ -672,3 +672,25 @@ textarea:focus-visible, select:focus-visible, summary:focus-visible, [tabindex='
 .compaction-records > li { margin-bottom: 0.5rem; }
 .compaction-records p { margin: 0; }
 .stale-source { font-weight: 600; }
+
+/* Story 22.5 cited answers. The chip is quiet; the card appears on hover or
+   keyboard focus and is dismissed with Escape. "Unverified" is shown only for
+   an unverified source. */
+.task-answers ol { padding-left: 20px; }
+.cited-answer { margin-bottom: 12px; }
+.answer-limitations { color: var(--tertiary); font-size: 13px; }
+.citation { position: relative; display: inline-block; vertical-align: baseline; }
+.citation-chip { display: inline-flex; gap: 4px; align-items: baseline; max-width: 22ch; padding: 0 8px; border: 1px solid var(--hairline); border-radius: 999px; background: var(--accent-wash); color: var(--accent-strong); font-size: 12px; line-height: 20px; cursor: pointer; }
+.citation-chip:hover { border-color: var(--accent); }
+.citation-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.citation-more { color: var(--secondary); }
+.citation-card { position: absolute; z-index: 3; top: calc(100% + 4px); left: 0; display: grid; gap: 10px; width: min(360px, 80vw); padding: 12px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--paper); box-shadow: 0 6px 18px rgb(28 27 25 / 12%); font-size: 13px; line-height: 20px; white-space: normal; }
+.citation-card[hidden] { display: none; }
+.citation-source { display: grid; gap: 2px; }
+.citation-file { font-weight: 600; overflow-wrap: anywhere; color: var(--text); }
+.citation-location { color: var(--secondary); }
+.citation-quote { color: var(--text); overflow-wrap: anywhere; }
+.citation-unverified { color: var(--tertiary); }
+.citation-open { justify-self: start; }
+.cited-location { font-weight: 600; }
+.cited-range { background: #f6e7a8; color: inherit; }
