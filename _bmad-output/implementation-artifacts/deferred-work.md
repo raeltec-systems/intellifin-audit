@@ -51,3 +51,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-22-3-compact-context-without-inventing-authority-or-evidence.md`
   summary: One work-loop pass sends thousands of repeated knowledge, methodology and command lookups to the database, so a pass can take 4–5 seconds in a debug build.
   evidence: A fully logged compaction test step ran about 83,000 short statements in 29 seconds (about 9.4 s inside the database). Production renews the 5-second owner lease every 200 ms, so this is cost and latency, not a correctness failure.
+
+- source_spec: none
+  summary: Story 20.7b — live qualification proof: disposable apply/destroy evidence, actual Cognito login, release-only migration refusal against the deployed database, backup/PITR restore to a separate environment with restored scope/receipt verification, the beyond-horizon effect reconciliation fixture, and actual spend reporting.
+  evidence: Owner chose to split Story 20.7 (2026-10-13). No AWS account or budget exists yet (AWS startup credit application pending); 20.7a delivers the Terraform, image, release workflow and runbook verified offline. 25.4 still requires 20.7b.
