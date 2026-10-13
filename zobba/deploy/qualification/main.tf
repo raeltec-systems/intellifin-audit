@@ -12,6 +12,7 @@ data "aws_caller_identity" "current" {}
 data "aws_partition" "current" {}
 
 data "aws_availability_zones" "available" {
+  #checkov:skip=CKV_AWS_394:only the first two zone names are used (slice), so an added zone cannot change the subnet set
   state = "available"
 }
 

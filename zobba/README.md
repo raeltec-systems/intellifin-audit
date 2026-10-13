@@ -781,6 +781,17 @@ gates with disposable PostgreSQL 18.4 and the workspace's own lockfiles/cache.
 Its distinct workflow name keeps it outside the historical deployment trigger.
 These foundation stories create no deployment or customer launch configuration.
 
+## Qualification environment as code (Story 20.7a)
+
+`deploy/` holds the qualification environment as code: one container image
+(`deploy/Containerfile`), pinned Terraform for an isolated two-zone AWS
+environment (`deploy/qualification/`) and a manual, approval-gated release
+workflow. Operators follow [`deploy/RUNBOOK.md`](deploy/RUNBOOK.md). It is
+verified offline only: Terraform tests use a mocked AWS provider, plus policy
+scans, workflow lint and an image build/smoke in the `qualification-infrastructure`
+CI job. **No live deployment exists or is qualified;** the live apply, restore
+and reconciliation proof is Story 20.7b.
+
 
 ## Immutable scoped evidence (Story 21.1)
 

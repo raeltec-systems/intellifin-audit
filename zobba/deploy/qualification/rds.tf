@@ -18,6 +18,9 @@ resource "aws_db_parameter_group" "this" {
 }
 
 resource "aws_db_instance" "this" {
+  #checkov:skip=CKV_AWS_353:Performance Insights is outside the smallest cost profile; owner decision
+  #checkov:skip=CKV_AWS_118:enhanced monitoring is outside the smallest cost profile; owner decision
+  #checkov:skip=CKV_AWS_161:the application authenticates with distinct password roles held in Secrets Manager (zobba/README.md role model)
   identifier     = local.name
   engine         = "postgres"
   engine_version = var.db_engine_version

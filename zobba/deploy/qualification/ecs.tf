@@ -1,4 +1,5 @@
 resource "aws_ecs_cluster" "this" {
+  #checkov:skip=CKV_AWS_65:Container Insights is a recurring metrics cost outside the smallest profile; owner decision
   name = local.name
 
   setting {
@@ -186,6 +187,7 @@ locals {
 }
 
 resource "aws_ecs_service" "api" {
+  #checkov:skip=CKV_AWS_332:the Fargate platform version is pinned (1.4.0, the current latest) so a plan is reproducible
   name                              = "${local.name}-api"
   cluster                           = aws_ecs_cluster.this.id
   task_definition                   = aws_ecs_task_definition.api.arn
@@ -227,6 +229,7 @@ resource "aws_ecs_service" "api" {
 }
 
 resource "aws_ecs_service" "worker" {
+  #checkov:skip=CKV_AWS_332:the Fargate platform version is pinned (1.4.0, the current latest) so a plan is reproducible
   name                          = "${local.name}-worker"
   cluster                       = aws_ecs_cluster.this.id
   task_definition               = aws_ecs_task_definition.worker.arn

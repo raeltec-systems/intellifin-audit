@@ -1,0 +1,308 @@
+# Zobba qualification environment — operator runbook
+
+Status: **written and verified offline only (Story 20.7a).** Nothing here has
+been applied to AWS. No live deployment is qualified. The live proof, including
+restore and reconciliation, is Story 20.7b.
+
+This runbook covers the code in `zobba/deploy/`:
+
+| Path | What it is |
+|------|------------|
+| `Containerfile` | One image with `zobba-api`, `zobba-worker`, `zobba-cli` (no default process; ECS selects the binary). |
+| `qualification/` | Terraform for the isolated two-zone environment (pinned Terraform 1.16.3, AWS provider 6.65.0, random 3.9.1, committed `.terraform.lock.hcl`). |
+| `qualification/bootstrap-roles.sh` | Role bootstrap run as a one-off ECS task. |
+| `../../.github/workflows/zobba-qualification-release.yml` | Manual release (build → migrate → deploy → web). |
+
+Every step below names its **command**, the **owner gate** it needs, and what it
+**costs or retains**. Do not skip a gate: a missing gate means stop.
+
+## 0. Owner gates (all required before step 2)
+
+| Gate | Decision the owner records | Why |
+|------|----------------------------|-----|
+| G1 Account | A dedicated AWS account for qualification only (startup credits applied). | Isolation; the budget is account-wide. |
+| G2 Region | The `region` variable value. | Cost and data location. There is no default. |
+| G3 Budget | `budget_monthly_limit_usd` and `budget_alert_email`. | Alerts at 50 % / 80 % actual and 100 % forecast. **An alert does not stop spending.** |
+| G4 Spend approval | Approval of the estimated monthly cost below. | Startup credits are not yet granted. |
+| G5 Data | Only synthetic data until a separate owner decision. | No real customer evidence in qualification. |
+| G6 GitHub | Who may approve the `qualification` GitHub environment. | Each release run waits for that approval. |
+| G7 Destroy | Explicit written approval for any destroy (section 9). | Backups and evidence are retained by design. |
+
+Cost profile (smallest Multi-AZ; **estimate only**, on-demand list prices, check
+in the AWS Pricing Calculator for the chosen region before G4):
+
+| Item | Approx. USD / month |
+|------|--------------------:|
+| RDS PostgreSQL 18 `db.t4g.micro` Multi-AZ + 20 GiB gp3 | 30–35 |
+| 1 NAT gateway (+ data processing) | 35–45 |
+| 4 interface VPC endpoints × 2 zones (ECR API, ECR DKR, Secrets Manager, Logs) | 55–60 |
+| Internal ALB | 18–22 |
+| Fargate: 2 API + 1 worker tasks (0.25 vCPU / 0.5 GiB) | 25–30 |
+| CloudFront, S3, KMS, Secrets Manager, CloudWatch Logs, Cognito (low use) | 5–15 |
+| **Total** | **≈ 170–210** |
+
+Cost changes that need a new owner decision ("Ask First"): a second NAT gateway
+(`nat_gateway_count = 2`, ≈ +35), a larger `db_instance_class`, more tasks,
+WAF, Performance Insights, Container Insights, access logging, longer log
+retention. The checkov suppressions in the Terraform record each of these as an
+owner decision.
+
+## 1. Tools (operator workstation)
+
+- Terraform **1.16.3** exactly, AWS CLI v2, `jq`, Docker (only for local image checks).
+- Credentials: an AWS SSO / IAM Identity Center session for an administrator in
+  the qualification account. Never create IAM access keys. Never put
+  credentials in files under the repository.
+
+```sh
+aws sts get-caller-identity   # confirm the account is the qualification account (G1)
+```
+
+Costs nothing. Retains nothing.
+
+## 2. State backend (once)
+
+Gate: G1–G4. Creates a KMS key and an S3 bucket for Terraform state (versioned,
+encrypted, public access blocked, TLS-only). Cost: ≈ 1 USD/month. Retained
+until manually deleted. Terraform locks state with an S3 lock file
+(`use_lockfile = true`); no DynamoDB table is needed.
+
+```sh
+REGION=<G2 region>
+ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+STATE_BUCKET=zobba-qualification-tfstate-$ACCOUNT
+KEY_ID=$(aws kms create-key --region "$REGION" --description "zobba qualification terraform state" \
+  --tags TagKey=Project,TagValue=zobba TagKey=Environment,TagValue=qualification --query KeyMetadata.KeyId --output text)
+aws kms enable-key-rotation --region "$REGION" --key-id "$KEY_ID"
+aws kms create-alias --region "$REGION" --alias-name alias/zobba-qualification-tfstate --target-key-id "$KEY_ID"
+aws s3api create-bucket --region "$REGION" --bucket "$STATE_BUCKET" \
+  --create-bucket-configuration LocationConstraint="$REGION"   # omit this flag in us-east-1
+aws s3api put-public-access-block --bucket "$STATE_BUCKET" --public-access-block-configuration \
+  BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+aws s3api put-bucket-versioning --bucket "$STATE_BUCKET" --versioning-configuration Status=Enabled
+aws s3api put-bucket-encryption --bucket "$STATE_BUCKET" --server-side-encryption-configuration \
+  "{\"Rules\":[{\"ApplyServerSideEncryptionByDefault\":{\"SSEAlgorithm\":\"aws:kms\",\"KMSMasterKeyID\":\"$KEY_ID\"},\"BucketKeyEnabled\":true}]}"
+aws s3api put-bucket-policy --bucket "$STATE_BUCKET" --policy \
+  "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"DenyInsecureTransport\",\"Effect\":\"Deny\",\"Principal\":\"*\",\"Action\":\"s3:*\",\"Resource\":[\"arn:aws:s3:::$STATE_BUCKET\",\"arn:aws:s3:::$STATE_BUCKET/*\"],\"Condition\":{\"Bool\":{\"aws:SecureTransport\":\"false\"}}}]}"
+aws s3api put-bucket-tagging --bucket "$STATE_BUCKET" --tagging \
+  'TagSet=[{Key=Project,Value=zobba},{Key=Environment,Value=qualification}]'
+```
+
+Write the backend configuration to the ignored file
+`zobba/deploy/qualification/backend.hcl` (template: `backend.example.hcl`) with
+your bucket, region and `kms_key_id = "alias/zobba-qualification-tfstate"`.
+Write owner-approved variables to the ignored `terraform.tfvars` (template:
+`example.tfvars`). Neither file is committed.
+
+State contents: resource identifiers and the Cognito app client secret (the
+provider reads it back from Cognito). Database passwords are **not** in state:
+they are ephemeral values written with write-only Secrets Manager arguments.
+Only administrators may read the state bucket.
+
+## 3. First apply
+
+Gate: G1–G5. Starts the monthly cost in section 0. Retains: RDS (deletion
+protection, final snapshot), evidence bucket, KMS key, Cognito pool (deletion
+protection), secrets (30-day recovery window).
+
+```sh
+cd zobba/deploy/qualification
+terraform init -backend-config=backend.hcl -lockfile=readonly
+terraform plan -out=qualification.tfplan        # review: no public ALB, no public DB, image_digest unset
+terraform apply qualification.tfplan
+terraform output -json github_environment_variables
+```
+
+Before the first release `image_digest` is unset, so both services run **0
+tasks** and the task definitions name a placeholder tag that is never pulled.
+RDS Multi-AZ creation takes about 20–40 minutes.
+
+If the account already has a GitHub OIDC provider, set
+`create_github_oidc_provider = false`.
+
+## 4. Role bootstrap (once, and after any password rotation)
+
+Gate: G5. Cost: one short Fargate task (cents). Uses the RDS-managed master
+secret, which only this task's execution role can read. Creates
+`zobba_migrator` (owner of database `zobba`) and `zobba_app`, both `LOGIN
+NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS`, with no role
+memberships (so neither is in `rds_superuser`), sets their passwords from the
+two URL secrets, revokes `PUBLIC` on the database and grants `CONNECT` to
+`zobba_app`. It is idempotent and refuses to finish if any of this is not true.
+It prints no secret value.
+
+```sh
+CLUSTER=$(terraform output -raw ecs_cluster)
+NETWORK=$(terraform output -raw task_network_configuration)
+TASK=$(aws ecs run-task --cluster "$CLUSTER" --launch-type FARGATE \
+  --task-definition "$(terraform output -raw bootstrap_task_definition)" \
+  --network-configuration "$NETWORK" --started-by operator-bootstrap \
+  --query 'tasks[0].taskArn' --output text)
+aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK"
+aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK" \
+  --query "tasks[0].containers[0].exitCode"          # must be 0
+aws logs tail /zobba-qualification/bootstrap --since 30m   # expect "bootstrap: roles_ready"
+```
+
+The release role cannot run this task; only an administrator can.
+
+Password rotation: increase `database_password_version`, `terraform apply`
+(writes new URL secrets), rerun this bootstrap task, then force a new
+deployment of both services (`aws ecs update-service --force-new-deployment`)
+so tasks read the new secret. Tasks started before the bootstrap fail
+readiness until redeployed.
+
+## 5. GitHub environment (once)
+
+Gate: G6. Costs nothing.
+
+1. Create the GitHub environment `qualification` with required reviewers (G6)
+   and restrict it to the branch you release from.
+2. Add each key/value from `terraform output -json github_environment_variables`
+   as an environment **variable** (none is secret).
+3. Add no AWS keys. The workflow assumes `AWS_RELEASE_ROLE_ARN` through GitHub
+   OIDC; the role trusts only `repo:<owner>/<repo>:environment:qualification`.
+
+## 6. Release
+
+Gate: G6 approval of the run. Cost: one build, one migration task, a rolling
+service update, one CloudFront invalidation. Retains: the image in ECR (30
+most recent kept), every task definition revision.
+
+Run **Actions → Zobba qualification release → Run workflow**. It never runs on
+push. Order, each step stopping the run on failure:
+
+1. Build and push the image (tag `<sha>-<run id>-<attempt>`; everything after
+   uses the digest). Smoke: `zobba-cli openapi` must equal `zobba/openapi.json`.
+2. Register a migration task revision with the new digest and run
+   `zobba-cli migrate --runtime-role zobba_app` (the only use of the migrator
+   URL). **A non-zero exit fails the job before any service changes.**
+3. Register API and worker revisions and update both services; wait until
+   stable (circuit breaker rolls back a failed deployment).
+4. Build `zobba/web`, sync `web/dist` to the web bucket, invalidate CloudFront.
+
+There are no startup migrations: the API and worker refuse an unmigrated or
+mismatched schema (`/health/ready` returns 503).
+
+### First release
+
+The first release migrates, deploys revisions to services that still have 0
+desired tasks, and publishes the web shell. Then set `image_digest` to the
+digest in the run summary and apply:
+
+```sh
+terraform apply -var image_digest=sha256:<digest from the run summary>   # or set it in terraform.tfvars
+```
+
+This scales the API to `api_desired_count` (≥ 2, both zones) and the worker to
+`worker_desired_count`. Later releases need no Terraform change; keep
+`image_digest` roughly current so a future apply does not register an old
+digest as the Terraform-owned revision (services ignore it either way).
+
+Then create the first administrator user (synthetic data only, G5):
+
+```sh
+aws cognito-idp admin-create-user --user-pool-id "$(terraform output -raw cognito_user_pool_id)" \
+  --username <owner email> --user-attributes Name=email,Value=<owner email> Name=email_verified,Value=true
+```
+
+Cognito establishes identity only; Zobba access still comes from Zobba's own
+membership records.
+
+Check: open `terraform output -raw public_origin`, sign in, and
+`curl -fsS "$(terraform output -raw public_origin)/api/health/ready"`.
+
+## 7. Rollback limits
+
+- **Application**: redeploy an earlier image by updating both services to an
+  earlier task definition revision
+  (`aws ecs update-service --cluster ... --service ... --task-definition <family>:<revision>`).
+  This is safe **only if no migration ran since that image**. Migrations are
+  forward-only; an older binary refuses a newer schema (readiness 503), which
+  is the intended fail-closed behaviour, not a bug to work around.
+- **Schema**: there is no down migration. Reverting a schema means a restore
+  (section 10), which loses writes after the restore point.
+- **Web shell**: rerun the release from the earlier commit, or restore earlier
+  object versions in the versioned web bucket and invalidate.
+- **Infrastructure**: revert the Terraform commit and apply. Some changes
+  (RDS engine major version, KMS key, bucket names, region, Cognito pool) cannot
+  be reverted in place.
+
+## 8. What is retained (and why)
+
+| Resource | Retention |
+|----------|-----------|
+| RDS automated backups / PITR | `backup_retention_days` (default 7, minimum 7). Kept after deletion (`delete_automated_backups = false`). |
+| RDS final snapshot | `zobba-qualification-final`, created on delete, kept until manually deleted. |
+| Evidence bucket | All object versions; no expiry rule. Terraform cannot delete a non-empty bucket (`force_destroy = false`). The bucket name, region and default endpoint are the evidence namespace fingerprint: never change them for this environment. |
+| Web bucket | Non-current versions expire after 30 days. |
+| KMS key | 30-day deletion window; while pending deletion, data encrypted with it cannot be read. |
+| Secrets | 30-day recovery window after deletion. |
+| Logs | `log_retention_days` (default 30). Audit records are in PostgreSQL, not logs. |
+| Cognito pool | Deletion protection on. |
+
+## 9. Destroy boundaries
+
+Gate: G7, in writing, naming what may be lost. Never run a plain
+`terraform destroy` against this environment.
+
+- RDS has deletion protection; the ALB has deletion protection; the Cognito
+  pool has deletion protection. Each must be turned off by an explicit,
+  reviewed Terraform change first.
+- The evidence bucket must be emptied by a person on purpose (all versions)
+  before it can be deleted; Terraform will not do it.
+- Scheduling the KMS key for deletion makes every snapshot and evidence object
+  encrypted with it unreadable after the window. Do not schedule it while any
+  retained snapshot or evidence must stay readable.
+- To stop spend without losing data: set the services to 0 tasks
+  (`image_digest = null` and apply), stop the database
+  (`aws rds stop-db-instance`, auto-restarts after 7 days), and remove the NAT
+  gateway only with a reviewed change. Interface endpoints, storage and
+  backups continue to cost.
+
+## 10. Restore and reconciliation — Story 20.7b, not yet exercised
+
+**Not yet exercised. Do not treat this section as proven.** Story 20.7b runs
+and records it.
+
+Intended procedure:
+
+1. Restore to a new, isolated instance (never over the original):
+   `aws rds restore-db-instance-to-point-in-time --source-db-instance-identifier zobba-qualification --target-db-instance-identifier zobba-qualification-restore-<date> --restore-time <UTC> ...`
+   with the same subnet group, a security group reachable only from a one-off
+   task, encryption with the environment key, and no application services
+   pointed at it.
+2. Keep services pointed at the restored database **stopped** until
+   reconciliation: possible effects consumed after the restore horizon (operation
+   claims, dispatched attempts, evidence written to S3) are not in the restored
+   database. Compare consumed operations and evidence object versions after
+   the restore time with the restored records before resuming any Task.
+3. Only then point the runtime/migrator URL secrets at the restored instance,
+   rerun the role bootstrap if needed, and redeploy.
+
+## 11. Spend check (weekly, and before any change in section 0)
+
+```sh
+aws ce get-cost-and-usage --time-period Start=$(date -u +%Y-%m-01),End=$(date -u -d tomorrow +%F) \
+  --granularity MONTHLY --metrics UnblendedCost --group-by Type=DIMENSION,Key=SERVICE
+aws budgets describe-budget --account-id "$ACCOUNT" --budget-name zobba-qualification-monthly
+```
+
+Costs: Cost Explorer API calls are ≈ 0.01 USD each. Compare with section 0;
+an unexpected NAT data or endpoint line is the usual surprise.
+
+## 12. Secret handling
+
+- Secrets exist only in Secrets Manager, encrypted with the environment key:
+  `zobba-qualification/database/migrator-url`, `.../runtime-url`,
+  `.../oidc/client-secret`, and the RDS-managed master secret.
+- Each task has its own execution role and can read only its own secrets:
+  API → runtime URL + OIDC client secret; worker → runtime URL; migration →
+  migrator URL; bootstrap → master secret + both URLs. No task definition
+  `environment` contains a secret, and no Terraform output does.
+- Never print, copy or paste secret values (including into issues, chat or
+  logs). To inspect, check metadata only:
+  `aws secretsmanager describe-secret --secret-id <name>`.
+- The environment never contains `seed-local`, `ZOBBA_LOCAL_FIXTURES`,
+  `ZOBBA_OIDC_CA_FILE`, model API keys, or test-only S3/OIDC switches. The
+  offline tests fail if a task definition gains one.

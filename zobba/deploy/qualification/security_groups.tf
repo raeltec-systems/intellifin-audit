@@ -12,6 +12,7 @@ resource "aws_security_group" "alb" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "alb_from_cloudfront" {
+  #checkov:skip=CKV_AWS_260:source is the CloudFront origin-facing managed prefix list, not 0.0.0.0/0
   security_group_id = aws_security_group.alb.id
   description       = "HTTP from the CloudFront origin-facing prefix list (VPC origin)"
   prefix_list_id    = data.aws_ec2_managed_prefix_list.cloudfront_origin.id
@@ -53,6 +54,7 @@ resource "aws_security_group" "worker" {
 }
 
 resource "aws_security_group" "migration" {
+  #checkov:skip=CKV2_AWS_5:attached at run time by the release migration and bootstrap run-task calls (network configuration output)
   name        = "${local.name}-migration"
   description = "One-off release migration and role bootstrap tasks: no inbound access"
   vpc_id      = aws_vpc.this.id

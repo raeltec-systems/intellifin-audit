@@ -49,13 +49,45 @@ locals {
   api_origin_id = "api"
 
   # AWS managed policies (stable IDs documented by CloudFront).
-  cache_policy_caching_disabled   = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
-  cache_policy_caching_optimized  = "658327ea-f89d-4fab-a63d-7e88639e58f6"
-  origin_request_all_except_host  = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
-  response_headers_security_basic = "67f7725c-6f97-4210-82d7-5512b31e9d03"
+  cache_policy_caching_disabled  = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+  cache_policy_caching_optimized = "658327ea-f89d-4fab-a63d-7e88639e58f6"
+  origin_request_all_except_host = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
+}
+
+# Security headers on every response. `override = false` keeps any stricter
+# value the API itself sets.
+resource "aws_cloudfront_response_headers_policy" "security" {
+  name    = "${local.name}-security"
+  comment = "Security headers for the web shell and API"
+
+  security_headers_config {
+    strict_transport_security {
+      access_control_max_age_sec = 31536000
+      include_subdomains         = true
+      preload                    = true
+      override                   = true
+    }
+    content_type_options {
+      override = true
+    }
+    frame_options {
+      frame_option = "DENY"
+      override     = false
+    }
+    referrer_policy {
+      referrer_policy = "strict-origin-when-cross-origin"
+      override        = false
+    }
+  }
 }
 
 resource "aws_cloudfront_distribution" "this" {
+  #checkov:skip=CKV_AWS_68:WAF is a recurring cost outside the smallest profile; owner decision before any real data (RUNBOOK owner gates)
+  #checkov:skip=CKV2_AWS_47:no WAF attached (see CKV_AWS_68 reason)
+  #checkov:skip=CKV_AWS_86:CloudFront standard logs need a log bucket and are a cost decision; enable before real data
+  #checkov:skip=CKV_AWS_374:no geographic restriction is specified for qualification; access is controlled by Cognito sign-in and membership
+  #checkov:skip=CKV_AWS_310:a single API origin by design; origin failover would need a second region
+  #checkov:skip=CKV_AWS_174:the default CloudFront certificate (no custom domain yet) only allows TLSv1 as minimum; a custom domain sets TLSv1.2_2021
   enabled             = true
   comment             = local.name
   default_root_object = "index.html"
@@ -88,7 +120,7 @@ resource "aws_cloudfront_distribution" "this" {
     cached_methods             = ["GET", "HEAD"]
     compress                   = true
     cache_policy_id            = local.cache_policy_caching_optimized
-    response_headers_policy_id = local.response_headers_security_basic
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
 
     function_association {
       event_type   = "viewer-request"
@@ -97,14 +129,15 @@ resource "aws_cloudfront_distribution" "this" {
   }
 
   ordered_cache_behavior {
-    path_pattern             = "/api/*"
-    target_origin_id         = local.api_origin_id
-    viewer_protocol_policy   = "https-only"
-    allowed_methods          = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
-    cached_methods           = ["GET", "HEAD"]
-    compress                 = false
-    cache_policy_id          = local.cache_policy_caching_disabled
-    origin_request_policy_id = local.origin_request_all_except_host
+    path_pattern               = "/api/*"
+    target_origin_id           = local.api_origin_id
+    viewer_protocol_policy     = "https-only"
+    allowed_methods            = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = false
+    cache_policy_id            = local.cache_policy_caching_disabled
+    origin_request_policy_id   = local.origin_request_all_except_host
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
 
     function_association {
       event_type   = "viewer-request"

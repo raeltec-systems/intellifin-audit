@@ -9,6 +9,7 @@ module "database_passwords" {
 }
 
 resource "aws_secretsmanager_secret" "migration_database_url" {
+  #checkov:skip=CKV2_AWS_57:rotation is operator-driven (database_password_version + role bootstrap, RUNBOOK); automatic rotation needs a Lambda rotator not in 20.7a
   name                    = "${local.name}/database/migrator-url"
   description             = "zobba_migrator connection URL. Release migration and role bootstrap tasks only."
   kms_key_id              = aws_kms_key.this.arn
@@ -22,6 +23,7 @@ resource "aws_secretsmanager_secret_version" "migration_database_url" {
 }
 
 resource "aws_secretsmanager_secret" "runtime_database_url" {
+  #checkov:skip=CKV2_AWS_57:rotation is operator-driven (database_password_version + role bootstrap, RUNBOOK); automatic rotation needs a Lambda rotator not in 20.7a
   name                    = "${local.name}/database/runtime-url"
   description             = "zobba_app connection URL. API and worker tasks, and the role bootstrap task."
   kms_key_id              = aws_kms_key.this.arn
@@ -38,6 +40,7 @@ resource "aws_secretsmanager_secret_version" "runtime_database_url" {
 # API task. It exists in (encrypted, access-controlled) remote state because the
 # provider reads it back from Cognito; it is never an output.
 resource "aws_secretsmanager_secret" "oidc_client_secret" {
+  #checkov:skip=CKV2_AWS_57:rotation is operator-driven (database_password_version + role bootstrap, RUNBOOK); automatic rotation needs a Lambda rotator not in 20.7a
   name                    = "${local.name}/oidc/client-secret"
   description             = "Cognito app client secret for the API."
   kms_key_id              = aws_kms_key.this.arn

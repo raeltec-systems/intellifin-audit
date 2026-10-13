@@ -5,6 +5,9 @@
 
 # force_destroy = false: a bucket holding originals cannot be deleted by Terraform.
 resource "aws_s3_bucket" "evidence" {
+  #checkov:skip=CKV_AWS_18:S3 server access logs need a log bucket and are a cost decision; enable before real data
+  #checkov:skip=CKV2_AWS_62:no consumer of S3 event notifications exists
+  #checkov:skip=CKV_AWS_144:cross-region replication is outside a single-region qualification environment; versioning retains objects
   bucket        = "${local.name}-evidence-${local.account_id}"
   force_destroy = false
   tags          = { Name = "${local.name}-evidence" }
@@ -82,6 +85,10 @@ resource "aws_s3_bucket_policy" "evidence" {
 # reads it, through origin access control.
 
 resource "aws_s3_bucket" "web" {
+  #checkov:skip=CKV_AWS_18:S3 server access logs need a log bucket and are a cost decision; enable before real data
+  #checkov:skip=CKV2_AWS_62:no consumer of S3 event notifications exists
+  #checkov:skip=CKV_AWS_144:cross-region replication is outside a single-region qualification environment; versioning retains objects
+  #checkov:skip=CKV_AWS_145:the web bucket holds only the public static web shell; SSE-S3 avoids granting CloudFront use of the data key
   bucket        = "${local.name}-web-${local.account_id}"
   force_destroy = false
   tags          = { Name = "${local.name}-web" }

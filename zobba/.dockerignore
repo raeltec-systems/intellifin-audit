@@ -1,0 +1,9 @@
+# Build context for deploy/Containerfile is zobba/. Allowlist only what the
+# Rust build needs; never send target/, node_modules/, fixtures, local .env
+# files or generated credentials to the builder.
+*
+!Cargo.toml
+!Cargo.lock
+!crates/
+!migrations/
+crates/**/target

@@ -62,13 +62,13 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `zobba/deploy/Containerfile` + `.dockerignore` -- multi-stage image for the three binaries -- one artifact for API, worker, migration.
-- [ ] `zobba/deploy/qualification/*.tf` (+ `versions.tf`, `variables.tf`, `outputs.tf`, `.terraform.lock.hcl`, `example.tfvars`) -- network (2 AZ, VPC endpoints for S3/ECR/Secrets/Logs), RDS, KMS, S3 (evidence, web), Secrets, Cognito, ECS cluster/services/migration+bootstrap task definitions, internal ALB, CloudFront + VPC origin + function, IAM, logs, Budget -- the environment.
-- [ ] `zobba/deploy/qualification/tests/*.tftest.hcl` -- `mock_provider "aws"` tests covering every matrix row and the Always invariants -- offline proof.
-- [ ] `.github/workflows/zobba-qualification-release.yml` -- manual release in the order above, with the migration exit check -- release-only migrations.
-- [ ] `.github/workflows/zobba.yml` -- new job: terraform fmt/validate/test, checkov (pinned), actionlint, image build + `openapi` smoke -- keeps it verified with no AWS.
-- [ ] `zobba/deploy/RUNBOOK.md` -- prerequisites/owner gates, state backend bootstrap, first apply, role bootstrap, release, rollback limits, retained backups/evidence, destroy boundaries, spend check, secret handling; restore/reconciliation section marked "Story 20.7b, not yet exercised" -- operator path.
-- [ ] `zobba/README.md` -- short pointer to the runbook; state no live deployment is qualified.
+- [x] `zobba/deploy/Containerfile` + `.dockerignore` -- multi-stage image for the three binaries -- one artifact for API, worker, migration.
+- [x] `zobba/deploy/qualification/*.tf` (+ `versions.tf`, `variables.tf`, `outputs.tf`, `.terraform.lock.hcl`, `example.tfvars`) -- network (2 AZ, VPC endpoints for S3/ECR/Secrets/Logs), RDS, KMS, S3 (evidence, web), Secrets, Cognito, ECS cluster/services/migration+bootstrap task definitions, internal ALB, CloudFront + VPC origin + function, IAM, logs, Budget -- the environment.
+- [x] `zobba/deploy/qualification/tests/*.tftest.hcl` -- `mock_provider "aws"` tests covering every matrix row and the Always invariants -- offline proof.
+- [x] `.github/workflows/zobba-qualification-release.yml` -- manual release in the order above, with the migration exit check -- release-only migrations.
+- [x] `.github/workflows/zobba.yml` -- new job: terraform fmt/validate/test, checkov (pinned), actionlint, image build + `openapi` smoke -- keeps it verified with no AWS.
+- [x] `zobba/deploy/RUNBOOK.md` -- prerequisites/owner gates, state backend bootstrap, first apply, role bootstrap, release, rollback limits, retained backups/evidence, destroy boundaries, spend check, secret handling; restore/reconciliation section marked "Story 20.7b, not yet exercised" -- operator path.
+- [x] `zobba/README.md` -- short pointer to the runbook; state no live deployment is qualified.
 
 **Acceptance Criteria:**
 - Given no AWS credentials, when CI runs the infrastructure job, then fmt, validate, all `terraform test` runs, checkov (no unsuppressed high findings; each suppression has a written reason) and actionlint pass.

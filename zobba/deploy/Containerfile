@@ -1,0 +1,35 @@
+# One image for the API, worker and release migration. ECS selects the binary
+# with the task definition entry point; the image itself starts nothing.
+#
+# Base images are pinned by digest (multi-arch index digests, identical on
+# Docker Hub and the ECR Public mirror used here). Build from zobba/:
+#   docker build -f deploy/Containerfile -t zobba .
+
+ARG RUST_IMAGE=public.ecr.aws/docker/library/rust:1.98.1-slim-trixie@sha256:4cd829461bd5c4d511c32e269da9cb8929223b666519d8004e35fc8d1d771ab7
+ARG RUNTIME_IMAGE=public.ecr.aws/docker/library/debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f
+
+FROM ${RUST_IMAGE} AS build
+WORKDIR /src
+# rust-toolchain.toml is deliberately not copied: the base image already is the
+# pinned 1.98.1 toolchain, and the file's extra components would make rustup
+# download during the build.
+RUN rustc --version | grep -q '^rustc 1\.98\.1 '
+COPY Cargo.toml Cargo.lock ./
+COPY migrations migrations
+COPY crates crates
+RUN cargo build --release --locked --bin zobba-api --bin zobba-worker --bin zobba-cli \
+ && install -D -m 0555 -t /out target/release/zobba-api target/release/zobba-worker target/release/zobba-cli
+
+FROM ${RUNTIME_IMAGE}
+# CA certificates: native-roots TLS for Cognito, S3 and RDS (sslmode=require).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/ /usr/local/bin/
+# Non-root, numeric so Kubernetes/ECS policies can verify it without /etc/passwd.
+USER 10001:10001
+WORKDIR /
+# No default process: the base image's `bash` must never become arguments
+# (any argument switches the worker into its internal child-executor mode).
+ENTRYPOINT []
+CMD []

@@ -37,6 +37,7 @@ locals {
 }
 
 resource "aws_cloudwatch_log_group" "this" {
+  #checkov:skip=CKV_AWS_338:qualification logs keep log_retention_days (default 30) to bound cost; audit records live in PostgreSQL, not telemetry
   for_each          = local.log_groups
   name              = "/${local.name}/${each.key}"
   retention_in_days = var.log_retention_days
