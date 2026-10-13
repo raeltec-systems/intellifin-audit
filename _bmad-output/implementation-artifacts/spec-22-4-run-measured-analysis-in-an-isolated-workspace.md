@@ -2,7 +2,7 @@
 title: '22.4 — Run measured analysis in an isolated workspace'
 type: 'feature'
 created: '2026-10-13'
-status: 'in-review'
+status: 'done'
 baseline_commit: '794a8af2396fe96acd9638a6ccef7f90a48008af'
 review_loop_iteration: 0
 context:
@@ -88,3 +88,61 @@ context:
 - `cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings` -- expected: clean.
 - `cargo test --workspace` against guarded `_test` databases, with Docker available -- expected: all pass, hostile fixtures run for real (not skipped).
 - `terraform -chdir=zobba/deploy/qualification test` -- expected: all pass.
+
+## Suggested Review Order
+
+**Trusting outputs**
+
+- Entry point: every output passes these path, link, type, size and hash rules before registration.
+  [`analysis.rs:457`](../../zobba/crates/domain/src/analysis.rs#L457)
+
+- One NFC + full case-fold key, shared with the database unique index.
+  [`analysis.rs:382`](../../zobba/crates/domain/src/analysis.rs#L382)
+
+- Accepted outputs become descendant evidence through the 21.1 object path.
+  [`analysis.rs:1163`](../../zobba/crates/application/src/analysis.rs#L1163)
+
+- Shared hardened collector: unreadable or oversized entries become rejections, never a stuck job.
+  [`collect.py:73`](../../zobba/deploy/qualification/analysis/collect.py#L73)
+
+**Job lifecycle and durable outcomes**
+
+- Sandbox port the two adapters implement.
+  [`analysis.rs:310`](../../zobba/crates/application/src/analysis.rs#L310)
+
+- Admission through 20.5 operation custody; allowlist checked before any write.
+  [`analysis.rs:418`](../../zobba/crates/application/src/analysis.rs#L418)
+
+- Watch loop: wall limit from Running, bounded collection, limit classification.
+  [`analysis.rs:837`](../../zobba/crates/application/src/analysis.rs#L837)
+
+- Recovery: retryable absent vs unknown; never dispatches again.
+  [`analysis.rs:625`](../../zobba/crates/application/src/analysis.rs#L625)
+
+- Database facts and guard triggers for transitions, attempts and outputs.
+  [`0015_analysis.sql:80`](../../zobba/migrations/0015_analysis.sql#L80)
+
+**Isolation**
+
+- Fargate adapter: in-task wall kill keeps collection; refusals before RunTask are retryable.
+  [`fargate.rs:37`](../../zobba/crates/infrastructure/src/analysis/fargate.rs#L37)
+
+- Dedicated analysis VPC with a fail-closed DNS Firewall allowlist.
+  [`analysis.tf:191`](../../zobba/deploy/qualification/analysis.tf#L191)
+
+- Analysis task definition: no task role, no logs from the untrusted container.
+  [`analysis.tf:375`](../../zobba/deploy/qualification/analysis.tf#L375)
+
+- Test-only Docker sandbox: no network, read-only root, no capabilities.
+  [`docker.rs:5`](../../zobba/crates/infrastructure/src/analysis/docker.rs#L5)
+
+- Production worker accepts only `fargate` or no sandbox.
+  [`main.rs:110`](../../zobba/crates/worker/src/main.rs#L110)
+
+**Verification**
+
+- Hostile fixtures run against real Docker, PostgreSQL and S3 fixture.
+  [`analysis_sandbox.rs:61`](../../zobba/crates/worker/tests/analysis_sandbox.rs#L61)
+
+- Terraform ↔ worker environment contract.
+  [`worker-environment.json`](../../zobba/deploy/qualification/analysis/worker-environment.json)
