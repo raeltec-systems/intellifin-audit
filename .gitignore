@@ -50,3 +50,10 @@ deployed-loancore-evidence/
 /zobba/.data/
 /zobba/.credentials/
 __pycache__/
+
+# Terraform local caches and state (Story 20.7a)
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
