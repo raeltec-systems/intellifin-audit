@@ -19,7 +19,9 @@ use crate::{
         validate_completion,
     },
     operation::{OperationError, OperationStore},
+    reading::{CITATION_CONSTRAINTS, ReadingContext},
     task::TaskError,
+    citation::ReadingError,
 };
 use zobba_domain::{
     context::{
@@ -28,6 +30,7 @@ use zobba_domain::{
         Plan, PlanError, PlanInput, SourceState, SourceStatus, StepCost, digest_overhead_tokens,
         digest_step, envelope, estimate_tokens, omission_summary,
     },
+    citation::CitedAnswer,
     identity::Scope,
     model::{
         JsonValue, MAX_HISTORY_BYTES, MAX_HISTORY_ITEMS, MAX_INPUT_BYTES, MAX_MESSAGES,
@@ -268,6 +271,7 @@ fn user(source_id: &str, text: String) -> ModelMessage {
         role: MessageRole::User,
         text,
         source_id: Some(source_id.into()),
+        images: vec![],
     }
 }
 
@@ -551,10 +555,112 @@ pub const MAX_EARLIER_ANSWER_BYTES: usize = 4_000;
 /// A bounded wait; the composition supplies its runtime timer.
 pub type Delay = fn(Duration) -> Pin<Box<dyn Future<Output = ()> + Send>>;
 
-pub struct WorkLoop<W, S, T, D> {
+/// The agent's reading tools and citation verification (Story 22.5). When
+/// enabled, turns answer with the cited-answer schema; a responded turn's
+/// citations are verified and the reading it asked for is performed before the
+/// next turn. Nothing here grants authority: page reads are their own
+/// disclosure-bound model requests and programs run in the 22.4 sandbox.
+pub trait WorkReading: Send + Sync {
+    fn enabled(&self) -> bool;
+    /// Bounded registered originals and the cycle's readings, as data.
+    fn context(
+        &self,
+        basis: &ClaimBasis,
+    ) -> impl Future<Output = Result<ReadingContext, ModelError>> + Send;
+    /// Idempotent per invocation. True when the answer asked to read further.
+    fn after_answer(
+        &self,
+        basis: &ClaimBasis,
+        methodology_binding_id: &str,
+        invocation: &Invocation,
+        answer: &CitedAnswer,
+        cancellation: &ModelCancellation,
+    ) -> impl Future<Output = Result<bool, ModelError>> + Send;
+}
+/// Work without reading tools: plain text answers, as before Story 22.5.
+pub struct NoReading;
+impl WorkReading for NoReading {
+    fn enabled(&self) -> bool {
+        false
+    }
+    async fn context(&self, _: &ClaimBasis) -> Result<ReadingContext, ModelError> {
+        Ok(ReadingContext::default())
+    }
+    async fn after_answer(
+        &self,
+        _: &ClaimBasis,
+        _: &str,
+        _: &Invocation,
+        _: &CitedAnswer,
+        _: &ModelCancellation,
+    ) -> Result<bool, ModelError> {
+        Ok(false)
+    }
+}
+impl<M, T, R, S, J, X, O> WorkReading for crate::reading::Reading<M, T, R, S, J, X, O>
+where
+    M: ModelStore,
+    T: ModelTransport,
+    R: crate::reading::ReadingStore,
+    S: crate::operation::OperationStore,
+    J: crate::analysis::AnalysisJobs,
+    X: crate::analysis::AnalysisSandbox,
+    O: crate::evidence::EvidenceObjects,
+{
+    fn enabled(&self) -> bool {
+        true
+    }
+    async fn context(&self, basis: &ClaimBasis) -> Result<ReadingContext, ModelError> {
+        self.reading_context(basis).await.map_err(reading_error)
+    }
+    async fn after_answer(
+        &self,
+        basis: &ClaimBasis,
+        methodology_binding_id: &str,
+        invocation: &Invocation,
+        answer: &CitedAnswer,
+        cancellation: &ModelCancellation,
+    ) -> Result<bool, ModelError> {
+        crate::reading::Reading::after_answer(
+            self,
+            basis,
+            methodology_binding_id,
+            invocation,
+            answer,
+            cancellation,
+        )
+        .await
+        .map_err(reading_error)
+    }
+}
+fn reading_error(error: ReadingError) -> ModelError {
+    match error {
+        ReadingError::Invalid => ModelError::Invalid,
+        ReadingError::Denied => ModelError::Denied,
+        ReadingError::Fenced => ModelError::Fenced,
+        ReadingError::Capacity => ModelError::Capacity,
+        ReadingError::Unavailable => ModelError::Unavailable,
+    }
+}
+
+/// The structured cited answer of a successful turn, if it is one.
+pub fn cited_answer(invocation: &Invocation) -> Option<CitedAnswer> {
+    let outcome = invocation.outcome.as_ref()?;
+    if outcome.completion != Completion::Succeeded {
+        return None;
+    }
+    outcome.events.iter().find_map(|event| match &event.kind {
+        EventKind::Structured { value, .. } => CitedAnswer::from_json(value),
+        _ => None,
+    })
+}
+
+pub struct WorkLoop<W, S, T, D, R = NoReading> {
     pub steps: W,
     pub coordinator: ModelCoordinator<S, T>,
     pub dispatch: D,
+    /// Story 22.5 reading tools; `NoReading` keeps plain text answers.
+    pub reading: R,
     pub settings: WorkSettings,
     /// Binds the complete portable input to the disclosure operation. It must
     /// run again after any change to messages or history.
@@ -599,6 +705,17 @@ pub fn answer_text(invocation: &Invocation) -> String {
     let Some(outcome) = &invocation.outcome else {
         return String::new();
     };
+    // A cited answer's text is its segments, in order, unchanged.
+    if let Some(answer) = cited_answer(invocation) {
+        let mut text = String::new();
+        for ch in answer.text().chars() {
+            if text.len() + ch.len_utf8() > MAX_EARLIER_ANSWER_BYTES {
+                break;
+            }
+            text.push(ch);
+        }
+        return text;
+    }
     let mut text = String::new();
     for event in &outcome.events {
         if let EventKind::TextDelta { text: delta, .. } = &event.kind {
@@ -649,12 +766,13 @@ fn tool_note(status: StepStatus, name: &str) -> Option<String> {
     }
 }
 
-impl<W, S, T, D> WorkLoop<W, S, T, D>
+impl<W, S, T, D, R> WorkLoop<W, S, T, D, R>
 where
     W: WorkSteps,
     S: ModelStore,
     T: ModelTransport,
     D: ToolDispatch,
+    R: WorkReading,
 {
     fn step(
         boundary: &WorkBoundary,
@@ -683,6 +801,12 @@ where
             estimated_input_tokens: None,
             actual_input_tokens: None,
         }
+    }
+
+    /// Cited answers need the reading tools and a profile qualified for
+    /// strict structured output.
+    fn cited(&self) -> bool {
+        self.reading.enabled() && self.settings.profile.capabilities.structured_output
     }
 
     fn configuration(&self) -> TurnConfiguration<'_> {
@@ -749,6 +873,7 @@ where
         &self,
         boundary: &WorkBoundary,
         resolved: &BTreeMap<u32, SourceFact>,
+        reading: &ReadingContext,
     ) -> Result<Planned, RequestEnd> {
         let basis = &boundary.basis;
         let class = self.settings.input_class.clone();
@@ -825,8 +950,13 @@ where
                 None,
                 ModelMessage {
                     role: MessageRole::System,
-                    text: SYSTEM_CONSTRAINTS.into(),
+                    text: if self.cited() {
+                        format!("{SYSTEM_CONSTRAINTS} {CITATION_CONSTRAINTS}")
+                    } else {
+                        SYSTEM_CONSTRAINTS.into()
+                    },
                     source_id: None,
+                    images: vec![],
                 },
             ),
             (
@@ -874,6 +1004,22 @@ where
                 user("unresolved-decisions", text),
             ));
         }
+        // Story 22.5: what the agent may read and what it has read this cycle,
+        // as attributed data. Bounded by the reading service.
+        if self.cited() {
+            if let Some(listing) = &reading.originals {
+                fixed.push((
+                    Some(entry("registered-originals", None)),
+                    user("registered-originals", listing.clone()),
+                ));
+            }
+            for (source, _, text, depends_on) in &reading.readings {
+                fixed.push((
+                    Some(entry(source, depends_on.clone())),
+                    user(source, text.clone()),
+                ));
+            }
+        }
 
         // Tier 3 candidates: every step rendered as raw history.
         let mut rendered: Vec<Vec<(ContextEntry, HistoryItem)>> = Vec::new();
@@ -897,6 +1043,7 @@ where
                         role,
                         text,
                         source_id: Some(source_id),
+                        images: vec![],
                     }),
                 ));
             };
@@ -1376,7 +1523,7 @@ where
             history,
             effort: Effort::None,
             max_output_tokens: self.settings.max_output_tokens,
-            structured_output: None,
+            structured_output: self.cited().then(CitedAnswer::schema),
         };
         (self.bind)(&mut request).map_err(RequestEnd::Model)?;
         Ok(Planned {
@@ -1630,6 +1777,40 @@ where
         Ok(resolved)
     }
 
+    /// Verify a responded cited answer's sources and perform the reading it
+    /// asked for. True: a further turn is due. Plain answers wait.
+    async fn read_after(
+        &self,
+        boundary: &WorkBoundary,
+        invocation: &Invocation,
+        cancellation: &ModelCancellation,
+    ) -> Result<bool, CycleEnd> {
+        if !self.cited() {
+            return Ok(false);
+        }
+        let Some(answer) = cited_answer(invocation) else {
+            return Ok(false);
+        };
+        match self
+            .reading
+            .after_answer(
+                &boundary.basis,
+                &boundary.methodology_binding_id,
+                invocation,
+                &answer,
+                cancellation,
+            )
+            .await
+        {
+            Ok(more) => Ok(more),
+            Err(ModelError::Fenced | ModelError::Denied) => Err(CycleEnd::Fenced),
+            Err(ModelError::Unavailable) => Err(CycleEnd::Unavailable),
+            // Citations stay unrecorded and are verified again on a reclaim;
+            // the answer itself waits for guidance unchanged.
+            Err(_) => Ok(false),
+        }
+    }
+
     pub async fn run(&self, basis: &ClaimBasis, cancellation: &ModelCancellation) -> CycleEnd {
         let mut basis = basis.clone();
         let mut fenced = 0u32;
@@ -1694,7 +1875,23 @@ where
                 && turn.intent_revision >= basis.intent_revision as u64
             {
                 match turn.status {
-                    StepStatus::Responded => return CycleEnd::Waiting,
+                    // A cited answer that asked to read further continues
+                    // once its reading is done (idempotent on a reclaim).
+                    StepStatus::Responded => {
+                        let Some(invocation_id) = &turn.invocation_id else {
+                            return CycleEnd::Waiting;
+                        };
+                        let invocation = match self.steps.invocation(&basis, invocation_id).await {
+                            Ok(invocation) => invocation,
+                            Err(TaskError::Fenced | TaskError::Denied) => return CycleEnd::Fenced,
+                            Err(_) => return CycleEnd::Unavailable,
+                        };
+                        match self.read_after(&boundary, &invocation, cancellation).await {
+                            Ok(true) => {}
+                            Ok(false) => return CycleEnd::Waiting,
+                            Err(end) => return end,
+                        }
+                    }
                     StepStatus::Failed if turn.execution_epoch >= basis.execution_epoch as u64 => {
                         return CycleEnd::Failed;
                     }
@@ -1711,7 +1908,17 @@ where
                 return CycleEnd::Bounded;
             }
             let ordinal = boundary.steps.len() as u32;
-            let planned = match self.request(&boundary, &resolved).await {
+            let reading = if self.cited() {
+                match self.reading.context(&basis).await {
+                    Ok(reading) => reading,
+                    Err(ModelError::Fenced | ModelError::Denied) => return CycleEnd::Fenced,
+                    Err(ModelError::Unavailable) => return CycleEnd::Unavailable,
+                    Err(_) => return CycleEnd::Failed,
+                }
+            } else {
+                ReadingContext::default()
+            };
+            let planned = match self.request(&boundary, &resolved, &reading).await {
                 Ok(planned) => planned,
                 // The owned context alone does not fit: nothing is sent and the
                 // turn is recorded as failed with its fixed reason.
@@ -1793,6 +2000,15 @@ where
                     None,
                     format!("Model turn {} did not complete", ordinal + 1),
                 )
+            } else if calls.is_empty()
+                && self.cited()
+                && cited_answer(&invocation).is_some_and(|a| a.requests_reading())
+            {
+                (
+                    StepStatus::Responded,
+                    Some(NextAction::ModelTurn),
+                    format!("Model turn {} responded and asked to read further", ordinal + 1),
+                )
             } else if calls.is_empty() {
                 (
                     StepStatus::Responded,
@@ -1824,7 +2040,16 @@ where
                 Err(end) => return end,
             };
             match recorded.status {
-                StepStatus::Responded => return CycleEnd::Waiting,
+                StepStatus::Responded => {
+                    match self.read_after(&boundary, &invocation, cancellation).await {
+                        Ok(true) => {
+                            fenced = 0;
+                            continue;
+                        }
+                        Ok(false) => return CycleEnd::Waiting,
+                        Err(end) => return end,
+                    }
+                }
                 StepStatus::Failed => return CycleEnd::Failed,
                 // Recorded but stale: the next boundary applies the guidance and
                 // the following turn reconsiders these proposals.

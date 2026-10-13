@@ -291,6 +291,7 @@ impl Harness {
                 store: self.repo.clone(),
                 transport: Shared(script.clone()),
             },
+            reading: zobba_application::work::NoReading,
             dispatch: Dispatch {
                 operations: self.operations.clone(),
                 hang_after_consume: hang.clone(),
@@ -3105,6 +3106,7 @@ async fn stale_after_withdrawal(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>
             compactions: compactions.clone(),
         },
         coordinator: base.coordinator,
+        reading: base.reading,
         dispatch: base.dispatch,
         settings: base.settings,
         bind: base.bind,

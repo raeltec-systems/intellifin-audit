@@ -240,7 +240,7 @@ variable "analysis_image_digest" {
   # allowlist (crates/domain/src/analysis.rs); deploying any other image would
   # only make every job unavailable, so refuse it here instead.
   validation {
-    condition     = var.analysis_image_digest == null || var.analysis_image_digest == "sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f"
+    condition     = var.analysis_image_digest == null || var.analysis_image_digest == "sha256:8241deca19d20b576c0d4b2ad75deac753492d335de45d284766df3d5666ea5f"
     error_message = "analysis_image_digest must equal the server-allowlisted general-python-3-13 digest."
   }
 }

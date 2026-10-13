@@ -105,6 +105,13 @@ struct CapabilitiesWire {
     tools: bool,
     structured_output: bool,
     reasoning: bool,
+    /// Absent in profiles stored before schema 16, and omitted when false, so
+    /// their exact documents and bindings are unchanged.
+    #[serde(default, skip_serializing_if = "is_false")]
+    image_input: bool,
+}
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StoredCapabilities(#[serde(with = "CapabilitiesWire")] pub Capabilities);
@@ -218,6 +225,57 @@ struct ModelMessageWire {
     role: MessageRole,
     text: String,
     source_id: Option<String>,
+    /// Absent before schema 16 and omitted when empty, so stored messages keep
+    /// their bytes and bindings. Image bytes are never stored: the digest and
+    /// size identify the exact trusted page image.
+    #[serde(default, skip_serializing_if = "Vec::is_empty", with = "image_parts")]
+    images: Vec<ImagePart>,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ImagePartDocument {
+    attachment_id: String,
+    media_type: String,
+    sha256: String,
+    size: u64,
+    classification: String,
+}
+mod image_parts {
+    use super::*;
+    pub fn serialize<S: serde::Serializer>(
+        value: &[ImagePart],
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        value
+            .iter()
+            .map(|image| ImagePartDocument {
+                attachment_id: image.attachment_id.clone(),
+                media_type: image.media_type.as_str().into(),
+                sha256: image.sha256.clone(),
+                size: image.size,
+                classification: image.classification.clone(),
+            })
+            .collect::<Vec<_>>()
+            .serialize(serializer)
+    }
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Vec<ImagePart>, D::Error> {
+        Vec::<ImagePartDocument>::deserialize(deserializer)?
+            .into_iter()
+            .map(|image| {
+                Ok(ImagePart {
+                    media_type: ImageMediaType::parse(&image.media_type)
+                        .ok_or_else(|| serde::de::Error::custom("unknown image media type"))?,
+                    attachment_id: image.attachment_id,
+                    sha256: image.sha256,
+                    size: image.size,
+                    classification: image.classification,
+                    bytes: vec![],
+                })
+            })
+            .collect()
+    }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StoredModelMessage(#[serde(with = "ModelMessageWire")] pub ModelMessage);

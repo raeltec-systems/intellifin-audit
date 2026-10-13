@@ -74,6 +74,9 @@ vocabulary!(InputClass {
     ToolResult => "tool-result",
     ModelOutput => "model-output",
     CompactionDigest => "compaction-digest",
+    DocumentPage => "document-page",
+    AnalysisOutput => "analysis-output",
+    EvidenceRegistry => "evidence-registry",
 });
 
 // Current standing of a knowledge revision that an earlier turn used.

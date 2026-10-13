@@ -505,6 +505,7 @@ async fn stalled_provider_pause_and_restart_recover_without_resending() {
             tools: true,
             structured_output: false,
             reasoning: false,
+            image_input: false,
         },
         max_output_tokens: 128,
     };

@@ -763,7 +763,7 @@ run "analysis_jobs_are_isolated" {
   command = apply
 
   variables {
-    analysis_image_digest = "sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f"
+    analysis_image_digest = "sha256:8241deca19d20b576c0d4b2ad75deac753492d335de45d284766df3d5666ea5f"
   }
 
   assert {
@@ -776,7 +776,7 @@ run "analysis_jobs_are_isolated" {
       for c in jsondecode(aws_ecs_task_definition.analysis.container_definitions) :
       c.privileged == false && c.readonlyRootFilesystem == true && length(c.environment) == 0 && length(c.secrets) == 0 &&
       c.linuxParameters.capabilities.drop == ["ALL"] && !contains(keys(c.linuxParameters.capabilities), "add") &&
-      endswith(c.image, "@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f")
+      endswith(c.image, "@sha256:8241deca19d20b576c0d4b2ad75deac753492d335de45d284766df3d5666ea5f")
     ])
     error_message = "every analysis container is unprivileged, read-only, capability-free, pinned by digest and receives no environment or secret"
   }

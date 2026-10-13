@@ -506,6 +506,36 @@ where
         failure.map_or(Ok(None), Err)
     }
 
+    /// Work on one exact job of the claim's Task: recover it, and start a
+    /// retryable attempt (Story 22.5 trusted document jobs and model programs).
+    /// Like `run_next`, a job never dispatches twice; an absent attempt may be
+    /// started again under the same bounded start attempts.
+    pub async fn run(
+        &self,
+        basis: &ClaimBasis,
+        job_id: &str,
+        cancellation: &ModelCancellation,
+    ) -> Result<JobRecord, AnalysisError> {
+        let record = self
+            .recover(
+                &basis.actor_id,
+                &basis.scope,
+                job_id,
+                cancellation,
+                Watch::default(),
+            )
+            .await?;
+        if !record.latest.status.retryable() || cancellation.is_cancelled() {
+            return Ok(record);
+        }
+        if record.attempts >= MAX_START_ATTEMPTS {
+            self.refuse_start(&basis.actor_id, &basis.scope, record)
+                .await
+        } else {
+            self.start(basis, record, cancellation).await
+        }
+    }
+
     async fn start(
         &self,
         basis: &ClaimBasis,

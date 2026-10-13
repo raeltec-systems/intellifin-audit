@@ -1,5 +1,6 @@
 //! Owned identity, scope and durable Task meanings; no delivery or vendor types.
 pub mod analysis;
+pub mod citation;
 pub mod context;
 pub mod conversation;
 pub mod engagement_setup;

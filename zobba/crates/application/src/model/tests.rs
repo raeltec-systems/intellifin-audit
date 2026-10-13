@@ -53,6 +53,7 @@ fn request() -> ModelRequest {
                 tools: true,
                 structured_output: true,
                 reasoning: false,
+                image_input: false,
             },
             max_output_tokens: 128,
         },
@@ -103,11 +104,13 @@ fn request() -> ModelRequest {
                 role: MessageRole::System,
                 text: "Owned instructions".into(),
                 source_id: None,
+                images: vec![],
             },
             ModelMessage {
                 role: MessageRole::User,
                 text: "Investigate the exact resource".into(),
                 source_id: Some("brief".into()),
+                images: vec![],
             },
         ],
         history: vec![],
@@ -185,6 +188,7 @@ fn portable_tool_history_retains_hostile_text_as_attributed_data() {
         role: MessageRole::User,
         text: "Continue investigating under the current brief".into(),
         source_id: Some("brief".into()),
+        images: vec![],
     }));
     assert_eq!(request.validate(), Ok(()));
     let HistoryItem::ToolExchange(exchange) = &request.history[0] else {
@@ -259,6 +263,7 @@ fn portable_history_cannot_escalate_roles_or_exceed_independent_limits() {
             role,
             text: "source text".into(),
             source_id: Some("brief".into()),
+            images: vec![],
         }));
         assert!(changed.validate().is_err());
     }
@@ -273,6 +278,7 @@ fn portable_history_cannot_escalate_roles_or_exceed_independent_limits() {
         role: MessageRole::User,
         text: "x".repeat(MAX_HISTORY_BYTES),
         source_id: Some("brief".into()),
+        images: vec![],
     }));
     assert_eq!(changed.validate(), Err(ModelError::Capacity));
     let mut changed = original;
@@ -280,7 +286,8 @@ fn portable_history_cannot_escalate_roles_or_exceed_independent_limits() {
         HistoryItem::Message(ModelMessage {
             role: MessageRole::User,
             text: "source text".into(),
-            source_id: Some("brief".into())
+            source_id: Some("brief".into()),
+            images: vec![],
         });
         MAX_HISTORY_ITEMS + 1
     ];
@@ -793,6 +800,7 @@ fn replay_blocks_are_claude_only_once_per_group_and_count_toward_history() {
         role: MessageRole::User,
         text: "Interleaved note".into(),
         source_id: Some("brief".into()),
+        images: vec![],
     }));
     let HistoryItem::ToolExchange(exchange) = &mut later else {
         panic!("missing exchange")
@@ -825,6 +833,7 @@ fn replay_blocks_are_claude_only_once_per_group_and_count_toward_history() {
         role: MessageRole::User,
         text: "x".repeat(16 * 1024),
         source_id: Some("brief".into()),
+        images: vec![],
     }));
     assert_eq!(large.validate(), Err(ModelError::Capacity));
 }

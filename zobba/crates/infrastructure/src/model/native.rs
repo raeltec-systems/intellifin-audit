@@ -180,6 +180,23 @@ impl NativeAdapter {
         if request.effort != Effort::None {
             return Err(ModelError::Unsupported);
         }
+        // Page images (Story 22.5): only the OpenAI encoding is implemented;
+        // Anthropic image input stays refused until it is qualified. The
+        // bytes must be exactly the trusted, measured page image.
+        let images = request.messages.iter().flat_map(|m| m.images.iter());
+        let mut image_bytes = 0usize;
+        for image in images {
+            if self.provider != Provider::OpenAi {
+                return Err(ModelError::Unsupported);
+            }
+            use sha2::Digest;
+            if image.bytes.len() as u64 != image.size
+                || format!("{:x}", sha2::Sha256::digest(&image.bytes)) != image.sha256
+            {
+                return Err(ModelError::Invalid);
+            }
+            image_bytes += image.bytes.len();
+        }
         if self.provider == Provider::OpenAi
             && request.structured_output.as_ref().is_some_and(|schema| {
                 !matches!(schema, ArgumentSchema::Object { .. }) || !openai_strict_schema(schema)
@@ -244,7 +261,8 @@ impl NativeAdapter {
             }
         }
         let bytes = serde_json::to_vec(&body).map_err(|_| ModelError::Invalid)?;
-        if bytes.len() > MAX_STREAM_BYTES {
+        // A page image is sent base64-encoded beside the bounded text body.
+        if bytes.len() > MAX_STREAM_BYTES + image_bytes.div_ceil(3) * 4 + 64 {
             return Err(ModelError::Capacity);
         }
         Ok(bytes)
@@ -451,7 +469,22 @@ fn native_history(request: &ModelRequest, provider: Provider) -> Vec<Value> {
         .messages
         .iter()
         .filter(|item| provider == Provider::OpenAi || item.role != MessageRole::System)
-        .map(|item| message(item.role, &item.text))
+        .map(|item| {
+            if item.images.is_empty() {
+                return message(item.role, &item.text);
+            }
+            // Only reachable for OpenAI: request_body refuses other providers.
+            let mut content = vec![serde_json::json!({"type": "input_text", "text": item.text})];
+            content.extend(item.images.iter().map(|image| {
+                use base64::Engine;
+                serde_json::json!({"type": "input_image", "detail": "high", "image_url": format!(
+                    "data:{};base64,{}",
+                    image.media_type.as_str(),
+                    base64::engine::general_purpose::STANDARD.encode(&image.bytes)
+                )})
+            }));
+            serde_json::json!({"role": item.role.as_str(), "content": content})
+        })
         .collect();
     let mut history = request.history.iter().peekable();
     while let Some(item) = history.next() {

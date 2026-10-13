@@ -124,6 +124,7 @@ fn profile() -> ModelProfile {
             tools: true,
             structured_output: false,
             reasoning: false,
+            image_input: false,
         },
         max_output_tokens: 128,
     }
@@ -438,6 +439,7 @@ async fn fixture(
             role: MessageRole::User,
             text: "Propose the exact synthetic operation.".into(),
             source_id: Some("owned-objective".into()),
+            images: vec![],
         }],
         history: vec![],
         effort: Effort::None,

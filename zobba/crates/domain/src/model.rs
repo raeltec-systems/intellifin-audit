@@ -65,6 +65,9 @@ pub struct Capabilities {
     pub tools: bool,
     pub structured_output: bool,
     pub reasoning: bool,
+    /// Accepts one page image per request (Story 22.5 native reading). A
+    /// trusted adapter must also support the provider encoding.
+    pub image_input: bool,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ModelProfile {
@@ -448,6 +451,66 @@ pub struct ModelMessage {
     pub role: MessageRole,
     pub text: String,
     pub source_id: Option<String>,
+    /// Page images rendered by trusted code (Story 22.5). Only an attributed
+    /// User message may carry one; it is disclosed as its own attachment.
+    pub images: Vec<ImagePart>,
+}
+
+/// At most one page image per request: one native page read per disclosure.
+pub const MAX_IMAGES_PER_REQUEST: usize = 1;
+pub const MAX_IMAGE_BYTES: usize = crate::citation::MAX_PAGE_IMAGE_BYTES;
+vocabulary!(ImageMediaType { Png => "image/png", Jpeg => "image/jpeg" });
+
+/// One trusted page image. Identity is its digest: two parts with the same
+/// attachment, media type, digest, size and classification are equal even
+/// when one holds no bytes (a recovered request is never resent).
+#[derive(Clone)]
+pub struct ImagePart {
+    /// Disclosure attachment ID binding this image to the Send operation.
+    pub attachment_id: String,
+    pub media_type: ImageMediaType,
+    /// SHA-256 of the exact bytes, measured by trusted code.
+    pub sha256: String,
+    pub size: u64,
+    /// The firm's data classification of the original the page came from.
+    pub classification: String,
+    /// Present on a request about to be sent; never persisted.
+    pub bytes: Vec<u8>,
+}
+impl PartialEq for ImagePart {
+    fn eq(&self, other: &Self) -> bool {
+        self.attachment_id == other.attachment_id
+            && self.media_type == other.media_type
+            && self.sha256 == other.sha256
+            && self.size == other.size
+            && self.classification == other.classification
+    }
+}
+impl Eq for ImagePart {}
+impl std::fmt::Debug for ImagePart {
+    /// Bytes are withheld from diagnostics.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ImagePart")
+            .field("attachment_id", &self.attachment_id)
+            .field("media_type", &self.media_type)
+            .field("sha256", &self.sha256)
+            .field("size", &self.size)
+            .field("classification", &self.classification)
+            .field("bytes", &self.bytes.len())
+            .finish()
+    }
+}
+impl ImagePart {
+    /// Bytes, when present, must have the declared size; the digest itself is
+    /// measured again by the infrastructure adapter before encoding.
+    pub fn is_valid(&self) -> bool {
+        valid_scope_id(&self.attachment_id)
+            && crate::permissions::valid_digest(&self.sha256)
+            && self.size > 0
+            && self.size <= MAX_IMAGE_BYTES as u64
+            && valid_scope_id(&self.classification)
+            && (self.bytes.is_empty() || self.bytes.len() as u64 == self.size)
+    }
 }
 
 /// Owned portable history has no provider conversation/continuation handles.

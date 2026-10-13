@@ -128,6 +128,7 @@ impl<T: ModelTransport + 'static> WorkRunner for Composition<T> {
                     store: models,
                     transport: Shared(self.transport.clone()),
                 },
+                reading: zobba_application::work::NoReading,
                 dispatch: GatewayDispatch {
                     gateway: self.gateway.clone(),
                     operations: OperationRepository::new(self.pool.clone())

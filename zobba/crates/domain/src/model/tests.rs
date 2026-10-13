@@ -52,6 +52,7 @@ fn profile() -> ModelProfile {
             tools: true,
             structured_output: true,
             reasoning: false,
+            image_input: false,
         },
         max_output_tokens: 128,
     }

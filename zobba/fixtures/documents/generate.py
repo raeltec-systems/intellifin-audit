@@ -1,0 +1,239 @@
+# Synthetic Story 22.5 document fixtures. Every value is invented test data.
+# Regenerate inside the pinned general analysis image (it has the libraries):
+#   docker run --rm --network none -v "$PWD/fixtures/documents:/out" \
+#     127.0.0.1:5000/zobba/analysis-general@<GENERAL_IMAGE_DIGEST> \
+#     python3 -I -B /out/generate.py /out
+# The generated files are committed; tests rely on their exact bytes.
+import datetime
+import io
+import os
+import re
+import sys
+import zipfile
+import zlib
+
+OUT = sys.argv[1]
+FIXED = datetime.datetime(2026, 1, 1, 0, 0, 0)
+
+
+def save(name, data):
+    with open(os.path.join(OUT, name), "wb") as handle:
+        handle.write(data)
+
+
+def normalized_zip(data):
+    """Rewrite a package with fixed member timestamps so bytes are stable."""
+    source = zipfile.ZipFile(io.BytesIO(data))
+    target = io.BytesIO()
+    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as out:
+        for info in source.infolist():
+            fixed = zipfile.ZipInfo(info.filename, date_time=(2026, 1, 1, 0, 0, 0))
+            fixed.compress_type = zipfile.ZIP_DEFLATED
+            body = source.read(info.filename)
+            if info.filename == "docProps/core.xml":
+                # Libraries stamp the save time into the package properties.
+                body = re.sub(
+                    rb"(<dcterms:(?:created|modified)[^>]*>)[^<]*(</dcterms:)",
+                    rb"\g<1>2026-01-01T00:00:00Z\g<2>",
+                    body,
+                )
+            out.writestr(fixed, body)
+    return target.getvalue()
+
+
+def workbook():
+    import openpyxl
+
+    book = openpyxl.Workbook()
+    sheet = book.active
+    sheet.title = "Sheet1"
+    rows = [
+        ("Account", "Balance"),
+        ("Cash", 830.5),
+        ("Receivables", 419.5),
+        ("Total", 1250),
+    ]
+    for row in rows:
+        sheet.append(row)
+    for row in range(2, 5):
+        sheet.cell(row=row, column=2).number_format = "#,##0.00"
+    book.properties.created = FIXED
+    book.properties.modified = FIXED
+    buffer = io.BytesIO()
+    book.save(buffer)
+    return normalized_zip(buffer.getvalue())
+
+
+def contract_docx():
+    import docx
+
+    document = docx.Document()
+    document.add_paragraph("Services agreement between Example Supplier and Example Client.")
+    document.add_paragraph("Payment is due within 30 days of the invoice date.")
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Fee"
+    table.cell(0, 1).text = "1,250.00"
+    table.cell(1, 0).text = "Term"
+    table.cell(1, 1).text = "12 months"
+    document.core_properties.created = FIXED
+    document.core_properties.modified = FIXED
+    document.core_properties.last_printed = FIXED
+    buffer = io.BytesIO()
+    document.save(buffer)
+    return normalized_zip(buffer.getvalue())
+
+
+def pdf(pages):
+    """Minimal hand-written PDF. Each page is (text_lines, with_image)."""
+    objects = []
+
+    def add(body):
+        objects.append(body)
+        return len(objects)
+
+    catalog = add(None)
+    pages_id = add(None)
+    font = add(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    kids = []
+    for lines, with_image in pages:
+        stream = b""
+        resources = b"<< /Font << /F1 %d 0 R >>" % font
+        if with_image:
+            # 8x8 grey image: a "scan" with no text layer at all.
+            pixels = zlib.compress(bytes([128] * 8 * 8 * 3))
+            image = add(
+                b"<< /Type /XObject /Subtype /Image /Width 8 /Height 8 /ColorSpace /DeviceRGB "
+                b"/BitsPerComponent 8 /Filter /FlateDecode /Length %d >>\nstream\n%s\nendstream"
+                % (len(pixels), pixels)
+            )
+            resources += b" /XObject << /Im1 %d 0 R >>" % image
+            stream += b"q 400 0 0 500 100 150 cm /Im1 Do Q\n"
+        resources += b" >>"
+        for index, line in enumerate(lines):
+            stream += b"BT /F1 14 Tf 72 %d Td (%s) Tj ET\n" % (720 - index * 24, line.encode("latin-1"))
+        content = add(b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream))
+        kids.append(
+            add(
+                b"<< /Type /Page /Parent %d 0 R /MediaBox [0 0 612 792] /Resources %s /Contents %d 0 R >>"
+                % (pages_id, resources, content)
+            )
+        )
+    objects[catalog - 1] = b"<< /Type /Catalog /Pages %d 0 R >>" % pages_id
+    objects[pages_id - 1] = b"<< /Type /Pages /Kids [%s] /Count %d >>" % (
+        b" ".join(b"%d 0 R" % k for k in kids),
+        len(kids),
+    )
+    out = io.BytesIO()
+    out.write(b"%PDF-1.4\n")
+    offsets = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(out.tell())
+        out.write(b"%d 0 obj\n%s\nendobj\n" % (number, body))
+    xref = out.tell()
+    out.write(b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1))
+    for offset in offsets:
+        out.write(b"%010d 00000 n \n" % offset)
+    out.write(b"trailer\n<< /Size %d /Root %d 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objects) + 1, catalog, xref))
+    return out.getvalue()
+
+
+EMAIL = (
+    "From: Example Supplier <supplier@example.test>\r\n"
+    "To: Example Client <client@example.test>\r\n"
+    "Subject: Payment terms\r\n"
+    "Date: Thu, 1 Jan 2026 00:00:00 +0000\r\n"
+    "MIME-Version: 1.0\r\n"
+    'Content-Type: multipart/alternative; boundary="b1"\r\n'
+    "\r\n"
+    "--b1\r\n"
+    "Content-Type: text/plain; charset=utf-8\r\n"
+    "\r\n"
+    "We confirm payment within 30 days.\r\n"
+    "--b1\r\n"
+    "Content-Type: text/html; charset=utf-8\r\n"
+    "\r\n"
+    "<p>We confirm payment within <b>30 days</b>.</p>\r\n"
+    "--b1--\r\n"
+)
+
+
+def zip_bomb():
+    """A package declaring far more expansion than any bound allows."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as out:
+        for name in ("[Content_Types].xml", "xl/workbook.xml"):
+            out.writestr(zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0)), b"<x/>")
+        out.writestr(
+            zipfile.ZipInfo("xl/worksheets/sheet1.xml", date_time=(2026, 1, 1, 0, 0, 0)),
+            b"\0" * (64 * 1024 * 1024),
+            compress_type=zipfile.ZIP_DEFLATED,
+        )
+    return buffer.getvalue()
+
+
+def macro_workbook():
+    """An .xlsm-shaped package carrying a VBA project; it must never run."""
+    data = workbook()
+    source = zipfile.ZipFile(io.BytesIO(data))
+    target = io.BytesIO()
+    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as out:
+        for info in source.infolist():
+            out.writestr(zipfile.ZipInfo(info.filename, date_time=(2026, 1, 1, 0, 0, 0)), source.read(info.filename))
+        out.writestr(
+            zipfile.ZipInfo("xl/vbaProject.bin", date_time=(2026, 1, 1, 0, 0, 0)),
+            b"Attribute VB_Name = \"Auto_Open\"\nShell \"curl http://169.254.169.254\"\n",
+        )
+    return target.getvalue()
+
+
+# A 64x32 baseline JPEG "photo" (a drawn frame, no text), encoded once.
+PHOTO = bytes.fromhex(
+    "ffd8ffe000104a46494600010100000100010000ffdb0043000d090a0b0a080d0b0a0b0e0e0d"
+    "0f13201513121213271c1e17202e2931302e292d2c333a4a3e333646372c2d405741464c4e52"
+    "5352323e5a615a50604a51524fffdb0043010e0e0e131113261515264f352d354f4f4f4f4f4f"
+    "4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f"
+    "4f4f4f4f4f4fffc00011080020004003012200021101031101ffc4001f000001050101010101"
+    "0100000000000000000102030405060708090a0bffc400b51000020103030204030505040400"
+    "00017d01020300041105122131410613516107227114328191a1082342b1c11552d1f0243362"
+    "7282090a161718191a25262728292a3435363738393a434445464748494a535455565758595a"
+    "636465666768696a737475767778797a838485868788898a92939495969798999aa2a3a4a5a6"
+    "a7a8a9aab2b3b4b5b6b7b8b9bac2c3c4c5c6c7c8c9cad2d3d4d5d6d7d8d9dae1e2e3e4e5e6e7"
+    "e8e9eaf1f2f3f4f5f6f7f8f9faffc4001f010003010101010101010101000000000000010203"
+    "0405060708090a0bffc400b51100020102040403040705040400010277000102031104052131"
+    "061241510761711322328108144291a1b1c109233352f0156272d10a162434e125f11718191a"
+    "262728292a35363738393a434445464748494a535455565758595a636465666768696a737475"
+    "767778797a82838485868788898a92939495969798999aa2a3a4a5a6a7a8a9aab2b3b4b5b6b7"
+    "b8b9bac2c3c4c5c6c7c8c9cad2d3d4d5d6d7d8d9dae2e3e4e5e6e7e8e9eaf2f3f4f5f6f7f8f9"
+    "faffda000c03010002110311003f00edafaf2ea2bdb7b4b3b68669258e490996631850a50765"
+    "6c9f9c7e54df3b5aff00a07e9fff0081cfff00c6a89ffe464b2ffaf3b8ff00d0e1ad1a00cef3"
+    "b5affa07e9ff00f81cff00fc6a8f3b5aff00a07e9fff0081cfff00c6ab468a00cef3b5affa07"
+    "e9ff00f81cff00fc6a8f3b5aff00a07e9fff0081cfff00c6ab468a00cef3b5affa07e9ff00f8"
+    "1cff00fc6a9d6379752dedc5a5e5b430c91471c80c531903062e3baae0fc87f3abf59d07fc8c"
+    "97bff5e76fff00a1cd4004ff00f232597fd79dc7fe870d68d50beb3ba96f6deeecee618648a3"
+    "92322584c8183143d99707e41f9d37c9d6bfe821a7ff00e00bff00f1da00d1a2b3bc9d6bfe82"
+    "1a7ffe00bfff001da3c9d6bfe821a7ff00e00bff00f1da00d1a2b3bc9d6bfe821a7ffe00bfff"
+    "001da3c9d6bfe821a7ff00e00bff00f1da00d1ace83fe464bdff00af3b7ffd0e6a3c9d6bfe82"
+    "1a7ffe00bfff001da758d9dd457b717779730cd24b1c7181142630a14b9eecd93f39fca803ff"
+    "d9"
+)
+
+
+save("Receipt photo.jpg", PHOTO)
+save("Trial balance.xlsx", workbook())
+save("Contract.docx", contract_docx())
+save(
+    "Contract.pdf",
+    pdf(
+        [
+            (["Services agreement", "Example Supplier and Example Client"], False),
+            (["Payment terms", "Payment is due within 30 days."], False),
+            (["Signatures", "Signed by A. Auditor"], False),
+        ]
+    ),
+)
+save("Scanned letter.pdf", pdf([([], True), ([], True), ([], True)]))
+save("Payment terms.eml", EMAIL.encode("utf-8"))
+save("Zip bomb.xlsx", zip_bomb())
+save("Encrypted.xlsx", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\0" * 504)
+save("Macro workbook.xlsm", macro_workbook())
+save("Notes.txt", "Opening balance 1,250.00 agreed to the ledger.\n".encode("utf-8"))

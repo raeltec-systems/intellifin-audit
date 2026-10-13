@@ -142,10 +142,16 @@ pub fn valid_image_digest(value: &str) -> bool {
     value.strip_prefix("sha256:").is_some_and(valid_digest)
 }
 
-/// The one pinned general-purpose analysis image (Python 3.13 slim, index
-/// digest). Any further allowlist entry is an explicit owner decision.
+/// The one pinned general-purpose analysis image: Python 3.13 slim plus the
+/// owner-approved document libraries (Story 22.5: pandas, openpyxl,
+/// python-docx, pypdfium2; `deploy/qualification/analysis/general`). The
+/// digest is the reproducible OCI manifest digest that `build.sh` prints. Any
+/// further allowlist entry or library is an explicit owner decision.
 pub const GENERAL_ENVIRONMENT_ID: &str = "general-python-3-13";
 pub const GENERAL_IMAGE_DIGEST: &str =
+    "sha256:8241deca19d20b576c0d4b2ad75deac753492d335de45d284766df3d5666ea5f";
+/// The Story 22.4 base it is built from (Python 3.13 slim, index digest).
+pub const GENERAL_BASE_IMAGE_DIGEST: &str =
     "sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f";
 pub fn server_allowlist() -> Vec<AnalysisEnvironment> {
     vec![AnalysisEnvironment {
@@ -154,6 +160,8 @@ pub fn server_allowlist() -> Vec<AnalysisEnvironment> {
         command: vec!["python3".into(), "-I".into(), "-B".into()],
         media_types: vec![
             "application/json".into(),
+            // Page images rendered by the trusted document program.
+            "image/png".into(),
             "text/csv".into(),
             "text/markdown".into(),
             "text/plain".into(),

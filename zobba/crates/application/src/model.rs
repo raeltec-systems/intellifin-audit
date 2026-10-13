@@ -114,6 +114,41 @@ impl ModelRequest {
         {
             return Err(ModelError::Invalid);
         }
+        // Native page reading (Story 22.5): one trusted page image per request,
+        // only on an attributed User message, only to a profile qualified for
+        // image input and strict structured output, and disclosed as its own
+        // attachment with the original's classification.
+        let images: Vec<&ImagePart> = self
+            .messages
+            .iter()
+            .flat_map(|m| m.images.iter())
+            .collect();
+        if !images.is_empty() {
+            if !self.profile.capabilities.image_input || self.structured_output.is_none() {
+                return Err(ModelError::Unsupported);
+            }
+            if images.len() > MAX_IMAGES_PER_REQUEST {
+                return Err(ModelError::Capacity);
+            }
+            for image in &images {
+                if !image.is_valid()
+                    || !self.disclosure.attachments.iter().any(|a| {
+                        a.id == image.attachment_id
+                            && a.digest == image.sha256
+                            && a.classification == image.classification
+                    })
+                {
+                    return Err(ModelError::Invalid);
+                }
+            }
+        }
+        if self.messages.iter().any(|m| {
+            !m.images.is_empty() && (m.role != MessageRole::User || m.source_id.is_none())
+        }) || self.history.iter().any(
+            |item| matches!(item, HistoryItem::Message(m) if !m.images.is_empty()),
+        ) {
+            return Err(ModelError::Invalid);
+        }
         if self.messages.is_empty()
             || self.messages.len() > MAX_MESSAGES
             || self.history.len() > MAX_HISTORY_ITEMS

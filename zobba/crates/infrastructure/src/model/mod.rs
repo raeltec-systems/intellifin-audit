@@ -99,9 +99,28 @@ fn hash(bytes: &[u8]) -> String {
 /// classification vocabulary. The caller owns classification and the canonical
 /// Send operation; this helper neither chooses a destination nor grants authority.
 /// Key and volatile claim-owner identifiers do not enter the native payload.
+///
+/// A page image (Story 22.5) is disclosed as its own attachment: its measured
+/// digest and the original's classification, so exactly one Send operation
+/// covers each page image sent.
 pub fn bind_disclosure(request: &mut ModelRequest) -> Result<(), ModelError> {
+    request.disclosure.attachments = image_attachments(request);
     request.disclosure.attachments = payload_attachments(request)?;
     Ok(())
+}
+fn image_attachments(request: &ModelRequest) -> Vec<zobba_domain::permissions::Attachment> {
+    let mut attachments: Vec<_> = request
+        .messages
+        .iter()
+        .flat_map(|m| m.images.iter())
+        .map(|image| zobba_domain::permissions::Attachment {
+            id: image.attachment_id.clone(),
+            digest: image.sha256.clone(),
+            classification: image.classification.clone(),
+        })
+        .collect();
+    attachments.sort_by(|a, b| a.id.cmp(&b.id));
+    attachments
 }
 fn payload_attachments(
     request: &ModelRequest,
@@ -117,7 +136,7 @@ fn payload_attachments(
     if bytes.len() > 1024 * 1024 {
         return Err(ModelError::Capacity);
     }
-    Ok(request
+    let mut attachments: Vec<_> = request
         .input_classes
         .iter()
         .enumerate()
@@ -134,7 +153,13 @@ fn payload_attachments(
                 classification: class.clone(),
             }
         })
-        .collect())
+        .collect();
+    attachments.extend(image_attachments(request));
+    attachments.sort_by(|a, b| a.id.cmp(&b.id));
+    if attachments.windows(2).any(|p| p[0].id == p[1].id) {
+        return Err(ModelError::Invalid);
+    }
+    Ok(attachments)
 }
 fn verify_disclosure_binding(request: &ModelRequest) -> Result<(), ModelError> {
     if request.disclosure.attachments != payload_attachments(request)? {
@@ -309,13 +334,20 @@ async fn history_authority(
                 let Some(message) = answer else {
                     return Err(ModelError::Invalid);
                 };
-                if original.outcome.is_none()
-                    || message.role != MessageRole::Assistant
-                    || message.source_id.as_deref().is_none_or(|source| {
+                // Or (Story 22.5) exactly the labelled transcription of a
+                // native page read of this Task, attributed as data.
+                let answer = message.role == MessageRole::Assistant
+                    && message.source_id.as_deref().is_some_and(|source| {
                         message.text
-                            != zobba_application::work::earlier_answer_envelope(source, &original)
-                    })
-                {
+                            == zobba_application::work::earlier_answer_envelope(source, &original)
+                    });
+                let reading = message.role == MessageRole::User
+                    && message.source_id.as_deref().is_some_and(|source| {
+                        zobba_application::reading::transcript_envelope(source, &original)
+                            .as_deref()
+                            == Some(message.text.as_str())
+                    });
+                if original.outcome.is_none() || !(answer || reading) {
                     return Err(ModelError::Conflict);
                 }
                 if answers.insert(origin.clone()) && answers.len() > MAX_HISTORY_DEPENDENCIES {

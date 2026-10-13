@@ -52,7 +52,10 @@ mod s3_protocol;
 #[path = "../../infrastructure/tests/support/mod.rs"]
 mod support;
 
-const REPOSITORY: &str = "mirror.gcr.io/library/python";
+/// The pinned general image (Story 22.5) is built reproducibly by
+/// `deploy/qualification/analysis/general/build.sh` and pushed to a local
+/// registry; the digest, not this name, is what the allowlist pins.
+const REPOSITORY: &str = "127.0.0.1:5000/zobba/analysis-general";
 const PROGRAM_SENTINEL: &str = "PROGRAM-SENTINEL-7f3a";
 const INPUT_SENTINEL: &str = "INPUT-SENTINEL-91bc";
 const OUTPUT_SENTINEL: &str = "OUTPUT-SENTINEL-c04d";
