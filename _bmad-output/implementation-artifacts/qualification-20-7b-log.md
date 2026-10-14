@@ -57,3 +57,5 @@ Region eu-west-1. Terraform runs in AWS CloudShell as the owner's SSO admin role
   tasks, as expected before `image_digest` is set); web synced, CloudFront invalidated.
   The release workflow file was registered on `main` by the owner with `[skip ci]`
   (workflow_dispatch needs the default branch); releases run from the release branch.
+- `image_digest` set and applied: API 2/2, worker 1/1, services stable;
+  `GET <public origin>/api/health/ready` returned 200 through CloudFront (2026-10-14).
