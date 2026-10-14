@@ -45,3 +45,6 @@ Region eu-west-1. Terraform runs in AWS CloudShell as the owner's SSO admin role
   the parameter is static in PostgreSQL 18). Both are now declared as AWS reports them.
 - Fixed one more drift (ECS default container fields). Final plan: **No changes.**
   First apply of the qualification infrastructure is complete (2026-10-14).
+- Second apply: ALB ingress now references only the CloudFront VPC-origin service
+  security group (`restrict_alb_to_vpc_origin_sg = true` kept in tfvars). Plan: no changes.
+- Role bootstrap: one-off task exit 0, log `bootstrap: roles_ready` (2026-10-14).
