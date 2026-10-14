@@ -59,3 +59,7 @@ Region eu-west-1. Terraform runs in AWS CloudShell as the owner's SSO admin role
   (workflow_dispatch needs the default branch); releases run from the release branch.
 - `image_digest` set and applied: API 2/2, worker 1/1, services stable;
   `GET <public origin>/api/health/ready` returned 200 through CloudFront (2026-10-14).
+- Cognito owner user created; owner signed in through the public origin (session works,
+  no access yet, as expected). First Admin provisioning: new reviewed
+  `zobba-cli provision-organisation` command in progress (owner chose this over raw SQL);
+  organisation "Raeltec Systems Limited". Owner noted UI polish issues, deferred.
