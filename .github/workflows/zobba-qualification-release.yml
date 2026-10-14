@@ -1,0 +1,154 @@
+name: Zobba qualification release
+
+# Manual only. Never runs on push or pull request. Every run needs the
+# `qualification` GitHub environment approval, and assumes the AWS release role
+# through GitHub OIDC (no long-lived AWS keys exist).
+#
+# Order (zobba/deploy/RUNBOOK.md, "Release"):
+#   1. build and push the one image (API, worker, migration)
+#   2. run `zobba-cli migrate --runtime-role zobba_app` as a one-off ECS task;
+#      a non-zero exit stops the release before any service changes
+#   3. deploy the API and worker services with the new image digest
+#   4. sync the built web shell and invalidate CloudFront
+#
+# Required `qualification` environment variables (non-secret; copy them from the
+# Terraform output `github_environment_variables`): RELEASE_BRANCH, AWS_REGION,
+# AWS_RELEASE_ROLE_ARN, ECR_REPOSITORY_URL, ECS_CLUSTER, ECS_API_SERVICE,
+# ECS_WORKER_SERVICE, ECS_API_FAMILY, ECS_WORKER_FAMILY, ECS_MIGRATION_FAMILY,
+# ECS_TASK_NETWORK, WEB_BUCKET, CLOUDFRONT_DISTRIBUTION_ID.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zobba-qualification-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    environment: qualification
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_BRANCH: ${{ vars.RELEASE_BRANCH }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      ECS_API_SERVICE: ${{ vars.ECS_API_SERVICE }}
+      ECS_WORKER_SERVICE: ${{ vars.ECS_WORKER_SERVICE }}
+      ECS_API_FAMILY: ${{ vars.ECS_API_FAMILY }}
+      ECS_WORKER_FAMILY: ${{ vars.ECS_WORKER_FAMILY }}
+      ECS_MIGRATION_FAMILY: ${{ vars.ECS_MIGRATION_FAMILY }}
+      ECS_TASK_NETWORK: ${{ vars.ECS_TASK_NETWORK }}
+      WEB_BUCKET: ${{ vars.WEB_BUCKET }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+    steps:
+      - name: Refuse a run with missing environment configuration
+        run: |
+          missing=0
+          for name in RELEASE_BRANCH AWS_REGION ECR_REPOSITORY_URL ECS_CLUSTER ECS_API_SERVICE ECS_WORKER_SERVICE \
+                      ECS_API_FAMILY ECS_WORKER_FAMILY ECS_MIGRATION_FAMILY ECS_TASK_NETWORK \
+                      WEB_BUCKET CLOUDFRONT_DISTRIBUTION_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::qualification environment variable $name is not set"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then exit 1; fi
+          # Only the configured release branch may be released (the environment's
+          # deployment-branch rule enforces the same; this refuses early).
+          if [ "$GITHUB_REF" != "refs/heads/$RELEASE_BRANCH" ]; then
+            echo "::error::release runs only from refs/heads/$RELEASE_BRANCH, not $GITHUB_REF"
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Assume the release role (GitHub OIDC)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_RELEASE_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: zobba-qualification-release-${{ github.run_id }}
+
+      - name: Sign in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # 1. Build and push. Tags are immutable in ECR; the run id makes a re-run
+      # push a distinct tag. Everything later uses the digest, not the tag.
+      - name: Build and push the image
+        id: image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: zobba
+          file: zobba/deploy/Containerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ vars.ECR_REPOSITORY_URL }}:${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Smoke the pushed image
+        env:
+          IMAGE: ${{ vars.ECR_REPOSITORY_URL }}@${{ steps.image.outputs.digest }}
+        run: |
+          docker run --rm --read-only "$IMAGE" /usr/local/bin/zobba-cli openapi > /tmp/openapi.json
+          cmp /tmp/openapi.json zobba/openapi.json
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      # 2. Release migration (zobba/deploy/release/migrate.sh): the only use of
+      # the migrator credential. Refuses while an earlier release migration
+      # runs, polls with a deadline, and fails on any exit code but 0
+      # (None/empty included) before any service changes.
+      - name: Run the release migration and require exit 0
+        env:
+          MIGRATION_DEADLINE_SECONDS: '900'
+        run: zobba/deploy/release/migrate.sh
+
+      # 3. Deploy services (only reached after a successful migration). Both
+      # must reach PRIMARY = new revision and rolloutState COMPLETED; on any
+      # failure both return to their previous revisions and the job fails.
+      - name: Deploy the API and worker
+        env:
+          DEPLOY_DEADLINE_SECONDS: '1200'
+        run: zobba/deploy/release/deploy-services.sh
+
+      # 4. Web shell.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 11.25.0
+          package_json_file: zobba/package.json
+          run_install: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.20.0
+
+      - name: Build the web shell
+        working-directory: zobba
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Sync the web shell and invalidate CloudFront
+        working-directory: zobba/web/dist
+        run: |
+          set -euo pipefail
+          # Hashed assets are immutable and kept (a cached index.html may still
+          # name them); everything else (index.html) revalidates.
+          aws s3 sync . "s3://$WEB_BUCKET/" --exclude '*' --include 'assets/*' \
+            --cache-control 'public, max-age=31536000, immutable'
+          aws s3 sync . "s3://$WEB_BUCKET/" --delete --exclude 'assets/*' \
+            --cache-control 'no-cache'
+          invalidation="$(aws cloudfront create-invalidation --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
+            --paths '/*' --query Invalidation.Id --output text)"
+          aws cloudfront wait invalidation-completed --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --id "$invalidation"
