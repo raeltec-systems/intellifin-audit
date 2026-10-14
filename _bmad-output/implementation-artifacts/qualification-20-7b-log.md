@@ -51,3 +51,9 @@ Region eu-west-1. Terraform runs in AWS CloudShell as the owner's SSO admin role
 - First release run failed at "Assume the release role": GitHub sent the immutable-ID
   OIDC subject (`repo:owner@id/name@id:environment:qualification`, seen in CloudTrail).
   The release role now also trusts that exact subject (`github_repository_ids`).
+- First release: run 38577970876 attempt 2 (commit bba77ef) succeeded. Image digest
+  `sha256:ecc772d07f38b9abee6f5563978103b707c462f9cefcd0380c7b35d0a4d33b13`; smoke
+  `openapi` matched; migration exited 0; API/worker revisions deployed (0 desired
+  tasks, as expected before `image_digest` is set); web synced, CloudFront invalidated.
+  The release workflow file was registered on `main` by the owner with `[skip ci]`
+  (workflow_dispatch needs the default branch); releases run from the release branch.
