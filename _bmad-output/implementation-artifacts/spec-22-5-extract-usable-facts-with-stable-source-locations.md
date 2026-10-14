@@ -2,7 +2,7 @@
 title: '22.5 — Read documents natively and cite every claim cleanly'
 type: 'feature'
 created: '2026-10-13'
-status: 'in-review'
+status: 'done'
 baseline_commit: 'ab500cfde5240df54c88775aca6458a30d8978ab'
 review_loop_iteration: 0
 context:
@@ -86,3 +86,49 @@ context:
 - `cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings` -- expected: clean.
 - `cargo test --workspace` on guarded `_test` databases with Docker live -- expected: all pass.
 - `pnpm --dir zobba/web check` and the browser suite for citations -- expected: pass, including keyboard and accessibility checks.
+
+## Suggested Review Order
+
+**Citations and their check**
+
+- Entry point: the locator grammar every citation uses.
+  [`citation.rs:53`](../../zobba/crates/domain/src/citation.rs#L53)
+
+- Trusted verification against the original; transient faults propagate, never become facts.
+  [`citation.rs:96`](../../zobba/crates/application/src/citation.rs#L96)
+
+- API returns answers unchanged; only the exact verified original is openable; unreadable sources fully withheld.
+  [`answers.rs:215`](../../zobba/crates/api/src/answers.rs#L215)
+
+- Chip, `+N`, hover/focus card and Open at location.
+  [`Citation.tsx:22`](../../zobba/web/src/Citation.tsx#L22)
+
+**Native reading and agent programs**
+
+- One page per request, its own disclosure; 200 distinct pages per document per Task.
+  [`reading.rs:1231`](../../zobba/crates/application/src/reading.rs#L1231)
+
+- Model-written program in the 22.4 sandbox; failure and limit outcomes recorded.
+  [`reading.rs:1465`](../../zobba/crates/application/src/reading.rs#L1465)
+
+- Next-turn context: transcriptions, program outputs, verification results, explicit omissions.
+  [`reading.rs:1594`](../../zobba/crates/application/src/reading.rs#L1594)
+
+- Disclosure binding covers page-image attachments by digest.
+  [`mod.rs:106`](../../zobba/crates/infrastructure/src/model/mod.rs#L106)
+
+- OpenAI image input encoding (Anthropic refuses until qualified).
+  [`native.rs:483`](../../zobba/crates/infrastructure/src/model/native.rs#L483)
+
+**Trusted document program and storage**
+
+- Hardened zip, pixel and parsing bounds with closed reasons.
+  [`document.py:106`](../../zobba/crates/application/src/reading/document.py#L106)
+
+- Immutable reading facts with guards and RLS.
+  [`0016_citations.sql:8`](../../zobba/migrations/0016_citations.sql#L8)
+
+**Verification**
+
+- End-to-end worker suite: real files, loopback model, real API, disclosure counts.
+  [`citations.rs:219`](../../zobba/crates/worker/tests/citations.rs#L219)
