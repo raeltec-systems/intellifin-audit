@@ -386,6 +386,10 @@ locals {
     privileged             = false
     environment            = []
     secrets                = []
+    # ECS returns these empty lists; declaring them keeps the plan clean.
+    portMappings   = []
+    systemControls = []
+    volumesFrom    = []
   }
   # Trusted containers log only fixed closed codes. The untrusted program has
   # no log configuration: its stdout and stderr never reach CloudWatch.
@@ -428,7 +432,7 @@ resource "aws_ecs_task_definition" "analysis" {
       command    = [file("${path.module}/analysis/stage.py")]
       linuxParameters = {
         initProcessEnabled = true
-        capabilities       = { drop = ["ALL"] }
+        capabilities       = { add = [], drop = ["ALL"] }
       }
       mountPoints = [for v in local.analysis_volumes : { sourceVolume = v, containerPath = "/${v}", readOnly = false }]
     }),
@@ -445,7 +449,7 @@ resource "aws_ecs_task_definition" "analysis" {
       dependsOn  = [{ containerName = "stage", condition = "SUCCESS" }]
       linuxParameters = {
         initProcessEnabled = true
-        capabilities       = { drop = ["ALL"] }
+        capabilities       = { add = [], drop = ["ALL"] }
       }
       mountPoints = [
         { sourceVolume = "input", containerPath = "/input", readOnly = true },
@@ -465,7 +469,7 @@ resource "aws_ecs_task_definition" "analysis" {
       dependsOn  = [{ containerName = "analysis", condition = "COMPLETE" }]
       linuxParameters = {
         initProcessEnabled = true
-        capabilities       = { drop = ["ALL"] }
+        capabilities       = { add = [], drop = ["ALL"] }
       }
       mountPoints = [
         { sourceVolume = "output", containerPath = "/output", readOnly = true },
