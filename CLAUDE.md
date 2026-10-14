@@ -1,3 +1,27 @@
+## 2026-10-14 — Story 22.6 method and skill use during investigation
+
+Progressive disclosure, never inlining: every investigating turn carries a
+bounded tier-2 method outline and skill listing (names, descriptions, need
+status only); method parts, skill instructions/resources and script outputs
+enter only after an explicit request, as tier-5a items included whole or
+counted as `skills_budget`. The listing tier is bounded so it alone cannot
+cause `context_budget`. Content is current-binding/epoch only; an earlier
+binding's load is a notice, not content. Platform gaps are deterministic
+(criteria missing once per binding; unavailable skill), capped with agents'
+notes at 64 per invocation and counted, never failing a cycle. Sandbox
+capacity is retryable and never recorded; "no sandbox composed" is a fixed
+`tool_unavailable` fact; a script that ran keeps its job ID. Idempotency and
+first-of-kind checks use exact invocation/version queries, never the bounded
+context lists. The five fact tables refuse UPDATE/DELETE/TRUNCATE, including
+for the owner; only an explicit `zobba.disposable_fixture_reset=on` session in
+a `*_test` database may clear them (browser harness PGOPTIONS set it).
+Methodology document proposals: plain UTF-8 text/Markdown only (≤200,000
+bytes); disclosure is durable before the send; the draft runs detached from
+the request (`in_progress`, then `uncertain`), is never resent under a key,
+and its custody object is content-addressed. A verified quote proves the text
+exists, not that the value is right; only the Admin's validated Save applies
+it. Production composes no proposal transport.
+
 ## 2026-10-08 — Work-loop tests must renew the owner lease like production
 
 `execute_work` renews the Task's 5-second owner lease every 200 ms beside the loop. Tests

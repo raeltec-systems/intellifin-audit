@@ -49,6 +49,9 @@ pub enum AttentionResponse {
     ReconciliationRequired,
     StepFailed,
     CycleBounded,
+    /// Zobba recorded a contextual question about the method that no later
+    /// guidance has been applied after. The auditor answers through Guide.
+    MethodQuestion,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -88,6 +91,7 @@ pub enum OmissionCategoryResponse {
     KnowledgeUnusable,
     StaleSources,
     StaleContent,
+    SkillsBudget,
 }
 
 /// Count of material left out by category. An omission never means absence.
@@ -110,7 +114,7 @@ pub struct CompactionResponse {
     pub digest_sha256: String,
     #[schema(max_items = 512)]
     pub sources: Vec<CompactionSourceResponse>,
-    #[schema(max_items = 6)]
+    #[schema(max_items = 7)]
     pub omissions: Vec<OmissionResponse>,
     #[schema(pattern = "^[0-9]+$")]
     pub estimated_tokens: String,
@@ -202,6 +206,226 @@ pub struct TaskWorkResponse {
     pub compactions: Vec<CompactionResponse>,
     /// All compaction records of the current cycle.
     pub total_compactions: u32,
+    /// Story 22.6: the exact method and skill versions this cycle used, its
+    /// gaps, questions and Zobba statements. Null when not composed or when
+    /// it could not be read; `investigation_unavailable` says which.
+    #[schema(required = true)]
+    pub investigation: Option<InvestigationResponse>,
+    /// True when investigation is composed but its facts could not be read
+    /// for this response. The rest of the work view is unaffected.
+    pub investigation_unavailable: bool,
+}
+
+/// One recorded skill use: a load, a resource fetch or a script run. Content
+/// is never returned here; a use names the exact version and digest.
+#[derive(Serialize, ToSchema)]
+pub struct SkillUseResponse {
+    pub invocation_id: String,
+    /// `load`, `resource` or `script`.
+    pub kind: String,
+    pub ordinal: u32,
+    pub version_id: String,
+    #[schema(required = true)]
+    pub resource_id: Option<String>,
+    #[schema(required = true)]
+    pub skill_id: Option<String>,
+    #[schema(required = true)]
+    pub skill_version: Option<String>,
+    #[schema(required = true)]
+    pub name: Option<String>,
+    #[schema(required = true, pattern = "^[0-9a-f]{64}$")]
+    pub digest: Option<String>,
+    /// `loaded`, `fetched`, `completed`, `failed` or `unavailable`.
+    pub outcome: String,
+    /// Closed reason of a failed or unavailable use.
+    #[schema(required = true)]
+    pub reason: Option<String>,
+    #[schema(required = true)]
+    pub job_id: Option<String>,
+    pub methodology_binding_id: String,
+    #[schema(pattern = "^[0-9]+$")]
+    pub execution_epoch: String,
+}
+
+/// A gap, contextual question or Zobba statement about one requirement. A
+/// statement points at answer segments whose citations support it; nothing
+/// marks a requirement complete.
+#[derive(Serialize, ToSchema)]
+pub struct MethodNoteResponse {
+    pub invocation_id: String,
+    pub ordinal: u32,
+    /// `agent` (Zobba's answer) or `platform` (a deterministic fact).
+    pub source: String,
+    #[schema(required = true)]
+    pub requirement_id: Option<String>,
+    /// `gap`, `question` or `statement`.
+    pub kind: String,
+    /// Retained text as written, shown as attributed data.
+    #[schema(max_length = 1000)]
+    pub text: String,
+    #[schema(required = true)]
+    pub reason: Option<String>,
+    #[schema(max_items = 8)]
+    pub segments: Vec<u32>,
+    pub methodology_binding_id: String,
+    #[schema(pattern = "^[0-9]+$")]
+    pub execution_epoch: String,
+    /// For a question: true while no guidance has been applied after its
+    /// turn. Always false for gaps and statements.
+    pub open: bool,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct UsedSkillResponse {
+    pub version_id: String,
+    pub skill_id: String,
+    pub skill_version: String,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub digest: String,
+}
+
+/// Zobba's own investigation record of its latest answered turn: method,
+/// skill, model and tool provenance. Separate from the working brief.
+#[derive(Serialize, ToSchema)]
+pub struct InvestigationRecordResponse {
+    pub invocation_id: String,
+    pub methodology_binding_id: String,
+    #[schema(pattern = "^[0-9]+$")]
+    pub execution_epoch: String,
+    pub method_status: String,
+    #[schema(max_items = 64)]
+    pub method_version_ids: Vec<String>,
+    #[schema(max_items = 64)]
+    pub skills: Vec<UsedSkillResponse>,
+    pub provider: String,
+    pub model: String,
+    pub profile_id: String,
+    #[schema(pattern = "^[0-9]+$")]
+    pub profile_revision: String,
+    pub catalogue_id: String,
+    #[schema(pattern = "^[0-9]+$")]
+    pub catalogue_revision: String,
+    #[schema(max_items = 64)]
+    pub tools: Vec<String>,
+    pub gaps: u32,
+    pub questions: u32,
+    pub statements: u32,
+    /// Notes beyond the recorded bound, counted and not recorded.
+    pub omitted_notes: u32,
+    /// Skill, method version and tool entries beyond the record bound.
+    pub omitted_items: u32,
+    /// Individually invalid answer requests and notes left out on decode.
+    pub discarded_requests: u32,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct InvestigationResponse {
+    /// The Task's current binding and the exact method versions it resolves.
+    pub methodology_binding_id: String,
+    pub method_status: String,
+    #[schema(max_items = 64)]
+    pub method_version_ids: Vec<String>,
+    /// This cycle's newest skill uses, in record order; earlier ones may be
+    /// omitted (see `total_skills`).
+    #[schema(max_items = 512)]
+    pub skills: Vec<SkillUseResponse>,
+    /// Every skill use recorded in this cycle.
+    #[schema(pattern = "^[0-9]+$")]
+    pub total_skills: String,
+    /// This cycle's newest method notes, in record order; earlier ones may be
+    /// omitted (see `total_notes`).
+    #[schema(max_items = 1024)]
+    pub notes: Vec<MethodNoteResponse>,
+    /// Every method note recorded in this cycle.
+    #[schema(pattern = "^[0-9]+$")]
+    pub total_notes: String,
+    #[schema(required = true)]
+    pub record: Option<InvestigationRecordResponse>,
+    /// Questions of the whole cycle with no guidance applied after their turn.
+    pub open_questions: u32,
+}
+
+fn investigation(
+    view: zobba_infrastructure::investigation::InvestigationView,
+) -> InvestigationResponse {
+    let open: std::collections::BTreeSet<(String, u32)> =
+        view.open_questions.iter().cloned().collect();
+    InvestigationResponse {
+        open_questions: view.open_questions.len() as u32,
+        total_skills: view.total_uses.to_string(),
+        total_notes: view.total_notes.to_string(),
+        methodology_binding_id: view.methodology_binding_id,
+        method_status: view.method_status,
+        method_version_ids: view.method_version_ids,
+        skills: view
+            .uses
+            .into_iter()
+            .map(|u| SkillUseResponse {
+                invocation_id: u.invocation_id,
+                kind: u.kind.as_str().into(),
+                ordinal: u.ordinal,
+                version_id: u.version_id,
+                resource_id: u.resource_id,
+                skill_id: u.facts.as_ref().map(|f| f.skill_id.clone()),
+                skill_version: u.facts.as_ref().map(|f| f.skill_version.clone()),
+                name: u.facts.as_ref().map(|f| f.name.clone()),
+                digest: u.facts.as_ref().map(|f| f.digest.clone()),
+                outcome: u.outcome.as_str().into(),
+                reason: u.reason.map(|r| r.as_str().into()),
+                job_id: u.job_id,
+                methodology_binding_id: u.methodology_binding_id,
+                execution_epoch: u.execution_epoch.to_string(),
+            })
+            .collect(),
+        notes: view
+            .notes
+            .into_iter()
+            .map(|n| MethodNoteResponse {
+                open: n.note.kind == zobba_domain::investigation::NoteKind::Question
+                    && open.contains(&(n.invocation_id.clone(), n.ordinal)),
+                invocation_id: n.invocation_id,
+                ordinal: n.ordinal,
+                source: n.source.as_str().into(),
+                requirement_id: n.note.requirement_id,
+                kind: n.note.kind.as_str().into(),
+                text: n.note.text,
+                reason: n.note.reason.map(|r| r.as_str().into()),
+                segments: n.note.segments,
+                methodology_binding_id: n.methodology_binding_id,
+                execution_epoch: n.execution_epoch.to_string(),
+            })
+            .collect(),
+        record: view.record.map(|r| InvestigationRecordResponse {
+            invocation_id: r.invocation_id,
+            methodology_binding_id: r.methodology_binding_id,
+            execution_epoch: r.execution_epoch.to_string(),
+            method_status: r.method_status,
+            method_version_ids: r.method_version_ids,
+            skills: r
+                .skills
+                .into_iter()
+                .map(|s| UsedSkillResponse {
+                    version_id: s.version_id,
+                    skill_id: s.skill_id,
+                    skill_version: s.skill_version,
+                    digest: s.digest,
+                })
+                .collect(),
+            provider: r.provider,
+            model: r.model,
+            profile_id: r.profile_id,
+            profile_revision: r.profile_revision.to_string(),
+            catalogue_id: r.catalogue_id,
+            catalogue_revision: r.catalogue_revision.to_string(),
+            tools: r.tools,
+            gaps: r.gaps,
+            questions: r.questions,
+            statements: r.statements,
+            omitted_notes: r.omitted_notes,
+            omitted_items: r.omitted_items,
+            discarded_requests: r.discarded_requests,
+        }),
+    }
 }
 
 fn compaction(record: CompactionSummary) -> CompactionResponse {
@@ -237,6 +461,7 @@ fn compaction(record: CompactionSummary) -> CompactionResponse {
                     }
                     OmissionCategory::StaleSources => OmissionCategoryResponse::StaleSources,
                     OmissionCategory::StaleContent => OmissionCategoryResponse::StaleContent,
+                    OmissionCategory::SkillsBudget => OmissionCategoryResponse::SkillsBudget,
                 },
                 count,
             })
@@ -289,8 +514,27 @@ fn brief(brief: BriefRevision) -> BriefRevisionResponse {
     }
 }
 
-fn work_response(work: TaskWork, model_available: bool) -> TaskWorkResponse {
+fn work_response(
+    work: TaskWork,
+    model_available: bool,
+    view: Option<zobba_infrastructure::investigation::InvestigationView>,
+    investigation_unavailable: bool,
+) -> TaskWorkResponse {
+    let questions = view.as_ref().map_or(0, |view| view.open_questions.len());
+    let attention = match work.attention {
+        None | Some(Attention::AwaitingGuidance) if questions > 0 => {
+            Some(AttentionResponse::MethodQuestion)
+        }
+        attention => attention.map(|attention| match attention {
+            Attention::AwaitingGuidance => AttentionResponse::AwaitingGuidance,
+            Attention::ReconciliationRequired => AttentionResponse::ReconciliationRequired,
+            Attention::StepFailed => AttentionResponse::StepFailed,
+            Attention::CycleBounded => AttentionResponse::CycleBounded,
+        }),
+    };
     TaskWorkResponse {
+        investigation: view.map(investigation),
+        investigation_unavailable,
         task_id: work.task_id,
         cycle_id: work.cycle_id,
         model_available,
@@ -299,12 +543,7 @@ fn work_response(work: TaskWork, model_available: bool) -> TaskWorkResponse {
         current_work: work.current_work,
         next_action: work.next_action.as_ref().map(NextAction::descriptor),
         next_action_invocation_id: work.next_action_invocation_id,
-        attention: work.attention.map(|attention| match attention {
-            Attention::AwaitingGuidance => AttentionResponse::AwaitingGuidance,
-            Attention::ReconciliationRequired => AttentionResponse::ReconciliationRequired,
-            Attention::StepFailed => AttentionResponse::StepFailed,
-            Attention::CycleBounded => AttentionResponse::CycleBounded,
-        }),
+        attention,
         steps: work.steps.into_iter().map(step).collect(),
         total_steps: work.total_steps,
         briefs: work.briefs.into_iter().map(brief).collect(),
@@ -351,7 +590,25 @@ pub(crate) async fn get_work(
         ),
         None => false,
     };
-    Json(work_response(work, model_available)).into_response()
+    // An investigation read failure never fails the work view: the facts are
+    // left out and a fixed marker says they could not be read.
+    let (view, investigation_unavailable) = match &state.investigations {
+        Some(investigations) => match investigations
+            .view(&current.identity.id, &scope, &task_id)
+            .await
+        {
+            Ok(view) => (Some(view), false),
+            Err(_) => (None, true),
+        },
+        None => (None, false),
+    };
+    Json(work_response(
+        work,
+        model_available,
+        view,
+        investigation_unavailable,
+    ))
+    .into_response()
 }
 
 #[derive(Deserialize, ToSchema)]

@@ -129,6 +129,7 @@ impl<T: ModelTransport + 'static> WorkRunner for Composition<T> {
                     transport: Shared(self.transport.clone()),
                 },
                 reading: zobba_application::work::NoReading,
+                investigation: zobba_application::work::NoInvestigation,
                 dispatch: GatewayDispatch {
                     gateway: self.gateway.clone(),
                     operations: OperationRepository::new(self.pool.clone())
@@ -165,6 +166,9 @@ pub struct ReadingComposition<T, X, O> {
     pub analysis: zobba_application::analysis::AnalysisTarget,
     /// The firm's classification of registered originals, disclosed with a page.
     pub classification: String,
+    /// Story 22.6: the bound method and installed skills shape each turn
+    /// (method outline, skill listing, loads, fetches and sandboxed scripts).
+    pub investigation: bool,
 }
 
 impl<T, X, O> WorkRunner for ReadingComposition<T, X, O>
@@ -217,26 +221,53 @@ where
                 analysis_settings: self.analysis_settings,
                 settings: &settings,
             };
+            let settings = WorkSettings {
+                profile,
+                catalogue,
+                disclosure: base.disclosure.clone(),
+                input_class: base.input_class.clone(),
+                max_output_tokens,
+                context: base.context,
+            };
+            let steps = TaskRepository::new(base.pool.clone());
+            let coordinator = ModelCoordinator {
+                store: models,
+                transport: Shared(base.transport.clone()),
+            };
+            let dispatch = GatewayDispatch {
+                gateway: base.gateway.clone(),
+                operations: OperationRepository::new(base.pool.clone())
+                    .with_model_qualification_source(base.qualifications.clone()),
+            };
+            if !self.investigation {
+                let work = WorkLoop {
+                    steps,
+                    coordinator,
+                    reading,
+                    investigation: zobba_application::work::NoInvestigation,
+                    dispatch,
+                    settings,
+                    bind: bind_disclosure,
+                    delay: |duration| Box::pin(tokio::time::sleep(duration)),
+                };
+                return Some(Box::pin(work.run(basis, cancellation)).await);
+            }
+            // The skills port: eligibility under the claim's own custody and
+            // the same 22.4 sandbox the reading tools use for skill scripts.
+            let investigations = zobba_infrastructure::investigation::InvestigationRepository::new(
+                base.pool.clone(),
+            );
+            let investigation = zobba_application::investigation::Investigation {
+                store: &investigations,
+                scripts: &reading,
+            };
             let work = WorkLoop {
-                steps: TaskRepository::new(base.pool.clone()),
-                coordinator: ModelCoordinator {
-                    store: models,
-                    transport: Shared(base.transport.clone()),
-                },
-                reading,
-                dispatch: GatewayDispatch {
-                    gateway: base.gateway.clone(),
-                    operations: OperationRepository::new(base.pool.clone())
-                        .with_model_qualification_source(base.qualifications.clone()),
-                },
-                settings: WorkSettings {
-                    profile,
-                    catalogue,
-                    disclosure: base.disclosure.clone(),
-                    input_class: base.input_class.clone(),
-                    max_output_tokens,
-                    context: base.context,
-                },
+                steps,
+                coordinator,
+                reading: &reading,
+                investigation,
+                dispatch,
+                settings,
                 bind: bind_disclosure,
                 delay: |duration| Box::pin(tokio::time::sleep(duration)),
             };

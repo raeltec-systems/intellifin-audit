@@ -281,7 +281,7 @@ async fn cycle_steps(
 }
 
 /// The exact consumed, unobserved claim of this producer.
-async fn producer(tx: &mut Tx, b: &ClaimBasis) -> Result<(), TaskError> {
+pub(crate) async fn producer(tx: &mut Tx, b: &ClaimBasis) -> Result<(), TaskError> {
     let claim = sqlx::query("SELECT * FROM public.task_claims WHERE id=$1 AND state='consumed' AND NOT EXISTS(SELECT 1 FROM public.task_observations o WHERE o.claim_id=task_claims.id)")
         .bind(&b.claim_id)
         .fetch_optional(&mut **tx)
@@ -878,7 +878,8 @@ impl TaskRepository {
             basis,
             objective,
             working_brief,
-            methodology_binding_id: binding.id,
+            methodology_binding_id: binding.id.clone(),
+            methodology: binding,
             steps,
             knowledge,
             knowledge_omitted,

@@ -24,6 +24,10 @@ pub struct SkillsRepository {
     pool: PgPool,
     session_hash: String,
     qualification_source: Option<SourceBinding>,
+    /// Story 22.6 worker mode: the exact consumed claim (ID and process
+    /// instance) whose custody replaces a browser session for read-only
+    /// eligibility inspection. Never used for selection or Admin writes.
+    work_claim: Option<(String, String)>,
 }
 
 #[derive(Deserialize)]
@@ -114,6 +118,32 @@ impl TaskInspection {
     }
 }
 
+/// Story 22.6 projection of one claim's skill eligibility.
+pub(crate) struct WorkInspection {
+    pub catalog_revision: u64,
+    pub methodology_binding_id: String,
+    pub execution_epoch: u64,
+    pub task_state: String,
+    pub method_allowed: bool,
+    pub versions: Vec<(SkillVersion, Inspection, domain::MethodCompatibility)>,
+}
+
+fn resolution_status(
+    status: method::ResolutionStatus,
+) -> zobba_domain::methodology::ResolutionStatus {
+    match status {
+        method::ResolutionStatus::Resolved => zobba_domain::methodology::ResolutionStatus::Resolved,
+        method::ResolutionStatus::Neutral => zobba_domain::methodology::ResolutionStatus::Neutral,
+        method::ResolutionStatus::Incomplete => {
+            zobba_domain::methodology::ResolutionStatus::Incomplete
+        }
+        method::ResolutionStatus::Ambiguous => {
+            zobba_domain::methodology::ResolutionStatus::Ambiguous
+        }
+        method::ResolutionStatus::Recalled => zobba_domain::methodology::ResolutionStatus::Recalled,
+    }
+}
+
 fn database_error(error: sqlx::Error) -> SkillsError {
     match error.as_database_error().and_then(|e| e.code()).as_deref() {
         Some("Z0001") => SkillsError::Invalid,
@@ -178,7 +208,15 @@ impl SkillsRepository {
             pool,
             session_hash: String::new(),
             qualification_source: None,
+            work_claim: None,
         }
+    }
+    /// Read-only eligibility under one claim's custody (Story 22.6). The
+    /// storage function checks the claim against the Task's current owner,
+    /// execution epoch and accountable actor's audit access.
+    pub(crate) fn for_work_claim(mut self, claim_id: &str, process_instance: &str) -> Self {
+        self.work_claim = Some((claim_id.into(), process_instance.into()));
+        self
     }
     pub fn with_session_hash(mut self, hash: String) -> Self {
         self.session_hash = hash;
@@ -209,6 +247,20 @@ impl SkillsRepository {
         action: &str,
         mut value: Value,
     ) -> Result<Value, SkillsError> {
+        if let Some((claim, process)) = &self.work_claim {
+            if !matches!(action, "inspect" | "fence") {
+                return Err(SkillsError::Denied);
+            }
+            value["claim_id"] = json!(claim);
+            value["process_instance"] = json!(process);
+            return sqlx::query_scalar("SELECT public.skills_work($1,$2,$3)")
+                .bind(id)
+                .bind(action)
+                .bind(value)
+                .fetch_one(&mut **tx)
+                .await
+                .map_err(database_error);
+        }
         value["session_hash"] = json!(self.session_hash);
         sqlx::query_scalar("SELECT public.skills_task($1,$2,$3)")
             .bind(id)
@@ -449,6 +501,47 @@ impl SkillsRepository {
             .versions
             .insert(version.id.clone(), inspection.clone());
         Ok(inspection)
+    }
+    /// Story 22.6: every version in the Task's scope with its fresh
+    /// eligibility, method compatibility and the Task state, inside the
+    /// caller's claim transaction (the same projection `current_use` gates on).
+    pub(crate) async fn work_inspection(
+        &self,
+        tx: &mut Tx,
+        s: &Scope,
+        id: &str,
+    ) -> Result<WorkInspection, SkillsError> {
+        if self.work_claim.is_none() {
+            return Err(SkillsError::Denied);
+        }
+        let basis = self.inspect_locked(tx, s, id).await?;
+        let mut versions = Vec::new();
+        for version in &basis.stored.versions {
+            let inspection = self.eligibility(&basis, version)?;
+            let compatibility = version
+                .command
+                .manifest
+                .to_domain()
+                .map(|manifest| {
+                    domain::method_compatibility(
+                        &manifest,
+                        &version.command.applicability.to_domain(),
+                        &basis.methodology.resolution.context.to_domain(),
+                        resolution_status(basis.methodology.resolution.status),
+                        &basis.methodology.resolution.version_ids,
+                    )
+                })
+                .unwrap_or(domain::MethodCompatibility::Unavailable);
+            versions.push((version.clone(), inspection, compatibility));
+        }
+        Ok(WorkInspection {
+            catalog_revision: basis.stored.revision,
+            methodology_binding_id: basis.methodology.id.clone(),
+            execution_epoch: basis.execution_epoch,
+            task_state: basis.task_state.clone(),
+            method_allowed: basis.method_allowed,
+            versions,
+        })
     }
     fn selection_view(
         &self,

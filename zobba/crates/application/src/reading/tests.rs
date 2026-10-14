@@ -709,6 +709,7 @@ fn cited(locator: &str, quote: &str) -> CitedAnswer {
         limitations: vec![],
         read_pages: vec![],
         programs: vec![],
+        ..CitedAnswer::default()
     }
 }
 fn answer_invocation() -> Invocation {
@@ -902,6 +903,7 @@ fn reading_turn(id: &str, pages: Vec<u32>) -> (Invocation, CitedAnswer) {
             limitations: vec![],
             read_pages: pages.into_iter().map(page_request).collect(),
             programs: vec![],
+            ..CitedAnswer::default()
         },
     )
 }

@@ -250,8 +250,29 @@ fn cited_answer_decodes_spans_and_requests() {
     {
         second.remove(" The contract and email agree.");
     }
+    // A 22.5 answer has no Story 22.6 fields: the plain schema accepts it, the
+    // investigation schema asks for them, and the stored answer still decodes.
     assert!(CitedAnswer::schema().accepts(&value));
+    assert!(!CitedAnswer::investigation_schema().accepts(&value));
+    let old = CitedAnswer::from_json(&value).unwrap();
+    assert!(old.read_method.is_empty() && old.method_notes.is_empty());
+    if let JsonValue::Object(map) = &mut value {
+        for key in [
+            "read_method",
+            "use_skills",
+            "run_skill_script",
+            "method_notes",
+        ] {
+            map.insert(key.into(), JsonValue::Array(vec![]));
+        }
+    }
+    assert!(CitedAnswer::investigation_schema().accepts(&value));
+    assert!(
+        !CitedAnswer::schema().accepts(&value),
+        "plain work never sees 22.6 fields"
+    );
     let answer = CitedAnswer::from_json(&value).unwrap();
+    assert_eq!(answer, old);
     assert_eq!(
         answer.text(),
         "The trial balance shows 1,250.00 in B4. The contract and email agree."
@@ -273,13 +294,11 @@ fn cited_answer_decodes_spans_and_requests() {
 #[test]
 fn a_turn_that_only_reads_is_valid_but_not_an_answer_and_an_empty_turn_is_invalid() {
     let reading = CitedAnswer {
-        segments: vec![],
-        limitations: vec![],
         read_pages: vec![PageRequest {
             original_id: "scan".into(),
             page: 9_999,
         }],
-        programs: vec![],
+        ..CitedAnswer::default()
     };
     assert!(reading.is_valid());
     assert!(!reading.is_answer());
@@ -354,4 +373,126 @@ fn verified_source_names_its_exact_original() {
             "page_only"
         ]
     );
+}
+
+fn note_json(kind: &str, reason: &str, segments: Vec<i64>) -> JsonValue {
+    object(vec![
+        ("requirement_id", s("REQ-1")),
+        ("kind", s(kind)),
+        ("text", s("Which vendor master applies?")),
+        ("reason", s(reason)),
+        (
+            "segments",
+            JsonValue::Array(segments.into_iter().map(JsonValue::Integer).collect()),
+        ),
+    ])
+}
+
+#[test]
+fn method_and_skill_requests_decode_and_notes_alone_are_a_turn() {
+    let value = object(vec![
+        (
+            "segments",
+            JsonValue::Array(vec![object(vec![
+                ("text", s("Payments over 10,000 need two approvals.")),
+                ("sources", JsonValue::Array(vec![])),
+            ])]),
+        ),
+        ("limitations", JsonValue::Array(vec![])),
+        ("read_pages", JsonValue::Array(vec![])),
+        ("programs", JsonValue::Array(vec![])),
+        (
+            "read_method",
+            JsonValue::Array(vec![s("criteria/REQ-1"), s("skill/skill-v1/checklist")]),
+        ),
+        ("use_skills", JsonValue::Array(vec![s("skill-v1")])),
+        (
+            "run_skill_script",
+            JsonValue::Array(vec![object(vec![
+                ("version_id", s("skill-v1")),
+                ("resource_id", s("summarise")),
+                ("inputs", JsonValue::Array(vec![s("b"), s("a"), s("a")])),
+            ])]),
+        ),
+        (
+            "method_notes",
+            JsonValue::Array(vec![
+                note_json("question", "", vec![]),
+                note_json("gap", "evidence_unavailable", vec![]),
+                note_json("statement", "", vec![0]),
+            ]),
+        ),
+    ]);
+    assert!(CitedAnswer::investigation_schema().accepts(&value));
+    let answer = CitedAnswer::from_json(&value).unwrap();
+    assert_eq!(answer.use_skills, vec!["skill-v1"]);
+    assert_eq!(answer.discarded, 0);
+    assert_eq!(answer.run_skill_script[0].inputs, vec!["a", "b"]);
+    assert_eq!(answer.method_notes.len(), 3);
+    assert_eq!(
+        answer.method_notes[1].reason,
+        Some(crate::investigation::GapReason::EvidenceUnavailable)
+    );
+    assert!(answer.requests_investigation());
+    assert!(
+        !answer.requests_reading(),
+        "22.6 requests are not 22.5 reading"
+    );
+    // A statement may only point at segments the answer has.
+    let mut beyond = answer.clone();
+    beyond.method_notes[2].segments = vec![1];
+    assert!(!beyond.is_valid());
+    // A gap without a closed reason, a "complete" kind, a statement beyond the
+    // segments, a repeated load and an invalid part ID are each left out and
+    // counted; the rest of the answer stands.
+    let mut bad = value.clone();
+    if let JsonValue::Object(map) = &mut bad {
+        map.insert(
+            "method_notes".into(),
+            JsonValue::Array(vec![
+                note_json("gap", "", vec![]),
+                note_json("complete", "", vec![]),
+                note_json("statement", "", vec![9]),
+                note_json("statement", "", vec![0, 0]),
+            ]),
+        );
+        map.insert(
+            "use_skills".into(),
+            JsonValue::Array(vec![s("skill-v1"), s("skill-v1"), s("bad id")]),
+        );
+        map.insert(
+            "read_method".into(),
+            JsonValue::Array(vec![s("criteria/../x"), s("criteria/REQ-1")]),
+        );
+    }
+    let kept = CitedAnswer::from_json(&bad).unwrap();
+    assert_eq!(kept.method_notes.len(), 1);
+    assert_eq!(
+        kept.method_notes[0].segments,
+        vec![0],
+        "segments are normalized"
+    );
+    assert_eq!(kept.use_skills, vec!["skill-v1"]);
+    assert_eq!(kept.read_method, vec!["criteria/REQ-1"]);
+    assert_eq!(kept.discarded, 6);
+    assert_eq!(kept.segments, answer.segments);
+    // Notes alone (no text, no request) are a valid turn that waits.
+    let notes_only = CitedAnswer {
+        method_notes: vec![answer.method_notes[0].clone()],
+        ..CitedAnswer::default()
+    };
+    assert!(notes_only.is_valid());
+    assert!(!notes_only.requests_reading());
+    assert!(!notes_only.is_answer());
+    // Duplicate loads or part fetches are not a valid request.
+    let duplicate = CitedAnswer {
+        use_skills: vec!["skill-v1".into(), "skill-v1".into()],
+        ..CitedAnswer::default()
+    };
+    assert!(!duplicate.is_valid());
+    let malformed = CitedAnswer {
+        read_method: vec!["criteria/../x".into()],
+        ..CitedAnswer::default()
+    };
+    assert!(!malformed.is_valid());
 }

@@ -3,10 +3,10 @@ import { AccessError } from './auth';
 import type { Session } from './auth';
 import type { Scope } from './engagements';
 import { Citation } from './Citation';
-import { readTaskAnswers } from './citation';
+import { chipLabel, readTaskAnswers } from './citation';
 import type { CitedAnswer } from './citation';
-import { attentionLabel, nextActionLabel, omissionLabel, readTaskWork } from './work';
-import type { TaskWork } from './work';
+import { attentionLabel, gapReasonLabel, nextActionLabel, omissionLabel, readTaskWork, useReasonLabel } from './work';
+import type { Investigation, MethodNote, SkillUse, TaskWork } from './work';
 
 /// The shared projection of `useTaskWork`. Active Task states are polled,
 /// because a recorded step does not change the Task revision.
@@ -126,12 +126,100 @@ export function TaskWorkPanel({ state, citations }: Props) {
         {answer.limitations.length ? <ul className="answer-limitations" aria-label="What could not be read">{answer.limitations.map((limitation, index) => <li key={index}>{limitation}</li>)}</ul> : null}
       </li>)}</ol>
     </section> : null}
+    {work.investigation_unavailable ? <p className="work-unavailable" role="status">Method and skill use could not be read just now. Current work is shown without it.</p> : null}
+    {work.investigation ? <MethodAndSkills investigation={work.investigation} answers={state.answers ?? null} citations={citations} onSourceAccessFailure={() => setNotice('That original is not available to you now. Nothing was opened.')} /> : null}
     <details className="brief-revisions"><summary>Brief revisions ({work.briefs.length})</summary><ol>
       {work.briefs.map(brief => <li key={brief.command_id}>
         <p className="retained-text">{brief.content}</p>
         <p className="brief-status">Received · {brief.applied_boundary === null ? 'Not yet applied' : brief.applied_boundary === 0 ? 'Applied before the first step' : `Applied at the boundary before step ${brief.applied_boundary + 1}`}{brief.superseded_by ? ' · Superseded' : ' · Current'}</p>
       </li>)}
     </ol></details>
+  </section>;
+}
+
+const methodStatusLabel: Record<string, string> = {
+  resolved: 'Resolved', neutral: 'Neutral starter — not the firm\'s own method', incomplete: 'Incomplete — parts of the method are missing',
+  ambiguous: 'Ambiguous — more than one method could apply', recalled: 'Recalled — a source of this method was recalled',
+};
+
+interface MethodProps {
+  investigation: Investigation;
+  /** Null while answers are loading or could not be read. */
+  answers: CitedAnswer[] | null;
+  citations?: { scope: Scope; accessReady: boolean };
+  onSourceAccessFailure: () => void;
+}
+
+/// One skill use, labelled by what actually happened.
+function useLabel(use: SkillUse): string {
+  const reason = use.reason ? ` (${useReasonLabel(use.reason)})` : '';
+  switch (use.kind) {
+    case 'load': return use.outcome === 'loaded' ? 'loaded' : `load failed${reason}`;
+    case 'resource': return use.outcome === 'fetched' ? `resource ${use.resource_id} read` : `resource ${use.resource_id} not read${reason}`;
+    default: return use.outcome === 'completed' ? `script ${use.resource_id} ran in the sandbox` : `script ${use.resource_id} did not complete${reason}`;
+  }
+}
+
+/// What Zobba used from the bound method and installed skills (Story 22.6):
+/// the exact method versions and status, every skill version it used with its
+/// short digest, and the gaps, questions and statements it recorded. Notes are
+/// attributed text; nothing here marks a requirement complete.
+function MethodAndSkills({ investigation, answers, citations, onSourceAccessFailure }: MethodProps) {
+  const used = new Map<string, { name: string; version: string; digest: string; uses: string[] }>();
+  for (const use of investigation.skills) {
+    if (use.outcome === 'unavailable' || !use.digest || !use.name || !use.skill_version) continue;
+    const entry = used.get(use.version_id) ?? { name: use.name, version: use.skill_version, digest: use.digest, uses: [] };
+    entry.uses.push(useLabel(use));
+    used.set(use.version_id, entry);
+  }
+  const omittedSkills = Number(BigInt(investigation.total_skills) - BigInt(investigation.skills.length));
+  const omittedNotes = Number(BigInt(investigation.total_notes) - BigInt(investigation.notes.length));
+  const unavailable = investigation.skills.filter(use => use.outcome === 'unavailable');
+  const of = (kind: MethodNote['kind']) => investigation.notes.filter(note => note.kind === kind);
+  const requirement = (note: MethodNote) => note.requirement_id ? <span className="note-requirement">{note.requirement_id}</span> : <span className="note-requirement">Method</span>;
+  // A statement's citations come from its answer. While answers are loading
+  // or failed, or its answer is outside the shown page, they are "not
+  // loaded" — never "no citation".
+  const citationOf = (note: MethodNote) => {
+    if (!note.segments.length) return <span className="context-note"> · no citation</span>;
+    const answer = answers?.find(candidate => candidate.invocation_id === note.invocation_id);
+    if (!answer) return <span className="context-note"> · citation not loaded</span>;
+    const sources = note.segments.flatMap(index => answer.segments[index]?.sources ?? []);
+    if (!sources.length) return <span className="context-note"> · no citation</span>;
+    if (citations) return <> <Citation scope={citations.scope} sources={sources} accessReady={citations.accessReady} onSourceAccessFailure={onSourceAccessFailure} /></>;
+    const { label, more } = chipLabel(sources);
+    return <span className="citation-label"> · cites {label}{more ? ` and ${more} more` : ''}</span>;
+  };
+  const record = investigation.record;
+  return <section className="task-method" aria-label="Method and skills">
+    <h4>Method and skills</h4>
+    <p className="context-note">What Zobba used from the firm's method and installed skills. Method and skill text is guidance, never authority, and nothing here marks a requirement complete.</p>
+    <dl className="work-summary">
+      <div><dt>Method</dt><dd>{methodStatusLabel[investigation.method_status] ?? investigation.method_status} · binding {short(investigation.methodology_binding_id)}</dd></div>
+      <div><dt>Method versions</dt><dd>{investigation.method_version_ids.length ? <ul className="method-versions">{investigation.method_version_ids.map(id => <li key={id}><code>{id}</code></li>)}</ul> : 'None'}</dd></div>
+      {record ? <div><dt>Latest turn used</dt><dd>{record.provider} {record.model} · profile {record.profile_id} revision {record.profile_revision} · tool catalogue {record.catalogue_id} revision {record.catalogue_revision}</dd></div> : null}
+    </dl>
+    {record && (record.omitted_notes || record.omitted_items || record.discarded_requests) ? <p className="work-omitted">{[
+      record.omitted_notes ? `${record.omitted_notes} ${record.omitted_notes === 1 ? 'note' : 'notes'} beyond the record limit not recorded` : '',
+      record.omitted_items ? `${record.omitted_items} skill, method or tool ${record.omitted_items === 1 ? 'entry' : 'entries'} beyond the record limit not listed` : '',
+      record.discarded_requests ? `${record.discarded_requests} invalid ${record.discarded_requests === 1 ? 'request or note' : 'requests or notes'} in the latest answer left out` : '',
+    ].filter(Boolean).join(' · ')}.</p> : null}
+    <h5>Skills used</h5>
+    {omittedSkills > 0 ? <p className="work-omitted">{omittedSkills} earlier skill {omittedSkills === 1 ? 'use is' : 'uses are'} not shown; the most recent {investigation.skills.length} are.</p> : null}
+    {used.size ? <ul className="skills-used">{[...used].map(([version, entry]) => <li key={version}><strong>{entry.name}</strong> {entry.version} · digest {short(entry.digest)} · {entry.uses.join(', ')}</li>)}</ul> : <p className="context-note">No skill was used in this cycle.</p>}
+    {unavailable.length ? <ul className="skills-unavailable" aria-label="Skill requests not performed">{unavailable.map(use => <li key={`${use.invocation_id}/${use.kind}/${use.ordinal}`}>{use.name ?? use.version_id}{use.resource_id ? ` · ${use.resource_id}` : ''} · not available: {useReasonLabel(use.reason ?? '')}</li>)}</ul> : null}
+    {omittedNotes > 0 ? <p className="work-omitted">{omittedNotes} earlier {omittedNotes === 1 ? 'note is' : 'notes are'} not shown; the most recent {investigation.notes.length} are.</p> : null}
+    <h5>Gaps</h5>
+    {of('gap').length ? <ul className="method-gaps">{of('gap').map(note => <li key={`${note.invocation_id}/${note.ordinal}`}>{requirement(note)} · {gapReasonLabel(note.reason ?? '')}{note.source === 'platform' ? ' · platform fact' : ''} · <span className="retained-text">{note.text}</span></li>)}</ul> : <p className="context-note">No gap recorded.</p>}
+    <h5>Questions</h5>
+    {of('question').length ? <>
+      {investigation.open_questions ? <p className="work-attention" role="status">{investigation.open_questions} {investigation.open_questions === 1 ? 'question is' : 'questions are'} waiting for your answer. Answer with new guidance; Zobba applies it at the next step boundary.</p> : null}
+      <ul className="method-questions">{of('question').map(note => <li key={`${note.invocation_id}/${note.ordinal}`} className={note.open ? 'question-open' : 'question-answered'}>{requirement(note)} · <span className="question-state">{note.open ? 'Open' : 'Answered by later guidance'}</span> · <span className="retained-text">{note.text}</span></li>)}</ul>
+    </> : <p className="context-note">No question recorded.</p>}
+    {of('statement').length ? <>
+      <h5>Zobba says</h5>
+      <ul className="method-statements">{of('statement').map(note => <li key={`${note.invocation_id}/${note.ordinal}`}>{requirement(note)} · <span className="retained-text">{note.text}</span>{citationOf(note)}</li>)}</ul>
+    </> : null}
   </section>;
 }
 

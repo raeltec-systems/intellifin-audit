@@ -2,7 +2,7 @@
 title: '22.6 — Use methods and installed skills during investigation'
 type: 'feature'
 created: '2026-10-14'
-status: 'in-progress'
+status: 'done'
 baseline_commit: '150bbfec10f6dee4a2de9d49e20f00ce91e290f6'
 review_loop_iteration: 0
 context:
@@ -75,15 +75,15 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `zobba/crates/domain/src/{context,citation,work}.rs` -- `Method`/`Skill` input classes, skills omission, answer fields with old-answer parsing, note and use types.
-- [ ] `zobba/crates/application/src/work.rs` (+ new `investigation.rs`) -- method rendering, skill listing tier, load/record after answer, platform gaps, constraints text.
-- [ ] `zobba/migrations/0017_investigation_basis.sql` + infrastructure repositories + catalogue v17 + schema checks.
-- [ ] `zobba/crates/worker/src/work.rs` -- compose the skills port in trusted work composition.
-- [ ] `zobba/crates/api/src/work.rs` + generated client -- basis, uses, notes, scoped to current viewer authority.
-- [ ] `zobba/web/src/TaskWorkPanel.tsx` -- "Method and skills": method versions and status, skills used (name, version, short digest), gaps, questions, Zobba statements with citation chips; WCAG 2.2 AA.
-- [ ] Fixtures + tests -- AP method, one pure skill, one unqualified-need skill, one knowledge record; every matrix row (Rust, PostgreSQL, worker loopback, web unit, browser).
-- [ ] Admin methodology proposal -- upload, Admin-only model path, proposal store, editor review screen with citations, conflicts and missing criteria.
-- [ ] `zobba/README.md` -- what is proven offline.
+- [x] `zobba/crates/domain/src/{context,citation,work}.rs` -- `Method`/`Skill` input classes, skills omission, answer fields with old-answer parsing, note and use types.
+- [x] `zobba/crates/application/src/work.rs` (+ new `investigation.rs`) -- method rendering, skill listing tier, load/record after answer, platform gaps, constraints text.
+- [x] `zobba/migrations/0017_investigation_basis.sql` + infrastructure repositories + catalogue v17 + schema checks.
+- [x] `zobba/crates/worker/src/work.rs` -- compose the skills port in trusted work composition.
+- [x] `zobba/crates/api/src/work.rs` + generated client -- basis, uses, notes, scoped to current viewer authority.
+- [x] `zobba/web/src/TaskWorkPanel.tsx` -- "Method and skills": method versions and status, skills used (name, version, short digest), gaps, questions, Zobba statements with citation chips; WCAG 2.2 AA.
+- [x] Fixtures + tests -- AP method, one pure skill, one unqualified-need skill, one knowledge record; every matrix row (Rust, PostgreSQL, worker loopback, web unit, browser).
+- [x] Admin methodology proposal -- upload, Admin-only model path, proposal store, editor review screen with citations, conflicts and missing criteria.
+- [x] `zobba/README.md` -- what is proven offline.
 
 **Acceptance Criteria:**
 - Given an AP Task with an eligible skill, when the cycle's first turn runs, then its request contains the method content and skill listing, and the card lists the exact method version IDs and every loaded skill version and digest.
@@ -98,3 +98,68 @@ context:
 - `cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings` -- expected: clean.
 - `cargo test --workspace` on guarded `_test` databases -- expected: all pass.
 - `pnpm --dir zobba/web check` and the work-panel browser cases -- expected: pass, with accessibility checks.
+
+**Verification record (2026-10-14, after the review fixes in `review-fixes-22-6.md`; synthetic loopback model only, no live provider call):**
+- `cargo fmt --all --check` -- clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` -- clean.
+- `cargo test --workspace --locked --no-fail-fast -- --test-threads=1` on the guarded `zobba_local_test` database (`sslmode=disable` loopback, OIDC fixture running) -- 555 passed, 0 failed, 4 ignored, 51 test binaries.
+- `pnpm --dir zobba/web check` (OpenAPI/generated-type check, `tsc`, unit tests) -- 208 of 210 passed; the 2 failures are the IPv6 DatabaseProxy cases, which fail with `EAFNOSUPPORT ::1` because this container has no IPv6 loopback (environmental, not this story).
+- `python3 scripts/smoke.py` -- "Zobba process smoke passed."
+- `playwright test tests/browser/health.spec.ts tests/browser/investigation.spec.ts tests/browser/citations.spec.ts` -- 4 passed.
+
+## Suggested Review Order
+
+**Progressive disclosure into the turn**
+
+- Entry point: method outline every turn, every section held to the byte budget.
+  [`investigation.rs:634`](../../zobba/crates/application/src/investigation.rs#L634)
+
+- Context assembly: dedup, newest first, content only while the gate still allows it.
+  [`investigation.rs:907`](../../zobba/crates/application/src/investigation.rs#L907)
+
+- Skill-tier items sent whole or counted as `skills_budget`; turn never fails by size.
+  [`work.rs:553`](../../zobba/crates/application/src/work.rs#L553)
+
+- Answer fields for reading, skills, scripts and notes; invalid entries dropped and counted.
+  [`citation.rs:327`](../../zobba/crates/domain/src/citation.rs#L327)
+
+**Skills, scripts and recorded facts**
+
+- After each answer: fresh gate, recorded load/fetch/run, platform gaps, bounded notes.
+  [`investigation.rs:1201`](../../zobba/crates/application/src/investigation.rs#L1201)
+
+- Skill scripts run as 22.4 jobs; capacity retries, never becomes a fact.
+  [`investigation.rs:1325`](../../zobba/crates/application/src/investigation.rs#L1325)
+
+- One immutable use fact per load/run, job ID kept, non-identical retry refused.
+  [`investigation.rs:493`](../../zobba/crates/infrastructure/src/investigation.rs#L493)
+
+- Fresh skill gate under claim custody; lock order documented.
+  [`0017_investigation_basis.sql:17`](../../zobba/migrations/0017_investigation_basis.sql#L17)
+
+- Five immutable tables: no UPDATE/DELETE/TRUNCATE, forced RLS.
+  [`0017_investigation_basis.sql:54`](../../zobba/migrations/0017_investigation_basis.sql#L54)
+
+**Admin methodology proposal**
+
+- Draft keeps a field only with a distinctive, unique quote; overflow listed unverified.
+  [`proposal.rs:752`](../../zobba/crates/application/src/proposal.rs#L752)
+
+- Quote location: minimum length, exactly one occurrence.
+  [`proposal.rs:578`](../../zobba/crates/application/src/proposal.rs#L578)
+
+- Detached draft after disclosure; in-progress vs uncertain; exact retry never resends.
+  [`proposals.rs:328`](../../zobba/crates/api/src/proposals.rs#L328)
+
+**What the auditor sees**
+
+- Open questions computed from the store, not the paged steps.
+  [`work.rs:345`](../../zobba/crates/api/src/work.rs#L345)
+
+- "Method and skills" section: outcomes, open/answered, citation-not-loaded.
+  [`TaskWorkPanel.tsx:167`](../../zobba/web/src/TaskWorkPanel.tsx#L167)
+
+**Verification**
+
+- Worker loopback: oversized skill left out whole, step still succeeds.
+  [`investigation.rs:1335`](../../zobba/crates/worker/tests/investigation.rs#L1335)

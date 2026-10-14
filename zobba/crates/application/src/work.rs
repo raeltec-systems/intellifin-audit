@@ -11,6 +11,7 @@ use std::{
 
 use crate::{
     citation::ReadingError,
+    investigation::{INVESTIGATION_CONSTRAINTS, InvestigationContext},
     knowledge::{RecordReference, RecordStatus, VerificationItem, VerifyKnowledge},
     model::{
         Completion, ContextEntry, ContextManifest, Effort, EventKind, HistoryItem, Invocation,
@@ -55,6 +56,9 @@ pub struct WorkBoundary {
     pub objective: String,
     pub working_brief: String,
     pub methodology_binding_id: String,
+    /// The exact current binding resolution (Story 22.6), read under the same
+    /// boundary fence. Its `id` equals `methodology_binding_id`.
+    pub methodology: crate::methodology::Binding,
     /// Recorded facts of the current cycle in ordinal order.
     pub steps: Vec<TaskStep>,
     /// Bounded current knowledge the accountable actor may use for this Task,
@@ -545,6 +549,10 @@ fn omission_counts(
         (OmissionCategory::KnowledgeUnusable, unusable),
         (OmissionCategory::StaleSources, stale_sources as u32),
         (OmissionCategory::StaleContent, stale_content),
+        (
+            OmissionCategory::SkillsBudget,
+            plan.skills_included.iter().filter(|i| !**i).count() as u32,
+        ),
     ])
 }
 
@@ -578,6 +586,34 @@ pub trait WorkReading: Send + Sync {
         answer: &CitedAnswer,
         cancellation: &ModelCancellation,
     ) -> impl Future<Output = Result<bool, ModelError>> + Send;
+}
+/// A shared reading service (the same composition also runs skill scripts).
+impl<R: WorkReading> WorkReading for &R {
+    fn enabled(&self) -> bool {
+        (**self).enabled()
+    }
+    fn context(
+        &self,
+        basis: &ClaimBasis,
+    ) -> impl Future<Output = Result<ReadingContext, ModelError>> + Send {
+        (**self).context(basis)
+    }
+    fn after_answer(
+        &self,
+        basis: &ClaimBasis,
+        methodology_binding_id: &str,
+        invocation: &Invocation,
+        answer: &CitedAnswer,
+        cancellation: &ModelCancellation,
+    ) -> impl Future<Output = Result<bool, ModelError>> + Send {
+        (**self).after_answer(
+            basis,
+            methodology_binding_id,
+            invocation,
+            answer,
+            cancellation,
+        )
+    }
 }
 /// Work without reading tools: plain text answers, as before Story 22.5.
 pub struct NoReading;
@@ -645,6 +681,77 @@ fn reading_error(error: ReadingError) -> ModelError {
     }
 }
 
+/// Story 22.6: the bound method and installed skills during investigation.
+/// When enabled (it needs cited answers), every turn carries the method
+/// outline and skill listing, and a responded turn's method, skill and script
+/// requests are performed and recorded before the next turn.
+pub trait WorkInvestigation: Send + Sync {
+    fn enabled(&self) -> bool;
+    fn context(
+        &self,
+        boundary: &WorkBoundary,
+    ) -> impl Future<Output = Result<InvestigationContext, ModelError>> + Send;
+    /// Idempotent per invocation. True when a further turn is useful.
+    fn after_answer(
+        &self,
+        boundary: &WorkBoundary,
+        invocation: &Invocation,
+        answer: &CitedAnswer,
+        cancellation: &ModelCancellation,
+    ) -> impl Future<Output = Result<bool, ModelError>> + Send;
+}
+/// Work without method and skill use: the method is named by its binding only.
+pub struct NoInvestigation;
+impl WorkInvestigation for NoInvestigation {
+    fn enabled(&self) -> bool {
+        false
+    }
+    async fn context(&self, _: &WorkBoundary) -> Result<InvestigationContext, ModelError> {
+        Ok(InvestigationContext::default())
+    }
+    async fn after_answer(
+        &self,
+        _: &WorkBoundary,
+        _: &Invocation,
+        _: &CitedAnswer,
+        _: &ModelCancellation,
+    ) -> Result<bool, ModelError> {
+        Ok(false)
+    }
+}
+impl<S, P> WorkInvestigation for crate::investigation::Investigation<'_, S, P>
+where
+    S: crate::investigation::InvestigationStore,
+    P: crate::investigation::ScriptRunner,
+{
+    fn enabled(&self) -> bool {
+        true
+    }
+    async fn context(&self, boundary: &WorkBoundary) -> Result<InvestigationContext, ModelError> {
+        crate::investigation::Investigation::context(self, &boundary.basis, &boundary.methodology)
+            .await
+            .map_err(crate::investigation::model_error)
+    }
+    async fn after_answer(
+        &self,
+        boundary: &WorkBoundary,
+        invocation: &Invocation,
+        answer: &CitedAnswer,
+        cancellation: &ModelCancellation,
+    ) -> Result<bool, ModelError> {
+        crate::investigation::Investigation::after_answer(
+            self,
+            &boundary.basis,
+            &boundary.methodology,
+            invocation,
+            answer,
+            cancellation,
+        )
+        .await
+        .map_err(crate::investigation::model_error)
+    }
+}
+
 /// The structured cited answer of a successful turn, if it is one.
 pub fn cited_answer(invocation: &Invocation) -> Option<CitedAnswer> {
     let outcome = invocation.outcome.as_ref()?;
@@ -657,12 +764,14 @@ pub fn cited_answer(invocation: &Invocation) -> Option<CitedAnswer> {
     })
 }
 
-pub struct WorkLoop<W, S, T, D, R = NoReading> {
+pub struct WorkLoop<W, S, T, D, R = NoReading, I = NoInvestigation> {
     pub steps: W,
     pub coordinator: ModelCoordinator<S, T>,
     pub dispatch: D,
     /// Story 22.5 reading tools; `NoReading` keeps plain text answers.
     pub reading: R,
+    /// Story 22.6 method and skill use; `NoInvestigation` names the binding only.
+    pub investigation: I,
     pub settings: WorkSettings,
     /// Binds the complete portable input to the disclosure operation. It must
     /// run again after any change to messages or history.
@@ -768,13 +877,14 @@ fn tool_note(status: StepStatus, name: &str) -> Option<String> {
     }
 }
 
-impl<W, S, T, D, R> WorkLoop<W, S, T, D, R>
+impl<W, S, T, D, R, I> WorkLoop<W, S, T, D, R, I>
 where
     W: WorkSteps,
     S: ModelStore,
     T: ModelTransport,
     D: ToolDispatch,
     R: WorkReading,
+    I: WorkInvestigation,
 {
     fn step(
         boundary: &WorkBoundary,
@@ -809,6 +919,10 @@ where
     /// strict structured output.
     fn cited(&self) -> bool {
         self.reading.enabled() && self.settings.profile.capabilities.structured_output
+    }
+    /// Method and skill use (Story 22.6) needs cited answers.
+    fn investigating(&self) -> bool {
+        self.cited() && self.investigation.enabled()
     }
     /// Native page reading is offered only to a profile qualified for image
     /// input whose provider encoder supports it.
@@ -882,6 +996,7 @@ where
         boundary: &WorkBoundary,
         resolved: &BTreeMap<u32, SourceFact>,
         reading: &ReadingContext,
+        investigation: &InvestigationContext,
     ) -> Result<Planned, RequestEnd> {
         let basis = &boundary.basis;
         let class = self.settings.input_class.clone();
@@ -960,11 +1075,16 @@ where
                     role: MessageRole::System,
                     text: if self.cited() {
                         format!(
-                            "{SYSTEM_CONSTRAINTS} {CITATION_CONSTRAINTS} {}",
+                            "{SYSTEM_CONSTRAINTS} {CITATION_CONSTRAINTS} {}{}",
                             if self.page_reading() {
                                 PAGE_READING_CONSTRAINT
                             } else {
                                 NO_PAGE_READING_CONSTRAINT
+                            },
+                            if self.investigating() {
+                                format!(" {INVESTIGATION_CONSTRAINTS}")
+                            } else {
+                                String::new()
                             }
                         )
                     } else {
@@ -992,10 +1112,14 @@ where
                 Some(entry("task-method", None)),
                 user(
                     "task-method",
-                    format!(
-                        "Bound method (platform fact): methodology binding {}",
-                        boundary.methodology_binding_id
-                    ),
+                    if self.investigating() {
+                        format!("Bound method outline:\n{}", investigation.outline)
+                    } else {
+                        format!(
+                            "Bound method (platform fact): methodology binding {}",
+                            boundary.methodology_binding_id
+                        )
+                    },
                 ),
             ),
             (
@@ -1018,6 +1142,22 @@ where
                 Some(entry("unresolved-decisions", None)),
                 user("unresolved-decisions", text),
             ));
+        }
+        // Story 22.6: the installed skills the agent may load and what became
+        // of its earlier method and skill requests, as attributed data.
+        if self.investigating() {
+            if let Some(listing) = &investigation.listing {
+                fixed.push((
+                    Some(entry("skill-listing", None)),
+                    user("skill-listing", listing.clone()),
+                ));
+            }
+            if let Some(feedback) = &investigation.feedback {
+                fixed.push((
+                    Some(entry("investigation-feedback", None)),
+                    user("investigation-feedback", feedback.clone()),
+                ));
+            }
         }
         // Story 22.5: what the agent may read and what it has read this cycle,
         // as attributed data. Bounded by the reading service.
@@ -1267,6 +1407,22 @@ where
             .iter()
             .map(|(_, m)| estimate_tokens(&m.text) + ITEM_OVERHEAD_TOKENS)
             .collect();
+        // Tier 5a candidates (Story 22.6): fetched method parts, loaded skill
+        // instructions and resources, and skill script outputs, in preference
+        // order. Each is included whole or counted as `skills_budget`.
+        let skills: Vec<(ContextEntry, ModelMessage)> = if self.investigating() {
+            investigation
+                .items
+                .iter()
+                .map(|(source, text)| (entry(source, None), user(source, text.clone())))
+                .collect()
+        } else {
+            vec![]
+        };
+        let skill_costs: Vec<u64> = skills
+            .iter()
+            .map(|(_, m)| estimate_tokens(&m.text) + ITEM_OVERHEAD_TOKENS)
+            .collect();
 
         // Tier 1-2 cost includes the tool catalogue sent with every request,
         // the digest message frame and an exact bound on the omission summary.
@@ -1315,6 +1471,7 @@ where
                 covered_through: compactions.last().map(|c| c.last_ordinal),
                 digests: &digests,
                 new_digest_overhead,
+                skills: &skill_costs,
                 knowledge: &knowledge_costs,
             })
         };
@@ -1464,6 +1621,12 @@ where
                 ),
             ));
         }
+        for ((entry, message), included) in skills.into_iter().zip(&plan.skills_included) {
+            if *included {
+                entries.push(entry);
+                messages.push(message);
+            }
+        }
         let mut verification = Vec::new();
         for ((entry, message), included) in knowledge.into_iter().zip(&plan.knowledge_included) {
             if *included {
@@ -1538,7 +1701,14 @@ where
             history,
             effort: Effort::None,
             max_output_tokens: self.settings.max_output_tokens,
-            structured_output: self.cited().then(CitedAnswer::schema),
+            // The 22.6 fields are offered only when an investigation is composed.
+            structured_output: self.cited().then(|| {
+                if self.investigating() {
+                    CitedAnswer::investigation_schema()
+                } else {
+                    CitedAnswer::schema()
+                }
+            }),
         };
         (self.bind)(&mut request).map_err(RequestEnd::Model)?;
         Ok(Planned {
@@ -1806,7 +1976,7 @@ where
         let Some(answer) = cited_answer(invocation) else {
             return Ok(false);
         };
-        match self
+        let read = self
             .reading
             .after_answer(
                 &boundary.basis,
@@ -1815,8 +1985,18 @@ where
                 &answer,
                 cancellation,
             )
-            .await
-        {
+            .await;
+        // Method and skill requests are performed after the reading, and only
+        // once the reading's own facts are recorded.
+        let read = match read {
+            Ok(more) if self.investigating() => self
+                .investigation
+                .after_answer(boundary, invocation, &answer, cancellation)
+                .await
+                .map(|investigated| more || investigated),
+            other => other,
+        };
+        match read {
             Ok(more) => Ok(more),
             Err(ModelError::Fenced | ModelError::Denied) => Err(CycleEnd::Fenced),
             // Transient: nothing was recorded; verification and reading run
@@ -1941,7 +2121,22 @@ where
             } else {
                 ReadingContext::default()
             };
-            let planned = match self.request(&boundary, &resolved, &reading).await {
+            let investigation = if self.investigating() {
+                match self.investigation.context(&boundary).await {
+                    Ok(investigation) => investigation,
+                    Err(ModelError::Fenced | ModelError::Denied) => return CycleEnd::Fenced,
+                    Err(ModelError::Unavailable | ModelError::Capacity) => {
+                        return CycleEnd::Unavailable;
+                    }
+                    Err(_) => return CycleEnd::Failed,
+                }
+            } else {
+                InvestigationContext::default()
+            };
+            let planned = match self
+                .request(&boundary, &resolved, &reading, &investigation)
+                .await
+            {
                 Ok(planned) => planned,
                 // The owned context alone does not fit: nothing is sent and the
                 // turn is recorded as failed with its fixed reason.
@@ -2025,7 +2220,9 @@ where
                 )
             } else if calls.is_empty()
                 && self.cited()
-                && cited_answer(&invocation).is_some_and(|a| a.requests_reading())
+                && cited_answer(&invocation).is_some_and(|a| {
+                    a.requests_reading() || (self.investigating() && a.requests_investigation())
+                })
             {
                 (
                     StepStatus::Responded,

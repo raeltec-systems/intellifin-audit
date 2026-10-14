@@ -20,7 +20,7 @@ use zobba_domain::{
 type Tx = Transaction<'static, Postgres>;
 
 pub use zobba_application::model::ModelQualificationSource;
-struct Unqualified;
+pub struct Unqualified;
 impl ModelQualificationSource for Unqualified {
     fn qualified(&self, _: &ModelProfile) -> bool {
         false

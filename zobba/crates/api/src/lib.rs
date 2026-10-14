@@ -9,6 +9,7 @@ pub mod knowledge;
 pub mod membership;
 pub mod methodology;
 pub mod operations;
+pub mod proposals;
 pub mod skills;
 pub mod tasks;
 pub mod work;
@@ -104,12 +105,37 @@ pub fn authenticated_router_with_evidence(
     identity: auth::AuthState,
     objects: Option<zobba_infrastructure::evidence::s3::S3EvidenceObjects>,
 ) -> Router {
+    // No proposal transport is composed until a live qualification is approved.
+    authenticated_router_with_proposals(
+        database,
+        identity,
+        objects,
+        proposals::ProposalComposition {
+            objects: None,
+            transport: None,
+            qualifications: std::sync::Arc::new(zobba_infrastructure::model::Unqualified),
+        },
+    )
+}
+
+/// The Admin proposal path is composed explicitly; its objects default to the
+/// evidence store when the composition names none.
+pub fn authenticated_router_with_proposals(
+    database: RuntimeDatabase,
+    identity: auth::AuthState,
+    objects: Option<zobba_infrastructure::evidence::s3::S3EvidenceObjects>,
+    mut proposal: proposals::ProposalComposition,
+) -> Router {
     let task_routes = tasks::router(&database, identity.clone());
     let membership_routes = membership::router(database.pool().clone(), identity.clone());
     let setup_routes = engagement_setup::router(database.pool().clone(), identity.clone());
     let skills_routes = skills::router(database.pool().clone(), identity.clone());
     let methodology_routes = methodology::router(database.pool().clone(), identity.clone());
     let objects = objects.map(std::sync::Arc::new);
+    if proposal.objects.is_none() {
+        proposal.objects = objects.clone();
+    }
+    let proposal_routes = proposals::router(database.pool().clone(), identity.clone(), proposal);
     let knowledge_routes =
         knowledge::router(database.pool().clone(), identity.clone(), objects.clone());
     let evidence_routes = evidence::router(database.pool().clone(), identity.clone(), objects);
@@ -119,6 +145,7 @@ pub fn authenticated_router_with_evidence(
         .merge(membership_routes)
         .merge(setup_routes)
         .merge(methodology_routes)
+        .merge(proposal_routes)
         .merge(skills_routes)
         .merge(knowledge_routes)
         .merge(evidence_routes)
@@ -225,6 +252,9 @@ pub fn authenticated_router_with_evidence(
         methodology::save,
         methodology::recall,
         methodology::task_basis,
+        proposals::propose,
+        proposals::list,
+        proposals::read,
         knowledge::inspect,
         knowledge::exact,
         knowledge::mutate,
@@ -418,6 +448,14 @@ pub fn authenticated_router_with_evidence(
         methodology::MethodologyBindingChange,
         methodology::MethodologyBindingNotice,
         methodology::TaskMethodologyResponse,
+        proposals::ProposeMethodologyRequest,
+        proposals::ProposalLocation,
+        proposals::ProposalCitation,
+        proposals::ProposalConflictResponse,
+        proposals::ProposalDisclosureResponse,
+        proposals::ProposalStatus,
+        proposals::MethodologyProposalResponse,
+        proposals::MethodologyProposalList,
         knowledge::KnowledgeScopeKind,
         knowledge::KnowledgeScope,
         knowledge::KnowledgePeriod,

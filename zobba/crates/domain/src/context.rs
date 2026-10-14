@@ -77,6 +77,8 @@ vocabulary!(InputClass {
     DocumentPage => "document-page",
     AnalysisOutput => "analysis-output",
     EvidenceRegistry => "evidence-registry",
+    Method => "method",
+    Skill => "skill",
 });
 
 // Current standing of a knowledge revision that an earlier turn used.
@@ -95,6 +97,7 @@ vocabulary!(OmissionCategory {
     KnowledgeUnusable => "knowledge_unusable",
     StaleSources => "stale_sources",
     StaleContent => "stale_content",
+    SkillsBudget => "skills_budget",
 });
 
 const ENVELOPE_KEYWORD: &str = "zobba-data";
@@ -494,6 +497,10 @@ pub struct PlanInput<'a> {
     pub digests: &'a [u64],
     /// Fixed overhead of a new record, from `digest_overhead_tokens`.
     pub new_digest_overhead: u64,
+    /// Fetched method parts and loaded skill content (Story 22.6), planned
+    /// before knowledge, in preference order. A part that does not fit is
+    /// omitted whole and counted as `skills_budget`.
+    pub skills: &'a [u64],
     /// Current knowledge in preference order.
     pub knowledge: &'a [u64],
 }
@@ -508,6 +515,8 @@ pub struct Plan {
     pub new_digest_included: bool,
     /// The newest N existing digests are included; older ones are omitted.
     pub digests_included: usize,
+    /// Per skill-tier item, whether it is included.
+    pub skills_included: Vec<bool>,
     /// Per knowledge item, whether it is included.
     pub knowledge_included: Vec<bool>,
     /// Estimated tokens of everything planned (omission reserve included).
@@ -596,23 +605,29 @@ pub fn plan(input: &PlanInput<'_>) -> Result<Plan, PlanError> {
         messages += cost;
         digests_included += 1;
     }
-    let knowledge_included = input
-        .knowledge
-        .iter()
-        .map(|cost| {
-            let fits = used + cost <= budget && messages + cost <= MAX_INPUT_BYTES as u64;
-            if fits {
-                used += cost;
-                messages += cost;
-            }
-            fits
-        })
-        .collect();
+    // Tier 5a skill content, then 5b knowledge: each item fits whole or is
+    // omitted whole, in preference order.
+    let mut include = |costs: &[u64]| -> Vec<bool> {
+        costs
+            .iter()
+            .map(|cost| {
+                let fits = used + cost <= budget && messages + cost <= MAX_INPUT_BYTES as u64;
+                if fits {
+                    used += cost;
+                    messages += cost;
+                }
+                fits
+            })
+            .collect()
+    };
+    let skills_included = include(input.skills);
+    let knowledge_included = include(input.knowledge);
     Ok(Plan {
         first_raw: start + k,
         compact,
         new_digest_included,
         digests_included,
+        skills_included,
         knowledge_included,
         estimated_tokens: used,
         steps_compacted: (start + k) as u32,

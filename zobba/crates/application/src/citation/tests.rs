@@ -143,6 +143,7 @@ fn answer(segments: Vec<(&str, Vec<CitationSource>)>) -> CitedAnswer {
         limitations: vec![],
         read_pages: vec![],
         programs: vec![],
+        ..CitedAnswer::default()
     }
 }
 fn reasons(citations: &[StoredCitation]) -> Vec<Vec<Option<R>>> {

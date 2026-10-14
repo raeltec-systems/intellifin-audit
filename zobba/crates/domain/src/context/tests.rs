@@ -67,6 +67,7 @@ fn input<'a>(budget: u64, steps: &'a [StepCost], knowledge: &'a [u64]) -> PlanIn
         covered_through: None,
         digests: &[],
         new_digest_overhead: 500,
+        skills: &[],
         knowledge,
     }
 }
@@ -159,6 +160,24 @@ fn knowledge_that_does_not_fit_is_omitted_whole_and_later_items_may_fit() {
     let costs = costs(&steps, 10);
     let plan = plan(&input(2_000, &costs, &[600, 900, 300])).unwrap();
     assert_eq!(plan.knowledge_included, vec![true, false, true]);
+}
+
+#[test]
+fn skill_content_is_planned_before_knowledge_and_omitted_whole() {
+    let steps = cycle(1);
+    let costs = costs(&steps, 10);
+    let mut planned = input(2_000, &costs, &[300, 300]);
+    planned.skills = &[700, 5_000, 100];
+    let plan = plan(&planned).unwrap();
+    assert_eq!(plan.skills_included, vec![true, false, true]);
+    // Skill content took the room first; knowledge gets what is left.
+    assert_eq!(plan.knowledge_included, vec![false, false]);
+    assert_eq!(
+        OmissionCategory::parse("skills_budget"),
+        Some(OmissionCategory::SkillsBudget)
+    );
+    assert_eq!(InputClass::parse("method"), Some(InputClass::Method));
+    assert_eq!(InputClass::parse("skill"), Some(InputClass::Skill));
 }
 
 #[test]

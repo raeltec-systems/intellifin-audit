@@ -933,6 +933,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/methodology/organisations/{organisation_id}/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["methodology_proposals"];
+        put?: never;
+        post: operations["propose_methodology"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/methodology/organisations/{organisation_id}/proposals/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["methodology_proposal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/methodology/organisations/{organisation_id}/recall": {
         parameters: {
             query?: never;
@@ -1151,7 +1183,7 @@ export interface components {
             source_id: string | null;
         };
         /** @enum {string} */
-        AttentionResponse: "awaiting_guidance" | "reconciliation_required" | "step_failed" | "cycle_bounded";
+        AttentionResponse: "awaiting_guidance" | "reconciliation_required" | "step_failed" | "cycle_bounded" | "method_question";
         /** @description An accepted brief revision. Received and applied are separate facts. */
         BriefRevisionResponse: {
             /**
@@ -1495,6 +1527,72 @@ export interface components {
             expected_revision: string;
             key: string;
             manifest: components["schemas"]["SkillManifest"];
+        };
+        /**
+         * @description Zobba's own investigation record of its latest answered turn: method,
+         *     skill, model and tool provenance. Separate from the working brief.
+         */
+        InvestigationRecordResponse: {
+            catalogue_id: string;
+            catalogue_revision: string;
+            /**
+             * Format: int32
+             * @description Individually invalid answer requests and notes left out on decode.
+             */
+            discarded_requests: number;
+            execution_epoch: string;
+            /** Format: int32 */
+            gaps: number;
+            invocation_id: string;
+            method_status: string;
+            method_version_ids: string[];
+            methodology_binding_id: string;
+            model: string;
+            /**
+             * Format: int32
+             * @description Skill, method version and tool entries beyond the record bound.
+             */
+            omitted_items: number;
+            /**
+             * Format: int32
+             * @description Notes beyond the recorded bound, counted and not recorded.
+             */
+            omitted_notes: number;
+            profile_id: string;
+            profile_revision: string;
+            provider: string;
+            /** Format: int32 */
+            questions: number;
+            skills: components["schemas"]["UsedSkillResponse"][];
+            /** Format: int32 */
+            statements: number;
+            tools: string[];
+        };
+        InvestigationResponse: {
+            method_status: string;
+            method_version_ids: string[];
+            /** @description The Task's current binding and the exact method versions it resolves. */
+            methodology_binding_id: string;
+            /**
+             * @description This cycle's newest method notes, in record order; earlier ones may be
+             *     omitted (see `total_notes`).
+             */
+            notes: components["schemas"]["MethodNoteResponse"][];
+            /**
+             * Format: int32
+             * @description Questions of the whole cycle with no guidance applied after their turn.
+             */
+            open_questions: number;
+            record: null | components["schemas"]["InvestigationRecordResponse"];
+            /**
+             * @description This cycle's newest skill uses, in record order; earlier ones may be
+             *     omitted (see `total_skills`).
+             */
+            skills: components["schemas"]["SkillUseResponse"][];
+            /** @description Every method note recorded in this cycle. */
+            total_notes: string;
+            /** @description Every skill use recorded in this cycle. */
+            total_skills: string;
         };
         InvitationPreviewResponse: {
             assignments: components["schemas"]["MembershipAssignmentOption"][];
@@ -1904,6 +2002,32 @@ export interface components {
         };
         /** @description Canonical nonnegative decimal through 9223372036854775807; no signs or leading zeros. */
         MembershipVersion: string;
+        /**
+         * @description A gap, contextual question or Zobba statement about one requirement. A
+         *     statement points at answer segments whose citations support it; nothing
+         *     marks a requirement complete.
+         */
+        MethodNoteResponse: {
+            execution_epoch: string;
+            invocation_id: string;
+            /** @description `gap`, `question` or `statement`. */
+            kind: string;
+            methodology_binding_id: string;
+            /**
+             * @description For a question: true while no guidance has been applied after its
+             *     turn. Always false for gaps and statements.
+             */
+            open: boolean;
+            /** Format: int32 */
+            ordinal: number;
+            reason: string | null;
+            requirement_id: string | null;
+            segments: number[];
+            /** @description `agent` (Zobba's answer) or `platform` (a deterministic fact). */
+            source: string;
+            /** @description Retained text as written, shown as attributed data. */
+            text: string;
+        };
         MethodologyActivation: {
             /**
              * Format: int64
@@ -1976,6 +2100,23 @@ export interface components {
             potentially_material: boolean;
             retained_tasks: string;
             version_id: string;
+        };
+        MethodologyProposalList: {
+            proposals: components["schemas"]["MethodologyProposalResponse"][];
+        };
+        MethodologyProposalResponse: {
+            actor_id: string;
+            citations: components["schemas"]["ProposalCitation"][];
+            conflicts: components["schemas"]["ProposalConflictResponse"][];
+            definition?: null | components["schemas"]["MethodologyDefinition"];
+            disclosure: components["schemas"]["ProposalDisclosureResponse"];
+            id: string;
+            key: string;
+            missing_criteria: string[];
+            reason?: string | null;
+            source?: null | components["schemas"]["MethodologySource"];
+            status: components["schemas"]["ProposalStatus"];
+            unverified: string[];
         };
         MethodologyReceipt: {
             actor_id: string;
@@ -2101,7 +2242,7 @@ export interface components {
          * @description Why material was left out of a request. A category never means absence.
          * @enum {string}
          */
-        OmissionCategoryResponse: "steps_compacted" | "digests_omitted" | "knowledge_budget" | "knowledge_unusable" | "stale_sources" | "stale_content";
+        OmissionCategoryResponse: "steps_compacted" | "digests_omitted" | "knowledge_budget" | "knowledge_unusable" | "stale_sources" | "stale_content" | "skills_budget";
         /** @description Count of material left out by category. An omission never means absence. */
         OmissionResponse: {
             category: components["schemas"]["OmissionCategoryResponse"];
@@ -2183,6 +2324,46 @@ export interface components {
         PolicyKindRequest: "organisation" | "engagement" | "member" | "account" | "task" | "delegation";
         PreviewInvitationRequest: {
             secret: components["schemas"]["MembershipInvitationSecret"];
+        };
+        ProposalCitation: {
+            field: string;
+            location: components["schemas"]["ProposalLocation"];
+            quote: string;
+        };
+        ProposalConflictResponse: {
+            location: components["schemas"]["ProposalLocation"];
+            quote: string;
+            text: string;
+        };
+        ProposalDisclosureResponse: {
+            document_sha256: string;
+            document_size: string;
+            filename: string;
+            media_type: string;
+            model: string;
+            profile_id: string;
+            profile_revision: string;
+            provider: string;
+        };
+        ProposalLocation: {
+            end: string;
+            line: string;
+            /** @description UTF-8 byte offsets of the exact quote, and its 1-based line. */
+            start: string;
+        };
+        /** @enum {string} */
+        ProposalStatus: "drafted" | "failed" | "in_progress" | "uncertain";
+        ProposeMethodologyRequest: {
+            filename: string;
+            key: string;
+            /** @description Plain UTF-8 documents only; other formats are refused, not guessed. */
+            media_type: string;
+            profile_id: string;
+            /**
+             * @description The exact document text: at most 200,000 UTF-8 bytes (not
+             *     characters). A longer document is refused as `document_too_large`.
+             */
+            text: string;
         };
         /** @enum {string} */
         PurposeRequest: "live_inspection" | "test_workflows" | "audit_coordination";
@@ -2568,6 +2749,30 @@ export interface components {
         };
         /** @enum {string} */
         SkillTool: "live_read_v1" | "test_read_v1" | "test_write_v1" | "test_send_v1" | "audit_read_v1" | "audit_write_v1" | "audit_send_v1" | "analysis_v1";
+        /**
+         * @description One recorded skill use: a load, a resource fetch or a script run. Content
+         *     is never returned here; a use names the exact version and digest.
+         */
+        SkillUseResponse: {
+            digest: string | null;
+            execution_epoch: string;
+            invocation_id: string;
+            job_id: string | null;
+            /** @description `load`, `resource` or `script`. */
+            kind: string;
+            methodology_binding_id: string;
+            name: string | null;
+            /** Format: int32 */
+            ordinal: number;
+            /** @description `loaded`, `fetched`, `completed`, `failed` or `unavailable`. */
+            outcome: string;
+            /** @description Closed reason of a failed or unavailable use. */
+            reason: string | null;
+            resource_id: string | null;
+            skill_id: string | null;
+            skill_version: string | null;
+            version_id: string;
+        };
         SkillVersion: {
             actor_id: string;
             command: components["schemas"]["InstallSkillRequest"];
@@ -2691,6 +2896,12 @@ export interface components {
             compactions: components["schemas"]["CompactionResponse"][];
             current_work: string | null;
             cycle_id: string;
+            investigation: null | components["schemas"]["InvestigationResponse"];
+            /**
+             * @description True when investigation is composed but its facts could not be read
+             *     for this response. The rest of the work view is unaffected.
+             */
+            investigation_unavailable: boolean;
             methodology_binding_id: string | null;
             methodology_status: string | null;
             /**
@@ -2720,6 +2931,12 @@ export interface components {
             next_cursor: string | null;
             /** @description Current projection ordered by Task ID; open known IDs independently of this page. */
             tasks: components["schemas"]["TaskResponse"][];
+        };
+        UsedSkillResponse: {
+            digest: string;
+            skill_id: string;
+            skill_version: string;
+            version_id: string;
         };
     };
     responses: never;
@@ -7259,6 +7476,238 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    methodology_proposals: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                organisation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MethodologyProposalList"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    propose_methodology: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Expected-Session"?: string | null;
+                Origin: string;
+                "X-CSRF-Token": string;
+                /** @description Required exact current actor refusal fence */
+                "X-Expected-Actor": string;
+            };
+            path: {
+                organisation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposeMethodologyRequest"];
+            };
+        };
+        responses: {
+            /** @description The recorded proposal: drafted, failed, in progress (still being drafted) or uncertain */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MethodologyProposalResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The document is over 200,000 UTF-8 bytes */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    methodology_proposal: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                organisation_id: string;
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MethodologyProposalResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

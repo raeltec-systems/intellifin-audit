@@ -11,6 +11,11 @@ use unicode_normalization::UnicodeNormalization;
 
 use crate::{
     identity::valid_scope_id,
+    investigation::{
+        GapReason, MAX_METHOD_NOTES, MAX_NOTE_BYTES, MAX_NOTE_SEGMENTS, MAX_PART_ID_BYTES,
+        MAX_PART_REQUESTS, MAX_SCRIPT_INPUTS, MAX_SCRIPT_RUNS, MAX_SKILL_LOADS, MethodNote,
+        NoteKind, ScriptRequest, valid_part_id,
+    },
     model::{ArgumentSchema, JsonValue},
     permissions::valid_digest,
 };
@@ -318,7 +323,7 @@ pub struct ProgramRequest {
     pub inputs: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CitedAnswer {
     pub segments: Vec<Segment>,
     /// Unreadable or ambiguous regions the model stated in words.
@@ -326,6 +331,18 @@ pub struct CitedAnswer {
     /// Further reading the model asked for before it can answer fully.
     pub read_pages: Vec<PageRequest>,
     pub programs: Vec<ProgramRequest>,
+    /// Story 22.6: method parts and loaded-skill resources to fetch, by part ID.
+    pub read_method: Vec<String>,
+    /// Story 22.6: installed skill versions to load, by version ID.
+    pub use_skills: Vec<String>,
+    /// Story 22.6: loaded skills' scripts to run in the analysis sandbox.
+    pub run_skill_script: Vec<ScriptRequest>,
+    /// Story 22.6: gaps, contextual questions and statements per requirement.
+    pub method_notes: Vec<MethodNote>,
+    /// Story 22.6: investigation requests and notes that were individually
+    /// invalid, repeated or over their bound and so were left out on decode.
+    /// The rest of the answer stands; trusted code reports the count.
+    pub discarded: u32,
 }
 
 /// A claim span in answer text, in byte offsets on character boundaries.
@@ -340,6 +357,13 @@ fn text_ok(value: &str, max: usize) -> bool {
         && !value
             .chars()
             .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
+}
+fn distinct(values: &[String]) -> bool {
+    values
+        .iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .len()
+        == values.len()
 }
 fn nonempty(value: &str, max: usize) -> bool {
     !value.trim().is_empty() && text_ok(value, max)
@@ -366,8 +390,12 @@ impl CitedAnswer {
     pub fn is_valid(&self) -> bool {
         let sources: usize = self.segments.iter().map(|s| s.sources.len()).sum();
         // An answer has text, or it is an intermediate turn that only asks to
-        // read further (stored, verified trivially, never listed as an answer).
-        (!self.segments.is_empty() || self.requests_reading())
+        // read further or records method notes (stored, verified trivially,
+        // never listed as an answer).
+        (!self.segments.is_empty()
+            || self.requests_reading()
+            || self.requests_investigation()
+            || !self.method_notes.is_empty())
             && self.segments.len() <= MAX_SEGMENTS
             && self.text().len() <= MAX_ANSWER_BYTES
             && self.segments.iter().all(|s| {
@@ -398,10 +426,34 @@ impl CitedAnswer {
                     && p.inputs.iter().all(|i| valid_scope_id(i))
                     && p.inputs.windows(2).all(|w| w[0] < w[1])
             })
+            && self.read_method.len() <= MAX_PART_REQUESTS
+            && self.read_method.iter().all(|p| valid_part_id(p))
+            && distinct(&self.read_method)
+            && self.use_skills.len() <= MAX_SKILL_LOADS
+            && self.use_skills.iter().all(|v| valid_scope_id(v))
+            && distinct(&self.use_skills)
+            && self.run_skill_script.len() <= MAX_SCRIPT_RUNS
+            && self.run_skill_script.iter().all(ScriptRequest::is_valid)
+            && self.method_notes.len() <= MAX_METHOD_NOTES
+            && self.method_notes.iter().all(|n| {
+                n.is_valid()
+                    && n.segments
+                        .iter()
+                        .all(|s| (*s as usize) < self.segments.len())
+            })
     }
-    /// Whether the answer asks for more reading before it is complete.
+    /// Whether the answer asks for more native reading or its own analysis
+    /// program before it is complete (Story 22.5).
     pub fn requests_reading(&self) -> bool {
         !self.read_pages.is_empty() || !self.programs.is_empty()
+    }
+    /// Whether the answer asks for method parts, skills or skill scripts
+    /// (Story 22.6). Only a composed investigation acts on these; notes alone
+    /// never continue a turn.
+    pub fn requests_investigation(&self) -> bool {
+        !self.read_method.is_empty()
+            || !self.use_skills.is_empty()
+            || !self.run_skill_script.is_empty()
     }
     /// Whether this turn is an answer to show: it has answer text. A turn
     /// that only requests reading is an intermediate step.
@@ -409,9 +461,17 @@ impl CitedAnswer {
         !self.segments.is_empty()
     }
 
-    /// Strict structured-output schema of a cited answer. Every property is
-    /// required (OpenAI strict output); empty arrays mean "none".
+    /// Strict structured-output schema of a cited answer (Story 22.5). Every
+    /// property is required (OpenAI strict output); empty arrays mean "none".
     pub fn schema() -> ArgumentSchema {
+        Self::schema_with(false)
+    }
+    /// The cited answer with the Story 22.6 method and skill fields, used only
+    /// when an investigation is composed.
+    pub fn investigation_schema() -> ArgumentSchema {
+        Self::schema_with(true)
+    }
+    fn schema_with(investigating: bool) -> ArgumentSchema {
         let string = |max: usize| ArgumentSchema::String {
             max_bytes: max as u32,
             enumeration: vec![],
@@ -453,7 +513,37 @@ impl CitedAnswer {
             ("program", string(MAX_PROGRAM_TEXT_BYTES)),
             ("inputs", array(string(128), MAX_PROGRAM_INPUTS)),
         ]);
-        object(vec![
+        let enumerated = |values: Vec<&str>| ArgumentSchema::String {
+            max_bytes: 32,
+            enumeration: values.into_iter().map(String::from).collect(),
+        };
+        let script = object(vec![
+            ("version_id", string(128)),
+            ("resource_id", string(128)),
+            ("inputs", array(string(128), MAX_SCRIPT_INPUTS)),
+        ]);
+        let mut reasons = vec![""];
+        reasons.extend(GapReason::ALL.iter().map(|r| r.as_str()));
+        let note = object(vec![
+            ("requirement_id", string(128)),
+            (
+                "kind",
+                enumerated(NoteKind::ALL.iter().map(|k| k.as_str()).collect()),
+            ),
+            ("text", string(MAX_NOTE_BYTES)),
+            ("reason", enumerated(reasons)),
+            (
+                "segments",
+                array(
+                    ArgumentSchema::Integer {
+                        minimum: 0,
+                        maximum: MAX_SEGMENTS as i64 - 1,
+                    },
+                    MAX_NOTE_SEGMENTS,
+                ),
+            ),
+        ]);
+        let mut fields = vec![
             ("segments", array(segment, MAX_SEGMENTS)),
             (
                 "limitations",
@@ -461,12 +551,26 @@ impl CitedAnswer {
             ),
             ("read_pages", array(page, MAX_PAGE_REQUESTS)),
             ("programs", array(program, MAX_PROGRAM_REQUESTS)),
-        ])
+        ];
+        if investigating {
+            fields.extend([
+                (
+                    "read_method",
+                    array(string(MAX_PART_ID_BYTES), MAX_PART_REQUESTS),
+                ),
+                ("use_skills", array(string(128), MAX_SKILL_LOADS)),
+                ("run_skill_script", array(script, MAX_SCRIPT_RUNS)),
+                ("method_notes", array(note, MAX_METHOD_NOTES)),
+            ]);
+        }
+        object(fields)
     }
 
     /// Decode a structured value accepted by [`Self::schema`]. A locator that is
     /// empty or not canonical is kept as `None` (verified `location_missing`),
-    /// never guessed. Input order of program inputs is normalized.
+    /// never guessed. Input order of program inputs is normalized. The Story
+    /// 22.6 fields are optional on decode, so stored older answers (which do
+    /// not have them) keep parsing with their bytes unchanged.
     pub fn from_json(value: &JsonValue) -> Option<Self> {
         let object = as_object(value)?;
         let segments = as_array(object.get("segments")?)?
@@ -524,11 +628,108 @@ impl CitedAnswer {
                 })
             })
             .collect::<Option<Vec<_>>>()?;
+        // Story 22.6 fields: each entry stands alone. An individually invalid,
+        // repeated or over-bound entry is left out and counted; the answer
+        // stands. A field of the wrong JSON type still refuses the answer.
+        let mut discarded = 0u32;
+        let mut strings = |key: &str, max: usize, valid: fn(&str) -> bool| -> Option<Vec<String>> {
+            let Some(value) = object.get(key) else {
+                return Some(vec![]);
+            };
+            let mut out: Vec<String> = Vec::new();
+            for item in as_array(value)? {
+                match as_string(item) {
+                    Some(text)
+                        if valid(text) && !out.iter().any(|o| o == text) && out.len() < max =>
+                    {
+                        out.push(text.into())
+                    }
+                    _ => discarded += 1,
+                }
+            }
+            Some(out)
+        };
+        let read_method = strings("read_method", MAX_PART_REQUESTS, valid_part_id)?;
+        let use_skills = strings("use_skills", MAX_SKILL_LOADS, valid_scope_id)?;
+        let mut run_skill_script: Vec<ScriptRequest> = Vec::new();
+        if let Some(value) = object.get("run_skill_script") {
+            for script in as_array(value)? {
+                let parsed = (|| {
+                    let script = as_object(script)?;
+                    let mut inputs = as_array(script.get("inputs")?)?
+                        .iter()
+                        .map(|i| as_string(i).map(String::from))
+                        .collect::<Option<Vec<_>>>()?;
+                    inputs.sort();
+                    inputs.dedup();
+                    Some(ScriptRequest {
+                        version_id: as_string(script.get("version_id")?)?.into(),
+                        resource_id: as_string(script.get("resource_id")?)?.into(),
+                        inputs,
+                    })
+                })();
+                match parsed {
+                    Some(request)
+                        if request.is_valid()
+                            && !run_skill_script.contains(&request)
+                            && run_skill_script.len() < MAX_SCRIPT_RUNS =>
+                    {
+                        run_skill_script.push(request)
+                    }
+                    _ => discarded += 1,
+                }
+            }
+        }
+        let mut method_notes: Vec<MethodNote> = Vec::new();
+        if let Some(value) = object.get("method_notes") {
+            for note in as_array(value)? {
+                let parsed = (|| {
+                    let note = as_object(note)?;
+                    let requirement = as_string(note.get("requirement_id")?)?;
+                    let reason = as_string(note.get("reason")?)?;
+                    let mut segments = as_array(note.get("segments")?)?
+                        .iter()
+                        .map(|s| match s {
+                            JsonValue::Integer(n) => u32::try_from(*n).ok(),
+                            _ => None,
+                        })
+                        .collect::<Option<Vec<_>>>()?;
+                    segments.sort_unstable();
+                    segments.dedup();
+                    Some(MethodNote {
+                        requirement_id: (!requirement.is_empty()).then(|| requirement.into()),
+                        kind: NoteKind::parse(as_string(note.get("kind")?)?)?,
+                        text: as_string(note.get("text")?)?.into(),
+                        reason: if reason.is_empty() {
+                            None
+                        } else {
+                            Some(GapReason::parse(reason)?)
+                        },
+                        segments,
+                    })
+                })();
+                match parsed {
+                    Some(note)
+                        if note.is_valid()
+                            && note.segments.iter().all(|s| (*s as usize) < segments.len())
+                            && method_notes.len() < MAX_METHOD_NOTES =>
+                    {
+                        method_notes.push(note)
+                    }
+                    _ => discarded += 1,
+                }
+            }
+        }
         let answer = Self {
             segments,
             limitations,
             read_pages,
             programs,
+            read_method,
+            use_skills,
+            run_skill_script,
+            method_notes,
+            discarded,
         };
         answer.is_valid().then_some(answer)
     }

@@ -160,12 +160,12 @@ async fn bootstrap_contract() {
     .fetch_all(&mut admin)
     .await
     .unwrap();
-    assert_eq!(installed.len(), 16, "fresh migration ledger is incomplete");
+    assert_eq!(installed.len(), 17, "fresh migration ledger is incomplete");
     assert_eq!(installed, repeated, "repeat changed migration ledger");
     let database = RuntimeDatabase::connect(&runtime_url)
         .await
         .expect("nonowner runtime starts");
-    assert_eq!(database.check().await.unwrap().0, 16);
+    assert_eq!(database.check().await.unwrap().0, 17);
     refused_without_mutation(
         &mut admin,
         &migration_url,
@@ -427,7 +427,7 @@ async fn bootstrap_contract() {
         "ALTER TABLE public.zobba_bootstrap ALTER COLUMN singleton SET DEFAULT false",
         "ALTER TABLE public._sqlx_migrations ALTER COLUMN installed_on SET DEFAULT '2000-01-01'::timestamptz",
         "CREATE RULE alien_rule AS ON DELETE TO public.zobba_bootstrap DO ALSO NOTHING",
-        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(17,1000) v",
+        "INSERT INTO public._sqlx_migrations(version,description,success,checksum,execution_time) SELECT v,repeat('x',4096),true,'\\x00'::bytea,0 FROM generate_series(18,1000) v",
         "UPDATE public._sqlx_migrations SET description=repeat('x',1048576),checksum=decode(repeat('ff',1048576),'hex')",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product='foreign'",
         "ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_product_check; UPDATE public.zobba_bootstrap SET product=repeat('x',1048576)",
@@ -469,6 +469,12 @@ async fn bootstrap_contract() {
         "DELETE ON public.analysis_descendants",
         "UPDATE(program) ON public.analysis_jobs",
         "TRUNCATE ON public.analysis_rejections",
+        "DELETE ON public.task_skill_uses",
+        "UPDATE(outcome) ON public.task_skill_uses",
+        "DELETE ON public.task_method_fetches",
+        "UPDATE(text) ON public.task_method_notes",
+        "TRUNCATE ON public.task_investigation_notes",
+        "DELETE ON public.methodology_proposals",
         "UPDATE(actor_id) ON public.engagement_setups",
         "UPDATE(objective) ON public.engagement_setups",
         "UPDATE(content) ON public.engagement_setup_messages",
@@ -724,7 +730,7 @@ async fn foreign_catalog_objects(config: &Configuration, conn: &mut PgConnection
                 .await
                 .expect("remove foreign catalog fixture");
             if let Some(running) = running {
-                assert_eq!(running.check().await.unwrap().0, 16);
+                assert_eq!(running.check().await.unwrap().0, 17);
             }
         }
     }
@@ -741,7 +747,7 @@ async fn foreign_catalog_objects(config: &Configuration, conn: &mut PgConnection
     refused_without_mutation(conn, &config.runtime, BootstrapError::SchemaMismatch).await;
     assert_eq!(running.check().await, Err(BootstrapError::SchemaMismatch));
     admin.execute("DROP STATISTICS public.alien").await.unwrap();
-    assert_eq!(running.check().await.unwrap().0, 16);
+    assert_eq!(running.check().await.unwrap().0, 17);
     reset(config, conn).await;
 }
 
@@ -821,7 +827,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
             .execute(format!("REVOKE MAINTAIN ON public.{table} FROM \"{target}\"").as_str())
             .await
             .unwrap();
-        assert_eq!(running.check().await.unwrap().0, 16);
+        assert_eq!(running.check().await.unwrap().0, 17);
     }
     privileged.execute(format!("GRANT pg_read_server_files TO \"{parent}\" WITH INHERIT TRUE, SET FALSE; GRANT \"{parent}\" TO \"{target}\" WITH INHERIT FALSE, SET TRUE").as_str()).await.unwrap();
     let mut capable = PgConnection::connect(&target_url).await.unwrap();
@@ -848,7 +854,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         Err(BootstrapError::UnsafeRuntimeRole)
     );
     privileged.execute(format!("REVOKE \"{parent}\" FROM \"{target}\"; REVOKE pg_read_server_files FROM \"{parent}\"").as_str()).await.unwrap();
-    assert_eq!(running.check().await.unwrap().0, 16);
+    assert_eq!(running.check().await.unwrap().0, 17);
 
     for flags in [
         "REPLICATION",
@@ -1000,7 +1006,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         .execute(format!("REVOKE \"{migrator_role}\" FROM \"{target}\"").as_str())
         .await
         .unwrap();
-    assert_eq!(running.check().await.unwrap().0, 16);
+    assert_eq!(running.check().await.unwrap().0, 17);
 
     // Simulate interruption after SQLx creates its ledger but before bootstrap
     // finishes. The outer transaction must remove BOTH tables and all grants.
@@ -1023,7 +1029,7 @@ async fn authority_and_atomicity(config: &Configuration, conn: &mut PgConnection
         .execute("DROP EVENT TRIGGER zobba_fixture_interrupt")
         .await
         .unwrap();
-    assert_eq!(running.check().await.unwrap().0, 16);
+    assert_eq!(running.check().await.unwrap().0, 17);
     reset(config, conn).await;
     privileged.execute(trigger).await.unwrap();
     migration_refused_without_mutation(conn, config, &target, BootstrapError::SchemaMismatch).await;
@@ -1289,9 +1295,9 @@ async fn upgrade_contract(config: &Configuration, conn: &mut PgConnection) {
                 .fetch_all(&mut *conn)
                 .await
                 .unwrap();
-                assert_eq!(all.len(), 16, "upgrade did not reach the complete ledger");
+                assert_eq!(all.len(), 17, "upgrade did not reach the complete ledger");
                 let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-                assert_eq!(database.check().await.unwrap().0, 16);
+                assert_eq!(database.check().await.unwrap().0, 17);
                 migrate(&config.migration, &role)
                     .await
                     .expect("upgrade repeat is safe");
@@ -1847,7 +1853,7 @@ async fn methodology_upgrade_contract(config: &Configuration, conn: &mut PgConne
             .contains("neutral")
     );
     let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-    assert_eq!(database.check().await.unwrap().0, 16);
+    assert_eq!(database.check().await.unwrap().0, 17);
     let selected = zobba_domain::identity::Scope {
         organisation_id: "methodology-upgrade".into(),
         client_id: "client".into(),
@@ -1955,7 +1961,7 @@ async fn continuity_upgrade_contract(config: &Configuration, conn: &mut PgConnec
             .expect("valid/remediated schema 6 upgrades");
         assert_eq!(authority_snapshot(conn).await, authorised);
         let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-        assert_eq!(database.check().await.unwrap().0, 16);
+        assert_eq!(database.check().await.unwrap().0, 17);
         database.pool().close().await;
     }
 
@@ -1988,7 +1994,7 @@ async fn continuity_upgrade_contract(config: &Configuration, conn: &mut PgConnec
             "upgrade changed authority"
         );
         let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-        assert_eq!(database.check().await.unwrap().0, 16);
+        assert_eq!(database.check().await.unwrap().0, 17);
         database.pool().close().await;
     }
 
@@ -2167,7 +2173,7 @@ async fn skills_upgrade_contract(config: &Configuration, conn: &mut PgConnection
         assert_eq!(count, 0, "upgrade invented a skill or selection");
     }
     let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-    assert_eq!(database.check().await.unwrap().0, 16);
+    assert_eq!(database.check().await.unwrap().0, 17);
     database.pool().close().await;
     migrate(&config.migration, &role)
         .await
@@ -2296,7 +2302,7 @@ async fn knowledge_upgrade_contract(config: &Configuration, conn: &mut PgConnect
         );
     }
     let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-    assert_eq!(database.check().await.unwrap().0, 16);
+    assert_eq!(database.check().await.unwrap().0, 17);
     database.pool().close().await;
     let installed: Vec<String> = sqlx::query_scalar(
         "SELECT to_jsonb(m)::text FROM public._sqlx_migrations m ORDER BY version",
@@ -2304,7 +2310,7 @@ async fn knowledge_upgrade_contract(config: &Configuration, conn: &mut PgConnect
     .fetch_all(&mut *conn)
     .await
     .unwrap();
-    assert_eq!(installed.len(), 16);
+    assert_eq!(installed.len(), 17);
     migrate(&config.migration, &role)
         .await
         .expect("knowledge upgrade repeat is idempotent");
@@ -2444,7 +2450,7 @@ async fn model_upgrade_contract(config: &Configuration, conn: &mut PgConnection)
         );
     }
     let database = RuntimeDatabase::connect(&config.runtime).await.unwrap();
-    assert_eq!(database.check().await.unwrap().0, 16);
+    assert_eq!(database.check().await.unwrap().0, 17);
     database.pool().close().await;
     migrate(&config.migration, &role).await.unwrap();
     reset(config, conn).await;

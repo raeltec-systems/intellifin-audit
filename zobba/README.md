@@ -1768,6 +1768,134 @@ in a second cycle. The exact API JSON it receives is
 Changing schema 16 requires regenerating `crates/infrastructure/src/schema-v16.catalog`
 from a migrated disposable database.
 
+## Method and installed skills during investigation (Story 22.6)
+
+Schema 17 is additive; published migrations and catalogues 1–16 are unchanged.
+The method and skills reach the model by progressive disclosure, through the
+fields of the existing structured cited answer. No catalogue tool is added.
+
+- **Method outline.** Every turn carries a bounded outline of the Task's exact
+  methodology binding in tier 2 (never dropped): its version IDs and status,
+  each requirement with its label, mandatory flag and fetchable part IDs
+  (`criteria/R`, `procedure/R`, `template/T/V`). The agent asks for up to 8 parts
+  per answer in `read_method`. Trusted code reads the part from the current
+  binding, records a `task_method_fetches` fact, and sends the part in the next
+  turn only while it is still current under that binding and execution epoch.
+- **Skill listing and loads.** Eligible skills are listed by name, description,
+  version, digest and need status only (at most 32 named, the rest counted).
+  `use_skills` asks to load up to 4. Each load passes a fresh gate under the
+  claim's own custody (new `skills_work` function: consumed claim, current
+  owner, epoch and lease): disabled, recalled, inapplicable, methodology or
+  Task blocked, forbidden and tool-unavailable versions are refused with a
+  closed reason. Each load records an immutable `task_skill_uses` fact
+  (version, digest, catalogue revision, binding, epoch). Loaded instructions
+  enter later turns as `skill` data, in their own budget tier before knowledge
+  (`skills_budget` omission), only while the gate still allows the version and
+  only under the same binding and epoch. Further resources are fetched on
+  demand by the part ID `skill/V/R`. A skill's declared tool needs never create
+  an operation, and selecting or loading a skill grants no execution.
+- **Skill scripts.** `run_skill_script` (at most 2 per answer) runs a loaded
+  skill's script resource over named registered originals as a 22.4 analysis
+  job in the pinned general image only. The use fact names the job ID; the
+  guard requires an ended job of this Task over exactly those inputs.
+- **Gaps, questions and statements.** `method_notes` (at most 32) are `gap`
+  (closed reason: `evidence_unavailable`, `action_not_permitted`,
+  `tool_unavailable`, `criteria_missing`, `skill_unavailable`), `question`, or
+  `statement` that points at answer segments and so at their verified
+  citations. There is no "complete" kind and no numeric confidence. Trusted
+  code also records platform gaps deterministically: `criteria_missing` once per
+  cycle and binding for a mandatory requirement without criteria, and
+  `skill_unavailable` on the requirement that names an unloadable skill. A
+  question becomes Task attention (`method_question`) until an applied
+  working-brief boundary follows it. A separate investigation record per
+  answered turn (`task_investigation_notes`) names the model, catalogue and
+  binding used; the human working brief is never changed.
+- **Binding changes.** An `active_tasks` Save switches the binding at a safe
+  boundary as before. Earlier facts keep their own binding and epoch; content
+  loaded or fetched under an earlier binding is not resent, and the next turn
+  says so.
+
+`GET /engagements/{id}/tasks/{task}/work` adds `investigation`: method status
+and versions, skill uses (outputs withheld), notes, open questions and the
+latest record. The work panel's "Method and skills" section shows the method
+versions and status, the skills used (name, version, short digest), refused
+loads, gaps, questions and "Zobba says" statements with their citation chips.
+
+**Methodology document proposal (AC4).** An Admin uploads a plain text or
+Markdown document (at most 200,000 UTF-8 bytes; a longer one is refused with
+HTTP 413 `document_too_large`) with
+`POST /methodology/organisations/{id}/proposals`. The proposal ID is derived
+from the organisation, Admin and request key. Trusted code stores the exact
+bytes as configuration evidence (a content-addressed S3 object
+`methodology-proposal-…` per organisation and document digest, pinned version,
+independent read-back; no Task), records a `disclosure` fact (document
+digest, profile and revision, model, Admin) before anything is sent, and asks a
+trusted-qualified profile with strict structured output for a draft in the
+21.2 editor shape. Every kept field cites an exact quote that trusted code
+found in the document (byte range and line). A quote must be at least 12 bytes
+or three words and occur exactly once; a value whose quote is not found, is too
+short or is ambiguous is left out and listed as unverified, as are values over
+a field's limit, a requirement whose label is not found is
+not kept, and missing criteria are computed by trusted code. Interpretation
+conflicts are kept only with a found quote. A `result` fact records `drafted`
+or a closed failure code; a provider failure never fabricates a proposal, and a
+draft too large for its record is stored as `proposal_too_large`. The draft
+runs detached from the request: a POST waits about 10 seconds, then answers
+`in_progress` while the disclosure is within its 600-second send window; a
+disclosure without a result after that is `uncertain`. Neither is ever sent
+again under the same key, and an exact retry is answered from the recorded
+fact before any object store or transport is needed. Drafts and reads have
+separate concurrency limits. **A verified quote proves only that the cited
+source text exists in the document, not that the proposed value is correct:
+the Admin reviews every value before Save.** The proposal carries `imported_proposal` attribution; the
+"Draft from a methodology document" panel shows each value with its cited
+line and quote, the missing criteria and the conflicts, and "Review in editor"
+opens it as a new methodology. Nothing takes effect until the Admin's existing
+validated Save. Production composes no proposal transport, so the endpoint
+answers `proposal_model_unavailable` until an owner-approved live
+qualification exists. PDF and other formats are refused, not guessed: they need
+the sandboxed document extraction path, which is not composed for this
+configuration path.
+
+New tables: `task_skill_uses`, `task_method_fetches`, `task_method_notes`,
+`task_investigation_notes`, `methodology_proposals`. All are immutable
+(`investigation_immutable`) under forced RLS with SELECT/INSERT runtime grants;
+`investigation_guard` binds each Task fact to its own answer invocation,
+binding and epoch, and a proposal result to its disclosure.
+
+Verification (offline; synthetic loopback provider only, no live call):
+
+```bash
+cd zobba
+cargo test -p zobba-domain investigation citation context
+cargo test -p zobba-application investigation proposal
+cargo test -p zobba-worker --test investigation -- --test-threads=1   # guarded _test DB + Docker
+cargo test -p zobba-api --test methodology_proposal -- --test-threads=1
+pnpm --dir web check
+pnpm --dir web exec playwright test tests/browser/investigation.spec.ts
+```
+
+The worker test runs the production coordinator with the reading and
+investigation composition, a native OpenAI loopback provider, S3-protocol
+originals and the pinned general image across five turns: outline and listing
+only; part fetches, a load, a resource fetch and a script job; agent and
+platform gaps, a question and a cited statement; a skill disabled and an
+`active_tasks` Save mid-cycle (new binding, earlier facts unchanged, stale
+content not resent); and a Guide that answers the question. Its exact API JSON
+is `web/tests/fixtures/task-investigation.json`
+(`ZOBBA_UPDATE_INVESTIGATION_FIXTURE=1` rewrites it). The API test proves the
+proposal path over real HTTP, PostgreSQL and S3 protocol: Admin-only access,
+refusal of other formats and of the production composition before any record,
+disclosure before result, custody bytes, exact locations, retry without resend,
+key conflict, a recorded provider failure, Save as the only effect, and the
+database guards. Its JSON is `web/tests/fixtures/methodology-proposal.json`
+(`ZOBBA_UPDATE_PROPOSAL_FIXTURE=1`). The browser spec shows both recorded
+JSON documents in the real work panel and Admin review screen (keyboard citation
+chip, "Review in editor" with no saved version) and checks that the composed
+API refuses a proposal without a transport. Changing schema 17 requires regenerating
+`crates/infrastructure/src/schema-v17.catalog` from a migrated disposable
+database.
+
 ## Establishing an engagement conversationally (Story 22.2 AC4)
 
 Schema 13 is additive; published migrations and catalogues 1–12 are unchanged.

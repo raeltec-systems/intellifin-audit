@@ -695,3 +695,13 @@ textarea:focus-visible, select:focus-visible, summary:focus-visible, [tabindex='
 .citation-open { justify-self: start; }
 .cited-location { font-weight: 600; }
 .cited-range { background: #f6e7a8; color: inherit; }
+
+.task-method { display: grid; gap: 8px; }
+.task-method h5 { margin: 4px 0 0; font-size: 0.95rem; }
+.task-method ul { margin: 0; padding-left: 20px; overflow-wrap: anywhere; }
+.method-versions { list-style: none; padding-left: 0; }
+.note-requirement { font-weight: 600; }
+.methodology-proposal { border-top: 1px solid var(--line, #d7dbe0); margin-top: 1rem; padding-top: 1rem; }
+.methodology-proposal fieldset { display: grid; gap: 0.5rem; max-width: 40rem; }
+.proposal-result { margin-top: 0.75rem; }
+.proposal-cite { display: block; font-size: 0.85em; color: var(--muted, #4a5560); overflow-wrap: anywhere; quotes: "“" "”"; }

@@ -1477,19 +1477,55 @@ where
         {
             return Ok(run);
         }
-        let refused = |reason: &str, job: Option<String>| ProgramRun {
+        let key = format!(
+            "program-{}",
+            self.hash(&format!("{}\0{invocation_id}\0{index}", basis.task_id))
+        );
+        let outcome = self
+            .execute_program(basis, &key, &program.program, &program.inputs, cancellation)
+            .await?;
+        let run = ProgramRun {
             task_id: basis.task_id.clone(),
             cycle_id: basis.cycle_id.clone(),
             invocation_id: invocation_id.into(),
             index,
-            job_id: job,
+            job_id: None,
             status: ProgramStatus::Failed,
             output: None,
-            reason: Some(reason.into()),
+            reason: None,
             recorded_us: None,
         };
+        let run = match outcome {
+            ProgramOutcome::Completed { job_id, output } => ProgramRun {
+                job_id: Some(job_id),
+                status: ProgramStatus::Completed,
+                output: Some(output),
+                ..run
+            },
+            ProgramOutcome::Refused { reason, job_id } => ProgramRun {
+                job_id,
+                reason: Some(reason.into()),
+                ..run
+            },
+        };
+        self.store.record_program_run(basis, &run).await
+    }
+
+    /// Run one program in the general sandbox over registered originals and
+    /// return its validated text outputs, bounded. Nothing is recorded here:
+    /// the caller records the run as its own fact. Admission refusals of the
+    /// exact request and the program's own failure are outcomes; capacity,
+    /// unavailability, fencing and denial are not and propagate.
+    pub async fn execute_program(
+        &self,
+        basis: &ClaimBasis,
+        key: &str,
+        program: &str,
+        input_ids: &[String],
+        cancellation: &ModelCancellation,
+    ) -> Result<ProgramOutcome, ReadingError> {
         let mut inputs = Vec::new();
-        for id in &program.inputs {
+        for id in input_ids {
             match self
                 .store
                 .original(&basis.actor_id, &basis.scope, id)
@@ -1500,47 +1536,40 @@ where
                     digest: original.sha256,
                 }),
                 None => {
-                    return self
-                        .store
-                        .record_program_run(basis, &refused("input_not_registered", None))
-                        .await;
+                    return Ok(ProgramOutcome::Refused {
+                        reason: "input_not_registered",
+                        job_id: None,
+                    });
                 }
             }
         }
         let request = AnalysisRequest {
             environment_id: GENERAL_ENVIRONMENT_ID.into(),
             image_digest: GENERAL_IMAGE_DIGEST.into(),
-            program_sha256: self.objects.measure(program.program.as_bytes()).sha256,
-            program: program.program.clone(),
+            program_sha256: self.objects.measure(program.as_bytes()).sha256,
+            program: program.into(),
             inputs,
             limits: PROGRAM_LIMITS,
         };
-        let key = format!(
-            "program-{}",
-            self.hash(&format!("{}\0{invocation_id}\0{index}", basis.task_id))
-        );
-        // Admission refusals of the exact request are facts; capacity,
-        // unavailability, fencing and denial are not and propagate.
-        let settled = match self.settle(basis, &key, &request, cancellation).await {
+        let settled = match self.settle(basis, key, &request, cancellation).await {
             Ok(settled) => settled,
             Err(ReadingError::Invalid) => {
-                return self
-                    .store
-                    .record_program_run(basis, &refused("invalid_program", None))
-                    .await;
+                return Ok(ProgramOutcome::Refused {
+                    reason: "invalid_program",
+                    job_id: None,
+                });
             }
             Err(error) => return Err(error),
         };
         if let Some(status) = &settled.failure {
-            let reason = if status == "limit_exceeded" {
-                "program_limit"
-            } else {
-                "program_failed"
-            };
-            return self
-                .store
-                .record_program_run(basis, &refused(reason, Some(settled.job_id.clone())))
-                .await;
+            return Ok(ProgramOutcome::Refused {
+                reason: if status == "limit_exceeded" {
+                    "program_limit"
+                } else {
+                    "program_failed"
+                },
+                job_id: Some(settled.job_id.clone()),
+            });
         }
         let mut text = String::new();
         let mut omitted = 0usize;
@@ -1572,18 +1601,10 @@ where
         if settled.outputs.is_empty() {
             text.push_str("--- The program wrote no output files.\n");
         }
-        let run = ProgramRun {
-            task_id: basis.task_id.clone(),
-            cycle_id: basis.cycle_id.clone(),
-            invocation_id: invocation_id.into(),
-            index,
-            job_id: Some(settled.job_id),
-            status: ProgramStatus::Completed,
-            output: Some(text),
-            reason: None,
-            recorded_us: None,
-        };
-        self.store.record_program_run(basis, &run).await
+        Ok(ProgramOutcome::Completed {
+            job_id: settled.job_id,
+            output: text,
+        })
     }
 
     /// Bounded originals and readings the next cited turn may use: every
@@ -1903,6 +1924,19 @@ where
         }
         Ok(progress)
     }
+}
+
+/// What one sandboxed program produced, before the caller records it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ProgramOutcome {
+    /// The job was collected; `output` holds its validated text outputs.
+    Completed { job_id: String, output: String },
+    /// A closed reason: `input_not_registered`, `invalid_program`,
+    /// `program_limit` or `program_failed`. Outputs are never relied on.
+    Refused {
+        reason: &'static str,
+        job_id: Option<String>,
+    },
 }
 
 /// A job's definite outcome.

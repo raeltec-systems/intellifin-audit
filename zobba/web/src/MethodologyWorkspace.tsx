@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AccessError } from './auth';
 import { SkillCatalog } from './SkillCatalog';
+import { MethodologyProposal } from './MethodologyProposal';
 import { discardSkillCatalogActions, recoverSkillOrganisation } from './skills';
 import type { Session } from './auth';
 import { readAdminOrganisations } from './membership';
@@ -210,6 +211,7 @@ export function MethodologyWorkspace({ active, session, accessReady, onAccessFai
       {organisation ? <div className="methodology-heading"><div><button type="button" className="text-button" disabled={working || !!pending} onClick={() => select(null)}>← Organisations</button><h2>{org?.organisation_name ?? organisation}</h2>{snapshot ? <p>Settings revision {snapshot.revision}</p> : null}</div>
         <button type="button" disabled={!snapshot || working || !!pending} onClick={() => edit()}>New methodology</button></div> : null}
       {organisation && snapshot ? <>
+        <MethodologyProposal organisation={organisation} session={session} expectedRevision={snapshot.revision} disabled={working || !!pending || !!draft} onOpen={command => { setReceipt(null); setError(''); setDraft({ command, availableAt: '', baseline: null }); }} />
         {receipt ? <section className="notice" role="status"><strong>{receipt.kind === 'recall' ? 'Recall recorded.' : 'Methodology saved.'}</strong><p>Version {receipt.version_id} · revision {receipt.revision} · attributed to {receipt.actor_id}</p><p>{receipt.impact.affected_tasks} affected Tasks · {receipt.impact.pending_tasks} pending changes · {receipt.impact.retained_tasks} retained bindings.</p><ul>{receipt.impact.diff.map((line, index) => <li key={index}>{line}</li>)}</ul></section> : null}
         {pending ? <section className="notice" aria-label="Unconfirmed methodology request"><h3>{working ? 'Saving…' : 'Delivery unconfirmed'}</h3><p>The exact {pending.kind} request, dates and key are retained. Retry checks its original receipt.</p><button type="button" className="quiet-button" disabled={working} onClick={() => void apply(pending)}>Retry exact methodology request</button></section> : null}
         {command && draft ? <form className="methodology-editor" aria-label="Edit methodology" onSubmit={event => { event.preventDefault(); save(); }}>

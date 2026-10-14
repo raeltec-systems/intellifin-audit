@@ -63,3 +63,6 @@ Region eu-west-1. Terraform runs in AWS CloudShell as the owner's SSO admin role
   no access yet, as expected). First Admin provisioning: new reviewed
   `zobba-cli provision-organisation` command in progress (owner chose this over raw SQL);
   organisation "Raeltec Systems Limited". Owner noted UI polish issues, deferred.
+- Release with `provision-organisation` deployed; one-off task exit 0,
+  `cli: organisation_provisioned organisation_id=raeltec` (2026-10-14T16:38Z).
+  Organisation "Raeltec Systems Limited" with the owner as first active, non-expiring Admin.

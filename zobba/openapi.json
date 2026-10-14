@@ -8126,6 +8126,375 @@
         ]
       }
     },
+    "/methodology/organisations/{organisation_id}/proposals": {
+      "get": {
+        "tags": [
+          "proposals"
+        ],
+        "operationId": "methodology_proposals",
+        "parameters": [
+          {
+            "name": "organisation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MethodologyProposalList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "proposals"
+        ],
+        "operationId": "propose_methodology",
+        "parameters": [
+          {
+            "name": "organisation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Actor",
+            "in": "header",
+            "description": "Required exact current actor refusal fence",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeMethodologyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The recorded proposal: drafted, failed, in progress (still being drafted) or uncertain",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MethodologyProposalResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The document is over 200,000 UTF-8 bytes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/methodology/organisations/{organisation_id}/proposals/{proposal_id}": {
+      "get": {
+        "tags": [
+          "proposals"
+        ],
+        "operationId": "methodology_proposal",
+        "parameters": [
+          {
+            "name": "organisation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MethodologyProposalResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
     "/methodology/organisations/{organisation_id}/recall": {
       "post": {
         "tags": [
@@ -9961,7 +10330,8 @@
           "awaiting_guidance",
           "reconciliation_required",
           "step_failed",
-          "cycle_bounded"
+          "cycle_bounded",
+          "method_question"
         ]
       },
       "BriefRevisionResponse": {
@@ -10383,7 +10753,7 @@
             "items": {
               "$ref": "#/components/schemas/OmissionResponse"
             },
-            "maxItems": 6
+            "maxItems": 7
           },
           "sequence": {
             "type": "integer",
@@ -11245,6 +11615,192 @@
           }
         },
         "additionalProperties": false
+      },
+      "InvestigationRecordResponse": {
+        "type": "object",
+        "description": "Zobba's own investigation record of its latest answered turn: method,\nskill, model and tool provenance. Separate from the working brief.",
+        "required": [
+          "invocation_id",
+          "methodology_binding_id",
+          "execution_epoch",
+          "method_status",
+          "method_version_ids",
+          "skills",
+          "provider",
+          "model",
+          "profile_id",
+          "profile_revision",
+          "catalogue_id",
+          "catalogue_revision",
+          "tools",
+          "gaps",
+          "questions",
+          "statements",
+          "omitted_notes",
+          "omitted_items",
+          "discarded_requests"
+        ],
+        "properties": {
+          "catalogue_id": {
+            "type": "string"
+          },
+          "catalogue_revision": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "discarded_requests": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Individually invalid answer requests and notes left out on decode.",
+            "minimum": 0
+          },
+          "execution_epoch": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "gaps": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "invocation_id": {
+            "type": "string"
+          },
+          "method_status": {
+            "type": "string"
+          },
+          "method_version_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64
+          },
+          "methodology_binding_id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "omitted_items": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Skill, method version and tool entries beyond the record bound.",
+            "minimum": 0
+          },
+          "omitted_notes": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Notes beyond the recorded bound, counted and not recorded.",
+            "minimum": 0
+          },
+          "profile_id": {
+            "type": "string"
+          },
+          "profile_revision": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "questions": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsedSkillResponse"
+            },
+            "maxItems": 64
+          },
+          "statements": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64
+          }
+        }
+      },
+      "InvestigationResponse": {
+        "type": "object",
+        "required": [
+          "methodology_binding_id",
+          "method_status",
+          "method_version_ids",
+          "skills",
+          "total_skills",
+          "notes",
+          "total_notes",
+          "record",
+          "open_questions"
+        ],
+        "properties": {
+          "method_status": {
+            "type": "string"
+          },
+          "method_version_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64
+          },
+          "methodology_binding_id": {
+            "type": "string",
+            "description": "The Task's current binding and the exact method versions it resolves."
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MethodNoteResponse"
+            },
+            "description": "This cycle's newest method notes, in record order; earlier ones may be\nomitted (see `total_notes`).",
+            "maxItems": 1024
+          },
+          "open_questions": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Questions of the whole cycle with no guidance applied after their turn.",
+            "minimum": 0
+          },
+          "record": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/InvestigationRecordResponse"
+              }
+            ]
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillUseResponse"
+            },
+            "description": "This cycle's newest skill uses, in record order; earlier ones may be\nomitted (see `total_skills`).",
+            "maxItems": 512
+          },
+          "total_notes": {
+            "type": "string",
+            "description": "Every method note recorded in this cycle.",
+            "pattern": "^[0-9]+$"
+          },
+          "total_skills": {
+            "type": "string",
+            "description": "Every skill use recorded in this cycle.",
+            "pattern": "^[0-9]+$"
+          }
+        }
       },
       "InvitationPreviewResponse": {
         "type": "object",
@@ -13024,6 +13580,78 @@
         "minLength": 1,
         "pattern": "^(0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[01][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$(?![\\s\\S])"
       },
+      "MethodNoteResponse": {
+        "type": "object",
+        "description": "A gap, contextual question or Zobba statement about one requirement. A\nstatement points at answer segments whose citations support it; nothing\nmarks a requirement complete.",
+        "required": [
+          "invocation_id",
+          "ordinal",
+          "source",
+          "requirement_id",
+          "kind",
+          "text",
+          "reason",
+          "segments",
+          "methodology_binding_id",
+          "execution_epoch",
+          "open"
+        ],
+        "properties": {
+          "execution_epoch": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "invocation_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`gap`, `question` or `statement`."
+          },
+          "methodology_binding_id": {
+            "type": "string"
+          },
+          "open": {
+            "type": "boolean",
+            "description": "For a question: true while no guidance has been applied after its\nturn. Always false for gaps and statements."
+          },
+          "ordinal": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requirement_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "maxItems": 8
+          },
+          "source": {
+            "type": "string",
+            "description": "`agent` (Zobba's answer) or `platform` (a deterministic fact)."
+          },
+          "text": {
+            "type": "string",
+            "description": "Retained text as written, shown as attributed data.",
+            "maxLength": 1000
+          }
+        }
+      },
       "MethodologyActivation": {
         "type": "object",
         "required": [
@@ -13317,6 +13945,107 @@
           },
           "version_id": {
             "type": "string"
+          }
+        }
+      },
+      "MethodologyProposalList": {
+        "type": "object",
+        "required": [
+          "proposals"
+        ],
+        "properties": {
+          "proposals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MethodologyProposalResponse"
+            },
+            "maxItems": 20
+          }
+        }
+      },
+      "MethodologyProposalResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "key",
+          "actor_id",
+          "disclosure",
+          "status",
+          "citations",
+          "conflicts",
+          "missing_criteria",
+          "unverified"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": "string"
+          },
+          "citations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposalCitation"
+            },
+            "maxItems": 4096
+          },
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposalConflictResponse"
+            },
+            "maxItems": 64
+          },
+          "definition": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MethodologyDefinition",
+                "description": "The editable draft in the Save editor shape. It has no effect until a\nvalidated Save."
+              }
+            ]
+          },
+          "disclosure": {
+            "$ref": "#/components/schemas/ProposalDisclosureResponse"
+          },
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "missing_criteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 128
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MethodologySource"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProposalStatus"
+          },
+          "unverified": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4096
           }
         }
       },
@@ -13950,7 +14679,8 @@
           "knowledge_budget",
           "knowledge_unusable",
           "stale_sources",
-          "stale_content"
+          "stale_content",
+          "skills_budget"
         ]
       },
       "OmissionResponse": {
@@ -14291,6 +15021,153 @@
         "properties": {
           "secret": {
             "$ref": "#/components/schemas/MembershipInvitationSecret"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProposalCitation": {
+        "type": "object",
+        "required": [
+          "field",
+          "quote",
+          "location"
+        ],
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/ProposalLocation"
+          },
+          "quote": {
+            "type": "string"
+          }
+        }
+      },
+      "ProposalConflictResponse": {
+        "type": "object",
+        "required": [
+          "text",
+          "quote",
+          "location"
+        ],
+        "properties": {
+          "location": {
+            "$ref": "#/components/schemas/ProposalLocation"
+          },
+          "quote": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "ProposalDisclosureResponse": {
+        "type": "object",
+        "required": [
+          "filename",
+          "media_type",
+          "document_sha256",
+          "document_size",
+          "profile_id",
+          "profile_revision",
+          "provider",
+          "model"
+        ],
+        "properties": {
+          "document_sha256": {
+            "type": "string"
+          },
+          "document_size": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "profile_id": {
+            "type": "string"
+          },
+          "profile_revision": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          }
+        }
+      },
+      "ProposalLocation": {
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "line"
+        ],
+        "properties": {
+          "end": {
+            "type": "string"
+          },
+          "line": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string",
+            "description": "UTF-8 byte offsets of the exact quote, and its 1-based line."
+          }
+        }
+      },
+      "ProposalStatus": {
+        "type": "string",
+        "enum": [
+          "drafted",
+          "failed",
+          "in_progress",
+          "uncertain"
+        ]
+      },
+      "ProposeMethodologyRequest": {
+        "type": "object",
+        "required": [
+          "key",
+          "profile_id",
+          "filename",
+          "media_type",
+          "text"
+        ],
+        "properties": {
+          "filename": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "media_type": {
+            "type": "string",
+            "description": "Plain UTF-8 documents only; other formats are refused, not guessed.",
+            "pattern": "^text/(plain|markdown)$"
+          },
+          "profile_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "text": {
+            "type": "string",
+            "description": "The exact document text: at most 200,000 UTF-8 bytes (not\ncharacters). A longer document is refused as `document_too_large`.",
+            "maxLength": 200000,
+            "minLength": 1
           }
         },
         "additionalProperties": false
@@ -16066,6 +16943,98 @@
           "analysis_v1"
         ]
       },
+      "SkillUseResponse": {
+        "type": "object",
+        "description": "One recorded skill use: a load, a resource fetch or a script run. Content\nis never returned here; a use names the exact version and digest.",
+        "required": [
+          "invocation_id",
+          "kind",
+          "ordinal",
+          "version_id",
+          "resource_id",
+          "skill_id",
+          "skill_version",
+          "name",
+          "digest",
+          "outcome",
+          "reason",
+          "job_id",
+          "methodology_binding_id",
+          "execution_epoch"
+        ],
+        "properties": {
+          "digest": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "execution_epoch": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "invocation_id": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "description": "`load`, `resource` or `script`."
+          },
+          "methodology_binding_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ordinal": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "outcome": {
+            "type": "string",
+            "description": "`loaded`, `fetched`, `completed`, `failed` or `unavailable`."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Closed reason of a failed or unavailable use."
+          },
+          "resource_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "skill_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "skill_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version_id": {
+            "type": "string"
+          }
+        }
+      },
       "SkillVersion": {
         "type": "object",
         "required": [
@@ -16584,7 +17553,9 @@
           "total_steps",
           "briefs",
           "compactions",
-          "total_compactions"
+          "total_compactions",
+          "investigation",
+          "investigation_unavailable"
         ],
         "properties": {
           "attention": {
@@ -16620,6 +17591,21 @@
           },
           "cycle_id": {
             "type": "string"
+          },
+          "investigation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/InvestigationResponse",
+                "description": "Story 22.6: the exact method and skill versions this cycle used, its\ngaps, questions and Zobba statements. Null when not composed or when\nit could not be read; `investigation_unavailable` says which."
+              }
+            ]
+          },
+          "investigation_unavailable": {
+            "type": "boolean",
+            "description": "True when investigation is composed but its facts could not be read\nfor this response. The rest of the work view is unaffected."
           },
           "methodology_binding_id": {
             "type": [
@@ -16699,6 +17685,30 @@
             },
             "description": "Current projection ordered by Task ID; open known IDs independently of this page.",
             "maxItems": 100
+          }
+        }
+      },
+      "UsedSkillResponse": {
+        "type": "object",
+        "required": [
+          "version_id",
+          "skill_id",
+          "skill_version",
+          "digest"
+        ],
+        "properties": {
+          "digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "skill_id": {
+            "type": "string"
+          },
+          "skill_version": {
+            "type": "string"
+          },
+          "version_id": {
+            "type": "string"
           }
         }
       }

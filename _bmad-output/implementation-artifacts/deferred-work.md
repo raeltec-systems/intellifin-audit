@@ -107,3 +107,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-22-5-extract-usable-facts-with-stable-source-locations.md`
   summary: Reading facts (and other append-only tables) refuse owner UPDATE but not owner DELETE or TRUNCATE.
   evidence: Only UPDATE triggers exist; this is the repository-wide immutability pattern, so changing it is a cross-story decision.
+- source_spec: `_bmad-output/implementation-artifacts/spec-22-6-use-methods-and-installed-skills-during-investigation.md`
+  summary: Methodology proposal list returns only the 20 newest proposals with no cursor, and reads each proposal with a separate query.
+  evidence: `ProposalRepository::list` uses `LIMIT 20` and one query per row; older proposals are reachable only by ID.

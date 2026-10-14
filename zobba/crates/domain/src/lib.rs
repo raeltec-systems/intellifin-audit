@@ -6,6 +6,7 @@ pub mod conversation;
 pub mod engagement_setup;
 pub mod evidence;
 pub mod identity;
+pub mod investigation;
 pub mod knowledge;
 pub mod membership;
 pub mod methodology;
@@ -18,4 +19,4 @@ pub mod work;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SchemaVersion(pub u32);
 
-pub const SCHEMA_VERSION: SchemaVersion = SchemaVersion(16);
+pub const SCHEMA_VERSION: SchemaVersion = SchemaVersion(17);
