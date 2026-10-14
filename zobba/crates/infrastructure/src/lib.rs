@@ -15,6 +15,7 @@ pub mod model;
 pub mod oidc;
 pub mod operation;
 pub mod proposal;
+pub mod provision;
 pub mod scope;
 pub mod skills;
 pub mod task;

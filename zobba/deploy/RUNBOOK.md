@@ -285,7 +285,60 @@ aws cognito-idp admin-create-user --user-pool-id "$(terraform output -raw cognit
 ```
 
 Cognito establishes identity only; Zobba access still comes from Zobba's own
-membership records. The pool uses Cognito's default email sender, which has a
+membership records. Keep the `User.Attributes` value named `sub` from that
+command's output: it is the OIDC subject for the next step (or read it later
+with `aws cognito-idp admin-get-user ... --query "UserAttributes[?Name=='sub'].Value | [0]"`).
+
+Then create the first organisation and make that user its Admin (G5). This is a
+one-off run of the latest released migration task definition with only the
+container command changed; the task definition's entry point is already
+`/usr/local/bin/zobba-cli`, and ECS overrides cannot replace an entry point, so
+the override command holds the subcommand and its options only. The image must
+come from a release that includes `provision-organisation`.
+
+The issuer must be exactly the API's `ZOBBA_OIDC_ISSUER`
+(`https://cognito-idp.<region>.amazonaws.com/<user pool id>`, from
+`local.oidc_issuer` in `main.tf`), with no trailing slash:
+
+```sh
+CLUSTER=$(terraform output -raw ecs_cluster)
+NETWORK=$(terraform output -raw task_network_configuration)
+POOL=$(terraform output -raw cognito_user_pool_id)
+ISSUER="https://cognito-idp.${POOL%%_*}.amazonaws.com/$POOL"   # the pool ID's prefix is its region
+SUBJECT=<sub from admin-create-user>
+OVERRIDES=$(jq -nc --arg issuer "$ISSUER" --arg subject "$SUBJECT" '{containerOverrides:[{name:"migrate",
+  command:["provision-organisation","--organisation-id","<organisation id>","--organisation-name","<organisation name>",
+    "--issuer",$issuer,"--subject",$subject,"--display-name","<owner display name>"]}]}')
+TASK=$(aws ecs run-task --cluster "$CLUSTER" --launch-type FARGATE \
+  --task-definition zobba-qualification-migrate \
+  --network-configuration "$NETWORK" --overrides "$OVERRIDES" \
+  --started-by operator-provision --query 'tasks[0].taskArn' --output text)
+aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK"
+aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK" \
+  --query "tasks[0].containers[?name=='migrate'].exitCode | [0]"   # must be 0
+aws logs tail /zobba-qualification/migrate --since 30m
+```
+
+`--task-definition` with the family only selects the latest ACTIVE revision,
+which is the one the last release registered. `--started-by operator-provision`
+keeps the release's "earlier migration still running" check (it only counts
+`release-*` tasks) from treating this task as a release migration.
+
+Expected log lines (fixed codes and opaque IDs only):
+
+- `cli: organisation_provisioned organisation_id=<id> identity_id=<id>`: the
+  organisation, the identity (or the existing identity for this issuer/subject,
+  for example after an earlier sign-in) and an active, non-expiring Admin
+  membership were committed in one READ COMMITTED transaction.
+- `cli: already_provisioned organisation_id=<id> identity_id=<id>`, exit 0:
+  an exact retry; nothing changed.
+- Non-zero exit with `cli: organisation_conflict` (the organisation exists with
+  a different name, a different Admin, or a widened/expiring/inactive
+  membership), `cli: identity_inactive` (the issuer/subject identity exists but
+  is inactive), `cli: identity_conflict`, `cli: invalid_<field>` or
+  `cli: schema_mismatch` (the schema is not exactly current): nothing changed.
+  The command never promotes, reactivates or clears an expiry; resolve the
+  conflict through the product's membership Save or authorised owner action. The pool uses Cognito's default email sender, which has a
 low daily sending limit (on the order of 50 messages per day) and a Cognito
 sender address; invitations and recovery mails beyond it fail. Configuring
 Amazon SES is an owner decision outside 20.7a.

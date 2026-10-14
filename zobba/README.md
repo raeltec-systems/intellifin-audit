@@ -128,7 +128,24 @@ a concurrent schema-6 narrowing is checked after that write commits.
 Database triggers cover owner membership edits/removal, identity lifecycle changes,
 organisation provisioning and concurrent transactions. Create an organisation and
 its first qualifying Admin in one **READ COMMITTED** transaction; deferred checks
-also allow explicit replacement in one transaction. The CLI sets migration
+also allow explicit replacement in one transaction. In a real (non-fixture)
+environment use the reviewed operator command, with `ZOBBA_MIGRATION_DATABASE_URL`
+set to the database owner:
+
+```sh
+zobba-cli provision-organisation --organisation-id <id> --organisation-name <name> \
+  --issuer <exact ZOBBA_OIDC_ISSUER> --subject <OIDC sub> --display-name <name>
+```
+
+It requires the exact current schema, reuses an existing identity for that
+issuer/subject (otherwise creates `oidc-<base64url SHA-256>`), and inserts the
+organisation plus an active, non-expiring `admin` membership, retrying the whole
+transaction on deadlock/serialization/lock timeout. An exact retry prints
+`already_provisioned` and exits 0; any differing organisation, membership or an
+inactive identity refuses (`organisation_conflict`, `identity_inactive`, ...)
+without changing anything. It never promotes, reactivates or clears an expiry,
+and prints only fixed codes and IDs. The deployed run is in
+`deploy/RUNBOOK.md` (after "Then create the first administrator user"). The CLI sets migration
 isolation to READ COMMITTED. Direct continuity mutations or direct migration 7
 under REPEATABLE READ/SERIALIZABLE refuse with SQLSTATE `0A000`; restart the whole
 transaction at READ COMMITTED. Authority-table TRUNCATE is refused, including
