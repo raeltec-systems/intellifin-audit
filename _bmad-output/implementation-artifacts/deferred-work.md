@@ -95,3 +95,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-22-4-run-measured-analysis-in-an-isolated-workspace.md`
   summary: The analysis application tests use the real wall clock (busy-loops of 1–2 s) instead of an injected clock.
   evidence: Instant::now() is called directly; the wall-time tests are slow and timing-dependent.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-22-5-extract-usable-facts-with-stable-source-locations.md`
+  summary: The answers API returns only the newest 20 answers with no cursor or omission note; older answers of a cycle cannot be reached.
+  evidence: LIMIT 20 in CitationRepository::answers; acceptable for the Task panel now, the Pair screens (25.x) need paging.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-22-5-extract-usable-facts-with-stable-source-locations.md`
+  summary: Native page reading supports PDF, JPEG and PNG only; GIF, TIFF, WebP and HEIC originals become not_a_paged_document.
+  evidence: document.py renders only these formats; phone photos are often HEIC.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-22-5-extract-usable-facts-with-stable-source-locations.md`
+  summary: Reading facts (and other append-only tables) refuse owner UPDATE but not owner DELETE or TRUNCATE.
+  evidence: Only UPDATE triggers exist; this is the repository-wide immutability pattern, so changing it is a cross-story decision.
