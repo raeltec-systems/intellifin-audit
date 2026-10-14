@@ -132,3 +132,7 @@ context:
 
 - End-to-end worker suite: real files, loopback model, real API, disclosure counts.
   [`citations.rs:219`](../../zobba/crates/worker/tests/citations.rs#L219)
+
+## Owner approvals after review
+
+- 2026-10-14: owner approved the transitive libraries of the general sandbox image (lxml, numpy, python-dateutil, pytz, six, typing-extensions, tzdata, et-xmlfile).
