@@ -922,6 +922,33 @@ run "analysis_jobs_are_isolated" {
   }
 }
 
+run "analysis_staging_policy_keeps_bucket_manageable" {
+  command = plan
+
+  variables {
+    analysis_image_digest = "sha256:8241deca19d20b576c0d4b2ad75deac753492d335de45d284766df3d5666ea5f"
+  }
+
+  assert {
+    condition = alltrue([
+      for st in jsondecode(aws_s3_bucket_policy.analysis_staging.policy).Statement :
+      st.Sid != "OnlyTheWorker" || (
+        !contains(flatten([st.Action]), "s3:*") &&
+        alltrue([for a in flatten([st.Action]) : can(regex("^s3:(GetObject|PutObject|DeleteObject|RestoreObject|AbortMultipartUpload|ListMultipartUploadParts|ListBucket|ReplicateObject)", a))])
+      )
+    ])
+    error_message = "the worker-only deny covers staged data only; it must never deny bucket management (s3:*) to administrators and Terraform"
+  }
+
+  assert {
+    condition = anytrue([
+      for st in jsondecode(aws_s3_bucket_policy.analysis_staging.policy).Statement :
+      st.Sid == "OnlyTheWorker" && contains(flatten([st.Action]), "s3:GetObject*") && contains(flatten([st.Action]), "s3:PutObject*") && contains(flatten([st.Action]), "s3:ListBucket*")
+    ])
+    error_message = "no principal other than the worker may read, write or list staged data"
+  }
+}
+
 run "analysis_disabled_without_a_pinned_image" {
   command = apply
 

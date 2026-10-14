@@ -287,6 +287,21 @@ resource "aws_s3_bucket_lifecycle_configuration" "analysis_staging" {
   }
 }
 
+locals {
+  # Data-plane actions on staged objects. Wildcards cover every object variant
+  # (versions, tagging, ACL, attributes, retention).
+  analysis_staging_data_actions = [
+    "s3:GetObject*",
+    "s3:PutObject*",
+    "s3:DeleteObject*",
+    "s3:RestoreObject",
+    "s3:AbortMultipartUpload",
+    "s3:ListMultipartUploadParts",
+    "s3:ListBucket*",
+    "s3:ReplicateObject",
+  ]
+}
+
 resource "aws_s3_bucket_policy" "analysis_staging" {
   bucket = aws_s3_bucket.analysis_staging.id
   policy = jsonencode({
@@ -302,11 +317,15 @@ resource "aws_s3_bucket_policy" "analysis_staging" {
       },
       {
         # Every object request is signed by the worker's task role, directly or
-        # through a presigned URL it created; no other principal is admitted.
+        # through a presigned URL it created; no other principal may read, write
+        # or list staged data. Bucket management (policy, public access block,
+        # lifecycle) is deliberately NOT denied here: denying s3:* to everyone
+        # but the worker locked administrators and Terraform out of the bucket,
+        # and only the root user could remove the policy again.
         Sid       = "OnlyTheWorker"
         Effect    = "Deny"
         Principal = "*"
-        Action    = "s3:*"
+        Action    = local.analysis_staging_data_actions
         Resource  = [aws_s3_bucket.analysis_staging.arn, "${aws_s3_bucket.analysis_staging.arn}/*"]
         Condition = { ArnNotEquals = { "aws:PrincipalArn" = aws_iam_role.worker_task.arn } }
       },
