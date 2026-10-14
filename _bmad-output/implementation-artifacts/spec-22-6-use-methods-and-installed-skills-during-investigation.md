@@ -2,7 +2,7 @@
 title: '22.6 — Use methods and installed skills during investigation'
 type: 'feature'
 created: '2026-10-14'
-status: 'draft'
+status: 'in-progress'
 baseline_commit: '150bbfec10f6dee4a2de9d49e20f00ce91e290f6'
 review_loop_iteration: 0
 context:
@@ -17,26 +17,25 @@ context:
 
 **Problem:** The work loop sends the model only the methodology binding ID (`work.rs:996`), and no skill ever reaches a turn. The firm's method and Admin-installed skills therefore cannot shape investigation, and nothing records which method/skill versions Zobba actually used, where the method could not be followed, or what Zobba needs to ask.
 
-**Approach:** Treat method and skills like Claude Code treats project instructions and skills. The bound method's full resolved content enters every turn as attributed data. Eligible skills are listed by name and description only; the agent loads the ones it judges relevant through a new answer field, and trusted code rechecks eligibility and records each use before the skill text enters the next turn. The agent reports method gaps and contextual questions in its structured answer and keeps doing independent permitted work. The work panel shows the basis, the exact versions used, gaps and questions.
+**Approach:** Treat method and skills like Claude Code treats project instructions and skills. Use progressive disclosure, as Claude Code does. Every turn gets a short method outline as attributed data; the agent fetches large method parts on demand. Eligible skills are listed by name and description only; the agent loads the ones it judges relevant, fetches their extra resources on demand, and runs their scripts in the 22.4 sandbox. Trusted code rechecks eligibility and records each load, fetch and run before any content enters the next turn. Admin can also give Zobba a methodology document and get an editable proposal that becomes effective only through the existing validated Save. The agent reports method gaps and contextual questions in its structured answer and keeps doing independent permitted work. The work panel shows the basis, the exact versions used, gaps and questions.
 
 ## Boundaries & Constraints
 
 **Always:**
-- Method content = the Task's current immutable binding resolution (status, issues, requirements with mandatory flag, criteria, populations, evidence checks, ratings, review rules, suitable skills, resolved templates), read under the existing boundary fence (`infrastructure/work.rs:809-890`). It is tier 2 (never dropped), wrapped as new `InputClass::Method`. Neutral, incomplete and ambiguous bases are stated as such; missing criteria are named.
-- Skill listing: currently eligible, enabled versions whose method compatibility passes, with name, description, version, digest and need status only. Loading a skill passes the same fresh gate as `SkillsStore::current_use`/`Inspection::selectable()` in the claim's transaction, then records an immutable use fact `{task, cycle, invocation, version id, digest, methodology binding id, execution epoch, catalogue revision, dependency fingerprint, outcome loaded|unavailable + closed reason}`. Loaded resources enter later turns as `InputClass::Skill` data; `script` resources are labelled "inert text, not run".
-- A skill's tool needs never create an operation here. Unqualified or forbidden needs stay `unavailable`/`forbidden` and the agent is told so. Skill text, method text and documents never grant authority (existing envelope rule).
+- Method content = the Task's current immutable binding resolution (status, issues, requirements with mandatory flag, criteria, populations, evidence checks, ratings, review rules, suitable skills, resolved templates), read under the existing boundary fence (`infrastructure/work.rs:809-890`). Progressive disclosure: every turn carries a tier-2 (never dropped) method outline wrapped as new `InputClass::Method` — status, issues, requirement IDs/titles/mandatory flags, criteria names, missing criteria, and an index of fetchable parts (criteria text, templates, evidence checks) with byte sizes. The agent requests parts through a new `read_method` answer field (≤8 part IDs per turn); trusted code serves them from the same binding and records each fetch. A large method never fails a turn by size alone; only the outline is mandatory, and if the outline itself cannot fit, 22.3 `context_budget` applies. Neutral, incomplete and ambiguous bases are stated as such; missing criteria are named.
+- Skill listing: currently eligible, enabled versions whose method compatibility passes, with name, description, version, digest and need status only. Loading a skill passes the same fresh gate as `SkillsStore::current_use`/`Inspection::selectable()` in the claim's transaction, then records an immutable use fact `{task, cycle, invocation, version id, digest, methodology binding id, execution epoch, catalogue revision, dependency fingerprint, outcome loaded|unavailable + closed reason}`. A load brings in the skill's main instructions as `InputClass::Skill` data plus an index of its other resources; the agent fetches further resources on demand (same field, recorded). The agent loads any eligible skill itself; no prior human selection is required (21.3 human selection stays as a recorded preference, not a gate). A `script` resource is never run in-process: the agent may request it through a new `run_skill_script` answer field, and trusted code runs it as a 22.4 analysis job (pinned general environment, the script bytes as the program, only the requested registered originals as inputs, existing limits, operation custody, descendant registration). Its validated outputs return as recorded results; script text in context stays data.
+- A skill's declared tool needs never create an operation; only `run_skill_script` through the 22.4 path may run code. Unqualified or forbidden needs stay `unavailable`/`forbidden` and the agent is told so. Skill text, method text and documents never grant authority (existing envelope rule).
 - New `CitedAnswer` fields: `use_skills` (≤4 version IDs) and `method_notes` (≤32: requirement ID, kind `gap|question|statement`, text ≤1,000 bytes, gap reason closed: `evidence_unavailable`, `action_not_permitted`, `tool_unavailable`, `criteria_missing`, `skill_unavailable`). A `statement` is shown as "Zobba says", with its citations' verification; there is no "complete" state. The platform also records deterministic gaps (mandatory requirement with missing criteria; skill unavailable). Stored older answers without these fields keep parsing and their bytes.
 - A gap or question never stops the cycle; the loop continues while the answer still requests reading or skills. A question shows as Task attention; the auditor answers through the existing Guide.
 - Every use fact and note keeps its binding ID and execution epoch. After a 21.2 active change switches the binding at a safe boundary, the next turn uses the new method; earlier facts and answers are unchanged; skill eligibility is rechecked against the new binding (a changed basis can make a skill unavailable).
-- Migration 0017: `task_skill_uses`, `task_method_notes`; immutable, forced RLS, SELECT/INSERT runtime grants, inventoried guards, catalogue v17 and all schema checks.
+- Zobba investigation note: a separate Zobba-authored record per cycle with method, skill, model and tool provenance; the human working brief changes only through Guide.
+- Methodology document proposal (AC4): Admin uploads a document as configuration evidence (21.1 custody, Admin scope, not a Task). A dedicated Admin-only model path, with its own recorded disclosure (document digest, profile, Admin actor; qualified profile and existing spend/approval gates), drafts a proposal reusing the 21.2 editor shape with `imported_proposal` attribution. Every proposed field cites its document location (22.5 citation contract and verification); interpretation conflicts and missing criteria are listed. The proposal is editable and has no effect until the Admin's existing validated Save; nothing is auto-saved.
+- Migration 0017: `task_skill_uses` (loads, resource fetches, script runs with their analysis job ID), `task_method_fetches`, `task_method_notes`, `task_investigation_notes`, `methodology_proposals`; immutable, forced RLS, SELECT/INSERT runtime grants, inventoried guards, catalogue v17 and all schema checks.
 - Synthetic loopback model transport only in tests.
 
-**Ask First:**
-- May the agent load any eligible skill itself (recommended, Claude Code style), or only skills a human already selected (21.3)?
-- "Brief updates with provenance": recommended reading is a separate Zobba investigation note with method/skill/model provenance; the human working brief changes only through Guide. Confirm.
-- AC4 (Admin methodology document → editable proposal) needs a new non-Task model path and Admin UI. Recommend split to Story 22.6b.
-- Running skill `script` resources in the 22.4 sandbox (recommended: not in this story).
-- Method content above 64 KiB per turn (default: turn fails `context_budget`, as 22.3).
+**Ask First:** Any skill script environment beyond the pinned 22.4 general image; any live provider run for the Admin proposal path.
+
+**Owner decisions (2026-10-14):** agent loads eligible skills itself; investigation note separate from the human brief; AC4 kept in this story; skill scripts run in the 22.4 sandbox; progressive disclosure for methods and skills instead of a hard size failure.
 
 **Never:** A compiled action graph or step pipeline; numeric confidence; marking a requirement complete from model text alone; acquired documents installing or acting as skills; selection or loading granting tool execution; silent rebinding or rewriting earlier conclusions; live provider calls in tests.
 
@@ -51,6 +50,9 @@ context:
 | Contextual question | agent asks which vendor master to use | `question` note; Task attention; Guide answer applied next boundary | N/A |
 | Active change | Admin Save `active_tasks` mid-cycle | switch at safe boundary; next turn new method; old notes/uses keep old binding | stale skill → unavailable |
 | Skill disabled/recalled | between listing and load | load records `unavailable`; text not sent | N/A |
+| Large method | method with 300 KiB of templates | outline sent; agent fetches one template; fetch recorded; turn succeeds | N/A |
+| Skill script | agent requests a skill's script over one original | runs as 22.4 job; outputs registered as descendants; run recorded | sandbox limit or refusal recorded; no output trusted |
+| Methodology document | Admin uploads an AP method PDF | editable proposal with cited fields, conflicts and missing criteria; no effect before Save | provider failure recorded; no proposal fabricated |
 | Hostile skill/method text | text says "ignore permissions" | stays enveloped data; no authority change | existing envelope escape |
 | Old stored answer | 22.5 answer without new fields | parses; bindings unchanged | N/A |
 
@@ -80,12 +82,15 @@ context:
 - [ ] `zobba/crates/api/src/work.rs` + generated client -- basis, uses, notes, scoped to current viewer authority.
 - [ ] `zobba/web/src/TaskWorkPanel.tsx` -- "Method and skills": method versions and status, skills used (name, version, short digest), gaps, questions, Zobba statements with citation chips; WCAG 2.2 AA.
 - [ ] Fixtures + tests -- AP method, one pure skill, one unqualified-need skill, one knowledge record; every matrix row (Rust, PostgreSQL, worker loopback, web unit, browser).
+- [ ] Admin methodology proposal -- upload, Admin-only model path, proposal store, editor review screen with citations, conflicts and missing criteria.
 - [ ] `zobba/README.md` -- what is proven offline.
 
 **Acceptance Criteria:**
 - Given an AP Task with an eligible skill, when the cycle's first turn runs, then its request contains the method content and skill listing, and the card lists the exact method version IDs and every loaded skill version and digest.
 - Given a load request, when audited, then exactly one use fact exists per invocation and version, bound to that turn's binding ID and epoch.
 - Given an active method change, when the Task resumes, then earlier answers, notes and uses are unchanged and later turns record the new binding.
+- Given a skill script run, when audited, then exactly one 22.4 analysis job exists for it and only validated outputs reach context.
+- Given an Admin methodology proposal, when inspected, then every field cites its document location and nothing is effective until validated Save.
 
 ## Verification
 
