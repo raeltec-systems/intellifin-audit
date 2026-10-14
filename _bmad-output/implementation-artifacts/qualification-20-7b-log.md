@@ -43,3 +43,5 @@ Region eu-west-1. Terraform runs in AWS CloudShell as the owner's SSO admin role
 - Two changes reappeared on every plan: task-definition volumes (`configure_at_launch`
   read back as false) and `rds.force_ssl` (`apply_method` read back as pending-reboot,
   the parameter is static in PostgreSQL 18). Both are now declared as AWS reports them.
+- Fixed one more drift (ECS default container fields). Final plan: **No changes.**
+  First apply of the qualification infrastructure is complete (2026-10-14).
