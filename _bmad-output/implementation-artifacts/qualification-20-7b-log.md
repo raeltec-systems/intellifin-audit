@@ -30,3 +30,8 @@ Region eu-west-1. Terraform runs in AWS CloudShell as the owner's SSO admin role
   - NAT gateway: the interrupted first apply had already created a NAT gateway that
     holds the Elastic IP but is not in state. The new one failed. Recovery: remove
     the failed one from state and import the existing one.
+- Second policy defect: the narrowed deny still listed `s3:ListBucket*`. HeadBucket
+  needs `s3:ListBucket`, so administrators got 403 and Terraform planned to create
+  the existing bucket. `ListBucket` is removed from the deny (object bytes stay
+  worker-only); the test now asserts HeadBucket stays allowed. The admin user removes
+  the applied policy with `delete-bucket-policy` (no root needed this time).

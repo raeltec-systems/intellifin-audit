@@ -289,7 +289,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "analysis_staging" {
 
 locals {
   # Data-plane actions on staged objects. Wildcards cover every object variant
-  # (versions, tagging, ACL, attributes, retention).
+  # (versions, tagging, ACL, attributes, retention). s3:ListBucket is NOT here:
+  # HeadBucket needs it, and denying it makes Terraform see the bucket as gone.
+  # Listing shows only job-scoped key names; object bytes stay worker-only.
   analysis_staging_data_actions = [
     "s3:GetObject*",
     "s3:PutObject*",
@@ -297,7 +299,6 @@ locals {
     "s3:RestoreObject",
     "s3:AbortMultipartUpload",
     "s3:ListMultipartUploadParts",
-    "s3:ListBucket*",
     "s3:ReplicateObject",
   ]
 }
@@ -317,8 +318,8 @@ resource "aws_s3_bucket_policy" "analysis_staging" {
       },
       {
         # Every object request is signed by the worker's task role, directly or
-        # through a presigned URL it created; no other principal may read, write
-        # or list staged data. Bucket management (policy, public access block,
+        # through a presigned URL it created; no other principal may read or
+        # write staged data. Bucket management (policy, public access block,
         # lifecycle) is deliberately NOT denied here: denying s3:* to everyone
         # but the worker locked administrators and Terraform out of the bucket,
         # and only the root user could remove the policy again.

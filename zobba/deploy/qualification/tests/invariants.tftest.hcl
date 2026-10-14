@@ -943,7 +943,7 @@ run "analysis_staging_policy_keeps_bucket_manageable" {
       for st in jsondecode(aws_s3_bucket_policy.analysis_staging.policy).Statement :
       st.Sid != "OnlyTheWorker" || (
         !contains(flatten([st.Action]), "s3:*") &&
-        alltrue([for a in flatten([st.Action]) : can(regex("^s3:(GetObject|PutObject|DeleteObject|RestoreObject|AbortMultipartUpload|ListMultipartUploadParts|ListBucket|ReplicateObject)", a))])
+        alltrue([for a in flatten([st.Action]) : can(regex("^s3:(GetObject|PutObject|DeleteObject|RestoreObject|AbortMultipartUpload|ListMultipartUploadParts|ReplicateObject)", a))])
       )
     ])
     error_message = "the worker-only deny covers staged data only; it must never deny bucket management (s3:*) to administrators and Terraform"
@@ -952,9 +952,9 @@ run "analysis_staging_policy_keeps_bucket_manageable" {
   assert {
     condition = anytrue([
       for st in jsondecode(aws_s3_bucket_policy.analysis_staging.policy).Statement :
-      st.Sid == "OnlyTheWorker" && contains(flatten([st.Action]), "s3:GetObject*") && contains(flatten([st.Action]), "s3:PutObject*") && contains(flatten([st.Action]), "s3:ListBucket*")
+      st.Sid == "OnlyTheWorker" && contains(flatten([st.Action]), "s3:GetObject*") && contains(flatten([st.Action]), "s3:PutObject*") && !anytrue([for a in flatten([st.Action]) : startswith(a, "s3:ListBucket")])
     ])
-    error_message = "no principal other than the worker may read, write or list staged data"
+    error_message = "no principal other than the worker may read or write staged data, and HeadBucket (s3:ListBucket) stays allowed for administrators and Terraform"
   }
 }
 
