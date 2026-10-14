@@ -593,7 +593,7 @@ run "iam_is_least_privilege" {
   assert {
     condition = (
       jsondecode(aws_iam_role.release.assume_role_policy).Statement[0].Action == "sts:AssumeRoleWithWebIdentity" &&
-      jsondecode(aws_iam_role.release.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:example/intellifin-audit:environment:qualification" &&
+      jsondecode(aws_iam_role.release.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == ["repo:example/intellifin-audit:environment:qualification"] &&
       jsondecode(aws_iam_role.release.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:aud"] == "sts.amazonaws.com"
     )
     error_message = "release uses GitHub OIDC from the qualification environment only"
@@ -919,6 +919,22 @@ run "analysis_jobs_are_isolated" {
       [for e in jsondecode(aws_ecs_task_definition.worker.container_definitions)[0].environment : e.value if e.name == "ZOBBA_ANALYSIS_SANDBOX"] == ["fargate"]
     )
     error_message = "a released environment with a pinned analysis image composes the Fargate sandbox"
+  }
+}
+
+run "release_trusts_immutable_id_subject" {
+  command = plan
+
+  variables {
+    github_repository_ids = { owner = 111, repository = 222 }
+  }
+
+  assert {
+    condition = toset(jsondecode(aws_iam_role.release.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"]) == toset([
+      "repo:example/intellifin-audit:environment:qualification",
+      "repo:example@111/intellifin-audit@222:environment:qualification",
+    ])
+    error_message = "with repository IDs, only this repository's qualification environment is trusted, in both subject forms"
   }
 }
 

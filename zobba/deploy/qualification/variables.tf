@@ -49,6 +49,21 @@ variable "github_repository" {
   }
 }
 
+variable "github_repository_ids" {
+  description = "Numeric GitHub owner and repository IDs. GitHub OIDC tokens may carry them in the subject (repo:owner@id/name@id:...); when set, that exact subject is also trusted."
+  type = object({
+    owner      = number
+    repository = number
+  })
+  default  = null
+  nullable = true
+
+  validation {
+    condition     = var.github_repository_ids == null || (try(var.github_repository_ids.owner > 0 && var.github_repository_ids.repository > 0, false))
+    error_message = "github_repository_ids needs positive owner and repository IDs."
+  }
+}
+
 variable "create_github_oidc_provider" {
   description = "Create the account's GitHub OIDC provider. Set false when the account already has one."
   type        = bool

@@ -48,3 +48,6 @@ Region eu-west-1. Terraform runs in AWS CloudShell as the owner's SSO admin role
 - Second apply: ALB ingress now references only the CloudFront VPC-origin service
   security group (`restrict_alb_to_vpc_origin_sg = true` kept in tfvars). Plan: no changes.
 - Role bootstrap: one-off task exit 0, log `bootstrap: roles_ready` (2026-10-14).
+- First release run failed at "Assume the release role": GitHub sent the immutable-ID
+  OIDC subject (`repo:owner@id/name@id:environment:qualification`, seen in CloudTrail).
+  The release role now also trusts that exact subject (`github_repository_ids`).

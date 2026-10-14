@@ -19,3 +19,7 @@ github_repository        = "OWNER/intellifin-audit"
 # Set after the first successful release (see ../RUNBOOK.md "First release"):
 # image_digest = "sha256:..."
 # restrict_alb_to_vpc_origin_sg = true   # second apply (RUNBOOK section 3)
+
+# If GitHub OIDC tokens use the immutable-ID subject
+# (repo:owner@<id>/name@<id>:environment:qualification), set both IDs.
+# github_repository_ids = { owner = 0, repository = 0 }

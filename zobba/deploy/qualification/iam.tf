@@ -180,7 +180,14 @@ resource "aws_iam_openid_connect_provider" "github" {
 
 locals {
   github_oidc_provider_arn = var.create_github_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : "arn:${local.partition}:iam::${local.account_id}:oidc-provider/token.actions.githubusercontent.com"
-  release_subject          = "repo:${coalesce(var.github_repository, "unset/unset")}:environment:qualification"
+  release_repository       = split("/", coalesce(var.github_repository, "unset/unset"))
+  # GitHub sends either the name-only subject or, with immutable IDs, the
+  # repo:owner@id/name@id form. Both name exactly this repository and only the
+  # qualification environment.
+  release_subjects = compact([
+    "repo:${coalesce(var.github_repository, "unset/unset")}:environment:qualification",
+    var.github_repository_ids == null ? "" : "repo:${local.release_repository[0]}@${var.github_repository_ids.owner}/${local.release_repository[1]}@${var.github_repository_ids.repository}:environment:qualification",
+  ])
 }
 
 resource "aws_iam_role" "release" {
@@ -195,7 +202,7 @@ resource "aws_iam_role" "release" {
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          "token.actions.githubusercontent.com:sub" = local.release_subject
+          "token.actions.githubusercontent.com:sub" = local.release_subjects
         }
       }
     }]
