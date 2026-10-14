@@ -1221,8 +1221,9 @@ export interface components {
             /** @description The model's quoted text, at most 1000 UTF-8 bytes. */
             quote?: string | null;
             /**
-             * @description False when the current viewer cannot read this original. Its quote,
-             *     filename, version and digest are then withheld.
+             * @description False when the current viewer cannot read this original, or when
+             *     verification did not establish the exact original. Its quote,
+             *     filename, version, digest and location are then withheld.
              */
             readable: boolean;
             /**
@@ -1236,7 +1237,7 @@ export interface components {
             version?: string | null;
         };
         /** @enum {string} */
-        CitationVerificationResponse: "verified" | "unverified";
+        CitationVerificationResponse: "verified" | "unverified" | "unchecked";
         CitedAnswerResponse: {
             invocation_id: string;
             /** @description Limitations the model stated about what it could not read. */
@@ -1244,6 +1245,11 @@ export interface components {
             segments: components["schemas"]["AnswerSegmentResponse"][];
             /** @description The unchanged answer text. */
             text: string;
+            /**
+             * @description True when trusted verification of this answer could not be completed;
+             *     every source is then `unchecked`.
+             */
+            verification_failed: boolean;
         };
         /** @enum {string} */
         CommandKindRequest: "create" | "guide" | "pause" | "resume" | "stop" | "continue";

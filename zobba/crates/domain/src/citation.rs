@@ -385,9 +385,10 @@ impl CitedAnswer {
                 .iter()
                 .all(|l| nonempty(l, MAX_LIMITATION_BYTES))
             && self.read_pages.len() <= MAX_PAGE_REQUESTS
-            && self.read_pages.iter().all(|r| {
-                valid_scope_id(&r.original_id) && (1..=MAX_PAGE_NUMBER).contains(&r.page)
-            })
+            && self
+                .read_pages
+                .iter()
+                .all(|r| valid_scope_id(&r.original_id) && (1..=MAX_PAGE_NUMBER).contains(&r.page))
             && self.programs.len() <= MAX_PROGRAM_REQUESTS
             && self.programs.iter().all(|p| {
                 nonempty(&p.program, MAX_PROGRAM_TEXT_BYTES)

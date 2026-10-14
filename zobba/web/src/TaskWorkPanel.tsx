@@ -26,7 +26,7 @@ const statusLabel: Record<string, string> = {
 /// invented progress.
 export const WORK_POLL_MS = 3000;
 
-export type TaskWorkState = { work: TaskWork | null; error: string; answers?: CitedAnswer[] | null; answersError?: string };
+export type TaskWorkState = { work: TaskWork | null; error: string; answers?: CitedAnswer[] | null; answersError?: string; answersSkipped?: number };
 
 interface Source {
   scope: Scope;
@@ -45,7 +45,7 @@ interface Source {
 export function useTaskWork({ scope, taskId, taskRevision, taskState, session, accessReady, onAccessFailure }: Source): TaskWorkState {
   const owner = taskId ? `${session.identity.id}/${session.csrf_token}/${taskId}` : '';
   const [state, setState] = useState<{ owner: string; work: TaskWork | null; error: string }>({ owner, work: null, error: '' });
-  const [answers, setAnswers] = useState<{ owner: string; answers: CitedAnswer[] | null; error: string }>({ owner, answers: null, error: '' });
+  const [answers, setAnswers] = useState<{ owner: string; answers: CitedAnswer[] | null; skipped: number; error: string }>({ owner, answers: null, skipped: 0, error: '' });
   const [tick, setTick] = useState(0);
   const active = taskState === 'ready' || taskState === 'running';
   useEffect(() => {
@@ -70,28 +70,32 @@ export function useTaskWork({ scope, taskId, taskRevision, taskState, session, a
   }, [owner, scope, taskId, taskRevision, session, accessReady, onAccessFailure, tick]);
   // Cited answers are a separate read: their failure never hides current work.
   useEffect(() => {
-    if (!taskId || !accessReady) { setAnswers({ owner, answers: null, error: '' }); return; }
+    if (!taskId || !accessReady) { setAnswers({ owner, answers: null, skipped: 0, error: '' }); return; }
     const request = new AbortController();
     let timedOut = false;
     const deadline = setTimeout(() => { timedOut = true; request.abort(); }, 8000);
     readTaskAnswers(scope, taskId, session, request.signal).then(value => {
-      if (!request.signal.aborted) setAnswers({ owner, answers: value, error: '' });
+      if (!request.signal.aborted) setAnswers({ owner, answers: value.answers, skipped: value.skipped, error: '' });
     }, reason => {
       if (request.signal.aborted && !timedOut && !(reason instanceof AccessError)) return;
-      setAnswers({ owner, answers: null, error: 'Answers could not be loaded.' });
+      setAnswers({ owner, answers: null, skipped: 0, error: 'Answers could not be loaded.' });
       if (reason instanceof AccessError && [401, 412].includes(reason.status)) onAccessFailure(reason);
     }).finally(() => clearTimeout(deadline));
     return () => { request.abort(); clearTimeout(deadline); };
   }, [owner, scope, taskId, taskRevision, session, accessReady, onAccessFailure, tick]);
-  const current = answers.owner === owner ? answers : { answers: null, error: '' };
-  return state.owner === owner ? { work: state.work, error: state.error, answers: current.answers, answersError: current.error } : { work: null, error: '' };
+  const current = answers.owner === owner ? answers : { answers: null, skipped: 0, error: '' };
+  return state.owner === owner ? { work: state.work, error: state.error, answers: current.answers, answersError: current.error, answersSkipped: current.skipped } : { work: null, error: '' };
 }
 
 const short = (value: string) => <abbr title={value}>{value.slice(0, 8)}</abbr>;
 
 export function TaskWorkPanel({ state, citations }: Props) {
   const { work, error } = state;
-  const [sourceNotice, setSourceNotice] = useState('');
+  const [sourceNotice, setSourceNotice] = useState({ answers: state.answers, text: '' });
+  // A notice belongs to the answers it was about: a changed Task, viewer or
+  // read clears it.
+  const notice = sourceNotice.answers === state.answers ? sourceNotice.text : '';
+  const setNotice = (text: string) => setSourceNotice({ answers: state.answers, text });
   if (error) return <section className="task-work" aria-label="Current work"><h3>Current work</h3><p role="alert">{error}</p></section>;
   if (!work) return <section className="task-work" aria-label="Current work"><h3>Current work</h3><p role="status">Loading current work…</p></section>;
   const attention = attentionLabel(work.attention);
@@ -110,13 +114,14 @@ export function TaskWorkPanel({ state, citations }: Props) {
       {recent.map(step => <li key={step.ordinal}><span>Step {step.ordinal + 1}</span> · {step.current_work} · {statusLabel[step.status]}{step.reason === 'context_budget' ? ' · not sent: context budget' : ''}{step.knowledge_omitted ? ` · ${step.knowledge_omitted} knowledge ${step.knowledge_omitted === 1 ? 'record' : 'records'} left out of context` : ''}{step.invocation_id ? <> · invocation {short(step.invocation_id)}</> : null}</li>)}
     </ol></details> : null}
     {state.answersError ? <p role="alert">{state.answersError}</p> : null}
+    {state.answersSkipped ? <p role="status" className="work-omitted">{state.answersSkipped} {state.answersSkipped === 1 ? 'answer' : 'answers'} could not be shown because the response for {state.answersSkipped === 1 ? 'it' : 'them'} was not valid.</p> : null}
     {state.answers?.length ? <section className="task-answers" aria-label="Answers">
       <h4>Answers</h4>
       <p className="context-note">Model answers, shown as written. Each citation names an exact original; the platform checked the quote against it and never edits the answer.</p>
-      {sourceNotice ? <p role="status">{sourceNotice}</p> : null}
+      {notice ? <p role="status">{notice}</p> : null}
       <ol>{state.answers.map(answer => <li key={answer.invocation_id} className="cited-answer">
         <p className="retained-text">{answer.segments.map((segment, index) => <Fragment key={index}>{segment.text}{segment.sources.length && citations
-          ? <> <Citation scope={citations.scope} sources={segment.sources} accessReady={citations.accessReady} onSourceAccessFailure={() => setSourceNotice('That original is not available to you now. Nothing was opened.')} /></>
+          ? <> <Citation scope={citations.scope} sources={segment.sources} accessReady={citations.accessReady} onSourceAccessFailure={() => setNotice('That original is not available to you now. Nothing was opened.')} /></>
           : null}</Fragment>)}</p>
         {answer.limitations.length ? <ul className="answer-limitations" aria-label="What could not be read">{answer.limitations.map((limitation, index) => <li key={index}>{limitation}</li>)}</ul> : null}
       </li>)}</ol>

@@ -132,7 +132,9 @@ pub async fn verify<C: CitationReader>(
         let results = match reader.locate(basis, original, locators, cancellation).await {
             Ok(results) if results.len() == locators.len() => results,
             Ok(_) => vec![Located::Unreadable; locators.len()],
-            Err(error) => unreadable::<()>(error).map(|_| vec![Located::Unreadable; locators.len()])?,
+            Err(error) => {
+                unreadable::<()>(error).map(|_| vec![Located::Unreadable; locators.len()])?
+            }
         };
         for (locator, result) in locators.iter().zip(results) {
             located.insert((id.clone(), locator.clone()), result);

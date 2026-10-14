@@ -90,7 +90,8 @@ pub const CITATION_CONSTRAINTS: &str = "Answer only with the required JSON. Writ
 /// page images natively and its provider encoder supports it.
 pub const PAGE_READING_CONSTRAINT: &str = "You may also request pages to read natively in read_pages (one page image per request, PDF or image originals).";
 /// Added instead of [`PAGE_READING_CONSTRAINT`] when native reading is not available.
-pub const NO_PAGE_READING_CONSTRAINT: &str = "Native page reading is not available: leave read_pages empty.";
+pub const NO_PAGE_READING_CONSTRAINT: &str =
+    "Native page reading is not available: leave read_pages empty.";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DocumentStatus {
@@ -171,7 +172,9 @@ impl RenderBatch {
                         .as_ref()
                         .is_none_or(|t| t.len() <= MAX_TEXT_LAYER_BYTES)
                     && p.image.is_none()
-                        == p.reason.as_deref().is_some_and(|r| PAGE_REASONS.contains(&r))
+                        == p.reason
+                            .as_deref()
+                            .is_some_and(|r| PAGE_REASONS.contains(&r))
                     && p.image.as_ref().is_none_or(|i| {
                         valid_scope_id(&i.descendant_id)
                             && valid_digest(&i.sha256)
@@ -358,18 +361,22 @@ impl PageRequestRecord {
             && (1..=MAX_PAGE_NUMBER).contains(&self.page)
             && self.reason.as_deref().is_none_or(valid_code)
             && match self.outcome {
-                RequestOutcome::Read | RequestOutcome::Reused => self.read.as_ref().is_some_and(|r| {
-                    r.status == ReadStatus::Read
-                        && r.original_id == self.original_id
-                        && r.page == self.page
-                        && r.is_valid()
-                }) && self.reason.is_none(),
-                RequestOutcome::Failed => self.read.as_ref().is_some_and(|r| {
-                    r.status == ReadStatus::Failed
-                        && r.original_id == self.original_id
-                        && r.page == self.page
-                        && r.is_valid()
-                }) && self.reason == self.read.as_ref().and_then(|r| r.reason.clone()),
+                RequestOutcome::Read | RequestOutcome::Reused => {
+                    self.read.as_ref().is_some_and(|r| {
+                        r.status == ReadStatus::Read
+                            && r.original_id == self.original_id
+                            && r.page == self.page
+                            && r.is_valid()
+                    }) && self.reason.is_none()
+                }
+                RequestOutcome::Failed => {
+                    self.read.as_ref().is_some_and(|r| {
+                        r.status == ReadStatus::Failed
+                            && r.original_id == self.original_id
+                            && r.page == self.page
+                            && r.is_valid()
+                    }) && self.reason == self.read.as_ref().and_then(|r| r.reason.clone())
+                }
                 RequestOutcome::Refused => self.read.is_none() && self.reason.is_some(),
             }
     }
@@ -598,7 +605,12 @@ pub fn transcript(invocation: &Invocation) -> Option<PageTranscript> {
 /// Labelled text of a native page read, derived only from its invocation.
 /// The disclosure gate recomputes it to admit it as dependent content.
 pub fn transcript_envelope(source_id: &str, invocation: &Invocation) -> Option<String> {
-    let transcript = transcript(invocation)?;
+    Some(transcript_text(source_id, &transcript(invocation)?))
+}
+/// Labelled text of one page transcription. The recorded read keeps exactly
+/// the transcription its invocation produced, so a read recorded in an
+/// earlier cycle yields the same text without reading that invocation again.
+pub fn transcript_text(source_id: &str, transcript: &PageTranscript) -> String {
     let mut text = format!(
         "Native page reading (model transcription; not verified evidence):\n{}",
         transcript.text
@@ -610,7 +622,7 @@ pub fn transcript_envelope(source_id: &str, invocation: &Invocation) -> Option<S
             text.push_str(region);
         }
     }
-    Some(envelope(InputClass::ModelOutput, source_id, &text))
+    envelope(InputClass::ModelOutput, source_id, &text)
 }
 
 /// JSON text of a trusted document request, as a Python string literal that
@@ -665,8 +677,10 @@ pub fn is_document_program(program: &str) -> bool {
     let Some(request) = python_literal(literal) else {
         return false;
     };
-    matches!(manifest::parse(request.as_bytes()), Some(manifest::Value::Object(_)))
-        && document_program(&request) == program
+    matches!(
+        manifest::parse(request.as_bytes()),
+        Some(manifest::Value::Object(_))
+    ) && document_program(&request) == program
 }
 /// Decode a literal written by `python_json`; None for anything else.
 fn python_literal(literal: &str) -> Option<String> {
@@ -1141,7 +1155,9 @@ where
             .get_version(&output.id, &output.namespace, &output.version)
             .await
             .map_err(|_| ReadingError::Unavailable)?;
-        if object.identity != output.identity || self.objects.measure(&object.bytes) != output.identity {
+        if object.identity != output.identity
+            || self.objects.measure(&object.bytes) != output.identity
+        {
             return Err(ReadingError::Unavailable);
         }
         Ok(object.bytes)
@@ -1158,13 +1174,24 @@ where
     ) -> Result<RenderBatch, ReadingError> {
         if let Some(stored) = self
             .store
-            .render_batch(&basis.actor_id, &basis.scope, &original.id, &original.sha256, batch)
+            .render_batch(
+                &basis.actor_id,
+                &basis.scope,
+                &original.id,
+                &original.sha256,
+                batch,
+            )
             .await?
         {
             return Ok(stored);
         }
         let settled = self
-            .document_job(basis, original, &render_request(&original.id, batch), cancellation)
+            .document_job(
+                basis,
+                original,
+                &render_request(&original.id, batch),
+                cancellation,
+            )
             .await?;
         let unreadable = |reason: &str| RenderBatch {
             original_id: original.id.clone(),
@@ -1185,8 +1212,14 @@ where
                 None => unreadable("no_manifest"),
                 Some(output) => {
                     let manifest = self.output_bytes(output).await?;
-                    render_manifest(original, batch, &settled.job_id, &manifest, &settled.outputs)
-                        .unwrap_or_else(|| unreadable("invalid_manifest"))
+                    render_manifest(
+                        original,
+                        batch,
+                        &settled.job_id,
+                        &manifest,
+                        &settled.outputs,
+                    )
+                    .unwrap_or_else(|| unreadable("invalid_manifest"))
                 }
             },
         };
@@ -1312,7 +1345,11 @@ where
             key,
             basis: basis.clone(),
             profile: self.settings.profile.clone(),
-            catalogue: self.settings.catalogue.clone(),
+            // The page read may propose nothing: no tools are offered.
+            catalogue: ToolCatalog {
+                tools: vec![],
+                ..self.settings.catalogue.clone()
+            },
             disclosure: self.settings.disclosure.clone(),
             context: ContextManifest {
                 verification: VerifyKnowledge {
@@ -1394,7 +1431,11 @@ where
                 status: ReadStatus::Read,
                 transcript: Some(transcript),
                 reason: None,
-                ..failed("model_failed", Some(image.sha256), Some(invocation.id.clone()))
+                ..failed(
+                    "model_failed",
+                    Some(image.sha256),
+                    Some(invocation.id.clone()),
+                )
             },
             None => {
                 let reason = match invocation.outcome.as_ref().map(|o| o.completion) {
@@ -1449,7 +1490,11 @@ where
         };
         let mut inputs = Vec::new();
         for id in &program.inputs {
-            match self.store.original(&basis.actor_id, &basis.scope, id).await? {
+            match self
+                .store
+                .original(&basis.actor_id, &basis.scope, id)
+                .await?
+            {
                 Some(original) => inputs.push(AnalysisInput {
                     original_id: original.id,
                     digest: original.sha256,
@@ -1546,11 +1591,11 @@ where
     /// reused, every program run, and how each earlier answer's citations
     /// were verified, ordered by when they were recorded. When the bounds
     /// trim, the newest are kept and an explicit omission line says so.
-    pub async fn reading_context(&self, basis: &ClaimBasis) -> Result<ReadingContext, ReadingError> {
-        let originals = self
-            .store
-            .originals(&basis.actor_id, &basis.scope)
-            .await?;
+    pub async fn reading_context(
+        &self,
+        basis: &ClaimBasis,
+    ) -> Result<ReadingContext, ReadingError> {
+        let originals = self.store.originals(&basis.actor_id, &basis.scope).await?;
         let listing = if originals.is_empty() {
             None
         } else {
@@ -1561,7 +1606,10 @@ where
                     original.id,
                     original.sha256,
                     original.size,
-                    original.filename.as_deref().unwrap_or("(no filename recorded)")
+                    original
+                        .filename
+                        .as_deref()
+                        .unwrap_or("(no filename recorded)")
                 ));
             }
             if originals.len() > MAX_CONTEXT_ORIGINALS {
@@ -1582,7 +1630,12 @@ where
         let mut shown_reads = std::collections::BTreeSet::new();
         let requests = self
             .store
-            .page_requests(&basis.actor_id, &basis.scope, &basis.task_id, &basis.cycle_id)
+            .page_requests(
+                &basis.actor_id,
+                &basis.scope,
+                &basis.task_id,
+                &basis.cycle_id,
+            )
             .await?;
         for (index, request) in requests.iter().enumerate() {
             let at = request.recorded_us.unwrap_or(0);
@@ -1618,27 +1671,33 @@ where
                 && read.status == ReadStatus::Read
                 && let Some(invocation_id) = &read.invocation_id
                 && shown_reads.insert(invocation_id.clone())
+                && let Some(transcript) = &read.transcript
             {
-                // The transcription is the reading invocation's own output.
+                // The transcription is the reading invocation's own output, as
+                // the read recorded it (also for a read made in an earlier
+                // cycle of this Task, whose invocation is not re-read here).
                 let source = format!("page-read-{index}");
-                let invocation = self
-                    .models
-                    .store
-                    .get(&basis.actor_id, &basis.scope, invocation_id)
-                    .await
-                    .map_err(model_reading_error)?;
-                if let Some(text) = transcript_envelope(&source, &invocation) {
-                    items.push((
-                        at,
-                        1,
-                        (source, InputClass::ModelOutput, text, Some(invocation_id.clone())),
-                    ));
-                }
+                let text = transcript_text(&source, transcript);
+                items.push((
+                    at,
+                    1,
+                    (
+                        source,
+                        InputClass::ModelOutput,
+                        text,
+                        Some(invocation_id.clone()),
+                    ),
+                ));
             }
         }
         let runs = self
             .store
-            .program_runs(&basis.actor_id, &basis.scope, &basis.task_id, &basis.cycle_id)
+            .program_runs(
+                &basis.actor_id,
+                &basis.scope,
+                &basis.task_id,
+                &basis.cycle_id,
+            )
             .await?;
         for (index, run) in runs.iter().enumerate() {
             let source = format!("program-run-{index}");
@@ -1663,7 +1722,12 @@ where
         }
         let verifications = self
             .store
-            .cycle_verifications(&basis.actor_id, &basis.scope, &basis.task_id, &basis.cycle_id)
+            .cycle_verifications(
+                &basis.actor_id,
+                &basis.scope,
+                &basis.task_id,
+                &basis.cycle_id,
+            )
             .await?;
         for (index, verification) in verifications.iter().enumerate() {
             let Some(text) = verification_feedback(verification) else {
@@ -1711,9 +1775,10 @@ where
     }
 
     /// Verify a cited answer's sources once, then perform its reading
-    /// requests. True when at least one request produced a new read, a
-    /// new failed attempt, a reading not yet shown in this cycle, or a
-    /// program run: only then is another turn useful.
+    /// requests. True when at least one request produced a new read, a new
+    /// failed attempt, a reading or settled failure not yet shown in this
+    /// cycle, or a program run: only then is another turn useful. Refused
+    /// requests are recorded and reported back in the next context.
     pub async fn after_answer(
         &self,
         basis: &ClaimBasis,
@@ -1796,23 +1861,37 @@ where
                     self.store.record_page_request(basis, &record).await?
                 }
             };
-            progress |= match record.outcome {
-                RequestOutcome::Read | RequestOutcome::Failed => true,
-                RequestOutcome::Refused => false,
-                // A reused reading is new information for this cycle only the
-                // first time it is shown.
-                RequestOutcome::Reused => {
+            // A request is progress only the first time this cycle shows the
+            // read it produced or reused (a new read or failed attempt is
+            // always first); a refusal, or a reading or settled failure the
+            // model was already shown, is not.
+            progress |= match &record.read {
+                None => false,
+                Some(read) => {
                     let shown = self
                         .store
-                        .page_requests(&basis.actor_id, &basis.scope, &basis.task_id, &basis.cycle_id)
+                        .page_requests(
+                            &basis.actor_id,
+                            &basis.scope,
+                            &basis.task_id,
+                            &basis.cycle_id,
+                        )
                         .await?;
-                    let read = record.read.as_ref().and_then(|r| r.invocation_id.clone());
+                    let same = |r: &PageRequestRecord| {
+                        r.read.as_ref().is_some_and(|other| {
+                            other.original_id == read.original_id
+                                && other.original_sha256 == read.original_sha256
+                                && other.page == read.page
+                                && other.attempt == read.attempt
+                        })
+                    };
                     shown
                         .iter()
-                        .filter(|r| r.read.as_ref().and_then(|r| r.invocation_id.clone()) == read)
+                        .filter(|r| same(r))
                         .min_by_key(|r| (r.recorded_us, r.invocation_id.clone(), r.ordinal))
-                        .is_some_and(|first| {
-                            first.invocation_id == record.invocation_id && first.ordinal == record.ordinal
+                        .is_none_or(|first| {
+                            first.invocation_id == record.invocation_id
+                                && first.ordinal == record.ordinal
                         })
                 }
             };
@@ -1857,15 +1936,6 @@ fn transient_reason(reason: &str) -> bool {
     .iter()
     .any(|e| e.as_str() == reason)
 }
-fn model_reading_error(error: ModelError) -> ReadingError {
-    match error {
-        ModelError::Denied => ReadingError::Denied,
-        ModelError::Fenced => ReadingError::Fenced,
-        ModelError::Capacity => ReadingError::Capacity,
-        _ => ReadingError::Unavailable,
-    }
-}
-
 /// How an earlier answer's citations were verified, for the next turn.
 fn verification_feedback(verification: &AnswerVerification) -> Option<String> {
     if verification.failed {

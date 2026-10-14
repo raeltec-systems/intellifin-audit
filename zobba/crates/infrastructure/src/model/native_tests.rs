@@ -2313,6 +2313,8 @@ fn page_request(provider: Provider, bytes: Vec<u8>) -> ModelRequest {
     use sha2::Digest;
     let mut request = request(provider);
     request.profile.capabilities.image_input = true;
+    // A page read carries the catalogue with no tools.
+    request.catalogue.tools.clear();
     request.structured_output = Some(zobba_domain::citation::PageTranscript::schema());
     let sha256 = format!("{:x}", sha2::Sha256::digest(&bytes));
     request.messages[1].images = vec![ImagePart {
@@ -2348,8 +2350,8 @@ async fn openai_sends_one_page_image_and_anthropic_refuses_before_any_send() {
     assert_eq!(outcome.completion, Completion::Succeeded);
     let seen = fixture.requests.lock().await;
     assert_eq!(seen.len(), 1);
-    // The page read is offered no tools, although the catalogue has one.
-    assert!(!request.catalogue.tools.is_empty());
+    // The page read is offered no tools.
+    assert!(request.catalogue.tools.is_empty());
     assert_eq!(seen[0].body["tools"], serde_json::json!([]));
     let content = &seen[0].body["input"][1]["content"];
     assert_eq!(content[0]["type"], "input_text");

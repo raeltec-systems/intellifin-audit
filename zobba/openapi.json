@@ -10228,7 +10228,7 @@
           },
           "readable": {
             "type": "boolean",
-            "description": "False when the current viewer cannot read this original. Its quote,\nfilename, version and digest are then withheld."
+            "description": "False when the current viewer cannot read this original, or when\nverification did not establish the exact original. Its quote,\nfilename, version, digest and location are then withheld."
           },
           "reason": {
             "type": [
@@ -10259,7 +10259,8 @@
         "type": "string",
         "enum": [
           "verified",
-          "unverified"
+          "unverified",
+          "unchecked"
         ]
       },
       "CitedAnswerResponse": {
@@ -10268,7 +10269,8 @@
           "invocation_id",
           "text",
           "segments",
-          "limitations"
+          "limitations",
+          "verification_failed"
         ],
         "properties": {
           "invocation_id": {
@@ -10290,6 +10292,10 @@
           "text": {
             "type": "string",
             "description": "The unchanged answer text."
+          },
+          "verification_failed": {
+            "type": "boolean",
+            "description": "True when trusted verification of this answer could not be completed;\nevery source is then `unchecked`."
           }
         }
       },

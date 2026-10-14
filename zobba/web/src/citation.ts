@@ -17,6 +17,8 @@ export type UnverifiedReason = 'not_found_at_location' | 'location_missing' | 's
 
 const reasons: readonly UnverifiedReason[] = ['not_found_at_location', 'location_missing', 'source_unreadable', 'page_only'];
 const MAX_ANSWER_BYTES = 16384, MAX_SEGMENTS = 64, MAX_SOURCES = 8, MAX_QUOTE_BYTES = 1000, MAX_LOCATOR_BYTES = 300;
+/// The evidence filename bound (Story 21.1): at most 255 UTF-8 bytes.
+const MAX_FILENAME_BYTES = 255;
 const bytes = (value: string) => new TextEncoder().encode(value).length;
 
 function invalid(): never { throw new Error('Invalid answers response'); }
@@ -39,6 +41,12 @@ function label(value: unknown): string {
   if (typeof value !== 'string' || value.length === 0 || bytes(value) > MAX_LOCATOR_BYTES || /[\u0000-\u001f\u007f-\u009f]/.test(value)) invalid();
   return value;
 }
+/// An attributed evidence filename under the same bound the evidence viewer
+/// accepts. Its text is data; only control characters are refused.
+function filename(value: unknown): string {
+  if (typeof value !== 'string' || value.length === 0 || bytes(value) > MAX_FILENAME_BYTES || /[\u0000-\u001f\u007f-\u009f]/.test(value)) invalid();
+  return value;
+}
 function offset(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) invalid();
   return value;
@@ -47,13 +55,16 @@ function offset(value: unknown): number {
 export function parseSource(value: unknown): CitationSource {
   const v = record(value);
   if (typeof v.readable !== 'boolean') invalid();
-  const verification = v.verification === 'verified' || v.verification === 'unverified' ? v.verification : invalid();
+  const verification = v.verification === 'verified' || v.verification === 'unverified' || v.verification === 'unchecked' ? v.verification : invalid();
   const reason = optional(v.reason, value => reasons.includes(value as UnverifiedReason) ? value as UnverifiedReason : invalid());
-  if ((verification === 'verified') !== (reason === null)) invalid();
+  // Exactly an unverified source carries a closed reason.
+  if ((verification === 'unverified') !== (reason !== null)) invalid();
+  // An unchecked source (its answer's verification failed) names no exact original.
+  if (verification === 'unchecked' && v.readable !== false) invalid();
   const source: CitationSource = {
     original_id: identifier(v.original_id),
     readable: v.readable,
-    filename: optional(v.filename, value => label(value)),
+    filename: optional(v.filename, filename),
     version: optional(v.version, value => label(value)),
     sha256: optional(v.sha256, value => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value) ? value : invalid()),
     locator: optional(v.locator, label),
@@ -64,9 +75,12 @@ export function parseSource(value: unknown): CitationSource {
     verification,
     reason,
   };
-  // An unreadable source discloses nothing beyond its closed verification.
-  const disclosed = [source.filename, source.version, source.sha256, source.quote];
-  if (source.readable ? disclosed.some(value => value === null) : disclosed.some(value => value !== null)) invalid();
+  // An unreadable source discloses nothing beyond its closed verification: no
+  // quote, filename, version, digest or location. A readable one names its
+  // exact original; its filename may be unrecorded.
+  const required = [source.version, source.sha256, source.quote];
+  const disclosed = [source.filename, source.version, source.sha256, source.quote, source.locator, source.location, source.byte_start, source.byte_end];
+  if (source.readable ? required.some(value => value === null) : disclosed.some(value => value !== null)) invalid();
   if ((source.locator === null) !== (source.location === null)) invalid();
   const start = source.byte_start ?? null, end = source.byte_end ?? null;
   if ((start === null) !== (end === null) || (start !== null && end !== null && start >= end)) invalid();
@@ -79,24 +93,47 @@ export function parseAnswer(value: unknown): CitedAnswer {
     const s = record(segment);
     return { text: text(s.text, MAX_ANSWER_BYTES), sources: array(s.sources, MAX_SOURCES).map(parseSource) };
   });
+  if (typeof v.verification_failed !== 'boolean') invalid();
   const answer: CitedAnswer = {
     invocation_id: identifier(v.invocation_id),
     text: text(v.text, MAX_ANSWER_BYTES),
     segments,
     limitations: array(v.limitations, 16).map(value => text(value, 500)),
+    verification_failed: v.verification_failed,
   };
   // The answer is unchanged: its segments are exactly its text.
   if (segments.length === 0 || segments.map(segment => segment.text).join('') !== answer.text) invalid();
+  // A failed verification checked nothing; a completed one checked every source.
+  const unchecked = segments.flatMap(segment => segment.sources).map(source => source.verification === 'unchecked');
+  if (unchecked.some(value => value !== answer.verification_failed)) invalid();
   return answer;
 }
 
-export function parseAnswers(value: unknown): CitedAnswer[] {
-  const answers = array(record(value).answers, 20).map(parseAnswer);
-  if (new Set(answers.map(answer => answer.invocation_id)).size !== answers.length) invalid();
-  return answers;
+/// Answers that parsed, oldest first, and how many were skipped because they
+/// did not parse. One malformed answer never hides the others.
+export interface TaskAnswers {
+  answers: CitedAnswer[];
+  skipped: number;
 }
 
-export async function readTaskAnswers(scope: Scope, taskId: string, session: Session | null, signal: AbortSignal): Promise<CitedAnswer[]> {
+export function parseAnswers(value: unknown): TaskAnswers {
+  const answers: CitedAnswer[] = [];
+  let skipped = 0;
+  const seen = new Set<string>();
+  for (const item of array(record(value).answers, 20)) {
+    try {
+      const answer = parseAnswer(item);
+      if (seen.has(answer.invocation_id)) { skipped += 1; continue; }
+      seen.add(answer.invocation_id);
+      answers.push(answer);
+    } catch {
+      skipped += 1;
+    }
+  }
+  return { answers, skipped };
+}
+
+export async function readTaskAnswers(scope: Scope, taskId: string, session: Session | null, signal: AbortSignal): Promise<TaskAnswers> {
   parseScope(scope);
   const query = new URLSearchParams({ organisation_id: scope.organisation_id, client_id: scope.client_id });
   return parseAnswers(await readSessionJson(`/engagements/${encodeURIComponent(scope.engagement_id)}/tasks/${identifier(taskId)}/answers?${query}`, session, signal));
@@ -122,6 +159,8 @@ export const reasonLabel: Record<UnverifiedReason, string> = {
   source_unreadable: 'The source could not be read safely.',
   page_only: 'Only the page was confirmed; the page was read as an image.',
 };
+/** Shown on a source whose answer could not be verified at all. */
+export const uncheckedLabel = 'Verification of this answer could not be completed; this source was not checked.';
 
 /** The location to show when an original is opened from a citation. */
 export interface CitedLocation {

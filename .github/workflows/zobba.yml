@@ -117,13 +117,19 @@ jobs:
           fi
           # Control: the dev graph does enable it, so the check above is live.
           cargo tree --locked -p zobba-worker -e normal,dev,features | grep -q 'test-docker-sandbox'
+      # build.sh refuses any other buildx release: the image digest depends on it.
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          version: v0.37.1
+          driver: docker
       - name: Build the pinned general analysis image reproducibly (hostile Docker and reading fixtures)
         # The digest must equal zobba_domain::analysis::GENERAL_IMAGE_DIGEST.
         # build.sh fetches hash-pinned wheels and builds with fixed timestamps;
         # the worker suites (analysis_sandbox.rs, citations.rs) run real programs
         # in it from a local registry and fail, never skip, without it.
         run: |
-          docker run -d --name zobba-registry -p 127.0.0.1:5000:5000 mirror.gcr.io/library/registry:2
+          # The disposable local registry is itself pinned by digest.
+          docker run -d --name zobba-registry -p 127.0.0.1:5000:5000 mirror.gcr.io/library/registry@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
           digest=$(zobba/deploy/qualification/analysis/general/build.sh 127.0.0.1:5000/zobba/analysis-general:ci | tail -n 1)
           test "$digest" = "sha256:8241deca19d20b576c0d4b2ad75deac753492d335de45d284766df3d5666ea5f"
           docker pull "127.0.0.1:5000/zobba/analysis-general@$digest"
@@ -157,7 +163,12 @@ jobs:
           path: /tmp/zobba-browser-results
           if-no-files-found: ignore
       - name: Verify lockfiles and generated interface were not changed
-        run: git diff --exit-code -- Cargo.lock pnpm-lock.yaml openapi.json web/src/generated
+        run: git diff --exit-code -- Cargo.lock pnpm-lock.yaml openapi.json web/src/generated web/tests/fixtures
+      - name: Remove the disposable image registry and test images
+        if: always()
+        run: |
+          docker rm -f zobba-registry 2>/dev/null || true
+          docker image ls -q --filter 'reference=127.0.0.1:5000/zobba/*' | sort -u | xargs -r docker image rm -f || true
 
   # Story 20.7a: the qualification environment, verified with no AWS access.
   # No AWS credentials exist in this job; Terraform tests use mocked providers.

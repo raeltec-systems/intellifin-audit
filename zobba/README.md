@@ -1714,7 +1714,25 @@ chip (short filename, `+N` further sources); hover or keyboard focus shows a
 card with the file, location, a bounded quote, Open (the evidence viewer at
 the cited location of the exact original, a cited byte range marked in the
 preview) and, only for an unverified source, "Unverified" with its reason.
-Escape dismisses the card and keeps focus on the chip.
+Escape dismisses the card; with focus in the chip or card it also returns
+focus to the chip, while a card shown by hover alone closes without taking the
+key from whatever has focus. The card is positioned against its own chip. When
+trusted verification of an answer could not be completed, the answer is still
+shown and each source is `unchecked` (`verification_failed: true`); a turn with
+no answer text (one that only requested reading) is never listed. One response
+that does not parse is skipped with a notice and never blanks the others.
+
+Review-fix rules (2026-10-14): capacity, unavailability, an unsettled or
+cancelled job and a transient provider condition never become recorded facts
+and never consume a page's 3 attempts; they end the step for a later reclaim.
+A page read is offered no tools (its catalogue carries none). A page read in an
+earlier cycle is reused: its recorded transcription is shown again and nothing
+is disclosed again. The next turn also lists every refused or settled request
+with its closed reason and how each earlier citation was verified. Readings are
+ordered by database time; when bounds trim, the newest are kept, an oversized
+one is skipped and an omission line says so. The render guard pins the trusted
+document program by its SHA-256 prefix, as the document-environment admission
+does; a model-written program can never output a page image.
 
 The production worker still composes no qualification source, so no model
 reads documents in production; `zobba_worker::work::ReadingComposition` is the
@@ -1738,7 +1756,17 @@ image: a native page read (one image, one disclosure), a page past the end of a
 PDF, the model's program, every verification result above over real xlsx,
 docx, PDF, email, plain-text, zip-bomb and encrypted fixtures
 (`fixtures/documents/generate.py`), the cited-answer API including withheld
-sources, and the database guards.
+sources, and the database guards. It also reads a JPEG photo and refuses an
+oversized PNG page without disclosure, verifies a macro workbook cell (the
+macro is never run) and a cell range, records a failing program
+(`program_failed`) and an unregistered input (`input_not_registered`), refuses
+forged, re-roled or unrecorded transcriptions in a later request (Conflict, not
+prepared), lists only answers with text, and reuses the first cycle's page read
+in a second cycle. The exact API JSON it receives is
+`web/tests/fixtures/task-answers.json`, which the web unit tests parse
+(`ZOBBA_UPDATE_ANSWER_FIXTURE=1` rewrites it after an intended change).
+Changing schema 16 requires regenerating `crates/infrastructure/src/schema-v16.catalog`
+from a migrated disposable database.
 
 ## Establishing an engagement conversationally (Story 22.2 AC4)
 

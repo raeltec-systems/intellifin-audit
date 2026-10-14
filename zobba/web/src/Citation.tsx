@@ -2,7 +2,7 @@ import { useContext, useEffect, useId, useRef, useState } from 'react';
 import type { AccessError } from './auth';
 import type { Scope } from './engagements';
 import { EvidenceNavigation } from './EvidenceNavigation';
-import { boundedQuote, chipLabel, reasonLabel } from './citation';
+import { boundedQuote, chipLabel, reasonLabel, uncheckedLabel } from './citation';
 import type { CitationSource, UnverifiedReason } from './citation';
 
 interface Props {
@@ -17,7 +17,8 @@ interface Props {
 /// dismissible with Escape, hoverable, persistent until dismissed or left).
 /// Open navigates the evidence viewer to the cited location of the exact
 /// original. The card says "unverified" with its closed reason only when a
-/// source is unverified; a verified source shows no badge.
+/// source is unverified (or "unchecked" when its answer's verification could
+/// not be completed); a verified source shows no badge.
 export function Citation({ scope, sources, accessReady, onSourceAccessFailure }: Props) {
   const navigation = useContext(EvidenceNavigation);
   const [open, setOpen] = useState(false);
@@ -34,14 +35,18 @@ export function Citation({ scope, sources, accessReady, onSourceAccessFailure }:
   useEffect(() => { if (open) panel.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [open]);
   useEffect(() => {
     if (!open) return;
-    // Captured first: while the card is shown, Escape dismisses only the card
-    // and never also closes the Task details around it.
+    // Captured first. With focus in the chip or its card, Escape dismisses
+    // only the card (never also the Task details around it) and returns focus
+    // to the chip. A card shown by hover alone is dismissed too (WCAG 1.4.13),
+    // but the key then still reaches whatever owns the focus.
     const escape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
+      const focused = wrapper.current?.contains(document.activeElement) ?? false;
+      setOpen(false);
+      if (!focused) return;
       event.preventDefault();
       event.stopPropagation();
-      setOpen(false);
-      if (wrapper.current?.contains(document.activeElement)) chip.current?.focus();
+      chip.current?.focus();
     };
     window.addEventListener('keydown', escape, true);
     return () => window.removeEventListener('keydown', escape, true);
@@ -59,6 +64,7 @@ export function Citation({ scope, sources, accessReady, onSourceAccessFailure }:
         {source.location ? <span className="citation-location">{source.location}</span> : <span className="citation-location">No location given</span>}
         {source.readable && source.quote ? <q className="citation-quote">{boundedQuote(source.quote)}</q> : null}
         {source.verification === 'unverified' ? <span className="citation-unverified">Unverified · {reasonLabel[source.reason as UnverifiedReason]}</span> : null}
+        {source.verification === 'unchecked' ? <span className="citation-unverified">Unchecked · {uncheckedLabel}</span> : null}
         {navigation && source.readable && source.version && source.sha256 ? <button type="button" className="text-button citation-open" disabled={!accessReady}
           onClick={event => {
             const opener = chip.current ?? event.currentTarget;

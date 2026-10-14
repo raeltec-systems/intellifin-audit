@@ -68,14 +68,17 @@ test('a citation chip shows its sources on focus and hover, dismisses with Escap
   };
   const hidden = {
     original_id: 'restricted', readable: false, filename: null, version: null, sha256: null,
-    locator: 'page:1', location: 'page 1', byte_start: null, byte_end: null, quote: null, verification: 'unverified', reason: 'source_unreadable',
+    locator: null, location: null, byte_start: null, byte_end: null, quote: null, verification: 'unverified', reason: 'source_unreadable',
   };
   const answer = {
     invocation_id: 'invocation-a', text: 'The opening balance is 1,250.00. It was signed off.',
     segments: [{ text: 'The opening balance is 1,250.00.', sources: [verified, pageOnly, hidden] }, { text: ' It was signed off.', sources: [] }],
     limitations: ['Page 9 of the contract does not exist.'],
+    verification_failed: false,
   };
-  await page.route('**/api/engagements/engagement-a/tasks/*/answers?*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ answers: [answer] }) }));
+  // One malformed answer beside it is skipped with a notice, never blanking the rest.
+  const malformed = { ...answer, invocation_id: 'invocation-b', text: 'Edited after verification.' };
+  await page.route('**/api/engagements/engagement-a/tasks/*/answers?*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ answers: [answer, malformed] }) }));
   await page.getByRole('button', { name: 'Open Agree the opening balance', exact: true }).click();
   const answers = page.getByRole('region', { name: 'Answers', exact: true });
   // The answer is shown as written, with the chip after its cited span.
@@ -83,6 +86,8 @@ test('a citation chip shows its sources on focus and hover, dismisses with Escap
   await expect(text).toContainText('The opening balance is 1,250.00.');
   await expect(text).toContainText('It was signed off.');
   await expect(answers).toContainText('Page 9 of the contract does not exist.');
+  await expect(page.getByText('1 answer could not be shown because the response for it was not valid.', { exact: true })).toBeVisible();
+  await expect(answers.locator('.cited-answer')).toHaveCount(1);
 
   // The chip: short filename and +N for the further sources.
   const chip = answers.getByRole('button', { name: /^Citation: Notes\.txt, Scanned letter\.pdf, a source you cannot open$/ });
@@ -101,6 +106,12 @@ test('a citation chip shows its sources on focus and hover, dismisses with Escap
   await expect(card).toContainText('A source you cannot open');
   // A verified source has no badge; an unreadable one shows no quote.
   await expect(card.locator('.citation-unverified')).toHaveCount(2);
+  // The card is placed against its own chip, just below it.
+  const chipBox = (await chip.boundingBox())!;
+  const cardBox = (await card.boundingBox())!;
+  expect(cardBox.y).toBeGreaterThanOrEqual(chipBox.y + chipBox.height - 1);
+  expect(cardBox.y).toBeLessThan(chipBox.y + chipBox.height + 16);
+  expect(Math.abs(cardBox.x - chipBox.x)).toBeLessThan(2);
   await capture(page, info, 'citation-card.png');
   await page.keyboard.press('Escape');
   await expect(card).toBeHidden();
@@ -114,6 +125,17 @@ test('a citation chip shows its sources on focus and hover, dismisses with Escap
   await expect(card).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(card).toBeHidden();
+
+  // A card shown by hover while focus is elsewhere is dismissed by Escape,
+  // but focus is not taken to the chip.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.mouse.move(0, 0);
+  await chip.hover();
+  await expect(card).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(card).toBeHidden();
+  await expect(chip).not.toBeFocused();
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
 
   // Open: the evidence viewer opens the exact original at the cited bytes.
   // Enter on the focused chip shows the card again; Tab reaches Open.

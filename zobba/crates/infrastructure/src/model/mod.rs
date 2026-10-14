@@ -179,8 +179,14 @@ async fn current_configuration(tx: &mut Tx, request: &ModelRequest) -> Result<()
         .bind(org).bind(&request.catalogue.id).fetch_optional(&mut **tx).await.map_err(db)?;
     let profile: StoredProfile = decode(profile.ok_or(ModelError::Fenced)?)?;
     let catalogue: StoredCatalog = decode(catalogue.ok_or(ModelError::Fenced)?)?;
+    // A native page read (Story 22.5) carries the current catalogue with no
+    // tools: it may propose nothing. Every other request carries it exactly.
+    let mut expected = catalogue.0.clone();
+    if request.messages.iter().any(|m| !m.images.is_empty()) {
+        expected.tools.clear();
+    }
     if profile.0 != request.profile
-        || catalogue.0 != request.catalogue
+        || expected != request.catalogue
         || !profile.0.enabled
         || !catalogue.0.enabled
     {

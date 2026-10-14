@@ -972,4 +972,9 @@ fn page_images_ride_only_on_an_attributed_user_message() {
     let mut undisclosed = image_request();
     undisclosed.disclosure.attachments.clear();
     assert_eq!(undisclosed.validate(), Err(ModelError::Invalid));
+    // A page read is offered no tools.
+    let mut tooled = image_request();
+    tooled.catalogue = request().catalogue;
+    assert!(!tooled.catalogue.tools.is_empty());
+    assert_eq!(tooled.validate(), Err(ModelError::Invalid));
 }

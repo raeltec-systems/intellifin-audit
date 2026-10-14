@@ -305,7 +305,12 @@ and recover jobs. To enable it:
    `deploy/qualification/analysis/general/build.sh <repository>:22.5` fetches
    the hash-pinned wheels (pandas, openpyxl, python-docx, pypdfium2) and builds
    with `SOURCE_DATE_EPOCH=0` and rewritten layer timestamps, then prints the
-   manifest digest. It must equal `GENERAL_IMAGE_DIGEST` in
+   manifest digest. The script pins every input: the base by index digest
+   (pulled through `mirror.gcr.io`, override with `ZOBBA_BASE_MIRROR`), pip
+   25.2 by hash in a temporary virtual environment, and buildx v0.37.1 (it
+   refuses another release; override with `ZOBBA_BUILDX_VERSION` only to
+   investigate a difference). It removes its working files on exit, including
+   on failure. The digest must equal `GENERAL_IMAGE_DIGEST` in
    `crates/domain/src/analysis.rs`
    (`sha256:8241deca19d20b576c0d4b2ad75deac753492d335de45d284766df3d5666ea5f`,
    Story 22.5); Terraform refuses any other value. The base is

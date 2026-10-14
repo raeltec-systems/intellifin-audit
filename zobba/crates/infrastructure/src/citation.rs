@@ -232,7 +232,9 @@ fn program_run_from(row: &PgRow) -> Result<ProgramRun, ReadingError> {
         reason: field(row, "reason")?,
         recorded_us: Some(field(row, "created_us")?),
     };
-    run.is_valid().then_some(run).ok_or(ReadingError::Unavailable)
+    run.is_valid()
+        .then_some(run)
+        .ok_or(ReadingError::Unavailable)
 }
 const REQUEST_COLUMNS: &str = "q.task_id AS q_task_id,q.cycle_id AS q_cycle_id,q.invocation_id AS q_invocation_id,q.ordinal AS q_ordinal,q.original_id AS q_original_id,q.page AS q_page,q.outcome AS q_outcome,q.reason AS q_reason,q.created_us AS q_created_us,r.*";
 const REQUEST_JOIN: &str = "public.task_page_requests q LEFT JOIN public.task_page_reads r ON (r.organisation_id,r.client_id,r.engagement_id,r.task_id,r.original_id,r.original_sha256,r.page,r.attempt)=(q.organisation_id,q.client_id,q.engagement_id,q.task_id,q.original_id,q.read_sha256,q.page,q.read_attempt)";
@@ -629,8 +631,14 @@ impl ReadingStore for CitationRepository {
         ordinal: u32,
     ) -> Result<Option<PageRequestRecord>, ReadingError> {
         let mut tx = begin(&self.pool, actor, s).await?;
-        let row = sqlx::query(&format!("SELECT {REQUEST_COLUMNS} FROM {REQUEST_JOIN} WHERE q.invocation_id=$1 AND q.ordinal=$2"))
-            .bind(invocation_id).bind(ordinal as i32).fetch_optional(&mut *tx).await.map_err(unavailable)?;
+        let row = sqlx::query(&format!(
+            "SELECT {REQUEST_COLUMNS} FROM {REQUEST_JOIN} WHERE q.invocation_id=$1 AND q.ordinal=$2"
+        ))
+        .bind(invocation_id)
+        .bind(ordinal as i32)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(unavailable)?;
         let record = row.as_ref().map(request_from).transpose()?;
         tx.commit().await.map_err(unavailable)?;
         Ok(record)
@@ -670,8 +678,14 @@ impl ReadingStore for CitationRepository {
             &format!("request:{}:{}", request.invocation_id, request.ordinal),
         )
         .await?;
-        let existing = sqlx::query(&format!("SELECT {REQUEST_COLUMNS} FROM {REQUEST_JOIN} WHERE q.invocation_id=$1 AND q.ordinal=$2"))
-            .bind(&request.invocation_id).bind(request.ordinal as i32).fetch_optional(&mut *tx).await.map_err(unavailable)?;
+        let existing = sqlx::query(&format!(
+            "SELECT {REQUEST_COLUMNS} FROM {REQUEST_JOIN} WHERE q.invocation_id=$1 AND q.ordinal=$2"
+        ))
+        .bind(&request.invocation_id)
+        .bind(request.ordinal as i32)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(unavailable)?;
         if let Some(row) = existing {
             let stored = request_from(&row)?;
             tx.commit().await.map_err(unavailable)?;
@@ -695,8 +709,14 @@ impl ReadingStore for CitationRepository {
             .bind(request.read.as_ref().map(|r| r.original_sha256.clone()))
             .bind(request.read.as_ref().map(|r| r.attempt as i32))
             .execute(&mut *tx).await.map_err(refusal)?;
-        let row = sqlx::query(&format!("SELECT {REQUEST_COLUMNS} FROM {REQUEST_JOIN} WHERE q.invocation_id=$1 AND q.ordinal=$2"))
-            .bind(&request.invocation_id).bind(request.ordinal as i32).fetch_one(&mut *tx).await.map_err(unavailable)?;
+        let row = sqlx::query(&format!(
+            "SELECT {REQUEST_COLUMNS} FROM {REQUEST_JOIN} WHERE q.invocation_id=$1 AND q.ordinal=$2"
+        ))
+        .bind(&request.invocation_id)
+        .bind(request.ordinal as i32)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(unavailable)?;
         let stored = request_from(&row)?;
         tx.commit().await.map_err(unavailable)?;
         Ok(stored)
@@ -914,7 +934,19 @@ mod pin_tests {
         let migration = include_str!("../../../migrations/0016_citations.sql");
         let sha = format!("{:x}", Sha256::digest(DOCUMENT_PROGRAM.as_bytes()));
         let bytes = DOCUMENT_PROGRAM.len();
-        assert!(migration.contains(&format!("'{sha}'")), "document program SHA-256 {sha}");
+        // Both the document-environment admission and the render guard.
+        assert_eq!(
+            migration.matches(&format!("'{sha}'")).count(),
+            2,
+            "document program SHA-256 {sha}"
+        );
+        assert_eq!(
+            migration
+                .matches(&format!("FROM 1 FOR {bytes})),'hex')"))
+                .count(),
+            2,
+            "document program length {bytes}"
+        );
         assert!(
             migration.contains(&format!("octet_length(program) <= {bytes}")),
             "document program length {bytes}"

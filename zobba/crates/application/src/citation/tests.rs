@@ -238,7 +238,13 @@ fn every_matrix_row_gets_its_closed_result_and_the_answer_is_unchanged() {
         (" Uncited closing sentence.", vec![]),
     ]);
     let before = original.clone();
-    let citations = run(verify(&reader, &basis(), &original, &ModelCancellation::new())).unwrap();
+    let citations = run(verify(
+        &reader,
+        &basis(),
+        &original,
+        &ModelCancellation::new(),
+    ))
+    .unwrap();
     assert_eq!(original, before, "verification never edits the answer");
     assert_eq!(
         reasons(&citations),
@@ -308,7 +314,12 @@ fn a_fence_ends_verification_but_a_failed_read_is_only_unreadable() {
     // An invalid answer is refused before any read.
     let invalid = answer(vec![("", vec![])]);
     assert_eq!(
-        run(verify(&reader(), &basis(), &invalid, &ModelCancellation::new())),
+        run(verify(
+            &reader(),
+            &basis(),
+            &invalid,
+            &ModelCancellation::new()
+        )),
         Err(ReadingError::Invalid)
     );
 }
@@ -321,8 +332,14 @@ fn transient_reads_end_verification_and_a_wrong_location_kind_is_not_found() {
         let mut busy = reader();
         busy.transient = Some(error);
         for cited in [
-            answer(vec![("Claim.", vec![source("trial-balance", "cell:Sheet1!B4", "1,250.00")])]),
-            answer(vec![("Claim.", vec![source("contract-pdf", "page:2", "Payment")])]),
+            answer(vec![(
+                "Claim.",
+                vec![source("trial-balance", "cell:Sheet1!B4", "1,250.00")],
+            )]),
+            answer(vec![(
+                "Claim.",
+                vec![source("contract-pdf", "page:2", "Payment")],
+            )]),
         ] {
             assert_eq!(
                 run(verify(&busy, &basis(), &cited, &ModelCancellation::new())),
@@ -333,7 +350,10 @@ fn transient_reads_end_verification_and_a_wrong_location_kind_is_not_found() {
     // A cell locator into a document that has no cells: not at that location.
     let mut wrong = reader();
     wrong.unsupported.push("contract-pdf".into());
-    let cited = answer(vec![("Claim.", vec![source("contract-pdf", "cell:Sheet1!A1", "x")])]);
+    let cited = answer(vec![(
+        "Claim.",
+        vec![source("contract-pdf", "cell:Sheet1!A1", "x")],
+    )]);
     assert_eq!(
         reasons(&run(verify(&wrong, &basis(), &cited, &ModelCancellation::new())).unwrap()),
         vec![vec![Some(R::NotFoundAtLocation)]]

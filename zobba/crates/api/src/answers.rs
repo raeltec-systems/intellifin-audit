@@ -160,11 +160,7 @@ pub(crate) async fn get_answers(
         let mut segments = Vec::new();
         for (index, segment) in answer.segments.iter().enumerate() {
             let sources = if failed {
-                segment
-                    .sources
-                    .iter()
-                    .map(|source| unchecked(source))
-                    .collect()
+                segment.sources.iter().map(unchecked).collect()
             } else {
                 verification
                     .citations
@@ -175,12 +171,11 @@ pub(crate) async fn get_answers(
                             .sources
                             .iter()
                             .map(|verified| {
-                                // Only the exact original verification read is navigable.
-                                let original = verified.original_sha256.as_ref().and_then(|sha| {
-                                    originals
-                                        .get(&verified.source.original_id)
-                                        .filter(|o| &o.sha256 == sha)
-                                });
+                                let original = exact_original(
+                                    &originals,
+                                    &verified.source.original_id,
+                                    verified.original_sha256.as_deref(),
+                                );
                                 source_response(
                                     &verified.source,
                                     original,
@@ -215,9 +210,25 @@ pub(crate) async fn get_answers(
     Json(TaskAnswersResponse { answers }).into_response()
 }
 
+/// Only the exact original verification read, as the viewer may read it now,
+/// is navigable: with no recorded digest, nothing is.
+fn exact_original<'a>(
+    originals: &'a std::collections::BTreeMap<String, ViewerOriginal>,
+    id: &str,
+    sha256: Option<&str>,
+) -> Option<&'a ViewerOriginal> {
+    originals
+        .get(id)
+        .filter(|o| sha256.is_some_and(|sha| o.sha256 == sha))
+}
+
 fn unchecked(source: &CitationSource) -> CitationSourceResponse {
     // No exact original was established, so nothing is navigable.
-    source_response(source, None, (CitationVerificationResponse::Unchecked, None))
+    source_response(
+        source,
+        None,
+        (CitationVerificationResponse::Unchecked, None),
+    )
 }
 
 fn source_response(
@@ -244,5 +255,95 @@ fn source_response(
         quote: readable.then(|| source.quote.clone()),
         verification,
         reason,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn source(locator: &str) -> CitationSource {
+        CitationSource {
+            original_id: "notes".into(),
+            locator: Locator::parse(locator),
+            quote: "1,250.00".into(),
+        }
+    }
+    fn viewer() -> ViewerOriginal {
+        ViewerOriginal {
+            filename: Some("Notes.txt".into()),
+            version: "v1".into(),
+            sha256: "a".repeat(64),
+        }
+    }
+
+    #[test]
+    fn a_readable_source_is_navigable_to_its_exact_location() {
+        let response = source_response(
+            &source("bytes:16-24"),
+            Some(&viewer()),
+            (CitationVerificationResponse::Verified, None),
+        );
+        assert!(response.readable);
+        assert_eq!(response.quote.as_deref(), Some("1,250.00"));
+        assert_eq!(
+            (response.byte_start, response.byte_end),
+            (Some(16), Some(24))
+        );
+        assert_eq!(response.locator.as_deref(), Some("bytes:16-24"));
+        assert_eq!(response.version.as_deref(), Some("v1"));
+    }
+
+    /// A viewer who can see the Task but not the original (or a source whose
+    /// exact original verification never established) learns only the
+    /// closed verification: no quote, filename, version, digest, locator,
+    /// location or byte offsets.
+    #[test]
+    fn a_source_the_viewer_cannot_read_is_withheld_entirely() {
+        for verification in [
+            (CitationVerificationResponse::Verified, None),
+            (
+                CitationVerificationResponse::Unverified,
+                Some("source_unreadable".to_string()),
+            ),
+            (CitationVerificationResponse::Unchecked, None),
+        ] {
+            let response = source_response(&source("bytes:16-24"), None, verification);
+            assert!(!response.readable);
+            assert!(
+                response.quote.is_none()
+                    && response.filename.is_none()
+                    && response.version.is_none()
+                    && response.sha256.is_none()
+                    && response.locator.is_none()
+                    && response.location.is_none()
+                    && response.byte_start.is_none()
+                    && response.byte_end.is_none()
+            );
+            assert_eq!(response.original_id, "notes");
+        }
+    }
+
+    #[test]
+    fn only_the_exact_verified_original_is_navigable() {
+        let originals = std::collections::BTreeMap::from([("notes".to_string(), viewer())]);
+        let sha = "a".repeat(64);
+        assert!(exact_original(&originals, "notes", Some(&sha)).is_some());
+        assert!(
+            exact_original(&originals, "notes", None).is_none(),
+            "no recorded digest"
+        );
+        assert!(exact_original(&originals, "notes", Some(&"b".repeat(64))).is_none());
+        assert!(exact_original(&originals, "other", Some(&sha)).is_none());
+    }
+
+    #[test]
+    fn an_unchecked_source_never_names_an_original() {
+        let response = unchecked(&source("page:2"));
+        assert!(!response.readable && response.locator.is_none());
+        assert!(matches!(
+            response.verification,
+            CitationVerificationResponse::Unchecked
+        ));
     }
 }

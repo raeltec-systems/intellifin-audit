@@ -267,7 +267,10 @@ impl ReadingStore for Store<'_> {
             .unwrap()
             .iter()
             .filter(|r| {
-                r.task_id == task && r.original_id == original && r.original_sha256 == sha && r.page == page
+                r.task_id == task
+                    && r.original_id == original
+                    && r.original_sha256 == sha
+                    && r.page == page
             })
             .cloned()
             .collect())
@@ -419,12 +422,16 @@ impl ReadingStore for Store<'_> {
         citations: &[StoredCitation],
     ) -> Result<Vec<StoredCitation>, ReadingError> {
         let recorded_us = Some(self.facts.tick());
-        self.facts.verifications.lock().unwrap().push(AnswerVerification {
-            invocation_id: id.into(),
-            failed: false,
-            citations: citations.to_vec(),
-            recorded_us,
-        });
+        self.facts
+            .verifications
+            .lock()
+            .unwrap()
+            .push(AnswerVerification {
+                invocation_id: id.into(),
+                failed: false,
+                citations: citations.to_vec(),
+                recorded_us,
+            });
         Ok(citations.to_vec())
     }
     async fn record_verification_failure(
@@ -433,12 +440,16 @@ impl ReadingStore for Store<'_> {
         id: &str,
     ) -> Result<(), ReadingError> {
         let recorded_us = Some(self.facts.tick());
-        self.facts.verifications.lock().unwrap().push(AnswerVerification {
-            invocation_id: id.into(),
-            failed: true,
-            citations: vec![],
-            recorded_us,
-        });
+        self.facts
+            .verifications
+            .lock()
+            .unwrap()
+            .push(AnswerVerification {
+                invocation_id: id.into(),
+                failed: true,
+                citations: vec![],
+                recorded_us,
+            });
         Ok(())
     }
 }
@@ -674,7 +685,13 @@ fn model_failure_records_a_failed_read_without_text_and_retries_are_bounded() {
     assert_eq!(store.facts.reads.lock().unwrap().len(), reads);
     // A page number beyond any document is refused before anything happens.
     assert_eq!(
-        run(reading.read_page(&basis("p1"), "methodology", ORIGINAL, MAX_PAGE_NUMBER + 1, &cancel)),
+        run(reading.read_page(
+            &basis("p1"),
+            "methodology",
+            ORIGINAL,
+            MAX_PAGE_NUMBER + 1,
+            &cancel
+        )),
         Err(ReadingError::Invalid)
     );
 }
@@ -748,7 +765,9 @@ fn a_scanned_page_is_page_only_and_a_text_layer_verifies_it() {
             .unwrap();
     assert!(more, "the answer asked to read further");
     // Verification ran before the read: the page was not yet sent.
-    let citations = store.facts.verifications.lock().unwrap()[0].citations.clone();
+    let citations = store.facts.verifications.lock().unwrap()[0]
+        .citations
+        .clone();
     assert_eq!(
         citations[0].sources[0].verification,
         Verification::Unverified(UnverifiedReason::NotFoundAtLocation)
@@ -950,12 +969,26 @@ fn page_requests_report_refusals_reuse_across_cycles_and_continue_only_on_progre
     let cancel = ModelCancellation::new();
     // Cycle 1: a new read is progress, and its transcription is shown.
     let (first, answer) = reading_turn("turn-1", vec![3]);
-    assert!(run(reading.after_answer(&basis("p1"), "methodology", &first, &answer, &cancel)).unwrap());
+    assert!(
+        run(reading.after_answer(&basis("p1"), "methodology", &first, &answer, &cancel)).unwrap()
+    );
     let context = run(reading.reading_context(&basis("p1"))).unwrap();
-    assert!(context.readings.iter().any(|r| r.2.contains("was read natively")));
-    assert!(context.readings.iter().any(|r| r.3.is_some() && r.2.contains("Signed by A. Auditor")));
+    assert!(
+        context
+            .readings
+            .iter()
+            .any(|r| r.2.contains("was read natively"))
+    );
+    assert!(
+        context
+            .readings
+            .iter()
+            .any(|r| r.3.is_some() && r.2.contains("Signed by A. Auditor"))
+    );
     // A reclaim repeats nothing and still reports the same progress.
-    assert!(run(reading.after_answer(&basis("p1"), "methodology", &first, &answer, &cancel)).unwrap());
+    assert!(
+        run(reading.after_answer(&basis("p1"), "methodology", &first, &answer, &cancel)).unwrap()
+    );
     assert_eq!(h.models.store.requests.lock().unwrap().len(), 1);
 
     // Cycle 2 asks for the same page: the reading is reused, never disclosed
@@ -963,14 +996,32 @@ fn page_requests_report_refusals_reuse_across_cycles_and_continue_only_on_progre
     let mut second_cycle = basis("p1");
     second_cycle.cycle_id = "cycle-2".into();
     let (reuse, answer) = reading_turn("turn-2", vec![3]);
-    assert!(run(reading.after_answer(&second_cycle, "methodology", &reuse, &answer, &cancel)).unwrap());
+    assert!(
+        run(reading.after_answer(&second_cycle, "methodology", &reuse, &answer, &cancel)).unwrap()
+    );
     let context = run(reading.reading_context(&second_cycle)).unwrap();
-    assert!(context.readings.iter().any(|r| r.2.contains("already read natively earlier")));
-    assert!(context.readings.iter().any(|r| r.3.is_some() && r.2.contains("Signed by A. Auditor")));
-    assert_eq!(h.models.store.requests.lock().unwrap().len(), 1, "one disclosure");
+    assert!(
+        context
+            .readings
+            .iter()
+            .any(|r| r.2.contains("already read natively earlier"))
+    );
+    assert!(
+        context
+            .readings
+            .iter()
+            .any(|r| r.3.is_some() && r.2.contains("Signed by A. Auditor"))
+    );
+    assert_eq!(
+        h.models.store.requests.lock().unwrap().len(),
+        1,
+        "one disclosure"
+    );
     // Asking again in the same cycle adds nothing: no further turn.
     let (again, answer) = reading_turn("turn-3", vec![3]);
-    assert!(!run(reading.after_answer(&second_cycle, "methodology", &again, &answer, &cancel)).unwrap());
+    assert!(
+        !run(reading.after_answer(&second_cycle, "methodology", &again, &answer, &cancel)).unwrap()
+    );
 
     // An unregistered original and a page past the end are reported back.
     let (refused, mut answer) = reading_turn("turn-4", vec![9]);
@@ -978,10 +1029,23 @@ fn page_requests_report_refusals_reuse_across_cycles_and_continue_only_on_progre
         original_id: "not-registered".into(),
         page: 1,
     });
-    assert!(run(reading.after_answer(&second_cycle, "methodology", &refused, &answer, &cancel)).unwrap());
+    assert!(
+        run(reading.after_answer(&second_cycle, "methodology", &refused, &answer, &cancel))
+            .unwrap()
+    );
     let context = run(reading.reading_context(&second_cycle)).unwrap();
-    assert!(context.readings.iter().any(|r| r.2.contains("failed (page_not_found)")));
-    assert!(context.readings.iter().any(|r| r.2.contains("not performed (original_not_registered)")));
+    assert!(
+        context
+            .readings
+            .iter()
+            .any(|r| r.2.contains("failed (page_not_found)"))
+    );
+    assert!(
+        context
+            .readings
+            .iter()
+            .any(|r| r.2.contains("not performed (original_not_registered)"))
+    );
 
     // A profile without native page reading refuses every page request and
     // never renders or discloses anything.
@@ -993,10 +1057,15 @@ fn page_requests_report_refusals_reuse_across_cycles_and_continue_only_on_progre
     };
     let reading = plain.reading(&store);
     let (turn, answer) = reading_turn("turn-5", vec![3]);
-    assert!(!run(reading.after_answer(&basis("p1"), "methodology", &turn, &answer, &cancel)).unwrap());
+    assert!(
+        !run(reading.after_answer(&basis("p1"), "methodology", &turn, &answer, &cancel)).unwrap()
+    );
     let requests = store.facts.requests.lock().unwrap().clone();
     assert_eq!(requests[0].outcome, RequestOutcome::Refused);
-    assert_eq!(requests[0].reason.as_deref(), Some("page_reading_unavailable"));
+    assert_eq!(
+        requests[0].reason.as_deref(),
+        Some("page_reading_unavailable")
+    );
     assert!(plain.world.sandbox.started.lock().unwrap().is_empty());
 }
 
@@ -1021,11 +1090,15 @@ fn program_outcomes_are_closed_facts_and_retries_are_identical() {
         world: &h.world,
     };
     let reading = h.reading(&store);
-    let completed = run(reading.run_program(&basis("p1"), "answer-1", 0, &program, &cancel)).unwrap();
+    let completed =
+        run(reading.run_program(&basis("p1"), "answer-1", 0, &program, &cancel)).unwrap();
     assert_eq!(completed.status, ProgramStatus::Completed);
     let output = completed.output.clone().unwrap();
     assert!(output.contains("Total 1250"));
-    assert!(output.contains("2 further output file(s) are not included"), "{output}");
+    assert!(
+        output.contains("2 further output file(s) are not included"),
+        "{output}"
+    );
     // The model's program ran in the general environment, never the one
     // whose outputs may be page images.
     let spec = h.world.sandbox.seen_spec.lock().unwrap().clone().unwrap();
@@ -1036,14 +1109,20 @@ fn program_outcomes_are_closed_facts_and_retries_are_identical() {
     assert!(again.same_fact(&completed));
     assert_eq!(h.world.sandbox.started.lock().unwrap().len(), started);
 
-    for (status, reason) in [("failed", "program_failed"), ("limit_exceeded", "program_limit")] {
+    for (status, reason) in [
+        ("failed", "program_failed"),
+        ("limit_exceeded", "program_limit"),
+    ] {
         let h = Harness::new(vec![regular("total.txt", b"partial\n")], vec![]);
         let store = Store {
             facts: Facts::default(),
             world: &h.world,
         };
         *store.facts.failure.lock().unwrap() = Some(status.into());
-        let run_ = run(h.reading(&store).run_program(&basis("p1"), "answer-1", 0, &program, &cancel))
+        let run_ =
+            run(h
+                .reading(&store)
+                .run_program(&basis("p1"), "answer-1", 0, &program, &cancel))
             .unwrap();
         assert_eq!(
             (run_.status, run_.reason.as_deref(), run_.output.as_deref()),
@@ -1061,7 +1140,10 @@ fn program_outcomes_are_closed_facts_and_retries_are_identical() {
         inputs: vec!["not-registered".into()],
         ..program.clone()
     };
-    let refused = run(h.reading(&store).run_program(&basis("p1"), "answer-1", 0, &unregistered, &cancel))
+    let refused =
+        run(h
+            .reading(&store)
+            .run_program(&basis("p1"), "answer-1", 0, &unregistered, &cancel))
         .unwrap();
     assert_eq!(refused.reason.as_deref(), Some("input_not_registered"));
     assert!(h.world.sandbox.started.lock().unwrap().is_empty());
@@ -1103,19 +1185,26 @@ fn reading_context_is_ordered_by_record_time_keeps_the_newest_and_states_omissio
         store.facts.requests.lock().unwrap().push(refused(at));
     }
     for at in (2..=(MAX_CONTEXT_READINGS as i64 + 4)).step_by(2) {
-        store.facts.runs.lock().unwrap().push(program_run(0, at, format!("output {at}")));
+        store
+            .facts
+            .runs
+            .lock()
+            .unwrap()
+            .push(program_run(0, at, format!("output {at}")));
     }
     // One run far too large on its own, recorded in the middle.
-    store
-        .facts
-        .runs
-        .lock()
-        .unwrap()
-        .push(program_run(0, 7, "x".repeat(MAX_CONTEXT_READING_BYTES + 1)));
+    store.facts.runs.lock().unwrap().push(program_run(
+        0,
+        7,
+        "x".repeat(MAX_CONTEXT_READING_BYTES + 1),
+    ));
     let reading = h.reading(&store);
     let context = run(reading.reading_context(&b)).unwrap();
     let texts: Vec<&str> = context.readings.iter().map(|r| r.2.as_str()).collect();
-    assert!(texts[0].contains("earlier readings of this cycle are omitted"), "{texts:?}");
+    assert!(
+        texts[0].contains("earlier readings of this cycle are omitted"),
+        "{texts:?}"
+    );
     assert_eq!(context.readings.len(), MAX_CONTEXT_READINGS + 1);
     // The newest is kept, the oversized one skipped, the order is real time.
     let newest = MAX_CONTEXT_READINGS as i64 + 4;
@@ -1128,7 +1217,14 @@ fn reading_context_is_ordered_by_record_time_keeps_the_newest_and_states_omissio
             if let Some(at) = text.split("\noutput ").nth(1) {
                 at.split_whitespace().next().unwrap().parse().unwrap()
             } else {
-                text.split("read page ").nth(1).unwrap().split_whitespace().next().unwrap().parse().unwrap()
+                text.split("read page ")
+                    .nth(1)
+                    .unwrap()
+                    .split_whitespace()
+                    .next()
+                    .unwrap()
+                    .parse()
+                    .unwrap()
             }
         })
         .collect();
@@ -1145,13 +1241,18 @@ fn verification_results_are_fed_back_and_a_failed_verification_keeps_the_answer(
     let reading = h.reading(&store);
     let cancel = ModelCancellation::new();
     let mut answer = cited("page:3", "Signed by A. Auditor");
-    answer.segments[0].sources.push(zobba_domain::citation::CitationSource {
-        original_id: ORIGINAL.into(),
-        locator: None,
-        quote: "x".into(),
-    });
+    answer.segments[0]
+        .sources
+        .push(zobba_domain::citation::CitationSource {
+            original_id: ORIGINAL.into(),
+            locator: None,
+            quote: "x".into(),
+        });
     let invocation = answer_invocation();
-    assert!(!run(reading.after_answer(&basis("p1"), "methodology", &invocation, &answer, &cancel)).unwrap());
+    assert!(
+        !run(reading.after_answer(&basis("p1"), "methodology", &invocation, &answer, &cancel))
+            .unwrap()
+    );
     let context = run(reading.reading_context(&basis("p1"))).unwrap();
     let feedback: Vec<&str> = context
         .readings
@@ -1161,7 +1262,10 @@ fn verification_results_are_fed_back_and_a_failed_verification_keeps_the_answer(
         .collect();
     assert_eq!(feedback.len(), 1);
     assert!(feedback[0].contains("segment 1 source 1: orig-a at page:3: verified"));
-    assert!(feedback[0].contains("segment 1 source 2: orig-a at (no locator): unverified (location_missing)"));
+    assert!(
+        feedback[0]
+            .contains("segment 1 source 2: orig-a at (no locator): unverified (location_missing)")
+    );
     // An answer that cannot be verified at all is recorded as such.
     let invalid = CitedAnswer {
         segments: vec![Segment {
@@ -1178,7 +1282,12 @@ fn verification_results_are_fed_back_and_a_failed_verification_keeps_the_answer(
         .unwrap();
     assert!(recorded.failed && recorded.citations.is_empty());
     let context = run(reading.reading_context(&basis("p1"))).unwrap();
-    assert!(context.readings.iter().any(|r| r.2.contains("could not be verified")));
+    assert!(
+        context
+            .readings
+            .iter()
+            .any(|r| r.2.contains("could not be verified"))
+    );
 }
 
 #[test]
@@ -1192,8 +1301,202 @@ fn only_the_exact_trusted_document_program_is_recognised() {
     assert!(is_document_program(&locate));
     // Appended code, a changed program body or a non-canonical literal is not it.
     assert!(!is_document_program(&format!("{render}import os\n")));
-    assert!(!is_document_program(&render.replacen("MAX_PIXELS", "MAX_PIXEL", 1)));
-    assert!(!is_document_program(&render.replace("\\u0022", "\\u0022\\u0022")));
+    assert!(!is_document_program(&render.replacen(
+        "MAX_PIXELS",
+        "MAX_PIXEL",
+        1
+    )));
+    assert!(!is_document_program(
+        &render.replace("\\u0022", "\\u0022\\u0022")
+    ));
     assert!(!is_document_program(&document_program("[1]")));
     assert!(!is_document_program("print(1)\n"));
+}
+
+fn original_ref() -> CitedOriginal {
+    CitedOriginal {
+        id: ORIGINAL.into(),
+        sha256: digest(INPUT),
+    }
+}
+fn located(json: &str) -> Vec<zobba_domain::analysis::OutputEntry> {
+    vec![regular("located.json", json.as_bytes())]
+}
+fn locators(values: &[&str]) -> Vec<Locator> {
+    values.iter().map(|v| Locator::parse(v).unwrap()).collect()
+}
+
+/// The trusted locate run decides each structured locator; anything it did
+/// not definitely answer is unreadable, never a silent match or miss.
+#[test]
+fn trusted_locate_maps_each_result_and_fails_closed() {
+    let cancel = ModelCancellation::new();
+    let asked = locators(&["cell:Sheet1!B4", "cell:Sheet1!B5", "cell:Sheet1!B6"]);
+    let h = Harness::new(
+        located(
+            r#"{"status":"read","reason":null,"results":[{"locator":"cell:Sheet1!B4","status":"found","texts":["1,250.00","1250"]},{"locator":"cell:Sheet1!B5","status":"missing","texts":[]}]}"#,
+        ),
+        vec![],
+    );
+    let store = Store {
+        facts: Facts::default(),
+        world: &h.world,
+    };
+    let reading = h.reading(&store);
+    assert_eq!(
+        run(reading.locate(&basis("p1"), &original_ref(), &asked, &cancel)).unwrap(),
+        vec![
+            Located::Found(vec!["1,250.00".into(), "1250".into()]),
+            Located::Missing,
+            Located::Unreadable,
+        ]
+    );
+    // A locator family the document does not have: not at that location.
+    let h = Harness::new(
+        located(r#"{"status":"unsupported","reason":"unsupported_format","results":[]}"#),
+        vec![],
+    );
+    let store = Store {
+        facts: Facts::default(),
+        world: &h.world,
+    };
+    assert_eq!(
+        run(h
+            .reading(&store)
+            .locate(&basis("p1"), &original_ref(), &asked, &cancel))
+        .unwrap(),
+        vec![Located::Missing; 3]
+    );
+    // Unreadable, unparsable, absent output, a failed program or an original
+    // no longer registered: unreadable.
+    for (entries, failure, hidden) in [
+        (
+            located(r#"{"status":"unreadable","reason":"unsafe_package","results":[]}"#),
+            None,
+            false,
+        ),
+        (located("not json"), None, false),
+        (vec![], None, false),
+        (
+            located(r#"{"status":"read","reason":null,"results":[]}"#),
+            Some("failed"),
+            false,
+        ),
+        (
+            located(r#"{"status":"read","reason":null,"results":[]}"#),
+            None,
+            true,
+        ),
+    ] {
+        let h = Harness::new(entries, vec![]);
+        let store = Store {
+            facts: Facts::default(),
+            world: &h.world,
+        };
+        *store.facts.failure.lock().unwrap() = failure.map(String::from);
+        if hidden {
+            store.facts.hidden.lock().unwrap().push(ORIGINAL.into());
+        }
+        assert_eq!(
+            run(h
+                .reading(&store)
+                .locate(&basis("p1"), &original_ref(), &asked, &cancel))
+            .unwrap(),
+            vec![Located::Unreadable; 3]
+        );
+    }
+}
+
+#[test]
+fn byte_ranges_read_the_exact_original_or_report_why_not() {
+    let h = Harness::new(vec![], vec![]);
+    let store = Store {
+        facts: Facts::default(),
+        world: &h.world,
+    };
+    let reading = h.reading(&store);
+    let text = std::str::from_utf8(INPUT).unwrap();
+    assert_eq!(
+        run(reading.byte_range(&basis("p1"), &original_ref(), 0, 6)).unwrap(),
+        Located::Found(vec![text[..6].into()])
+    );
+    // Beyond the original: not at that location.
+    assert_eq!(
+        run(reading.byte_range(&basis("p1"), &original_ref(), 0, 999)).unwrap(),
+        Located::Missing
+    );
+    // Another digest than the registered one, or no registered original.
+    let changed = CitedOriginal {
+        sha256: "f".repeat(64),
+        ..original_ref()
+    };
+    assert_eq!(
+        run(reading.byte_range(&basis("p1"), &changed, 0, 6)).unwrap(),
+        Located::Unreadable
+    );
+    let absent = CitedOriginal {
+        id: "absent".into(),
+        ..original_ref()
+    };
+    assert_eq!(
+        run(reading.byte_range(&basis("p1"), &absent, 0, 6)).unwrap(),
+        Located::Unreadable
+    );
+}
+
+#[test]
+fn page_facts_name_the_rendered_page_and_whether_it_was_read() {
+    let cancel = ModelCancellation::new();
+    let h = Harness::new(
+        rendered(Some("Signed by A. Auditor")),
+        vec![Completion::Succeeded],
+    );
+    let store = Store {
+        facts: Facts::default(),
+        world: &h.world,
+    };
+    let reading = h.reading(&store);
+    let facts = run(reading.page(&basis("p1"), &original_ref(), 3, &cancel))
+        .unwrap()
+        .unwrap();
+    assert!(facts.exists && !facts.read_natively);
+    assert_eq!(facts.text_layer.as_deref(), Some("Signed by A. Auditor"));
+    // Read natively, the same rendered page is recorded as read.
+    run(reading.read_page(&basis("p1"), "methodology", ORIGINAL, 3, &cancel)).unwrap();
+    assert!(
+        run(reading.page(&basis("p1"), &original_ref(), 3, &cancel))
+            .unwrap()
+            .unwrap()
+            .read_natively
+    );
+    // A page the render does not hold does not exist.
+    assert!(
+        !run(reading.page(&basis("p1"), &original_ref(), 2, &cancel))
+            .unwrap()
+            .unwrap()
+            .exists
+    );
+    // A document the trusted program could not render, or an original no
+    // longer registered: no page facts.
+    let h = Harness::new(vec![], vec![]);
+    let store = Store {
+        facts: Facts::default(),
+        world: &h.world,
+    };
+    *store.facts.failure.lock().unwrap() = Some("failed".into());
+    assert_eq!(
+        run(h
+            .reading(&store)
+            .page(&basis("p1"), &original_ref(), 1, &cancel))
+        .unwrap(),
+        None
+    );
+    store.facts.hidden.lock().unwrap().push(ORIGINAL.into());
+    assert_eq!(
+        run(h
+            .reading(&store)
+            .page(&basis("p1"), &original_ref(), 1, &cancel))
+        .unwrap(),
+        None
+    );
 }

@@ -186,8 +186,13 @@ BEGIN
   END IF;
  ELSIF TG_TABLE_NAME='document_renders' THEN
   -- A render is the fact of a collected job over exactly this original.
+  -- The job ran exactly the trusted document program (its pinned SHA-256
+  -- prefix, as admitted to the document environment).
   IF NOT EXISTS(SELECT 1 FROM public.analysis_jobs j JOIN public.analysis_job_events e ON e.job_id=j.id AND e.status='collected'
      WHERE j.id=NEW.job_id AND j.environment_id='document-python-3-13'
+       AND octet_length(convert_to(j.program,'UTF8')) > 19327
+       AND encode(sha256(substring(convert_to(j.program,'UTF8') FROM 1 FOR 19327)),'hex')='8abd34b8ef01866706cb18717a95ace272cedf55ce675cb0d7796553983ca849'
+       AND j.program_sha256=encode(sha256(convert_to(j.program,'UTF8')),'hex')
        AND j.inputs=jsonb_build_array(jsonb_build_object('original_id',NEW.original_id,'digest',NEW.original_sha256))) THEN
    RAISE EXCEPTION 'a render names a collected job over its exact original' USING ERRCODE='23514';
   END IF;

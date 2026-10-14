@@ -22,7 +22,8 @@ use zobba_application::{
     analysis::{AnalysisSettings, AnalysisTarget},
     evidence::EvidenceObjects,
     model::{
-        Capabilities, ModelProfile, ModelQualificationSource, Provider, Qualification, ToolCatalog,
+        Capabilities, HistoryItem, MessageRole, ModelProfile, ModelQualificationSource,
+        ModelRequest, ModelStore, Provider, Qualification, ToolCatalog,
     },
     operation::OperationStore,
     task::TaskCommands,
@@ -35,7 +36,7 @@ use zobba_domain::{
         EnvironmentKind, PermissionBounds, PermissionRule, PolicyDocument, PolicyKind, Purpose,
         ReadRestriction, SourceBinding,
     },
-    task::{CommandKind, TaskCommand, TaskState},
+    task::{CommandKind, CommandReceipt, TaskCommand, TaskState},
 };
 use zobba_infrastructure::{
     RuntimeDatabase,
@@ -45,7 +46,7 @@ use zobba_infrastructure::{
     fixture::seed_local_configured,
     identity::{IdentityRepository, secret_hash},
     migrate,
-    model::{ModelRepository, native::NativeAdapter},
+    model::{ModelRepository, bind_disclosure, native::NativeAdapter},
     operation::OperationRepository,
     task::TaskRepository,
 };
@@ -310,10 +311,14 @@ fn segment(text: &str, sources: Vec<serde_json::Value>) -> serde_json::Value {
     serde_json::json!({"text": text, "sources": sources})
 }
 
-const PROGRAM: &str = "import openpyxl\nbook = openpyxl.load_workbook(open('/input/trial-balance', 'rb'), data_only=True)\nopen('/output/total.txt', 'w').write(f\"Total {book['Sheet1']['B4'].value}\\n\")\n";
+/// The model's own analysis program: one text output it relies on, plus a
+/// non-UTF-8 output and one beyond the context bound, which are only counted.
+const PROGRAM: &str = "import openpyxl\nbook = openpyxl.load_workbook(open('/input/trial-balance', 'rb'), data_only=True)\nopen('/output/total.txt', 'w').write(f\"Total {book['Sheet1']['B4'].value}\\n\")\nopen('/output/blob.txt', 'wb').write(b'\\xff\\xfe')\nopen('/output/big.csv', 'w').write('a' * 20000)\n";
+/// A program that fails on its own: its outputs are never relied on.
+const FAILING_PROGRAM: &str = "import sys\nsys.exit(1)\n";
 
 /// The model's first answer asks to read a scanned page natively, a page past
-/// the end of a PDF, and to run its own analysis program.
+/// the end of a PDF, a photo, an oversized page, and to run its own program.
 fn first_answer() -> String {
     serde_json::json!({
         "segments": [segment("I will read the scanned letter and total the trial balance.", vec![])],
@@ -321,10 +326,17 @@ fn first_answer() -> String {
         "read_pages": [
             {"original_id": "scan", "page": 3},
             {"original_id": "contract-pdf", "page": 9},
+            {"original_id": "receipt", "page": 1},
+            {"original_id": "oversized", "page": 1},
         ],
         "programs": [{"program": PROGRAM, "inputs": ["trial-balance"]}],
     })
     .to_string()
+}
+/// Intermediate turns with no answer text: they only request reading.
+fn reading_only(read_pages: serde_json::Value, programs: serde_json::Value) -> String {
+    serde_json::json!({"segments": [], "limitations": [], "read_pages": read_pages, "programs": programs})
+        .to_string()
 }
 /// The final cited answer: one segment per matrix row.
 fn final_answer() -> (String, Vec<&'static str>) {
@@ -381,6 +393,18 @@ fn final_answer() -> (String, Vec<&'static str>) {
             " An unregistered source is cited.",
             vec![src("not-registered", "page:1", "secret quote")],
         ),
+        (
+            " The receipt photo shows 42.00.",
+            vec![src("receipt", "page:1", "Receipt total 42.00")],
+        ),
+        (
+            " The macro workbook agrees the total.",
+            vec![src("macro", "cell:Sheet1!B4", "1,250.00")],
+        ),
+        (
+            " The total row reads Total 1250.",
+            vec![src("trial-balance", "cell:Sheet1!A4:B4", "Total 1250")],
+        ),
         (" This closing sentence is not cited.", vec![]),
     ];
     let texts = segments.iter().map(|(t, _)| *t).collect();
@@ -391,6 +415,26 @@ fn final_answer() -> (String, Vec<&'static str>) {
         "programs": [],
     });
     (answer.to_string(), texts)
+}
+/// The second cycle's answer, relying on a page read in the first cycle.
+fn second_cycle_answer() -> String {
+    serde_json::json!({
+        "segments": [segment("The letter is signed.", vec![src("scan", "page:3", "Signed by A. Auditor")])],
+        "limitations": [],
+        "read_pages": [],
+        "programs": [],
+    })
+    .to_string()
+}
+/// A PNG original far beyond the page image bound (only its header is valid:
+/// the trusted renderer refuses it by size before anything is decoded).
+fn oversized_png() -> Vec<u8> {
+    let mut bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR".to_vec();
+    bytes.extend_from_slice(&1000u32.to_be_bytes());
+    bytes.extend_from_slice(&1000u32.to_be_bytes());
+    bytes.extend_from_slice(&[8, 2, 0, 0, 0, 0, 0, 0, 0]);
+    bytes.resize(3 * 1024 * 1024, 0x5a);
+    bytes
 }
 
 async fn register(
@@ -405,6 +449,15 @@ async fn register(
             .join(filename),
     )
     .unwrap();
+    register_bytes(admin, objects, id, filename, bytes).await
+}
+async fn register_bytes(
+    admin: &mut PgConnection,
+    objects: &S3EvidenceObjects,
+    id: &str,
+    filename: &str,
+    bytes: Vec<u8>,
+) -> String {
     let digest = sha(&bytes);
     let version = objects.put_if_absent(id, bytes.clone()).await.unwrap();
     let request = serde_json::json!({"key": id, "filename": filename, "sha256": digest, "size": bytes.len(), "system": null, "account": null, "source_version": null, "selection": null, "coverage": null}).to_string();
@@ -485,9 +538,19 @@ async fn cited_answers_are_read_and_verified_against_exact_originals() {
         ("notes", "Notes.txt"),
         ("zip-bomb", "Zip bomb.xlsx"),
         ("encrypted", "Encrypted.xlsx"),
+        ("receipt", "Receipt photo.jpg"),
+        ("macro", "Macro workbook.xlsm"),
     ] {
         register(&mut admin, &objects, id, filename).await;
     }
+    register_bytes(
+        &mut admin,
+        &objects,
+        "oversized",
+        "Oversized page.png",
+        oversized_png(),
+    )
+    .await;
 
     let operations = OperationRepository::new(pool.clone());
     let organisation = policy(PolicyKind::Organisation, "org-a");
@@ -579,7 +642,22 @@ async fn cited_answers_are_read_and_verified_against_exact_originals() {
     let provider = Loopback::answering(vec![
         text_reply(&first_answer()),
         text_reply(r#"{"text":"Signed by A. Auditor","unreadable":[]}"#),
+        text_reply(r#"{"text":"Receipt total 42.00","unreadable":["The stamp is illegible"]}"#),
+        text_reply(&reading_only(
+            serde_json::json!([]),
+            serde_json::json!([{"program": FAILING_PROGRAM, "inputs": ["notes"]}]),
+        )),
+        text_reply(&reading_only(
+            serde_json::json!([]),
+            serde_json::json!([{"program": "print(1)\n", "inputs": ["not-registered"]}]),
+        )),
         text_reply(&final_text),
+        // Second cycle: re-request a page read in the first, then answer.
+        text_reply(&reading_only(
+            serde_json::json!([{"original_id": "scan", "page": 3}]),
+            serde_json::json!([]),
+        )),
+        text_reply(&second_cycle_answer()),
     ])
     .await;
     let unused = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -628,33 +706,14 @@ async fn cited_answers_are_read_and_verified_against_exact_originals() {
         runner,
         shutdown,
     ));
-    let deadline = Instant::now() + Duration::from_secs(300);
-    loop {
-        let verified: i64 = sqlx::query_scalar("SELECT count(*) FROM public.answer_verifications")
-            .fetch_one(&mut admin)
-            .await
-            .unwrap();
-        let task = tasks
-            .get("actor-a", &scope(), &receipt.task_id)
-            .await
-            .unwrap();
-        if verified == 2 && task.state == TaskState::Waiting {
-            break;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "the cited cycle did not settle: {verified} verified, Task {:?}",
-            task.state
-        );
-        tokio::time::sleep(Duration::from_millis(250)).await;
-    }
+    settle(&mut admin, &tasks, &receipt.task_id, 4).await;
     assert_eq!(
         provider.sends.load(Ordering::SeqCst),
-        3,
-        "two answer turns and exactly one native page read"
+        6,
+        "four answer turns and exactly two native page reads"
     );
 
-    // One page per request: only the page read carries an image, and exactly one.
+    // One page per request: only the page reads carry an image, one each.
     let bodies = provider.bodies.lock().unwrap().clone();
     let images: Vec<usize> = bodies
         .iter()
@@ -662,55 +721,77 @@ async fn cited_answers_are_read_and_verified_against_exact_originals() {
         .collect();
     assert_eq!(
         images,
-        [0, 1, 0],
+        [0, 1, 1, 0, 0, 0],
         "no whole document is sent in any request"
     );
     assert!(bodies[1].contains("data:image/png;base64,"));
     assert!(
-        bodies[2].contains("Signed by A. Auditor") && bodies[2].contains("Total 1250"),
-        "the next turn reads the transcription and the program's validated output"
+        bodies[2].contains("data:image/png;base64,"),
+        "the photo is read as a rendered page"
     );
+    // A page read is offered no tools.
+    for page in [&bodies[1], &bodies[2]] {
+        let body: serde_json::Value = serde_json::from_str(page).unwrap();
+        assert_eq!(body["tools"], serde_json::json!([]));
+    }
+    let last = &bodies[5];
+    for expected in [
+        "Signed by A. Auditor",
+        "Receipt total 42.00",
+        "The stamp is illegible",
+        "Total 1250",
+        "2 further output file(s) are not included",
+        "page_not_found",
+        "page_too_large",
+        "program_failed",
+        "input_not_registered",
+    ] {
+        assert!(
+            last.contains(expected),
+            "the next turn carries every earlier reading and its outcome: {expected}"
+        );
+    }
 
-    // The native read and the page past the end are recorded facts.
+    // The native reads and the settled failures are recorded facts.
     let reads: Vec<PageReadRow> =
         sqlx::query_as("SELECT original_id,page,status,reason,image_sha256,invocation_id FROM public.task_page_reads ORDER BY original_id,page")
             .fetch_all(&mut admin)
             .await
             .unwrap();
-    assert_eq!(reads.len(), 2, "{reads:?}");
+    let facts: Vec<(&str, i32, &str, Option<&str>)> = reads
+        .iter()
+        .map(|r| (r.0.as_str(), r.1, r.2.as_str(), r.3.as_deref()))
+        .collect();
     assert_eq!(
-        (
-            reads[0].0.as_str(),
-            reads[0].1,
-            reads[0].2.as_str(),
-            reads[0].3.as_deref()
-        ),
-        ("contract-pdf", 9, "failed", Some("page_not_found"))
+        facts,
+        [
+            ("contract-pdf", 9, "failed", Some("page_not_found")),
+            ("oversized", 1, "failed", Some("page_too_large")),
+            ("receipt", 1, "read", None),
+            ("scan", 3, "read", None),
+        ],
+        "{reads:?}"
+    );
+    assert!(
+        reads[0].5.is_none() && reads[1].5.is_none(),
+        "a settled failure disclosed nothing"
+    );
+    let image = reads[3].4.clone().unwrap();
+    let page_invocation = reads[3].5.clone().unwrap();
+    // Exactly one disclosure operation covers each page image digest.
+    assert_eq!(
+        covering(&mut admin, &image).await,
+        std::slice::from_ref(&page_invocation)
     );
     assert_eq!(
-        (reads[1].0.as_str(), reads[1].1, reads[1].2.as_str()),
-        ("scan", 3, "read")
+        covering_count(&mut admin, reads[2].4.as_deref().unwrap()).await,
+        1
     );
-    let image = reads[1].4.clone().unwrap();
-    let page_invocation = reads[1].5.clone().unwrap();
-    // Exactly one disclosure operation covers this page image digest.
     let requests: Vec<(String, serde_json::Value)> =
         sqlx::query_as("SELECT id,request FROM public.model_invocations")
             .fetch_all(&mut admin)
             .await
             .unwrap();
-    let covering: Vec<&String> = requests
-        .iter()
-        .filter(|(_, request)| {
-            request["disclosure"]["attachments"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|a| a["id"] == "page-image" && a["digest"] == image.as_str())
-        })
-        .map(|(id, _)| id)
-        .collect();
-    assert_eq!(covering, [&page_invocation]);
     let attachment = requests
         .iter()
         .find(|(id, _)| *id == page_invocation)
@@ -732,13 +813,27 @@ async fn cited_answers_are_read_and_verified_against_exact_originals() {
             .any(|(_, r)| r.to_string().contains("iVBORw0KGgo")),
         "image bytes are never stored in the request"
     );
-    // The program ran once in the sandbox; its output reached the next turn.
+    // Each program ran once in the sandbox (or was refused before it ran).
     let programs: Vec<(String, Option<String>)> =
-        sqlx::query_as("SELECT status,reason FROM public.task_program_runs")
+        sqlx::query_as("SELECT status,reason FROM public.task_program_runs ORDER BY created_us")
             .fetch_all(&mut admin)
             .await
             .unwrap();
-    assert_eq!(programs, [("completed".to_string(), None)]);
+    assert_eq!(
+        programs,
+        [
+            ("completed".to_string(), None),
+            ("failed".to_string(), Some("program_failed".to_string())),
+            (
+                "failed".to_string(),
+                Some("input_not_registered".to_string())
+            ),
+        ]
+    );
+
+    // A transcription is admitted to a later request only exactly as the
+    // recorded native read produced it, as attributed User data.
+    history_authority_refuses_forged_transcriptions(&pool, &requests, &page_invocation).await;
 
     // The cited-answer API: verification results with the answer unchanged.
     let token = identities
@@ -754,46 +849,40 @@ async fn cited_answers_are_read_and_verified_against_exact_originals() {
         .timeout(Duration::from_secs(10))
         .build()
         .unwrap();
-    let response = client
-        .get(format!(
-            "{address}/engagements/engagement-a/tasks/{}/answers?organisation_id=org-a&client_id=client-a",
-            receipt.task_id
-        ))
-        .header("Cookie", format!("__Host-zobba-session={token}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status().as_u16(), 200);
-    let body: serde_json::Value = serde_json::from_slice(&response.bytes().await.unwrap()).unwrap();
+    let answers_url = format!(
+        "{address}/engagements/engagement-a/tasks/{}/answers?organisation_id=org-a&client_id=client-a",
+        receipt.task_id
+    );
+    let read_answers = || async {
+        let response = client
+            .get(&answers_url)
+            .header("Cookie", format!("__Host-zobba-session={token}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status().as_u16(), 200);
+        serde_json::from_slice::<serde_json::Value>(&response.bytes().await.unwrap()).unwrap()
+    };
+    let body = read_answers().await;
+    answers_fixture(&body);
     let answers = body["answers"].as_array().unwrap();
-    assert_eq!(answers.len(), 2);
+    assert_eq!(
+        answers.len(),
+        2,
+        "the two intermediate reading turns are not listed as answers"
+    );
     let last = &answers[1];
     assert_eq!(
         last["text"],
         final_segments.concat(),
         "the answer text is unchanged"
     );
+    assert_eq!(last["verification_failed"], false);
     let segments = last["segments"].as_array().unwrap();
-    let results: Vec<Vec<(String, Option<String>)>> = segments
-        .iter()
-        .map(|s| {
-            s["sources"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|source| {
-                    (
-                        source["verification"].as_str().unwrap().to_string(),
-                        source["reason"].as_str().map(String::from),
-                    )
-                })
-                .collect()
-        })
-        .collect();
     let v = || ("verified".to_string(), None);
     let u = |reason: &str| ("unverified".to_string(), Some(reason.to_string()));
     assert_eq!(
-        results,
+        results(segments),
         vec![
             vec![v()],
             vec![u("not_found_at_location")],
@@ -806,6 +895,9 @@ async fn cited_answers_are_read_and_verified_against_exact_originals() {
             vec![u("source_unreadable")],
             vec![u("source_unreadable")],
             vec![u("source_unreadable")],
+            vec![u("page_only")],
+            vec![v()],
+            vec![v()],
             vec![],
         ],
         "{segments:#?}"
@@ -823,6 +915,11 @@ async fn cited_answers_are_read_and_verified_against_exact_originals() {
         .unwrap())
     );
     assert!(cell["version"].is_string());
+    assert_eq!(segments[13]["sources"][0]["location"], "Sheet1!A4:B4");
+    assert_eq!(
+        segments[12]["sources"][0]["filename"],
+        "Macro workbook.xlsm"
+    );
     let bytes = &segments[6]["sources"][0];
     assert_eq!(
         (bytes["byte_start"].as_u64(), bytes["byte_end"].as_u64()),
@@ -831,23 +928,85 @@ async fn cited_answers_are_read_and_verified_against_exact_originals() {
     let hidden = &segments[10]["sources"][0];
     assert_eq!(hidden["readable"], false);
     assert!(
-        hidden["quote"].is_null() && hidden["filename"].is_null() && hidden["version"].is_null()
+        hidden["quote"].is_null()
+            && hidden["filename"].is_null()
+            && hidden["version"].is_null()
+            && hidden["locator"].is_null()
+            && hidden["location"].is_null()
     );
     assert!(!body.to_string().contains("secret quote"));
     assert_eq!(
         last["limitations"][0],
         "Page 9 of the contract does not exist."
     );
+    // The macro was never run: the sandbox has no network and openpyxl never
+    // loads VBA; the workbook was read for its values only.
     // Without a session nothing is returned.
-    let anonymous = client
-        .get(format!(
-            "{address}/engagements/engagement-a/tasks/{}/answers?organisation_id=org-a&client_id=client-a",
-            receipt.task_id
-        ))
-        .send()
+    let anonymous = client.get(&answers_url).send().await.unwrap();
+    assert_eq!(anonymous.status().as_u16(), 401);
+
+    // A second cycle reuses the first cycle's page read: the transcription is
+    // shown again and nothing is disclosed again.
+    tasks
+        .admit(
+            "actor-a",
+            &scope(),
+            &control("cited-reading-stop", CommandKind::Stop, &receipt),
+        )
         .await
         .unwrap();
-    assert_eq!(anonymous.status().as_u16(), 401);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while tasks
+        .get("actor-a", &scope(), &receipt.task_id)
+        .await
+        .unwrap()
+        .state
+        != TaskState::Stopped
+    {
+        assert!(Instant::now() < deadline, "the Task did not stop");
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    let continued = tasks
+        .admit(
+            "actor-a",
+            &scope(),
+            &control("cited-reading-continue", CommandKind::Continue, &receipt),
+        )
+        .await
+        .unwrap();
+    assert_ne!(continued.cycle_id, receipt.cycle_id);
+    settle(&mut admin, &tasks, &receipt.task_id, 6).await;
+    assert_eq!(
+        provider.sends.load(Ordering::SeqCst),
+        8,
+        "two more answer turns and no further page read"
+    );
+    let bodies = provider.bodies.lock().unwrap().clone();
+    assert!(bodies[6..].iter().all(|b| !b.contains("\"input_image\"")));
+    assert!(
+        bodies[7].contains("Signed by A. Auditor")
+            && bodies[7].contains("already read natively earlier in this Task"),
+        "the reused reading is shown again in the new cycle"
+    );
+    assert_eq!(
+        covering(&mut admin, &image).await,
+        std::slice::from_ref(&page_invocation)
+    );
+    let reused: Vec<(String, Option<i32>)> = sqlx::query_as(
+        "SELECT outcome,read_attempt FROM public.task_page_requests WHERE cycle_id=$1",
+    )
+    .bind(&continued.cycle_id)
+    .fetch_all(&mut admin)
+    .await
+    .unwrap();
+    assert_eq!(reused, [("reused".to_string(), Some(1))]);
+    let body = read_answers().await;
+    let answers = body["answers"].as_array().unwrap();
+    assert_eq!(answers.len(), 1, "only the new cycle's answer is listed");
+    assert_eq!(
+        results(answers[0]["segments"].as_array().unwrap()),
+        vec![vec![u("page_only")]]
+    );
     server.abort();
 
     database_guards_refuse_altered_reading_facts(&mut admin).await;
@@ -868,6 +1027,231 @@ async fn cited_answers_are_read_and_verified_against_exact_originals() {
     zobba_infrastructure::analysis::docker::remove_all_test_resources().await;
     let _ = std::fs::remove_dir_all(&staging);
     s3.stop().await;
+}
+
+fn control(key: &str, kind: CommandKind, receipt: &CommandReceipt) -> TaskCommand {
+    TaskCommand {
+        context: None,
+        key: key.into(),
+        kind,
+        task_id: Some(receipt.task_id.clone()),
+        cycle_id: Some(receipt.cycle_id.clone()),
+        content: None,
+    }
+}
+
+/// Wait until `verified` answers are recorded and the Task waits for guidance.
+async fn settle(admin: &mut PgConnection, tasks: &TaskRepository, task_id: &str, verified: i64) {
+    let deadline = Instant::now() + Duration::from_secs(300);
+    loop {
+        let recorded: i64 = sqlx::query_scalar("SELECT count(*) FROM public.answer_verifications")
+            .fetch_one(&mut *admin)
+            .await
+            .unwrap();
+        let task = tasks.get("actor-a", &scope(), task_id).await.unwrap();
+        if recorded == verified && task.state == TaskState::Waiting {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the cited cycle did not settle: {recorded} verified, Task {:?}",
+            task.state
+        );
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
+
+/// Invocations whose disclosure carries this page image digest as an attachment.
+async fn covering(admin: &mut PgConnection, image: &str) -> Vec<String> {
+    sqlx::query_scalar(
+        "SELECT id FROM public.model_invocations i WHERE EXISTS(SELECT 1 FROM jsonb_array_elements(i.request->'disclosure'->'attachments') a WHERE a->>'id'='page-image' AND a->>'digest'=$1) ORDER BY id",
+    )
+    .bind(image)
+    .fetch_all(&mut *admin)
+    .await
+    .unwrap()
+}
+async fn covering_count(admin: &mut PgConnection, image: &str) -> usize {
+    covering(admin, image).await.len()
+}
+
+fn results(segments: &[serde_json::Value]) -> Vec<Vec<(String, Option<String>)>> {
+    segments
+        .iter()
+        .map(|s| {
+            s["sources"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|source| {
+                    (
+                        source["verification"].as_str().unwrap().to_string(),
+                        source["reason"].as_str().map(String::from),
+                    )
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// The exact API JSON the web parses (`web/tests/fixtures/task-answers.json`),
+/// with only its generated identifiers replaced. Set
+/// `ZOBBA_UPDATE_ANSWER_FIXTURE=1` to rewrite it after an intended change.
+fn answers_fixture(body: &serde_json::Value) {
+    fn normalise(value: &mut serde_json::Value, ids: &mut Vec<String>, versions: &mut Vec<String>) {
+        match value {
+            serde_json::Value::Object(map) => {
+                for (key, field) in map.iter_mut() {
+                    match (key.as_str(), &field) {
+                        ("invocation_id", serde_json::Value::String(id)) => {
+                            let id = id.clone();
+                            let index = ids.iter().position(|v| *v == id).unwrap_or_else(|| {
+                                ids.push(id);
+                                ids.len() - 1
+                            });
+                            *field = serde_json::json!(format!("invocation-{}", index + 1));
+                        }
+                        ("version", serde_json::Value::String(version)) => {
+                            let version = version.clone();
+                            let index =
+                                versions
+                                    .iter()
+                                    .position(|v| *v == version)
+                                    .unwrap_or_else(|| {
+                                        versions.push(version);
+                                        versions.len() - 1
+                                    });
+                            *field = serde_json::json!(format!("version-{}", index + 1));
+                        }
+                        _ => normalise(field, ids, versions),
+                    }
+                }
+            }
+            serde_json::Value::Array(items) => {
+                items
+                    .iter_mut()
+                    .for_each(|item| normalise(item, ids, versions));
+            }
+            _ => {}
+        }
+    }
+    let mut value = body.clone();
+    normalise(&mut value, &mut vec![], &mut vec![]);
+    let text = serde_json::to_string_pretty(&value).unwrap() + "\n";
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../web/tests/fixtures/task-answers.json");
+    if std::env::var_os("ZOBBA_UPDATE_ANSWER_FIXTURE").is_some() {
+        std::fs::write(&path, &text).unwrap();
+    }
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap_or_default(),
+        text,
+        "the web fixture is the exact API JSON; rerun with ZOBBA_UPDATE_ANSWER_FIXTURE=1"
+    );
+}
+
+/// A later request's transcription must be exactly the labelled output of a
+/// recorded successful native read of this Task, carried as User data: an
+/// edited text, another role, or an origin that is not a page read is refused
+/// before anything is prepared.
+async fn history_authority_refuses_forged_transcriptions(
+    pool: &sqlx::PgPool,
+    requests: &[(String, serde_json::Value)],
+    page_invocation: &str,
+) {
+    let models = ModelRepository::new(pool.clone()).with_qualification_source(Arc::new(Fixture));
+    let stored: Vec<ModelRequest> = {
+        let mut out = vec![];
+        for (id, _) in requests {
+            let invocation = models.get("actor-a", &scope(), id).await.unwrap();
+            out.push(invocation.request);
+        }
+        out
+    };
+    let carried = stored
+        .iter()
+        .find(|r| {
+            r.context
+                .entries
+                .iter()
+                .any(|e| e.depends_on.as_deref() == Some(page_invocation))
+        })
+        .expect("a later turn carries the transcription with its dependency")
+        .clone();
+    let source = carried
+        .context
+        .entries
+        .iter()
+        .find(|e| e.depends_on.as_deref() == Some(page_invocation))
+        .unwrap()
+        .source_id
+        .clone();
+    // An earlier answer invocation: it succeeded, but it is not a page read.
+    let answer_origin = requests
+        .iter()
+        .zip(&stored)
+        .find(|((id, _), request)| {
+            id != page_invocation && request.messages.iter().all(|m| m.images.is_empty())
+        })
+        .map(|((id, _), _)| id.clone())
+        .unwrap();
+    let edit = |key: &str, change: &dyn Fn(&mut ModelRequest)| {
+        let mut request = carried.clone();
+        request.key = key.into();
+        change(&mut request);
+        bind_disclosure(&mut request).unwrap();
+        request
+    };
+    let message = |request: &mut ModelRequest,
+                   apply: &dyn Fn(&mut zobba_application::model::ModelMessage)| {
+        for item in request
+            .messages
+            .iter_mut()
+            .chain(request.history.iter_mut().filter_map(|item| match item {
+                HistoryItem::Message(m) => Some(m),
+                HistoryItem::ToolExchange(_) => None,
+            }))
+        {
+            if item.source_id.as_deref() == Some(source.as_str()) {
+                apply(item);
+            }
+        }
+    };
+    let before: i64 = sqlx::query_scalar("SELECT count(*) FROM public.model_invocations")
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    let forged = edit("probe-forged-transcription", &|request| {
+        message(request, &|m| {
+            m.text = m
+                .text
+                .replace("Signed by A. Auditor", "Signed by B. Forger")
+        });
+    });
+    let assistant = edit("probe-transcription-role", &|request| {
+        message(request, &|m| m.role = MessageRole::Assistant);
+    });
+    let unread = edit("probe-transcription-origin", &|request| {
+        for entry in &mut request.context.entries {
+            if entry.source_id == source {
+                entry.depends_on = Some(answer_origin.clone());
+            }
+        }
+    });
+    for (name, probe) in [("forged", forged), ("role", assistant), ("origin", unread)] {
+        assert!(
+            matches!(
+                models.prepare("actor-a", &scope(), &probe).await,
+                Err(zobba_application::model::ModelError::Conflict)
+            ),
+            "{name} transcription"
+        );
+    }
+    let after: i64 = sqlx::query_scalar("SELECT count(*) FROM public.model_invocations")
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    assert_eq!(before, after, "nothing was prepared");
 }
 
 /// Even a privileged connection cannot rewrite or add reading facts.

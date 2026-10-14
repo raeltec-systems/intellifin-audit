@@ -123,6 +123,10 @@ impl ModelRequest {
             if !self.profile.capabilities.image_input || self.structured_output.is_none() {
                 return Err(ModelError::Unsupported);
             }
+            // A page read proposes nothing: its catalogue carries no tools.
+            if !self.catalogue.tools.is_empty() {
+                return Err(ModelError::Invalid);
+            }
             if images.len() > MAX_IMAGES_PER_REQUEST {
                 return Err(ModelError::Capacity);
             }
