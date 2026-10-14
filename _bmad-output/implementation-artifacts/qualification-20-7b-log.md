@@ -35,3 +35,11 @@ Region eu-west-1. Terraform runs in AWS CloudShell as the owner's SSO admin role
   the existing bucket. `ListBucket` is removed from the deny (object bytes stay
   worker-only); the test now asserts HeadBucket stays allowed. The admin user removes
   the applied policy with `delete-bucket-policy` (no root needed this time).
+
+## Step 5 — infrastructure complete; two plan drifts fixed (2026-10-14)
+
+- Imported the NAT gateway and both NAT routes left by the interrupted apply; the
+  remaining apply succeeded.
+- Two changes reappeared on every plan: task-definition volumes (`configure_at_launch`
+  read back as false) and `rds.force_ssl` (`apply_method` read back as pending-reboot,
+  the parameter is static in PostgreSQL 18). Both are now declared as AWS reports them.

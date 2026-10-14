@@ -12,6 +12,9 @@ resource "aws_db_parameter_group" "this" {
   parameter {
     name  = "rds.force_ssl"
     value = "1"
+    # Static in PostgreSQL 18: AWS reports pending-reboot. It is in force from
+    # creation; declaring the real method stops a change on every plan.
+    apply_method = "pending-reboot"
   }
 
   # Statement text is never logged: the role bootstrap sends

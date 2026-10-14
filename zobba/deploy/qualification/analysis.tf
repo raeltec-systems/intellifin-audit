@@ -411,6 +411,9 @@ resource "aws_ecs_task_definition" "analysis" {
     for_each = toset(local.analysis_volumes)
     content {
       name = volume.value
+      # AWS returns this as false; leaving it unset replaces the task
+      # definition on every plan.
+      configure_at_launch = false
     }
   }
 
