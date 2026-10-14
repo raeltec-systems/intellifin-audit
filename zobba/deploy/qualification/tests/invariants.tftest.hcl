@@ -922,6 +922,15 @@ run "analysis_jobs_are_isolated" {
   }
 }
 
+run "worker_service_is_valid_for_ecs" {
+  command = plan
+
+  assert {
+    condition     = aws_ecs_service.worker.deployment_maximum_percent > 100 || aws_ecs_service.worker.availability_zone_rebalancing == "DISABLED"
+    error_message = "ECS refuses AZ rebalancing when deployment_maximum_percent <= 100; the single worker must disable it"
+  }
+}
+
 run "analysis_staging_policy_keeps_bucket_manageable" {
   command = plan
 

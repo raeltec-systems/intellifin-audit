@@ -20,3 +20,13 @@ Region eu-west-1. Terraform runs in AWS CloudShell as the owner's SSO admin role
   deny now covers only object data and listing actions. A tftest proves it and fails
   on the old policy. Recovery: the root user deletes the existing bucket policy once,
   then Terraform writes the corrected one.
+
+## Step 4 — first full apply, two errors (2026-10-14)
+
+- Most resources were created. Two failed:
+  - ECS worker service: ECS refuses AZ rebalancing when `deployment_maximum_percent`
+    is 100 or less. The worker keeps 100% so two workers never overlap; rebalancing
+    is now DISABLED for the worker only. A tftest guards the combination.
+  - NAT gateway: the interrupted first apply had already created a NAT gateway that
+    holds the Elastic IP but is not in state. The new one failed. Recovery: remove
+    the failed one from state and import the existing one.
