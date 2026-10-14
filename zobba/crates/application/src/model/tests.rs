@@ -911,3 +911,65 @@ fn failed_outcomes_never_retain_reasoning_as_evidence() {
     );
     assert_eq!(retained.events.len(), 1);
 }
+
+fn image_request() -> ModelRequest {
+    let mut request = request();
+    request.catalogue.tools.clear();
+    request.profile.capabilities.image_input = true;
+    request.profile.capabilities.structured_output = true;
+    request.structured_output = Some(zobba_domain::citation::PageTranscript::schema());
+    let image = ImagePart {
+        attachment_id: "page-image".into(),
+        media_type: zobba_domain::model::ImageMediaType::Png,
+        sha256: "b".repeat(64),
+        size: 4,
+        classification: "audit".into(),
+        bytes: vec![1, 2, 3, 4],
+    };
+    request
+        .disclosure
+        .attachments
+        .push(zobba_domain::permissions::Attachment {
+            id: "page-image".into(),
+            digest: "b".repeat(64),
+            classification: "audit".into(),
+        });
+    request.messages[1].images = vec![image];
+    request
+}
+
+#[test]
+fn page_images_ride_only_on_an_attributed_user_message() {
+    assert_eq!(image_request().validate(), Ok(()));
+    let image = image_request().messages[1].images[0].clone();
+    // On the System message.
+    let mut system = image_request();
+    system.messages[1].images.clear();
+    system.messages[0].images = vec![image.clone()];
+    assert_eq!(system.validate(), Err(ModelError::Invalid));
+    // On an Assistant message.
+    let mut assistant = image_request();
+    assistant.messages[1].role = MessageRole::Assistant;
+    assert_eq!(assistant.validate(), Err(ModelError::Invalid));
+    // On a User message without an attributed source.
+    let mut unattributed = image_request();
+    unattributed.messages[1].source_id = None;
+    assert_eq!(unattributed.validate(), Err(ModelError::Invalid));
+    // In history.
+    let mut history = image_request();
+    history.messages[1].images.clear();
+    history.history.push(HistoryItem::Message(ModelMessage {
+        role: MessageRole::User,
+        text: "Earlier page".into(),
+        source_id: Some("brief".into()),
+        images: vec![image.clone()],
+    }));
+    assert_eq!(history.validate(), Err(ModelError::Invalid));
+    // Without the image capability, or without its own disclosed attachment.
+    let mut incapable = image_request();
+    incapable.profile.capabilities.image_input = false;
+    assert_eq!(incapable.validate(), Err(ModelError::Unsupported));
+    let mut undisclosed = image_request();
+    undisclosed.disclosure.attachments.clear();
+    assert_eq!(undisclosed.validate(), Err(ModelError::Invalid));
+}

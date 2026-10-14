@@ -10,6 +10,16 @@
 #   locate  - report the text at each requested locator (spreadsheet cells,
 #             Word paragraphs and table cells, email headers and parts).
 #
+# Locator semantics (the same ones the model is told):
+#   cell:Sheet!B4        one cell's displayed value forms
+#   cell:Sheet!B4:C6     the range's values in row order, empty cells skipped,
+#                        joined by single spaces
+#   paragraph:N          the N-th (1-based) body paragraph, table text excluded
+#   table:T:R:C          table T, row R, column C (1-based)
+#   header:Name          every value of one email header field
+#   part:N               the N-th text/* leaf part in MIME walk order
+# A locator that cannot be parsed is `missing` with reason `bad_reference`.
+#
 # Never: run macros, follow external links, fetch anything, fall back to OCR,
 # or invent text. An unreadable, encrypted, oversized or unsupported original
 # is reported as such with a closed reason. Every value written is bounded.
@@ -46,6 +56,31 @@ def bounded(text):
     return data[:MAX_TEXT].decode("utf-8", "ignore")
 
 
+EMAIL_FIELDS = {"from", "to", "cc", "subject", "date", "message-id", "received", "mime-version", "return-path", "reply-to", "sender"}
+
+
+def is_email_head(text):
+    """RFC 5322 header structure: field lines (with folded continuations)
+    up to an empty line, including at least one common message field."""
+    lines = text.replace("\r\n", "\n").split("\n")
+    known = False
+    fields = 0
+    for index, line in enumerate(lines):
+        if line == "":
+            return fields > 0 and known
+        if line.startswith((" ", "\t")):
+            if index == 0:
+                return False
+            continue
+        name, colon, _ = line.partition(":")
+        if not colon or not name or not all(33 <= ord(c) <= 126 and c != ":" for c in name):
+            return False
+        fields += 1
+        known = known or name.lower() in EMAIL_FIELDS
+    # The whole head was header lines: only a short message may end there.
+    return fields > 0 and known and len(text) < 4096
+
+
 def kind_of(data):
     if data.startswith(b"%PDF-"):
         return "pdf"
@@ -63,16 +98,15 @@ def kind_of(data):
         text = head.decode("utf-8")
     except UnicodeDecodeError:
         return "binary"
-    first = text.split("\n", 1)[0]
-    if ":" in first and not first.startswith((" ", "\t")):
-        name = first.split(":", 1)[0]
-        if name and all(33 <= ord(c) <= 126 for c in name):
-            return "email"
+    if is_email_head(text):
+        return "email"
     return "text"
 
 
 def safe_zip(path):
-    """A package whose declared expansion is unbounded is refused unread."""
+    """A package whose actual expansion exceeds the budget is refused. Every
+    member is decompressed in bounded chunks and counted: declared sizes are
+    attacker-controlled, so they are never trusted on their own."""
     try:
         with zipfile.ZipFile(path) as archive:
             infos = archive.infolist()
@@ -82,13 +116,21 @@ def safe_zip(path):
             for info in infos:
                 if info.flag_bits & 0x1:
                     return None  # encrypted member
-                total += info.file_size
-                if total > MAX_ZIP_BYTES:
-                    return None
-                if info.compress_size and info.file_size / info.compress_size > MAX_ZIP_RATIO:
-                    return None
+                actual = 0
+                with archive.open(info) as member:
+                    while True:
+                        chunk = member.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        actual += len(chunk)
+                        total += len(chunk)
+                        if total > MAX_ZIP_BYTES:
+                            return None
+                        # A zero compressed size never excuses an expansion.
+                        if actual > max(info.compress_size, 1) * MAX_ZIP_RATIO:
+                            return None
             names = {info.filename for info in infos}
-    except (zipfile.BadZipFile, OSError, ValueError, NotImplementedError):
+    except (zipfile.BadZipFile, zlib.error, EOFError, OSError, ValueError, NotImplementedError, RuntimeError):
         return None
     if "[Content_Types].xml" not in names:
         return None
@@ -115,10 +157,44 @@ def png(width, height, rows):
     )
 
 
+def png_size(head):
+    """Width and height from a PNG's IHDR, or None when it is malformed."""
+    if len(head) < 24 or head[12:16] != b"IHDR":
+        return None
+    return struct.unpack(">II", head[16:24])
+
+
+def jpeg_size(path):
+    """Width and height from a JPEG's first frame header, or None."""
+    with open(path, "rb") as handle:
+        data = handle.read(1024 * 1024)
+    index = 2
+    while index + 4 <= len(data):
+        if data[index] != 0xFF:
+            return None
+        marker = data[index + 1]
+        if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+            index += 2
+            continue
+        length = struct.unpack(">H", data[index + 2:index + 4])[0]
+        if length < 2:
+            return None
+        if marker in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
+            if index + 9 > len(data):
+                return None
+            height, width = struct.unpack(">HH", data[index + 5:index + 9])
+            return width, height
+        index += 2 + length
+    return None
+
+
 def jpeg_document(path):
     """A photo becomes a one-page document so it renders like any page."""
     import pypdfium2 as pdfium
 
+    size = jpeg_size(path)
+    if size is None or size[0] <= 0 or size[1] <= 0 or size[0] * size[1] > MAX_PIXELS:
+        raise ValueError("image bounds")
     document = pdfium.PdfDocument.new()
     image = pdfium.PdfImage.new(document)
     image.load_jpeg(path)
@@ -142,43 +218,49 @@ def render_pdf(path, first, last, max_image, jpeg=False):
     count = len(document)
     pages = []
     for number in range(first, min(last, count) + 1):
-        page = document[number - 1]
-        layer = None
         try:
-            textpage = page.get_textpage()
-            text = textpage.get_text_bounded()
-            if text and text.strip():
-                layer = bounded(text)
-        except Exception:
-            layer = None
-        width, height = page.get_size()
-        image = None
-        scales = (1.0, 0.75, 0.5, 0.25) if jpeg else (2.0, 1.5, 1.0, 0.75, 0.5)
-        for scale in scales:
-            if width * scale * height * scale > MAX_PIXELS:
-                continue
-            try:
-                bitmap = page.render(scale=scale, rev_byteorder=True)
-                array = bitmap.to_numpy()
-            except Exception:
-                break
-            import numpy
-
-            rgb = numpy.ascontiguousarray(array[:, :, :3], dtype=numpy.uint8)
-            encoded = png(rgb.shape[1], rgb.shape[0], (rgb[y].tobytes() for y in range(rgb.shape[0])))
-            if len(encoded) <= max_image:
-                image = encoded
-                break
-        entry = {"page": number, "text_layer": layer, "file": None, "reason": None}
-        if image is None:
-            entry["reason"] = "page_too_large"
-        else:
-            name = "pages/%04d.png" % number
-            with open(os.path.join(OUTPUT, name), "wb") as handle:
-                handle.write(image)
-            entry["file"] = name
-        pages.append(entry)
+            pages.append(render_page(document, number, max_image, jpeg))
+        except Exception:  # this page only: never reported as too large
+            pages.append({"page": number, "text_layer": None, "file": None, "reason": "render_failed"})
     return {"status": "rendered", "page_count": count, "pages": pages, "reason": None}
+
+
+def render_page(document, number, max_image, jpeg):
+    """One page's entry. A rendering failure raises (the caller reports
+    `render_failed`); only a page no bounded scale fits is `page_too_large`."""
+    import numpy
+
+    page = document[number - 1]
+    layer = None
+    try:
+        textpage = page.get_textpage()
+        text = textpage.get_text_bounded()
+        if text and text.strip():
+            layer = bounded(text)
+    except Exception:
+        layer = None
+    width, height = page.get_size()
+    image = None
+    scales = (1.0, 0.75, 0.5, 0.25) if jpeg else (2.0, 1.5, 1.0, 0.75, 0.5)
+    for scale in scales:
+        if width * scale * height * scale > MAX_PIXELS:
+            continue
+        bitmap = page.render(scale=scale, rev_byteorder=True)
+        array = bitmap.to_numpy()
+        rgb = numpy.ascontiguousarray(array[:, :, :3], dtype=numpy.uint8)
+        encoded = png(rgb.shape[1], rgb.shape[0], (rgb[y].tobytes() for y in range(rgb.shape[0])))
+        if len(encoded) <= max_image:
+            image = encoded
+            break
+    entry = {"page": number, "text_layer": layer, "file": None, "reason": None}
+    if image is None:
+        entry["reason"] = "page_too_large"
+    else:
+        name = "pages/%04d.png" % number
+        with open(os.path.join(OUTPUT, name), "wb") as handle:
+            handle.write(image)
+        entry["file"] = name
+    return entry
 
 
 def render(original, first, last, max_image):
@@ -193,9 +275,13 @@ def render(original, first, last, max_image):
         result = render_pdf(path, first, last, max_image, jpeg=True)
     elif kind == "png":
         size = os.path.getsize(path)
+        dimensions = png_size(head)
         entry = {"page": 1, "text_layer": None, "file": None, "reason": None}
+        if dimensions is None or dimensions[0] == 0 or dimensions[1] == 0:
+            write("pages.json", {"status": "unreadable", "reason": "unreadable_image"})
+            return
         if first <= 1 <= last:
-            if size > max_image:
+            if size > max_image or dimensions[0] * dimensions[1] > MAX_PIXELS:
                 entry["reason"] = "page_too_large"
             else:
                 name = "pages/0001.png"
@@ -260,11 +346,15 @@ def cell_ref(column, row):
 
 
 def parse_ref(ref):
+    """`B4` to (column, row); raises ValueError for anything else."""
     letters = ref.rstrip("0123456789")
+    digits = ref[len(letters):]
+    if not letters or not digits or len(letters) > 3 or not letters.isupper() or digits.startswith("0"):
+        raise ValueError("bad reference")
     column = 0
     for letter in letters:
         column = column * 26 + COLUMN.index(letter) + 1
-    return column, int(ref[len(letters):])
+    return column, int(digits)
 
 
 def locate_xlsx(path, locators):
@@ -289,8 +379,15 @@ def locate_xlsx(path, locators):
             continue
         sheet = workbook[sheet]
         first, _, last = cells.partition(":")
-        c1, r1 = parse_ref(first)
-        c2, r2 = parse_ref(last or first)
+        try:
+            c1, r1 = parse_ref(first)
+            c2, r2 = parse_ref(last or first)
+        except ValueError:
+            results.append({"locator": locator, "status": "missing", "reason": "bad_reference", "texts": []})
+            continue
+        if c1 > c2 or r1 > r2:
+            results.append({"locator": locator, "status": "missing", "reason": "bad_reference", "texts": []})
+            continue
         if r2 > sheet.max_row or c2 > sheet.max_column:
             results.append({"locator": locator, "status": "missing", "texts": []})
             continue
@@ -369,9 +466,11 @@ def locate_email(path, locators):
         kind, _, rest = locator.partition(":")
         texts = None
         if kind == "header":
-            values = message.get_all(rest)
-            if values:
-                texts = [str(v) for v in values]
+            try:
+                values = message.get_all(rest)
+                texts = [str(v) for v in values] if values else None
+            except Exception:  # a header that cannot be parsed
+                return "malformed"
         elif kind == "part":
             index = int(rest) if rest.isdigit() else 0
             if 1 <= index <= len(parts) and parts[index - 1] is not None:
@@ -400,7 +499,13 @@ def locate(original, locators):
     if reader is None:
         write("located.json", {"status": "unsupported", "reason": "unsupported_format", "results": []})
         return
-    results = reader(path, locators)
+    try:
+        results = reader(path, locators)
+    except Exception:
+        results = "malformed" if kind == "email" else None
+    if results == "malformed":
+        write("located.json", {"status": "unreadable", "reason": "malformed_message", "results": []})
+        return
     if results is None:
         write("located.json", {"status": "unreadable", "reason": "unreadable_document", "results": []})
         return

@@ -104,8 +104,12 @@ fn hash(bytes: &[u8]) -> String {
 /// digest and the original's classification, so exactly one Send operation
 /// covers each page image sent.
 pub fn bind_disclosure(request: &mut ModelRequest) -> Result<(), ModelError> {
-    request.disclosure.attachments = image_attachments(request);
-    request.disclosure.attachments = payload_attachments(request)?;
+    // Validation requires each page image to be its own disclosed attachment,
+    // so the payload is measured over a copy that already carries them; the
+    // bound attachments are the input-class payload digests plus the images.
+    let mut staged = request.clone();
+    staged.disclosure.attachments = image_attachments(request);
+    request.disclosure.attachments = payload_attachments(&staged)?;
     Ok(())
 }
 fn image_attachments(request: &ModelRequest) -> Vec<zobba_domain::permissions::Attachment> {
@@ -349,6 +353,15 @@ async fn history_authority(
                     });
                 if original.outcome.is_none() || !(answer || reading) {
                     return Err(ModelError::Conflict);
+                }
+                // A transcription is admitted only as the recorded successful
+                // native read of this Task that its invocation produced.
+                if reading && !answer {
+                    let recorded: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM public.task_page_reads WHERE invocation_id=$1 AND task_id=$2 AND status='read')")
+                        .bind(&original.id).bind(&request.basis.task_id).fetch_one(&mut **tx).await.map_err(db)?;
+                    if !recorded {
+                        return Err(ModelError::Conflict);
+                    }
                 }
                 if answers.insert(origin.clone()) && answers.len() > MAX_HISTORY_DEPENDENCIES {
                     return Err(ModelError::Capacity);

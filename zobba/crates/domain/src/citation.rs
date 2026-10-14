@@ -15,9 +15,13 @@ use crate::{
     permissions::valid_digest,
 };
 
-/// Owner-approved bounds (Story 22.5 "Ask First"): at most 200 pages per
-/// document per Task and page images of at most 4 MB. These are narrower.
+/// Owner-approved bounds (Story 22.5 "Ask First"): at most 200 distinct
+/// pages read natively per document per Task, and page images of at most
+/// 4 MB. These are narrower. The 200 is a COUNT of pages read; a page number
+/// itself may be anything up to [`MAX_PAGE_NUMBER`].
 pub const MAX_PAGES_PER_DOCUMENT: u32 = 200;
+/// The largest page number a locator, request or record may name.
+pub const MAX_PAGE_NUMBER: u32 = 10_000;
 pub const MAX_PAGE_IMAGE_BYTES: usize = 2 * 1024 * 1024;
 /// Structured model output is bounded at 32 KiB of JSON in total
 /// (`MAX_TOOL_ARGUMENT_BYTES`), so these text bounds stay well inside it.
@@ -201,7 +205,7 @@ impl Locator {
         let (kind, rest) = value.split_once(':')?;
         let locator = match kind {
             "page" => Self::Page {
-                page: positive(rest).filter(|p| *p <= MAX_PAGES_PER_DOCUMENT)?,
+                page: positive(rest).filter(|p| *p <= MAX_PAGE_NUMBER)?,
             },
             "cell" => {
                 let (sheet, range) = rest.rsplit_once('!')?;
@@ -361,7 +365,10 @@ impl CitedAnswer {
     }
     pub fn is_valid(&self) -> bool {
         let sources: usize = self.segments.iter().map(|s| s.sources.len()).sum();
-        self.segments.len() <= MAX_SEGMENTS
+        // An answer has text, or it is an intermediate turn that only asks to
+        // read further (stored, verified trivially, never listed as an answer).
+        (!self.segments.is_empty() || self.requests_reading())
+            && self.segments.len() <= MAX_SEGMENTS
             && self.text().len() <= MAX_ANSWER_BYTES
             && self.segments.iter().all(|s| {
                 !s.text.is_empty()
@@ -379,7 +386,7 @@ impl CitedAnswer {
                 .all(|l| nonempty(l, MAX_LIMITATION_BYTES))
             && self.read_pages.len() <= MAX_PAGE_REQUESTS
             && self.read_pages.iter().all(|r| {
-                valid_scope_id(&r.original_id) && (1..=MAX_PAGES_PER_DOCUMENT).contains(&r.page)
+                valid_scope_id(&r.original_id) && (1..=MAX_PAGE_NUMBER).contains(&r.page)
             })
             && self.programs.len() <= MAX_PROGRAM_REQUESTS
             && self.programs.iter().all(|p| {
@@ -394,6 +401,11 @@ impl CitedAnswer {
     /// Whether the answer asks for more reading before it is complete.
     pub fn requests_reading(&self) -> bool {
         !self.read_pages.is_empty() || !self.programs.is_empty()
+    }
+    /// Whether this turn is an answer to show: it has answer text. A turn
+    /// that only requests reading is an intermediate step.
+    pub fn is_answer(&self) -> bool {
+        !self.segments.is_empty()
     }
 
     /// Strict structured-output schema of a cited answer. Every property is
@@ -432,7 +444,7 @@ impl CitedAnswer {
                 "page",
                 ArgumentSchema::Integer {
                     minimum: 1,
-                    maximum: i64::from(MAX_PAGES_PER_DOCUMENT),
+                    maximum: i64::from(MAX_PAGE_NUMBER),
                 },
             ),
         ]);

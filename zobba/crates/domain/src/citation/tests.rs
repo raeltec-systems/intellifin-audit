@@ -43,6 +43,8 @@ fn locators_round_trip_in_their_one_canonical_spelling() {
     );
     assert_eq!(cell.label(), "Sheet1!AA10");
     assert_eq!(Locator::parse("page:3").unwrap().label(), "page 3");
+    // A page number is not the 200-page read count: page 9999 is a location.
+    assert!(Locator::parse("page:9999").is_some());
 }
 
 #[test]
@@ -51,7 +53,7 @@ fn non_canonical_or_unbounded_locators_are_missing_never_guessed() {
         "",
         "page:0",
         "page:03",
-        "page:201",
+        "page:10001",
         "page: 3",
         "Page:3",
         "cell:Sheet1!b4",
@@ -265,6 +267,35 @@ fn cited_answer_decodes_spans_and_requests() {
     assert_eq!(answer.read_pages[0].page, 3);
     assert_eq!(answer.programs[0].inputs, vec!["contract", "trial-balance"]);
     assert!(answer.requests_reading());
+    assert!(answer.is_answer());
+}
+
+#[test]
+fn a_turn_that_only_reads_is_valid_but_not_an_answer_and_an_empty_turn_is_invalid() {
+    let reading = CitedAnswer {
+        segments: vec![],
+        limitations: vec![],
+        read_pages: vec![PageRequest {
+            original_id: "scan".into(),
+            page: 9_999,
+        }],
+        programs: vec![],
+    };
+    assert!(reading.is_valid());
+    assert!(!reading.is_answer());
+    let empty = CitedAnswer {
+        read_pages: vec![],
+        ..reading.clone()
+    };
+    assert!(!empty.is_valid(), "no text and no request is not a turn");
+    let beyond = CitedAnswer {
+        read_pages: vec![PageRequest {
+            original_id: "scan".into(),
+            page: MAX_PAGE_NUMBER + 1,
+        }],
+        ..reading
+    };
+    assert!(!beyond.is_valid());
 }
 
 #[test]

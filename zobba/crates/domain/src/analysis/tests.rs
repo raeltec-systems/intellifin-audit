@@ -34,15 +34,19 @@ fn regular(path: &str, content: &[u8]) -> OutputEntry {
 }
 
 #[test]
-fn the_server_allowlist_is_one_pinned_environment() {
+fn the_server_allowlist_is_one_pinned_image_in_two_environments() {
     let list = server_allowlist();
-    assert_eq!(list.len(), 1);
-    assert!(list[0].is_valid());
-    assert!(valid_image_digest(&list[0].image_digest));
-    assert_eq!(
-        list[0].argv().last().map(String::as_str),
-        Some(PROGRAM_PATH)
-    );
+    assert_eq!(list.len(), 2);
+    for environment in &list {
+        assert!(environment.is_valid());
+        assert_eq!(environment.image_digest, GENERAL_IMAGE_DIGEST);
+        assert_eq!(
+            environment.argv().last().map(String::as_str),
+            Some(PROGRAM_PATH)
+        );
+    }
+    assert_eq!(list[0].id, GENERAL_ENVIRONMENT_ID);
+    assert_eq!(list[1].id, DOCUMENT_ENVIRONMENT_ID);
 }
 
 #[test]
@@ -318,28 +322,31 @@ fn media_types_are_decided_by_trusted_extension_mapping() {
     assert_eq!(media_type_for(".csv"), None);
     assert_eq!(media_type_for("noext"), None);
     assert_eq!(media_type_for("image.png"), Some("image/png"));
-    // Story 22.5: the general environment admits page images (the trusted
-    // document program writes them); an environment without them refuses.
-    let environment = environment();
+    // Story 22.5: only the trusted document environment admits page images;
+    // a model-written program runs in the general one and cannot write one.
+    let general = environment();
     let result = validate_outputs(
         &[regular("image.png", b"x")],
         &AnalysisLimits::DEFAULT,
-        &environment,
+        &general,
     );
-    assert!(result.rejected.is_empty(), "png is a general page image");
-    let narrow = AnalysisEnvironment {
-        media_types: vec!["text/csv".into()],
-        ..environment
-    };
+    assert_eq!(result.rejected[0].reason, RejectReason::MediaType);
+    let document = server_allowlist().remove(1);
     let result = validate_outputs(
         &[regular("image.png", b"x")],
         &AnalysisLimits::DEFAULT,
-        &narrow,
+        &document,
+    );
+    assert!(result.rejected.is_empty(), "png is a trusted page image");
+    let result = validate_outputs(
+        &[regular("notes.txt", b"x")],
+        &AnalysisLimits::DEFAULT,
+        &document,
     );
     assert_eq!(
         result.rejected[0].reason,
         RejectReason::MediaType,
-        "png is not allowed by an environment that does not list it"
+        "the document environment writes only manifests and page images"
     );
 }
 

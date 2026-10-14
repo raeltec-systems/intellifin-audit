@@ -2348,6 +2348,9 @@ async fn openai_sends_one_page_image_and_anthropic_refuses_before_any_send() {
     assert_eq!(outcome.completion, Completion::Succeeded);
     let seen = fixture.requests.lock().await;
     assert_eq!(seen.len(), 1);
+    // The page read is offered no tools, although the catalogue has one.
+    assert!(!request.catalogue.tools.is_empty());
+    assert_eq!(seen[0].body["tools"], serde_json::json!([]));
     let content = &seen[0].body["input"][1]["content"];
     assert_eq!(content[0]["type"], "input_text");
     assert_eq!(content[1]["type"], "input_image");

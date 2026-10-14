@@ -153,20 +153,32 @@ pub const GENERAL_IMAGE_DIGEST: &str =
 /// The Story 22.4 base it is built from (Python 3.13 slim, index digest).
 pub const GENERAL_BASE_IMAGE_DIGEST: &str =
     "sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f";
+/// The trusted document program's environment (Story 22.5): the same pinned
+/// image, but the only entry whose outputs may include page images. A
+/// model-written program is always admitted in the general environment and can
+/// therefore never produce an image a page read would disclose.
+pub const DOCUMENT_ENVIRONMENT_ID: &str = "document-python-3-13";
 pub fn server_allowlist() -> Vec<AnalysisEnvironment> {
-    vec![AnalysisEnvironment {
-        id: GENERAL_ENVIRONMENT_ID.into(),
-        image_digest: GENERAL_IMAGE_DIGEST.into(),
-        command: vec!["python3".into(), "-I".into(), "-B".into()],
-        media_types: vec![
-            "application/json".into(),
-            // Page images rendered by the trusted document program.
-            "image/png".into(),
-            "text/csv".into(),
-            "text/markdown".into(),
-            "text/plain".into(),
-        ],
-    }]
+    let command = vec!["python3".into(), "-I".into(), "-B".into()];
+    vec![
+        AnalysisEnvironment {
+            id: GENERAL_ENVIRONMENT_ID.into(),
+            image_digest: GENERAL_IMAGE_DIGEST.into(),
+            command: command.clone(),
+            media_types: vec![
+                "application/json".into(),
+                "text/csv".into(),
+                "text/markdown".into(),
+                "text/plain".into(),
+            ],
+        },
+        AnalysisEnvironment {
+            id: DOCUMENT_ENVIRONMENT_ID.into(),
+            image_digest: GENERAL_IMAGE_DIGEST.into(),
+            command,
+            media_types: vec!["application/json".into(), "image/png".into()],
+        },
+    ]
 }
 
 /// Extension → media type. Trusted code decides the type; program output

@@ -431,6 +431,14 @@ where
         if self.objects.measure(request.program.as_bytes()).sha256 != request.program_sha256 {
             return Err(AnalysisError::Invalid);
         }
+        // Only the exact trusted document program runs in the document
+        // environment (the one whose outputs may be page images), and it runs
+        // nowhere else.
+        if (request.environment_id == DOCUMENT_ENVIRONMENT_ID)
+            != crate::reading::is_document_program(&request.program)
+        {
+            return Err(AnalysisError::Invalid);
+        }
         for input in &request.inputs {
             let original = self
                 .jobs

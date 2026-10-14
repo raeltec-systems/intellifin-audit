@@ -20,7 +20,9 @@ use crate::{
         validate_completion,
     },
     operation::{OperationError, OperationStore},
-    reading::{CITATION_CONSTRAINTS, ReadingContext},
+    reading::{
+        CITATION_CONSTRAINTS, NO_PAGE_READING_CONSTRAINT, PAGE_READING_CONSTRAINT, ReadingContext,
+    },
     task::TaskError,
 };
 use zobba_domain::{
@@ -808,6 +810,12 @@ where
     fn cited(&self) -> bool {
         self.reading.enabled() && self.settings.profile.capabilities.structured_output
     }
+    /// Native page reading is offered only to a profile qualified for image
+    /// input whose provider encoder supports it.
+    fn page_reading(&self) -> bool {
+        self.settings.profile.capabilities.image_input
+            && self.settings.profile.provider == zobba_domain::model::Provider::OpenAi
+    }
 
     fn configuration(&self) -> TurnConfiguration<'_> {
         TurnConfiguration {
@@ -951,7 +959,14 @@ where
                 ModelMessage {
                     role: MessageRole::System,
                     text: if self.cited() {
-                        format!("{SYSTEM_CONSTRAINTS} {CITATION_CONSTRAINTS}")
+                        format!(
+                            "{SYSTEM_CONSTRAINTS} {CITATION_CONSTRAINTS} {}",
+                            if self.page_reading() {
+                                PAGE_READING_CONSTRAINT
+                            } else {
+                                NO_PAGE_READING_CONSTRAINT
+                            }
+                        )
                     } else {
                         SYSTEM_CONSTRAINTS.into()
                     },
@@ -1804,10 +1819,12 @@ where
         {
             Ok(more) => Ok(more),
             Err(ModelError::Fenced | ModelError::Denied) => Err(CycleEnd::Fenced),
-            Err(ModelError::Unavailable) => Err(CycleEnd::Unavailable),
-            // Citations stay unrecorded and are verified again on a reclaim;
-            // the answer itself waits for guidance unchanged.
-            Err(_) => Ok(false),
+            // Transient: nothing was recorded; verification and reading run
+            // again on a reclaim. The answer itself is recorded and listed.
+            Err(ModelError::Unavailable | ModelError::Capacity) => Err(CycleEnd::Unavailable),
+            // A refused reading record is a defect, never a silent success:
+            // the step fails visibly and the answer remains listed.
+            Err(_) => Err(CycleEnd::Failed),
         }
     }
 
@@ -1878,6 +1895,10 @@ where
                     // A cited answer that asked to read further continues
                     // once its reading is done (idempotent on a reclaim).
                     StepStatus::Responded => {
+                        // Plain answers have no reading to resume.
+                        if !self.cited() {
+                            return CycleEnd::Waiting;
+                        }
                         let Some(invocation_id) = &turn.invocation_id else {
                             return CycleEnd::Waiting;
                         };
@@ -1912,7 +1933,9 @@ where
                 match self.reading.context(&basis).await {
                     Ok(reading) => reading,
                     Err(ModelError::Fenced | ModelError::Denied) => return CycleEnd::Fenced,
-                    Err(ModelError::Unavailable) => return CycleEnd::Unavailable,
+                    Err(ModelError::Unavailable | ModelError::Capacity) => {
+                        return CycleEnd::Unavailable;
+                    }
                     Err(_) => return CycleEnd::Failed,
                 }
             } else {

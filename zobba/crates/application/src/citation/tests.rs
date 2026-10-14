@@ -48,6 +48,10 @@ struct Reader {
     bytes: BTreeMap<String, String>,
     locate_calls: Mutex<Vec<(String, usize)>>,
     fence: bool,
+    /// A transient failure of every trusted read.
+    transient: Option<ReadingError>,
+    /// The reader answers that the original's format has no such location.
+    unsupported: Vec<String>,
 }
 impl CitationReader for Reader {
     async fn original(
@@ -77,6 +81,7 @@ impl CitationReader for Reader {
         _: &ClaimBasis,
         original: &CitedOriginal,
         locators: &[Locator],
+        _: &ModelCancellation,
     ) -> Result<Vec<Located>, ReadingError> {
         self.locate_calls
             .lock()
@@ -85,9 +90,15 @@ impl CitationReader for Reader {
         if self.fence {
             return Err(ReadingError::Fenced);
         }
+        if let Some(error) = self.transient {
+            return Err(error);
+        }
         if self.unreadable.contains(&original.id) {
-            // A hostile file: the sandbox refused or hit a limit.
-            return Err(ReadingError::Unavailable);
+            // A hostile file: the trusted program refused or hit a limit.
+            return Ok(vec![Located::Unreadable; locators.len()]);
+        }
+        if self.unsupported.contains(&original.id) {
+            return Ok(vec![Located::Missing; locators.len()]);
         }
         Ok(locators
             .iter()
@@ -104,7 +115,11 @@ impl CitationReader for Reader {
         _: &ClaimBasis,
         original: &CitedOriginal,
         page: u32,
+        _: &ModelCancellation,
     ) -> Result<Option<PageFacts>, ReadingError> {
+        if let Some(error) = self.transient {
+            return Err(error);
+        }
         Ok(self.pages.get(&(original.id.clone(), page)).cloned())
     }
 }
@@ -223,7 +238,7 @@ fn every_matrix_row_gets_its_closed_result_and_the_answer_is_unchanged() {
         (" Uncited closing sentence.", vec![]),
     ]);
     let before = original.clone();
-    let citations = run(verify(&reader, &basis(), &original)).unwrap();
+    let citations = run(verify(&reader, &basis(), &original, &ModelCancellation::new())).unwrap();
     assert_eq!(original, before, "verification never edits the answer");
     assert_eq!(
         reasons(&citations),
@@ -272,7 +287,7 @@ fn a_fence_ends_verification_but_a_failed_read_is_only_unreadable() {
         vec![source("trial-balance", "cell:Sheet1!B4", "1,250.00")],
     )]);
     assert_eq!(
-        run(verify(&fenced, &basis(), &cited)),
+        run(verify(&fenced, &basis(), &cited, &ModelCancellation::new())),
         Err(ReadingError::Fenced)
     );
     // A scanned page with no text layer and no native read is not found there.
@@ -287,13 +302,40 @@ fn a_fence_ends_verification_but_a_failed_read_is_only_unreadable() {
         vec![source("scan", "page:3", "Signed by A. Auditor")],
     )]);
     assert_eq!(
-        reasons(&run(verify(&unread, &basis(), &page)).unwrap()),
+        reasons(&run(verify(&unread, &basis(), &page, &ModelCancellation::new())).unwrap()),
         vec![vec![Some(R::NotFoundAtLocation)]]
     );
     // An invalid answer is refused before any read.
     let invalid = answer(vec![("", vec![])]);
     assert_eq!(
-        run(verify(&reader(), &basis(), &invalid)),
+        run(verify(&reader(), &basis(), &invalid, &ModelCancellation::new())),
         Err(ReadingError::Invalid)
+    );
+}
+
+#[test]
+fn transient_reads_end_verification_and_a_wrong_location_kind_is_not_found() {
+    // Capacity or unavailability is not a fact about the source: nothing is
+    // decided, so nothing is recorded and verification runs again later.
+    for error in [ReadingError::Capacity, ReadingError::Unavailable] {
+        let mut busy = reader();
+        busy.transient = Some(error);
+        for cited in [
+            answer(vec![("Claim.", vec![source("trial-balance", "cell:Sheet1!B4", "1,250.00")])]),
+            answer(vec![("Claim.", vec![source("contract-pdf", "page:2", "Payment")])]),
+        ] {
+            assert_eq!(
+                run(verify(&busy, &basis(), &cited, &ModelCancellation::new())),
+                Err(error)
+            );
+        }
+    }
+    // A cell locator into a document that has no cells: not at that location.
+    let mut wrong = reader();
+    wrong.unsupported.push("contract-pdf".into());
+    let cited = answer(vec![("Claim.", vec![source("contract-pdf", "cell:Sheet1!A1", "x")])]);
+    assert_eq!(
+        reasons(&run(verify(&wrong, &basis(), &cited, &ModelCancellation::new())).unwrap()),
+        vec![vec![Some(R::NotFoundAtLocation)]]
     );
 }

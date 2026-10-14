@@ -7,6 +7,7 @@
 //! closed reason.
 use std::{collections::BTreeMap, future::Future};
 
+use crate::model::ModelCancellation;
 use zobba_domain::{
     citation::{
         CitationSource, CitedAnswer, Located, Locator, LocatorFamily, PageFacts, Span,
@@ -66,6 +67,7 @@ pub trait CitationReader: Send + Sync {
         basis: &ClaimBasis,
         original: &CitedOriginal,
         locators: &[Locator],
+        cancellation: &ModelCancellation,
     ) -> impl Future<Output = Result<Vec<Located>, ReadingError>> + Send;
     /// Rendered page facts (existence, text layer) and whether this Task read
     /// exactly that rendered page natively. None: the original is not a paged
@@ -75,6 +77,7 @@ pub trait CitationReader: Send + Sync {
         basis: &ClaimBasis,
         original: &CitedOriginal,
         page: u32,
+        cancellation: &ModelCancellation,
     ) -> impl Future<Output = Result<Option<PageFacts>, ReadingError>> + Send;
 }
 
@@ -87,12 +90,14 @@ pub struct StoredCitation {
 }
 
 /// Verify every source of every cited span. Sources of one original share one
-/// trusted locate run. Fencing and denial end verification; a source whose
-/// original cannot be read safely is `source_unreadable`.
+/// trusted locate run. Fencing, denial, capacity and unavailability end
+/// verification without recording anything (it runs again on a reclaim); only
+/// a definite unreadability makes a source `source_unreadable`.
 pub async fn verify<C: CitationReader>(
     reader: &C,
     basis: &ClaimBasis,
     answer: &CitedAnswer,
+    cancellation: &ModelCancellation,
 ) -> Result<Vec<StoredCitation>, ReadingError> {
     if !answer.is_valid() {
         return Err(ReadingError::Invalid);
@@ -124,12 +129,10 @@ pub async fn verify<C: CitationReader>(
         let Some(Some(original)) = originals.get(id) else {
             continue;
         };
-        let results = match reader.locate(basis, original, locators).await {
+        let results = match reader.locate(basis, original, locators, cancellation).await {
             Ok(results) if results.len() == locators.len() => results,
             Ok(_) => vec![Located::Unreadable; locators.len()],
-            Err(ReadingError::Fenced) => return Err(ReadingError::Fenced),
-            Err(ReadingError::Denied) => return Err(ReadingError::Denied),
-            Err(_) => vec![Located::Unreadable; locators.len()],
+            Err(error) => unreadable::<()>(error).map(|_| vec![Located::Unreadable; locators.len()])?,
         };
         for (locator, result) in locators.iter().zip(results) {
             located.insert((id.clone(), locator.clone()), result);
@@ -142,7 +145,9 @@ pub async fn verify<C: CitationReader>(
             let original = originals.get(&source.original_id).cloned().flatten();
             let verification = match &original {
                 None => Verification::Unverified(UnverifiedReason::SourceUnreadable),
-                Some(original) => decide_one(reader, basis, original, source, &located).await?,
+                Some(original) => {
+                    decide_one(reader, basis, original, source, &located, cancellation).await?
+                }
             };
             sources.push(VerifiedSource {
                 source: source.clone(),
@@ -165,13 +170,14 @@ async fn decide_one<C: CitationReader>(
     original: &CitedOriginal,
     source: &CitationSource,
     located: &BTreeMap<(String, Locator), Located>,
+    cancellation: &ModelCancellation,
 ) -> Result<Verification, ReadingError> {
     let Some(locator) = &source.locator else {
         return Ok(decide(source, None, None));
     };
     match locator {
         Locator::Page { page } => {
-            let facts = match reader.page(basis, original, *page).await {
+            let facts = match reader.page(basis, original, *page, cancellation).await {
                 Ok(facts) => facts,
                 Err(error) => unreadable::<PageFacts>(error)?,
             };
@@ -196,12 +202,13 @@ async fn decide_one<C: CitationReader>(
     }
 }
 
-/// A read that failed is not proof of absence: it is `source_unreadable`.
-/// Fencing and denial still end verification.
+/// A definite refusal of a read (`Invalid`) is not proof of absence: it is
+/// `source_unreadable`. Fencing, denial, capacity and unavailability are not
+/// facts about the source and end verification.
 fn unreadable<T>(error: ReadingError) -> Result<Option<T>, ReadingError> {
     match error {
-        ReadingError::Fenced | ReadingError::Denied => Err(error),
-        _ => Ok(None),
+        ReadingError::Invalid => Ok(None),
+        _ => Err(error),
     }
 }
 

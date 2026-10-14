@@ -208,10 +208,13 @@ impl NativeAdapter {
         let mut body = match self.provider {
             Provider::OpenAi => {
                 let input = native_history(request, Provider::OpenAi);
+                // A native page read is a transcription, never an agent turn:
+                // it is offered no tools whatever the selected catalogue holds.
                 let tools: Vec<Value> = request
                     .catalogue
                     .tools
                     .iter()
+                    .filter(|_| image_bytes == 0)
                     .map(|tool| {
                         serde_json::json!({
                             "type": "function", "name": tool.name, "description": tool.description,
