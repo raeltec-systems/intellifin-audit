@@ -525,15 +525,15 @@ async fn check_coverage_functions(
     runtime: Option<&str>,
 ) -> Result<(), BootstrapError> {
     let safe: bool = sqlx::query_scalar(r#"
-      SELECT (SELECT count(*)=4 AND bool_and(NOT p.prosecdef
+      SELECT (SELECT count(*)=5 AND bool_and(NOT p.prosecdef
        AND p.proowner=(SELECT relowner FROM pg_catalog.pg_class WHERE oid='public.zobba_bootstrap'::regclass)
        AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a WHERE a.grantee<>p.proowner)
        AND ($1::text IS NULL OR NOT pg_catalog.has_function_privilege($1,p.oid,'EXECUTE'))
        AND (SELECT count(*) FROM pg_catalog.pg_trigger t WHERE t.tgfoid=p.oid AND t.tgname=p.proname AND t.tgenabled='O' AND NOT t.tgisinternal)
-         = CASE p.proname WHEN 'coverage_complete' THEN 2 ELSE 6 END
+         = CASE p.proname WHEN 'coverage_complete' THEN 2 WHEN 'coverage_guard' THEN 3 WHEN 'coverage_batch' THEN 3 ELSE 6 END
        AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_trigger t WHERE t.tgfoid=p.oid AND t.tgname<>p.proname))
       FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
-      WHERE n.nspname='public' AND p.proname IN ('coverage_guard','coverage_complete','coverage_immutable','coverage_retained'))
+      WHERE n.nspname='public' AND p.proname IN ('coverage_guard','coverage_batch','coverage_complete','coverage_immutable','coverage_retained'))
     "#).bind(runtime).fetch_one(conn).await.map_err(|_| BootstrapError::SchemaMismatch)?;
     if safe {
         Ok(())
@@ -587,7 +587,7 @@ async fn inventory(conn: &mut PgConnection) -> Result<Vec<String>, BootstrapErro
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_dict o JOIN pg_catalog.pg_namespace n ON n.oid=o.dictnamespace WHERE n.nspname='public')
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_parser o JOIN pg_catalog.pg_namespace n ON n.oid=o.prsnamespace WHERE n.nspname='public')
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_template o JOIN pg_catalog.pg_namespace n ON n.oid=o.tmplnamespace WHERE n.nspname='public')
-        OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname NOT IN ('membership_admin','membership_session','membership_validate','membership_fence','membership_read','membership_write','membership_accept','membership_preview','membership_assignments','evidence_session_locked','admin_continuity_assert','admin_continuity_lock','admin_continuity_check','admin_continuity_truncate','methodology_audit','methodology_read','methodology_write','methodology_candidates','methodology_task','skills_read','skills_admin','skills_impact','skills_write','skills_task','knowledge_audit','knowledge_release_active','model_configuration_admin','work_step_guard','work_guidance_guard','work_answer_guard','engagement_setup_authority','engagement_setup_access','engagement_setup_organisations','engagement_setup_clients','engagement_setup_duplicate','engagement_setup_refuse','engagement_establish','work_compaction_guard','work_compaction_immutable','analysis_event_guard','analysis_output_guard','analysis_immutable','reading_guard','reading_immutable','skills_work','investigation_guard','investigation_immutable','investigation_retained','assessment_guard','assessment_complete','assessment_immutable','assessment_retained','coverage_guard','coverage_complete','coverage_immutable','coverage_retained'))
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname NOT IN ('membership_admin','membership_session','membership_validate','membership_fence','membership_read','membership_write','membership_accept','membership_preview','membership_assignments','evidence_session_locked','admin_continuity_assert','admin_continuity_lock','admin_continuity_check','admin_continuity_truncate','methodology_audit','methodology_read','methodology_write','methodology_candidates','methodology_task','skills_read','skills_admin','skills_impact','skills_write','skills_task','knowledge_audit','knowledge_release_active','model_configuration_admin','work_step_guard','work_guidance_guard','work_answer_guard','engagement_setup_authority','engagement_setup_access','engagement_setup_organisations','engagement_setup_clients','engagement_setup_duplicate','engagement_setup_refuse','engagement_establish','work_compaction_guard','work_compaction_immutable','analysis_event_guard','analysis_output_guard','analysis_immutable','reading_guard','reading_immutable','skills_work','investigation_guard','investigation_immutable','investigation_retained','assessment_guard','assessment_complete','assessment_immutable','assessment_retained','coverage_guard','coverage_batch','coverage_complete','coverage_immutable','coverage_retained'))
         OR EXISTS (
           SELECT 1 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace
           WHERE n.nspname='public' AND t.oid NOT IN (

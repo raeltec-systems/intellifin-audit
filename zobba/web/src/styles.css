@@ -710,6 +710,21 @@ textarea:focus-visible, select:focus-visible, summary:focus-visible, [tabindex='
 .verdict-exception { font-weight: 600; }
 .fact-subject { font-weight: 600; }
 
+/* Story 24.2 coverage: exact counts in words. Tables scroll inside the panel
+   rather than widen it; the conclusion is said in text and weight. */
+.task-coverage { display: grid; gap: 8px; }
+.task-coverage h5 { margin: 4px 0 0; font-size: 0.95rem; }
+.task-coverage ul { margin: 0; padding-left: 20px; overflow-wrap: anywhere; }
+.task-coverage p { margin: 0; }
+.coverage-summaries > li, .coverage-populations > li, .coverage-samples > li { margin-bottom: 8px; }
+.coverage-conclusion { font-weight: 600; }
+.coverage-scroll { overflow-x: auto; max-width: 100%; }
+.coverage-table { border-collapse: collapse; font-size: 0.85rem; }
+.coverage-table caption { text-align: left; color: var(--secondary); padding-bottom: 2px; }
+.coverage-table th, .coverage-table td { border-bottom: 1px solid var(--line, #d0d4da); padding: 2px 8px 2px 0; text-align: left; vertical-align: top; }
+.coverage-inspect { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); }
+
 .task-method { display: grid; gap: 8px; }
 .task-method h5 { margin: 4px 0 0; font-size: 0.95rem; }
 .task-method ul { margin: 0; padding-left: 20px; overflow-wrap: anywhere; }

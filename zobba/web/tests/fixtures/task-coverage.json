@@ -1,0 +1,3916 @@
+{
+  "criteria": [
+    {
+      "applicability": "amount > 1000.00 USD",
+      "assertion": "Invoices above 1,000.00 USD require an approver",
+      "authority_kind": "method",
+      "authority_reason": null,
+      "authority_source": null,
+      "authority_text_sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+      "authority_verified": true,
+      "criterion_ordinal": 0,
+      "effective_from": null,
+      "effective_to": null,
+      "execution_epoch": "1",
+      "id": "id-2",
+      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000003",
+      "key": "approver",
+      "kind": "rule",
+      "methodology_binding_id": "id-4",
+      "required_facts": [
+        {
+          "fact_type": "decimal",
+          "measure": "USD",
+          "name": "amount"
+        },
+        {
+          "fact_type": "boolean",
+          "measure": null,
+          "name": "approved"
+        }
+      ],
+      "requirement_id": "AP-1",
+      "rubric": null,
+      "rule": "approved is true",
+      "supersedes": null
+    },
+    {
+      "applicability": "amount > 1000.00 USD",
+      "assertion": "Invoices above 1,000.00 USD are approved before payment",
+      "authority_kind": "method",
+      "authority_reason": null,
+      "authority_source": null,
+      "authority_text_sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+      "authority_verified": true,
+      "criterion_ordinal": 0,
+      "effective_from": null,
+      "effective_to": null,
+      "execution_epoch": "1",
+      "id": "id-5",
+      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000003",
+      "key": "before",
+      "kind": "rule",
+      "methodology_binding_id": "id-4",
+      "required_facts": [
+        {
+          "fact_type": "decimal",
+          "measure": "USD",
+          "name": "amount"
+        },
+        {
+          "fact_type": "boolean",
+          "measure": null,
+          "name": "approved_before_payment"
+        }
+      ],
+      "requirement_id": "AP-1",
+      "rubric": null,
+      "rule": "approved_before_payment is true",
+      "supersedes": null
+    }
+  ],
+  "members": {
+    "disposition": "excluded",
+    "members": [
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A4",
+            "text": "INV-00001"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B4",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C4",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D4",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E4",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F4",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 0,
+        "reason": "out_of_period",
+        "row": 4,
+        "subject": "INV-00001",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A5",
+            "text": "INV-00002"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B5",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C5",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D5",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E5",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F5",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 1,
+        "reason": "out_of_period",
+        "row": 5,
+        "subject": "INV-00002",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A6",
+            "text": "INV-00003"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B6",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C6",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D6",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E6",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F6",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 2,
+        "reason": "out_of_period",
+        "row": 6,
+        "subject": "INV-00003",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A7",
+            "text": "INV-00004"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B7",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C7",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D7",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E7",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F7",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 3,
+        "reason": "out_of_period",
+        "row": 7,
+        "subject": "INV-00004",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A8",
+            "text": "INV-00005"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B8",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C8",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D8",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E8",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F8",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 4,
+        "reason": "out_of_period",
+        "row": 8,
+        "subject": "INV-00005",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A9",
+            "text": "INV-00006"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B9",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C9",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D9",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E9",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F9",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 5,
+        "reason": "out_of_period",
+        "row": 9,
+        "subject": "INV-00006",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A10",
+            "text": "INV-00007"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B10",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C10",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D10",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E10",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F10",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 6,
+        "reason": "out_of_period",
+        "row": 10,
+        "subject": "INV-00007",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A11",
+            "text": "INV-00008"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B11",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C11",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D11",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E11",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F11",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 7,
+        "reason": "out_of_period",
+        "row": 11,
+        "subject": "INV-00008",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A12",
+            "text": "INV-00009"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B12",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C12",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D12",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E12",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F12",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 8,
+        "reason": "out_of_period",
+        "row": 12,
+        "subject": "INV-00009",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A13",
+            "text": "INV-00010"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B13",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C13",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D13",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E13",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F13",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 9,
+        "reason": "out_of_period",
+        "row": 13,
+        "subject": "INV-00010",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A14",
+            "text": "INV-00011"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B14",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C14",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D14",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E14",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F14",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 10,
+        "reason": "out_of_period",
+        "row": 14,
+        "subject": "INV-00011",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A15",
+            "text": "INV-00012"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B15",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C15",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D15",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E15",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F15",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 11,
+        "reason": "out_of_period",
+        "row": 15,
+        "subject": "INV-00012",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A16",
+            "text": "INV-00013"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B16",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C16",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D16",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E16",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F16",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 12,
+        "reason": "out_of_period",
+        "row": 16,
+        "subject": "INV-00013",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A17",
+            "text": "INV-00014"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B17",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C17",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D17",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E17",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F17",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 13,
+        "reason": "out_of_period",
+        "row": 17,
+        "subject": "INV-00014",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A18",
+            "text": "INV-00015"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B18",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C18",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D18",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E18",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F18",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 14,
+        "reason": "out_of_period",
+        "row": 18,
+        "subject": "INV-00015",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A19",
+            "text": "INV-00016"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B19",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C19",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D19",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E19",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F19",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 15,
+        "reason": "out_of_period",
+        "row": 19,
+        "subject": "INV-00016",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A20",
+            "text": "INV-00017"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B20",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C20",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D20",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E20",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F20",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 16,
+        "reason": "out_of_period",
+        "row": 20,
+        "subject": "INV-00017",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A21",
+            "text": "INV-00018"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B21",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C21",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D21",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E21",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F21",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 17,
+        "reason": "out_of_period",
+        "row": 21,
+        "subject": "INV-00018",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A22",
+            "text": "INV-00019"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B22",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C22",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D22",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E22",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F22",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 18,
+        "reason": "out_of_period",
+        "row": 22,
+        "subject": "INV-00019",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A23",
+            "text": "INV-00020"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B23",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C23",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D23",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E23",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F23",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 19,
+        "reason": "out_of_period",
+        "row": 23,
+        "subject": "INV-00020",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A24",
+            "text": "INV-00021"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B24",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C24",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D24",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E24",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F24",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 20,
+        "reason": "out_of_period",
+        "row": 24,
+        "subject": "INV-00021",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A25",
+            "text": "INV-00022"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B25",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C25",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D25",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E25",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F25",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 21,
+        "reason": "out_of_period",
+        "row": 25,
+        "subject": "INV-00022",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A26",
+            "text": "INV-00023"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B26",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C26",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D26",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E26",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F26",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 22,
+        "reason": "out_of_period",
+        "row": 26,
+        "subject": "INV-00023",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A27",
+            "text": "INV-00024"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B27",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C27",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D27",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E27",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F27",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 23,
+        "reason": "out_of_period",
+        "row": 27,
+        "subject": "INV-00024",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A28",
+            "text": "INV-00025"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B28",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C28",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D28",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E28",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F28",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 24,
+        "reason": "out_of_period",
+        "row": 28,
+        "subject": "INV-00025",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A29",
+            "text": "INV-00026"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B29",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C29",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D29",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E29",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F29",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 25,
+        "reason": "out_of_period",
+        "row": 29,
+        "subject": "INV-00026",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A30",
+            "text": "INV-00027"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B30",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C30",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D30",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E30",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F30",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 26,
+        "reason": "out_of_period",
+        "row": 30,
+        "subject": "INV-00027",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A31",
+            "text": "INV-00028"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B31",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C31",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D31",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E31",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F31",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 27,
+        "reason": "out_of_period",
+        "row": 31,
+        "subject": "INV-00028",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A32",
+            "text": "INV-00029"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B32",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C32",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D32",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E32",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F32",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 28,
+        "reason": "out_of_period",
+        "row": 32,
+        "subject": "INV-00029",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A33",
+            "text": "INV-00030"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B33",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C33",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D33",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E33",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F33",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 29,
+        "reason": "out_of_period",
+        "row": 33,
+        "subject": "INV-00030",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A34",
+            "text": "INV-00031"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B34",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C34",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D34",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E34",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F34",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 30,
+        "reason": "out_of_period",
+        "row": 34,
+        "subject": "INV-00031",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A35",
+            "text": "INV-00032"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B35",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C35",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D35",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E35",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F35",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 31,
+        "reason": "out_of_period",
+        "row": 35,
+        "subject": "INV-00032",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A36",
+            "text": "INV-00033"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B36",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C36",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D36",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E36",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F36",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 32,
+        "reason": "out_of_period",
+        "row": 36,
+        "subject": "INV-00033",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A37",
+            "text": "INV-00034"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B37",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C37",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D37",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E37",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F37",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 33,
+        "reason": "out_of_period",
+        "row": 37,
+        "subject": "INV-00034",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A38",
+            "text": "INV-00035"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B38",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C38",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D38",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E38",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F38",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 34,
+        "reason": "out_of_period",
+        "row": 38,
+        "subject": "INV-00035",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A39",
+            "text": "INV-00036"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B39",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C39",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D39",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E39",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F39",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 35,
+        "reason": "out_of_period",
+        "row": 39,
+        "subject": "INV-00036",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A40",
+            "text": "INV-00037"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B40",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C40",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D40",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E40",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F40",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 36,
+        "reason": "out_of_period",
+        "row": 40,
+        "subject": "INV-00037",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A41",
+            "text": "INV-00038"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B41",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C41",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D41",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E41",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F41",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 37,
+        "reason": "out_of_period",
+        "row": 41,
+        "subject": "INV-00038",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A42",
+            "text": "INV-00039"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B42",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C42",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D42",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E42",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F42",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 38,
+        "reason": "out_of_period",
+        "row": 42,
+        "subject": "INV-00039",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A43",
+            "text": "INV-00040"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B43",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C43",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D43",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E43",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F43",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 39,
+        "reason": "out_of_period",
+        "row": 43,
+        "subject": "INV-00040",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A44",
+            "text": "INV-00041"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B44",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C44",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D44",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E44",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F44",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 40,
+        "reason": "out_of_period",
+        "row": 44,
+        "subject": "INV-00041",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A45",
+            "text": "INV-00042"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B45",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C45",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D45",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E45",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F45",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 41,
+        "reason": "out_of_period",
+        "row": 45,
+        "subject": "INV-00042",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A46",
+            "text": "INV-00043"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B46",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C46",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D46",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E46",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F46",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 42,
+        "reason": "out_of_period",
+        "row": 46,
+        "subject": "INV-00043",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A47",
+            "text": "INV-00044"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B47",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C47",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D47",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E47",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F47",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 43,
+        "reason": "out_of_period",
+        "row": 47,
+        "subject": "INV-00044",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A48",
+            "text": "INV-00045"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B48",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C48",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D48",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E48",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F48",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 44,
+        "reason": "out_of_period",
+        "row": 48,
+        "subject": "INV-00045",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A49",
+            "text": "INV-00046"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B49",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C49",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D49",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E49",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F49",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 45,
+        "reason": "out_of_period",
+        "row": 49,
+        "subject": "INV-00046",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A50",
+            "text": "INV-00047"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B50",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C50",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D50",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E50",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F50",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 46,
+        "reason": "out_of_period",
+        "row": 50,
+        "subject": "INV-00047",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A51",
+            "text": "INV-00048"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B51",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C51",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D51",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E51",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F51",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 47,
+        "reason": "out_of_period",
+        "row": 51,
+        "subject": "INV-00048",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A52",
+            "text": "INV-00049"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B52",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C52",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D52",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E52",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F52",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 48,
+        "reason": "out_of_period",
+        "row": 52,
+        "subject": "INV-00049",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "cells": [
+          {
+            "column": "Invoice",
+            "location": "Invoices!A53",
+            "text": "INV-00050"
+          },
+          {
+            "column": "Invoice date",
+            "location": "Invoices!B53",
+            "text": "2025-12-15"
+          },
+          {
+            "column": "Amount",
+            "location": "Invoices!C53",
+            "text": "500"
+          },
+          {
+            "column": "Approved",
+            "location": "Invoices!D53",
+            "text": "Yes"
+          },
+          {
+            "column": "Approved before payment",
+            "location": "Invoices!E53",
+            "text": "Yes"
+          },
+          {
+            "column": "Currency",
+            "location": "Invoices!F53",
+            "text": "USD"
+          }
+        ],
+        "disposition": "excluded",
+        "duplicate_of": null,
+        "ordinal": 49,
+        "reason": "out_of_period",
+        "row": 53,
+        "subject": "INV-00050",
+        "values": [
+          {
+            "measure": "USD",
+            "measure_grounded": true,
+            "name": "amount",
+            "state": "value",
+            "value": "500"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved",
+            "state": "value",
+            "value": "true"
+          },
+          {
+            "measure": null,
+            "measure_grounded": null,
+            "name": "approved_before_payment",
+            "state": "value",
+            "value": "true"
+          }
+        ]
+      }
+    ],
+    "next_cursor": null,
+    "population": {
+      "basis_id": "id-6",
+      "completeness": "complete",
+      "control_source": {
+        "byte_end": null,
+        "byte_start": null,
+        "filename": "AP population.xlsx",
+        "location": "Summary!B1",
+        "locator": "cell:Summary!B1",
+        "original_id": "ap-population",
+        "quote": "1,250",
+        "readable": true,
+        "reason": null,
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+        "verification": "verified",
+        "version": "id-8"
+      },
+      "counts": {
+        "distinct_subjects": "1250",
+        "duplicate_rows": "6",
+        "excluded_out_of_period": "50",
+        "in_scope": "1200",
+        "received_rows": "1256",
+        "scope_unknown_conflicting_duplicate": "0",
+        "scope_unknown_period_missing": "0",
+        "scope_unknown_period_unparsed": "0",
+        "unkeyed": "0"
+      },
+      "declared_count": "1250",
+      "execution_epoch": "1",
+      "exhaustive": true,
+      "filename": "AP population.xlsx",
+      "grain": [
+        "Invoice"
+      ],
+      "header_row": 3,
+      "id": "id-9",
+      "incomplete_reason": null,
+      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000003",
+      "job_id": "id-10",
+      "key": "ap",
+      "last_row": 1259,
+      "methodology_binding_id": "id-4",
+      "original_id": "ap-population",
+      "original_sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+      "period_column": "Invoice date",
+      "period_rule": "date_iso",
+      "reconciliation": "matched",
+      "rows_read": 1256,
+      "selection": "Every invoice row of the Invoices sheet",
+      "sheet": "Invoices",
+      "subject_unit": "invoice",
+      "supersedes": null,
+      "truncated": false,
+      "values": [
+        {
+          "fact_type": "decimal",
+          "header": "Amount",
+          "measure": "USD",
+          "measure_column": "Currency",
+          "name": "amount",
+          "rule": "decimal_grouped_comma"
+        },
+        {
+          "fact_type": "boolean",
+          "header": "Approved",
+          "measure": null,
+          "measure_column": null,
+          "name": "approved",
+          "rule": "boolean_yes_no"
+        },
+        {
+          "fact_type": "boolean",
+          "header": "Approved before payment",
+          "measure": null,
+          "measure_column": null,
+          "name": "approved_before_payment",
+          "rule": "boolean_yes_no"
+        }
+      ]
+    },
+    "total": "50",
+    "values_withheld": false
+  },
+  "populations": [
+    {
+      "basis_id": "id-6",
+      "completeness": "complete",
+      "control_source": {
+        "byte_end": null,
+        "byte_start": null,
+        "filename": "AP population.xlsx",
+        "location": "Summary!B1",
+        "locator": "cell:Summary!B1",
+        "original_id": "ap-population",
+        "quote": "1,250",
+        "readable": true,
+        "reason": null,
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+        "verification": "verified",
+        "version": "id-8"
+      },
+      "counts": {
+        "distinct_subjects": "1250",
+        "duplicate_rows": "6",
+        "excluded_out_of_period": "50",
+        "in_scope": "1200",
+        "received_rows": "1256",
+        "scope_unknown_conflicting_duplicate": "0",
+        "scope_unknown_period_missing": "0",
+        "scope_unknown_period_unparsed": "0",
+        "unkeyed": "0"
+      },
+      "declared_count": "1250",
+      "execution_epoch": "1",
+      "exhaustive": true,
+      "filename": "AP population.xlsx",
+      "grain": [
+        "Invoice"
+      ],
+      "header_row": 3,
+      "id": "id-9",
+      "incomplete_reason": null,
+      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000003",
+      "job_id": "id-10",
+      "key": "ap",
+      "last_row": 1259,
+      "methodology_binding_id": "id-4",
+      "original_id": "ap-population",
+      "original_sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+      "period_column": "Invoice date",
+      "period_rule": "date_iso",
+      "reconciliation": "matched",
+      "rows_read": 1256,
+      "selection": "Every invoice row of the Invoices sheet",
+      "sheet": "Invoices",
+      "subject_unit": "invoice",
+      "supersedes": null,
+      "truncated": false,
+      "values": [
+        {
+          "fact_type": "decimal",
+          "header": "Amount",
+          "measure": "USD",
+          "measure_column": "Currency",
+          "name": "amount",
+          "rule": "decimal_grouped_comma"
+        },
+        {
+          "fact_type": "boolean",
+          "header": "Approved",
+          "measure": null,
+          "measure_column": null,
+          "name": "approved",
+          "rule": "boolean_yes_no"
+        },
+        {
+          "fact_type": "boolean",
+          "header": "Approved before payment",
+          "measure": null,
+          "measure_column": null,
+          "name": "approved_before_payment",
+          "rule": "boolean_yes_no"
+        }
+      ]
+    },
+    {
+      "basis_id": "id-6",
+      "completeness": "complete",
+      "control_source": null,
+      "counts": {
+        "distinct_subjects": "20",
+        "duplicate_rows": "0",
+        "excluded_out_of_period": "0",
+        "in_scope": "20",
+        "received_rows": "20",
+        "scope_unknown_conflicting_duplicate": "0",
+        "scope_unknown_period_missing": "0",
+        "scope_unknown_period_unparsed": "0",
+        "unkeyed": "0"
+      },
+      "declared_count": null,
+      "execution_epoch": "1",
+      "exhaustive": true,
+      "filename": "AP population.xlsx",
+      "grain": [
+        "Invoice"
+      ],
+      "header_row": 1,
+      "id": "id-11",
+      "incomplete_reason": null,
+      "invocation_id": "000000000000000000000000000000000000000000000000000000000000000c",
+      "job_id": "id-13",
+      "key": "low",
+      "last_row": 21,
+      "methodology_binding_id": "id-4",
+      "original_id": "ap-population",
+      "original_sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+      "period_column": "Invoice date",
+      "period_rule": "date_iso",
+      "reconciliation": "not_declared",
+      "rows_read": 20,
+      "selection": "Every invoice row of the Low sheet",
+      "sheet": "Low",
+      "subject_unit": "invoice",
+      "supersedes": null,
+      "truncated": false,
+      "values": [
+        {
+          "fact_type": "decimal",
+          "header": "Amount",
+          "measure": "USD",
+          "measure_column": "Currency",
+          "name": "amount",
+          "rule": "decimal_grouped_comma"
+        },
+        {
+          "fact_type": "boolean",
+          "header": "Approved",
+          "measure": null,
+          "measure_column": null,
+          "name": "approved",
+          "rule": "boolean_yes_no"
+        },
+        {
+          "fact_type": "boolean",
+          "header": "Approved before payment",
+          "measure": null,
+          "measure_column": null,
+          "name": "approved_before_payment",
+          "rule": "boolean_yes_no"
+        }
+      ]
+    },
+    {
+      "basis_id": "id-6",
+      "completeness": "incomplete",
+      "control_source": null,
+      "counts": {
+        "distinct_subjects": "0",
+        "duplicate_rows": "0",
+        "excluded_out_of_period": "0",
+        "in_scope": "0",
+        "received_rows": "0",
+        "scope_unknown_conflicting_duplicate": "0",
+        "scope_unknown_period_missing": "0",
+        "scope_unknown_period_unparsed": "0",
+        "unkeyed": "0"
+      },
+      "declared_count": null,
+      "execution_epoch": "1",
+      "exhaustive": false,
+      "filename": "AP population.xlsx",
+      "grain": [
+        "Invoice"
+      ],
+      "header_row": 1,
+      "id": "id-14",
+      "incomplete_reason": "not_exhaustive",
+      "invocation_id": "000000000000000000000000000000000000000000000000000000000000000f",
+      "job_id": "id-16",
+      "key": "filtered",
+      "last_row": 1,
+      "methodology_binding_id": "id-4",
+      "original_id": "ap-population",
+      "original_sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+      "period_column": "Invoice date",
+      "period_rule": "date_iso",
+      "reconciliation": "not_declared",
+      "rows_read": 0,
+      "selection": "Every invoice row of the Filtered sheet",
+      "sheet": "Filtered",
+      "subject_unit": "invoice",
+      "supersedes": null,
+      "truncated": false,
+      "values": [
+        {
+          "fact_type": "decimal",
+          "header": "Amount",
+          "measure": "USD",
+          "measure_column": "Currency",
+          "name": "amount",
+          "rule": "decimal_grouped_comma"
+        },
+        {
+          "fact_type": "boolean",
+          "header": "Approved",
+          "measure": null,
+          "measure_column": null,
+          "name": "approved",
+          "rule": "boolean_yes_no"
+        },
+        {
+          "fact_type": "boolean",
+          "header": "Approved before payment",
+          "measure": null,
+          "measure_column": null,
+          "name": "approved_before_payment",
+          "rule": "boolean_yes_no"
+        }
+      ]
+    },
+    {
+      "basis_id": "id-6",
+      "completeness": "incomplete",
+      "control_source": {
+        "byte_end": null,
+        "byte_start": null,
+        "filename": "AP population.xlsx",
+        "location": "Summary!B2",
+        "locator": "cell:Summary!B2",
+        "original_id": "ap-population",
+        "quote": "1,251",
+        "readable": true,
+        "reason": null,
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+        "verification": "verified",
+        "version": "id-8"
+      },
+      "counts": {
+        "distinct_subjects": "1250",
+        "duplicate_rows": "6",
+        "excluded_out_of_period": "50",
+        "in_scope": "1200",
+        "received_rows": "1256",
+        "scope_unknown_conflicting_duplicate": "0",
+        "scope_unknown_period_missing": "0",
+        "scope_unknown_period_unparsed": "0",
+        "unkeyed": "0"
+      },
+      "declared_count": "1251",
+      "execution_epoch": "1",
+      "exhaustive": true,
+      "filename": "AP population.xlsx",
+      "grain": [
+        "Invoice"
+      ],
+      "header_row": 3,
+      "id": "id-17",
+      "incomplete_reason": "count_mismatch",
+      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000012",
+      "job_id": "id-19",
+      "key": "cover",
+      "last_row": 1259,
+      "methodology_binding_id": "id-4",
+      "original_id": "ap-population",
+      "original_sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+      "period_column": "Invoice date",
+      "period_rule": "date_iso",
+      "reconciliation": "mismatch",
+      "rows_read": 1256,
+      "selection": "Every invoice row of the Invoices sheet",
+      "sheet": "Invoices",
+      "subject_unit": "invoice",
+      "supersedes": null,
+      "truncated": false,
+      "values": [
+        {
+          "fact_type": "decimal",
+          "header": "Amount",
+          "measure": "USD",
+          "measure_column": "Currency",
+          "name": "amount",
+          "rule": "decimal_grouped_comma"
+        },
+        {
+          "fact_type": "boolean",
+          "header": "Approved",
+          "measure": null,
+          "measure_column": null,
+          "name": "approved",
+          "rule": "boolean_yes_no"
+        },
+        {
+          "fact_type": "boolean",
+          "header": "Approved before payment",
+          "measure": null,
+          "measure_column": null,
+          "name": "approved_before_payment",
+          "rule": "boolean_yes_no"
+        }
+      ]
+    }
+  ],
+  "samples": [
+    {
+      "algorithm": "splitmix64-fisher-yates-v1",
+      "execution_epoch": "1",
+      "id": "id-20",
+      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000015",
+      "justification": "A seeded random selection of 25 in-scope invoices",
+      "key": "s1",
+      "keys": [
+        "INV-00664",
+        "INV-00475",
+        "INV-00577",
+        "INV-00504",
+        "INV-00257",
+        "INV-00163",
+        "INV-00358",
+        "INV-00543",
+        "INV-01096",
+        "INV-01097",
+        "INV-00248",
+        "INV-00379",
+        "INV-00401",
+        "INV-00274",
+        "INV-01205",
+        "INV-00851",
+        "INV-00376",
+        "INV-00352",
+        "INV-00744",
+        "INV-00523",
+        "INV-00483",
+        "INV-01075",
+        "INV-00880",
+        "INV-01072",
+        "INV-00155"
+      ],
+      "keys_withheld": false,
+      "method": "seeded_random",
+      "methodology_binding_id": "id-4",
+      "population_id": "id-9",
+      "seed": "42",
+      "selected_count": "25",
+      "size": 25,
+      "statistical_inference": false,
+      "strata": "",
+      "substitutions": []
+    }
+  ],
+  "summaries": [
+    {
+      "aggregation": "subject_partition_v1",
+      "basis_id": "id-6",
+      "completeness": "complete",
+      "conclusion": "exceptions_found_inconclusive",
+      "counts": {
+        "distinct_subjects": "1250",
+        "duplicate_rows": "6",
+        "excluded_out_of_period": "50",
+        "in_scope": "1200",
+        "received_rows": "1256",
+        "scope_unknown_conflicting_duplicate": "0",
+        "scope_unknown_period_missing": "0",
+        "scope_unknown_period_unparsed": "0",
+        "unkeyed": "0"
+      },
+      "criteria": [
+        {
+          "applicability_unknown": "0",
+          "applicable": "1000",
+          "criterion_id": "id-2",
+          "execution_failed": "0",
+          "met": "975",
+          "not_applicable": "200",
+          "not_evaluated": "0",
+          "not_met": "15",
+          "undetermined": "10",
+          "undetermined_by_reason": [
+            {
+              "count": "10",
+              "reason": "fact_unsupported"
+            }
+          ]
+        },
+        {
+          "applicability_unknown": "0",
+          "applicable": "1000",
+          "criterion_id": "id-5",
+          "execution_failed": "0",
+          "met": "978",
+          "not_applicable": "200",
+          "not_evaluated": "0",
+          "not_met": "12",
+          "undetermined": "10",
+          "undetermined_by_reason": [
+            {
+              "count": "10",
+              "reason": "fact_unsupported"
+            }
+          ]
+        }
+      ],
+      "declared_count": "1250",
+      "execution_epoch": "1",
+      "failing_opportunities": "27",
+      "failing_subjects": "20",
+      "id": "id-22",
+      "incomplete_reason": null,
+      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000003",
+      "limitations": [],
+      "meets_every_applicable": "960",
+      "methodology_binding_id": "id-4",
+      "not_applicable_to_any": "200",
+      "population_id": "id-9",
+      "reconciliation": "matched",
+      "sample_id": null,
+      "selected": null,
+      "statistical_inference": false,
+      "summary_sha256": "0000000000000000000000000000000000000000000000000000000000000017",
+      "unresolved_subjects": "20"
+    },
+    {
+      "aggregation": "subject_partition_v1",
+      "basis_id": "id-6",
+      "completeness": "complete",
+      "conclusion": "no_eligible_items",
+      "counts": {
+        "distinct_subjects": "20",
+        "duplicate_rows": "0",
+        "excluded_out_of_period": "0",
+        "in_scope": "20",
+        "received_rows": "20",
+        "scope_unknown_conflicting_duplicate": "0",
+        "scope_unknown_period_missing": "0",
+        "scope_unknown_period_unparsed": "0",
+        "unkeyed": "0"
+      },
+      "criteria": [
+        {
+          "applicability_unknown": "0",
+          "applicable": "0",
+          "criterion_id": "id-2",
+          "execution_failed": "0",
+          "met": "0",
+          "not_applicable": "20",
+          "not_evaluated": "0",
+          "not_met": "0",
+          "undetermined": "0",
+          "undetermined_by_reason": []
+        },
+        {
+          "applicability_unknown": "0",
+          "applicable": "0",
+          "criterion_id": "id-5",
+          "execution_failed": "0",
+          "met": "0",
+          "not_applicable": "20",
+          "not_evaluated": "0",
+          "not_met": "0",
+          "undetermined": "0",
+          "undetermined_by_reason": []
+        }
+      ],
+      "declared_count": null,
+      "execution_epoch": "1",
+      "failing_opportunities": "0",
+      "failing_subjects": "0",
+      "id": "id-24",
+      "incomplete_reason": null,
+      "invocation_id": "000000000000000000000000000000000000000000000000000000000000000c",
+      "limitations": [],
+      "meets_every_applicable": "0",
+      "methodology_binding_id": "id-4",
+      "not_applicable_to_any": "20",
+      "population_id": "id-11",
+      "reconciliation": "not_declared",
+      "sample_id": null,
+      "selected": null,
+      "statistical_inference": false,
+      "summary_sha256": "0000000000000000000000000000000000000000000000000000000000000019",
+      "unresolved_subjects": "0"
+    },
+    {
+      "aggregation": "subject_partition_v1",
+      "basis_id": "id-6",
+      "completeness": "incomplete",
+      "conclusion": "no_items_found_absence_not_proven",
+      "counts": {
+        "distinct_subjects": "0",
+        "duplicate_rows": "0",
+        "excluded_out_of_period": "0",
+        "in_scope": "0",
+        "received_rows": "0",
+        "scope_unknown_conflicting_duplicate": "0",
+        "scope_unknown_period_missing": "0",
+        "scope_unknown_period_unparsed": "0",
+        "unkeyed": "0"
+      },
+      "criteria": [
+        {
+          "applicability_unknown": "0",
+          "applicable": "0",
+          "criterion_id": "id-2",
+          "execution_failed": "0",
+          "met": "0",
+          "not_applicable": "0",
+          "not_evaluated": "0",
+          "not_met": "0",
+          "undetermined": "0",
+          "undetermined_by_reason": []
+        },
+        {
+          "applicability_unknown": "0",
+          "applicable": "0",
+          "criterion_id": "id-5",
+          "execution_failed": "0",
+          "met": "0",
+          "not_applicable": "0",
+          "not_evaluated": "0",
+          "not_met": "0",
+          "undetermined": "0",
+          "undetermined_by_reason": []
+        }
+      ],
+      "declared_count": null,
+      "execution_epoch": "1",
+      "failing_opportunities": "0",
+      "failing_subjects": "0",
+      "id": "id-26",
+      "incomplete_reason": "not_exhaustive",
+      "invocation_id": "000000000000000000000000000000000000000000000000000000000000000f",
+      "limitations": [],
+      "meets_every_applicable": "0",
+      "methodology_binding_id": "id-4",
+      "not_applicable_to_any": "0",
+      "population_id": "id-14",
+      "reconciliation": "not_declared",
+      "sample_id": null,
+      "selected": null,
+      "statistical_inference": false,
+      "summary_sha256": "000000000000000000000000000000000000000000000000000000000000001b",
+      "unresolved_subjects": "0"
+    },
+    {
+      "aggregation": "subject_partition_v1",
+      "basis_id": "id-6",
+      "completeness": "complete",
+      "conclusion": "exceptions_found",
+      "counts": {
+        "distinct_subjects": "1250",
+        "duplicate_rows": "6",
+        "excluded_out_of_period": "50",
+        "in_scope": "1200",
+        "received_rows": "1256",
+        "scope_unknown_conflicting_duplicate": "0",
+        "scope_unknown_period_missing": "0",
+        "scope_unknown_period_unparsed": "0",
+        "unkeyed": "0"
+      },
+      "criteria": [
+        {
+          "applicability_unknown": "0",
+          "applicable": "22",
+          "criterion_id": "id-2",
+          "execution_failed": "0",
+          "met": "21",
+          "not_applicable": "3",
+          "not_evaluated": "0",
+          "not_met": "1",
+          "undetermined": "0",
+          "undetermined_by_reason": []
+        },
+        {
+          "applicability_unknown": "0",
+          "applicable": "22",
+          "criterion_id": "id-5",
+          "execution_failed": "0",
+          "met": "22",
+          "not_applicable": "3",
+          "not_evaluated": "0",
+          "not_met": "0",
+          "undetermined": "0",
+          "undetermined_by_reason": []
+        }
+      ],
+      "declared_count": "1250",
+      "execution_epoch": "1",
+      "failing_opportunities": "1",
+      "failing_subjects": "1",
+      "id": "id-28",
+      "incomplete_reason": null,
+      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000015",
+      "limitations": [
+        "A sample of 25 selected items: the counts describe the selected items only, never the population."
+      ],
+      "meets_every_applicable": "21",
+      "methodology_binding_id": "id-4",
+      "not_applicable_to_any": "3",
+      "population_id": "id-9",
+      "reconciliation": "matched",
+      "sample_id": "id-20",
+      "selected": "25",
+      "statistical_inference": false,
+      "summary_sha256": "000000000000000000000000000000000000000000000000000000000000001d",
+      "unresolved_subjects": "0"
+    }
+  ]
+}

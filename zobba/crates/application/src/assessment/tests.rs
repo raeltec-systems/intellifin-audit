@@ -24,6 +24,8 @@ struct Reader {
     reads: Mutex<u32>,
     /// Fail every read after this many have succeeded (a transient outage).
     fail_after: Mutex<Option<u32>>,
+    /// Every trusted enumeration requested.
+    enumerations: Mutex<Vec<zobba_domain::coverage::EnumerateRequest>>,
 }
 const POLICY: &str = "Policy: invoices above 1,000.00 USD require approval.";
 const NOTE: &str = "Invoice INV-0060 total 12,500.00 USD, dated 15/03/2026. Notarised: Yes";
@@ -98,10 +100,14 @@ impl Reader {
                 }
             }
         }
+        // The population workbook's control counts (Story 24.2).
+        cells.insert("cell:Summary!B1".into(), vec!["5".into()]);
+        cells.insert("cell:Summary!B2".into(), vec!["6".into()]);
         Self {
             cells,
             reads: Mutex::new(0),
             fail_after: Mutex::new(None),
+            enumerations: Mutex::new(Vec::new()),
         }
     }
     fn read(&self) -> Result<(), ReadingError> {
@@ -194,6 +200,100 @@ impl CitationReader for Reader {
     ) -> Result<Option<PageFacts>, ReadingError> {
         Ok(None)
     }
+    /// The trusted enumeration of the AP population sheet (see
+    /// `population_rows`); a sheet named "Mismatch" has the header "Amount "
+    /// and one named "Missing" does not exist.
+    async fn enumerate(
+        &self,
+        _: &ClaimBasis,
+        _: &CitedOriginal,
+        request: &zobba_domain::coverage::EnumerateRequest,
+        _: &ModelCancellation,
+    ) -> Result<zobba_domain::coverage::Enumerated, ReadingError> {
+        use zobba_domain::coverage::{
+            CellRead, Enumerated, Enumeration, EnumerationFailure, RowRead,
+        };
+        self.read()?;
+        let job = Some("job-enumerate".to_string());
+        let sheet = request.sheet.clone().unwrap_or_default();
+        let outcome = match sheet.as_str() {
+            "Mismatch" => Err(EnumerationFailure::HeaderMismatch {
+                column: "Amount".into(),
+            }),
+            "Missing" => Err(EnumerationFailure::SheetMissing),
+            _ => {
+                let headers = [
+                    "Invoice",
+                    "Invoice date",
+                    "Amount",
+                    "Approver",
+                    "In history",
+                    "Currency",
+                ];
+                let rows = population_rows()
+                    .into_iter()
+                    .map(|(row, cells)| RowRead {
+                        row,
+                        cells: request
+                            .columns
+                            .iter()
+                            .map(|c| {
+                                let i =
+                                    headers.iter().position(|h| h == c).expect("a named column");
+                                let letter = (b'A' + i as u8) as char;
+                                CellRead {
+                                    texts: (!cells[i].is_empty())
+                                        .then(|| vec![cells[i].to_string()]),
+                                    locator: Locator::parse(&format!("cell:{sheet}!{letter}{row}")),
+                                }
+                            })
+                            .collect(),
+                    })
+                    .collect::<Vec<_>>();
+                Ok(Enumeration {
+                    header_row: 1,
+                    last_row: 1 + rows.len() as u32,
+                    rows_read: rows.len() as u32,
+                    truncated: false,
+                    rows,
+                })
+            }
+        };
+        self.enumerations.lock().unwrap().push(request.clone());
+        Ok(Enumerated {
+            job_id: job,
+            outcome,
+        })
+    }
+}
+
+/// Six rows: INV-1 meets both criteria, INV-2 fails the history criterion,
+/// its exact duplicate collapses, INV-3 is out of period, INV-4 is below the
+/// threshold and 000123 has no approver.
+fn population_rows() -> Vec<(u32, [&'static str; 6])> {
+    vec![
+        (
+            2,
+            ["INV-1", "2026-03-05", "1,500.00", "J. Smith", "Yes", "USD"],
+        ),
+        (
+            3,
+            ["INV-2", "2026-03-05", "1,500.00", "J. Smith", "No", "USD"],
+        ),
+        (
+            4,
+            ["INV-2", "2026-03-05", "1,500.00", "J. Smith", "No", "USD"],
+        ),
+        (
+            5,
+            ["INV-3", "2025-12-01", "1,500.00", "J. Smith", "Yes", "USD"],
+        ),
+        (
+            6,
+            ["INV-4", "2026-03-05", "980.00", "J. Smith", "Yes", "USD"],
+        ),
+        (7, ["000123", "2026-03-05", "1,500.00", "", "Yes", "USD"]),
+    ]
 }
 
 #[derive(Default)]
@@ -2357,4 +2457,354 @@ fn bounds_match_the_migration_guards() {
     )));
     assert!(migration.contains(&format!(") >= {MAX_BASIS_FACTS} THEN")));
     assert!(migration.contains(&format!("'a basis holds at most {MAX_BASIS_FACTS} facts'")));
+}
+
+// ------------------------------------------------------------- Story 24.2
+
+fn population_spec(
+    sheet: &str,
+    control: Option<(&str, &str)>,
+) -> zobba_domain::coverage::ProposedPopulation {
+    use zobba_domain::coverage::{ControlCount, ProposedPopulation, ValueColumn};
+    ProposedPopulation {
+        key: "pop1".into(),
+        basis: "b1".into(),
+        supersedes: None,
+        original_id: "ap-invoices".into(),
+        sheet: Some(sheet.into()),
+        header_row: 1,
+        subject_unit: "invoice".into(),
+        grain: vec!["Invoice".into()],
+        period: Some(("Invoice date".into(), ParseRule::DateIso)),
+        values: vec![
+            ValueColumn {
+                header: "Amount".into(),
+                name: "amount".into(),
+                kind: FactType::Decimal,
+                rule: ParseRule::DecimalGroupedComma,
+                measure: Some(usd()),
+                measure_column: Some("Currency".into()),
+            },
+            ValueColumn {
+                header: "Approver".into(),
+                name: "approver".into(),
+                kind: FactType::Identifier,
+                rule: ParseRule::IdentifierExact,
+                measure: None,
+                measure_column: None,
+            },
+            ValueColumn {
+                header: "In history".into(),
+                name: "in_approval_history".into(),
+                kind: FactType::Boolean,
+                rule: ParseRule::BooleanYesNo,
+                measure: None,
+                measure_column: None,
+            },
+        ],
+        exhaustive: true,
+        control: control.map(|(locator, quote)| ControlCount {
+            source: CitationSource {
+                original_id: "ap-invoices".into(),
+                locator: Locator::parse(locator),
+                quote: quote.into(),
+            },
+            rule: ParseRule::DecimalPlain,
+        }),
+        selection: "Every invoice of 2026".into(),
+    }
+}
+fn coverage_answer(sheet: &str, control: Option<(&str, &str)>) -> CitedAnswer {
+    use zobba_domain::coverage::{PopulationEvaluation, SummaryRequest};
+    CitedAnswer {
+        propose_criteria: vec![approval("c1"), history("c2")],
+        propose_basis: vec![ap_basis(vec!["c1", "c2"])],
+        propose_population: vec![population_spec(sheet, control)],
+        evaluate_population: vec![
+            PopulationEvaluation {
+                criterion: "c1".into(),
+                population: "pop1".into(),
+            },
+            PopulationEvaluation {
+                criterion: "c2".into(),
+                population: "pop1".into(),
+            },
+        ],
+        summarise: vec![SummaryRequest {
+            basis: "b1".into(),
+            population: "pop1".into(),
+            sample: None,
+        }],
+        ..CitedAnswer::default()
+    }
+}
+
+#[test]
+fn every_row_is_counted_by_trusted_code_and_the_summary_partitions_subjects() {
+    use zobba_domain::coverage::{Completeness, Conclusion, Reconciliation};
+    let (store, reader) = (Store::default(), Reader::new());
+    let assessment = Assessment::new(&store, &reader);
+    let answer = coverage_answer("Invoices", Some(("cell:Summary!B1", "5")));
+    assert!(answer.is_valid());
+    let turn = invocation("turn-1", "binding-1");
+    assert!(
+        run(assessment.after_answer(
+            &basis("p1"),
+            &binding("binding-1"),
+            &turn,
+            &answer,
+            &ModelCancellation::new()
+        ))
+        .unwrap()
+    );
+    let state = store.state.lock().unwrap();
+    let population = &state.populations[0];
+    let c = population.counts;
+    assert_eq!(
+        (
+            c.received_rows,
+            c.duplicate_rows,
+            c.distinct_subjects,
+            c.excluded_out_of_period,
+            c.in_scope
+        ),
+        (6, 1, 5, 1, 4)
+    );
+    assert_eq!(population.completeness, Completeness::Complete);
+    assert_eq!(population.reconciliation, Reconciliation::Matched);
+    assert_eq!(population.declared_count, Some(5));
+    assert_eq!(population.job_id.as_deref(), Some("job-enumerate"));
+    assert_eq!(state.members.len(), 6);
+    // One opportunity per criterion per in-scope member, decided by the
+    // 24.1 evaluator from the member's own cells.
+    assert_eq!(state.opportunities.len(), 8);
+    assert!(
+        state
+            .opportunities
+            .iter()
+            .all(|o| o.outcome.origin == Origin::Deterministic)
+    );
+    let summary = &state.summaries[0].summary;
+    assert_eq!(
+        (
+            summary.partition.failing,
+            summary.partition.unresolved,
+            summary.partition.meets_every_applicable,
+            summary.partition.not_applicable_to_any
+        ),
+        (1, 1, 1, 1)
+    );
+    assert_eq!(summary.failing_opportunities, 1);
+    assert_eq!(summary.conclusion, Conclusion::ExceptionsFoundInconclusive);
+    assert_eq!(state.summaries[0].summary_digest, summary.digest());
+    // The read named the population record it was for.
+    let request = &reader.enumerations.lock().unwrap()[0];
+    assert_eq!(request.record, population.id);
+    assert_eq!(
+        request.columns,
+        [
+            "Invoice",
+            "Invoice date",
+            "Amount",
+            "Approver",
+            "In history",
+            "Currency"
+        ]
+    );
+    drop(state);
+    // The outline reports exact counts, inside the untrusted envelope.
+    let feedback = feedback_of(&assessment);
+    assert!(
+        feedback.contains("Population pop1 recorded as pop-"),
+        "{feedback}"
+    );
+    assert!(feedback.contains("6 rows received"), "{feedback}");
+}
+
+#[test]
+fn a_cited_control_count_that_differs_makes_the_population_incomplete() {
+    use zobba_domain::coverage::{Completeness, IncompleteReason, Reconciliation};
+    let (store, reader) = (Store::default(), Reader::new());
+    let assessment = Assessment::new(&store, &reader);
+    let answer = coverage_answer("Invoices", Some(("cell:Summary!B2", "6")));
+    run(assessment.after_answer(
+        &basis("p1"),
+        &binding("binding-1"),
+        &invocation("turn-1", "binding-1"),
+        &answer,
+        &ModelCancellation::new(),
+    ))
+    .unwrap();
+    let state = store.state.lock().unwrap();
+    let population = &state.populations[0];
+    assert_eq!(
+        population.completeness,
+        Completeness::Incomplete(IncompleteReason::CountMismatch)
+    );
+    assert_eq!(
+        population.reconciliation,
+        Reconciliation::Mismatch {
+            declared: 6,
+            distinct: 5
+        }
+    );
+    // Never "no exception found" on an incomplete population.
+    assert_ne!(
+        state.summaries[0].summary.conclusion,
+        zobba_domain::coverage::Conclusion::NoExceptionFound
+    );
+}
+
+#[test]
+fn a_control_count_not_at_its_location_records_no_population() {
+    let (store, reader) = (Store::default(), Reader::new());
+    let assessment = Assessment::new(&store, &reader);
+    let answer = coverage_answer("Invoices", Some(("cell:Summary!B1", "7")));
+    run(assessment.after_answer(
+        &basis("p1"),
+        &binding("binding-1"),
+        &invocation("turn-1", "binding-1"),
+        &answer,
+        &ModelCancellation::new(),
+    ))
+    .unwrap();
+    assert!(store.state.lock().unwrap().populations.is_empty());
+    let feedback = feedback_of(&assessment);
+    assert!(
+        feedback
+            .contains("Population pop1 was not recorded: its control count \"7\" was not verified"),
+        "{feedback}"
+    );
+}
+
+#[test]
+fn an_enumeration_failure_records_nothing_and_names_the_column_and_job() {
+    let (store, reader) = (Store::default(), Reader::new());
+    let assessment = Assessment::new(&store, &reader);
+    let answer = coverage_answer("Mismatch", None);
+    run(assessment.after_answer(
+        &basis("p1"),
+        &binding("binding-1"),
+        &invocation("turn-1", "binding-1"),
+        &answer,
+        &ModelCancellation::new(),
+    ))
+    .unwrap();
+    let state = store.state.lock().unwrap();
+    assert!(state.populations.is_empty() && state.members.is_empty() && state.summaries.is_empty());
+    drop(state);
+    let feedback = feedback_of(&assessment);
+    assert!(
+        feedback.contains("the header row has no column exactly named \"Amount\""),
+        "{feedback}"
+    );
+    assert!(
+        feedback.contains("(analysis job job-enumerate)"),
+        "{feedback}"
+    );
+    assert!(feedback.contains("Nothing was counted"), "{feedback}");
+}
+
+#[test]
+fn a_summary_needs_every_criterion_evaluated_over_the_population() {
+    let (store, reader) = (Store::default(), Reader::new());
+    let assessment = Assessment::new(&store, &reader);
+    let mut answer = coverage_answer("Invoices", None);
+    answer.evaluate_population.truncate(1);
+    run(assessment.after_answer(
+        &basis("p1"),
+        &binding("binding-1"),
+        &invocation("turn-1", "binding-1"),
+        &answer,
+        &ModelCancellation::new(),
+    ))
+    .unwrap();
+    assert!(store.state.lock().unwrap().summaries.is_empty());
+    let feedback = feedback_of(&assessment);
+    assert!(
+        feedback.contains("is not yet evaluated over it"),
+        "{feedback}"
+    );
+}
+
+#[test]
+fn a_seeded_sample_is_recomputed_and_a_wrong_selection_refused() {
+    use zobba_domain::coverage::{ProposedSample, SampleMethod, SummaryRequest, seeded_selection};
+    let (store, reader) = (Store::default(), Reader::new());
+    let assessment = Assessment::new(&store, &reader);
+    run(assessment.after_answer(
+        &basis("p1"),
+        &binding("binding-1"),
+        &invocation("turn-1", "binding-1"),
+        &coverage_answer("Invoices", None),
+        &ModelCancellation::new(),
+    ))
+    .unwrap();
+    let population = store.state.lock().unwrap().populations[0].id.clone();
+    let in_scope = vec![
+        "000123".to_string(),
+        "INV-1".into(),
+        "INV-2".into(),
+        "INV-4".into(),
+    ];
+    let sample = |keys: Vec<String>| CitedAnswer {
+        propose_sample: vec![ProposedSample {
+            key: "s1".into(),
+            population: population.clone(),
+            method: SampleMethod::SeededRandom { seed: 42 },
+            size: 2,
+            strata: String::new(),
+            justification: "Two of the in-scope invoices".into(),
+            keys,
+            substitutions: vec![],
+        }],
+        summarise: vec![SummaryRequest {
+            basis: store.state.lock().unwrap().bases[0].id.clone(),
+            population: population.clone(),
+            sample: Some("s1".into()),
+        }],
+        ..CitedAnswer::default()
+    };
+    let mut wrong = seeded_selection(&in_scope, 42, 2);
+    wrong.reverse();
+    wrong[0] = in_scope
+        .iter()
+        .find(|k| !wrong.contains(k))
+        .unwrap()
+        .clone();
+    run(assessment.after_answer(
+        &basis("p1"),
+        &binding("binding-1"),
+        &invocation("turn-2", "binding-1"),
+        &sample(wrong),
+        &ModelCancellation::new(),
+    ))
+    .unwrap();
+    assert!(
+        store.state.lock().unwrap().samples.is_empty(),
+        "a selection that is not the seeded one is refused"
+    );
+    let right = seeded_selection(&in_scope, 42, 2);
+    run(assessment.after_answer(
+        &basis("p1"),
+        &binding("binding-1"),
+        &invocation("turn-3", "binding-1"),
+        &sample(right.clone()),
+        &ModelCancellation::new(),
+    ))
+    .unwrap();
+    let state = store.state.lock().unwrap();
+    let mut selected = right;
+    selected.sort();
+    assert_eq!(state.samples[0].selected, selected);
+    let summary = state
+        .summaries
+        .iter()
+        .find(|s| s.sample_id.is_some())
+        .unwrap();
+    assert_eq!(summary.summary.selected, Some(2));
+    assert_ne!(
+        summary.summary.conclusion,
+        zobba_domain::coverage::Conclusion::NoExceptionFound
+    );
 }

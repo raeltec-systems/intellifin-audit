@@ -2006,6 +2006,83 @@ ZOBBA_UPDATE_ASSESSMENT_FIXTURE=1 cargo test -p zobba-worker --test assessment -
 pnpm --dir web exec playwright test tests/browser/assessment.spec.ts
 ```
 
+## Exact population, sample and coverage counts (Story 24.2)
+
+Schema 19 is additive; migrations 0001–0018 and catalogues v1–v18 are
+unchanged (`published.rs` now pins 0018 and v18 too). The agent still decides
+what to read and how to scope the work; it never counts. Four more optional
+answer fields name *where* and *how*, and trusted code does the counting:
+
+- `propose_population` (≤1): a registered original, sheet and 1-based header
+  row (workbook) or the whole CSV/plain text, a grain of 1–3 columns (the key
+  is the exact cell texts, leading zeros kept), an optional period column and
+  rule, up to 8 typed value columns (with a currency/unit column), whether the
+  source is exhaustive, and an optional control count cited at its exact
+  location. The trusted document program's new `enumerate` mode reads the
+  header row and every row to the sheet's last row in the 22.4 sandbox
+  (bounds: 20,000 rows, 12 columns, 256 bytes a cell); CSV is read in process
+  (RFC 4180, UTF-8). A header that does not match exactly, a missing sheet, or
+  a failed or limited read records nothing and is fed back in words, with the
+  job ID.
+- Each received row becomes one immutable **member** with one disposition:
+  `in_scope`, `excluded{out_of_period}`, `scope_unknown{period_unparsed |
+  period_missing | conflicting_duplicate}`, `duplicate_row{first}` or
+  `unkeyed`. **Completeness** is derived, never asserted: complete only when the
+  agent said the source is exhaustive, nothing was truncated, every row to the
+  end was read and a cited control count (if any) equals the distinct
+  subjects; otherwise `incomplete{not_exhaustive | row_bound | count_mismatch}`.
+- `evaluate_population` (≤4): every rule criterion is decided for every
+  in-scope member by the 24.1 pure `evaluate`, from the member's own cells (the
+  enumeration read is itself the trusted read of the exact original); a
+  currency is grounded only by a currency column in the same row. Judgment
+  criteria are not bulk-evaluated: they use the newest 24.1 judgment at the
+  population's subject unit, else `not_evaluated`.
+- `propose_sample` (≤1): `all_in_scope`, `judgmental` or `seeded_random{seed,
+  splitmix64-fisher-yates-v1}`. Trusted code checks every key is in scope and
+  recomputes a seeded selection (in-house SplitMix64, no crate). There is no
+  statistical inference: a sample summary covers the selected items only.
+- `summarise` (≤2): the pure `domain::coverage::summarise` (aggregation rule
+  `subject_partition_v1`, canonical digest) gives exact counts of rows,
+  subjects, exclusions and scope by reason, per criterion (applicable, not
+  applicable, unknown; met, not met, undetermined by reason, failed, not
+  evaluated), the subject partition (failing, meets every applicable,
+  unresolved, not applicable to any) and failing *opportunities* — two
+  separately named numbers — and one closed conclusion. Never "no exception
+  found" on an incomplete population, a sample or zero applicable subjects.
+
+The six tables (`assessment_populations`, `_population_members`, `_samples`,
+`_sample_members`, `_opportunities`, `_summaries`) refuse UPDATE, DELETE and
+TRUNCATE, including for the owner, except an explicit
+`zobba.disposable_fixture_reset=on` session in a `*_test` database. The
+summary guard recounts every count and the conclusion with exact SQL
+aggregates over the stored members and opportunities and refuses any
+disagreement by name. Members, selected items and opportunities are guarded
+once per statement over its new rows. The work read adds bounded
+`populations`, `samples` and `summaries` with exact totals; a members route
+(`/tasks/{task}/assessment/populations/{id}/members?disposition=&cursor=`)
+gives an exact count and 50-row pages in receipt order, withholding cell
+values from a viewer who cannot open the original now. The Coverage panel
+says every count in words with its unit, "at least N found" and "the total
+is not known" when incomplete, and shows no percentages.
+
+What is proven offline: the worker suite drives the real coordinator with a
+loopback model over `fixtures/documents/AP population.xlsx` (1,256 rows, 6
+duplicate rows, 50 outside the period; criteria A and B: 15 and 12 not met, 7
+failing both): the AC1/AC2 numbers in `AP population expected.json`
+(independently computed by `generate.py`), a zero-applicable sheet, a
+filtered export, a seeded sample of 25, a count mismatch (1,251 cited, 1,250
+found) and a header mismatch. It forges summaries to check the recount guard
+by its message, and checks immutability for each table. No live provider is
+called.
+
+```sh
+cargo test -p zobba-domain coverage
+python3 -I -B crates/application/src/reading/test_document.py
+cargo test -p zobba-worker --test coverage --locked -- --test-threads=1   # guarded _test DB, OIDC fixture, Docker
+ZOBBA_UPDATE_COVERAGE_FIXTURE=1 cargo test -p zobba-worker --test coverage --locked -- --test-threads=1   # rewrites web/tests/fixtures/task-coverage.json
+pnpm --dir web exec playwright test tests/browser/coverage.spec.ts
+```
+
 ## Establishing an engagement conversationally (Story 22.2 AC4)
 
 Schema 13 is additive; published migrations and catalogues 1–12 are unchanged.

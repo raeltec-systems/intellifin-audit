@@ -1502,3 +1502,60 @@ fn page_facts_name_the_rendered_page_and_whether_it_was_read() {
         None
     );
 }
+
+// Story 24.2: the trusted enumeration manifest is accepted only in the exact
+// shape the trusted program writes.
+#[test]
+fn enumeration_manifests_are_accepted_only_in_their_exact_shape() {
+    use zobba_domain::coverage::EnumerateRequest;
+    let request = EnumerateRequest {
+        sheet: Some("Invoices".into()),
+        header_row: 3,
+        columns: vec!["Invoice".into(), "Amount".into()],
+        record: "pop-1".into(),
+    };
+    let head = |rows_read: u32, last: u32, truncated: bool| {
+        manifest::parse(format!(r#"{{"status":"read","header_row":3,"last_row":{last},"rows_read":{rows_read},"truncated":{truncated},"columns":[1,3],"chunks":["rows/0000.json"]}}"#).as_bytes()).unwrap()
+    };
+    let chunk = br#"[[4,[["INV-1"],["1,250.00","1250"]]],[5,[null,["980.00"]]]]"#.to_vec();
+    let read =
+        enumeration_manifest(&head(2, 5, false), &[chunk.clone()], "Invoices", &request).unwrap();
+    assert_eq!((read.rows_read, read.last_row), (2, 5));
+    assert_eq!(
+        read.rows[1].cells[0].texts, None,
+        "a blank or over-bound cell"
+    );
+    assert_eq!(
+        read.rows[0].cells[1].locator.as_ref().map(|l| l.render()),
+        Some("cell:Invoices!C4".into())
+    );
+    // Not every row to the last row; a row count that is not the rows given;
+    // rows out of order; a cell count that is not the columns; another
+    // header row; a text over the cell bound.
+    assert!(
+        enumeration_manifest(&head(2, 6, false), &[chunk.clone()], "Invoices", &request).is_none()
+    );
+    assert!(
+        enumeration_manifest(&head(3, 6, true), &[chunk.clone()], "Invoices", &request).is_none()
+    );
+    let unordered = br#"[[5,[["INV-1"],["1"]]],[4,[["INV-2"],["2"]]]]"#.to_vec();
+    assert!(enumeration_manifest(&head(2, 5, false), &[unordered], "Invoices", &request).is_none());
+    let narrow = br#"[[4,[["INV-1"]]],[5,[["INV-2"]]]]"#.to_vec();
+    assert!(enumeration_manifest(&head(2, 5, false), &[narrow], "Invoices", &request).is_none());
+    let other = EnumerateRequest {
+        header_row: 1,
+        ..request.clone()
+    };
+    assert!(
+        enumeration_manifest(&head(2, 5, false), &[chunk.clone()], "Invoices", &other).is_none()
+    );
+    let long = format!(
+        r#"[[4,[["{}"],["1"]]],[5,[["INV-2"],["2"]]]]"#,
+        "x".repeat(257)
+    )
+    .into_bytes();
+    assert!(enumeration_manifest(&head(2, 5, false), &[long], "Invoices", &request).is_none());
+    // A truncated read keeps the rows it read and says so.
+    let read = enumeration_manifest(&head(2, 9, true), &[chunk], "Invoices", &request).unwrap();
+    assert!(read.truncated);
+}

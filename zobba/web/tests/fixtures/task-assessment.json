@@ -2140,8 +2140,14 @@
       "value_withheld": false
     }
   ],
+  "populations": [],
+  "samples": [],
+  "summaries": [],
   "total_bases": "1",
   "total_criteria": "5",
   "total_evaluations": "37",
-  "total_facts": "18"
+  "total_facts": "18",
+  "total_populations": "0",
+  "total_samples": "0",
+  "total_summaries": "0"
 }

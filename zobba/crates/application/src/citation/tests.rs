@@ -360,3 +360,86 @@ fn transient_reads_end_verification_and_a_wrong_location_kind_is_not_found() {
         vec![vec![Some(R::NotFoundAtLocation)]]
     );
 }
+
+// Story 24.2: the in-process CSV enumeration over the exact original bytes.
+#[test]
+fn csv_enumeration_reads_every_row_with_byte_locations() {
+    let bytes = std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/documents/AP population.csv"),
+    )
+    .unwrap();
+    let columns = ["Invoice".to_string(), "Amount".into(), "Note".into()];
+    let read = enumerate_text(&bytes, &columns, 20_000).unwrap();
+    assert_eq!(
+        (
+            read.header_row,
+            read.last_row,
+            read.rows_read,
+            read.truncated
+        ),
+        (1, 5, 4, false)
+    );
+    let texts: Vec<Vec<Option<Vec<String>>>> = read
+        .rows
+        .iter()
+        .map(|r| r.cells.iter().map(|c| c.texts.clone()).collect())
+        .collect();
+    // A quoted comma and doubled quotes are one field; a blank cell is empty.
+    assert_eq!(texts[0][2], Some(vec!["a note, with a comma".to_string()]));
+    assert_eq!(texts[1][2], Some(vec!["say \"hi\"".to_string()]));
+    assert_eq!(texts[2][2], Some(vec![String::new()]));
+    assert_eq!(texts[0][1], Some(vec!["1,500.00".to_string()]));
+    // Each located cell is the exact byte range of its content.
+    let Some(Locator::Bytes { start, end }) = &read.rows[0].cells[1].locator else {
+        panic!("a byte location");
+    };
+    assert_eq!(&bytes[*start as usize..*end as usize], b"1,500.00");
+    assert_eq!(
+        read.rows.iter().map(|r| r.row).collect::<Vec<_>>(),
+        [2, 3, 4, 5]
+    );
+}
+
+#[test]
+fn csv_enumeration_refuses_what_it_cannot_read_exactly() {
+    let columns = ["Invoice".to_string(), "Amount".into()];
+    // A header that is not exactly the declared one.
+    assert_eq!(
+        enumerate_text(b"Invoice,Amount \nINV-1,5\n", &columns, 10).unwrap_err(),
+        EnumerationFailure::HeaderMismatch {
+            column: "Amount".into()
+        }
+    );
+    // A header named twice.
+    assert_eq!(
+        enumerate_text(b"Invoice,Amount,Amount\n", &columns, 10).unwrap_err(),
+        EnumerationFailure::HeaderMismatch {
+            column: "Amount".into()
+        }
+    );
+    // Not UTF-8, an unterminated quote, a quote inside an unquoted field.
+    for bytes in [
+        &b"Invoice,Amount\n\xff,5\n"[..],
+        b"Invoice,Amount\n\"INV-1,5\n",
+        b"Invoice,Amount\nIN\"V,5\n",
+    ] {
+        assert_eq!(
+            enumerate_text(bytes, &columns, 10).unwrap_err(),
+            EnumerationFailure::Unreadable
+        );
+    }
+    // The row bound reports truncation and keeps the exact rows it read.
+    let read = enumerate_text(b"Invoice,Amount\nA,1\nB,2\nC,3\n", &columns, 2).unwrap();
+    assert_eq!(
+        (read.rows_read, read.last_row, read.truncated),
+        (2, 4, true)
+    );
+    // A byte-order mark is skipped, and locations still index the original.
+    let bom = b"\xEF\xBB\xBFInvoice,Amount\nINV-1,5\n";
+    let read = enumerate_text(bom, &columns, 10).unwrap();
+    let Some(Locator::Bytes { start, end }) = &read.rows[0].cells[0].locator else {
+        panic!("a byte location");
+    };
+    assert_eq!(&bom[*start as usize..*end as usize], b"INV-1");
+}

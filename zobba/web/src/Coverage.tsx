@@ -112,7 +112,7 @@ export function Coverage({ assessment, taskId, scope }: Props) {
       <p className="coverage-conclusion"><strong>{conclusionSentence(s)}</strong></p>
       <p>{completenessSentence(s)} {reconciliationSentence(s)}</p>
       <p>{sample ? `Sample ${s.sample_id?.slice(0, 13)}: ${number(s.selected ?? '0')} selected ${unit}s; nothing is inferred about the rest.` : `${found(s.counts.in_scope, unit, s.completeness === 'complete')} in scope.`}</p>
-      {s.criteria.length ? <table className="coverage-table">
+      {s.criteria.length ? <div className="coverage-scroll" role="group" aria-label="Criterion opportunities" tabIndex={0}><table className="coverage-table">
         <caption>Criterion opportunities over the {scopeWord} {unit}s</caption>
         <thead><tr><th scope="col">Criterion</th><th scope="col">Applies</th><th scope="col">Does not apply</th><th scope="col">Applicability unknown</th><th scope="col">Met</th><th scope="col">Not met</th><th scope="col">Undetermined</th><th scope="col">Failed</th><th scope="col">Not evaluated</th></tr></thead>
         <tbody>{s.criteria.map(c => <tr key={c.criterion_id}>
@@ -122,7 +122,7 @@ export function Coverage({ assessment, taskId, scope }: Props) {
           <td>{number(c.undetermined)}{c.undetermined_by_reason.length ? <span className="context-note"> ({c.undetermined_by_reason.map(r => `${number(r.count)} ${reasonLabel(r.reason)}`).join('; ')})</span> : null}</td>
           <td>{number(c.execution_failed)}</td><td>{number(c.not_evaluated)}</td>
         </tr>)}</tbody>
-      </table> : null}
+      </table></div> : null}
       <ul aria-label={`${unit}s by outcome`}>
         <li>{unit.charAt(0).toUpperCase() + unit.slice(1)}s with at least one exception: {number(s.failing_subjects)}</li>
         <li>Meeting every criterion that applies: {number(s.meets_every_applicable)}</li>

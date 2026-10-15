@@ -86,6 +86,10 @@ pub const DOCUMENT_LIMITS: AnalysisLimits = AnalysisLimits {
 pub const PROGRAM_LIMITS: AnalysisLimits = AnalysisLimits::DEFAULT;
 /// Rows of one enumeration output file (Story 24.2): each file stays within
 /// the bounded manifest reader and the per-file output bound.
+/// The key suffix of a population read (see `run_job`).
+const POPULATION_KEY: &str = "-p";
+/// Fresh population reads a reclaim may admit under a conflicting key.
+const MAX_POPULATION_READ_RETRIES: u32 = 8;
 pub const ENUMERATE_CHUNK_ROWS: u32 = 500;
 /// Limits of one trusted enumeration job (inside the owner-approved
 /// ceiling): every row of a sheet up to `MAX_POPULATION_ROWS`, written as at
@@ -1173,9 +1177,34 @@ where
         cancellation: &ModelCancellation,
     ) -> Result<JobRecord, ReadingError> {
         let analysis = self.analysis();
-        let mut record = analysis
+        let mut record = match analysis
             .admit(&self.settings.analysis, basis, key, request)
-            .await?;
+            .await
+        {
+            Ok(record) => record,
+            // A population read (key `...-p`) admitted under this key by an
+            // earlier run of the same answer carries that run's operation
+            // expiry, so the same request is a conflict, not a replay: the
+            // read runs again as its own job under the next bounded suffix.
+            Err(AnalysisError::Conflict) if key.ends_with(POPULATION_KEY) => {
+                let mut admitted = Err(AnalysisError::Conflict);
+                for n in 1..=MAX_POPULATION_READ_RETRIES {
+                    admitted = analysis
+                        .admit(
+                            &self.settings.analysis,
+                            basis,
+                            &format!("{key}{n}"),
+                            request,
+                        )
+                        .await;
+                    if !matches!(admitted, Err(AnalysisError::Conflict)) {
+                        break;
+                    }
+                }
+                admitted?
+            }
+            Err(error) => return Err(error.into()),
+        };
         for _ in 0..3 {
             if matches!(
                 record.latest.status,
@@ -1253,7 +1282,7 @@ where
         request: &str,
         cancellation: &ModelCancellation,
     ) -> Result<Settled, ReadingError> {
-        self.document_job_with(basis, original, request, DOCUMENT_LIMITS, cancellation)
+        self.document_job_with(basis, original, request, DOCUMENT_LIMITS, "", cancellation)
             .await
     }
     async fn document_job_with(
@@ -1262,6 +1291,7 @@ where
         original: &ReadingOriginal,
         request: &str,
         limits: AnalysisLimits,
+        record: &str,
         cancellation: &ModelCancellation,
     ) -> Result<Settled, ReadingError> {
         let program = document_program(request);
@@ -1276,13 +1306,21 @@ where
             }],
             limits,
         };
-        let key = format!(
-            "document-{}",
-            self.hash(&format!(
-                "{}\0{}\0{}",
-                basis.task_id, original.sha256, request
-            ))
-        );
+        // A job admitted once is never resubmitted under its key (its
+        // operation carries its own expiry): a read for a record names it.
+        let identity = if record.is_empty() {
+            format!("{}\0{}\0{}", basis.task_id, original.sha256, request)
+        } else {
+            format!(
+                "{}\0{}\0{}\0{}",
+                basis.task_id, original.sha256, request, record
+            )
+        };
+        let key = if record.is_empty() {
+            format!("document-{}", self.hash(&identity))
+        } else {
+            format!("document-{}{POPULATION_KEY}", &self.hash(&identity))
+        };
         self.settle(basis, &key, &analysis_request, cancellation)
             .await
     }
@@ -2310,6 +2348,7 @@ where
                 &reading,
                 &enumerate_request(&reading.id, sheet, request.header_row, &request.columns),
                 ENUMERATE_LIMITS,
+                &request.record,
                 cancellation,
             )
             .await?;

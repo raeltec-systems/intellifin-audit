@@ -353,6 +353,7 @@ fn answer(fields: serde_json::Value) -> String {
         "segments": [], "limitations": [], "read_pages": [], "programs": [],
         "read_method": [], "use_skills": [], "run_skill_script": [], "method_notes": [],
         "propose_criteria": [], "propose_basis": [], "record_facts": [], "evaluate": [], "judgments": [],
+        "propose_population": [], "propose_sample": [], "evaluate_population": [], "summarise": [],
     });
     for (key, field) in fields.as_object().unwrap() {
         value[key] = field.clone();

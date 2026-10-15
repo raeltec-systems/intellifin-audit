@@ -402,19 +402,23 @@ pub struct Enumerated {
 }
 
 /// What to read: a workbook sheet (None for CSV/plain text, the whole file),
-/// its 1-based header row, and the named columns in order.
+/// its 1-based header row, and the named columns in order. `record` names the
+/// population record the read is for: a reclaim of the same answer reuses its
+/// read, and a later request for the same sheet is a new read of its own.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EnumerateRequest {
     pub sheet: Option<String>,
     pub header_row: u32,
     pub columns: Vec<String>,
+    pub record: String,
 }
 impl ProposedPopulation {
-    pub fn request(&self) -> EnumerateRequest {
+    pub fn request(&self, record: &str) -> EnumerateRequest {
         EnumerateRequest {
             sheet: self.sheet.clone(),
             header_row: self.header_row,
             columns: self.columns(),
+            record: record.into(),
         }
     }
 }

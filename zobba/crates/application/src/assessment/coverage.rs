@@ -1084,9 +1084,10 @@ where
                 }
             }
         };
+        let id = record_id("pop", &basis.task_id, &invocation.id, 0);
         let enumerated = self
             .reader
-            .enumerate(basis, &original, &proposed.request(), cancellation)
+            .enumerate(basis, &original, &proposed.request(&id), cancellation)
             .await?;
         let job = enumerated
             .job_id
@@ -1104,7 +1105,6 @@ where
             }
         };
         let (turn_binding, turn_epoch) = turn_basis(invocation);
-        let id = record_id("pop", &basis.task_id, &invocation.id, 0);
         let members_built = build_members(
             proposed,
             &enumeration,

@@ -276,8 +276,7 @@ CREATE INDEX assessment_summaries_task ON public.assessment_summaries(organisati
 -- binding and epoch, and every reference stays within the same Task.
 CREATE FUNCTION public.coverage_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
-DECLARE population public.assessment_populations%ROWTYPE; criterion public.assessment_criteria%ROWTYPE;
- row_member public.assessment_population_members%ROWTYPE; judged public.assessment_evaluations%ROWTYPE;
+DECLARE population public.assessment_populations%ROWTYPE;
  recount record; partitioned record; entry jsonb; position_in_basis integer; expected text; unresolved integer; subjects integer; criteria integer;
 BEGIN
  IF TG_TABLE_NAME IN ('assessment_populations','assessment_samples','assessment_summaries') THEN
@@ -302,70 +301,15 @@ BEGIN
   -- over exactly this original.
   IF NEW.job_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.analysis_jobs j JOIN public.analysis_job_events e ON e.job_id=j.id AND e.status='collected'
      WHERE j.id=NEW.job_id AND j.task_id=NEW.task_id AND j.environment_id='document-python-3-13'
-       AND position('"mode":"enumerate"' IN j.program) > 0
+       -- The request is the program's one JSON string literal, its quotes
+       -- written as \u0022 escapes.
+       AND position('\u0022mode\u0022:\u0022enumerate\u0022' IN j.program) > 0
        AND j.inputs=jsonb_build_array(jsonb_build_object('original_id',NEW.original_id,'digest',NEW.original_sha256))) THEN
    RAISE EXCEPTION 'a population names a collected enumeration job over its exact original' USING ERRCODE='23514';
-  END IF;
- ELSIF TG_TABLE_NAME='assessment_population_members' THEN
-  SELECT p.* INTO population FROM public.assessment_populations p WHERE (p.organisation_id,p.client_id,p.engagement_id,p.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id);
-  IF NOT FOUND OR population.task_id <> NEW.task_id OR population.actor_id <> NEW.actor_id OR NEW.ordinal >= population.received_rows THEN
-   RAISE EXCEPTION 'a member is a received row of a population of its own Task' USING ERRCODE='23514';
-  END IF;
-  IF NEW.duplicate_of IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.assessment_population_members m
-     WHERE (m.organisation_id,m.client_id,m.engagement_id,m.population_id,m.ordinal)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id,NEW.duplicate_of)
-       AND m.subject=NEW.subject AND m.disposition IN ('in_scope','excluded','scope_unknown') AND m.reason IS DISTINCT FROM 'conflicting_duplicate') THEN
-   RAISE EXCEPTION 'a duplicate row collapses into the first row of its subject' USING ERRCODE='23514';
   END IF;
  ELSIF TG_TABLE_NAME='assessment_samples' THEN
   IF NOT EXISTS(SELECT 1 FROM public.assessment_populations p WHERE (p.organisation_id,p.client_id,p.engagement_id,p.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id) AND p.task_id=NEW.task_id) THEN
    RAISE EXCEPTION 'a sample selects from a population of its own Task' USING ERRCODE='23514';
-  END IF;
- ELSIF TG_TABLE_NAME='assessment_sample_members' THEN
-  IF NOT EXISTS(SELECT 1 FROM public.assessment_samples s JOIN public.assessment_population_members m
-       ON (m.organisation_id,m.client_id,m.engagement_id,m.population_id)=(s.organisation_id,s.client_id,s.engagement_id,s.population_id)
-     WHERE (s.organisation_id,s.client_id,s.engagement_id,s.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id)
-       AND s.task_id=NEW.task_id AND s.actor_id=NEW.actor_id AND NEW.ordinal < s.size
-       AND m.ordinal=NEW.member_ordinal AND m.subject=NEW.subject AND m.disposition='in_scope') THEN
-   RAISE EXCEPTION 'a selected item is an in-scope member of the sampled population' USING ERRCODE='23514';
-  END IF;
- ELSIF TG_TABLE_NAME='assessment_opportunities' THEN
-  SELECT p.* INTO population FROM public.assessment_populations p WHERE (p.organisation_id,p.client_id,p.engagement_id,p.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id);
-  SELECT c.* INTO criterion FROM public.assessment_criteria c WHERE (c.organisation_id,c.client_id,c.engagement_id,c.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.criterion_id);
-  IF population.id IS NULL OR criterion.id IS NULL OR population.task_id <> NEW.task_id OR criterion.task_id <> NEW.task_id
-     OR NOT EXISTS(SELECT 1 FROM public.model_invocations i WHERE (i.organisation_id,i.client_id,i.engagement_id,i.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.invocation_id) AND i.task_id=NEW.task_id AND i.actor_id=NEW.actor_id)
-     OR NOT EXISTS(SELECT 1 FROM public.assessment_basis_criteria k WHERE (k.organisation_id,k.client_id,k.engagement_id,k.basis_id,k.criterion_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,population.basis_id,NEW.criterion_id)) THEN
-   RAISE EXCEPTION 'an opportunity reads a criterion of its population''s basis in its own Task' USING ERRCODE='23514';
-  END IF;
-  SELECT m.* INTO row_member FROM public.assessment_population_members m WHERE (m.organisation_id,m.client_id,m.engagement_id,m.population_id,m.ordinal)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id,NEW.member_ordinal);
-  IF row_member.disposition IS DISTINCT FROM 'in_scope' OR row_member.subject IS DISTINCT FROM NEW.subject THEN
-   RAISE EXCEPTION 'an opportunity is one in-scope member of its population' USING ERRCODE='23514';
-  END IF;
-  IF NEW.verdict IN ('met','not_met') AND NOT criterion.authority_verified THEN
-   RAISE EXCEPTION 'an unverified authority cannot yield met or not_met' USING ERRCODE='23514';
-  END IF;
-  -- A rule is decided only by trusted code over the member's own cells; a
-  -- judgment criterion's verdict is only its recorded 24.1 judgment.
-  IF NEW.origin='deterministic' THEN
-   IF criterion.kind='judgment' AND NEW.verdict IN ('met','not_met') THEN
-    RAISE EXCEPTION 'a judgment criterion is decided only by its recorded judgment' USING ERRCODE='23514';
-   END IF;
-   FOR entry IN SELECT value FROM jsonb_array_elements(NEW.inputs) LOOP
-    IF NOT (entry->>'id' LIKE NEW.population_id||'#'||NEW.member_ordinal||'/%' AND entry->>'digest' = row_member.digest) THEN
-     RAISE EXCEPTION 'a rule opportunity reads only its member''s own cells' USING ERRCODE='23514';
-    END IF;
-   END LOOP;
-  ELSE
-   SELECT e.* INTO judged FROM public.assessment_evaluations e WHERE (e.organisation_id,e.client_id,e.engagement_id,e.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.evaluation_id);
-   IF criterion.kind <> 'judgment' OR judged.id IS NULL OR judged.basis_id <> population.basis_id OR judged.criterion_id <> NEW.criterion_id
-      OR judged.subject <> NEW.subject OR judged.origin <> 'model_proposal' OR judged.output_digest <> NEW.output_digest
-      OR judged.applicability <> NEW.applicability OR judged.execution <> NEW.execution
-      OR judged.verdict IS DISTINCT FROM NEW.verdict OR judged.reason IS DISTINCT FROM NEW.reason
-      OR judged.document->'inputs' <> NEW.inputs THEN
-    RAISE EXCEPTION 'a judgment opportunity is its criterion''s recorded judgment for this subject' USING ERRCODE='23514';
-   END IF;
-  END IF;
-  IF NEW.verdict IN ('met','not_met') AND jsonb_array_length(NEW.inputs) = 0 THEN
-   RAISE EXCEPTION 'a decided verdict reads its facts' USING ERRCODE='23514';
   END IF;
  ELSIF TG_TABLE_NAME='assessment_summaries' THEN
   SELECT p.* INTO population FROM public.assessment_populations p WHERE (p.organisation_id,p.client_id,p.engagement_id,p.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id);
@@ -403,12 +347,14 @@ BEGIN
   IF NEW.sample_id IS NOT NULL AND NEW.selected <> (SELECT count(*) FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id)) THEN
    RAISE EXCEPTION 'a summary count is not the stored count: selected' USING ERRCODE='23514';
   END IF;
+  -- A sample's selected subjects are read once per statement (a hashed,
+  -- uncorrelated subquery), never once per member or opportunity.
   -- The subjects: the in-scope members, or the sample's selected members.
   -- (An opportunity exists only for an in-scope member, by its guard.)
   SELECT count(*) INTO subjects FROM public.assessment_population_members m
    WHERE (m.organisation_id,m.client_id,m.engagement_id,m.population_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id)
      AND m.disposition='in_scope'
-     AND (NEW.sample_id IS NULL OR EXISTS(SELECT 1 FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id,x.subject)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id,m.subject)));
+     AND (NEW.sample_id IS NULL OR m.subject IN (SELECT x.subject FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id)));
   SELECT count(*) INTO criteria FROM public.assessment_basis_criteria k WHERE (k.organisation_id,k.client_id,k.engagement_id,k.basis_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.basis_id);
   IF jsonb_array_length(NEW.document->'summary'->'criteria') <> criteria THEN
    RAISE EXCEPTION 'a summary counts every criterion of its basis' USING ERRCODE='23514';
@@ -427,12 +373,12 @@ BEGIN
      coalesce((SELECT jsonb_object_agg(r.reason, r.n) FROM (SELECT coalesce(o2.reason,'stated_in_words') AS reason, count(*) AS n
         FROM public.assessment_opportunities o2
         WHERE (o2.organisation_id,o2.client_id,o2.engagement_id,o2.population_id,o2.criterion_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id,k.criterion_id)
-          AND (NEW.sample_id IS NULL OR EXISTS(SELECT 1 FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id,x.subject)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id,o2.subject)))
+          AND (NEW.sample_id IS NULL OR o2.subject IN (SELECT x.subject FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id)))
           AND o2.applicability='applicable' AND o2.execution='completed' AND o2.verdict='undetermined' GROUP BY 1) r), '{}'::jsonb) AS by_reason
     INTO recount
     FROM public.assessment_basis_criteria k
     LEFT JOIN public.assessment_opportunities o ON (o.organisation_id,o.client_id,o.engagement_id,o.population_id,o.criterion_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id,k.criterion_id)
-      AND (NEW.sample_id IS NULL OR EXISTS(SELECT 1 FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id,x.subject)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id,o.subject)))
+      AND (NEW.sample_id IS NULL OR o.subject IN (SELECT x.subject FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id)))
     WHERE (k.organisation_id,k.client_id,k.engagement_id,k.basis_id,k.ordinal)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.basis_id,position_in_basis)
     GROUP BY k.criterion_id;
    IF entry->>'criterion_id' IS DISTINCT FROM recount.criterion_id
@@ -447,24 +393,26 @@ BEGIN
   -- The subject partitioned, one grain: failing (any not met), else unresolved
   -- (any unknown, undetermined, failed, not evaluated, or a criterion with no
   -- opportunity), else meets every applicable, else not applicable to any.
+  -- Opportunities are grouped by their member (an opportunity exists only
+  -- for an in-scope member, by its guard, and one member is one subject); a
+  -- subject with no opportunity at all is unresolved. Grouping the stored
+  -- opportunities alone keeps this one scan, whatever the planner knows.
   SELECT count(*) FILTER (WHERE f) AS failing,
-    count(*) FILTER (WHERE NOT f AND u) AS unresolved,
+    count(*) FILTER (WHERE NOT f AND u) + (subjects - count(*)) AS unresolved,
     count(*) FILTER (WHERE NOT f AND NOT u AND m) AS meets,
     count(*) FILTER (WHERE NOT f AND NOT u AND NOT m) AS not_applicable,
     coalesce(sum(n_not_met),0) AS failing_opportunities
    INTO partitioned FROM (
-    SELECT d.subject,
-      coalesce(bool_or(o.verdict='not_met'),false) AS f,
-      coalesce(bool_or(o.execution='failed' OR o.applicability='unknown' OR (o.applicability='applicable' AND o.verdict IS DISTINCT FROM 'met' AND o.verdict IS DISTINCT FROM 'not_met')),false)
-        OR count(o.criterion_id) < criteria AS u,
-      coalesce(bool_or(o.verdict='met'),false) AS m,
+    SELECT o.member_ordinal,
+      bool_or(o.verdict IS NOT DISTINCT FROM 'not_met') AS f,
+      bool_or(o.execution='failed' OR o.applicability='unknown' OR (o.applicability='applicable' AND o.verdict IS DISTINCT FROM 'met' AND o.verdict IS DISTINCT FROM 'not_met'))
+        OR count(*) < criteria AS u,
+      bool_or(o.verdict IS NOT DISTINCT FROM 'met') AS m,
       count(*) FILTER (WHERE o.verdict='not_met') AS n_not_met
-    FROM public.assessment_population_members d LEFT JOIN public.assessment_opportunities o
-      ON (o.organisation_id,o.client_id,o.engagement_id,o.population_id,o.subject)=(d.organisation_id,d.client_id,d.engagement_id,d.population_id,d.subject)
-    WHERE (d.organisation_id,d.client_id,d.engagement_id,d.population_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id)
-      AND d.disposition='in_scope'
-      AND (NEW.sample_id IS NULL OR EXISTS(SELECT 1 FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id,x.subject)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id,d.subject)))
-    GROUP BY d.subject) s;
+    FROM public.assessment_opportunities o
+    WHERE (o.organisation_id,o.client_id,o.engagement_id,o.population_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id)
+      AND (NEW.sample_id IS NULL OR o.subject IN (SELECT x.subject FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id)))
+    GROUP BY o.member_ordinal) s;
   IF partitioned.failing <> NEW.failing_subjects THEN RAISE EXCEPTION 'a summary count is not the stored count: failing_subjects' USING ERRCODE='23514'; END IF;
   IF partitioned.unresolved <> NEW.unresolved_subjects THEN RAISE EXCEPTION 'a summary count is not the stored count: unresolved_subjects' USING ERRCODE='23514'; END IF;
   IF partitioned.meets <> NEW.meets_every_applicable THEN RAISE EXCEPTION 'a summary count is not the stored count: meets_every_applicable' USING ERRCODE='23514'; END IF;
@@ -488,10 +436,107 @@ END $body$;
 DO $guard$
 DECLARE relation text;
 BEGIN
- FOREACH relation IN ARRAY ARRAY['assessment_populations','assessment_population_members','assessment_samples','assessment_sample_members','assessment_opportunities','assessment_summaries'] LOOP
+ FOREACH relation IN ARRAY ARRAY['assessment_populations','assessment_samples','assessment_summaries'] LOOP
   EXECUTE format('CREATE TRIGGER coverage_guard BEFORE INSERT ON public.%I FOR EACH ROW EXECUTE FUNCTION public.coverage_guard()',relation);
  END LOOP;
 END $guard$;
+-- Members, selected items and opportunities arrive in batches of up to a
+-- thousand rows: their guard is one set-based check per statement over the
+-- statement's new rows, so its cost does not grow by a query per row.
+CREATE FUNCTION public.coverage_batch() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
+BEGIN
+ IF TG_TABLE_NAME='assessment_population_members' THEN
+  IF EXISTS(SELECT 1 FROM added a LEFT JOIN public.assessment_populations p
+       ON (p.organisation_id,p.client_id,p.engagement_id,p.id)=(a.organisation_id,a.client_id,a.engagement_id,a.population_id)
+     WHERE p.id IS NULL OR p.task_id <> a.task_id OR p.actor_id <> a.actor_id OR a.ordinal >= p.received_rows) THEN
+   RAISE EXCEPTION 'a member is a received row of a population of its own Task' USING ERRCODE='23514';
+  END IF;
+  IF EXISTS(WITH m AS MATERIALIZED (SELECT x.population_id, x.ordinal, x.subject, x.disposition, x.reason FROM public.assessment_population_members x
+       WHERE (x.organisation_id,x.client_id,x.engagement_id) IN (SELECT DISTINCT organisation_id,client_id,engagement_id FROM added)
+         AND x.population_id IN (SELECT DISTINCT population_id FROM added))
+     SELECT 1 FROM added a LEFT JOIN m ON (m.population_id,m.ordinal)=(a.population_id,a.duplicate_of)
+     WHERE a.duplicate_of IS NOT NULL AND (m.ordinal IS NULL OR m.subject IS DISTINCT FROM a.subject
+       OR m.disposition NOT IN ('in_scope','excluded','scope_unknown') OR m.reason IS NOT DISTINCT FROM 'conflicting_duplicate')) THEN
+   RAISE EXCEPTION 'a duplicate row collapses into the first row of its subject' USING ERRCODE='23514';
+  END IF;
+ ELSIF TG_TABLE_NAME='assessment_sample_members' THEN
+  IF EXISTS(WITH s AS MATERIALIZED (SELECT y.id, y.task_id, y.actor_id, y.size, y.population_id FROM public.assessment_samples y
+       WHERE (y.organisation_id,y.client_id,y.engagement_id) IN (SELECT DISTINCT organisation_id,client_id,engagement_id FROM added)
+         AND y.id IN (SELECT DISTINCT sample_id FROM added)),
+     m AS MATERIALIZED (SELECT x.population_id, x.ordinal, x.subject, x.disposition FROM public.assessment_population_members x
+       WHERE (x.organisation_id,x.client_id,x.engagement_id) IN (SELECT DISTINCT organisation_id,client_id,engagement_id FROM added)
+         AND x.population_id IN (SELECT population_id FROM s))
+     SELECT 1 FROM added a
+     LEFT JOIN s ON s.id=a.sample_id
+     LEFT JOIN m ON (m.population_id,m.ordinal)=(s.population_id,a.member_ordinal)
+     WHERE s.id IS NULL OR s.task_id <> a.task_id OR s.actor_id <> a.actor_id OR a.ordinal >= s.size
+       OR m.ordinal IS NULL OR m.subject IS DISTINCT FROM a.subject OR m.disposition <> 'in_scope') THEN
+   RAISE EXCEPTION 'a selected item is an in-scope member of the sampled population' USING ERRCODE='23514';
+  END IF;
+ ELSE
+  IF EXISTS(SELECT 1 FROM added a
+     LEFT JOIN public.assessment_populations p ON (p.organisation_id,p.client_id,p.engagement_id,p.id)=(a.organisation_id,a.client_id,a.engagement_id,a.population_id)
+     LEFT JOIN public.assessment_criteria c ON (c.organisation_id,c.client_id,c.engagement_id,c.id)=(a.organisation_id,a.client_id,a.engagement_id,a.criterion_id)
+     LEFT JOIN public.model_invocations i ON (i.organisation_id,i.client_id,i.engagement_id,i.id)=(a.organisation_id,a.client_id,a.engagement_id,a.invocation_id)
+     LEFT JOIN public.assessment_basis_criteria k ON (k.organisation_id,k.client_id,k.engagement_id,k.basis_id,k.criterion_id)=(a.organisation_id,a.client_id,a.engagement_id,p.basis_id,a.criterion_id)
+     WHERE p.id IS NULL OR c.id IS NULL OR p.task_id <> a.task_id OR c.task_id <> a.task_id
+       OR i.id IS NULL OR i.task_id <> a.task_id OR i.actor_id <> a.actor_id OR k.criterion_id IS NULL) THEN
+   RAISE EXCEPTION 'an opportunity reads a criterion of its population''s basis in its own Task' USING ERRCODE='23514';
+  END IF;
+  -- Each RLS-protected table is read once per statement (a materialised
+  -- scan), never once per new row, whatever the planner knows of it.
+  IF EXISTS(WITH m AS MATERIALIZED (SELECT x.population_id, x.ordinal, x.subject, x.disposition, x.digest FROM public.assessment_population_members x
+       WHERE (x.organisation_id,x.client_id,x.engagement_id) IN (SELECT DISTINCT organisation_id,client_id,engagement_id FROM added)
+         AND x.population_id IN (SELECT DISTINCT population_id FROM added))
+     SELECT 1 FROM added a LEFT JOIN m ON (m.population_id,m.ordinal)=(a.population_id,a.member_ordinal)
+     WHERE m.disposition IS DISTINCT FROM 'in_scope' OR m.subject IS DISTINCT FROM a.subject) THEN
+   RAISE EXCEPTION 'an opportunity is one in-scope member of its population' USING ERRCODE='23514';
+  END IF;
+  IF EXISTS(SELECT 1 FROM added a JOIN public.assessment_criteria c ON (c.organisation_id,c.client_id,c.engagement_id,c.id)=(a.organisation_id,a.client_id,a.engagement_id,a.criterion_id)
+     WHERE a.verdict IN ('met','not_met') AND NOT c.authority_verified) THEN
+   RAISE EXCEPTION 'an unverified authority cannot yield met or not_met' USING ERRCODE='23514';
+  END IF;
+  -- A rule is decided only by trusted code over the member's own cells; a
+  -- judgment criterion's verdict is only its recorded 24.1 judgment.
+  IF EXISTS(SELECT 1 FROM added a JOIN public.assessment_criteria c ON (c.organisation_id,c.client_id,c.engagement_id,c.id)=(a.organisation_id,a.client_id,a.engagement_id,a.criterion_id)
+     WHERE a.origin='deterministic' AND c.kind='judgment' AND a.verdict IN ('met','not_met')) THEN
+   RAISE EXCEPTION 'a judgment criterion is decided only by its recorded judgment' USING ERRCODE='23514';
+  END IF;
+  IF EXISTS(WITH m AS MATERIALIZED (SELECT x.population_id, x.ordinal, x.subject, x.disposition, x.digest FROM public.assessment_population_members x
+       WHERE (x.organisation_id,x.client_id,x.engagement_id) IN (SELECT DISTINCT organisation_id,client_id,engagement_id FROM added)
+         AND x.population_id IN (SELECT DISTINCT population_id FROM added))
+     SELECT 1 FROM added a
+     JOIN m ON (m.population_id,m.ordinal)=(a.population_id,a.member_ordinal)
+     CROSS JOIN LATERAL jsonb_array_elements(a.inputs) AS entry(value)
+     WHERE a.origin='deterministic'
+       AND NOT (entry.value->>'id' LIKE a.population_id||'#'||a.member_ordinal||'/%' AND entry.value->>'digest' = m.digest)) THEN
+   RAISE EXCEPTION 'a rule opportunity reads only its member''s own cells' USING ERRCODE='23514';
+  END IF;
+  IF EXISTS(SELECT 1 FROM added a
+     LEFT JOIN public.assessment_populations p ON (p.organisation_id,p.client_id,p.engagement_id,p.id)=(a.organisation_id,a.client_id,a.engagement_id,a.population_id)
+     LEFT JOIN public.assessment_criteria c ON (c.organisation_id,c.client_id,c.engagement_id,c.id)=(a.organisation_id,a.client_id,a.engagement_id,a.criterion_id)
+     LEFT JOIN public.assessment_evaluations e ON (e.organisation_id,e.client_id,e.engagement_id,e.id)=(a.organisation_id,a.client_id,a.engagement_id,a.evaluation_id)
+     WHERE a.origin <> 'deterministic' AND (c.kind IS DISTINCT FROM 'judgment' OR e.id IS NULL OR e.basis_id <> p.basis_id OR e.criterion_id <> a.criterion_id
+      OR e.subject <> a.subject OR e.origin <> 'model_proposal' OR e.output_digest <> a.output_digest
+      OR e.applicability <> a.applicability OR e.execution <> a.execution
+      OR e.verdict IS DISTINCT FROM a.verdict OR e.reason IS DISTINCT FROM a.reason
+      OR e.document->'inputs' <> a.inputs)) THEN
+   RAISE EXCEPTION 'a judgment opportunity is its criterion''s recorded judgment for this subject' USING ERRCODE='23514';
+  END IF;
+  IF EXISTS(SELECT 1 FROM added a WHERE a.verdict IN ('met','not_met') AND jsonb_array_length(a.inputs) = 0) THEN
+   RAISE EXCEPTION 'a decided verdict reads its facts' USING ERRCODE='23514';
+  END IF;
+ END IF;
+ RETURN NULL;
+END $body$;
+DO $batch$
+DECLARE relation text;
+BEGIN
+ FOREACH relation IN ARRAY ARRAY['assessment_population_members','assessment_sample_members','assessment_opportunities'] LOOP
+  EXECUTE format('CREATE TRIGGER coverage_batch AFTER INSERT ON public.%I REFERENCING NEW TABLE AS added FOR EACH STATEMENT EXECUTE FUNCTION public.coverage_batch()',relation);
+ END LOOP;
+END $batch$;
 -- At commit, a population holds exactly its counted members and a sample
 -- exactly its selected items.
 CREATE FUNCTION public.coverage_complete() RETURNS trigger
@@ -555,7 +600,7 @@ BEGIN
   EXECUTE format('REVOKE ALL ON public.%I FROM PUBLIC',relation);
  END LOOP;
 END $immutable$;
-REVOKE ALL ON FUNCTION public.coverage_guard(),public.coverage_complete(),public.coverage_immutable(),public.coverage_retained() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.coverage_guard(),public.coverage_batch(),public.coverage_complete(),public.coverage_immutable(),public.coverage_retained() FROM PUBLIC;
 
 -- Story 24.2 extends the trusted document program with its enumerate mode:
 -- the document environment admits it (and the Story 22.5 program it extends).
