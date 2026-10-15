@@ -471,6 +471,15 @@ Gate: G7, in writing, naming what may be lost. Never run a plain
   gateway only with a reviewed change. Interface endpoints, storage and
   backups continue to cost.
 
+  Exercised 2026-10-15 (Story 20.7b). Stop: save the current `image_digest`
+  line (`grep '^image_digest' terraform.tfvars > ~/image_digest.saved`), set it
+  to `null`, plan (expect only the two service `desired_count` changes plus the
+  three task definitions replaced onto `:unreleased`; services keep their
+  release-owned revisions), apply, then `aws rds stop-db-instance`. Start:
+  `aws rds start-db-instance` and wait for `available`, restore the saved
+  `image_digest` line, plan, apply. A database that AWS restarted after 7 days
+  keeps running until stopped again.
+
 ## 10. Restore and reconciliation — Story 20.7b, exercised 2026-10-15
 
 **Exercised once (2026-10-15):** steps 1 and the verification below were run

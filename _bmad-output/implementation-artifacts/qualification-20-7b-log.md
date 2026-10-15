@@ -85,3 +85,13 @@ Region eu-west-1. Terraform runs in AWS CloudShell as the owner's SSO admin role
 - Copy deleted (`--skip-final-snapshot --delete-automated-backups`): status `deleting`.
 - RUNBOOK §10 updated to "exercised"; switching services to a restored instance
   (steps 2–3) was not exercised.
+
+## Step 7 — stop between uses (2026-10-15)
+
+- Saved the `image_digest` line to `~/image_digest.saved` (CloudShell home), set
+  `image_digest = null`. Plan: 3 to add, 2 to change, 3 to destroy (API/worker/migrate
+  task definitions replaced onto `:unreleased`; services to `desired_count = 0`).
+- Applied. Services: api desired 0 running 0; worker desired 0 (last task draining).
+- `aws rds stop-db-instance`: `stopping`. AWS restarts a stopped instance after 7 days.
+- Still billed while stopped: NAT gateway, interface endpoints, storage, backups.
+- Start procedure is in RUNBOOK §9. Story 20.7b work on AWS is complete.
