@@ -28,3 +28,18 @@ document connection, the real remote computer with private sign-in, and helper s
 
 21.6, 22.2 and 22.3 are built and wait for owner review. The Claude thinking-block
 follow-up to 22.1 finishes first.
+
+## Owner decision 2026-10-15: the target is now the Story 25.4 gate
+
+With AWS credits available, the owner added 25.4 and all of Epic 23 (the real remote
+computer and private sign-in) to the critical path. The target is therefore Milestone A
+followed by Milestone B, ending at the 25.4 gate. 25.4 also needs 22.7, 21.5 and 27.4
+(Milestone B above); they stay on the path unless the owner removes them.
+
+Remaining on the critical path (24.1 built, awaiting owner review):
+
+1. Milestone A: 24.2 (in progress), 24.3, 24.4, 24.5, 24.6, 25.1, 25.2, 25.3
+2. Milestone B: 22.7, 21.5, 23.1, 23.2, 23.3, 23.4, 23.5, 23.6, 27.4, then 25.4
+
+Also on the path: UI polish (after the core work) and one live provider qualification run
+(owner approval required).
