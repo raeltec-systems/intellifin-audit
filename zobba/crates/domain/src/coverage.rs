@@ -18,13 +18,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::{
     assessment::{
         Applicability, CivilDate, EvaluationReason, Execution, FactState, FactSupport, FactType,
-        FactValue, InputFact, MAX_SUBJECT_BYTES, Measure, ParseRule,
-        UnsupportedReason, Verdict, record_shaped, text_ok, valid_currency, valid_name,
-        valid_subject,
+        FactValue, InputFact, MAX_SUBJECT_BYTES, Measure, ParseRule, UnsupportedReason, Verdict,
+        record_shaped, text_ok, valid_currency, valid_name, valid_subject,
     },
-    citation::{
-        CitationSource, Locator, MAX_LOCATOR_BYTES, MAX_QUOTE_BYTES, normalize,
-    },
+    citation::{CitationSource, Locator, MAX_LOCATOR_BYTES, MAX_QUOTE_BYTES, normalize},
     context::canonical_json,
     identity::valid_scope_id,
     model::{ArgumentSchema, JsonValue},
@@ -131,7 +128,9 @@ pub enum Disposition {
     ScopeUnknown(DispositionReason),
     /// All named cells are byte-identical to the row at this ordinal: the
     /// row is collapsed into it and counted.
-    DuplicateRow { first: u32 },
+    DuplicateRow {
+        first: u32,
+    },
     /// A grain cell is blank, over its bound or not a usable key.
     Unkeyed,
 }
@@ -300,7 +299,10 @@ impl ProposedPopulation {
             && valid_scope_id(&self.basis)
             && self.supersedes.as_deref().is_none_or(valid_scope_id)
             && valid_scope_id(&self.original_id)
-            && self.sheet.as_deref().is_none_or(crate::citation::valid_sheet)
+            && self
+                .sheet
+                .as_deref()
+                .is_none_or(crate::citation::valid_sheet)
             && (1..=MAX_HEADER_ROW).contains(&self.header_row)
             && (self.sheet.is_some() || self.header_row == 1)
             && valid_name(&self.subject_unit)
@@ -316,7 +318,10 @@ impl ProposedPopulation {
             })
             && self.values.len() <= MAX_VALUE_COLUMNS
             && self.values.iter().all(ValueColumn::is_valid)
-            && names.iter().enumerate().all(|(i, n)| !names[..i].contains(n))
+            && names
+                .iter()
+                .enumerate()
+                .all(|(i, n)| !names[..i].contains(n))
             && self.control.as_ref().is_none_or(ControlCount::is_valid)
             && text_ok(&self.selection, MAX_SELECTION_BYTES)
             && self.columns().len() <= MAX_POPULATION_COLUMNS
@@ -525,15 +530,15 @@ pub fn build_members(
     }
     let identical = |a: &RowRead, b: &RowRead| {
         a.cells.len() == b.cells.len()
-            && a.cells.iter().zip(&b.cells).all(|(x, y)| x.texts == y.texts)
+            && a.cells
+                .iter()
+                .zip(&b.cells)
+                .all(|(x, y)| x.texts == y.texts)
     };
     let mut dispositions: Vec<Option<Disposition>> = vec![None; enumeration.rows.len()];
     for rows in by_key.values() {
         let first = &enumeration.rows[rows[0]];
-        if rows
-            .iter()
-            .all(|&i| identical(first, &enumeration.rows[i]))
-        {
+        if rows.iter().all(|&i| identical(first, &enumeration.rows[i])) {
             for &i in &rows[1..] {
                 dispositions[i] = Some(Disposition::DuplicateRow {
                     first: rows[0] as u32,
@@ -570,9 +575,9 @@ pub fn build_members(
                                 Some(FactValue::Date(d)) => within(d, period_from, period_to),
                                 Some(FactValue::Instant(instant)) => match instant.civil_date() {
                                     Some(d) => within(d, period_from, period_to),
-                                    None => Disposition::ScopeUnknown(
-                                        DispositionReason::PeriodUnparsed,
-                                    ),
+                                    None => {
+                                        Disposition::ScopeUnknown(DispositionReason::PeriodUnparsed)
+                                    }
                                 },
                                 _ => Disposition::ScopeUnknown(DispositionReason::PeriodUnparsed),
                             },
@@ -645,7 +650,12 @@ impl Member {
     /// supported and its subject grounded by the same row; a decimal's measure
     /// is grounded only by a measure column in the same row. A blank cell is
     /// no fact (`missing_fact`); a cell that does not parse is unsupported.
-    pub fn facts(&self, population_id: &str, digest: &str, spec: &ProposedPopulation) -> Vec<InputFact> {
+    pub fn facts(
+        &self,
+        population_id: &str,
+        digest: &str,
+        spec: &ProposedPopulation,
+    ) -> Vec<InputFact> {
         spec.values
             .iter()
             .zip(&self.values)
@@ -866,8 +876,7 @@ pub struct ProposedSample {
 }
 impl ProposedSample {
     pub fn is_valid(&self) -> bool {
-        let distinct =
-            |list: &[String]| list.iter().collect::<BTreeSet<_>>().len() == list.len();
+        let distinct = |list: &[String]| list.iter().collect::<BTreeSet<_>>().len() == list.len();
         valid_scope_id(&self.key)
             && !record_shaped(&self.key)
             && valid_scope_id(&self.population)
@@ -969,10 +978,9 @@ pub fn check_sample(
     }
     if let SampleMethod::SeededRandom { seed } = sample.method {
         let ordered: Vec<String> = in_scope.iter().cloned().collect();
-        let mut expected: BTreeSet<String> =
-            seeded_selection(&ordered, seed, sample.size as usize)
-                .into_iter()
-                .collect();
+        let mut expected: BTreeSet<String> = seeded_selection(&ordered, seed, sample.size as usize)
+            .into_iter()
+            .collect();
         for s in &sample.substitutions {
             if !expected.remove(&s.replaced) {
                 return Err(SampleRefusal::Substitution(s.replaced.clone()));
@@ -1257,9 +1265,7 @@ impl Summary {
     pub fn document(&self) -> JsonValue {
         let c = &self.counts;
         let (declared, distinct) = match self.reconciliation {
-            Reconciliation::Mismatch { declared, distinct } => {
-                (int(declared), int(distinct))
-            }
+            Reconciliation::Mismatch { declared, distinct } => (int(declared), int(distinct)),
             _ => (JsonValue::Null, JsonValue::Null),
         };
         object(vec![
@@ -1279,8 +1285,14 @@ impl Summary {
             ("duplicate_rows", int(c.duplicate_rows)),
             ("distinct_subjects", int(c.distinct_subjects)),
             ("excluded_out_of_period", int(c.excluded_out_of_period)),
-            ("scope_unknown_period_unparsed", int(c.scope_unknown_period_unparsed)),
-            ("scope_unknown_period_missing", int(c.scope_unknown_period_missing)),
+            (
+                "scope_unknown_period_unparsed",
+                int(c.scope_unknown_period_unparsed),
+            ),
+            (
+                "scope_unknown_period_missing",
+                int(c.scope_unknown_period_missing),
+            ),
             (
                 "scope_unknown_conflicting_duplicate",
                 int(c.scope_unknown_conflicting_duplicate),
@@ -1474,9 +1486,15 @@ pub fn answer_fields() -> Vec<(&'static str, ArgumentSchema)> {
         ("sample", s(128)),
     ]);
     vec![
-        ("propose_population", arr(population, MAX_PROPOSED_POPULATIONS)),
+        (
+            "propose_population",
+            arr(population, MAX_PROPOSED_POPULATIONS),
+        ),
         ("propose_sample", arr(sample, MAX_PROPOSED_SAMPLES)),
-        ("evaluate_population", arr(evaluate, MAX_EVALUATE_POPULATION)),
+        (
+            "evaluate_population",
+            arr(evaluate, MAX_EVALUATE_POPULATION),
+        ),
         ("summarise", arr(summarise, MAX_SUMMARISE)),
     ]
 }

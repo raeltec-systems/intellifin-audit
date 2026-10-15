@@ -1410,7 +1410,10 @@ impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> Assessment
     ) -> Result<bool, ReadingError> {
         let (turn_binding, turn_epoch) = turn_basis(invocation);
         let existing = self.store.invocation_records(basis, &invocation.id).await?;
-        let existing_coverage = self.store.invocation_coverage(basis, &invocation.id).await?;
+        let existing_coverage = self
+            .store
+            .invocation_coverage(basis, &invocation.id)
+            .await?;
         let mut answer_coverage = coverage::AnswerCoverage::default();
         let mut feedback: Vec<String> = Vec::new();
         let mut progress = false;

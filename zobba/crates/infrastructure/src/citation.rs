@@ -928,10 +928,12 @@ mod pin_tests {
     use zobba_application::reading::DOCUMENT_PROGRAM;
 
     /// The schema's document-environment guard pins the exact trusted program:
-    /// changing `document.py` must change the migration with it.
+    /// changing `document.py` must change the latest migration with it.
+    /// Migration 0019 (Story 24.2) pins the current program and keeps the
+    /// 0016 program admissible for jobs that predate it; 0016 is unchanged.
     #[test]
     fn the_schema_pins_the_trusted_document_program() {
-        let migration = include_str!("../../../migrations/0016_citations.sql");
+        let migration = include_str!("../../../migrations/0019_assessment_coverage.sql");
         let sha = format!("{:x}", Sha256::digest(DOCUMENT_PROGRAM.as_bytes()));
         let bytes = DOCUMENT_PROGRAM.len();
         // Both the document-environment admission and the render guard.
@@ -948,8 +950,17 @@ mod pin_tests {
             "document program length {bytes}"
         );
         assert!(
-            migration.contains(&format!("octet_length(program) <= {bytes}")),
+            migration.contains(&format!("octet_length(program) > {bytes}")),
             "document program length {bytes}"
         );
+    }
+
+    /// The 0016 pin is the published Story 22.4 program and never moves.
+    #[test]
+    fn the_published_citation_migration_keeps_its_program_pin() {
+        let migration = include_str!("../../../migrations/0016_citations.sql");
+        let old = "8abd34b8ef01866706cb18717a95ace272cedf55ce675cb0d7796553983ca849";
+        assert_eq!(migration.matches(&format!("'{old}'")).count(), 2);
+        assert_eq!(migration.matches("FROM 1 FOR 19327)),'hex')").count(), 2);
     }
 }

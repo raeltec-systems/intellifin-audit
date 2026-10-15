@@ -735,7 +735,12 @@ pub fn render_request(original_id: &str, batch: u32) -> String {
 }
 /// The trusted enumeration request (Story 24.2): one sheet's header row and
 /// every following row of the named columns, bounded.
-pub fn enumerate_request(original_id: &str, sheet: &str, header_row: u32, columns: &[String]) -> String {
+pub fn enumerate_request(
+    original_id: &str,
+    sheet: &str,
+    header_row: u32,
+    columns: &[String],
+) -> String {
     let list: Vec<String> = columns.iter().map(|c| json_string(c)).collect();
     format!(
         "{{\"chunk_rows\":{ENUMERATE_CHUNK_ROWS},\"columns\":[{}],\"header_row\":{header_row},\"max_rows\":{},\"max_text\":{},\"mode\":\"enumerate\",\"original\":{},\"sheet\":{}}}",
@@ -971,8 +976,11 @@ pub fn enumeration_manifest(
     request: &EnumerateRequest,
 ) -> Option<Enumeration> {
     let number = |key: &str| u32::try_from(value.get(key)?.int()?).ok();
-    let (header_row, last_row, rows_read) =
-        (number("header_row")?, number("last_row")?, number("rows_read")?);
+    let (header_row, last_row, rows_read) = (
+        number("header_row")?,
+        number("last_row")?,
+        number("rows_read")?,
+    );
     let truncated = match value.get("truncated")? {
         manifest::Value::Bool(b) => *b,
         _ => return None,

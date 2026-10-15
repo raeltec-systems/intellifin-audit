@@ -685,3 +685,746 @@ impl AssessmentRepository {
         Ok(snapshot)
     }
 }
+
+// ------------------------------------------------------------- Story 24.2
+
+use zobba_application::assessment::coverage::{
+    CoverageSnapshot, CoverageStore, InvocationCoverage, MAX_OUTLINE_COVERAGE, MemberRecord,
+    OpportunityRecord, PopulationRecord, SampleRecord, SummaryRecord,
+};
+use zobba_domain::{
+    assessment::{Applicability, EvaluationReason, Execution, Origin, Outcome, Verdict},
+    coverage::{Disposition, MAX_POPULATION_ROWS},
+};
+
+/// Rows one INSERT statement carries (members, opportunities, selections).
+const BATCH: usize = 1_000;
+
+fn population_from(row: &PgRow) -> Result<PopulationRecord, ReadingError> {
+    let (document, created) = document_of(row)?;
+    PopulationRecord::from_document(&document, Some(created)).ok_or(ReadingError::Unavailable)
+}
+fn summary_from(row: &PgRow) -> Result<SummaryRecord, ReadingError> {
+    let (document, created) = document_of(row)?;
+    SummaryRecord::from_document(&document, Some(created)).ok_or(ReadingError::Unavailable)
+}
+
+/// One population's members, verified against their digests and the
+/// population's own received-row count (an exact read, never a cut list).
+async fn members_of(
+    tx: &mut Tx,
+    population: &PopulationRecord,
+) -> Result<Vec<MemberRecord>, ReadingError> {
+    let rows = sqlx::query("SELECT document,digest,ordinal FROM public.assessment_population_members WHERE population_id=$1 ORDER BY ordinal LIMIT $2")
+        .bind(&population.id)
+        .bind(i64::from(MAX_POPULATION_ROWS) + 1)
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(unavailable)?;
+    if rows.len() as u64 != population.counts.received_rows {
+        return Err(ReadingError::Unavailable);
+    }
+    rows.iter()
+        .enumerate()
+        .map(|(i, row)| {
+            let document: Value = row.try_get("document").map_err(unavailable)?;
+            let digest: String = row.try_get("digest").map_err(unavailable)?;
+            let document = crate::work::json_value(&document).ok_or(ReadingError::Unavailable)?;
+            let record = MemberRecord::from_document(&document, &population.population)
+                .ok_or(ReadingError::Unavailable)?;
+            if record.digest != digest
+                || record.member.ordinal as usize != i
+                || record.population_id != population.id
+            {
+                return Err(ReadingError::Unavailable);
+            }
+            Ok(record)
+        })
+        .collect()
+}
+
+/// A sample with its selected subjects (in their stored order).
+async fn sample_of(tx: &mut Tx, row: &PgRow) -> Result<SampleRecord, ReadingError> {
+    let (document, created) = document_of(row)?;
+    let id: String = row.try_get("id").map_err(unavailable)?;
+    let selected: Vec<String> = sqlx::query_scalar("SELECT subject FROM public.assessment_sample_members WHERE sample_id=$1 ORDER BY ordinal LIMIT $2")
+        .bind(&id)
+        .bind(i64::from(MAX_POPULATION_ROWS) + 1)
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(unavailable)?;
+    SampleRecord::from_document(&document, selected, Some(created)).ok_or(ReadingError::Unavailable)
+}
+
+fn opportunity_from(row: &PgRow) -> Result<OpportunityRecord, ReadingError> {
+    let text =
+        |name: &str| -> Result<String, ReadingError> { row.try_get(name).map_err(unavailable) };
+    let maybe = |name: &str| -> Result<Option<String>, ReadingError> {
+        row.try_get(name).map_err(unavailable)
+    };
+    let inputs: Value = row.try_get("inputs").map_err(unavailable)?;
+    let inputs = inputs
+        .as_array()
+        .ok_or(ReadingError::Unavailable)?
+        .iter()
+        .map(|i| {
+            Some((
+                i.get("id")?.as_str()?.to_string(),
+                i.get("digest")?.as_str()?.to_string(),
+            ))
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or(ReadingError::Unavailable)?;
+    let ordinal: i32 = row.try_get("member_ordinal").map_err(unavailable)?;
+    let record = OpportunityRecord {
+        population_id: text("population_id")?,
+        criterion_id: text("criterion_id")?,
+        member_ordinal: u32::try_from(ordinal).map_err(|_| ReadingError::Unavailable)?,
+        subject: text("subject")?,
+        invocation_id: text("invocation_id")?,
+        outcome: Outcome {
+            applicability: Applicability::parse(&text("applicability")?)
+                .ok_or(ReadingError::Unavailable)?,
+            execution: Execution::parse(&text("execution")?).ok_or(ReadingError::Unavailable)?,
+            verdict: match maybe("verdict")? {
+                Some(v) => Some(Verdict::parse(&v).ok_or(ReadingError::Unavailable)?),
+                None => None,
+            },
+            reason: match maybe("reason")? {
+                Some(r) => Some(EvaluationReason::parse(&r).ok_or(ReadingError::Unavailable)?),
+                None => None,
+            },
+            origin: Origin::parse(&text("origin")?).ok_or(ReadingError::Unavailable)?,
+            inputs,
+        },
+        output_digest: text("output_digest")?,
+        evaluation_id: maybe("evaluation_id")?,
+    };
+    // A rule opportunity's digest is recomputed from its own fields.
+    if !record.outcome.is_valid()
+        || (record.evaluation_id.is_none() && record.output_digest != record.computed_digest())
+    {
+        return Err(ReadingError::Unavailable);
+    }
+    Ok(record)
+}
+const OPPORTUNITY_COLUMNS: &str = "population_id,criterion_id,member_ordinal,subject,invocation_id,applicability,execution,verdict,reason,origin,output_digest,evaluation_id,inputs";
+
+async fn opportunities_of(
+    tx: &mut Tx,
+    task_id: &str,
+    population_id: &str,
+    criterion_id: &str,
+) -> Result<Vec<OpportunityRecord>, ReadingError> {
+    let rows = sqlx::query(&format!("SELECT {OPPORTUNITY_COLUMNS} FROM public.assessment_opportunities WHERE task_id=$1 AND population_id=$2 AND criterion_id=$3 ORDER BY member_ordinal LIMIT $4"))
+        .bind(task_id)
+        .bind(population_id)
+        .bind(criterion_id)
+        .bind(i64::from(MAX_POPULATION_ROWS) + 1)
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(unavailable)?;
+    if rows.len() > MAX_POPULATION_ROWS as usize {
+        return Err(ReadingError::Capacity);
+    }
+    rows.iter().map(opportunity_from).collect()
+}
+
+impl CoverageStore for AssessmentRepository {
+    async fn invocation_coverage(
+        &self,
+        basis: &ClaimBasis,
+        invocation_id: &str,
+    ) -> Result<InvocationCoverage, ReadingError> {
+        if !valid_scope_id(invocation_id) {
+            return Err(ReadingError::Invalid);
+        }
+        let mut tx = scoped(&self.pool, &basis.actor_id, &basis.scope).await?;
+        let task_id = basis.task_id.as_str();
+        let populations = sqlx::query("SELECT document,digest,created_us FROM public.assessment_populations WHERE task_id=$1 AND invocation_id=$2 ORDER BY ordinal")
+            .bind(task_id).bind(invocation_id).fetch_all(&mut *tx).await.map_err(unavailable)?
+            .iter().map(population_from).collect::<Result<_, _>>()?;
+        let sample_rows = sqlx::query("SELECT document,digest,created_us,id FROM public.assessment_samples WHERE task_id=$1 AND invocation_id=$2 ORDER BY ordinal")
+            .bind(task_id).bind(invocation_id).fetch_all(&mut *tx).await.map_err(unavailable)?;
+        let mut samples = Vec::new();
+        for row in &sample_rows {
+            samples.push(sample_of(&mut tx, row).await?);
+        }
+        let summaries = sqlx::query("SELECT document,digest,created_us FROM public.assessment_summaries WHERE task_id=$1 AND invocation_id=$2 ORDER BY ordinal")
+            .bind(task_id).bind(invocation_id).fetch_all(&mut *tx).await.map_err(unavailable)?
+            .iter().map(summary_from).collect::<Result<_, _>>()?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(InvocationCoverage {
+            populations,
+            samples,
+            summaries,
+        })
+    }
+    async fn population(
+        &self,
+        basis: &ClaimBasis,
+        id: &str,
+    ) -> Result<Option<PopulationRecord>, ReadingError> {
+        if !valid_scope_id(id) {
+            return Ok(None);
+        }
+        let mut tx = scoped(&self.pool, &basis.actor_id, &basis.scope).await?;
+        let found = sqlx::query("SELECT document,digest,created_us FROM public.assessment_populations WHERE task_id=$1 AND id=$2")
+            .bind(&basis.task_id).bind(id).fetch_optional(&mut *tx).await.map_err(unavailable)?
+            .as_ref().map(population_from).transpose()?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(found)
+    }
+    async fn members(
+        &self,
+        basis: &ClaimBasis,
+        population_id: &str,
+    ) -> Result<Vec<MemberRecord>, ReadingError> {
+        let mut tx = scoped(&self.pool, &basis.actor_id, &basis.scope).await?;
+        let Some(population) = sqlx::query("SELECT document,digest,created_us FROM public.assessment_populations WHERE task_id=$1 AND id=$2")
+            .bind(&basis.task_id).bind(population_id).fetch_optional(&mut *tx).await.map_err(unavailable)?
+            .as_ref().map(population_from).transpose()?
+        else {
+            return Ok(vec![]);
+        };
+        let members = members_of(&mut tx, &population).await?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(members)
+    }
+    async fn record_population(
+        &self,
+        basis: &ClaimBasis,
+        record: &PopulationRecord,
+        members: &[MemberRecord],
+    ) -> Result<PopulationRecord, ReadingError> {
+        if record.task_id != basis.task_id
+            || record.cycle_id != basis.cycle_id
+            || members.len() as u64 != record.counts.received_rows
+            || members.iter().any(|m| m.population_id != record.id)
+        {
+            return Err(ReadingError::Invalid);
+        }
+        let document = record.document();
+        let mut tx = claimed(&self.pool, basis, &format!("assessment:{}", record.id)).await?;
+        let select =
+            "SELECT document,digest,created_us FROM public.assessment_populations WHERE id=$1";
+        if let Some(row) = sqlx::query(select)
+            .bind(&record.id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(unavailable)?
+        {
+            let stored = population_from(&row)?;
+            tx.commit().await.map_err(unavailable)?;
+            return same(stored, record, |r| PopulationRecord {
+                recorded_us: None,
+                ..r.clone()
+            });
+        }
+        let s = &basis.scope;
+        let c = &record.counts;
+        let p = &record.population;
+        sqlx::query("INSERT INTO public.assessment_populations(organisation_id,client_id,engagement_id,task_id,cycle_id,actor_id,invocation_id,ordinal,id,methodology_binding_id,execution_epoch,basis_id,supersedes,original_id,original_sha256,subject_unit,exhaustive,truncated,header_row,last_row,rows_read,declared_count,job_id,received_rows,unkeyed,duplicate_rows,distinct_subjects,excluded_out_of_period,scope_unknown_period_unparsed,scope_unknown_period_missing,scope_unknown_conflicting_duplicate,in_scope,completeness,completeness_reason,reconciliation,document,digest) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37)")
+            .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id)
+            .bind(&record.task_id).bind(&record.cycle_id).bind(&basis.actor_id)
+            .bind(&record.invocation_id).bind(record.ordinal as i32).bind(&record.id)
+            .bind(&record.methodology_binding_id).bind(record.execution_epoch as i64)
+            .bind(&record.basis_id).bind(&p.supersedes).bind(&p.original_id).bind(&record.original_sha256)
+            .bind(&p.subject_unit).bind(p.exhaustive).bind(record.truncated)
+            .bind(p.header_row as i32).bind(record.last_row as i32).bind(record.rows_read as i32)
+            .bind(record.declared_count.map(|n| n as i64)).bind(&record.job_id)
+            .bind(c.received_rows as i32).bind(c.unkeyed as i32).bind(c.duplicate_rows as i32)
+            .bind(c.distinct_subjects as i32).bind(c.excluded_out_of_period as i32)
+            .bind(c.scope_unknown_period_unparsed as i32).bind(c.scope_unknown_period_missing as i32)
+            .bind(c.scope_unknown_conflicting_duplicate as i32).bind(c.in_scope as i32)
+            .bind(record.completeness.as_str()).bind(record.completeness.reason().map(|r| r.as_str()))
+            .bind(record.reconciliation.as_str())
+            .bind(to_json(&document)).bind(document_digest(&document))
+            .execute(&mut *tx).await.map_err(refusal)?;
+        for chunk in members.chunks(BATCH) {
+            let ordinal: Vec<i32> = chunk.iter().map(|m| m.member.ordinal as i32).collect();
+            let row: Vec<i32> = chunk.iter().map(|m| m.member.row as i32).collect();
+            let subject: Vec<Option<String>> =
+                chunk.iter().map(|m| m.member.subject.clone()).collect();
+            let disposition: Vec<&str> = chunk
+                .iter()
+                .map(|m| m.member.disposition.kind().as_str())
+                .collect();
+            let reason: Vec<Option<&str>> = chunk
+                .iter()
+                .map(|m| m.member.disposition.reason().map(|r| r.as_str()))
+                .collect();
+            let duplicate: Vec<Option<i32>> = chunk
+                .iter()
+                .map(|m| m.member.disposition.duplicate_of().map(|d| d as i32))
+                .collect();
+            let documents: Vec<String> = chunk
+                .iter()
+                .map(|m| zobba_domain::context::canonical_json(&m.document(p)))
+                .collect();
+            let digests: Vec<&str> = chunk.iter().map(|m| m.digest.as_str()).collect();
+            sqlx::query("INSERT INTO public.assessment_population_members(organisation_id,client_id,engagement_id,task_id,actor_id,population_id,ordinal,row_number,subject,disposition,reason,duplicate_of,document,digest) SELECT $1,$2,$3,$4,$5,$6,o,r,s,d,x,u,j::jsonb,g FROM unnest($7::int[],$8::int[],$9::text[],$10::text[],$11::text[],$12::int[],$13::text[],$14::text[]) AS t(o,r,s,d,x,u,j,g) ORDER BY o")
+                .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id)
+                .bind(&record.task_id).bind(&basis.actor_id).bind(&record.id)
+                .bind(&ordinal).bind(&row).bind(&subject).bind(&disposition).bind(&reason).bind(&duplicate)
+                .bind(&documents).bind(&digests)
+                .execute(&mut *tx).await.map_err(refusal)?;
+        }
+        let row = sqlx::query(select)
+            .bind(&record.id)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(unavailable)?;
+        let stored = population_from(&row)?;
+        task::admission_fence(&mut tx, &basis.actor_id, s, None)
+            .await
+            .map_err(task_error)?;
+        // The deferred member recount runs here.
+        tx.commit().await.map_err(refusal)?;
+        Ok(stored)
+    }
+    async fn sample(
+        &self,
+        basis: &ClaimBasis,
+        id: &str,
+    ) -> Result<Option<SampleRecord>, ReadingError> {
+        if !valid_scope_id(id) {
+            return Ok(None);
+        }
+        let mut tx = scoped(&self.pool, &basis.actor_id, &basis.scope).await?;
+        let row = sqlx::query("SELECT document,digest,created_us,id FROM public.assessment_samples WHERE task_id=$1 AND id=$2")
+            .bind(&basis.task_id).bind(id).fetch_optional(&mut *tx).await.map_err(unavailable)?;
+        let found = match &row {
+            Some(row) => Some(sample_of(&mut tx, row).await?),
+            None => None,
+        };
+        tx.commit().await.map_err(unavailable)?;
+        Ok(found)
+    }
+    async fn record_sample(
+        &self,
+        basis: &ClaimBasis,
+        record: &SampleRecord,
+    ) -> Result<SampleRecord, ReadingError> {
+        if record.task_id != basis.task_id || record.cycle_id != basis.cycle_id {
+            return Err(ReadingError::Invalid);
+        }
+        let document = record.document();
+        let mut tx = claimed(&self.pool, basis, &format!("assessment:{}", record.id)).await?;
+        let select =
+            "SELECT document,digest,created_us,id FROM public.assessment_samples WHERE id=$1";
+        if let Some(row) = sqlx::query(select)
+            .bind(&record.id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(unavailable)?
+        {
+            let stored = sample_of(&mut tx, &row).await?;
+            tx.commit().await.map_err(unavailable)?;
+            return same(stored, record, |r| SampleRecord {
+                recorded_us: None,
+                ..r.clone()
+            });
+        }
+        let s = &basis.scope;
+        let p = &record.sample;
+        sqlx::query("INSERT INTO public.assessment_samples(organisation_id,client_id,engagement_id,task_id,cycle_id,actor_id,invocation_id,ordinal,id,methodology_binding_id,execution_epoch,population_id,method,seed,algorithm,size,statistical_inference,document,digest) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,false,$17,$18)")
+            .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id)
+            .bind(&record.task_id).bind(&record.cycle_id).bind(&basis.actor_id)
+            .bind(&record.invocation_id).bind(record.ordinal as i32).bind(&record.id)
+            .bind(&record.methodology_binding_id).bind(record.execution_epoch as i64)
+            .bind(&record.population_id).bind(p.method.kind().as_str())
+            .bind(p.method.seed().map(|seed| seed.to_string()))
+            .bind(p.method.seed().map(|_| zobba_domain::coverage::SAMPLE_ALGORITHM))
+            .bind(record.selected.len() as i32)
+            .bind(to_json(&document)).bind(document_digest(&document))
+            .execute(&mut *tx).await.map_err(refusal)?;
+        // Each selected subject names its member, read under the same lock.
+        let members: Vec<(String, i32)> = sqlx::query_as("SELECT subject,ordinal FROM public.assessment_population_members WHERE population_id=$1 AND disposition='in_scope' AND subject = ANY($2)")
+            .bind(&record.population_id).bind(&record.selected)
+            .fetch_all(&mut *tx).await.map_err(unavailable)?;
+        let ordinal_of: std::collections::BTreeMap<&str, i32> =
+            members.iter().map(|(s, o)| (s.as_str(), *o)).collect();
+        let selected: Vec<(usize, &String, i32)> = record
+            .selected
+            .iter()
+            .enumerate()
+            .map(|(i, subject)| ordinal_of.get(subject.as_str()).map(|o| (i, subject, *o)))
+            .collect::<Option<_>>()
+            .ok_or(ReadingError::Invalid)?;
+        for chunk in selected.chunks(BATCH) {
+            let ordinal: Vec<i32> = chunk.iter().map(|(i, _, _)| *i as i32).collect();
+            let subject: Vec<&str> = chunk.iter().map(|(_, s, _)| s.as_str()).collect();
+            let member: Vec<i32> = chunk.iter().map(|(_, _, o)| *o).collect();
+            sqlx::query("INSERT INTO public.assessment_sample_members(organisation_id,client_id,engagement_id,task_id,actor_id,sample_id,ordinal,subject,member_ordinal) SELECT $1,$2,$3,$4,$5,$6,o,s,m FROM unnest($7::int[],$8::text[],$9::int[]) AS t(o,s,m) ORDER BY o")
+                .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id)
+                .bind(&record.task_id).bind(&basis.actor_id).bind(&record.id)
+                .bind(&ordinal).bind(&subject).bind(&member)
+                .execute(&mut *tx).await.map_err(refusal)?;
+        }
+        let row = sqlx::query(select)
+            .bind(&record.id)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(unavailable)?;
+        let stored = sample_of(&mut tx, &row).await?;
+        task::admission_fence(&mut tx, &basis.actor_id, s, None)
+            .await
+            .map_err(task_error)?;
+        tx.commit().await.map_err(refusal)?;
+        Ok(stored)
+    }
+    async fn opportunities(
+        &self,
+        basis: &ClaimBasis,
+        population_id: &str,
+        criterion_id: &str,
+    ) -> Result<Vec<OpportunityRecord>, ReadingError> {
+        let mut tx = scoped(&self.pool, &basis.actor_id, &basis.scope).await?;
+        let found = opportunities_of(&mut tx, &basis.task_id, population_id, criterion_id).await?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(found)
+    }
+    async fn record_opportunities(
+        &self,
+        basis: &ClaimBasis,
+        records: &[OpportunityRecord],
+    ) -> Result<(), ReadingError> {
+        let Some(first) = records.first() else {
+            return Ok(());
+        };
+        if records.iter().any(|r| {
+            r.population_id != first.population_id
+                || r.criterion_id != first.criterion_id
+                || r.invocation_id != first.invocation_id
+                || !r.outcome.is_valid()
+                || (r.evaluation_id.is_none() && r.output_digest != r.computed_digest())
+        }) {
+            return Err(ReadingError::Invalid);
+        }
+        let key = format!("assessment:{}/{}", first.population_id, first.criterion_id);
+        let mut tx = claimed(&self.pool, basis, &key).await?;
+        let stored = opportunities_of(
+            &mut tx,
+            &basis.task_id,
+            &first.population_id,
+            &first.criterion_id,
+        )
+        .await?;
+        if !stored.is_empty() {
+            tx.commit().await.map_err(unavailable)?;
+            return if stored == records {
+                Ok(())
+            } else {
+                Err(ReadingError::Invalid)
+            };
+        }
+        let s = &basis.scope;
+        for chunk in records.chunks(BATCH) {
+            let member: Vec<i32> = chunk.iter().map(|r| r.member_ordinal as i32).collect();
+            let subject: Vec<&str> = chunk.iter().map(|r| r.subject.as_str()).collect();
+            let applicability: Vec<&str> = chunk
+                .iter()
+                .map(|r| r.outcome.applicability.as_str())
+                .collect();
+            let execution: Vec<&str> = chunk.iter().map(|r| r.outcome.execution.as_str()).collect();
+            let verdict: Vec<Option<&str>> = chunk
+                .iter()
+                .map(|r| r.outcome.verdict.map(|v| v.as_str()))
+                .collect();
+            let reason: Vec<Option<&str>> = chunk
+                .iter()
+                .map(|r| r.outcome.reason.map(|x| x.as_str()))
+                .collect();
+            let origin: Vec<&str> = chunk.iter().map(|r| r.outcome.origin.as_str()).collect();
+            let digest: Vec<&str> = chunk.iter().map(|r| r.output_digest.as_str()).collect();
+            let evaluation: Vec<Option<&str>> =
+                chunk.iter().map(|r| r.evaluation_id.as_deref()).collect();
+            let inputs: Vec<String> = chunk
+                .iter()
+                .map(|r| {
+                    Value::Array(
+                        r.outcome
+                            .inputs
+                            .iter()
+                            .map(|(id, digest)| serde_json::json!({"id": id, "digest": digest}))
+                            .collect(),
+                    )
+                    .to_string()
+                })
+                .collect();
+            sqlx::query("INSERT INTO public.assessment_opportunities(organisation_id,client_id,engagement_id,task_id,actor_id,invocation_id,population_id,criterion_id,member_ordinal,subject,applicability,execution,verdict,reason,origin,output_digest,evaluation_id,inputs) SELECT $1,$2,$3,$4,$5,$6,$7,$8,m,s,a,e,v,x,o,d,k,i::jsonb FROM unnest($9::int[],$10::text[],$11::text[],$12::text[],$13::text[],$14::text[],$15::text[],$16::text[],$17::text[],$18::text[]) AS t(m,s,a,e,v,x,o,d,k,i) ORDER BY m")
+                .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id)
+                .bind(&basis.task_id).bind(&basis.actor_id).bind(&first.invocation_id)
+                .bind(&first.population_id).bind(&first.criterion_id)
+                .bind(&member).bind(&subject).bind(&applicability).bind(&execution).bind(&verdict)
+                .bind(&reason).bind(&origin).bind(&digest).bind(&evaluation).bind(&inputs)
+                .execute(&mut *tx).await.map_err(refusal)?;
+        }
+        task::admission_fence(&mut tx, &basis.actor_id, s, None)
+            .await
+            .map_err(task_error)?;
+        tx.commit().await.map_err(refusal)?;
+        Ok(())
+    }
+    async fn summary_for(
+        &self,
+        basis: &ClaimBasis,
+        population_id: &str,
+        sample_id: Option<&str>,
+    ) -> Result<Option<SummaryRecord>, ReadingError> {
+        let mut tx = scoped(&self.pool, &basis.actor_id, &basis.scope).await?;
+        let found = sqlx::query("SELECT document,digest,created_us FROM public.assessment_summaries WHERE task_id=$1 AND population_id=$2 AND sample_id IS NOT DISTINCT FROM $3")
+            .bind(&basis.task_id).bind(population_id).bind(sample_id)
+            .fetch_optional(&mut *tx).await.map_err(unavailable)?
+            .as_ref().map(summary_from).transpose()?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(found)
+    }
+    async fn record_summary(
+        &self,
+        basis: &ClaimBasis,
+        record: &SummaryRecord,
+    ) -> Result<SummaryRecord, ReadingError> {
+        if record.task_id != basis.task_id
+            || record.cycle_id != basis.cycle_id
+            || !record.summary.is_consistent()
+            || record.summary_digest != record.summary.digest()
+        {
+            return Err(ReadingError::Invalid);
+        }
+        let document = record.document();
+        let mut tx = claimed(&self.pool, basis, &format!("assessment:{}", record.id)).await?;
+        let select =
+            "SELECT document,digest,created_us FROM public.assessment_summaries WHERE id=$1";
+        if let Some(row) = sqlx::query(select)
+            .bind(&record.id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(unavailable)?
+        {
+            let stored = summary_from(&row)?;
+            tx.commit().await.map_err(unavailable)?;
+            return same(stored, record, |r| SummaryRecord {
+                recorded_us: None,
+                ..r.clone()
+            });
+        }
+        insert_summary(&mut tx, basis, record, &document).await?;
+        let row = sqlx::query(select)
+            .bind(&record.id)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(unavailable)?;
+        let stored = summary_from(&row)?;
+        task::admission_fence(&mut tx, &basis.actor_id, &basis.scope, None)
+            .await
+            .map_err(task_error)?;
+        tx.commit().await.map_err(refusal)?;
+        Ok(stored)
+    }
+    async fn coverage_snapshot(
+        &self,
+        basis: &ClaimBasis,
+    ) -> Result<CoverageSnapshot, ReadingError> {
+        let mut tx = scoped(&self.pool, &basis.actor_id, &basis.scope).await?;
+        let snapshot = coverage_snapshot(&mut tx, &basis.task_id).await?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(snapshot)
+    }
+}
+
+/// The summary row: every count is a column, recounted by the guard.
+pub async fn insert_summary(
+    tx: &mut Tx,
+    basis: &ClaimBasis,
+    record: &SummaryRecord,
+    document: &JsonValue,
+) -> Result<(), ReadingError> {
+    let s = &basis.scope;
+    let m = &record.summary;
+    let c = &m.counts;
+    let p = &m.partition;
+    sqlx::query("INSERT INTO public.assessment_summaries(organisation_id,client_id,engagement_id,task_id,cycle_id,actor_id,invocation_id,ordinal,id,methodology_binding_id,execution_epoch,basis_id,population_id,sample_id,aggregation,conclusion,completeness,completeness_reason,reconciliation,received_rows,unkeyed,duplicate_rows,distinct_subjects,excluded_out_of_period,scope_unknown_period_unparsed,scope_unknown_period_missing,scope_unknown_conflicting_duplicate,in_scope,selected,failing_subjects,meets_every_applicable,unresolved_subjects,not_applicable_to_any,failing_opportunities,statistical_inference,document,summary_digest,digest) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,false,$35,$36,$37)")
+        .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id)
+        .bind(&record.task_id).bind(&record.cycle_id).bind(&basis.actor_id)
+        .bind(&record.invocation_id).bind(record.ordinal as i32).bind(&record.id)
+        .bind(&record.methodology_binding_id).bind(record.execution_epoch as i64)
+        .bind(&record.basis_id).bind(&record.population_id).bind(&record.sample_id)
+        .bind(zobba_domain::coverage::AGGREGATION_RULE).bind(m.conclusion.as_str())
+        .bind(m.completeness.as_str()).bind(m.completeness.reason().map(|r| r.as_str()))
+        .bind(m.reconciliation.as_str())
+        .bind(c.received_rows as i32).bind(c.unkeyed as i32).bind(c.duplicate_rows as i32)
+        .bind(c.distinct_subjects as i32).bind(c.excluded_out_of_period as i32)
+        .bind(c.scope_unknown_period_unparsed as i32).bind(c.scope_unknown_period_missing as i32)
+        .bind(c.scope_unknown_conflicting_duplicate as i32).bind(c.in_scope as i32)
+        .bind(m.selected.map(|n| n as i32))
+        .bind(p.failing as i32).bind(p.meets_every_applicable as i32)
+        .bind(p.unresolved as i32).bind(p.not_applicable_to_any as i32)
+        .bind(m.failing_opportunities as i32)
+        .bind(to_json(document)).bind(&record.summary_digest).bind(document_digest(document))
+        .execute(&mut **tx).await.map_err(refusal)?;
+    Ok(())
+}
+
+/// The Task's newest coverage records (bounded), oldest first, and totals.
+async fn coverage_snapshot(tx: &mut Tx, task_id: &str) -> Result<CoverageSnapshot, ReadingError> {
+    async fn newest(
+        tx: &mut Tx,
+        table: &'static str,
+        task_id: &str,
+    ) -> Result<(Vec<PgRow>, u64), ReadingError> {
+        let rows = sqlx::query(&format!("SELECT * FROM (SELECT document,digest,created_us,id FROM public.{table} WHERE task_id=$1 ORDER BY created_us DESC,id COLLATE \"C\" DESC LIMIT $2) r ORDER BY created_us,id COLLATE \"C\""))
+            .bind(task_id)
+            .bind(MAX_OUTLINE_COVERAGE as i64)
+            .fetch_all(&mut **tx)
+            .await
+            .map_err(unavailable)?;
+        let total: i64 = sqlx::query_scalar(&format!(
+            "SELECT count(*) FROM public.{table} WHERE task_id=$1"
+        ))
+        .bind(task_id)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(unavailable)?;
+        Ok((rows, total as u64))
+    }
+    let (populations, total_populations) = newest(tx, "assessment_populations", task_id).await?;
+    let (sample_rows, total_samples) = newest(tx, "assessment_samples", task_id).await?;
+    let (summaries, total_summaries) = newest(tx, "assessment_summaries", task_id).await?;
+    let mut samples = Vec::new();
+    for row in &sample_rows {
+        samples.push(sample_of(tx, row).await?);
+    }
+    Ok(CoverageSnapshot {
+        populations: populations
+            .iter()
+            .map(population_from)
+            .collect::<Result<_, _>>()?,
+        samples,
+        summaries: summaries
+            .iter()
+            .map(summary_from)
+            .collect::<Result<_, _>>()?,
+        total_populations,
+        total_samples,
+        total_summaries,
+    })
+}
+
+/// One page of a population's members for the viewer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MemberPage {
+    pub population: PopulationRecord,
+    /// The exact count of members of this disposition (all when None).
+    pub total: u64,
+    pub members: Vec<MemberRecord>,
+    /// The ordinal after which the next page starts, when there is one.
+    pub next: Option<u32>,
+}
+/// Members one page shows.
+pub const MEMBER_PAGE: usize = 50;
+
+impl AssessmentRepository {
+    /// Viewer read (current audit scope by RLS): the Task's recent coverage
+    /// records.
+    pub async fn coverage_view(
+        &self,
+        actor: &str,
+        s: &Scope,
+        task_id: &str,
+    ) -> Result<CoverageSnapshot, TaskError> {
+        if !valid_scope_id(task_id) {
+            return Err(TaskError::Denied);
+        }
+        let mut tx = scoped(&self.pool, actor, s).await.map_err(|e| match e {
+            ReadingError::Denied | ReadingError::Fenced => TaskError::Denied,
+            _ => TaskError::Unavailable,
+        })?;
+        let exists: Option<String> = sqlx::query_scalar("SELECT id FROM public.tasks WHERE id=$1")
+            .bind(task_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|_| TaskError::Unavailable)?;
+        if exists.is_none() {
+            return Err(TaskError::Denied);
+        }
+        let snapshot = coverage_snapshot(&mut tx, task_id)
+            .await
+            .map_err(|_| TaskError::Unavailable)?;
+        task::admission_fence(&mut tx, actor, s, None).await?;
+        tx.commit().await.map_err(|_| TaskError::Unavailable)?;
+        Ok(snapshot)
+    }
+    /// Viewer read: the exact count of a population's members of one
+    /// disposition and one page of them, in receipt order after `after`.
+    pub async fn member_page(
+        &self,
+        actor: &str,
+        s: &Scope,
+        task_id: &str,
+        population_id: &str,
+        disposition: Option<zobba_domain::coverage::DispositionKind>,
+        after: Option<u32>,
+    ) -> Result<Option<MemberPage>, TaskError> {
+        if !valid_scope_id(task_id) || !valid_scope_id(population_id) {
+            return Err(TaskError::Denied);
+        }
+        let mut tx = scoped(&self.pool, actor, s).await.map_err(|e| match e {
+            ReadingError::Denied | ReadingError::Fenced => TaskError::Denied,
+            _ => TaskError::Unavailable,
+        })?;
+        let row = sqlx::query("SELECT document,digest,created_us FROM public.assessment_populations WHERE task_id=$1 AND id=$2")
+            .bind(task_id).bind(population_id)
+            .fetch_optional(&mut *tx).await.map_err(|_| TaskError::Unavailable)?;
+        let Some(population) = row
+            .as_ref()
+            .map(population_from)
+            .transpose()
+            .map_err(|_| TaskError::Unavailable)?
+        else {
+            tx.commit().await.map_err(|_| TaskError::Unavailable)?;
+            return Ok(None);
+        };
+        let kind = disposition.map(|d| d.as_str());
+        let total: i64 = sqlx::query_scalar("SELECT count(*) FROM public.assessment_population_members WHERE population_id=$1 AND ($2::text IS NULL OR disposition=$2)")
+            .bind(population_id).bind(kind)
+            .fetch_one(&mut *tx).await.map_err(|_| TaskError::Unavailable)?;
+        let rows = sqlx::query("SELECT document,digest FROM public.assessment_population_members WHERE population_id=$1 AND ($2::text IS NULL OR disposition=$2) AND ordinal > $3 ORDER BY ordinal LIMIT $4")
+            .bind(population_id).bind(kind).bind(after.map_or(-1, |a| a as i64))
+            .bind(MEMBER_PAGE as i64 + 1)
+            .fetch_all(&mut *tx).await.map_err(|_| TaskError::Unavailable)?;
+        let mut members = Vec::new();
+        for row in rows.iter().take(MEMBER_PAGE) {
+            let document: Value = row
+                .try_get("document")
+                .map_err(|_| TaskError::Unavailable)?;
+            let digest: String = row.try_get("digest").map_err(|_| TaskError::Unavailable)?;
+            let document = crate::work::json_value(&document).ok_or(TaskError::Unavailable)?;
+            let record = MemberRecord::from_document(&document, &population.population)
+                .ok_or(TaskError::Unavailable)?;
+            if record.digest != digest {
+                return Err(TaskError::Unavailable);
+            }
+            members.push(record);
+        }
+        let next = (rows.len() > MEMBER_PAGE)
+            .then(|| members.last().map(|m| m.member.ordinal))
+            .flatten();
+        task::admission_fence(&mut tx, actor, s, None).await?;
+        tx.commit().await.map_err(|_| TaskError::Unavailable)?;
+        // Disposition kinds of the page agree with the filter.
+        if let Some(kind) = disposition
+            && members.iter().any(|m| m.member.disposition.kind() != kind)
+        {
+            return Err(TaskError::Unavailable);
+        }
+        let _ = Disposition::InScope;
+        Ok(Some(MemberPage {
+            population,
+            total: total as u64,
+            members,
+            next,
+        }))
+    }
+}

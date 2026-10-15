@@ -781,8 +781,7 @@ pub(crate) fn record_shaped(key: &str) -> bool {
         matches!(
             prefix,
             "crit" | "basis" | "fact" | "eval" | "pop" | "sample" | "summary"
-        )
-            && rest.len() == 40
+        ) && rest.len() == 40
             && rest.bytes().all(|b| b.is_ascii_hexdigit())
     })
 }

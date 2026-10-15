@@ -204,6 +204,11 @@ struct State {
     evaluations: Vec<EvaluationRecord>,
     jobs: BTreeMap<String, JobState>,
     clock: i64,
+    populations: Vec<coverage::PopulationRecord>,
+    members: Vec<coverage::MemberRecord>,
+    samples: Vec<coverage::SampleRecord>,
+    opportunities: Vec<coverage::OpportunityRecord>,
+    summaries: Vec<coverage::SummaryRecord>,
 }
 #[derive(Default)]
 struct Store {
@@ -452,6 +457,213 @@ impl AssessmentStore for Store {
     }
 }
 
+impl coverage::CoverageStore for Store {
+    async fn invocation_coverage(
+        &self,
+        _: &ClaimBasis,
+        invocation_id: &str,
+    ) -> Result<coverage::InvocationCoverage, ReadingError> {
+        let state = self.state.lock().unwrap();
+        Ok(coverage::InvocationCoverage {
+            populations: state
+                .populations
+                .iter()
+                .filter(|r| r.invocation_id == invocation_id)
+                .cloned()
+                .collect(),
+            samples: state
+                .samples
+                .iter()
+                .filter(|r| r.invocation_id == invocation_id)
+                .cloned()
+                .collect(),
+            summaries: state
+                .summaries
+                .iter()
+                .filter(|r| r.invocation_id == invocation_id)
+                .cloned()
+                .collect(),
+        })
+    }
+    async fn population(
+        &self,
+        b: &ClaimBasis,
+        id: &str,
+    ) -> Result<Option<coverage::PopulationRecord>, ReadingError> {
+        let state = self.state.lock().unwrap();
+        Ok(state
+            .populations
+            .iter()
+            .find(|r| r.task_id == b.task_id && r.id == id)
+            .cloned())
+    }
+    async fn members(
+        &self,
+        _: &ClaimBasis,
+        population_id: &str,
+    ) -> Result<Vec<coverage::MemberRecord>, ReadingError> {
+        let state = self.state.lock().unwrap();
+        Ok(state
+            .members
+            .iter()
+            .filter(|m| m.population_id == population_id)
+            .cloned()
+            .collect())
+    }
+    async fn record_population(
+        &self,
+        _: &ClaimBasis,
+        r: &coverage::PopulationRecord,
+        members: &[coverage::MemberRecord],
+    ) -> Result<coverage::PopulationRecord, ReadingError> {
+        assert_eq!(r.digest, document_digest(&r.document()));
+        // The database guard: the manifest holds exactly its counted members.
+        if members.len() as u64 != r.counts.received_rows {
+            return Err(ReadingError::Invalid);
+        }
+        let mut state = self.state.lock().unwrap();
+        state.clock += 1;
+        let mut r = r.clone();
+        r.recorded_us = Some(state.clock);
+        let fresh = !state.populations.iter().any(|p| p.id == r.id);
+        let stored = insert(
+            &mut state.populations,
+            &r,
+            |r| r.id.clone(),
+            |r| coverage::PopulationRecord {
+                recorded_us: None,
+                ..r.clone()
+            },
+        )?;
+        if fresh {
+            state.members.extend(members.iter().cloned());
+        }
+        Ok(stored)
+    }
+    async fn sample(
+        &self,
+        b: &ClaimBasis,
+        id: &str,
+    ) -> Result<Option<coverage::SampleRecord>, ReadingError> {
+        let state = self.state.lock().unwrap();
+        Ok(state
+            .samples
+            .iter()
+            .find(|r| r.task_id == b.task_id && r.id == id)
+            .cloned())
+    }
+    async fn record_sample(
+        &self,
+        _: &ClaimBasis,
+        r: &coverage::SampleRecord,
+    ) -> Result<coverage::SampleRecord, ReadingError> {
+        assert_eq!(r.digest, document_digest(&r.document()));
+        let mut state = self.state.lock().unwrap();
+        state.clock += 1;
+        let mut r = r.clone();
+        r.recorded_us = Some(state.clock);
+        insert(
+            &mut state.samples,
+            &r,
+            |r| r.id.clone(),
+            |r| coverage::SampleRecord {
+                recorded_us: None,
+                ..r.clone()
+            },
+        )
+    }
+    async fn opportunities(
+        &self,
+        _: &ClaimBasis,
+        population_id: &str,
+        criterion_id: &str,
+    ) -> Result<Vec<coverage::OpportunityRecord>, ReadingError> {
+        let state = self.state.lock().unwrap();
+        Ok(state
+            .opportunities
+            .iter()
+            .filter(|o| o.population_id == population_id && o.criterion_id == criterion_id)
+            .cloned()
+            .collect())
+    }
+    async fn record_opportunities(
+        &self,
+        _: &ClaimBasis,
+        records: &[coverage::OpportunityRecord],
+    ) -> Result<(), ReadingError> {
+        let mut state = self.state.lock().unwrap();
+        for r in records {
+            assert!(r.outcome.is_valid());
+            assert_eq!(r.output_digest, r.computed_digest());
+            insert(
+                &mut state.opportunities,
+                r,
+                |r| {
+                    format!(
+                        "{}/{}/{}",
+                        r.population_id, r.criterion_id, r.member_ordinal
+                    )
+                },
+                Clone::clone,
+            )?;
+        }
+        Ok(())
+    }
+    async fn summary_for(
+        &self,
+        _: &ClaimBasis,
+        population_id: &str,
+        sample_id: Option<&str>,
+    ) -> Result<Option<coverage::SummaryRecord>, ReadingError> {
+        let state = self.state.lock().unwrap();
+        Ok(state
+            .summaries
+            .iter()
+            .find(|s| s.population_id == population_id && s.sample_id.as_deref() == sample_id)
+            .cloned())
+    }
+    async fn record_summary(
+        &self,
+        _: &ClaimBasis,
+        r: &coverage::SummaryRecord,
+    ) -> Result<coverage::SummaryRecord, ReadingError> {
+        assert_eq!(r.digest, document_digest(&r.document()));
+        assert!(r.summary.is_consistent());
+        let mut state = self.state.lock().unwrap();
+        if state.summaries.iter().any(|s| {
+            s.id != r.id && s.population_id == r.population_id && s.sample_id == r.sample_id
+        }) {
+            return Err(ReadingError::Invalid);
+        }
+        state.clock += 1;
+        let mut r = r.clone();
+        r.recorded_us = Some(state.clock);
+        insert(
+            &mut state.summaries,
+            &r,
+            |r| r.id.clone(),
+            |r| coverage::SummaryRecord {
+                recorded_us: None,
+                ..r.clone()
+            },
+        )
+    }
+    async fn coverage_snapshot(
+        &self,
+        _: &ClaimBasis,
+    ) -> Result<coverage::CoverageSnapshot, ReadingError> {
+        let state = self.state.lock().unwrap();
+        Ok(coverage::CoverageSnapshot {
+            populations: state.populations.clone(),
+            samples: state.samples.clone(),
+            summaries: state.summaries.clone(),
+            total_populations: state.populations.len() as u64,
+            total_samples: state.samples.len() as u64,
+            total_summaries: state.summaries.len() as u64,
+        })
+    }
+}
+
 fn usd() -> Measure {
     Measure::Currency("USD".into())
 }
@@ -632,7 +844,9 @@ fn evaluation<'a>(
         .find(|e| e.criterion_id == criterion && e.subject == subject)
         .unwrap_or_else(|| panic!("no evaluation of {criterion} for {subject}"))
 }
-fn feedback_of<S: AssessmentStore, C: CitationReader>(assessment: &Assessment<'_, S, C>) -> String {
+fn feedback_of<S: AssessmentStore + coverage::CoverageStore, C: CitationReader>(
+    assessment: &Assessment<'_, S, C>,
+) -> String {
     let wrapped = run(assessment.context(&basis("p1")))
         .unwrap()
         .feedback
@@ -1719,6 +1933,87 @@ fn a_refused_write_is_feedback_never_a_failed_cycle() {
         }
         async fn snapshot(&self, b: &ClaimBasis) -> Result<AssessmentSnapshot, ReadingError> {
             self.0.snapshot(b).await
+        }
+    }
+    impl coverage::CoverageStore for Racing<'_> {
+        async fn invocation_coverage(
+            &self,
+            b: &ClaimBasis,
+            i: &str,
+        ) -> Result<coverage::InvocationCoverage, ReadingError> {
+            self.0.invocation_coverage(b, i).await
+        }
+        async fn population(
+            &self,
+            b: &ClaimBasis,
+            i: &str,
+        ) -> Result<Option<coverage::PopulationRecord>, ReadingError> {
+            self.0.population(b, i).await
+        }
+        async fn members(
+            &self,
+            b: &ClaimBasis,
+            i: &str,
+        ) -> Result<Vec<coverage::MemberRecord>, ReadingError> {
+            self.0.members(b, i).await
+        }
+        async fn record_population(
+            &self,
+            b: &ClaimBasis,
+            r: &coverage::PopulationRecord,
+            m: &[coverage::MemberRecord],
+        ) -> Result<coverage::PopulationRecord, ReadingError> {
+            self.0.record_population(b, r, m).await
+        }
+        async fn sample(
+            &self,
+            b: &ClaimBasis,
+            i: &str,
+        ) -> Result<Option<coverage::SampleRecord>, ReadingError> {
+            self.0.sample(b, i).await
+        }
+        async fn record_sample(
+            &self,
+            b: &ClaimBasis,
+            r: &coverage::SampleRecord,
+        ) -> Result<coverage::SampleRecord, ReadingError> {
+            self.0.record_sample(b, r).await
+        }
+        async fn opportunities(
+            &self,
+            b: &ClaimBasis,
+            p: &str,
+            c: &str,
+        ) -> Result<Vec<coverage::OpportunityRecord>, ReadingError> {
+            self.0.opportunities(b, p, c).await
+        }
+        async fn record_opportunities(
+            &self,
+            b: &ClaimBasis,
+            r: &[coverage::OpportunityRecord],
+        ) -> Result<(), ReadingError> {
+            self.0.record_opportunities(b, r).await
+        }
+        async fn summary_for(
+            &self,
+            b: &ClaimBasis,
+            p: &str,
+            s: Option<&str>,
+        ) -> Result<Option<coverage::SummaryRecord>, ReadingError> {
+            self.0.summary_for(b, p, s).await
+        }
+        async fn record_summary(
+            &self,
+            b: &ClaimBasis,
+            r: &coverage::SummaryRecord,
+        ) -> Result<coverage::SummaryRecord, ReadingError> {
+            self.0.record_summary(b, r).await
+        }
+        async fn coverage_snapshot(
+            &self,
+            b: &ClaimBasis,
+        ) -> Result<coverage::CoverageSnapshot, ReadingError> {
+            self.0.coverage_snapshot(b).await
         }
     }
     let racing = Racing(&store);

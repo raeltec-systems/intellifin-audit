@@ -26,8 +26,8 @@ use crate::{
 };
 use zobba_domain::{
     assessment::{
-        Applicability, CriterionKind, Execution, FactState, FactType, Origin,
-        Outcome, ParseRule, Verdict, evaluate, output_digest, whole_value,
+        Applicability, CriterionKind, Execution, FactState, FactType, Origin, Outcome, ParseRule,
+        Verdict, evaluate, output_digest, whole_value,
     },
     citation::{CitedAnswer, Locator, Verification, VerifiedSource},
     coverage::{
@@ -502,14 +502,12 @@ fn member_value_from(value: &JsonValue) -> Option<MemberValue> {
             let mut rest = map.clone();
             rest.remove("measure_grounded");
             match value_from(&JsonValue::Object(rest))? {
-                FactState::Value(value) => {
-                    ((value.kind() == FactType::Decimal) == grounded.is_some()).then_some(
-                        MemberValue::Value {
-                            value,
-                            measure_grounded: grounded,
-                        },
-                    )
-                }
+                FactState::Value(value) => ((value.kind() == FactType::Decimal)
+                    == grounded.is_some())
+                .then_some(MemberValue::Value {
+                    value,
+                    measure_grounded: grounded,
+                }),
                 _ => None,
             }
         }
@@ -666,12 +664,17 @@ impl SampleRecord {
                         .collect(),
                 ),
             ),
-            ("selected", list(&self.selected)),
+            ("selected_count", int(self.selected.len() as u64)),
+            ("selected_sha256", s(&selected_digest(&self.selected))),
             ("statistical_inference", JsonValue::Bool(false)),
         ]);
         obj(fields)
     }
-    pub fn from_document(document: &JsonValue, recorded_us: Option<i64>) -> Option<Self> {
+    pub fn from_document(
+        document: &JsonValue,
+        selected: Vec<String>,
+        recorded_us: Option<i64>,
+    ) -> Option<Self> {
         let map = as_obj(document)?;
         let e = envelope_from(map, "sample")?;
         let method = match SampleMethodKind::parse(get_str(map, "method")?)? {
@@ -712,12 +715,19 @@ impl SampleRecord {
                 substitutions,
             },
             population_id,
-            selected: get_list(map, "selected")?,
+            selected,
             digest: document_digest(document),
             recorded_us,
         };
         (record.sample.is_valid() && record.document() == *document).then_some(record)
     }
+}
+
+/// The SHA-256 of the selected subjects joined by newlines: the sample
+/// document names its selection by count and digest, and the selected
+/// subjects are stored one per row beside it.
+pub fn selected_digest(selected: &[String]) -> String {
+    zobba_domain::work::sha256_hex(selected.join("\n").as_bytes())
 }
 
 impl SummaryRecord {
@@ -948,7 +958,10 @@ fn judgments_at_unit(
         .into_iter()
         .filter(|e| e.outcome.origin == Origin::ModelProposal)
         .filter(|e| {
-            let of: Vec<&FactRecord> = facts.iter().filter(|f| f.fact.subject == e.subject).collect();
+            let of: Vec<&FactRecord> = facts
+                .iter()
+                .filter(|f| f.fact.subject == e.subject)
+                .collect();
             !of.is_empty() && of.iter().all(|f| f.fact.subject_unit == unit)
         })
         .map(|e| (e.subject.clone(), e))
@@ -1042,16 +1055,23 @@ where
         let (control, declared) = match &proposed.control {
             None => (None, None),
             Some(count) => {
-                let (verified, texts) =
-                    verify_sources(self.reader, basis, std::slice::from_ref(&count.source), cancellation)
-                        .await?
-                        .remove(0);
+                let (verified, texts) = verify_sources(
+                    self.reader,
+                    basis,
+                    std::slice::from_ref(&count.source),
+                    cancellation,
+                )
+                .await?
+                .remove(0);
                 let whole = verified
                     .source
                     .locator
                     .as_ref()
                     .is_some_and(|l| whole_value(l, &texts, &count.source.quote));
-                match (verified.verification == Verification::Verified && whole, count.parse()) {
+                match (
+                    verified.verification == Verification::Verified && whole,
+                    count.parse(),
+                ) {
                     (true, Some(n)) => (Some(verified), Some(n)),
                     _ => {
                         feedback.push(format!(
@@ -1261,7 +1281,9 @@ where
     ) -> Result<bool, ReadingError> {
         let mut progress = false;
         for request in &answer.evaluate_population {
-            let Some(criterion) = self.resolve_criterion(basis, keys, &request.criterion).await?
+            let Some(criterion) = self
+                .resolve_criterion(basis, keys, &request.criterion)
+                .await?
             else {
                 feedback.push(format!(
                     "{} was not evaluated over a population: it is not a criterion of this Task.",
@@ -1329,13 +1351,8 @@ where
                     &context_for(&target, &criterion, &facts),
                 );
                 let mut evaluation_id = None;
-                let mut digest = output_digest(
-                    &population.id,
-                    &criterion.id,
-                    &subject,
-                    &outcome,
-                    None,
-                );
+                let mut digest =
+                    output_digest(&population.id, &criterion.id, &subject, &outcome, None);
                 // A judgment criterion that applies uses the newest 24.1
                 // judgment for this subject at the population's unit, or
                 // stays not evaluated. The model never judges here.
@@ -1438,7 +1455,11 @@ where
             };
             if let Some(found) = self
                 .store
-                .summary_for(basis, &population.id, sample.as_ref().map(|s| s.id.as_str()))
+                .summary_for(
+                    basis,
+                    &population.id,
+                    sample.as_ref().map(|s| s.id.as_str()),
+                )
                 .await?
             {
                 feedback.push(format!("{} It was already recorded.", summary_line(&found)));
@@ -1479,8 +1500,9 @@ where
                 ));
                 continue;
             }
-            let selected: Option<BTreeSet<String>> =
-                sample.as_ref().map(|s| s.selected.iter().cloned().collect());
+            let selected: Option<BTreeSet<String>> = sample
+                .as_ref()
+                .map(|s| s.selected.iter().cloned().collect());
             let summary = summarise(
                 &population.facts(),
                 &in_scope,
@@ -1533,7 +1555,10 @@ pub fn sample_line(record: &SampleRecord) -> String {
             .sample
             .method
             .seed()
-            .map(|seed| format!(" (seed {seed}, {})", zobba_domain::coverage::SAMPLE_ALGORITHM))
+            .map(|seed| format!(
+                " (seed {seed}, {})",
+                zobba_domain::coverage::SAMPLE_ALGORITHM
+            ))
             .unwrap_or_default()
     )
 }
@@ -1580,7 +1605,9 @@ pub fn coverage_lines(snapshot: &CoverageSnapshot) -> Vec<String> {
     let unlisted = (snapshot.total_populations + snapshot.total_samples + snapshot.total_summaries)
         .saturating_sub(lines.len() as u64);
     if unlisted > 0 {
-        lines.push(format!("{unlisted} further coverage records are not listed."));
+        lines.push(format!(
+            "{unlisted} further coverage records are not listed."
+        ));
     }
     lines
 }

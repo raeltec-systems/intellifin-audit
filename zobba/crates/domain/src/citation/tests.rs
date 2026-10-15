@@ -769,15 +769,33 @@ fn the_older_answer_schemas_keep_their_exact_bytes() {
 #[test]
 fn coverage_answer_bounds_drop_and_count_every_entry_over_them() {
     let mut value = answer_json();
-    let evaluation = |criterion: &str| object(vec![("criterion", s(criterion)), ("population", s("ap"))]);
+    let evaluation =
+        |criterion: &str| object(vec![("criterion", s(criterion)), ("population", s("ap"))]);
     let summary = |sample: &str| {
-        object(vec![("basis", s("b1")), ("population", s("ap")), ("sample", s(sample))])
+        object(vec![
+            ("basis", s("b1")),
+            ("population", s("ap")),
+            ("sample", s(sample)),
+        ])
     };
     if let JsonValue::Object(map) = &mut value {
-        for key in ["read_method", "use_skills", "run_skill_script", "method_notes"] {
+        for key in [
+            "read_method",
+            "use_skills",
+            "run_skill_script",
+            "method_notes",
+        ] {
             map.insert(key.into(), JsonValue::Array(vec![]));
         }
-        for key in ["propose_criteria", "propose_basis", "record_facts", "evaluate", "judgments", "propose_population", "propose_sample"] {
+        for key in [
+            "propose_criteria",
+            "propose_basis",
+            "record_facts",
+            "evaluate",
+            "judgments",
+            "propose_population",
+            "propose_sample",
+        ] {
             map.insert(key.into(), JsonValue::Array(vec![]));
         }
         map.insert(
@@ -786,11 +804,19 @@ fn coverage_answer_bounds_drop_and_count_every_entry_over_them() {
         );
         map.insert(
             "summarise".into(),
-            JsonValue::Array(vec![summary(""), summary("s1"), summary("s2"), summary("not an id")]),
+            JsonValue::Array(vec![
+                summary(""),
+                summary("s1"),
+                summary("s2"),
+                summary("not an id"),
+            ]),
         );
     }
     let answer = CitedAnswer::from_json(&value).unwrap();
-    assert_eq!(answer.evaluate_population.len(), crate::coverage::MAX_EVALUATE_POPULATION);
+    assert_eq!(
+        answer.evaluate_population.len(),
+        crate::coverage::MAX_EVALUATE_POPULATION
+    );
     assert_eq!(answer.summarise.len(), crate::coverage::MAX_SUMMARISE);
     // One evaluation and two summaries over their bounds, one invalid.
     assert_eq!(answer.discarded, 1 + 2);
@@ -800,13 +826,21 @@ fn coverage_answer_bounds_drop_and_count_every_entry_over_them() {
         panic!("an object schema");
     };
     for (field, max) in [
-        ("propose_population", crate::coverage::MAX_PROPOSED_POPULATIONS),
+        (
+            "propose_population",
+            crate::coverage::MAX_PROPOSED_POPULATIONS,
+        ),
         ("propose_sample", crate::coverage::MAX_PROPOSED_SAMPLES),
-        ("evaluate_population", crate::coverage::MAX_EVALUATE_POPULATION),
+        (
+            "evaluate_population",
+            crate::coverage::MAX_EVALUATE_POPULATION,
+        ),
         ("summarise", crate::coverage::MAX_SUMMARISE),
     ] {
         match &properties[field] {
-            ArgumentSchema::Array { max_items, .. } => assert_eq!(*max_items as usize, max, "{field}"),
+            ArgumentSchema::Array { max_items, .. } => {
+                assert_eq!(*max_items as usize, max, "{field}")
+            }
             other => panic!("{field}: {other:?}"),
         }
     }

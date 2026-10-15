@@ -325,7 +325,11 @@ pub fn enumerate_text(
     columns: &[String],
     max_rows: u32,
 ) -> Result<Enumeration, EnumerationFailure> {
-    let offset = if bytes.starts_with(b"\xEF\xBB\xBF") { 3 } else { 0 };
+    let offset = if bytes.starts_with(b"\xEF\xBB\xBF") {
+        3
+    } else {
+        0
+    };
     let text = std::str::from_utf8(&bytes[offset..]).map_err(|_| EnumerationFailure::Unreadable)?;
     // Each field: its value and the byte range of its content.
     type Field = (String, usize, usize);
