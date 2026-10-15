@@ -560,6 +560,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/engagements/{engagement_id}/tasks/{task_id}/assessment/populations/{population_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_population_members"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/engagements/{engagement_id}/tasks/{task_id}/knowledge": {
         parameters: {
             query?: never;
@@ -1297,10 +1313,20 @@ export interface components {
             criteria: components["schemas"]["AssessmentCriterionResponse"][];
             evaluations: components["schemas"]["AssessmentEvaluationResponse"][];
             facts: components["schemas"]["AssessmentFactResponse"][];
+            /**
+             * @description Story 24.2: population manifests, sample manifests and coverage
+             *     summaries, newest of each kind (oldest first), with exact totals.
+             */
+            populations: components["schemas"]["CoveragePopulationResponse"][];
+            samples: components["schemas"]["CoverageSampleResponse"][];
+            summaries: components["schemas"]["CoverageSummaryResponse"][];
             total_bases: string;
             total_criteria: string;
             total_evaluations: string;
             total_facts: string;
+            total_populations: string;
+            total_samples: string;
+            total_summaries: string;
         };
         AttachmentRequest: {
             classification: string;
@@ -1533,6 +1559,128 @@ export interface components {
             tasks: components["schemas"]["TaskResponse"][];
             /** @description All included Task state and receipt facts come from the same statement as this cursor. */
             watermark: string;
+        };
+        /**
+         * @description One immutable population manifest version. Trusted code read every row
+         *     of the exact original; completeness and reconciliation are derived,
+         *     never asserted by the model.
+         */
+        CoveragePopulationResponse: {
+            basis_id: string;
+            /** @description `complete` or `incomplete`. */
+            completeness: string;
+            control_source: null | components["schemas"]["CitationSourceResponse"];
+            counts: components["schemas"]["PopulationCountsResponse"];
+            /** @description The cited control count, verified at its location by trusted code. */
+            declared_count: string | null;
+            execution_epoch: string;
+            /** @description The agent's statement; `false` always means absence is not proven. */
+            exhaustive: boolean;
+            /** @description Only when the viewer may read that exact original now. */
+            filename: string | null;
+            grain: string[];
+            /** Format: int32 */
+            header_row: number;
+            id: string;
+            /** @description `not_exhaustive`, `row_bound` or `count_mismatch` when incomplete. */
+            incomplete_reason: string | null;
+            invocation_id: string;
+            job_id: string | null;
+            key: string;
+            /** Format: int32 */
+            last_row: number;
+            methodology_binding_id: string;
+            original_id: string;
+            original_sha256: string;
+            period_column: string | null;
+            period_rule: string | null;
+            /** @description `matched`, `mismatch` or `not_declared`. */
+            reconciliation: string;
+            /** Format: int32 */
+            rows_read: number;
+            selection: string;
+            sheet: string | null;
+            subject_unit: string;
+            supersedes: string | null;
+            truncated: boolean;
+            values: components["schemas"]["ValueColumnResponse"][];
+        };
+        /**
+         * @description One immutable sample manifest version. Trusted code checked every
+         *     selected key and recomputed a seeded selection. A sample says nothing
+         *     about the items it did not select: there is no statistical inference.
+         */
+        CoverageSampleResponse: {
+            algorithm: string | null;
+            execution_epoch: string;
+            id: string;
+            invocation_id: string;
+            justification: string;
+            key: string;
+            keys: string[];
+            /** @description True when the selected keys (cell texts of the original) are withheld. */
+            keys_withheld: boolean;
+            /** @description `all_in_scope`, `judgmental` or `seeded_random`. */
+            method: string;
+            methodology_binding_id: string;
+            population_id: string;
+            seed: string | null;
+            selected_count: string;
+            /** Format: int32 */
+            size: number;
+            statistical_inference: boolean;
+            strata: string;
+            substitutions: components["schemas"]["SubstitutionResponse"][];
+        };
+        /** @description One immutable coverage summary version, recounted by the database. */
+        CoverageSummaryResponse: {
+            /** @description `subject_partition_v1`. */
+            aggregation: string;
+            basis_id: string;
+            completeness: string;
+            /**
+             * @description A closed conclusion; never a pass on an incomplete population, a
+             *     sample or zero applicable subjects.
+             */
+            conclusion: string;
+            counts: components["schemas"]["PopulationCountsResponse"];
+            criteria: components["schemas"]["CriterionCountsResponse"][];
+            declared_count: string | null;
+            execution_epoch: string;
+            /** @description Criterion opportunities, never failing records. */
+            failing_opportunities: string;
+            failing_subjects: string;
+            id: string;
+            incomplete_reason: string | null;
+            invocation_id: string;
+            limitations: string[];
+            meets_every_applicable: string;
+            methodology_binding_id: string;
+            not_applicable_to_any: string;
+            population_id: string;
+            reconciliation: string;
+            sample_id: string | null;
+            /** @description The selected items a sample summary covers. */
+            selected: string | null;
+            statistical_inference: boolean;
+            summary_sha256: string;
+            unresolved_subjects: string;
+        };
+        /**
+         * @description Exact opportunity counts of one criterion over the in-scope (or
+         *     selected) subjects.
+         */
+        CriterionCountsResponse: {
+            applicability_unknown: string;
+            applicable: string;
+            criterion_id: string;
+            execution_failed: string;
+            met: string;
+            not_applicable: string;
+            not_evaluated: string;
+            not_met: string;
+            undetermined: string;
+            undetermined_by_reason: components["schemas"]["ReasonCountResponse"][];
         };
         DecisionHistoryResponse: {
             decision: components["schemas"]["OperationDecisionResponse"];
@@ -2034,6 +2182,47 @@ export interface components {
             status: components["schemas"]["KnowledgeRecordStatus"];
             status_reason?: string | null;
         };
+        /** @description One named cell of a member row. */
+        MemberCellResponse: {
+            column: string;
+            location: string | null;
+            /** @description Display text; null when blank, over its bound, or withheld. */
+            text: string | null;
+        };
+        /** @description One received row and what trusted code decided about it. */
+        MemberResponse: {
+            cells: components["schemas"]["MemberCellResponse"][];
+            /** @description `in_scope`, `excluded`, `scope_unknown`, `duplicate_row` or `unkeyed`. */
+            disposition: string;
+            /**
+             * Format: int32
+             * @description For a duplicate row, the ordinal of the row it repeats.
+             */
+            duplicate_of: number | null;
+            /**
+             * Format: int32
+             * @description 0-based order of receipt.
+             */
+            ordinal: number;
+            reason: string | null;
+            /**
+             * Format: int32
+             * @description 1-based row of the original.
+             */
+            row: number;
+            /** @description The subject key (exact cell texts); null when unkeyed or withheld. */
+            subject: string | null;
+            values: components["schemas"]["MemberValueResponse"][];
+        };
+        /** @description One typed value of a member, re-parsed by trusted code. */
+        MemberValueResponse: {
+            measure: string | null;
+            measure_grounded: boolean | null;
+            name: string;
+            /** @description `value`, `missing` or `unsupported` (does not parse under its rule). */
+            state: string;
+            value: string | null;
+        };
         MembershipAssignment: {
             client_id: components["schemas"]["MembershipIdentifier"];
             engagement_id: components["schemas"]["MembershipIdentifier"];
@@ -2476,6 +2665,36 @@ export interface components {
         };
         /** @enum {string} */
         PolicyKindRequest: "organisation" | "engagement" | "member" | "account" | "task" | "delegation";
+        /**
+         * @description Exact counts of a population's received rows. When the population is
+         *     incomplete each is a lower bound ("at least N found").
+         */
+        PopulationCountsResponse: {
+            distinct_subjects: string;
+            duplicate_rows: string;
+            excluded_out_of_period: string;
+            in_scope: string;
+            received_rows: string;
+            scope_unknown_conflicting_duplicate: string;
+            scope_unknown_period_missing: string;
+            scope_unknown_period_unparsed: string;
+            unkeyed: string;
+        };
+        PopulationMembersResponse: {
+            /** @description The disposition filter, or null for every member. */
+            disposition: string | null;
+            members: components["schemas"]["MemberResponse"][];
+            /** @description Opaque cursor of the next page in receipt order, when there is one. */
+            next_cursor: string | null;
+            population: components["schemas"]["CoveragePopulationResponse"];
+            /** @description The exact count of members matching the filter. */
+            total: string;
+            /**
+             * @description True when cell texts are withheld (the viewer may not read the exact
+             *     original now); dispositions, row numbers and counts are still shown.
+             */
+            values_withheld: boolean;
+        };
         /** @description A population or sample reference to a registered original. */
         PopulationReferenceResponse: {
             /** @description The filename, only when the viewer may read that exact original now. */
@@ -2534,6 +2753,10 @@ export interface components {
         };
         /** @enum {string} */
         PurposeRequest: "live_inspection" | "test_workflows" | "audit_coordination";
+        ReasonCountResponse: {
+            count: string;
+            reason: string;
+        };
         RecallMethodologyRequest: {
             expected_revision: string;
             key: string;
@@ -2971,6 +3194,11 @@ export interface components {
         StepReasonResponse: "context_budget";
         /** @enum {string} */
         StepStatusResponse: "proposed" | "responded" | "superseded" | "failed" | "completed" | "refused" | "reconciliation_required";
+        SubstitutionResponse: {
+            reason: string;
+            replaced: string;
+            substitute: string;
+        };
         TaskAnswersResponse: {
             /** @description Verified answers of the current cycle, oldest first, at most 20. */
             answers: components["schemas"]["CitedAnswerResponse"][];
@@ -3114,6 +3342,15 @@ export interface components {
             skill_id: string;
             skill_version: string;
             version_id: string;
+        };
+        /** @description One typed value column of a population manifest. */
+        ValueColumnResponse: {
+            fact_type: string;
+            header: string;
+            measure: string | null;
+            measure_column: string | null;
+            name: string;
+            rule: string;
         };
     };
     responses: never;
@@ -5773,6 +6010,89 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskAnswersResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_population_members: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+                /** @description in_scope, excluded, scope_unknown, duplicate_row or unkeyed */
+                disposition?: string;
+                /** @description next_cursor of the previous page */
+                cursor?: string;
+            };
+            header?: {
+                /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+                population_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The exact count of a population's members of one disposition and one page of them, in receipt order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PopulationMembersResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             401: {

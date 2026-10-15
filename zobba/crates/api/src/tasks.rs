@@ -91,6 +91,10 @@ pub(crate) fn router(database: &RuntimeDatabase, identity: AuthState) -> Router 
             route_get(crate::work::get_work),
         )
         .route(
+            "/engagements/{engagement_id}/tasks/{task_id}/assessment/populations/{population_id}/members",
+            route_get(crate::coverage::members),
+        )
+        .route(
             "/engagements/{engagement_id}/tasks/{task_id}/answers",
             route_get(crate::answers::get_answers),
         )
@@ -383,8 +387,8 @@ pub struct TaskEventsResponse {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TaskScopeQuery {
-    organisation_id: String,
-    client_id: String,
+    pub(crate) organisation_id: String,
+    pub(crate) client_id: String,
 }
 
 impl TaskScopeQuery {

@@ -4,6 +4,7 @@
 // fields; there is no confidence score anywhere.
 import { parseSource } from './citation.ts';
 import { cursor, identifier } from './conversation.ts';
+import { parsePopulation, parseSample, parseSummary } from './coverage.ts';
 import type { components } from './generated/api.ts';
 
 export type Assessment = components['schemas']['AssessmentResponse'];
@@ -12,14 +13,14 @@ export type AssessmentCriterion = components['schemas']['AssessmentCriterionResp
 export type AssessmentFact = components['schemas']['AssessmentFactResponse'];
 export type AssessmentEvaluation = components['schemas']['AssessmentEvaluationResponse'];
 
-function invalid(): never { throw new Error('Invalid assessment response'); }
-function record(value: unknown): Record<string, unknown> {
+export function invalid(): never { throw new Error('Invalid assessment response'); }
+export function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) invalid();
   return value as Record<string, unknown>;
 }
 /** The response has exactly the parsed keys: an unknown field (for example a
  * `confidence` score) refuses the response rather than being dropped. */
-function exact<T extends object>(source: Record<string, unknown>, parsed: T): T {
+export function exact<T extends object>(source: Record<string, unknown>, parsed: T): T {
   const keys = new Set(Object.keys(parsed));
   if (Object.keys(source).some(key => !keys.has(key)) || Object.keys(source).length !== keys.size) invalid();
   return parsed;
@@ -27,33 +28,33 @@ function exact<T extends object>(source: Record<string, unknown>, parsed: T): T 
 // Rust's `str::trim` removes Unicode White_Space only; JavaScript `trim` also
 // removes U+FEFF, which Rust keeps. Blank means White_Space only.
 const blank = /^[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]*$/;
-function nullable<T>(value: unknown, parse: (value: unknown) => T): T | null {
+export function nullable<T>(value: unknown, parse: (value: unknown) => T): T | null {
   return value === null ? null : parse(value);
 }
-function array(value: unknown, max: number): unknown[] {
+export function array(value: unknown, max: number): unknown[] {
   if (!Array.isArray(value) || value.length > max) invalid();
   return value;
 }
-function oneOf<T extends string>(value: unknown, allowed: readonly T[]): T {
+export function oneOf<T extends string>(value: unknown, allowed: readonly T[]): T {
   if (typeof value !== 'string' || !allowed.includes(value as T)) invalid();
   return value as T;
 }
 const bytes = (value: string) => new TextEncoder().encode(value).length;
 /** Attributed text: bounded UTF-8 bytes, not blank, no control characters but line breaks and tabs. */
-function text(value: unknown, max: number): string {
+export function text(value: unknown, max: number): string {
   if (typeof value !== 'string' || blank.test(value) || bytes(value) > max || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(value)) invalid();
   return value;
 }
-function name(value: unknown): string {
+export function name(value: unknown): string {
   if (typeof value !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(value)) invalid();
   return value;
 }
 /** A subject exactly as stated (leading zeros kept). */
-function subject(value: unknown): string {
+export function subject(value: unknown): string {
   if (typeof value !== 'string' || blank.test(value) || bytes(value) > 128 || /[\u0000-\u001f\u007f-\u009f]/.test(value)) invalid();
   return value;
 }
-function digest(value: unknown): string {
+export function digest(value: unknown): string {
   if (typeof value !== 'string' || !/^[0-9a-f]{64}$/.test(value)) invalid();
   return value;
 }
@@ -61,24 +62,24 @@ function date(value: unknown): string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) invalid();
   return value;
 }
-function boolean(value: unknown): boolean {
+export function boolean(value: unknown): boolean {
   if (typeof value !== 'boolean') invalid();
   return value;
 }
-function count(value: unknown, max: number): number {
+export function count(value: unknown, max: number): number {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > max) invalid();
   return value;
 }
-function measure(value: unknown): string {
+export function measure(value: unknown): string {
   if (typeof value !== 'string' || !(/^[A-Z]{3}$/.test(value) || /^[a-z][a-z0-9_]{0,63}$/.test(value))) invalid();
   return value;
 }
 
-const factTypes = ['identifier', 'text', 'boolean', 'enum', 'decimal', 'date', 'instant'] as const;
+export const factTypes = ['identifier', 'text', 'boolean', 'enum', 'decimal', 'date', 'instant'] as const;
 const authorityReasons = ['not_found_at_location', 'location_missing', 'source_unreadable', 'page_only', 'method_changed', 'criterion_not_found'] as const;
 const evaluationReasons = ['missing_fact', 'fact_unavailable', 'fact_ambiguous', 'fact_unsupported', 'unit_mismatch', 'unknown_applicability', 'authority_unverified', 'analysis_failed', 'subject_unverified', 'unit_unverified'] as const;
 const supportReasons = ['type_mismatch', 'source_unverified', 'analysis_failed', 'partial_value'] as const;
-const rules = ['identifier_exact', 'text_exact', 'enum_exact', 'boolean_yes_no', 'boolean_true_false', 'decimal_plain', 'decimal_grouped_comma', 'date_iso', 'date_dmy', 'instant_rfc3339'] as const;
+export const rules = ['identifier_exact', 'text_exact', 'enum_exact', 'boolean_yes_no', 'boolean_true_false', 'decimal_plain', 'decimal_grouped_comma', 'date_iso', 'date_dmy', 'instant_rfc3339'] as const;
 
 function parseCriterion(value: unknown): AssessmentCriterion {
   const v = record(value);
@@ -244,11 +245,20 @@ export function parseAssessment(value: unknown): Assessment {
     total_facts: cursor(v.total_facts),
     evaluations: array(v.evaluations, 256).map(parseEvaluation),
     total_evaluations: cursor(v.total_evaluations),
+    populations: array(v.populations, 16).map(parsePopulation),
+    total_populations: cursor(v.total_populations),
+    samples: array(v.samples, 16).map(parseSample),
+    total_samples: cursor(v.total_samples),
+    summaries: array(v.summaries, 16).map(parseSummary),
+    total_summaries: cursor(v.total_summaries),
   };
   if (BigInt(assessment.total_bases) < BigInt(assessment.bases.length)
     || BigInt(assessment.total_criteria) < BigInt(assessment.criteria.length)
     || BigInt(assessment.total_facts) < BigInt(assessment.facts.length)
-    || BigInt(assessment.total_evaluations) < BigInt(assessment.evaluations.length)) invalid();
+    || BigInt(assessment.total_evaluations) < BigInt(assessment.evaluations.length)
+    || BigInt(assessment.total_populations) < BigInt(assessment.populations.length)
+    || BigInt(assessment.total_samples) < BigInt(assessment.samples.length)
+    || BigInt(assessment.total_summaries) < BigInt(assessment.summaries.length)) invalid();
   return exact(v, assessment);
 }
 

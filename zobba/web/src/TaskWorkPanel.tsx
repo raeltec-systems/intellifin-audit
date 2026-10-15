@@ -3,6 +3,7 @@ import { AccessError } from './auth';
 import type { Session } from './auth';
 import type { Scope } from './engagements';
 import { AssessmentBasis } from './AssessmentBasis';
+import { Coverage } from './Coverage';
 import { Citation } from './Citation';
 import { chipLabel, readTaskAnswers } from './citation';
 import type { CitedAnswer } from './citation';
@@ -129,6 +130,7 @@ export function TaskWorkPanel({ state, citations }: Props) {
     </section> : null}
     {work.investigation_unavailable ? <p className="work-unavailable" role="status">Method and skill use could not be read just now. Current work is shown without it.</p> : null}
     {work.investigation ? <MethodAndSkills investigation={work.investigation} answers={state.answers ?? null} citations={citations} onSourceAccessFailure={() => setNotice('That original is not available to you now. Nothing was opened.')} /> : null}
+    {work.assessment ? <Coverage assessment={work.assessment} taskId={work.task_id} scope={citations?.scope} /> : null}
     {work.assessment_unavailable ? <p className="work-unavailable" role="status">The assessment basis could not be read just now. Current work is shown without it.</p> : null}
     {work.assessment ? <AssessmentBasis assessment={work.assessment} citations={citations} onSourceAccessFailure={() => setNotice('That original is not available to you now. Nothing was opened.')} /> : null}
     <details className="brief-revisions"><summary>Brief revisions ({work.briefs.length})</summary><ol>

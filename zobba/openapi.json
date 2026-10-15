@@ -4846,6 +4846,166 @@
         ]
       }
     },
+    "/engagements/{engagement_id}/tasks/{task_id}/assessment/populations/{population_id}/members": {
+      "get": {
+        "tags": [
+          "coverage"
+        ],
+        "operationId": "get_population_members",
+        "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "population_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "disposition",
+            "in": "query",
+            "description": "in_scope, excluded, scope_unknown, duplicate_row or unkeyed",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "next_cursor of the previous page",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{1,10}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The exact count of a population's members of one disposition and one page of them, in receipt order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PopulationMembersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
     "/engagements/{engagement_id}/tasks/{task_id}/knowledge": {
       "get": {
         "tags": [
@@ -10726,7 +10886,13 @@
           "facts",
           "total_facts",
           "evaluations",
-          "total_evaluations"
+          "total_evaluations",
+          "populations",
+          "total_populations",
+          "samples",
+          "total_samples",
+          "summaries",
+          "total_summaries"
         ],
         "properties": {
           "bases": {
@@ -10758,6 +10924,28 @@
             },
             "maxItems": 1024
           },
+          "populations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CoveragePopulationResponse"
+            },
+            "description": "Story 24.2: population manifests, sample manifests and coverage\nsummaries, newest of each kind (oldest first), with exact totals.",
+            "maxItems": 16
+          },
+          "samples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CoverageSampleResponse"
+            },
+            "maxItems": 16
+          },
+          "summaries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CoverageSummaryResponse"
+            },
+            "maxItems": 16
+          },
           "total_bases": {
             "type": "string",
             "pattern": "^[0-9]+$"
@@ -10771,6 +10959,18 @@
             "pattern": "^[0-9]+$"
           },
           "total_facts": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "total_populations": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "total_samples": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "total_summaries": {
             "type": "string",
             "pattern": "^[0-9]+$"
           }
@@ -11625,6 +11825,476 @@
             "type": "string",
             "description": "All included Task state and receipt facts come from the same statement as this cursor.",
             "pattern": "^[0-9]+$"
+          }
+        }
+      },
+      "CoveragePopulationResponse": {
+        "type": "object",
+        "description": "One immutable population manifest version. Trusted code read every row\nof the exact original; completeness and reconciliation are derived,\nnever asserted by the model.",
+        "required": [
+          "id",
+          "invocation_id",
+          "basis_id",
+          "key",
+          "supersedes",
+          "original_id",
+          "original_sha256",
+          "filename",
+          "sheet",
+          "header_row",
+          "subject_unit",
+          "grain",
+          "period_column",
+          "period_rule",
+          "values",
+          "exhaustive",
+          "selection",
+          "declared_count",
+          "control_source",
+          "job_id",
+          "last_row",
+          "rows_read",
+          "truncated",
+          "completeness",
+          "incomplete_reason",
+          "reconciliation",
+          "counts",
+          "methodology_binding_id",
+          "execution_epoch"
+        ],
+        "properties": {
+          "basis_id": {
+            "type": "string"
+          },
+          "completeness": {
+            "type": "string",
+            "description": "`complete` or `incomplete`."
+          },
+          "control_source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CitationSourceResponse"
+              }
+            ]
+          },
+          "counts": {
+            "$ref": "#/components/schemas/PopulationCountsResponse"
+          },
+          "declared_count": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The cited control count, verified at its location by trusted code.",
+            "pattern": "^[0-9]+$"
+          },
+          "execution_epoch": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "exhaustive": {
+            "type": "boolean",
+            "description": "The agent's statement; `false` always means absence is not proven."
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Only when the viewer may read that exact original now."
+          },
+          "grain": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 3
+          },
+          "header_row": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string"
+          },
+          "incomplete_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`not_exhaustive`, `row_bound` or `count_mismatch` when incomplete."
+          },
+          "invocation_id": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "last_row": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "methodology_binding_id": {
+            "type": "string"
+          },
+          "original_id": {
+            "type": "string"
+          },
+          "original_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "period_column": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "period_rule": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reconciliation": {
+            "type": "string",
+            "description": "`matched`, `mismatch` or `not_declared`."
+          },
+          "rows_read": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "selection": {
+            "type": "string"
+          },
+          "sheet": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject_unit": {
+            "type": "string"
+          },
+          "supersedes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValueColumnResponse"
+            },
+            "maxItems": 8
+          }
+        }
+      },
+      "CoverageSampleResponse": {
+        "type": "object",
+        "description": "One immutable sample manifest version. Trusted code checked every\nselected key and recomputed a seeded selection. A sample says nothing\nabout the items it did not select: there is no statistical inference.",
+        "required": [
+          "id",
+          "invocation_id",
+          "population_id",
+          "key",
+          "method",
+          "seed",
+          "algorithm",
+          "size",
+          "strata",
+          "justification",
+          "selected_count",
+          "keys_withheld",
+          "keys",
+          "substitutions",
+          "statistical_inference",
+          "methodology_binding_id",
+          "execution_epoch"
+        ],
+        "properties": {
+          "algorithm": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "execution_epoch": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "id": {
+            "type": "string"
+          },
+          "invocation_id": {
+            "type": "string"
+          },
+          "justification": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200
+          },
+          "keys_withheld": {
+            "type": "boolean",
+            "description": "True when the selected keys (cell texts of the original) are withheld."
+          },
+          "method": {
+            "type": "string",
+            "description": "`all_in_scope`, `judgmental` or `seeded_random`."
+          },
+          "methodology_binding_id": {
+            "type": "string"
+          },
+          "population_id": {
+            "type": "string"
+          },
+          "seed": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$"
+          },
+          "selected_count": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "statistical_inference": {
+            "type": "boolean"
+          },
+          "strata": {
+            "type": "string"
+          },
+          "substitutions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubstitutionResponse"
+            },
+            "maxItems": 16
+          }
+        }
+      },
+      "CoverageSummaryResponse": {
+        "type": "object",
+        "description": "One immutable coverage summary version, recounted by the database.",
+        "required": [
+          "id",
+          "invocation_id",
+          "basis_id",
+          "population_id",
+          "sample_id",
+          "aggregation",
+          "conclusion",
+          "completeness",
+          "incomplete_reason",
+          "reconciliation",
+          "declared_count",
+          "counts",
+          "selected",
+          "criteria",
+          "failing_subjects",
+          "meets_every_applicable",
+          "unresolved_subjects",
+          "not_applicable_to_any",
+          "failing_opportunities",
+          "statistical_inference",
+          "limitations",
+          "summary_sha256",
+          "methodology_binding_id",
+          "execution_epoch"
+        ],
+        "properties": {
+          "aggregation": {
+            "type": "string",
+            "description": "`subject_partition_v1`."
+          },
+          "basis_id": {
+            "type": "string"
+          },
+          "completeness": {
+            "type": "string"
+          },
+          "conclusion": {
+            "type": "string",
+            "description": "A closed conclusion; never a pass on an incomplete population, a\nsample or zero applicable subjects."
+          },
+          "counts": {
+            "$ref": "#/components/schemas/PopulationCountsResponse"
+          },
+          "criteria": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CriterionCountsResponse"
+            },
+            "maxItems": 16
+          },
+          "declared_count": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$"
+          },
+          "execution_epoch": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "failing_opportunities": {
+            "type": "string",
+            "description": "Criterion opportunities, never failing records.",
+            "pattern": "^[0-9]+$"
+          },
+          "failing_subjects": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "id": {
+            "type": "string"
+          },
+          "incomplete_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "invocation_id": {
+            "type": "string"
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "meets_every_applicable": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "methodology_binding_id": {
+            "type": "string"
+          },
+          "not_applicable_to_any": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "population_id": {
+            "type": "string"
+          },
+          "reconciliation": {
+            "type": "string"
+          },
+          "sample_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "selected": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The selected items a sample summary covers.",
+            "pattern": "^[0-9]+$"
+          },
+          "statistical_inference": {
+            "type": "boolean"
+          },
+          "summary_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "unresolved_subjects": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          }
+        }
+      },
+      "CriterionCountsResponse": {
+        "type": "object",
+        "description": "Exact opportunity counts of one criterion over the in-scope (or\nselected) subjects.",
+        "required": [
+          "criterion_id",
+          "applicable",
+          "not_applicable",
+          "applicability_unknown",
+          "met",
+          "not_met",
+          "undetermined",
+          "undetermined_by_reason",
+          "execution_failed",
+          "not_evaluated"
+        ],
+        "properties": {
+          "applicability_unknown": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "applicable": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "criterion_id": {
+            "type": "string"
+          },
+          "execution_failed": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "met": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "not_applicable": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "not_evaluated": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "not_met": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "undetermined": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "undetermined_by_reason": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReasonCountResponse"
+            }
           }
         }
       },
@@ -13668,6 +14338,137 @@
           }
         }
       },
+      "MemberCellResponse": {
+        "type": "object",
+        "description": "One named cell of a member row.",
+        "required": [
+          "column",
+          "text",
+          "location"
+        ],
+        "properties": {
+          "column": {
+            "type": "string"
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display text; null when blank, over its bound, or withheld."
+          }
+        }
+      },
+      "MemberResponse": {
+        "type": "object",
+        "description": "One received row and what trusted code decided about it.",
+        "required": [
+          "ordinal",
+          "row",
+          "subject",
+          "disposition",
+          "reason",
+          "duplicate_of",
+          "cells",
+          "values"
+        ],
+        "properties": {
+          "cells": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberCellResponse"
+            }
+          },
+          "disposition": {
+            "type": "string",
+            "description": "`in_scope`, `excluded`, `scope_unknown`, `duplicate_row` or `unkeyed`."
+          },
+          "duplicate_of": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "For a duplicate row, the ordinal of the row it repeats.",
+            "minimum": 0
+          },
+          "ordinal": {
+            "type": "integer",
+            "format": "int32",
+            "description": "0-based order of receipt.",
+            "minimum": 0
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "row": {
+            "type": "integer",
+            "format": "int32",
+            "description": "1-based row of the original.",
+            "minimum": 0
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The subject key (exact cell texts); null when unkeyed or withheld."
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberValueResponse"
+            }
+          }
+        }
+      },
+      "MemberValueResponse": {
+        "type": "object",
+        "description": "One typed value of a member, re-parsed by trusted code.",
+        "required": [
+          "name",
+          "state",
+          "value",
+          "measure",
+          "measure_grounded"
+        ],
+        "properties": {
+          "measure": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "measure_grounded": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "description": "`value`, `missing` or `unsupported` (does not parse under its rule)."
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "MembershipAssignment": {
         "type": "object",
         "required": [
@@ -15604,6 +16405,106 @@
           "delegation"
         ]
       },
+      "PopulationCountsResponse": {
+        "type": "object",
+        "description": "Exact counts of a population's received rows. When the population is\nincomplete each is a lower bound (\"at least N found\").",
+        "required": [
+          "received_rows",
+          "unkeyed",
+          "duplicate_rows",
+          "distinct_subjects",
+          "excluded_out_of_period",
+          "scope_unknown_period_unparsed",
+          "scope_unknown_period_missing",
+          "scope_unknown_conflicting_duplicate",
+          "in_scope"
+        ],
+        "properties": {
+          "distinct_subjects": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "duplicate_rows": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "excluded_out_of_period": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "in_scope": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "received_rows": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "scope_unknown_conflicting_duplicate": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "scope_unknown_period_missing": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "scope_unknown_period_unparsed": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "unkeyed": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          }
+        }
+      },
+      "PopulationMembersResponse": {
+        "type": "object",
+        "required": [
+          "population",
+          "disposition",
+          "total",
+          "values_withheld",
+          "members",
+          "next_cursor"
+        ],
+        "properties": {
+          "disposition": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The disposition filter, or null for every member."
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberResponse"
+            },
+            "maxItems": 50
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Opaque cursor of the next page in receipt order, when there is one.",
+            "pattern": "^[0-9]{1,10}$"
+          },
+          "population": {
+            "$ref": "#/components/schemas/CoveragePopulationResponse"
+          },
+          "total": {
+            "type": "string",
+            "description": "The exact count of members matching the filter.",
+            "pattern": "^[0-9]+$"
+          },
+          "values_withheld": {
+            "type": "boolean",
+            "description": "True when cell texts are withheld (the viewer may not read the exact\noriginal now); dispositions, row numbers and counts are still shown."
+          }
+        }
+      },
       "PopulationReferenceResponse": {
         "type": "object",
         "description": "A population or sample reference to a registered original.",
@@ -15807,6 +16708,22 @@
           "test_workflows",
           "audit_coordination"
         ]
+      },
+      "ReasonCountResponse": {
+        "type": "object",
+        "required": [
+          "reason",
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
       },
       "RecallMethodologyRequest": {
         "type": "object",
@@ -17794,6 +18711,25 @@
           "reconciliation_required"
         ]
       },
+      "SubstitutionResponse": {
+        "type": "object",
+        "required": [
+          "replaced",
+          "substitute",
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "replaced": {
+            "type": "string"
+          },
+          "substitute": {
+            "type": "string"
+          }
+        }
+      },
       "TaskAnswersResponse": {
         "type": "object",
         "required": [
@@ -18377,6 +19313,44 @@
             "type": "string"
           },
           "version_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ValueColumnResponse": {
+        "type": "object",
+        "description": "One typed value column of a population manifest.",
+        "required": [
+          "header",
+          "name",
+          "fact_type",
+          "rule",
+          "measure",
+          "measure_column"
+        ],
+        "properties": {
+          "fact_type": {
+            "type": "string"
+          },
+          "header": {
+            "type": "string"
+          },
+          "measure": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "measure_column": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "rule": {
             "type": "string"
           }
         }

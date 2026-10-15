@@ -2,6 +2,7 @@
 pub mod answers;
 pub mod auth;
 pub mod conversation;
+pub mod coverage;
 pub mod engagement_setup;
 pub mod engagements;
 pub mod evidence;
@@ -219,6 +220,7 @@ pub fn authenticated_router_with_proposals(
         tasks::get,
         tasks::events,
         work::get_work,
+        coverage::members,
         answers::get_answers,
         work::direct,
         work::questions,

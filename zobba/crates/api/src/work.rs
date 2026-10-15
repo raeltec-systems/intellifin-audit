@@ -452,6 +452,20 @@ pub struct AssessmentResponse {
     pub evaluations: Vec<AssessmentEvaluationResponse>,
     #[schema(pattern = "^[0-9]+$")]
     pub total_evaluations: String,
+    /// Story 24.2: population manifests, sample manifests and coverage
+    /// summaries, newest of each kind (oldest first), with exact totals.
+    #[schema(max_items = 16)]
+    pub populations: Vec<crate::coverage::CoveragePopulationResponse>,
+    #[schema(pattern = "^[0-9]+$")]
+    pub total_populations: String,
+    #[schema(max_items = 16)]
+    pub samples: Vec<crate::coverage::CoverageSampleResponse>,
+    #[schema(pattern = "^[0-9]+$")]
+    pub total_samples: String,
+    #[schema(max_items = 16)]
+    pub summaries: Vec<crate::coverage::CoverageSummaryResponse>,
+    #[schema(pattern = "^[0-9]+$")]
+    pub total_summaries: String,
 }
 
 /// One recorded skill use: a load, a resource fetch or a script run. Content
@@ -685,7 +699,7 @@ fn assessment_originals(view: &AssessmentSnapshot) -> Vec<String> {
     ids.into_iter().collect()
 }
 
-fn verified_source(
+pub(crate) fn verified_source(
     source: &zobba_domain::citation::VerifiedSource,
     originals: &Originals,
 ) -> crate::answers::CitationSourceResponse {
@@ -709,8 +723,19 @@ fn measure(m: Option<&Measure>) -> Option<String> {
     m.map(Measure::label)
 }
 
-fn assessment(view: AssessmentSnapshot, originals: &Originals) -> AssessmentResponse {
+fn assessment(
+    view: AssessmentSnapshot,
+    coverage: &zobba_application::assessment::coverage::CoverageSnapshot,
+    originals: &Originals,
+) -> AssessmentResponse {
+    let parts = crate::coverage::parts(coverage, originals);
     AssessmentResponse {
+        populations: parts.populations,
+        total_populations: parts.total_populations,
+        samples: parts.samples,
+        total_samples: parts.total_samples,
+        summaries: parts.summaries,
+        total_summaries: parts.total_summaries,
         total_bases: view.total_bases.to_string(),
         total_criteria: view.total_criteria.to_string(),
         total_facts: view.total_facts.to_string(),
@@ -1164,21 +1189,28 @@ pub(crate) async fn get_work(
     // only for an exact original the viewer may read now.
     let (assessed, assessment_unavailable) = match (&state.assessments, &state.answers) {
         (Some(assessments), Some((citations, _))) => {
-            match assessments
-                .view(&current.identity.id, &scope, &task_id)
-                .await
-            {
-                Ok(snapshot) => {
-                    let ids = assessment_originals(&snapshot);
-                    match citations
-                        .viewer_originals(&current.identity.id, &scope, &ids)
-                        .await
-                    {
-                        Ok(originals) => (Some(assessment(snapshot, &originals)), false),
-                        Err(_) => (None, true),
-                    }
-                }
-                Err(_) => (None, true),
+            let read = async {
+                let snapshot = assessments
+                    .view(&current.identity.id, &scope, &task_id)
+                    .await
+                    .ok()?;
+                let coverage = assessments
+                    .coverage_view(&current.identity.id, &scope, &task_id)
+                    .await
+                    .ok()?;
+                let mut ids = assessment_originals(&snapshot);
+                ids.extend(crate::coverage::originals(&coverage));
+                ids.sort();
+                ids.dedup();
+                let originals = citations
+                    .viewer_originals(&current.identity.id, &scope, &ids)
+                    .await
+                    .ok()?;
+                Some(assessment(snapshot, &coverage, &originals))
+            };
+            match read.await {
+                Some(response) => (Some(response), false),
+                None => (None, true),
             }
         }
         _ => (None, false),
@@ -1533,7 +1565,7 @@ mod tests {
         };
         // The viewer may not read the original: the value read from its
         // quote is withheld with the quote itself.
-        let hidden = assessment(view.clone(), &Originals::new());
+        let hidden = assessment(view.clone(), &Default::default(), &Originals::new());
         let f = &hidden.facts[0];
         assert!(f.value_withheld);
         assert!(f.value.is_none() && f.mantissa.is_none() && f.scale.is_none());
@@ -1552,7 +1584,7 @@ mod tests {
                 sha256: "b".repeat(64),
             },
         )]);
-        assert!(assessment(view.clone(), &other).facts[0].value_withheld);
+        assert!(assessment(view.clone(), &Default::default(), &other).facts[0].value_withheld);
         // The exact original, readable now: the value is shown.
         let readable = Originals::from([(
             "ap-invoices".to_string(),
@@ -1562,7 +1594,7 @@ mod tests {
                 sha256: "a".repeat(64),
             },
         )]);
-        let shown = assessment(view, &readable);
+        let shown = assessment(view, &Default::default(), &readable);
         let f = &shown.facts[0];
         assert!(!f.value_withheld);
         assert_eq!(f.value.as_deref(), Some("1250.00"));
