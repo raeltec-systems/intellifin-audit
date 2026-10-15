@@ -66,3 +66,22 @@ Region eu-west-1. Terraform runs in AWS CloudShell as the owner's SSO admin role
 - Release with `provision-organisation` deployed; one-off task exit 0,
   `cli: organisation_provisioned organisation_id=raeltec` (2026-10-14T16:38Z).
   Organisation "Raeltec Systems Limited" with the owner as first active, non-expiring Admin.
+
+## Step 6 — restore drill (2026-10-15)
+
+- Pre-check: source `available`, encrypted, latest restore point 2026-10-14T22:38Z.
+- Point-in-time restore to `zobba-qualification-restore-20261015` (latest restorable
+  time; same class, subnet group, parameter group and database security group; no
+  Multi-AZ; not public; no deletion protection). Started 07:31:38Z, available
+  07:51:16Z (~20 min). Copy encrypted `True`, public `False`.
+- Verification one-off task (bootstrap image, exit 0), 08:57Z:
+  - original: ledger `16 16 b32a50c5fd2f4557cc9e09f58841195e`, tables 79,
+    schema `577c91f12e38a22c8524b32579e85cf3`
+  - restored: identical on all three values. **Pass.**
+  - First attempt showed different schema hashes: pg_dump 18 writes random
+    `\restrict`/`\unrestrict` keys; the filter now removes them.
+  - Row counts not compared (FORCE RLS); this proves schema and migration history,
+    not data rows.
+- Copy deleted (`--skip-final-snapshot --delete-automated-backups`): status `deleting`.
+- RUNBOOK §10 updated to "exercised"; switching services to a restored instance
+  (steps 2–3) was not exercised.

@@ -471,12 +471,33 @@ Gate: G7, in writing, naming what may be lost. Never run a plain
   gateway only with a reviewed change. Interface endpoints, storage and
   backups continue to cost.
 
-## 10. Restore and reconciliation — Story 20.7b, not yet exercised
+## 10. Restore and reconciliation — Story 20.7b, exercised 2026-10-15
 
-**Not yet exercised. Do not treat this section as proven.** Story 20.7b runs
-and records it.
+**Exercised once (2026-10-15):** steps 1 and the verification below were run
+and passed; steps 2–3 (switching services to a restored instance) were not,
+because nothing needed recovering. Record: `qualification-20-7b-log.md`, Step 6.
 
-Intended procedure:
+Drill that was run (CloudShell, about 30 minutes, under USD 1):
+
+- Restore with `--use-latest-restorable-time`, the source's class, subnet group,
+  parameter group and the existing database security group (no service is
+  pointed at the copy), `--no-multi-az --no-publicly-accessible
+  --no-deletion-protection`, tag `purpose=restore-drill`. It took about 20 minutes;
+  the copy was encrypted and not public.
+- Verify with one bootstrap one-off task (command and `ORIG_HOST`/`REST_HOST`
+  overrides) that, for both hosts, prints `max(version)`, the count and an md5 of
+  the `_sqlx_migrations` (version, checksum) list, the public table count, and an
+  md5 of `pg_dump --schema-only --no-owner`. The dump must drop comment lines
+  **and** the `\restrict` / `\unrestrict` lines (`grep -v -E '^(--|\\(un)?restrict)'`):
+  pg_dump 17.6+/18 writes a random key there, so the hash otherwise never matches.
+  Pass: all three values equal on both hosts.
+- Row counts are not compared: the tables use FORCE RLS, so a count without an
+  actor context does not mean anything.
+- Delete the copy: `aws rds delete-db-instance --skip-final-snapshot --delete-automated-backups`.
+- CloudShell may lose its credentials during the long wait (metadata `500`):
+  restart CloudShell and run the whole block again (`/tmp` is cleared).
+
+Full procedure for a real recovery:
 
 1. Restore to a new, isolated instance (never over the original):
    `aws rds restore-db-instance-to-point-in-time --source-db-instance-identifier zobba-qualification --target-db-instance-identifier zobba-qualification-restore-<date> --restore-time <UTC> ...`
