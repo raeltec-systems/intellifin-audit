@@ -2,7 +2,7 @@
 title: '24.4 — Create firm-shaped work products with supported claims'
 type: 'feature'
 created: '2026-10-15'
-status: 'draft'
+status: 'ready-for-dev'
 baseline_commit: '1819622e4c58ec5e4f6caf5ca4db83be4b6b370c'
 review_loop_iteration: 0
 context:
@@ -127,6 +127,8 @@ Size: about 6,900 tokens, far above the 1,600 target (24.1–24.3 were also larg
 - Open the fixture DOCX and XLSX exports in Word/LibreOffice and Excel: pagination, footer revision line, working `[n]` links, `SUM` value, no formula from text.
 
 ## Open Questions (owner decisions)
+
+**Owner decisions (2026-10-15):** kept as ONE story (K, owner's choice; single migration 0022/v22). Decisions 2–7 approved as recommended (independent advisor agreed): in-house Rust DOCX/XLSX writer in the API process, no new crate, byte-identical; no PDF in 24.4 (named follow-up); no digits in narrative/judgment blocks, EXCEPT closed identifier tokens that resolve to a record or template section (e.g. criterion labels `A1`, standard references `ISA 315`, `FY2025` in a heading); human edits text and claim sentences (rechecked), removes/reorders blocks, new assertions come from the agent via Guide; the agent may never change or drop a human block; an export is downloadable only by a viewer whose current withheld set matches the export's. Condition: CI must open the fixture DOCX and XLSX in LibreOffice headless (not only unzip/grep).
 
 1. **Split.** (a) Recommended **S**: 24.4a then 24.4b, as above. (b) **K**: one story.
 2. **How exports are rendered.** (a) Recommended: in-house deterministic Rust writer (stored ZIP, CRC-32, minimal OOXML) in the API process — no new crate, reproducible digest, no sandbox job. (b) A trusted render program in the 22.4 sandbox with the approved python-docx/openpyxl; needs a new collection path because 0015 descendant media types exclude Office files.
