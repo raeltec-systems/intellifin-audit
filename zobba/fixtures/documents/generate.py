@@ -6,6 +6,7 @@
 # The generated files are committed; tests rely on their exact bytes.
 import datetime
 import io
+import json
 import os
 import re
 import sys
@@ -251,6 +252,124 @@ PHOTO = bytes.fromhex(
 )
 
 
+POPULATION_HEADERS = ("Invoice", "Invoice date", "Amount", "Approved", "Approved before payment", "Currency")
+
+
+def ap_population_rows():
+    """Story 24.2 AP population: 1,250 invoices and 6 exact duplicate rows.
+    1-50 are dated in 2025 (outside the 2026 basis period); 51-250 are
+    500.00 USD; 251-1250 are 1,500.00 USD. Approved is No for 251-265 and
+    Pending for 276-285; Approved before payment is No for 259-270 and
+    Unknown for 286-295. Rows of 1000-1005 are repeated exactly at the end."""
+    rows = []
+    for i in range(1, 1251):
+        approved = "No" if 251 <= i <= 265 else "Pending" if 276 <= i <= 285 else "Yes"
+        before = "No" if 259 <= i <= 270 else "Unknown" if 286 <= i <= 295 else "Yes"
+        rows.append((
+            "INV-%05d" % i,
+            "2025-12-15" if i <= 50 else "2026-03-05",
+            500 if i <= 250 else 1500,
+            approved,
+            before,
+            "USD",
+            "note %d" % i,
+        ))
+    rows += rows[999:1005]
+    return rows
+
+
+def ap_population():
+    import openpyxl
+
+    book = openpyxl.Workbook()
+    sheet = book.active
+    sheet.title = "Invoices"
+    sheet.append(("AP invoice export (synthetic)",))
+    sheet.append(())
+    sheet.append(POPULATION_HEADERS + ("Note",))
+    for row in ap_population_rows():
+        sheet.append(row)
+    for row in range(4, sheet.max_row + 1):
+        sheet.cell(row=row, column=3).number_format = "#,##0.00"
+    summary = book.create_sheet("Summary")
+    summary.append(("Invoice count", 1250))
+    summary.append(("Invoice count (cover sheet)", 1251))
+    for row in (1, 2):
+        summary.cell(row=row, column=2).number_format = "#,##0"
+    low = book.create_sheet("Low")
+    low.append(POPULATION_HEADERS)
+    for i in range(1, 21):
+        low.append(("LOW-%03d" % i, "2026-02-01", 1000, "Yes", "Yes", "USD"))
+    filtered = book.create_sheet("Filtered")
+    filtered.append(POPULATION_HEADERS)
+    mismatch = book.create_sheet("Mismatch")
+    mismatch.append(("Invoice", "Invoice date", "Amount ", "Approved", "Approved before payment", "Currency"))
+    mismatch.append(("INV-1", "2026-02-01", 1500, "Yes", "Yes", "USD"))
+    edge = book.create_sheet("Edge")
+    edge.append(POPULATION_HEADERS)
+    edge.append(("000123", "05/03/2026", 1500, "Yes", "Yes", "USD"))
+    edge.append(("000123", "05/03/2026", 1600, "Yes", "Yes", "USD"))
+    edge.append(("INV-EDGE-1", "31/02/2026", 1500, "Yes", "Yes", "USD"))
+    edge.append(("INV-EDGE-2", None, 1500, "Yes", "Yes", "USD"))
+    edge.append((None, "05/03/2026", 1500, "Yes", "Yes", "USD"))
+    edge.append(("INV-EDGE-3", "05/03/2026", 1500, "Yes", "Yes", "USD"))
+    lines = book.create_sheet("Lines")
+    lines.append(("Invoice", "Line", "Invoice date", "Amount", "Approved", "Approved before payment", "Currency"))
+    for invoice in ("INV-00251", "INV-00300", "INV-00301"):
+        for line in ("1", "2"):
+            lines.append((invoice, line, "2026-03-05", 1500, "Yes", "Yes", "USD"))
+    book.properties.created = FIXED
+    book.properties.modified = FIXED
+    buffer = io.BytesIO()
+    book.save(buffer)
+    return normalized_zip(buffer.getvalue())
+
+
+def ap_population_csv():
+    rows = ['Invoice,Invoice date,Amount,Approved,Approved before payment,Currency,Note']
+    rows.append('INV-C1,2026-02-01,"1,500.00",Yes,Yes,USD,"a note, with a comma"')
+    rows.append('INV-C2,2026-02-02,"1,500.00",No,Yes,USD,"say ""hi"""')
+    rows.append('INV-C3,2025-12-31,"1,500.00",Yes,Yes,USD,')
+    rows.append('INV-C4,2026-02-03,980.00,Yes,Yes,USD,')
+    return ("\r\n".join(rows) + "\r\n").encode("utf-8")
+
+
+def ap_population_expected():
+    """Every count the AC1/AC2 scenarios must reproduce, computed here from
+    the rows above, independently of the Rust code under test."""
+    rows = ap_population_rows()
+    keys = [r[0] for r in rows]
+    subjects = sorted(set(keys))
+    first = {}
+    for r in rows:
+        first.setdefault(r[0], r)
+    in_scope = [k for k in subjects if first[k][1].startswith("2026")]
+    applicable = [k for k in in_scope if first[k][2] > 1000]
+    a_no = [k for k in applicable if first[k][3] == "No"]
+    a_und = [k for k in applicable if first[k][3] == "Pending"]
+    b_no = [k for k in applicable if first[k][4] == "No"]
+    b_und = [k for k in applicable if first[k][4] == "Unknown"]
+    failing = sorted(set(a_no) | set(b_no))
+    unresolved = sorted((set(a_und) | set(b_und)) - set(failing))
+    return {
+        "received_rows": len(rows),
+        "duplicate_rows": len(rows) - len(subjects),
+        "distinct_subjects": len(subjects),
+        "excluded_out_of_period": len(subjects) - len(in_scope),
+        "in_scope": len(in_scope),
+        "applicable": len(applicable),
+        "not_applicable": len(in_scope) - len(applicable),
+        "a": {"met": len(applicable) - len(a_no) - len(a_und), "not_met": len(a_no), "undetermined": len(a_und)},
+        "b": {"met": len(applicable) - len(b_no) - len(b_und), "not_met": len(b_no), "undetermined": len(b_und)},
+        "failing": len(failing),
+        "failing_opportunities": len(a_no) + len(b_no),
+        "unresolved": len(unresolved),
+        "meets_every_applicable": len(applicable) - len(failing) - len(unresolved),
+        "not_applicable_to_any": len(in_scope) - len(applicable),
+        "conclusion": "exceptions_found_inconclusive",
+    }
+
+
 save("Receipt photo.jpg", PHOTO)
 save("Trial balance.xlsx", workbook())
 save("Contract.docx", contract_docx())
@@ -275,3 +394,6 @@ save(
     "AP policy.txt",
     "Invoices above 1,000.00 USD require an approver. No invoice may exceed 5,000.00 USD.\n".encode("utf-8"),
 )
+save("AP population.xlsx", ap_population())
+save("AP population.csv", ap_population_csv())
+save("AP population expected.json", (json.dumps(ap_population_expected(), indent=2, sort_keys=True) + "\n").encode("utf-8"))

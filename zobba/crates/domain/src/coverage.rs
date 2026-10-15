@@ -300,9 +300,7 @@ impl ProposedPopulation {
             && valid_scope_id(&self.basis)
             && self.supersedes.as_deref().is_none_or(valid_scope_id)
             && valid_scope_id(&self.original_id)
-            && self.sheet.as_deref().is_none_or(|s| {
-                text_ok(s, MAX_SHEET_BYTES) && !s.contains('!') && !s.chars().any(char::is_control)
-            })
+            && self.sheet.as_deref().is_none_or(crate::citation::valid_sheet)
             && (1..=MAX_HEADER_ROW).contains(&self.header_row)
             && (self.sheet.is_some() || self.header_row == 1)
             && valid_name(&self.subject_unit)
@@ -386,8 +384,34 @@ pub enum EnumerationFailure {
     /// named for CSV.
     Unsupported,
     /// Encrypted, corrupt, hostile, not UTF-8, or the trusted job failed or
-    /// hit a limit (its job ID, when one ran).
-    Unreadable { job_id: Option<String> },
+    /// hit a limit.
+    Unreadable,
+}
+
+/// The outcome of one trusted read of every row, with the 22.4 job that
+/// read it (None for CSV and plain text, read in process).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Enumerated {
+    pub job_id: Option<String>,
+    pub outcome: Result<Enumeration, EnumerationFailure>,
+}
+
+/// What to read: a workbook sheet (None for CSV/plain text, the whole file),
+/// its 1-based header row, and the named columns in order.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EnumerateRequest {
+    pub sheet: Option<String>,
+    pub header_row: u32,
+    pub columns: Vec<String>,
+}
+impl ProposedPopulation {
+    pub fn request(&self) -> EnumerateRequest {
+        EnumerateRequest {
+            sheet: self.sheet.clone(),
+            header_row: self.header_row,
+            columns: self.columns(),
+        }
+    }
 }
 
 // ----------------------------------------------------------------- members

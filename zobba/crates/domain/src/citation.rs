@@ -180,7 +180,7 @@ fn offset(value: &str) -> Option<u64> {
     .then(|| value.parse().ok())
     .flatten()
 }
-fn valid_sheet(name: &str) -> bool {
+pub fn valid_sheet(name: &str) -> bool {
     // Excel forbids []:*?/\ in sheet names and limits them to 31 characters.
     !name.is_empty()
         && name.chars().count() <= 31

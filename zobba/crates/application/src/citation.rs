@@ -13,6 +13,10 @@ use zobba_domain::{
         CitationSource, CitedAnswer, Located, Locator, LocatorFamily, PageFacts, Span,
         UnverifiedReason, Verification, VerifiedSource, decide,
     },
+    coverage::{
+        CellRead, EnumerateRequest, Enumerated, Enumeration, EnumerationFailure,
+        MAX_CELL_TEXT_BYTES, RowRead,
+    },
     task::ClaimBasis,
 };
 
@@ -74,6 +78,26 @@ pub trait CitationReader: Send + Sync {
     ) -> impl Future<Output = Result<Option<String>, ReadingError>> + Send {
         let _ = (basis, original, start, end);
         async { Ok(None) }
+    }
+    /// Story 24.2: the header row and every following row of the named
+    /// columns of this exact original, read by trusted code (a workbook
+    /// sheet by the trusted document program in the sandbox; CSV and plain
+    /// text in process). Never a model's reading. The default reads nothing:
+    /// a reader that cannot enumerate says so (`unsupported`).
+    fn enumerate(
+        &self,
+        basis: &ClaimBasis,
+        original: &CitedOriginal,
+        request: &EnumerateRequest,
+        cancellation: &ModelCancellation,
+    ) -> impl Future<Output = Result<Enumerated, ReadingError>> + Send {
+        let _ = (basis, original, request, cancellation);
+        async {
+            Ok(Enumerated {
+                job_id: None,
+                outcome: Err(EnumerationFailure::Unsupported),
+            })
+        }
     }
     /// Text at each structured locator, in order, read by the trusted
     /// document program in the sandbox over this exact original.
@@ -286,6 +310,132 @@ pub fn widened(bytes: &[u8], start: usize, end: usize) -> Option<String> {
             .map(char::len_utf8)
             .sum::<usize>();
     Some(text[from..to].to_string())
+}
+
+/// Story 24.2: an RFC 4180 CSV (or plain text, one column per line) read in
+/// process from the exact original bytes: UTF-8 only (a leading byte-order
+/// mark is skipped), records end with CRLF or LF, a quoted field keeps its
+/// commas, line breaks and doubled quotes. Record 1 is the header; each named
+/// column must appear exactly once. At most `max_rows` data records are read
+/// and more is `truncated`. A field over [`MAX_CELL_TEXT_BYTES`] is not
+/// usable (`None`), never shortened. Each cell's locator is its exact byte
+/// range (the field's content inside any quotes).
+pub fn enumerate_text(
+    bytes: &[u8],
+    columns: &[String],
+    max_rows: u32,
+) -> Result<Enumeration, EnumerationFailure> {
+    let offset = if bytes.starts_with(b"\xEF\xBB\xBF") { 3 } else { 0 };
+    let text = std::str::from_utf8(&bytes[offset..]).map_err(|_| EnumerationFailure::Unreadable)?;
+    // Each field: its value and the byte range of its content.
+    type Field = (String, usize, usize);
+    let mut records: Vec<Vec<Field>> = Vec::new();
+    let data = text.as_bytes();
+    let mut at = 0usize;
+    while at < data.len() {
+        let mut record: Vec<Field> = Vec::new();
+        loop {
+            if at < data.len() && data[at] == b'"' {
+                let start = at + 1;
+                let mut value = String::new();
+                let mut i = start;
+                let mut run = start;
+                loop {
+                    let Some(&b) = data.get(i) else {
+                        return Err(EnumerationFailure::Unreadable);
+                    };
+                    if b == b'"' {
+                        if data.get(i + 1) == Some(&b'"') {
+                            value.push_str(&text[run..=i]);
+                            i += 2;
+                            run = i;
+                            continue;
+                        }
+                        value.push_str(&text[run..i]);
+                        break;
+                    }
+                    i += 1;
+                }
+                record.push((value, start + offset, i + offset));
+                at = i + 1;
+            } else {
+                let start = at;
+                while at < data.len() && !matches!(data[at], b',' | b'\n' | b'\r') {
+                    if data[at] == b'"' {
+                        return Err(EnumerationFailure::Unreadable);
+                    }
+                    at += 1;
+                }
+                record.push((text[start..at].to_string(), start + offset, at + offset));
+            }
+            match data.get(at) {
+                Some(b',') => at += 1,
+                Some(b'\r') if data.get(at + 1) == Some(&b'\n') => {
+                    at += 2;
+                    break;
+                }
+                Some(b'\n') => {
+                    at += 1;
+                    break;
+                }
+                None => break,
+                Some(_) => return Err(EnumerationFailure::Unreadable),
+            }
+        }
+        records.push(record);
+    }
+    let Some(header) = records.first() else {
+        return Err(EnumerationFailure::HeaderMismatch {
+            column: columns.first().cloned().unwrap_or_default(),
+        });
+    };
+    let mut indices = Vec::with_capacity(columns.len());
+    for column in columns {
+        let found: Vec<usize> = header
+            .iter()
+            .enumerate()
+            .filter(|(_, (value, _, _))| value == column)
+            .map(|(i, _)| i)
+            .collect();
+        if found.len() != 1 {
+            return Err(EnumerationFailure::HeaderMismatch {
+                column: column.clone(),
+            });
+        }
+        indices.push(found[0]);
+    }
+    let total = records.len() as u32 - 1;
+    let read = total.min(max_rows);
+    let rows = records[1..=read as usize]
+        .iter()
+        .enumerate()
+        .map(|(i, record)| RowRead {
+            row: i as u32 + 2,
+            cells: indices
+                .iter()
+                .map(|&index| match record.get(index) {
+                    None => CellRead {
+                        texts: Some(vec![]),
+                        locator: None,
+                    },
+                    Some((value, start, end)) => CellRead {
+                        texts: (value.len() <= MAX_CELL_TEXT_BYTES).then(|| vec![value.clone()]),
+                        locator: (start < end).then(|| Locator::Bytes {
+                            start: *start as u64,
+                            end: *end as u64,
+                        }),
+                    },
+                })
+                .collect(),
+        })
+        .collect();
+    Ok(Enumeration {
+        header_row: 1,
+        last_row: records.len() as u32,
+        rows_read: read,
+        truncated: total > max_rows,
+        rows,
+    })
 }
 
 /// A definite refusal of a read (`Invalid`) is not proof of absence: it is

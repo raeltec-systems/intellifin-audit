@@ -1,0 +1,25 @@
+{
+  "a": {
+    "met": 975,
+    "not_met": 15,
+    "undetermined": 10
+  },
+  "applicable": 1000,
+  "b": {
+    "met": 978,
+    "not_met": 12,
+    "undetermined": 10
+  },
+  "conclusion": "exceptions_found_inconclusive",
+  "distinct_subjects": 1250,
+  "duplicate_rows": 6,
+  "excluded_out_of_period": 50,
+  "failing": 20,
+  "failing_opportunities": 27,
+  "in_scope": 1200,
+  "meets_every_applicable": 960,
+  "not_applicable": 200,
+  "not_applicable_to_any": 200,
+  "received_rows": 1256,
+  "unresolved": 20
+}

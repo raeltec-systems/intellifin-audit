@@ -9,6 +9,13 @@
 #             text layer, if any, plus the document's page count.
 #   locate  - report the text at each requested locator (spreadsheet cells,
 #             Word paragraphs and table cells, email headers and parts).
+#   enumerate - (Story 24.2) read one workbook sheet's header row and every
+#             following row to the sheet's last row, reporting each row
+#             number and the display texts of the named columns only (values,
+#             never formulas; the same `cell_texts` forms as `locate`). At
+#             most `max_rows` data rows are read; more is reported as
+#             `truncated`, never cut silently. A text over `max_text` bytes is
+#             reported as `null` (not usable), never shortened.
 #
 # Locator semantics (the same ones the model is told):
 #   cell:Sheet!B4        one cell's displayed value forms
@@ -512,11 +519,105 @@ def locate(original, locators):
     write("located.json", {"status": "read", "reason": None, "results": results})
 
 
+# ------------------------------------------------------------- enumerate
+
+
+def enumerate_xlsx(path, sheet_name, header_row, columns, max_rows, chunk_rows, max_text):
+    import openpyxl
+
+    try:
+        with open(path, "rb") as handle:
+            workbook = openpyxl.load_workbook(handle, data_only=True, keep_vba=False, keep_links=False)
+    except Exception:
+        return {"status": "unreadable", "reason": "unreadable_document"}
+    if sheet_name not in workbook.sheetnames:
+        return {"status": "sheet_missing", "reason": None}
+    sheet = workbook[sheet_name]
+    last_row = sheet.max_row
+    width = sheet.max_column
+    headers = []
+    if header_row <= last_row:
+        headers = [cell_texts(sheet.cell(row=header_row, column=c))[0] for c in range(1, width + 1)]
+    indices = []
+    for column in columns:
+        found = [i + 1 for i, text in enumerate(headers) if text == column]
+        if len(found) != 1:
+            return {"status": "header_mismatch", "reason": None, "column": column}
+        indices.append(found[0])
+    total = max(last_row - header_row, 0)
+    read = min(total, max_rows)
+    chunks = []
+    rows = []
+
+    def flush():
+        name = "rows/%04d.json" % len(chunks)
+        write(name, rows)
+        chunks.append(name)
+
+    for number in range(header_row + 1, header_row + 1 + read):
+        cells = []
+        for index in indices:
+            texts = cell_texts(sheet.cell(row=number, column=index))
+            if any(len(t.encode("utf-8")) > max_text for t in texts):
+                cells.append(None)
+            else:
+                cells.append(texts)
+        rows.append([number, cells])
+        if len(rows) == chunk_rows:
+            flush()
+            rows = []
+    if rows:
+        flush()
+    return {
+        "status": "read",
+        "reason": None,
+        "header_row": header_row,
+        "last_row": last_row,
+        "rows_read": read,
+        "truncated": total > max_rows,
+        "columns": indices,
+        "chunks": chunks,
+    }
+
+
+def enumerate_original(original, sheet, header_row, columns, max_rows, chunk_rows, max_text):
+    path = os.path.join(INPUT, original)
+    with open(path, "rb") as handle:
+        head = handle.read(4096)
+    kind = kind_of(head)
+    if kind == "zip":
+        kind = safe_zip(path)
+        if kind is None:
+            write("enumerated.json", {"status": "unreadable", "reason": "unsafe_package"})
+            return
+    if kind == "ole":
+        write("enumerated.json", {"status": "unreadable", "reason": "encrypted_or_legacy"})
+        return
+    if kind != "xlsx":
+        write("enumerated.json", {"status": "unsupported", "reason": "unsupported_format"})
+        return
+    try:
+        result = enumerate_xlsx(path, sheet, header_row, columns, max_rows, chunk_rows, max_text)
+    except Exception:
+        result = {"status": "unreadable", "reason": "unreadable_document"}
+    write("enumerated.json", result)
+
+
 def main(request):
     mode = request["mode"]
     if mode == "render":
         render(request["original"], request["first"], request["last"], request["max_image_bytes"])
     elif mode == "locate":
         locate(request["original"], request["locators"])
+    elif mode == "enumerate":
+        enumerate_original(
+            request["original"],
+            request["sheet"],
+            request["header_row"],
+            request["columns"],
+            request["max_rows"],
+            request["chunk_rows"],
+            request["max_text"],
+        )
     else:
         sys.exit(2)
