@@ -531,6 +531,17 @@ fn assessment_fields_are_optional_bounded_and_counted_when_invalid() {
         ] {
             map.insert(key.into(), JsonValue::Array(vec![]));
         }
+        // A stored 24.1 answer (no 24.2 fields) still decodes, unchanged.
+        let earlier = CitedAnswer::from_json(&JsonValue::Object(map.clone())).unwrap();
+        assert!(earlier.propose_population.is_empty() && earlier.summarise.is_empty());
+        for key in [
+            "propose_population",
+            "propose_sample",
+            "evaluate_population",
+            "summarise",
+        ] {
+            map.insert(key.into(), JsonValue::Array(vec![]));
+        }
         map.insert(
             "evaluate".into(),
             JsonValue::Array(vec![s("crit-1"), s("crit-1"), s("not an id")]),
@@ -753,4 +764,55 @@ fn the_older_answer_schemas_keep_their_exact_bytes() {
         digest(CitedAnswer::investigation_schema()),
         "496af7e3f64172b774280951e43f68fe122d9fb8f2ac3823af8d6341dc06b674"
     );
+}
+
+#[test]
+fn coverage_answer_bounds_drop_and_count_every_entry_over_them() {
+    let mut value = answer_json();
+    let evaluation = |criterion: &str| object(vec![("criterion", s(criterion)), ("population", s("ap"))]);
+    let summary = |sample: &str| {
+        object(vec![("basis", s("b1")), ("population", s("ap")), ("sample", s(sample))])
+    };
+    if let JsonValue::Object(map) = &mut value {
+        for key in ["read_method", "use_skills", "run_skill_script", "method_notes"] {
+            map.insert(key.into(), JsonValue::Array(vec![]));
+        }
+        for key in ["propose_criteria", "propose_basis", "record_facts", "evaluate", "judgments", "propose_population", "propose_sample"] {
+            map.insert(key.into(), JsonValue::Array(vec![]));
+        }
+        map.insert(
+            "evaluate_population".into(),
+            JsonValue::Array((0..5).map(|i| evaluation(&format!("crit-{i}"))).collect()),
+        );
+        map.insert(
+            "summarise".into(),
+            JsonValue::Array(vec![summary(""), summary("s1"), summary("s2"), summary("not an id")]),
+        );
+    }
+    let answer = CitedAnswer::from_json(&value).unwrap();
+    assert_eq!(answer.evaluate_population.len(), crate::coverage::MAX_EVALUATE_POPULATION);
+    assert_eq!(answer.summarise.len(), crate::coverage::MAX_SUMMARISE);
+    // One evaluation and two summaries over their bounds, one invalid.
+    assert_eq!(answer.discarded, 1 + 2);
+    assert!(answer.requests_assessment());
+    assert!(answer.is_valid());
+    let ArgumentSchema::Object { properties, .. } = CitedAnswer::assessment_schema() else {
+        panic!("an object schema");
+    };
+    for (field, max) in [
+        ("propose_population", crate::coverage::MAX_PROPOSED_POPULATIONS),
+        ("propose_sample", crate::coverage::MAX_PROPOSED_SAMPLES),
+        ("evaluate_population", crate::coverage::MAX_EVALUATE_POPULATION),
+        ("summarise", crate::coverage::MAX_SUMMARISE),
+    ] {
+        match &properties[field] {
+            ArgumentSchema::Array { max_items, .. } => assert_eq!(*max_items as usize, max, "{field}"),
+            other => panic!("{field}: {other:?}"),
+        }
+    }
+    // The investigation schema never offers them.
+    let ArgumentSchema::Object { properties, .. } = CitedAnswer::investigation_schema() else {
+        panic!("an object schema");
+    };
+    assert!(!properties.contains_key("propose_population"));
 }

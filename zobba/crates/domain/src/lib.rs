@@ -3,6 +3,7 @@ pub mod analysis;
 pub mod assessment;
 pub mod citation;
 pub mod context;
+pub mod coverage;
 pub mod conversation;
 pub mod engagement_setup;
 pub mod evidence;
@@ -20,4 +21,4 @@ pub mod work;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SchemaVersion(pub u32);
 
-pub const SCHEMA_VERSION: SchemaVersion = SchemaVersion(18);
+pub const SCHEMA_VERSION: SchemaVersion = SchemaVersion(19);

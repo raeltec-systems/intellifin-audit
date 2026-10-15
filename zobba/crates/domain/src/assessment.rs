@@ -205,7 +205,7 @@ impl ParseRule {
     }
 }
 
-fn text_ok(value: &str, max: usize) -> bool {
+pub(crate) fn text_ok(value: &str, max: usize) -> bool {
     !value.trim().is_empty()
         && value.len() <= max
         && !value
@@ -776,9 +776,12 @@ pub fn whole_value(locator: &Locator, texts: &[String], quote: &str) -> bool {
 
 /// Whether a key has the shape of a recorded ID: a key that looks like an ID
 /// could silently redirect a reference to the new record.
-fn record_shaped(key: &str) -> bool {
+pub(crate) fn record_shaped(key: &str) -> bool {
     key.split_once('-').is_some_and(|(prefix, rest)| {
-        matches!(prefix, "crit" | "basis" | "fact" | "eval")
+        matches!(
+            prefix,
+            "crit" | "basis" | "fact" | "eval" | "pop" | "sample" | "summary"
+        )
             && rest.len() == 40
             && rest.bytes().all(|b| b.is_ascii_hexdigit())
     })

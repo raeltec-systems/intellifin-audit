@@ -14,6 +14,10 @@ use crate::{
         self, MAX_EVALUATE, MAX_JUDGMENTS, MAX_PROPOSED_BASES, MAX_PROPOSED_CRITERIA,
         MAX_RECORDED_FACTS, ProposedBasis, ProposedCriterion, ProposedFact, ProposedJudgment,
     },
+    coverage::{
+        self, MAX_EVALUATE_POPULATION, MAX_PROPOSED_POPULATIONS, MAX_PROPOSED_SAMPLES,
+        MAX_SUMMARISE, PopulationEvaluation, ProposedPopulation, ProposedSample, SummaryRequest,
+    },
     identity::valid_scope_id,
     investigation::{
         GapReason, MAX_METHOD_NOTES, MAX_NOTE_BYTES, MAX_NOTE_SEGMENTS, MAX_PART_ID_BYTES,
@@ -355,6 +359,17 @@ pub struct CitedAnswer {
     pub evaluate: Vec<String>,
     /// Story 24.1: proposed judgments of judgment criteria, in words.
     pub judgments: Vec<ProposedJudgment>,
+    /// Story 24.2: at most one population manifest version per answer:
+    /// where the population is and how to read it. Trusted code reads every
+    /// row and counts; the model never does.
+    pub propose_population: Vec<ProposedPopulation>,
+    /// Story 24.2: at most one sample manifest version per answer.
+    pub propose_sample: Vec<ProposedSample>,
+    /// Story 24.2: rule criteria trusted code evaluates over every in-scope
+    /// member of a population.
+    pub evaluate_population: Vec<PopulationEvaluation>,
+    /// Story 24.2: coverage summaries trusted code computes.
+    pub summarise: Vec<SummaryRequest>,
     /// Story 22.6: investigation requests and notes that were individually
     /// invalid, repeated or over their bound and so were left out on decode.
     /// The rest of the answer stands; trusted code reports the count.
@@ -472,15 +487,30 @@ impl CitedAnswer {
             && distinct(&self.evaluate)
             && self.judgments.len() <= MAX_JUDGMENTS
             && self.judgments.iter().all(ProposedJudgment::is_valid)
+            && self.propose_population.len() <= MAX_PROPOSED_POPULATIONS
+            && self
+                .propose_population
+                .iter()
+                .all(ProposedPopulation::is_valid)
+            && self.propose_sample.len() <= MAX_PROPOSED_SAMPLES
+            && self.propose_sample.iter().all(ProposedSample::is_valid)
+            && self.evaluate_population.len() <= MAX_EVALUATE_POPULATION
+            && self.summarise.len() <= MAX_SUMMARISE
     }
     /// Whether the answer proposes criteria, a basis, facts, evaluations or
-    /// judgments (Story 24.1). Only a composed assessment acts on these.
+    /// judgments (Story 24.1), or a population, a sample, population
+    /// evaluations or summaries (Story 24.2). Only a composed assessment acts
+    /// on these.
     pub fn requests_assessment(&self) -> bool {
         !self.propose_criteria.is_empty()
             || !self.propose_basis.is_empty()
             || !self.record_facts.is_empty()
             || !self.evaluate.is_empty()
             || !self.judgments.is_empty()
+            || !self.propose_population.is_empty()
+            || !self.propose_sample.is_empty()
+            || !self.evaluate_population.is_empty()
+            || !self.summarise.is_empty()
     }
     /// Whether the answer asks for more native reading or its own analysis
     /// program before it is complete (Story 22.5).
@@ -611,6 +641,7 @@ impl CitedAnswer {
         }
         if assessing {
             fields.extend(assessment::answer_fields());
+            fields.extend(coverage::answer_fields());
         }
         object(fields)
     }
@@ -839,6 +870,34 @@ impl CitedAnswer {
             assessment::decode_judgment,
             &mut discarded,
         )?;
+        let propose_population = entries(
+            object,
+            "propose_population",
+            MAX_PROPOSED_POPULATIONS,
+            coverage::decode_population,
+            &mut discarded,
+        )?;
+        let propose_sample = entries(
+            object,
+            "propose_sample",
+            MAX_PROPOSED_SAMPLES,
+            coverage::decode_sample,
+            &mut discarded,
+        )?;
+        let evaluate_population = entries(
+            object,
+            "evaluate_population",
+            MAX_EVALUATE_POPULATION,
+            coverage::decode_evaluation,
+            &mut discarded,
+        )?;
+        let summarise = entries(
+            object,
+            "summarise",
+            MAX_SUMMARISE,
+            coverage::decode_summary,
+            &mut discarded,
+        )?;
         let answer = Self {
             segments,
             limitations,
@@ -853,6 +912,10 @@ impl CitedAnswer {
             record_facts,
             evaluate,
             judgments,
+            propose_population,
+            propose_sample,
+            evaluate_population,
+            summarise,
             discarded,
         };
         answer.is_valid().then_some(answer)
