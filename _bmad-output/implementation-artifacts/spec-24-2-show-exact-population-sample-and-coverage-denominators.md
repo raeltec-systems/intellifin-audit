@@ -2,7 +2,7 @@
 title: '24.2 — Show exact population, sample and coverage denominators'
 type: 'feature'
 created: '2026-10-15'
-status: 'draft'
+status: 'ready-for-dev'
 baseline_commit: '0400e7a35a52d7723e3950bf004f2b954daa67ff'
 review_loop_iteration: 0
 context:
@@ -116,6 +116,8 @@ The model never counts. It names *where* and *how* (sheet, grain, columns, exhau
 - `pnpm --dir zobba/web check` and the coverage browser case -- expected: pass with accessibility and contrast checks.
 
 ## Open Questions (owner decisions)
+
+**Owner decisions (2026-10-15):** all seven recommendations approved (A); kept as one story (K, the lead's recommendation, since the owner did not choose split): 1 trusted document-program enumeration; 2 new opportunities table reusing 24.1 `evaluate`; 3 counts only, no percentages; 4 in-house SplitMix64 + Fisher–Yates recomputed and verified; 5 20,000 rows × 12 columns, above that incomplete; 6 same key with different values → scope unknown, exact duplicates merged and counted; 7 database guard recounts with exact SQL.
 
 Size: about 5,400 tokens (21.7 KB), over the 1,600 target (24.1 was larger and was kept). **[K] Keep** (recommended: manifest, opportunities and summary share one recomputing guard and one fixture, so splitting leaves an unverifiable half) or **[S] Split** — 24.2a population manifest + bulk opportunities + summary; 24.2b sample manifests.
 
