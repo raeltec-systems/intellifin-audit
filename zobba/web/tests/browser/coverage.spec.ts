@@ -113,7 +113,10 @@ test('coverage shows exact counts in words, exclusions by reason and no pass the
   await expect(rows).toContainText('50 rows · showing 50');
   await expect(rows.getByRole('row').nth(1)).toContainText('INV-00001');
   await expect(rows.getByRole('row').nth(1)).toContainText('Excluded · outside the basis period');
-  await expect(show).toHaveAttribute('aria-expanded', 'true');
+  // The same control now hides the rows, keeps focus and says it is open.
+  const hide = ap.getByRole('button', { name: 'Hide excluded rows', exact: true });
+  await expect(hide).toHaveAttribute('aria-expanded', 'true');
+  await expect(hide).toBeFocused();
   // WCAG 2.2 AA: the panel's text keeps 4.5:1 contrast on its background.
   const ratios = await region.evaluate(root => {
     const rgba = (color: string) => color.match(/[\d.]+/g)!.map(Number);

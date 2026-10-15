@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { Session } from './auth';
 import type { Scope } from './engagements';
 import type { Assessment } from './assessment';
 import {
@@ -12,6 +13,8 @@ interface Props {
   taskId: string;
   /// Where members are read from; without it the exclusion lists are not offered.
   scope?: Scope;
+  /// The captured session that bounds each member read.
+  session?: Session;
 }
 
 const short = (value: string) => <abbr title={value}>{value.slice(0, 13)}</abbr>;
@@ -19,7 +22,7 @@ const number = (value: string) => BigInt(value).toLocaleString('en-GB');
 
 /// The member list of one population and one disposition: an exact count and
 /// pages of 50 in receipt order, read on request.
-function Members({ scope, taskId, population, disposition, label }: { scope: Scope; taskId: string; population: CoveragePopulation; disposition: Disposition; label: string }) {
+function Members({ scope, session, taskId, population, disposition, label }: { scope: Scope; session: Session; taskId: string; population: CoveragePopulation; disposition: Disposition; label: string }) {
   const [open, setOpen] = useState(false);
   const [pages, setPages] = useState<PopulationMembers[]>([]);
   const [error, setError] = useState('');
@@ -32,7 +35,7 @@ function Members({ scope, taskId, population, disposition, label }: { scope: Sco
     request.current = controller;
     setLoading(true);
     setError('');
-    readMembers(scope, taskId, population.id, disposition, after, null, controller.signal).then(page => {
+    readMembers(scope, taskId, population.id, disposition, after, session, controller.signal).then(page => {
       if (controller.signal.aborted) return;
       setPages(previous => after ? [...previous, page] : [page]);
       setLoading(false);
@@ -72,7 +75,7 @@ function Members({ scope, taskId, population, disposition, label }: { scope: Sco
 /// database recounted; when the population is incomplete each count is "at
 /// least" and the total is "not known". There are no percentages and no
 /// confidence score, and a sample says nothing about items it did not select.
-export function Coverage({ assessment, taskId, scope }: Props) {
+export function Coverage({ assessment, taskId, scope, session }: Props) {
   if (!assessment.populations.length && !assessment.summaries.length && !assessment.samples.length) return null;
   const criterionKey = new Map(assessment.criteria.map(c => [c.id, c.key]));
   const populationById = new Map(assessment.populations.map(p => [p.id, p]));
@@ -96,11 +99,11 @@ export function Coverage({ assessment, taskId, scope }: Props) {
         <li>Scope unknown: date does not parse {found(c.scope_unknown_period_unparsed, 'row', complete)} · date blank {found(c.scope_unknown_period_missing, 'row', complete)} · same key, different values {found(c.scope_unknown_conflicting_duplicate, 'row', complete)}</li>
         <li>In scope: {found(c.in_scope, p.subject_unit, complete)}</li>
       </ul>
-      {scope ? <div className="coverage-inspect">
-        {c.excluded_out_of_period !== '0' ? <Members scope={scope} taskId={taskId} population={p} disposition="excluded" label="Excluded" /> : null}
-        {(BigInt(c.scope_unknown_period_unparsed) + BigInt(c.scope_unknown_period_missing) + BigInt(c.scope_unknown_conflicting_duplicate)) > 0n ? <Members scope={scope} taskId={taskId} population={p} disposition="scope_unknown" label="Scope unknown" /> : null}
-        {c.duplicate_rows !== '0' ? <Members scope={scope} taskId={taskId} population={p} disposition="duplicate_row" label="Duplicate" /> : null}
-        {c.unkeyed !== '0' ? <Members scope={scope} taskId={taskId} population={p} disposition="unkeyed" label="Unkeyed" /> : null}
+      {scope && session ? <div className="coverage-inspect">
+        {c.excluded_out_of_period !== '0' ? <Members scope={scope} session={session} taskId={taskId} population={p} disposition="excluded" label="Excluded" /> : null}
+        {(BigInt(c.scope_unknown_period_unparsed) + BigInt(c.scope_unknown_period_missing) + BigInt(c.scope_unknown_conflicting_duplicate)) > 0n ? <Members scope={scope} session={session} taskId={taskId} population={p} disposition="scope_unknown" label="Scope unknown" /> : null}
+        {c.duplicate_rows !== '0' ? <Members scope={scope} session={session} taskId={taskId} population={p} disposition="duplicate_row" label="Duplicate" /> : null}
+        {c.unkeyed !== '0' ? <Members scope={scope} session={session} taskId={taskId} population={p} disposition="unkeyed" label="Unkeyed" /> : null}
       </div> : null}
     </>;
   };

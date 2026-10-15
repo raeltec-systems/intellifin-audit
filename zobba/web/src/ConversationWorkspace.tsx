@@ -444,7 +444,7 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
               <div className="task-state"><span className="status-label">{taskStateLabel(selected)}</span><p>{stateExplanation(selected)}</p></div>
               <section className="brief-section"><h3>Original objective</h3><p className="retained-text">{selected.objective}</p></section>
               <section className="brief-section"><h3>Working brief</h3><p className="brief-caption">Plain retained direction. Applied means added here; it does not mean model understanding.</p><p className="retained-text">{selected.working_brief}</p></section>
-              <TaskWorkPanel state={taskWork} citations={{ scope: engagement, accessReady: projectionReady }} />
+              <TaskWorkPanel state={taskWork} citations={{ scope: engagement, accessReady: projectionReady }} session={session} />
               <section key={`${selected.id}/${opening ?? ''}`} className="working-context" aria-label="What Zobba is using"><h3>What Zobba is using</h3>
                 <TaskKnowledge key={`${session.identity.id}/${session.csrf_token}/${selected.id}/knowledge`} scope={engagement} task={selected} session={session} accessReady={projectionReady} onAccessFailure={onAccessFailure} method={methodContext} skills={skillContext} onApplyLayout={layout => { explicitLayoutOpening.current = opening; setExpanded(layout === 'expanded' && window.matchMedia('(min-width: 1001px)').matches); }} onGuide={() => { draftGeneration.current += 1; chooseTarget({ kind: 'guide', task_id: selected.id, cycle_id: selected.cycle_id, objective: selected.objective }); setView('conversation'); requestAnimationFrame(() => textarea.current?.focus()); }} />
                 <TaskContextUse state={taskWork} />
