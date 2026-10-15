@@ -78,10 +78,17 @@ def ap_invoices():
         ("000123", 980, "USD", "J. Smith", "06/03/2026", "2026-03-06T09:00:00+00:00", "Yes"),
         ("INV-0054", 1250, "USD", "", "07/03/2026", "", "No"),
         ("INV-0055", 4200, "EUR", "A. Jones", "08/03/2026", "2026-03-08T10:00:00+01:00", "Yes"),
+        # Story 24.1 review: one row per matrix invoice, so each fact's
+        # subject and currency stand in the same row as its value.
+        ("INV-0050", 1250, "USD", "J. Smith", "09/03/2026", "", "Yes"),
+        ("INV-0051", 1250, "USD", "", "10/03/2026", "", ""),
+        ("INV-0052", 1250, "USD", "", "11/03/2026", "", ""),
+        ("INV-0053", 1250, "USD", "J. Smith", "12/03/2026", "", ""),
+        ("INV-0057", 3000, "EUR", "A. Jones", "13/03/2026", "", "Yes"),
     ]
     for row in rows:
         sheet.append(row)
-    for row in range(2, 6):
+    for row in range(2, 11):
         sheet.cell(row=row, column=2).number_format = "#,##0.00"
     book.properties.created = FIXED
     book.properties.modified = FIXED

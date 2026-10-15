@@ -287,7 +287,7 @@
       "methodology_binding_id": "id-8",
       "origin": "deterministic",
       "output_digest": "000000000000000000000000000000000000000000000000000000000000000a",
-      "reason": "unknown_applicability",
+      "reason": "fact_unsupported",
       "subject": "INV-0050",
       "verdict": "undetermined"
     },
@@ -340,7 +340,7 @@
       "verdict": "undetermined"
     },
     {
-      "applicability": "unknown",
+      "applicability": "applicable",
       "basis_id": "basis-6",
       "criterion_id": "crit-1",
       "execution": "failed",
@@ -405,8 +405,30 @@
       "methodology_binding_id": "id-8",
       "origin": "deterministic",
       "output_digest": "0000000000000000000000000000000000000000000000000000000000000016",
-      "reason": "unknown_applicability",
+      "reason": "unit_mismatch",
       "subject": "INV-0055",
+      "verdict": "undetermined"
+    },
+    {
+      "applicability": "unknown",
+      "basis_id": "basis-6",
+      "criterion_id": "crit-1",
+      "execution": "completed",
+      "execution_epoch": "1",
+      "id": "eval-30",
+      "inputs": [
+        {
+          "digest": "0000000000000000000000000000000000000000000000000000000000000017",
+          "fact_id": "fact-31"
+        }
+      ],
+      "invocation_id": "id-12",
+      "judgment": null,
+      "methodology_binding_id": "id-8",
+      "origin": "deterministic",
+      "output_digest": "0000000000000000000000000000000000000000000000000000000000000018",
+      "reason": "unit_unverified",
+      "subject": "INV-0057",
       "verdict": "undetermined"
     },
     {
@@ -415,7 +437,7 @@
       "criterion_id": "crit-2",
       "execution": "completed",
       "execution_epoch": "1",
-      "id": "eval-30",
+      "id": "eval-32",
       "inputs": [
         {
           "digest": "0000000000000000000000000000000000000000000000000000000000000004",
@@ -426,7 +448,7 @@
       "judgment": null,
       "methodology_binding_id": "id-8",
       "origin": "deterministic",
-      "output_digest": "0000000000000000000000000000000000000000000000000000000000000017",
+      "output_digest": "0000000000000000000000000000000000000000000000000000000000000019",
       "reason": null,
       "subject": "000123",
       "verdict": null
@@ -437,7 +459,7 @@
       "criterion_id": "crit-2",
       "execution": "completed",
       "execution_epoch": "1",
-      "id": "eval-31",
+      "id": "eval-33",
       "inputs": [
         {
           "digest": "0000000000000000000000000000000000000000000000000000000000000006",
@@ -448,7 +470,7 @@
       "judgment": null,
       "methodology_binding_id": "id-8",
       "origin": "deterministic",
-      "output_digest": "0000000000000000000000000000000000000000000000000000000000000018",
+      "output_digest": "000000000000000000000000000000000000000000000000000000000000001a",
       "reason": "missing_fact",
       "subject": "INV-0042",
       "verdict": "undetermined"
@@ -459,7 +481,7 @@
       "criterion_id": "crit-2",
       "execution": "completed",
       "execution_epoch": "1",
-      "id": "eval-32",
+      "id": "eval-34",
       "inputs": [
         {
           "digest": "0000000000000000000000000000000000000000000000000000000000000009",
@@ -470,53 +492,9 @@
       "judgment": null,
       "methodology_binding_id": "id-8",
       "origin": "deterministic",
-      "output_digest": "0000000000000000000000000000000000000000000000000000000000000019",
-      "reason": "unknown_applicability",
-      "subject": "INV-0050",
-      "verdict": "undetermined"
-    },
-    {
-      "applicability": "applicable",
-      "basis_id": "basis-6",
-      "criterion_id": "crit-2",
-      "execution": "completed",
-      "execution_epoch": "1",
-      "id": "eval-33",
-      "inputs": [
-        {
-          "digest": "000000000000000000000000000000000000000000000000000000000000000b",
-          "fact_id": "fact-19"
-        }
-      ],
-      "invocation_id": "id-12",
-      "judgment": null,
-      "methodology_binding_id": "id-8",
-      "origin": "deterministic",
-      "output_digest": "000000000000000000000000000000000000000000000000000000000000001a",
-      "reason": "missing_fact",
-      "subject": "INV-0051",
-      "verdict": "undetermined"
-    },
-    {
-      "applicability": "applicable",
-      "basis_id": "basis-6",
-      "criterion_id": "crit-2",
-      "execution": "completed",
-      "execution_epoch": "1",
-      "id": "eval-34",
-      "inputs": [
-        {
-          "digest": "000000000000000000000000000000000000000000000000000000000000000d",
-          "fact_id": "fact-21"
-        }
-      ],
-      "invocation_id": "id-12",
-      "judgment": null,
-      "methodology_binding_id": "id-8",
-      "origin": "deterministic",
       "output_digest": "000000000000000000000000000000000000000000000000000000000000001b",
-      "reason": "missing_fact",
-      "subject": "INV-0052",
+      "reason": "fact_unsupported",
+      "subject": "INV-0050",
       "verdict": "undetermined"
     },
     {
@@ -528,8 +506,8 @@
       "id": "eval-35",
       "inputs": [
         {
-          "digest": "0000000000000000000000000000000000000000000000000000000000000010",
-          "fact_id": "fact-24"
+          "digest": "000000000000000000000000000000000000000000000000000000000000000b",
+          "fact_id": "fact-19"
         }
       ],
       "invocation_id": "id-12",
@@ -538,7 +516,7 @@
       "origin": "deterministic",
       "output_digest": "000000000000000000000000000000000000000000000000000000000000001c",
       "reason": "missing_fact",
-      "subject": "INV-0053",
+      "subject": "INV-0051",
       "verdict": "undetermined"
     },
     {
@@ -550,19 +528,67 @@
       "id": "eval-36",
       "inputs": [
         {
-          "digest": "0000000000000000000000000000000000000000000000000000000000000013",
-          "fact_id": "fact-27"
-        },
-        {
-          "digest": "000000000000000000000000000000000000000000000000000000000000001d",
-          "fact_id": "fact-37"
+          "digest": "000000000000000000000000000000000000000000000000000000000000000d",
+          "fact_id": "fact-21"
         }
       ],
       "invocation_id": "id-12",
       "judgment": null,
       "methodology_binding_id": "id-8",
       "origin": "deterministic",
-      "output_digest": "000000000000000000000000000000000000000000000000000000000000001e",
+      "output_digest": "000000000000000000000000000000000000000000000000000000000000001d",
+      "reason": "missing_fact",
+      "subject": "INV-0052",
+      "verdict": "undetermined"
+    },
+    {
+      "applicability": "applicable",
+      "basis_id": "basis-6",
+      "criterion_id": "crit-2",
+      "execution": "completed",
+      "execution_epoch": "1",
+      "id": "eval-37",
+      "inputs": [
+        {
+          "digest": "0000000000000000000000000000000000000000000000000000000000000010",
+          "fact_id": "fact-24"
+        },
+        {
+          "digest": "000000000000000000000000000000000000000000000000000000000000001e",
+          "fact_id": "fact-38"
+        }
+      ],
+      "invocation_id": "id-12",
+      "judgment": null,
+      "methodology_binding_id": "id-8",
+      "origin": "deterministic",
+      "output_digest": "000000000000000000000000000000000000000000000000000000000000001f",
+      "reason": "fact_unsupported",
+      "subject": "INV-0053",
+      "verdict": "undetermined"
+    },
+    {
+      "applicability": "applicable",
+      "basis_id": "basis-6",
+      "criterion_id": "crit-2",
+      "execution": "completed",
+      "execution_epoch": "1",
+      "id": "eval-39",
+      "inputs": [
+        {
+          "digest": "0000000000000000000000000000000000000000000000000000000000000013",
+          "fact_id": "fact-27"
+        },
+        {
+          "digest": "0000000000000000000000000000000000000000000000000000000000000020",
+          "fact_id": "fact-40"
+        }
+      ],
+      "invocation_id": "id-12",
+      "judgment": null,
+      "methodology_binding_id": "id-8",
+      "origin": "deterministic",
+      "output_digest": "0000000000000000000000000000000000000000000000000000000000000021",
       "reason": null,
       "subject": "INV-0054",
       "verdict": "not_met"
@@ -573,7 +599,7 @@
       "criterion_id": "crit-2",
       "execution": "completed",
       "execution_epoch": "1",
-      "id": "eval-38",
+      "id": "eval-41",
       "inputs": [
         {
           "digest": "0000000000000000000000000000000000000000000000000000000000000015",
@@ -584,88 +610,22 @@
       "judgment": null,
       "methodology_binding_id": "id-8",
       "origin": "deterministic",
-      "output_digest": "000000000000000000000000000000000000000000000000000000000000001f",
-      "reason": "unknown_applicability",
+      "output_digest": "0000000000000000000000000000000000000000000000000000000000000022",
+      "reason": "unit_mismatch",
       "subject": "INV-0055",
       "verdict": "undetermined"
     },
     {
-      "applicability": "applicable",
+      "applicability": "unknown",
       "basis_id": "basis-6",
-      "criterion_id": "crit-3",
-      "execution": "completed",
-      "execution_epoch": "1",
-      "id": "eval-39",
-      "inputs": [
-        {
-          "digest": "0000000000000000000000000000000000000000000000000000000000000004",
-          "fact_id": "fact-11"
-        }
-      ],
-      "invocation_id": "id-12",
-      "judgment": null,
-      "methodology_binding_id": "id-8",
-      "origin": "deterministic",
-      "output_digest": "0000000000000000000000000000000000000000000000000000000000000020",
-      "reason": null,
-      "subject": "000123",
-      "verdict": "met"
-    },
-    {
-      "applicability": "applicable",
-      "basis_id": "basis-6",
-      "criterion_id": "crit-3",
-      "execution": "completed",
-      "execution_epoch": "1",
-      "id": "eval-40",
-      "inputs": [
-        {
-          "digest": "0000000000000000000000000000000000000000000000000000000000000006",
-          "fact_id": "fact-14"
-        }
-      ],
-      "invocation_id": "id-12",
-      "judgment": null,
-      "methodology_binding_id": "id-8",
-      "origin": "deterministic",
-      "output_digest": "0000000000000000000000000000000000000000000000000000000000000021",
-      "reason": null,
-      "subject": "INV-0042",
-      "verdict": "met"
-    },
-    {
-      "applicability": "applicable",
-      "basis_id": "basis-6",
-      "criterion_id": "crit-3",
-      "execution": "completed",
-      "execution_epoch": "1",
-      "id": "eval-41",
-      "inputs": [
-        {
-          "digest": "0000000000000000000000000000000000000000000000000000000000000009",
-          "fact_id": "fact-17"
-        }
-      ],
-      "invocation_id": "id-12",
-      "judgment": null,
-      "methodology_binding_id": "id-8",
-      "origin": "deterministic",
-      "output_digest": "0000000000000000000000000000000000000000000000000000000000000022",
-      "reason": "fact_unsupported",
-      "subject": "INV-0050",
-      "verdict": "undetermined"
-    },
-    {
-      "applicability": "applicable",
-      "basis_id": "basis-6",
-      "criterion_id": "crit-3",
+      "criterion_id": "crit-2",
       "execution": "completed",
       "execution_epoch": "1",
       "id": "eval-42",
       "inputs": [
         {
-          "digest": "000000000000000000000000000000000000000000000000000000000000000b",
-          "fact_id": "fact-19"
+          "digest": "0000000000000000000000000000000000000000000000000000000000000017",
+          "fact_id": "fact-31"
         }
       ],
       "invocation_id": "id-12",
@@ -673,9 +633,9 @@
       "methodology_binding_id": "id-8",
       "origin": "deterministic",
       "output_digest": "0000000000000000000000000000000000000000000000000000000000000023",
-      "reason": null,
-      "subject": "INV-0051",
-      "verdict": "met"
+      "reason": "unit_unverified",
+      "subject": "INV-0057",
+      "verdict": "undetermined"
     },
     {
       "applicability": "applicable",
@@ -686,8 +646,8 @@
       "id": "eval-43",
       "inputs": [
         {
-          "digest": "000000000000000000000000000000000000000000000000000000000000000d",
-          "fact_id": "fact-21"
+          "digest": "0000000000000000000000000000000000000000000000000000000000000004",
+          "fact_id": "fact-11"
         }
       ],
       "invocation_id": "id-12",
@@ -696,7 +656,7 @@
       "origin": "deterministic",
       "output_digest": "0000000000000000000000000000000000000000000000000000000000000024",
       "reason": null,
-      "subject": "INV-0052",
+      "subject": "000123",
       "verdict": "met"
     },
     {
@@ -708,8 +668,8 @@
       "id": "eval-44",
       "inputs": [
         {
-          "digest": "0000000000000000000000000000000000000000000000000000000000000010",
-          "fact_id": "fact-24"
+          "digest": "0000000000000000000000000000000000000000000000000000000000000006",
+          "fact_id": "fact-14"
         }
       ],
       "invocation_id": "id-12",
@@ -718,7 +678,7 @@
       "origin": "deterministic",
       "output_digest": "0000000000000000000000000000000000000000000000000000000000000025",
       "reason": null,
-      "subject": "INV-0053",
+      "subject": "INV-0042",
       "verdict": "met"
     },
     {
@@ -730,8 +690,8 @@
       "id": "eval-45",
       "inputs": [
         {
-          "digest": "0000000000000000000000000000000000000000000000000000000000000013",
-          "fact_id": "fact-27"
+          "digest": "0000000000000000000000000000000000000000000000000000000000000009",
+          "fact_id": "fact-17"
         }
       ],
       "invocation_id": "id-12",
@@ -739,9 +699,9 @@
       "methodology_binding_id": "id-8",
       "origin": "deterministic",
       "output_digest": "0000000000000000000000000000000000000000000000000000000000000026",
-      "reason": null,
-      "subject": "INV-0054",
-      "verdict": "met"
+      "reason": "fact_unsupported",
+      "subject": "INV-0050",
+      "verdict": "undetermined"
     },
     {
       "applicability": "applicable",
@@ -752,6 +712,94 @@
       "id": "eval-46",
       "inputs": [
         {
+          "digest": "000000000000000000000000000000000000000000000000000000000000000b",
+          "fact_id": "fact-19"
+        }
+      ],
+      "invocation_id": "id-12",
+      "judgment": null,
+      "methodology_binding_id": "id-8",
+      "origin": "deterministic",
+      "output_digest": "0000000000000000000000000000000000000000000000000000000000000027",
+      "reason": null,
+      "subject": "INV-0051",
+      "verdict": "met"
+    },
+    {
+      "applicability": "applicable",
+      "basis_id": "basis-6",
+      "criterion_id": "crit-3",
+      "execution": "completed",
+      "execution_epoch": "1",
+      "id": "eval-47",
+      "inputs": [
+        {
+          "digest": "000000000000000000000000000000000000000000000000000000000000000d",
+          "fact_id": "fact-21"
+        }
+      ],
+      "invocation_id": "id-12",
+      "judgment": null,
+      "methodology_binding_id": "id-8",
+      "origin": "deterministic",
+      "output_digest": "0000000000000000000000000000000000000000000000000000000000000028",
+      "reason": null,
+      "subject": "INV-0052",
+      "verdict": "met"
+    },
+    {
+      "applicability": "applicable",
+      "basis_id": "basis-6",
+      "criterion_id": "crit-3",
+      "execution": "completed",
+      "execution_epoch": "1",
+      "id": "eval-48",
+      "inputs": [
+        {
+          "digest": "0000000000000000000000000000000000000000000000000000000000000010",
+          "fact_id": "fact-24"
+        }
+      ],
+      "invocation_id": "id-12",
+      "judgment": null,
+      "methodology_binding_id": "id-8",
+      "origin": "deterministic",
+      "output_digest": "0000000000000000000000000000000000000000000000000000000000000029",
+      "reason": null,
+      "subject": "INV-0053",
+      "verdict": "met"
+    },
+    {
+      "applicability": "applicable",
+      "basis_id": "basis-6",
+      "criterion_id": "crit-3",
+      "execution": "completed",
+      "execution_epoch": "1",
+      "id": "eval-49",
+      "inputs": [
+        {
+          "digest": "0000000000000000000000000000000000000000000000000000000000000013",
+          "fact_id": "fact-27"
+        }
+      ],
+      "invocation_id": "id-12",
+      "judgment": null,
+      "methodology_binding_id": "id-8",
+      "origin": "deterministic",
+      "output_digest": "000000000000000000000000000000000000000000000000000000000000002a",
+      "reason": null,
+      "subject": "INV-0054",
+      "verdict": "met"
+    },
+    {
+      "applicability": "applicable",
+      "basis_id": "basis-6",
+      "criterion_id": "crit-3",
+      "execution": "completed",
+      "execution_epoch": "1",
+      "id": "eval-50",
+      "inputs": [
+        {
           "digest": "0000000000000000000000000000000000000000000000000000000000000015",
           "fact_id": "fact-29"
         }
@@ -760,18 +808,40 @@
       "judgment": null,
       "methodology_binding_id": "id-8",
       "origin": "deterministic",
-      "output_digest": "0000000000000000000000000000000000000000000000000000000000000027",
+      "output_digest": "000000000000000000000000000000000000000000000000000000000000002b",
       "reason": "unit_mismatch",
       "subject": "INV-0055",
       "verdict": "undetermined"
     },
     {
-      "applicability": "not_applicable",
+      "applicability": "applicable",
+      "basis_id": "basis-6",
+      "criterion_id": "crit-3",
+      "execution": "completed",
+      "execution_epoch": "1",
+      "id": "eval-51",
+      "inputs": [
+        {
+          "digest": "0000000000000000000000000000000000000000000000000000000000000017",
+          "fact_id": "fact-31"
+        }
+      ],
+      "invocation_id": "id-12",
+      "judgment": null,
+      "methodology_binding_id": "id-8",
+      "origin": "deterministic",
+      "output_digest": "000000000000000000000000000000000000000000000000000000000000002c",
+      "reason": "unit_unverified",
+      "subject": "INV-0057",
+      "verdict": "undetermined"
+    },
+    {
+      "applicability": "unknown",
       "basis_id": "basis-6",
       "criterion_id": "crit-4",
       "execution": "completed",
       "execution_epoch": "1",
-      "id": "eval-47",
+      "id": "eval-52",
       "inputs": [
         {
           "digest": "0000000000000000000000000000000000000000000000000000000000000004",
@@ -782,18 +852,18 @@
       "judgment": null,
       "methodology_binding_id": "id-8",
       "origin": "deterministic",
-      "output_digest": "0000000000000000000000000000000000000000000000000000000000000028",
-      "reason": null,
+      "output_digest": "000000000000000000000000000000000000000000000000000000000000002d",
+      "reason": "authority_unverified",
       "subject": "000123",
-      "verdict": null
+      "verdict": "undetermined"
     },
     {
-      "applicability": "applicable",
+      "applicability": "unknown",
       "basis_id": "basis-6",
       "criterion_id": "crit-4",
       "execution": "completed",
       "execution_epoch": "1",
-      "id": "eval-48",
+      "id": "eval-53",
       "inputs": [
         {
           "digest": "0000000000000000000000000000000000000000000000000000000000000006",
@@ -808,7 +878,7 @@
       "judgment": null,
       "methodology_binding_id": "id-8",
       "origin": "deterministic",
-      "output_digest": "0000000000000000000000000000000000000000000000000000000000000029",
+      "output_digest": "000000000000000000000000000000000000000000000000000000000000002e",
       "reason": "authority_unverified",
       "subject": "INV-0042",
       "verdict": "undetermined"
@@ -819,7 +889,7 @@
       "criterion_id": "crit-4",
       "execution": "completed",
       "execution_epoch": "1",
-      "id": "eval-49",
+      "id": "eval-54",
       "inputs": [
         {
           "digest": "0000000000000000000000000000000000000000000000000000000000000009",
@@ -830,18 +900,18 @@
       "judgment": null,
       "methodology_binding_id": "id-8",
       "origin": "deterministic",
-      "output_digest": "000000000000000000000000000000000000000000000000000000000000002a",
-      "reason": "unknown_applicability",
+      "output_digest": "000000000000000000000000000000000000000000000000000000000000002f",
+      "reason": "authority_unverified",
       "subject": "INV-0050",
       "verdict": "undetermined"
     },
     {
-      "applicability": "applicable",
+      "applicability": "unknown",
       "basis_id": "basis-6",
       "criterion_id": "crit-4",
       "execution": "completed",
       "execution_epoch": "1",
-      "id": "eval-50",
+      "id": "eval-55",
       "inputs": [
         {
           "digest": "000000000000000000000000000000000000000000000000000000000000000b",
@@ -852,18 +922,18 @@
       "judgment": null,
       "methodology_binding_id": "id-8",
       "origin": "deterministic",
-      "output_digest": "000000000000000000000000000000000000000000000000000000000000002b",
+      "output_digest": "0000000000000000000000000000000000000000000000000000000000000030",
       "reason": "authority_unverified",
       "subject": "INV-0051",
       "verdict": "undetermined"
     },
     {
-      "applicability": "applicable",
+      "applicability": "unknown",
       "basis_id": "basis-6",
       "criterion_id": "crit-4",
       "execution": "completed",
       "execution_epoch": "1",
-      "id": "eval-51",
+      "id": "eval-56",
       "inputs": [
         {
           "digest": "000000000000000000000000000000000000000000000000000000000000000d",
@@ -878,7 +948,7 @@
       "judgment": null,
       "methodology_binding_id": "id-8",
       "origin": "deterministic",
-      "output_digest": "000000000000000000000000000000000000000000000000000000000000002c",
+      "output_digest": "0000000000000000000000000000000000000000000000000000000000000031",
       "reason": "authority_unverified",
       "subject": "INV-0052",
       "verdict": "undetermined"
@@ -887,9 +957,9 @@
       "applicability": "unknown",
       "basis_id": "basis-6",
       "criterion_id": "crit-4",
-      "execution": "failed",
+      "execution": "completed",
       "execution_epoch": "1",
-      "id": "eval-52",
+      "id": "eval-57",
       "inputs": [
         {
           "digest": "0000000000000000000000000000000000000000000000000000000000000010",
@@ -904,18 +974,18 @@
       "judgment": null,
       "methodology_binding_id": "id-8",
       "origin": "deterministic",
-      "output_digest": "000000000000000000000000000000000000000000000000000000000000002d",
-      "reason": "analysis_failed",
+      "output_digest": "0000000000000000000000000000000000000000000000000000000000000032",
+      "reason": "authority_unverified",
       "subject": "INV-0053",
-      "verdict": null
+      "verdict": "undetermined"
     },
     {
-      "applicability": "applicable",
+      "applicability": "unknown",
       "basis_id": "basis-6",
       "criterion_id": "crit-4",
       "execution": "completed",
       "execution_epoch": "1",
-      "id": "eval-53",
+      "id": "eval-58",
       "inputs": [
         {
           "digest": "0000000000000000000000000000000000000000000000000000000000000013",
@@ -926,7 +996,7 @@
       "judgment": null,
       "methodology_binding_id": "id-8",
       "origin": "deterministic",
-      "output_digest": "000000000000000000000000000000000000000000000000000000000000002e",
+      "output_digest": "0000000000000000000000000000000000000000000000000000000000000033",
       "reason": "authority_unverified",
       "subject": "INV-0054",
       "verdict": "undetermined"
@@ -937,7 +1007,7 @@
       "criterion_id": "crit-4",
       "execution": "completed",
       "execution_epoch": "1",
-      "id": "eval-54",
+      "id": "eval-59",
       "inputs": [
         {
           "digest": "0000000000000000000000000000000000000000000000000000000000000015",
@@ -948,9 +1018,31 @@
       "judgment": null,
       "methodology_binding_id": "id-8",
       "origin": "deterministic",
-      "output_digest": "000000000000000000000000000000000000000000000000000000000000002f",
-      "reason": "unknown_applicability",
+      "output_digest": "0000000000000000000000000000000000000000000000000000000000000034",
+      "reason": "authority_unverified",
       "subject": "INV-0055",
+      "verdict": "undetermined"
+    },
+    {
+      "applicability": "unknown",
+      "basis_id": "basis-6",
+      "criterion_id": "crit-4",
+      "execution": "completed",
+      "execution_epoch": "1",
+      "id": "eval-60",
+      "inputs": [
+        {
+          "digest": "0000000000000000000000000000000000000000000000000000000000000017",
+          "fact_id": "fact-31"
+        }
+      ],
+      "invocation_id": "id-12",
+      "judgment": null,
+      "methodology_binding_id": "id-8",
+      "origin": "deterministic",
+      "output_digest": "0000000000000000000000000000000000000000000000000000000000000035",
+      "reason": "authority_unverified",
+      "subject": "INV-0057",
       "verdict": "undetermined"
     },
     {
@@ -959,7 +1051,7 @@
       "criterion_id": "crit-5",
       "execution": "completed",
       "execution_epoch": "1",
-      "id": "eval-55",
+      "id": "eval-61",
       "inputs": [
         {
           "digest": "0000000000000000000000000000000000000000000000000000000000000007",
@@ -977,7 +1069,7 @@
       },
       "methodology_binding_id": "id-8",
       "origin": "model_proposal",
-      "output_digest": "0000000000000000000000000000000000000000000000000000000000000030",
+      "output_digest": "0000000000000000000000000000000000000000000000000000000000000036",
       "reason": null,
       "subject": "INV-0042",
       "verdict": "met"
@@ -993,6 +1085,7 @@
       "job_id": null,
       "mantissa": "125000",
       "measure": "USD",
+      "measure_grounded": true,
       "methodology_binding_id": "id-8",
       "name": "amount",
       "offset_minutes": null,
@@ -1011,17 +1104,47 @@
           "reason": null,
           "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
           "verification": "verified",
-          "version": "id-56"
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!A2",
+          "locator": "cell:Sheet1!A2",
+          "original_id": "ap-invoices",
+          "quote": "INV-0042",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!C2",
+          "locator": "cell:Sheet1!C2",
+          "original_id": "ap-invoices",
+          "quote": "USD",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
         }
       ],
       "subject": "INV-0042",
+      "subject_grounded": true,
       "subject_unit": "invoice",
       "support": "supported",
       "support_reason": null,
       "unavailable_reason": null,
       "utc": null,
       "value": "1250.00",
-      "value_kind": "decimal"
+      "value_kind": "decimal",
+      "value_withheld": false
     },
     {
       "basis_id": "basis-6",
@@ -1029,9 +1152,10 @@
       "execution_epoch": "1",
       "id": "fact-15",
       "invocation_id": "id-12",
-      "job_id": null,
+      "job_id": "id-63",
       "mantissa": null,
       "measure": null,
+      "measure_grounded": null,
       "methodology_binding_id": "id-8",
       "name": "approver",
       "offset_minutes": null,
@@ -1050,27 +1174,44 @@
           "reason": null,
           "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
           "verification": "verified",
-          "version": "id-56"
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!A2",
+          "locator": "cell:Sheet1!A2",
+          "original_id": "ap-invoices",
+          "quote": "INV-0042",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
         }
       ],
       "subject": "INV-0042",
+      "subject_grounded": true,
       "subject_unit": "invoice",
       "support": "supported",
       "support_reason": null,
       "unavailable_reason": null,
       "utc": null,
       "value": "J. Smith",
-      "value_kind": "identifier"
+      "value_kind": "identifier",
+      "value_withheld": false
     },
     {
       "basis_id": "basis-6",
       "candidates": null,
       "execution_epoch": "1",
-      "id": "fact-57",
+      "id": "fact-64",
       "invocation_id": "id-12",
       "job_id": null,
       "mantissa": null,
       "measure": null,
+      "measure_grounded": null,
       "methodology_binding_id": "id-8",
       "name": "invoice_date",
       "offset_minutes": null,
@@ -1089,27 +1230,44 @@
           "reason": null,
           "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
           "verification": "verified",
-          "version": "id-56"
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!A2",
+          "locator": "cell:Sheet1!A2",
+          "original_id": "ap-invoices",
+          "quote": "INV-0042",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
         }
       ],
       "subject": "INV-0042",
+      "subject_grounded": true,
       "subject_unit": "invoice",
       "support": "supported",
       "support_reason": null,
       "unavailable_reason": null,
       "utc": null,
       "value": "2026-03-05",
-      "value_kind": "date"
+      "value_kind": "date",
+      "value_withheld": false
     },
     {
       "basis_id": "basis-6",
       "candidates": null,
       "execution_epoch": "1",
-      "id": "fact-58",
+      "id": "fact-65",
       "invocation_id": "id-12",
       "job_id": null,
       "mantissa": null,
       "measure": null,
+      "measure_grounded": null,
       "methodology_binding_id": "id-8",
       "name": "approved_at",
       "offset_minutes": -300,
@@ -1128,17 +1286,75 @@
           "reason": null,
           "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
           "verification": "verified",
-          "version": "id-56"
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!A2",
+          "locator": "cell:Sheet1!A2",
+          "original_id": "ap-invoices",
+          "quote": "INV-0042",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
         }
       ],
       "subject": "INV-0042",
+      "subject_grounded": true,
       "subject_unit": "invoice",
       "support": "supported",
       "support_reason": null,
       "unavailable_reason": null,
       "utc": "2026-03-06T04:30:00Z",
       "value": "2026-03-05T23:30:00-05:00",
-      "value_kind": "instant"
+      "value_kind": "instant",
+      "value_withheld": false
+    },
+    {
+      "basis_id": "basis-6",
+      "candidates": null,
+      "execution_epoch": "1",
+      "id": "fact-66",
+      "invocation_id": "id-12",
+      "job_id": null,
+      "mantissa": "0",
+      "measure": "USD",
+      "measure_grounded": false,
+      "methodology_binding_id": "id-8",
+      "name": "threshold",
+      "offset_minutes": null,
+      "rule": "decimal_plain",
+      "scale": 2,
+      "sources": [
+        {
+          "byte_end": 23,
+          "byte_start": 17,
+          "filename": "AP policy.txt",
+          "location": "bytes 17–23",
+          "locator": "bytes:17-23",
+          "original_id": "ap-policy",
+          "quote": "000.00",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000003",
+          "verification": "verified",
+          "version": "id-9"
+        }
+      ],
+      "subject": "INV-0042",
+      "subject_grounded": false,
+      "subject_unit": "invoice",
+      "support": "unsupported",
+      "support_reason": "partial_value",
+      "unavailable_reason": null,
+      "utc": null,
+      "value": "0.00",
+      "value_kind": "decimal",
+      "value_withheld": false
     },
     {
       "basis_id": "basis-6",
@@ -1149,6 +1365,7 @@
       "job_id": null,
       "mantissa": "128000",
       "measure": "USD",
+      "measure_grounded": false,
       "methodology_binding_id": "id-8",
       "name": "amount",
       "offset_minutes": null,
@@ -1159,25 +1376,55 @@
           "byte_end": null,
           "byte_start": null,
           "filename": "AP invoices.xlsx",
-          "location": "Sheet1!B2",
-          "locator": "cell:Sheet1!B2",
+          "location": "Sheet1!B6",
+          "locator": "cell:Sheet1!B6",
           "original_id": "ap-invoices",
           "quote": "1,250.00",
           "readable": true,
           "reason": null,
           "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
           "verification": "verified",
-          "version": "id-56"
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!A6",
+          "locator": "cell:Sheet1!A6",
+          "original_id": "ap-invoices",
+          "quote": "INV-0050",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!C6",
+          "locator": "cell:Sheet1!C6",
+          "original_id": "ap-invoices",
+          "quote": "USD",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
         }
       ],
       "subject": "INV-0050",
+      "subject_grounded": false,
       "subject_unit": "invoice",
       "support": "unsupported",
       "support_reason": "type_mismatch",
       "unavailable_reason": null,
       "utc": null,
       "value": "1280.00",
-      "value_kind": "decimal"
+      "value_kind": "decimal",
+      "value_withheld": false
     },
     {
       "basis_id": "basis-6",
@@ -1188,6 +1435,7 @@
       "job_id": null,
       "mantissa": "125000",
       "measure": "USD",
+      "measure_grounded": true,
       "methodology_binding_id": "id-8",
       "name": "amount",
       "offset_minutes": null,
@@ -1198,25 +1446,55 @@
           "byte_end": null,
           "byte_start": null,
           "filename": "AP invoices.xlsx",
-          "location": "Sheet1!B2",
-          "locator": "cell:Sheet1!B2",
+          "location": "Sheet1!B7",
+          "locator": "cell:Sheet1!B7",
           "original_id": "ap-invoices",
           "quote": "1,250.00",
           "readable": true,
           "reason": null,
           "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
           "verification": "verified",
-          "version": "id-56"
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!A7",
+          "locator": "cell:Sheet1!A7",
+          "original_id": "ap-invoices",
+          "quote": "INV-0051",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!C7",
+          "locator": "cell:Sheet1!C7",
+          "original_id": "ap-invoices",
+          "quote": "USD",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
         }
       ],
       "subject": "INV-0051",
+      "subject_grounded": true,
       "subject_unit": "invoice",
       "support": "supported",
       "support_reason": null,
       "unavailable_reason": null,
       "utc": null,
       "value": "1250.00",
-      "value_kind": "decimal"
+      "value_kind": "decimal",
+      "value_withheld": false
     },
     {
       "basis_id": "basis-6",
@@ -1227,6 +1505,7 @@
       "job_id": null,
       "mantissa": "125000",
       "measure": "USD",
+      "measure_grounded": true,
       "methodology_binding_id": "id-8",
       "name": "amount",
       "offset_minutes": null,
@@ -1237,25 +1516,55 @@
           "byte_end": null,
           "byte_start": null,
           "filename": "AP invoices.xlsx",
-          "location": "Sheet1!B2",
-          "locator": "cell:Sheet1!B2",
+          "location": "Sheet1!B8",
+          "locator": "cell:Sheet1!B8",
           "original_id": "ap-invoices",
           "quote": "1,250.00",
           "readable": true,
           "reason": null,
           "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
           "verification": "verified",
-          "version": "id-56"
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!A8",
+          "locator": "cell:Sheet1!A8",
+          "original_id": "ap-invoices",
+          "quote": "INV-0052",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!C8",
+          "locator": "cell:Sheet1!C8",
+          "original_id": "ap-invoices",
+          "quote": "USD",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
         }
       ],
       "subject": "INV-0052",
+      "subject_grounded": true,
       "subject_unit": "invoice",
       "support": "supported",
       "support_reason": null,
       "unavailable_reason": null,
       "utc": null,
       "value": "1250.00",
-      "value_kind": "decimal"
+      "value_kind": "decimal",
+      "value_withheld": false
     },
     {
       "basis_id": "basis-6",
@@ -1266,6 +1575,7 @@
       "job_id": null,
       "mantissa": null,
       "measure": null,
+      "measure_grounded": null,
       "methodology_binding_id": "id-8",
       "name": "approver",
       "offset_minutes": null,
@@ -1273,13 +1583,15 @@
       "scale": null,
       "sources": [],
       "subject": "INV-0052",
+      "subject_grounded": false,
       "subject_unit": "invoice",
       "support": "no_value",
       "support_reason": null,
       "unavailable_reason": "evidence_unavailable",
       "utc": null,
       "value": null,
-      "value_kind": "unavailable"
+      "value_kind": "unavailable",
+      "value_withheld": false
     },
     {
       "basis_id": "basis-6",
@@ -1290,6 +1602,7 @@
       "job_id": null,
       "mantissa": "125000",
       "measure": "USD",
+      "measure_grounded": true,
       "methodology_binding_id": "id-8",
       "name": "amount",
       "offset_minutes": null,
@@ -1300,25 +1613,55 @@
           "byte_end": null,
           "byte_start": null,
           "filename": "AP invoices.xlsx",
-          "location": "Sheet1!B2",
-          "locator": "cell:Sheet1!B2",
+          "location": "Sheet1!B9",
+          "locator": "cell:Sheet1!B9",
           "original_id": "ap-invoices",
           "quote": "1,250.00",
           "readable": true,
           "reason": null,
           "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
           "verification": "verified",
-          "version": "id-56"
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!A9",
+          "locator": "cell:Sheet1!A9",
+          "original_id": "ap-invoices",
+          "quote": "INV-0053",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!C9",
+          "locator": "cell:Sheet1!C9",
+          "original_id": "ap-invoices",
+          "quote": "USD",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
         }
       ],
       "subject": "INV-0053",
+      "subject_grounded": true,
       "subject_unit": "invoice",
       "support": "supported",
       "support_reason": null,
       "unavailable_reason": null,
       "utc": null,
       "value": "1250.00",
-      "value_kind": "decimal"
+      "value_kind": "decimal",
+      "value_withheld": false
     },
     {
       "basis_id": "basis-6",
@@ -1326,9 +1669,10 @@
       "execution_epoch": "1",
       "id": "fact-25",
       "invocation_id": "id-12",
-      "job_id": "id-59",
+      "job_id": "id-67",
       "mantissa": null,
       "measure": null,
+      "measure_grounded": null,
       "methodology_binding_id": "id-8",
       "name": "approver",
       "offset_minutes": null,
@@ -1339,25 +1683,97 @@
           "byte_end": null,
           "byte_start": null,
           "filename": "AP invoices.xlsx",
-          "location": "Sheet1!D2",
-          "locator": "cell:Sheet1!D2",
+          "location": "Sheet1!D9",
+          "locator": "cell:Sheet1!D9",
           "original_id": "ap-invoices",
           "quote": "J. Smith",
           "readable": true,
           "reason": null,
           "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
           "verification": "verified",
-          "version": "id-56"
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!A9",
+          "locator": "cell:Sheet1!A9",
+          "original_id": "ap-invoices",
+          "quote": "INV-0053",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
         }
       ],
       "subject": "INV-0053",
+      "subject_grounded": true,
       "subject_unit": "invoice",
       "support": "unsupported",
       "support_reason": "analysis_failed",
       "unavailable_reason": null,
       "utc": null,
       "value": "J. Smith",
-      "value_kind": "identifier"
+      "value_kind": "identifier",
+      "value_withheld": false
+    },
+    {
+      "basis_id": "basis-6",
+      "candidates": null,
+      "execution_epoch": "1",
+      "id": "fact-38",
+      "invocation_id": "id-12",
+      "job_id": null,
+      "mantissa": null,
+      "measure": null,
+      "measure_grounded": null,
+      "methodology_binding_id": "id-8",
+      "name": "in_approval_history",
+      "offset_minutes": null,
+      "rule": "boolean_yes_no",
+      "scale": null,
+      "sources": [
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!G9",
+          "locator": "cell:Sheet1!G9",
+          "original_id": "ap-invoices",
+          "quote": "Yes",
+          "readable": true,
+          "reason": "not_found_at_location",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "unverified",
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!A9",
+          "locator": "cell:Sheet1!A9",
+          "original_id": "ap-invoices",
+          "quote": "INV-0053",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
+        }
+      ],
+      "subject": "INV-0053",
+      "subject_grounded": false,
+      "subject_unit": "invoice",
+      "support": "unsupported",
+      "support_reason": "source_unverified",
+      "unavailable_reason": null,
+      "utc": null,
+      "value": "true",
+      "value_kind": "boolean",
+      "value_withheld": false
     },
     {
       "basis_id": "basis-6",
@@ -1368,6 +1784,7 @@
       "job_id": null,
       "mantissa": "125000",
       "measure": "USD",
+      "measure_grounded": true,
       "methodology_binding_id": "id-8",
       "name": "amount",
       "offset_minutes": null,
@@ -1386,27 +1803,58 @@
           "reason": null,
           "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
           "verification": "verified",
-          "version": "id-56"
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!A4",
+          "locator": "cell:Sheet1!A4",
+          "original_id": "ap-invoices",
+          "quote": "INV-0054",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!C4",
+          "locator": "cell:Sheet1!C4",
+          "original_id": "ap-invoices",
+          "quote": "USD",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
         }
       ],
       "subject": "INV-0054",
+      "subject_grounded": true,
       "subject_unit": "invoice",
       "support": "supported",
       "support_reason": null,
       "unavailable_reason": null,
       "utc": null,
       "value": "1250.00",
-      "value_kind": "decimal"
+      "value_kind": "decimal",
+      "value_withheld": false
     },
     {
       "basis_id": "basis-6",
       "candidates": null,
       "execution_epoch": "1",
-      "id": "fact-37",
+      "id": "fact-40",
       "invocation_id": "id-12",
       "job_id": null,
       "mantissa": null,
       "measure": null,
+      "measure_grounded": null,
       "methodology_binding_id": "id-8",
       "name": "in_approval_history",
       "offset_minutes": null,
@@ -1425,17 +1873,33 @@
           "reason": null,
           "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
           "verification": "verified",
-          "version": "id-56"
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!A4",
+          "locator": "cell:Sheet1!A4",
+          "original_id": "ap-invoices",
+          "quote": "INV-0054",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
         }
       ],
       "subject": "INV-0054",
+      "subject_grounded": true,
       "subject_unit": "invoice",
       "support": "supported",
       "support_reason": null,
       "unavailable_reason": null,
       "utc": null,
       "value": "false",
-      "value_kind": "boolean"
+      "value_kind": "boolean",
+      "value_withheld": false
     },
     {
       "basis_id": "basis-6",
@@ -1446,6 +1910,7 @@
       "job_id": null,
       "mantissa": "420000",
       "measure": "EUR",
+      "measure_grounded": true,
       "methodology_binding_id": "id-8",
       "name": "amount",
       "offset_minutes": null,
@@ -1464,17 +1929,103 @@
           "reason": null,
           "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
           "verification": "verified",
-          "version": "id-56"
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!A5",
+          "locator": "cell:Sheet1!A5",
+          "original_id": "ap-invoices",
+          "quote": "INV-0055",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!C5",
+          "locator": "cell:Sheet1!C5",
+          "original_id": "ap-invoices",
+          "quote": "EUR",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
         }
       ],
       "subject": "INV-0055",
+      "subject_grounded": true,
       "subject_unit": "invoice",
       "support": "supported",
       "support_reason": null,
       "unavailable_reason": null,
       "utc": null,
       "value": "4200.00",
-      "value_kind": "decimal"
+      "value_kind": "decimal",
+      "value_withheld": false
+    },
+    {
+      "basis_id": "basis-6",
+      "candidates": null,
+      "execution_epoch": "1",
+      "id": "fact-31",
+      "invocation_id": "id-12",
+      "job_id": null,
+      "mantissa": "300000",
+      "measure": "USD",
+      "measure_grounded": false,
+      "methodology_binding_id": "id-8",
+      "name": "amount",
+      "offset_minutes": null,
+      "rule": "decimal_grouped_comma",
+      "scale": 2,
+      "sources": [
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!B10",
+          "locator": "cell:Sheet1!B10",
+          "original_id": "ap-invoices",
+          "quote": "3,000.00",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!A10",
+          "locator": "cell:Sheet1!A10",
+          "original_id": "ap-invoices",
+          "quote": "INV-0057",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
+        }
+      ],
+      "subject": "INV-0057",
+      "subject_grounded": true,
+      "subject_unit": "invoice",
+      "support": "supported",
+      "support_reason": null,
+      "unavailable_reason": null,
+      "utc": null,
+      "value": "3000.00",
+      "value_kind": "decimal",
+      "value_withheld": false
     },
     {
       "basis_id": "basis-6",
@@ -1485,6 +2036,7 @@
       "job_id": null,
       "mantissa": "98000",
       "measure": "USD",
+      "measure_grounded": true,
       "methodology_binding_id": "id-8",
       "name": "amount",
       "offset_minutes": null,
@@ -1503,27 +2055,58 @@
           "reason": null,
           "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
           "verification": "verified",
-          "version": "id-56"
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!A3",
+          "locator": "cell:Sheet1!A3",
+          "original_id": "ap-invoices",
+          "quote": "000123",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!C3",
+          "locator": "cell:Sheet1!C3",
+          "original_id": "ap-invoices",
+          "quote": "USD",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+          "verification": "verified",
+          "version": "id-62"
         }
       ],
       "subject": "000123",
+      "subject_grounded": true,
       "subject_unit": "invoice",
       "support": "supported",
       "support_reason": null,
       "unavailable_reason": null,
       "utc": null,
       "value": "980.00",
-      "value_kind": "decimal"
+      "value_kind": "decimal",
+      "value_withheld": false
     },
     {
       "basis_id": "basis-6",
       "candidates": null,
       "execution_epoch": "1",
-      "id": "fact-60",
+      "id": "fact-68",
       "invocation_id": "id-12",
       "job_id": null,
       "mantissa": null,
       "measure": null,
+      "measure_grounded": null,
       "methodology_binding_id": "id-8",
       "name": "invoice_id",
       "offset_minutes": null,
@@ -1542,21 +2125,23 @@
           "reason": null,
           "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
           "verification": "verified",
-          "version": "id-56"
+          "version": "id-62"
         }
       ],
       "subject": "000123",
+      "subject_grounded": true,
       "subject_unit": "invoice",
       "support": "supported",
       "support_reason": null,
       "unavailable_reason": null,
       "utc": null,
       "value": "000123",
-      "value_kind": "identifier"
+      "value_kind": "identifier",
+      "value_withheld": false
     }
   ],
   "total_bases": "1",
   "total_criteria": "5",
-  "total_evaluations": "33",
-  "total_facts": "15"
+  "total_evaluations": "37",
+  "total_facts": "18"
 }

@@ -1252,6 +1252,11 @@ export interface components {
             /** @description Exact decimal: digit-string mantissa and scale (no float). */
             mantissa: string | null;
             measure: string | null;
+            /**
+             * @description For a decimal: its currency or unit was found at, or beside, a
+             *     verified source; otherwise it is only the agent's claim.
+             */
+            measure_grounded: boolean | null;
             methodology_binding_id: string;
             name: string;
             /** Format: int32 */
@@ -1262,6 +1267,8 @@ export interface components {
             sources: components["schemas"]["CitationSourceResponse"][];
             /** @description Exactly as stated (leading zeros kept). */
             subject: string;
+            /** @description The subject was found at, or beside, a verified source of the value. */
+            subject_grounded: boolean;
             subject_unit: string;
             /** @description `supported`, `unsupported` or `no_value`. */
             support: string;
@@ -1274,6 +1281,12 @@ export interface components {
             value: string | null;
             /** @description A fact type, `unavailable` or `ambiguous`. */
             value_kind: string;
+            /**
+             * @description True when the fact states a value the viewer may not see: the value
+             *     is read from its source quote, and none of its sources is an exact
+             *     original the viewer may read now. The value fields are then null.
+             */
+            value_withheld: boolean;
         };
         AssessmentResponse: {
             /**

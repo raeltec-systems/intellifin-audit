@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { attentionLabel, gapReasonLabel, nextActionLabel, omissionLabel, parseDirection, parseInvestigation, parseQuestion, parseQuestionPage, parseWork, verifyAnswer } from '../src/work.ts';
 import { OutboxStore, directionOutbox } from '../src/conversation-outbox.ts';
 import { readFileSync } from 'node:fs';
+const recordedAssessment = JSON.parse(readFileSync(new URL('./fixtures/task-assessment.json', import.meta.url), 'utf8'));
 
 const step = { ordinal: 0, kind: 'model_turn', status: 'proposed', intent_revision: '1', execution_epoch: '1', invocation_id: 'inv-a', operation_id: null, next_action: 'tool:send_exact', current_work: 'Model turn 1 proposed tools', knowledge_omitted: 2, reason: null, estimated_input_tokens: '4096', actual_input_tokens: '3900' };
 const brief = { command_id: 'cmd-a', cycle_id: 'cycle-a', content: 'Objective', received_cursor: '1', applied_boundary: 0, applied_cursor: '2', superseded_by: null };
@@ -36,8 +37,10 @@ test('work projection is strictly parsed and bound to the requested Task', () =>
     { ...work, investigation_unavailable: undefined },
     { ...work, investigation_unavailable: 'no' },
     { ...work, assessment_unavailable: undefined },
-    { ...work, assessment_unavailable: true, assessment: { bases: [] } },
+    // Unavailable and present at once, with an assessment that parses alone.
+    { ...work, assessment_unavailable: true, assessment: recordedAssessment },
   ]) assert.throws(() => parseWork(bad, 'task-a'));
+  assert.equal(parseWork({ ...work, assessment: recordedAssessment }, 'task-a').assessment.total_facts, recordedAssessment.total_facts);
   // An unreadable investigation leaves the rest of the work view intact.
   assert.equal(parseWork({ ...work, investigation_unavailable: true }, 'task-a').investigation_unavailable, true);
 });

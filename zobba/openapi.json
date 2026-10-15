@@ -10562,6 +10562,7 @@
           "subject_unit",
           "name",
           "value_kind",
+          "value_withheld",
           "value",
           "measure",
           "mantissa",
@@ -10573,6 +10574,8 @@
           "rule",
           "support",
           "support_reason",
+          "subject_grounded",
+          "measure_grounded",
           "job_id",
           "sources",
           "methodology_binding_id",
@@ -10620,6 +10623,13 @@
               "null"
             ]
           },
+          "measure_grounded": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "For a decimal: its currency or unit was found at, or beside, a\nverified source; otherwise it is only the agent's claim."
+          },
           "methodology_binding_id": {
             "type": "string"
           },
@@ -10658,6 +10668,10 @@
             "type": "string",
             "description": "Exactly as stated (leading zeros kept)."
           },
+          "subject_grounded": {
+            "type": "boolean",
+            "description": "The subject was found at, or beside, a verified source of the value."
+          },
           "subject_unit": {
             "type": "string"
           },
@@ -10695,6 +10709,10 @@
           "value_kind": {
             "type": "string",
             "description": "A fact type, `unavailable` or `ambiguous`."
+          },
+          "value_withheld": {
+            "type": "boolean",
+            "description": "True when the fact states a value the viewer may not see: the value\nis read from its source quote, and none of its sources is an exact\noriginal the viewer may read now. The value fields are then null."
           }
         }
       },

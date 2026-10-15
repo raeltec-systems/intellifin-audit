@@ -344,6 +344,10 @@ impl Loopback {
 }
 
 /// One structured answer with every field present (strict output).
+/// Two 22.4 analysis programs: one that fails and one that completes.
+const FAILING: &str = "raise SystemExit(3)\n";
+const SUCCEEDING: &str = "print('ok')\n";
+
 fn answer(fields: serde_json::Value) -> String {
     let mut value = serde_json::json!({
         "segments": [], "limitations": [], "read_pages": [], "programs": [],
@@ -627,7 +631,7 @@ async fn criteria_facts_and_evaluations_are_checked_records_of_one_basis() {
                 // Turn 1: criteria (method, original verified, original not at
                 // its location, judgment), one basis, and a failing analysis.
                 0 => text_reply(&answer(serde_json::json!({
-                    "programs": [{"program": "raise SystemExit(3)\n", "inputs": ["ap-invoices"]}],
+                    "programs": [{"program": FAILING, "inputs": ["ap-invoices"]}],
                     "propose_criteria": [
                         criterion("approval", "Invoices above 1,000.00 USD require an approver", ("method", "AP-1", "", ""),
                             predicate("compare_constant", "amount", "gt", "1000.00", "USD"),
@@ -656,9 +660,14 @@ async fn criteria_facts_and_evaluations_are_checked_records_of_one_basis() {
                         "limitations": ["Credit notes are out of scope."],
                     }],
                 }))),
-                // Turn 2: typed facts for the matrix, deterministic evaluation
+                // Turn 2: a second analysis program, one that completes (one
+                // program per answer).
+                1 => text_reply(&answer(serde_json::json!({
+                    "programs": [{"program": SUCCEEDING, "inputs": ["ap-invoices"]}],
+                }))),
+                // Turn 3: typed facts for the matrix, deterministic evaluation
                 // on request, and one judgment.
-                1 => {
+                2 => {
                     let basis: String = sqlx::query_scalar(
                         "SELECT id FROM public.assessment_bases WHERE task_id=$1",
                     )
@@ -670,12 +679,31 @@ async fn criteria_facts_and_evaluations_are_checked_records_of_one_basis() {
                         body.contains(&basis),
                         "the outline names the recorded basis"
                     );
-                    let job: String =
-                        sqlx::query_scalar("SELECT id FROM public.analysis_jobs WHERE task_id=$1")
-                            .bind(&task_id)
-                            .fetch_one(&lookup)
-                            .await
-                            .unwrap();
+                    let job = |program: &'static str| {
+                        let lookup = lookup.clone();
+                        let task_id = task_id.clone();
+                        async move {
+                            let id: String = sqlx::query_scalar("SELECT id FROM public.analysis_jobs WHERE task_id=$1 AND program=$2")
+                                .bind(&task_id).bind(program).fetch_one(&lookup).await.unwrap();
+                            let statuses: Vec<String> = sqlx::query_scalar("SELECT status FROM public.analysis_job_events WHERE job_id=$1 ORDER BY sequence")
+                                .bind(&id).fetch_all(&lookup).await.unwrap();
+                            (id, statuses)
+                        }
+                    };
+                    let (failed_job, failed_statuses) = job(FAILING).await;
+                    let (done_job, done_statuses) = job(SUCCEEDING).await;
+                    // The precondition the "completed, not collected" rule
+                    // rests on: a failed job is collected too, and never
+                    // completed; the succeeding job completed.
+                    assert!(
+                        failed_statuses.contains(&"collected".to_string())
+                            && !failed_statuses.contains(&"completed".to_string()),
+                        "{failed_statuses:?}"
+                    );
+                    assert!(
+                        done_statuses.contains(&"completed".to_string()),
+                        "{done_statuses:?}"
+                    );
                     let (approval, history, limit, unverified, segregation) = (
                         id("approval").await,
                         id("history").await,
@@ -690,38 +718,121 @@ async fn criteria_facts_and_evaluations_are_checked_records_of_one_basis() {
                         );
                     }
                     let b = basis.as_str();
-                    let mut failed = fact(
-                        b,
+                    // Each value cites its cell, the row's invoice number and,
+                    // for an amount, the row's currency.
+                    let amount =
+                        |subject: &str, value: &str, currency: &str, row: u32, quote: &str| {
+                            fact(
+                                b,
+                                subject,
+                                "amount",
+                                "decimal",
+                                value,
+                                currency,
+                                "decimal_grouped_comma",
+                                vec![
+                                    (&format!("cell:Sheet1!B{row}"), quote),
+                                    (&format!("cell:Sheet1!A{row}"), subject),
+                                    (&format!("cell:Sheet1!C{row}"), currency),
+                                ],
+                            )
+                        };
+                    let in_row = |subject: &str,
+                                  name: &str,
+                                  kind: &str,
+                                  value: &str,
+                                  rule: &str,
+                                  column: &str,
+                                  row: u32,
+                                  quote: &str| {
+                        fact(
+                            b,
+                            subject,
+                            name,
+                            kind,
+                            value,
+                            "",
+                            rule,
+                            vec![
+                                (&format!("cell:Sheet1!{column}{row}"), quote),
+                                (&format!("cell:Sheet1!A{row}"), subject),
+                            ],
+                        )
+                    };
+                    let mut approver = in_row(
+                        "INV-0042",
+                        "approver",
+                        "identifier",
+                        "J. Smith",
+                        "identifier_exact",
+                        "D",
+                        2,
+                        "J. Smith",
+                    );
+                    approver["job_id"] = serde_json::json!(done_job);
+                    let mut failed = in_row(
                         "INV-0053",
                         "approver",
                         "identifier",
                         "J. Smith",
-                        "",
                         "identifier_exact",
-                        vec![("cell:Sheet1!D2", "J. Smith")],
+                        "D",
+                        9,
+                        "J. Smith",
                     );
-                    failed["job_id"] = serde_json::json!(job);
+                    failed["job_id"] = serde_json::json!(failed_job);
                     let mut unavailable =
                         fact(b, "INV-0052", "approver", "unavailable", "", "", "", vec![]);
                     unavailable["reason"] = serde_json::json!("evidence_unavailable");
+                    // A EUR amount labelled USD, citing only the number and
+                    // the invoice: the currency is only a claim.
+                    let labelled = fact(
+                        b,
+                        "INV-0057",
+                        "amount",
+                        "decimal",
+                        "3000.00",
+                        "USD",
+                        "decimal_grouped_comma",
+                        vec![
+                            ("cell:Sheet1!B10", "3,000.00"),
+                            ("cell:Sheet1!A10", "INV-0057"),
+                        ],
+                    );
+                    // `000.00` cut from `1,000.00` in the policy text.
+                    let mut partial = fact(
+                        b,
+                        "INV-0042",
+                        "threshold",
+                        "decimal",
+                        "0.00",
+                        "USD",
+                        "decimal_plain",
+                        vec![],
+                    );
+                    partial["sources"] = serde_json::json!([{"original_id": "ap-policy", "locator": "bytes:17-23", "quote": "000.00"}]);
                     text_reply(&answer(serde_json::json!({
                         "record_facts": [
-                            fact(b, "INV-0042", "amount", "decimal", "1250.00", "USD", "decimal_grouped_comma", vec![("cell:Sheet1!B2", "1,250.00")]),
-                            fact(b, "INV-0042", "approver", "identifier", "J. Smith", "", "identifier_exact", vec![("cell:Sheet1!D2", "J. Smith")]),
-                            fact(b, "INV-0042", "invoice_date", "date", "2026-03-05", "", "date_dmy", vec![("cell:Sheet1!E2", "05/03/2026")]),
-                            fact(b, "INV-0042", "approved_at", "instant", "2026-03-05T23:30:00-05:00", "", "instant_rfc3339", vec![("cell:Sheet1!F2", "2026-03-05T23:30:00-05:00")]),
+                            amount("INV-0042", "1250.00", "USD", 2, "1,250.00"),
+                            approver,
+                            in_row("INV-0042", "invoice_date", "date", "2026-03-05", "date_dmy", "E", 2, "05/03/2026"),
+                            in_row("INV-0042", "approved_at", "instant", "2026-03-05T23:30:00-05:00", "instant_rfc3339", "F", 2, "2026-03-05T23:30:00-05:00"),
+                            partial,
                             // The value the cell does not show.
-                            fact(b, "INV-0050", "amount", "decimal", "1280.00", "USD", "decimal_grouped_comma", vec![("cell:Sheet1!B2", "1,250.00")]),
+                            amount("INV-0050", "1280.00", "USD", 6, "1,250.00"),
                             // No approver fact recorded.
-                            fact(b, "INV-0051", "amount", "decimal", "1250.00", "USD", "decimal_grouped_comma", vec![("cell:Sheet1!B2", "1,250.00")]),
-                            fact(b, "INV-0052", "amount", "decimal", "1250.00", "USD", "decimal_grouped_comma", vec![("cell:Sheet1!B2", "1,250.00")]),
+                            amount("INV-0051", "1250.00", "USD", 7, "1,250.00"),
+                            amount("INV-0052", "1250.00", "USD", 8, "1,250.00"),
                             unavailable,
-                            fact(b, "INV-0053", "amount", "decimal", "1250.00", "USD", "decimal_grouped_comma", vec![("cell:Sheet1!B2", "1,250.00")]),
+                            amount("INV-0053", "1250.00", "USD", 9, "1,250.00"),
                             failed,
-                            fact(b, "INV-0054", "amount", "decimal", "1250.00", "USD", "decimal_grouped_comma", vec![("cell:Sheet1!B4", "1,250.00")]),
-                            fact(b, "INV-0054", "in_approval_history", "boolean", "false", "", "boolean_yes_no", vec![("cell:Sheet1!G4", "No")]),
-                            fact(b, "INV-0055", "amount", "decimal", "4200.00", "EUR", "decimal_grouped_comma", vec![("cell:Sheet1!B5", "4,200.00")]),
-                            fact(b, "000123", "amount", "decimal", "980.00", "USD", "decimal_grouped_comma", vec![("cell:Sheet1!B3", "980.00")]),
+                            // A quote not at its location: G9 is empty.
+                            in_row("INV-0053", "in_approval_history", "boolean", "true", "boolean_yes_no", "G", 9, "Yes"),
+                            amount("INV-0054", "1250.00", "USD", 4, "1,250.00"),
+                            in_row("INV-0054", "in_approval_history", "boolean", "false", "boolean_yes_no", "G", 4, "No"),
+                            amount("INV-0055", "4200.00", "EUR", 5, "4,200.00"),
+                            labelled,
+                            amount("000123", "980.00", "USD", 3, "980.00"),
                             fact(b, "000123", "invoice_id", "identifier", "000123", "", "identifier_exact", vec![("cell:Sheet1!A3", "000123")]),
                         ],
                         "evaluate": [approval, history, limit, unverified],
@@ -733,7 +844,7 @@ async fn criteria_facts_and_evaluations_are_checked_records_of_one_basis() {
                         }],
                     })))
                 }
-                // Turn 3: the same evaluation again, then the answer.
+                // Turn 4: the same evaluation again, then the answer.
                 _ => text_reply(&answer(serde_json::json!({
                     "evaluate": [id("approval").await],
                     "segments": [{"text": "INV-0042 meets the approval criterion; INV-0054 is an exception.", "sources": []}],
@@ -788,7 +899,7 @@ async fn criteria_facts_and_evaluations_are_checked_records_of_one_basis() {
         runner,
         shutdown,
     ));
-    settle(&tasks, &provider, &receipt.task_id, 3).await;
+    settle(&tasks, &provider, &receipt.task_id, 4).await;
     let bodies = provider.bodies.lock().unwrap().clone();
     // Turn 1 offers the assessment fields and their constraints; nothing is
     // recorded yet, so there is no outline.
@@ -908,13 +1019,64 @@ async fn criteria_facts_and_evaluations_are_checked_records_of_one_basis() {
         f("INV-0054", "in_approval_history").5.as_deref(),
         Some("false")
     );
-    let sources: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM public.assessment_fact_sources WHERE verification='verified'",
+    // A supported fact from a completed job keeps its job reference.
+    let (job_id, job_state, support_reason): (Option<String>, Option<String>, Option<String>) = sqlx::query_as("SELECT job_id,document->>'job_state',support_reason FROM public.assessment_facts WHERE subject='INV-0042' AND name='approver'")
+        .fetch_one(&mut admin).await.unwrap();
+    assert!(job_id.is_some());
+    assert_eq!(
+        (
+            f("INV-0042", "approver").2.as_str(),
+            job_state.as_deref(),
+            support_reason
+        ),
+        ("supported", Some("completed"), None)
+    );
+    // A quote that is only part of a value (`000.00` of `1,000.00`).
+    assert_eq!(
+        (
+            f("INV-0042", "threshold").2.as_str(),
+            f("INV-0042", "threshold").3.as_deref()
+        ),
+        ("unsupported", Some("partial_value"))
+    );
+    // A quote not at its location (G9 is empty).
+    assert_eq!(
+        (
+            f("INV-0053", "in_approval_history").2.as_str(),
+            f("INV-0053", "in_approval_history").3.as_deref()
+        ),
+        ("unsupported", Some("source_unverified"))
+    );
+    let (verification, reason): (String, Option<String>) = sqlx::query_as("SELECT s.verification,s.reason FROM public.assessment_fact_sources s JOIN public.assessment_facts f ON f.id=s.fact_id WHERE f.subject='INV-0053' AND f.name='in_approval_history' AND s.ordinal=0")
+        .fetch_one(&mut admin).await.unwrap();
+    assert_eq!(
+        (verification.as_str(), reason.as_deref()),
+        ("unverified", Some("not_found_at_location"))
+    );
+    // Grounding: the row's invoice number and currency stand beside each
+    // value; the EUR amount labelled USD has no currency beside it.
+    let grounding: Vec<(String, String, bool, Option<bool>)> = sqlx::query_as("SELECT subject,name,subject_grounded,measure_grounded FROM public.assessment_facts ORDER BY subject COLLATE \"C\",name COLLATE \"C\"")
+        .fetch_all(&mut admin).await.unwrap();
+    let g = |subject: &str, name: &str| {
+        grounding
+            .iter()
+            .find(|r| r.0 == subject && r.1 == name)
+            .map(|r| (r.2, r.3))
+            .unwrap()
+    };
+    assert_eq!(g("INV-0042", "amount"), (true, Some(true)));
+    assert_eq!(g("INV-0055", "amount"), (true, Some(true)));
+    assert_eq!(g("INV-0057", "amount"), (true, Some(false)));
+    assert_eq!(g("000123", "invoice_id"), (true, None));
+    // Every source, exactly: 40 sources of 18 facts (the unavailable fact
+    // has none). Only G9 is not at its location; the partial quote exists.
+    let (verified, unverified): (i64, i64) = sqlx::query_as(
+        "SELECT count(*) FILTER (WHERE verification='verified'),count(*) FILTER (WHERE verification='unverified') FROM public.assessment_fact_sources",
     )
     .fetch_one(&mut admin)
     .await
     .unwrap();
-    assert!(sources >= 12, "{sources}");
+    assert_eq!((verified, unverified), (39, 1));
 
     // Evaluations: applicability, execution, verdict and origin are separate.
     let rows: Vec<EvaluationRow> = sqlx::query_as("SELECT (SELECT document->>'key' FROM public.assessment_criteria c WHERE c.id=e.criterion_id),subject,applicability,execution,verdict,reason,origin,output_digest FROM public.assessment_evaluations e ORDER BY ordinal")
@@ -937,13 +1099,14 @@ async fn criteria_facts_and_evaluations_are_checked_records_of_one_basis() {
         row("approval", "INV-0042"),
         ("applicable", "completed", Some("met"), None, det)
     );
+    // The mistyped amount cannot establish applicability, and says why.
     assert_eq!(
         row("approval", "INV-0050"),
         (
             "unknown",
             "completed",
             Some("undetermined"),
-            Some("unknown_applicability"),
+            Some("fact_unsupported"),
             det
         )
     );
@@ -979,7 +1142,29 @@ async fn criteria_facts_and_evaluations_are_checked_records_of_one_basis() {
     );
     assert_eq!(
         row("approval", "INV-0053"),
-        ("unknown", "failed", None, Some("analysis_failed"), det)
+        ("applicable", "failed", None, Some("analysis_failed"), det)
+    );
+    // Its quote not at its location: undetermined, never an exception.
+    assert_eq!(
+        row("history", "INV-0053"),
+        (
+            "applicable",
+            "completed",
+            Some("undetermined"),
+            Some("fact_unsupported"),
+            det
+        )
+    );
+    // The currency is only claimed: never compared.
+    assert_eq!(
+        row("limit", "INV-0057"),
+        (
+            "applicable",
+            "completed",
+            Some("undetermined"),
+            Some("unit_unverified"),
+            det
+        )
     );
     assert_eq!(
         row("limit", "INV-0055"),
@@ -998,7 +1183,7 @@ async fn criteria_facts_and_evaluations_are_checked_records_of_one_basis() {
     assert_eq!(
         row("unverified", "INV-0042"),
         (
-            "applicable",
+            "unknown",
             "completed",
             Some("undetermined"),
             Some("authority_unverified"),
@@ -1038,14 +1223,17 @@ async fn criteria_facts_and_evaluations_are_checked_records_of_one_basis() {
         "missing, unavailable, unsupported, failed and unverified never become not_met"
     );
     // Asking again gives the same output digest; nothing is rewritten.
-    assert!(bodies[2].contains("re-evaluating gives the same output digest"));
+    assert!(bodies[3].contains("re-evaluating gives the same output digest"));
+    // The feedback is attributed data inside the untrusted-content envelope.
+    assert!(bodies[3].contains("[zobba-data class=model-output source=assessment-feedback]"));
+    assert!(!bodies[3].contains("(platform facts)"));
     let again: i64 = sqlx::query_scalar("SELECT count(*) FROM public.assessment_evaluations")
         .fetch_one(&mut admin)
         .await
         .unwrap();
     assert_eq!(again as usize, rows.len());
 
-    database_guards_refuse_altered_assessment_records(&mut admin, &pool).await;
+    database_guards_refuse_altered_assessment_records(&mut admin, &mut owner, &pool).await;
 
     // The Task card: the assessment section as the auditor sees it.
     let auth = zobba_api::auth::AuthState::from_environment(&database).unwrap();
@@ -1196,81 +1384,489 @@ fn assessment_fixture(body: &serde_json::Value) {
     );
 }
 
-/// Records are immutable, bound to their own invocation's binding, and the
-/// database refuses a decided verdict that rests on an unsupported fact.
+/// The message of a refused statement (the database's own words).
+async fn refused(conn: &mut PgConnection, statement: &str) -> String {
+    sqlx::query(statement)
+        .execute(&mut *conn)
+        .await
+        .expect_err(statement)
+        .to_string()
+}
+fn assert_refused(message: &str, expected: &str, statement: &str) {
+    assert!(message.contains(expected), "{statement}: {message}");
+}
+
+/// A forged evaluation: a copy of an existing deterministic evaluation of
+/// `subject` with each `(path, value)` set, under a new ID and ordinal.
+fn forged_evaluation(
+    subject: &str,
+    ordinal: u32,
+    sets: &[(&str, &str)],
+    columns: &[(&str, &str)],
+) -> String {
+    let id = format!("eval-{:040x}", 0xf000 + ordinal);
+    let mut document = format!(
+        "jsonb_set(jsonb_set(e.document,'{{id}}',to_jsonb('{id}'::text)),'{{ordinal}}','{ordinal}')"
+    );
+    for (path, value) in sets {
+        document = format!("jsonb_set({document},'{{{path}}}','{value}')");
+    }
+    let column = |name: &str, default: &str| {
+        columns
+            .iter()
+            .find(|(c, _)| *c == name)
+            .map_or(default.to_string(), |(_, v)| (*v).to_string())
+    };
+    format!(
+        "INSERT INTO public.assessment_evaluations(organisation_id,client_id,engagement_id,task_id,cycle_id,actor_id,invocation_id,ordinal,id,methodology_binding_id,execution_epoch,basis_id,criterion_id,subject,applicability,execution,verdict,reason,origin,document,output_digest,digest)
+         SELECT e.organisation_id,e.client_id,e.engagement_id,e.task_id,e.cycle_id,e.actor_id,{},{ordinal},'{id}',{},{},e.basis_id,{},e.subject,{},{},{},{},{},{document},e.output_digest,e.digest
+         FROM public.assessment_evaluations e WHERE e.subject='{subject}' AND e.origin='deterministic' ORDER BY e.ordinal LIMIT 1",
+        column("invocation_id", "e.invocation_id"),
+        column("methodology_binding_id", "e.methodology_binding_id"),
+        column("execution_epoch", "e.execution_epoch"),
+        column("criterion_id", "e.criterion_id"),
+        column("applicability", "e.applicability"),
+        column("execution", "e.execution"),
+        column("verdict", "e.verdict"),
+        column("reason", "e.reason"),
+        column("origin", "e.origin"),
+    )
+}
+
+/// Records are immutable even for the owner and under the fixture reset,
+/// bound to their own invocation's binding and epoch, reference only their
+/// own Task, and the database refuses every decided verdict that does not
+/// rest on supported, grounded facts of a verified criterion. Every refusal
+/// is checked by its own message.
 async fn database_guards_refuse_altered_assessment_records(
     admin: &mut PgConnection,
+    owner: &mut PgConnection,
     pool: &sqlx::PgPool,
 ) {
-    for statement in [
-        "UPDATE public.assessment_evaluations SET verdict='met',reason=NULL",
-        "UPDATE public.assessment_facts SET support='supported',support_reason=NULL",
-        "UPDATE public.assessment_criteria SET authority_verified=true,authority_reason=NULL",
-        "UPDATE public.assessment_bases SET period_to='2027-12-31'",
-        "UPDATE public.assessment_fact_sources SET verification='verified',reason=NULL",
-        "UPDATE public.assessment_basis_criteria SET ordinal=ordinal",
-    ] {
-        let refused = sqlx::query(statement).execute(&mut *admin).await;
-        assert!(refused.is_err(), "{statement} was accepted");
-    }
-    for table in [
+    let tables = [
         "assessment_criteria",
         "assessment_bases",
         "assessment_basis_criteria",
         "assessment_facts",
         "assessment_fact_sources",
         "assessment_evaluations",
-    ] {
-        let refused = sqlx::query(&format!("DELETE FROM public.{table}"))
+    ];
+    // An UPDATE that agrees with every CHECK (it rewrites a value with
+    // itself) is still refused: only the immutability trigger stands in its
+    // way, even under the fixture reset.
+    let identity = |table: &str| {
+        if table == "assessment_basis_criteria" || table == "assessment_fact_sources" {
+            format!("UPDATE public.{table} SET ordinal=ordinal")
+        } else {
+            format!("UPDATE public.{table} SET created_us=created_us")
+        }
+    };
+    for table in tables {
+        let statement = identity(table);
+        assert_refused(
+            &refused(admin, &statement).await,
+            "assessment records are immutable",
+            &statement,
+        );
+        let mut reset = admin.begin().await.unwrap();
+        sqlx::query("SET LOCAL zobba.disposable_fixture_reset='on'")
+            .execute(&mut *reset)
+            .await
+            .unwrap();
+        let message = sqlx::query(&statement)
+            .execute(&mut *reset)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert_refused(&message, "assessment records are immutable", &statement);
+        reset.rollback().await.unwrap();
+        let refused_runtime = sqlx::query(&format!("DELETE FROM public.{table}"))
             .execute(pool)
             .await;
-        assert!(refused.is_err(), "runtime deleted from {table}");
-        let refused = sqlx::query(&format!("DELETE FROM public.{table}"))
-            .execute(&mut *admin)
-            .await
-            .unwrap_err();
-        assert!(
-            refused
-                .to_string()
-                .contains("assessment records are immutable"),
-            "{table}: {refused}"
+        assert!(refused_runtime.is_err(), "runtime deleted from {table}");
+        let statement = format!("DELETE FROM public.{table}");
+        assert_refused(
+            &refused(admin, &statement).await,
+            "assessment records are immutable",
+            &statement,
         );
-        let refused = sqlx::query(&format!("TRUNCATE public.{table} CASCADE"))
-            .execute(&mut *admin)
+        let statement = format!("TRUNCATE public.{table} CASCADE");
+        assert_refused(
+            &refused(admin, &statement).await,
+            "assessment records are retained",
+            &statement,
+        );
+        // The migration owner (the tables' owner) gets no exception either:
+        // forced RLS gives it no UPDATE or DELETE rows, and TRUNCATE (which
+        // RLS does not cover) is refused by the trigger.
+        let changed = sqlx::query(&identity(table))
+            .execute(&mut *owner)
             .await
-            .unwrap_err();
-        assert!(
-            refused
-                .to_string()
-                .contains("assessment records are retained"),
-            "{table}: {refused}"
+            .unwrap()
+            .rows_affected();
+        assert_eq!(changed, 0, "the owner updated {table}");
+        let changed = sqlx::query(&format!("DELETE FROM public.{table}"))
+            .execute(&mut *owner)
+            .await
+            .unwrap()
+            .rows_affected();
+        assert_eq!(changed, 0, "the owner deleted from {table}");
+        let statement = format!("TRUNCATE public.{table} CASCADE");
+        assert_refused(
+            &refused(owner, &statement).await,
+            "assessment records are retained",
+            &statement,
         );
     }
-    // A forged deterministic `met` that reads an unsupported fact.
-    let forged = sqlx::query("INSERT INTO public.assessment_evaluations(organisation_id,client_id,engagement_id,task_id,cycle_id,actor_id,invocation_id,ordinal,id,methodology_binding_id,execution_epoch,basis_id,criterion_id,subject,applicability,execution,verdict,reason,origin,document,output_digest,digest)
-        SELECT e.organisation_id,e.client_id,e.engagement_id,e.task_id,e.cycle_id,e.actor_id,e.invocation_id,1000,'eval-'||repeat('f',40),e.methodology_binding_id,e.execution_epoch,e.basis_id,e.criterion_id,'INV-0050','applicable','completed','met',NULL,'deterministic',
-          jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(e.document,'{id}',to_jsonb('eval-'||repeat('f',40))),'{ordinal}','1000'),'{subject}','\"INV-0050\"'),'{verdict}','\"met\"'),'{reason}','null')
-            || jsonb_build_object('inputs',(SELECT jsonb_agg(jsonb_build_object('id',f.id,'digest',f.digest)) FROM public.assessment_facts f WHERE f.subject='INV-0050'),'applicability','applicable'),
-          e.output_digest,e.digest
-        FROM public.assessment_evaluations e WHERE e.subject='INV-0050' AND e.origin='deterministic' LIMIT 1")
-        .execute(&mut *admin).await.unwrap_err();
-    assert!(
-        forged
-            .to_string()
-            .contains("a decided verdict reads only supported facts"),
-        "{forged}"
+    let counts = |table: &'static str| format!("SELECT count(*) FROM public.{table}");
+    let mut before = Vec::new();
+    for table in tables {
+        let n: i64 = sqlx::query_scalar(&counts(table))
+            .fetch_one(&mut *admin)
+            .await
+            .unwrap();
+        before.push(n);
+    }
+    // The only escape is an explicit disposable fixture reset in a *_test
+    // database: DELETE and TRUNCATE then succeed, shown inside a rolled-back
+    // transaction.
+    let mut reset = admin.begin().await.unwrap();
+    sqlx::query("SET LOCAL zobba.disposable_fixture_reset='on'")
+        .execute(&mut *reset)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM public.assessment_evaluations")
+        .execute(&mut *reset)
+        .await
+        .unwrap();
+    sqlx::query(&format!(
+        "TRUNCATE {} CASCADE",
+        tables.map(|t| format!("public.{t}")).join(",")
+    ))
+    .execute(&mut *reset)
+    .await
+    .unwrap();
+    reset.rollback().await.unwrap();
+    for (table, n) in tables.iter().zip(&before) {
+        let kept: i64 = sqlx::query_scalar(&counts(table))
+            .fetch_one(&mut *admin)
+            .await
+            .unwrap();
+        assert_eq!(
+            kept, *n,
+            "the rolled-back reset removed nothing from {table}"
+        );
+    }
+
+    // Insert guards: each forged row breaks exactly one rule.
+    let unverified: String = sqlx::query_scalar(
+        "SELECT id FROM public.assessment_criteria WHERE document->>'key'='unverified'",
+    )
+    .fetch_one(&mut *admin)
+    .await
+    .unwrap();
+    let approval: String = sqlx::query_scalar(
+        "SELECT id FROM public.assessment_criteria WHERE document->>'key'='approval'",
+    )
+    .fetch_one(&mut *admin)
+    .await
+    .unwrap();
+    let met = r#""met""#;
+    let cases: Vec<(String, &str)> = vec![
+        // A decided deterministic verdict on an unsupported input.
+        (
+            forged_evaluation(
+                "INV-0050",
+                1,
+                &[
+                    ("verdict", met),
+                    ("reason", "null"),
+                    ("applicability", r#""applicable""#),
+                ],
+                &[
+                    ("verdict", "'met'"),
+                    ("reason", "NULL"),
+                    ("applicability", "'applicable'"),
+                ],
+            ),
+            "a decided verdict reads only supported, grounded facts",
+        ),
+        // A decided verdict on a supported fact whose currency is a claim.
+        (
+            forged_evaluation(
+                "INV-0057",
+                2,
+                &[("verdict", met), ("reason", "null")],
+                &[("verdict", "'met'"), ("reason", "NULL")],
+            ),
+            "a decided verdict reads only supported, grounded facts",
+        ),
+        // A judgment origin on a rule criterion.
+        (
+            forged_evaluation(
+                "INV-0051",
+                3,
+                &[("origin", r#""model_proposal""#), ("judgment", "{}")],
+                &[("origin", "'model_proposal'")],
+            ),
+            "an evaluation origin follows its criterion kind",
+        ),
+        // Another binding than the invocation's, another epoch, an unknown
+        // invocation.
+        (
+            forged_evaluation(
+                "INV-0051",
+                4,
+                &[("methodology_binding_id", r#""other-binding""#)],
+                &[("methodology_binding_id", "'other-binding'")],
+            ),
+            "an assessment record belongs to its answer invocation and its binding",
+        ),
+        (
+            forged_evaluation(
+                "INV-0051",
+                5,
+                &[("execution_epoch", "999")],
+                &[("execution_epoch", "999")],
+            ),
+            "an assessment record belongs to its answer invocation and its binding",
+        ),
+        (
+            forged_evaluation(
+                "INV-0051",
+                6,
+                &[("invocation_id", r#""not-an-invocation""#)],
+                &[("invocation_id", "'not-an-invocation'")],
+            ),
+            "an assessment record belongs to its answer invocation and its binding",
+        ),
+        // `met` on the criterion whose authority is unverified.
+        (
+            forged_evaluation(
+                "INV-0042",
+                7,
+                &[
+                    ("criterion_id", &format!("\"{unverified}\"")),
+                    ("verdict", met),
+                    ("reason", "null"),
+                    ("applicability", r#""applicable""#),
+                ],
+                &[
+                    ("criterion_id", &format!("'{unverified}'")),
+                    ("verdict", "'met'"),
+                    ("reason", "NULL"),
+                    ("applicability", "'applicable'"),
+                ],
+            ),
+            "an unverified authority cannot yield met or not_met",
+        ),
+        // `not_met` that reads no fact.
+        (
+            forged_evaluation(
+                "INV-0042",
+                8,
+                &[
+                    ("criterion_id", &format!("\"{approval}\"")),
+                    ("verdict", r#""not_met""#),
+                    ("reason", "null"),
+                    ("inputs", "[]"),
+                    ("applicability", r#""applicable""#),
+                ],
+                &[
+                    ("criterion_id", &format!("'{approval}'")),
+                    ("verdict", "'not_met'"),
+                    ("reason", "NULL"),
+                    ("applicability", "'applicable'"),
+                ],
+            ),
+            "a decided verdict reads its facts",
+        ),
+    ];
+    for (statement, expected) in &cases {
+        let mut tx = admin.begin().await.unwrap();
+        let message = sqlx::query(statement)
+            .execute(&mut *tx)
+            .await
+            .expect_err(statement)
+            .to_string();
+        tx.rollback().await.unwrap();
+        assert_refused(&message, expected, statement);
+    }
+    // A basis-criterion row out of its basis order.
+    let statement = "INSERT INTO public.assessment_basis_criteria SELECT organisation_id,client_id,engagement_id,task_id,actor_id,basis_id,15,(SELECT criterion_id FROM public.assessment_basis_criteria WHERE ordinal=0 LIMIT 1) FROM public.assessment_basis_criteria WHERE ordinal=1 LIMIT 1";
+    assert_refused(
+        &refused(admin, statement).await,
+        "a basis pins criteria of its own Task, in its order",
+        statement,
     );
-    // A forged judgment origin on a rule criterion.
-    let forged = sqlx::query("INSERT INTO public.assessment_evaluations SELECT organisation_id,client_id,engagement_id,task_id,cycle_id,actor_id,invocation_id,1001,'eval-'||repeat('e',40),methodology_binding_id,execution_epoch,basis_id,criterion_id,'INV-0099',applicability,execution,verdict,reason,'model_proposal',
-          jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(document,'{id}',to_jsonb('eval-'||repeat('e',40))),'{ordinal}','1001'),'{subject}','\"INV-0099\"'),'{origin}','\"model_proposal\"'),'{judgment}','{}'),output_digest,digest,created_us
-        FROM public.assessment_evaluations WHERE origin='deterministic' AND verdict IS NULL LIMIT 1")
-        .execute(&mut *admin).await.unwrap_err();
-    assert!(
-        forged
-            .to_string()
-            .contains("an evaluation origin follows its criterion kind"),
-        "{forged}"
+    // A fact source that is not the one its fact records.
+    let statement = "INSERT INTO public.assessment_fact_sources SELECT organisation_id,client_id,engagement_id,task_id,actor_id,fact_id,3,original_id,locator,'another quote',original_sha256,verification,reason FROM public.assessment_fact_sources WHERE ordinal=0 LIMIT 1";
+    assert_refused(
+        &refused(admin, statement).await,
+        "a fact source is the one its fact records",
+        statement,
     );
+    // Facts that misstate their job's outcome: supported from the failed job,
+    // analysis_failed from the completed one.
+    let forged_fact = |ordinal: u32,
+                       name: &str,
+                       source: &str,
+                       support: &str,
+                       reason: &str,
+                       job: &str| {
+        format!(
+            "INSERT INTO public.assessment_facts(organisation_id,client_id,engagement_id,task_id,cycle_id,actor_id,invocation_id,ordinal,id,methodology_binding_id,execution_epoch,basis_id,subject,subject_unit,name,value_kind,support,support_reason,rule,job_id,subject_grounded,measure_grounded,document,digest)
+             SELECT f.organisation_id,f.client_id,f.engagement_id,f.task_id,f.cycle_id,f.actor_id,f.invocation_id,{ordinal},'fact-{ordinal:040x}',f.methodology_binding_id,f.execution_epoch,f.basis_id,f.subject,f.subject_unit,'{name}',f.value_kind,'{support}',{reason},f.rule,{job},f.subject_grounded,f.measure_grounded,
+               jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(f.document,'{{id}}',to_jsonb('fact-{ordinal:040x}'::text)),'{{ordinal}}','{ordinal}'),'{{name}}','\"{name}\"'),'{{support}}','\"{support}\"'),'{{support_reason}}',coalesce(to_jsonb({reason}::text),'null')),'{{job_id}}',coalesce(to_jsonb({job}::text),'null')),f.digest
+             FROM public.assessment_facts f WHERE {source} LIMIT 1"
+        )
+    };
+    let failed_job =
+        "(SELECT job_id FROM public.assessment_facts WHERE support_reason='analysis_failed')";
+    let done_job =
+        "(SELECT job_id FROM public.assessment_facts WHERE subject='INV-0042' AND name='approver')";
+    let statement = forged_fact(
+        60,
+        "approver_copy",
+        "f.subject='INV-0042' AND f.name='approver'",
+        "supported",
+        "NULL",
+        failed_job,
+    );
+    assert_refused(
+        &refused(admin, &statement).await,
+        "a fact names its analysis job's true outcome",
+        &statement,
+    );
+    let statement = forged_fact(
+        61,
+        "approver_copy",
+        "f.subject='INV-0053' AND f.name='approver'",
+        "unsupported",
+        "'analysis_failed'",
+        done_job,
+    );
+    assert_refused(
+        &refused(admin, &statement).await,
+        "a fact names its analysis job's true outcome",
+        &statement,
+    );
+    // At COMMIT: a supported fact whose source is unverified.
+    let mut tx = admin.begin().await.unwrap();
+    sqlx::query(&forged_fact(
+        62,
+        "amount_copy",
+        "f.subject='INV-0042' AND f.name='amount'",
+        "supported",
+        "NULL",
+        "NULL",
+    ))
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    for ordinal in 0..3 {
+        sqlx::query(&format!("INSERT INTO public.assessment_fact_sources SELECT s.organisation_id,s.client_id,s.engagement_id,s.task_id,s.actor_id,'fact-{:040x}',s.ordinal,s.original_id,s.locator,s.quote,s.original_sha256,s.verification,s.reason FROM public.assessment_fact_sources s JOIN public.assessment_facts f ON f.id=s.fact_id WHERE f.subject='INV-0042' AND f.name='amount' AND s.ordinal={ordinal}", 62))
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+    }
+    // The copy is complete and consistent: its deferred checks pass, so the
+    // forgery below is refused for its unverified source alone.
+    sqlx::query("SET CONSTRAINTS ALL IMMEDIATE")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.rollback().await.unwrap();
+    let mut tx = admin.begin().await.unwrap();
+    sqlx::query(&forged_fact(
+        63,
+        "history_copy",
+        "f.subject='INV-0053' AND f.name='in_approval_history'",
+        "supported",
+        "NULL",
+        "NULL",
+    ))
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    for ordinal in 0..2 {
+        sqlx::query(&format!("INSERT INTO public.assessment_fact_sources SELECT s.organisation_id,s.client_id,s.engagement_id,s.task_id,s.actor_id,'fact-{:040x}',s.ordinal,s.original_id,s.locator,s.quote,s.original_sha256,s.verification,s.reason FROM public.assessment_fact_sources s JOIN public.assessment_facts f ON f.id=s.fact_id WHERE f.subject='INV-0053' AND f.name='in_approval_history' AND s.ordinal={ordinal}", 63))
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+    }
+    let message = tx.commit().await.unwrap_err().to_string();
+    assert_refused(
+        &message,
+        "all verified when supported",
+        "a supported fact with an unverified source",
+    );
+
+    // At COMMIT: a basis that lists more criteria than it pins.
+    let mut tx = admin.begin().await.unwrap();
+    sqlx::query("INSERT INTO public.model_invocations SELECT organisation_id,client_id,engagement_id,'forged-invocation',task_id,cycle_id,actor_id,'forged-invocation',profile_id,profile_revision,catalogue_id,catalogue_revision,request,receipt_hash,dispatched_at FROM public.model_invocations WHERE id=(SELECT invocation_id FROM public.assessment_bases LIMIT 1)")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let forged_basis = format!("basis-{:040x}", 1);
+    sqlx::query(&format!("INSERT INTO public.assessment_bases(organisation_id,client_id,engagement_id,task_id,cycle_id,actor_id,invocation_id,ordinal,id,methodology_binding_id,execution_epoch,period_from,period_to,supersedes,document,digest) SELECT organisation_id,client_id,engagement_id,task_id,cycle_id,actor_id,'forged-invocation',0,'{forged_basis}',methodology_binding_id,execution_epoch,period_from,period_to,NULL,jsonb_set(jsonb_set(document,'{{id}}',to_jsonb('{forged_basis}'::text)),'{{invocation_id}}','\"forged-invocation\"'),digest FROM public.assessment_bases LIMIT 1"))
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query(&format!("INSERT INTO public.assessment_basis_criteria SELECT organisation_id,client_id,engagement_id,task_id,actor_id,'{forged_basis}',ordinal,criterion_id FROM public.assessment_basis_criteria WHERE basis_id<>'{forged_basis}' AND ordinal < 4"))
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let message = tx.commit().await.unwrap_err().to_string();
+    assert_refused(
+        &message,
+        "a basis pins exactly its listed criteria",
+        "a basis with one criterion unpinned",
+    );
+
+    // A basis holds at most 1,024 facts: fill the recorded basis to its bound
+    // under synthetic invocations (64 facts each), then one more is refused.
+    let mut tx = admin.begin().await.unwrap();
+    let held: i64 = sqlx::query_scalar("SELECT count(*) FROM public.assessment_facts")
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    let missing = 1024 - held;
+    let invocations = (missing + 63) / 64;
+    sqlx::query("INSERT INTO public.model_invocations SELECT i.organisation_id,i.client_id,i.engagement_id,'filler-'||n,i.task_id,i.cycle_id,i.actor_id,'filler-'||n,i.profile_id,i.profile_revision,i.catalogue_id,i.catalogue_revision,i.request,i.receipt_hash,i.dispatched_at FROM public.model_invocations i, generate_series(0,$1-1) n WHERE i.id=(SELECT invocation_id FROM public.assessment_facts WHERE value_kind='unavailable')")
+        .bind(invocations as i32)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let fill = "INSERT INTO public.assessment_facts(organisation_id,client_id,engagement_id,task_id,cycle_id,actor_id,invocation_id,ordinal,id,methodology_binding_id,execution_epoch,basis_id,subject,subject_unit,name,value_kind,support,support_reason,rule,job_id,subject_grounded,measure_grounded,document,digest)
+        SELECT f.organisation_id,f.client_id,f.engagement_id,f.task_id,f.cycle_id,f.actor_id,'filler-'||(n/64),n%64,'fact-'||lpad(to_hex(n),40,'0'),f.methodology_binding_id,f.execution_epoch,f.basis_id,'S-'||n,f.subject_unit,f.name,f.value_kind,f.support,f.support_reason,f.rule,f.job_id,f.subject_grounded,f.measure_grounded,
+          jsonb_set(jsonb_set(jsonb_set(jsonb_set(f.document,'{id}',to_jsonb('fact-'||lpad(to_hex(n),40,'0'))),'{ordinal}',to_jsonb(n%64)),'{invocation_id}',to_jsonb('filler-'||(n/64))),'{subject}',to_jsonb('S-'||n)),f.digest
+        FROM public.assessment_facts f, generate_series($1,$2) n WHERE f.value_kind='unavailable'";
+    sqlx::query(fill)
+        .bind(0i64)
+        .bind(missing - 1)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let total: i64 = sqlx::query_scalar("SELECT count(*) FROM public.assessment_facts")
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    assert_eq!(total, 1024, "the bound itself is accepted");
+    let message = sqlx::query(fill)
+        .bind(missing)
+        .bind(missing)
+        .execute(&mut *tx)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert_refused(
+        &message,
+        "a basis holds at most 1024 facts",
+        "the 1,025th fact",
+    );
+    tx.rollback().await.unwrap();
+
     // Another engagement's scope sees no records (forced RLS).
     let mut other = pool.begin().await.unwrap();
     sqlx::query("SELECT set_config('zobba.actor_id','actor-a',true),set_config('zobba.organisation_id','org-a',true),set_config('zobba.client_id','client-a',true),set_config('zobba.engagement_id','engagement-b',true)")
@@ -1281,21 +1877,4 @@ async fn database_guards_refuse_altered_assessment_records(
         .unwrap();
     assert_eq!(visible, 0);
     other.rollback().await.unwrap();
-    // The only escape is an explicit disposable fixture reset in a *_test
-    // database, shown inside a rolled-back transaction.
-    let mut reset = admin.begin().await.unwrap();
-    sqlx::query("SET LOCAL zobba.disposable_fixture_reset='on'")
-        .execute(&mut *reset)
-        .await
-        .unwrap();
-    sqlx::query("DELETE FROM public.assessment_evaluations")
-        .execute(&mut *reset)
-        .await
-        .unwrap();
-    reset.rollback().await.unwrap();
-    let kept: i64 = sqlx::query_scalar("SELECT count(*) FROM public.assessment_evaluations")
-        .fetch_one(&mut *admin)
-        .await
-        .unwrap();
-    assert!(kept > 0, "the rolled-back reset removed nothing");
 }

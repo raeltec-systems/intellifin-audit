@@ -1465,3 +1465,108 @@ pub(crate) async fn answer(
         Err(error) => failure(error),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zobba_application::assessment::{FactRecord, Grounding};
+    use zobba_domain::{
+        assessment::{Decimal, FactSupport, ParseRule, ProposedFact},
+        citation::{CitationSource, Locator, VerifiedSource},
+    };
+    use zobba_infrastructure::citation::ViewerOriginal;
+
+    fn fact() -> FactRecord {
+        let source = CitationSource {
+            original_id: "ap-invoices".into(),
+            locator: Locator::parse("cell:Sheet1!B2"),
+            quote: "1,250.00".into(),
+        };
+        FactRecord {
+            id: format!("fact-{}", "1".repeat(40)),
+            task_id: "task".into(),
+            cycle_id: "cycle".into(),
+            invocation_id: "turn".into(),
+            ordinal: 0,
+            methodology_binding_id: "binding".into(),
+            execution_epoch: 1,
+            basis_id: format!("basis-{}", "2".repeat(40)),
+            fact: ProposedFact {
+                basis: format!("basis-{}", "2".repeat(40)),
+                subject: "INV-0042".into(),
+                subject_unit: "invoice".into(),
+                name: "amount".into(),
+                state: FactState::Value(FactValue::Decimal {
+                    value: Decimal {
+                        mantissa: 125_000,
+                        scale: 2,
+                    },
+                    measure: Measure::Currency("USD".into()),
+                }),
+                rule: Some(ParseRule::DecimalGroupedComma),
+                sources: vec![source.clone()],
+                job_id: None,
+                effective: None,
+            },
+            sources: vec![VerifiedSource {
+                source,
+                original_sha256: Some("a".repeat(64)),
+                verification: Verification::Verified,
+            }],
+            support: FactSupport::Supported,
+            grounding: Grounding {
+                subject: true,
+                measure: Some(true),
+            },
+            job_state: None,
+            digest: "d".repeat(64),
+            recorded_us: Some(1),
+        }
+    }
+
+    #[test]
+    fn a_fact_value_is_withheld_from_a_viewer_who_cannot_open_its_original() {
+        let view = AssessmentSnapshot {
+            facts: vec![fact()],
+            total_facts: 1,
+            ..AssessmentSnapshot::default()
+        };
+        // The viewer may not read the original: the value read from its
+        // quote is withheld with the quote itself.
+        let hidden = assessment(view.clone(), &Originals::new());
+        let f = &hidden.facts[0];
+        assert!(f.value_withheld);
+        assert!(f.value.is_none() && f.mantissa.is_none() && f.scale.is_none());
+        assert!(f.sources[0].quote.is_none() && !f.sources[0].readable);
+        let text = serde_json::to_string(&hidden).unwrap();
+        assert!(
+            !text.contains("1250") && !text.contains("1,250.00"),
+            "{text}"
+        );
+        // An original of another digest is not the exact original either.
+        let other = Originals::from([(
+            "ap-invoices".to_string(),
+            ViewerOriginal {
+                filename: Some("AP invoices.xlsx".into()),
+                version: "v1".into(),
+                sha256: "b".repeat(64),
+            },
+        )]);
+        assert!(assessment(view.clone(), &other).facts[0].value_withheld);
+        // The exact original, readable now: the value is shown.
+        let readable = Originals::from([(
+            "ap-invoices".to_string(),
+            ViewerOriginal {
+                filename: Some("AP invoices.xlsx".into()),
+                version: "v1".into(),
+                sha256: "a".repeat(64),
+            },
+        )]);
+        let shown = assessment(view, &readable);
+        let f = &shown.facts[0];
+        assert!(!f.value_withheld);
+        assert_eq!(f.value.as_deref(), Some("1250.00"));
+        assert_eq!(f.mantissa.as_deref(), Some("125000"));
+        assert_eq!(f.sources[0].quote.as_deref(), Some("1,250.00"));
+    }
+}
