@@ -1,0 +1,41 @@
+{
+  "from": "source-freeze-4.json",
+  "to": "source-freeze-5.json",
+  "files": [
+    {
+      "path": "CLAUDE.md",
+      "before": "cfb417575d70d7989d0e0d0440fb59774f8d1b713456037e387a966aa834ae6e",
+      "after": "325258301f95cfc2c7f28065acb2f8e309f2612134552ed700a9b5eab2800815"
+    },
+    {
+      "path": "zobba/web/src/MethodologyWorkspace.tsx",
+      "before": "48ba5db2cb86803343926bef8af170506786ba946cb19fae6860fd02f8440128",
+      "after": "c5b2b3f943cafc9c7b29f7f1c196e73df71c6458943c7a3e737ca777c84b304b"
+    },
+    {
+      "path": "zobba/web/src/TaskSkills.tsx",
+      "before": "d8f310ff68ac2901ef2fc9478af10a969c70d78068d65743a1a91f6878fe096a",
+      "after": "e45cf3c14890627ddef9b350f4d2568a0a5afcd71c62185b34f725ebab9b4ca5"
+    },
+    {
+      "path": "zobba/web/src/styles.css",
+      "before": "506fc96e0255a64eba8b7df84e1fef0ea1b0287bb5925a3f5aa6755d8a0156e4",
+      "after": "9c6b68714c54aacd53902142791c90a7675937e4eb42882b7b7a5cb7100438b9"
+    },
+    {
+      "path": "zobba/web/tests/browser/account-binding.spec.ts",
+      "before": "3f9800bfb05c6f3c01dd02e15ce1e2a4f1b967561e53df8be66b14d49090219a",
+      "after": "e2ceef4812c225808c72dfd4aa6d4ceb0435a74cbf3e9e545869a9a0906b9fca"
+    },
+    {
+      "path": "zobba/web/tests/browser/evidence-repairs.spec.ts",
+      "before": "71bb1cfe7ca26115bab7448a9d6218f5989d330f3f6baef6d3c67b4c90b6f4ae",
+      "after": "14876043d556f8307d8777c6cffb8f9a3a8ec12e6ee32ca6b3ef93bb1b50274e"
+    },
+    {
+      "path": "zobba/web/tests/browser/skills.spec.ts",
+      "before": "29b3360a047804c60656ac75cd2fc65f09bf545b913a2193bb5adefc45baf317",
+      "after": "61f7b315e38266f3d1db45c72f2f3f48760c50f60dbcdf6cf95e4c52f8eb9f94"
+    }
+  ]
+}

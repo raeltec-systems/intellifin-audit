@@ -1,0 +1,202 @@
+{
+  "state": "All required repaired implementation gates passed; final complete Chromium145/145 on unchanged source. Earlier failed invocations remain explicit historical entries.",
+  "baseline": "d38e1daed736415ef13e7606345dac71bd1d9f01",
+  "counts_are_per_invocation_not_additive": true,
+  "gates": [
+    {
+      "gate": "fmt",
+      "log": "repair-fmt.log",
+      "exit_receipt": "repair-fmt.exit",
+      "exit": 0,
+      "state": "passed"
+    },
+    {
+      "gate": "strict_clippy",
+      "log": "repair-clippy.log",
+      "exit_receipt": "repair-clippy.exit",
+      "exit": 0,
+      "state": "passed"
+    },
+    {
+      "gate": "workspace_build",
+      "log": "repair-rust-build.log",
+      "exit_receipt": "repair-rust-build.exit",
+      "exit": 0,
+      "state": "passed"
+    },
+    {
+      "gate": "rust_workspace",
+      "log": "repair-rust-full.log",
+      "exit_receipt": "repair-rust-full.exit",
+      "exit": 0,
+      "state": "passed",
+      "count": 305,
+      "failed": 0,
+      "ignored_helper_entrypoints": 3,
+      "result_blocks": 44
+    },
+    {
+      "gate": "python",
+      "log": "repair-python.log",
+      "exit_receipt": "repair-python.exit",
+      "exit": 0,
+      "state": "passed",
+      "count": 47
+    },
+    {
+      "gate": "oidc_fixture",
+      "log": "repair-fixture.log",
+      "exit_receipt": "repair-fixture.exit",
+      "exit": 0,
+      "state": "passed",
+      "count": 56
+    },
+    {
+      "gate": "boundaries",
+      "log": "repair-boundaries.log",
+      "exit_receipt": "repair-boundaries.exit",
+      "exit": 0,
+      "state": "passed"
+    },
+    {
+      "gate": "schema_process_smoke",
+      "log": "repair-smoke.log",
+      "exit_receipt": "repair-smoke.exit",
+      "exit": 0,
+      "state": "passed",
+      "count": 3
+    },
+    {
+      "gate": "web_generation_types_units",
+      "log": "repair-web-check-12.log",
+      "exit_receipt": "repair-web-check-12.exit",
+      "exit": 0,
+      "state": "passed",
+      "count": 181
+    },
+    {
+      "gate": "web_production_build",
+      "log": "repair-web-build-2.log",
+      "exit_receipt": "repair-web-build-2.exit",
+      "exit": 0,
+      "state": "passed"
+    },
+    {
+      "gate": "api_contract_focused",
+      "log": "repair-api-contract.log",
+      "exit_receipt": "repair-api-contract.exit",
+      "exit": 0,
+      "state": "passed",
+      "count": 5
+    },
+    {
+      "gate": "api_query_focused",
+      "log": "repair-api-query.log",
+      "exit_receipt": "repair-api-query.exit",
+      "exit": 0,
+      "state": "passed",
+      "count": 1
+    },
+    {
+      "gate": "immutable_published_prefix",
+      "log": "repair-prefix.log",
+      "exit_receipt": "repair-prefix.exit",
+      "exit": 0,
+      "state": "passed",
+      "count": 18,
+      "count_means": "byte-identical migration/catalogue files1\u20139"
+    },
+    {
+      "gate": "knowledge_browser_focused",
+      "log": "repair-knowledge-focused-2.log",
+      "exit_receipt": "repair-knowledge-focused-2.exit",
+      "exit": 0,
+      "state": "passed",
+      "count": 18
+    },
+    {
+      "gate": "harness_browser_focused",
+      "log": "repair-harness-focused-3.log",
+      "exit_receipt": "repair-harness-focused-3.exit",
+      "exit": 0,
+      "state": "passed",
+      "count": 5
+    },
+    {
+      "gate": "historical_public_upgrade",
+      "log": "repair-legacy-upgrade-3.log",
+      "exit_receipt": "repair-legacy-upgrade-3.exit",
+      "exit": 0,
+      "state": "passed",
+      "count": 1
+    },
+    {
+      "gate": "first_repaired_full_chromium_failed",
+      "log": "repair-browser-full-1.log",
+      "exit_receipt": "repair-browser-full-1.exit",
+      "state": "failed; retained chronology",
+      "selected_cases": 145,
+      "workers": 1,
+      "retries": 0,
+      "exit": 1,
+      "passed": 142,
+      "failed": 3,
+      "elapsed_minutes": 17.5
+    },
+    {
+      "gate": "final_followup_browser_focused",
+      "log": "repair-full-failures-focused-1.log",
+      "exit_receipt": "repair-full-failures-focused-1.exit",
+      "exit": 0,
+      "state": "passed",
+      "count": 3,
+      "workers": 1,
+      "retries": 0
+    },
+    {
+      "gate": "second_repaired_full_chromium_failed",
+      "log": "repair-browser-full-2.log",
+      "exit_receipt": "repair-browser-full-2.exit",
+      "state": "failed; retained unsupported test-order assumption",
+      "selected_cases": 145,
+      "workers": 1,
+      "retries": 0,
+      "exit": 1,
+      "passed": 144,
+      "failed": 1,
+      "elapsed_minutes": 17.1
+    },
+    {
+      "gate": "comment_only_workspace_rebuild",
+      "log": "repair-rust-comment-build.log",
+      "exit_receipt": "repair-rust-comment-build.exit",
+      "exit": 0,
+      "state": "passed; approved one-comment source delta, no backend behavior change"
+    },
+    {
+      "gate": "final_P9_browser_focused",
+      "log": "repair-preference-outcome-focused-1.log",
+      "exit_receipt": "repair-preference-outcome-focused-1.exit",
+      "exit": 0,
+      "state": "passed",
+      "count": 1,
+      "workers": 1,
+      "retries": 0
+    },
+    {
+      "gate": "full_chromium",
+      "log": "repair-browser-full-3.log",
+      "exit_receipt": "repair-browser-full-3.exit",
+      "state": "passed",
+      "selected_cases": 145,
+      "workers": 1,
+      "retries": 0,
+      "exit": 0,
+      "passed": 145,
+      "failed": 0,
+      "duration_ms": 1001152.249,
+      "source_files": 245,
+      "source_unchanged": true
+    }
+  ]
+}

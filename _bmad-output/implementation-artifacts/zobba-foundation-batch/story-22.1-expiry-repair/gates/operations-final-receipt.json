@@ -1,0 +1,23 @@
+{
+  "gate": "operations-final",
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "zobba-infrastructure",
+    "--test",
+    "operations"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T09:03:33.937635+00:00",
+  "ended_at": "2026-10-03T09:05:10.944247+00:00",
+  "duration_seconds": 97.007,
+  "exit": 0,
+  "source_before": "operations-final-source-before.json",
+  "source_after": "operations-final-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "operations-final.log",
+  "log_sha256": "261329e97771ecbcbd3f5eadfb5cddc21e2d2f0eff0d3b3c21078db611bab5e8"
+}

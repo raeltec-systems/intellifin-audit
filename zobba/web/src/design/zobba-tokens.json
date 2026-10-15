@@ -1,0 +1,818 @@
+{
+  "$description": "Zobba design tokens v1.0 · 25 Sep 2026 · canonical source for DESIGN-TOKENS.md",
+  "primitive": {
+    "color": {
+      "graphite": {
+        "0": "#FFFFFF",
+        "20": "#FBFAF7",
+        "30": "#F6F5F1",
+        "40": "#F3F1EC",
+        "50": "#EFEDE8",
+        "75": "#E8E4DA",
+        "100": "#E3E0D8",
+        "150": "#D6D2C8",
+        "200": "#CCC8BD",
+        "250": "#8F8A7F",
+        "300": "#8C8578",
+        "400": "#716D64",
+        "500": "#5E5A52",
+        "600": "#3D3A35",
+        "700": "#3A3935",
+        "800": "#2A2926",
+        "900": "#1C1B19"
+      },
+      "ivory": {
+        "100": "#F4F1EA",
+        "300": "#B8B3A8"
+      },
+      "iris": {
+        "50": "#F6F5FD",
+        "100": "#EEECFA",
+        "200": "#DAD5FA",
+        "300": "#B9B0F5",
+        "600": "#4C3FB8",
+        "700": "#3B2F99"
+      },
+      "green": {
+        "50": "#EAF4EC",
+        "700": "#1E6B35"
+      },
+      "red": {
+        "50": "#FDECEA",
+        "700": "#B42318"
+      },
+      "amber": {
+        "25": "#FFFBF3",
+        "50": "#FDF3E2",
+        "700": "#8A4B06"
+      },
+      "stone": {
+        "removed": "#6F6B63"
+      }
+    }
+  },
+  "semantic": {
+    "color": {
+      "text": {
+        "primary": {
+          "$value": "{primitive.color.graphite.900}",
+          "$resolved": "#1C1B19",
+          "$description": "Body text, headings"
+        },
+        "secondary": {
+          "$value": "{primitive.color.graphite.600}",
+          "$resolved": "#3D3A35",
+          "$description": "Supporting text, table cells in secondary columns"
+        },
+        "tertiary": {
+          "$value": "{primitive.color.graphite.500}",
+          "$resolved": "#5E5A52",
+          "$description": "Metadata, captions, section labels"
+        },
+        "placeholder": {
+          "$value": "{primitive.color.graphite.400}",
+          "$resolved": "#716D64",
+          "$description": "Input placeholder, \"Next:\" activity line"
+        },
+        "disabled": {
+          "$value": "{primitive.color.graphite.300}",
+          "$resolved": "#8C8578",
+          "$description": "Disabled labels (not for essential information)"
+        },
+        "inverse": {
+          "$value": "{primitive.color.ivory.100}",
+          "$resolved": "#F4F1EA",
+          "$description": "Text on graphite surfaces"
+        },
+        "inverse-secondary": {
+          "$value": "{primitive.color.ivory.300}",
+          "$resolved": "#B8B3A8",
+          "$description": "Secondary text on graphite"
+        },
+        "link": {
+          "$value": "{primitive.color.iris.600}",
+          "$resolved": "#4C3FB8",
+          "$description": "Links and inline actions"
+        },
+        "link-hover": {
+          "$value": "{primitive.color.iris.700}",
+          "$resolved": "#3B2F99",
+          "$description": "Link hover and pressed"
+        },
+        "on-accent-wash": {
+          "$value": "{primitive.color.iris.700}",
+          "$resolved": "#3B2F99",
+          "$description": "Presence chip, citation, selection tag"
+        }
+      },
+      "surface": {
+        "sidebar": {
+          "$value": "{primitive.color.graphite.50}",
+          "$resolved": "#EFEDE8",
+          "$description": "Sidebar and rail (Linen)"
+        },
+        "canvas": {
+          "$value": "{primitive.color.graphite.20}",
+          "$resolved": "#FBFAF7",
+          "$description": "Conversation surface (Canvas)"
+        },
+        "panel": {
+          "$value": "{primitive.color.graphite.0}",
+          "$resolved": "#FFFFFF",
+          "$description": "Workspace panel (Paper)"
+        },
+        "artifact-surround": {
+          "$value": "{primitive.color.graphite.30}",
+          "$resolved": "#F6F5F1",
+          "$description": "Area around an artifact page"
+        },
+        "artifact-page": {
+          "$value": "{primitive.color.graphite.0}",
+          "$resolved": "#FFFFFF",
+          "$description": "Artifact page"
+        },
+        "raised": {
+          "$value": "{primitive.color.graphite.0}",
+          "$resolved": "#FFFFFF",
+          "$description": "Cards, popovers, menus, drawers"
+        },
+        "user-message": {
+          "$value": "{primitive.color.graphite.50}",
+          "$resolved": "#EFEDE8",
+          "$description": "Auditor message bubble"
+        },
+        "subtle": {
+          "$value": "{primitive.color.graphite.40}",
+          "$resolved": "#F3F1EC",
+          "$description": "Inconclusive chip, quiet fills"
+        },
+        "hover": {
+          "$value": "{primitive.color.graphite.40}",
+          "$resolved": "#F3F1EC",
+          "$description": "Row and nav hover"
+        },
+        "selected": {
+          "$value": "{primitive.color.graphite.0}",
+          "$resolved": "#FFFFFF",
+          "$description": "Active nav item (with hairline ring)"
+        },
+        "selected-accent": {
+          "$value": "{primitive.color.iris.50}",
+          "$resolved": "#F6F5FD",
+          "$description": "Selected block, selected table row, row being processed"
+        },
+        "attention": {
+          "$value": "{primitive.color.amber.25}",
+          "$resolved": "#FFFBF3",
+          "$description": "Row needing attention (e.g. reconnect)"
+        },
+        "dark": {
+          "base": {
+            "$value": "{primitive.color.graphite.900}",
+            "$resolved": "#1C1B19",
+            "$description": "Marketing, notifications, future dark mode"
+          },
+          "raised": {
+            "$value": "{primitive.color.graphite.800}",
+            "$resolved": "#2A2926",
+            "$description": "Raised on dark"
+          }
+        }
+      },
+      "border": {
+        "dark": {
+          "$value": "{primitive.color.graphite.700}",
+          "$resolved": "#3A3935",
+          "$description": "Lines on dark"
+        },
+        "hairline": {
+          "$value": "{primitive.color.graphite.100}",
+          "$resolved": "#E3E0D8",
+          "$description": "Dividers, panel edges, card borders"
+        },
+        "divider-inner": {
+          "$value": "{primitive.color.graphite.50}",
+          "$resolved": "#EFEDE8",
+          "$description": "Row dividers inside tables and cards"
+        },
+        "control": {
+          "$value": "{primitive.color.graphite.200}",
+          "$resolved": "#CCC8BD",
+          "$description": "Chips, secondary buttons (decorative boundary)"
+        },
+        "input": {
+          "$value": "{primitive.color.graphite.250}",
+          "$resolved": "#8F8A7F",
+          "$description": "Composer, inputs, selects, reply options (3:1 boundary)"
+        },
+        "strong": {
+          "$value": "{primitive.color.graphite.900}",
+          "$resolved": "#1C1B19",
+          "$description": "Selected filter chip, tab underline"
+        }
+      },
+      "action": {
+        "primary": {
+          "bg": {
+            "$value": "{primitive.color.graphite.900}",
+            "$resolved": "#1C1B19",
+            "$description": "Primary buttons: Allow and send, Save, Send"
+          },
+          "fg": {
+            "$value": "{primitive.color.graphite.0}",
+            "$resolved": "#FFFFFF",
+            "$description": "Primary button label"
+          },
+          "hover": {
+            "$value": "{primitive.color.graphite.800}",
+            "$resolved": "#2A2926",
+            "$description": "Primary hover"
+          }
+        },
+        "secondary": {
+          "border": {
+            "$value": "{primitive.color.graphite.250}",
+            "$resolved": "#8F8A7F",
+            "$description": "Secondary button border"
+          }
+        },
+        "disabled": {
+          "bg": {
+            "$value": "{primitive.color.graphite.100}",
+            "$resolved": "#E3E0D8",
+            "$description": "Disabled send"
+          },
+          "fg": {
+            "$value": "{primitive.color.graphite.400}",
+            "$resolved": "#716D64",
+            "$description": "Disabled send glyph"
+          }
+        }
+      },
+      "accent": {
+        "default": {
+          "$value": "{primitive.color.iris.600}",
+          "$resolved": "#4C3FB8",
+          "$description": "Zobba presence, links, focus"
+        },
+        "strong": {
+          "$value": "{primitive.color.iris.700}",
+          "$resolved": "#3B2F99",
+          "$description": "Accent text on wash"
+        },
+        "wash": {
+          "$value": "{primitive.color.iris.100}",
+          "$resolved": "#EEECFA",
+          "$description": "Presence chip, citation chip, focus ring halo"
+        },
+        "on-dark": {
+          "$value": "{primitive.color.iris.300}",
+          "$resolved": "#B9B0F5",
+          "$description": "Accent on dark surfaces only"
+        }
+      },
+      "selection": {
+        "text": {
+          "$value": "{primitive.color.iris.200}",
+          "$resolved": "#DAD5FA",
+          "$description": "Native text selection, active citation"
+        }
+      },
+      "focus": {
+        "ring": {
+          "$value": "{primitive.color.iris.600}",
+          "$resolved": "#4C3FB8",
+          "$description": "2px focus ring"
+        }
+      },
+      "status": {
+        "pass": {
+          "fg": {
+            "$value": "{primitive.color.green.700}",
+            "$resolved": "#1E6B35",
+            "$description": "No exception"
+          },
+          "bg": {
+            "$value": "{primitive.color.green.50}",
+            "$resolved": "#EAF4EC",
+            "$description": ""
+          }
+        },
+        "exception": {
+          "fg": {
+            "$value": "{primitive.color.red.700}",
+            "$resolved": "#B42318",
+            "$description": "Exception / failure / \"Still active\""
+          },
+          "bg": {
+            "$value": "{primitive.color.red.50}",
+            "$resolved": "#FDECEA",
+            "$description": ""
+          }
+        },
+        "warning": {
+          "fg": {
+            "$value": "{primitive.color.amber.700}",
+            "$resolved": "#8A4B06",
+            "$description": "Warning, needs attention"
+          },
+          "bg": {
+            "$value": "{primitive.color.amber.50}",
+            "$resolved": "#FDF3E2",
+            "$description": ""
+          }
+        },
+        "inconclusive": {
+          "fg": {
+            "$value": "{primitive.color.graphite.600}",
+            "$resolved": "#3D3A35",
+            "$description": "Inconclusive / coverage limitation"
+          },
+          "bg": {
+            "$value": "{primitive.color.graphite.40}",
+            "$resolved": "#F3F1EC",
+            "$description": ""
+          },
+          "border": {
+            "$value": "{primitive.color.graphite.300}",
+            "$resolved": "#8C8578",
+            "$description": "1px dashed"
+          }
+        },
+        "pending": {
+          "fg": {
+            "$value": "{primitive.color.graphite.600}",
+            "$resolved": "#3D3A35",
+            "$description": "Not reviewed"
+          },
+          "border": {
+            "$value": "{primitive.color.graphite.200}",
+            "$resolved": "#CCC8BD",
+            "$description": "1px solid outline"
+          }
+        }
+      },
+      "diff": {
+        "added": {
+          "bg": {
+            "$value": "{primitive.color.graphite.75}",
+            "$resolved": "#E8E4DA",
+            "$description": "Added content background"
+          },
+          "underline": {
+            "$value": "{primitive.color.graphite.900}",
+            "$resolved": "#1C1B19",
+            "$description": "1.5px underline"
+          }
+        },
+        "removed": {
+          "fg": {
+            "$value": "{primitive.color.stone.removed}",
+            "$resolved": "#6F6B63",
+            "$description": "Removed content, struck through"
+          }
+        }
+      },
+      "overlay": {
+        "scrim": {
+          "$value": "rgba(28,27,25,0.32)",
+          "$resolved": "rgba(28,27,25,0.32)",
+          "$description": "Behind a modal dialog on desktop, full-screen sheets on narrow"
+        },
+        "drawer-shadow": {
+          "$value": "rgba(28,27,25,0.10)",
+          "$resolved": "rgba(28,27,25,0.10)",
+          "$description": "Drawer edge shadow"
+        }
+      }
+    }
+  },
+  "type": {
+    "family": {
+      "ui": "Hanken Grotesk",
+      "mono": "IBM Plex Mono",
+      "fallback": "\"Segoe UI\", system-ui, sans-serif"
+    },
+    "weights": [
+      400,
+      500,
+      600
+    ],
+    "scale": {
+      "display": {
+        "size_lineHeight": "60/66",
+        "weight": "600",
+        "tracking": "-0.035em",
+        "use": "Marketing hero only"
+      },
+      "greeting": {
+        "size_lineHeight": "38/46",
+        "weight": "600",
+        "tracking": "-0.022em",
+        "use": "Home greeting"
+      },
+      "page-title": {
+        "size_lineHeight": "16/21",
+        "weight": "600",
+        "tracking": "0",
+        "use": "Page header title (Engagement, Search, Settings)"
+      },
+      "panel-title": {
+        "size_lineHeight": "14/19",
+        "weight": "600",
+        "tracking": "0",
+        "use": "Workspace panel title"
+      },
+      "result": {
+        "size_lineHeight": "20/30",
+        "weight": "500",
+        "tracking": "-0.005em",
+        "use": "Readable conclusion of a scheduled result (19/28 narrow)"
+      },
+      "section": {
+        "size_lineHeight": "13/18",
+        "weight": "600",
+        "tracking": "0",
+        "use": "Section headings inside pages"
+      },
+      "heading": {
+        "size_lineHeight": "15/20",
+        "weight": "600",
+        "tracking": "0",
+        "use": "Task title"
+      },
+      "body": {
+        "size_lineHeight": "15/24",
+        "weight": "400",
+        "tracking": "0",
+        "use": "Conversation, Zobba replies, auditor messages (15/23 in bubbles)"
+      },
+      "ui": {
+        "size_lineHeight": "14/20",
+        "weight": "400|500|600",
+        "tracking": "0",
+        "use": "Navigation, lists, rows"
+      },
+      "label": {
+        "size_lineHeight": "13/18",
+        "weight": "500|600",
+        "tracking": "0",
+        "use": "Buttons, chips, form labels"
+      },
+      "meta": {
+        "size_lineHeight": "12/16",
+        "weight": "400",
+        "tracking": "0",
+        "use": "Metadata, captions, section labels (600)"
+      },
+      "table-head": {
+        "size_lineHeight": "12/16",
+        "weight": "600",
+        "tracking": "0",
+        "use": "Table headers"
+      },
+      "table-cell": {
+        "size_lineHeight": "13/18",
+        "weight": "400",
+        "tracking": "0",
+        "use": "Table cells; tabular-nums"
+      },
+      "id": {
+        "size_lineHeight": "12/18 IBM Plex Mono",
+        "weight": "400",
+        "tracking": "0",
+        "use": "Identifiers and references only"
+      },
+      "chip": {
+        "size_lineHeight": "12/16",
+        "weight": "600",
+        "tracking": "0",
+        "use": "Status and presence chips"
+      }
+    }
+  },
+  "space": {
+    "0": 0,
+    "1": 4,
+    "2": 8,
+    "3": 12,
+    "4": 16,
+    "5": 20,
+    "6": 24,
+    "8": 32,
+    "10": 40,
+    "12": 48
+  },
+  "radius": {
+    "xs": 4,
+    "sm": 6,
+    "md": 8,
+    "lg": 12,
+    "xl": 16,
+    "composer": 18,
+    "pill": 999,
+    "icon": "22.5%"
+  },
+  "border": {
+    "hairline": "1px",
+    "input": "1px",
+    "input-focus": "1.5px",
+    "diff-underline": "1.5px",
+    "selection": "2px"
+  },
+  "shadow": {
+    "composer": "0 2px 10px rgba(28,27,25,.05)",
+    "page": "0 1px 3px rgba(28,27,25,.08)",
+    "popover": "0 12px 32px rgba(28,27,25,.14)",
+    "drawer": "-12px 0 32px rgba(28,27,25,.10)",
+    "dialog": "0 24px 64px rgba(28,27,25,.20)"
+  },
+  "layout": {
+    "sidebar": 248,
+    "rail": 52,
+    "header": 52,
+    "header-page": 60,
+    "conversation-min": 400,
+    "conversation-max-reading": 720,
+    "panel-default": 540,
+    "panel-min": 420,
+    "panel-max-ratio": "62%",
+    "drawer": 470,
+    "composer-home": 720,
+    "page-content-max": 800,
+    "reading-measure": "72ch"
+  },
+  "icon": {
+    "grid": 24,
+    "dense": 20,
+    "small": 16,
+    "stroke": "2px (1.5px at 16px)",
+    "cap": "round",
+    "join": "round",
+    "corner-radius": 2.5
+  },
+  "focus": {
+    "ring": "2px solid color.focus.ring, offset 2px",
+    "composer": "1.5px color.accent.default border + 0 0 0 4px color.accent.wash"
+  },
+  "selection": {
+    "block": "0 0 0 2px color.accent.default + color.surface.selected-accent, radius 2",
+    "row": "inset 2px 0 0 color.accent.default + color.surface.selected-accent",
+    "text": "color.selection.text",
+    "tag": "color.accent.strong on color.accent.wash, radius 6"
+  },
+  "motion": {
+    "duration.instant": "80ms",
+    "duration.hover": "120ms",
+    "duration.fast": "160ms",
+    "duration.panel": "200ms",
+    "duration.drawer": "220ms",
+    "duration.mark-complete": "1100ms",
+    "duration.mark-working-cycle": "3600ms",
+    "easing.standard": "cubic-bezier(.2,0,0,1)",
+    "easing.exit": "cubic-bezier(.4,0,1,1)",
+    "easing.mark-working": "cubic-bezier(.45,0,.25,1)",
+    "easing.mark-settle": "cubic-bezier(.2,.7,.2,1)",
+    "mark.travel": "3 grid units (9.4% of symbol height)"
+  },
+  "breakpoint": {
+    "mobile": "0–599",
+    "tablet": "600–1023",
+    "desktop": "1024–1599",
+    "desktop-reference": "1280×800",
+    "large": "1600+"
+  },
+  "contrast": [
+    {
+      "pair": "text.primary on canvas",
+      "fg": "#1C1B19",
+      "bg": "#FBFAF7",
+      "ratio": 16.49,
+      "result": "AAA"
+    },
+    {
+      "pair": "text.secondary on canvas",
+      "fg": "#3D3A35",
+      "bg": "#FBFAF7",
+      "ratio": 10.85,
+      "result": "AAA"
+    },
+    {
+      "pair": "text.tertiary on canvas",
+      "fg": "#5E5A52",
+      "bg": "#FBFAF7",
+      "ratio": 6.57,
+      "result": "AA"
+    },
+    {
+      "pair": "text.tertiary on sidebar",
+      "fg": "#5E5A52",
+      "bg": "#EFEDE8",
+      "ratio": 5.87,
+      "result": "AA"
+    },
+    {
+      "pair": "text.placeholder on panel",
+      "fg": "#716D64",
+      "bg": "#FFFFFF",
+      "ratio": 5.16,
+      "result": "AA"
+    },
+    {
+      "pair": "text.placeholder on canvas",
+      "fg": "#716D64",
+      "bg": "#FBFAF7",
+      "ratio": 4.94,
+      "result": "AA"
+    },
+    {
+      "pair": "text.disabled on panel",
+      "fg": "#8C8578",
+      "bg": "#FFFFFF",
+      "ratio": 3.66,
+      "result": "AA large only"
+    },
+    {
+      "pair": "link on panel",
+      "fg": "#4C3FB8",
+      "bg": "#FFFFFF",
+      "ratio": 7.75,
+      "result": "AAA"
+    },
+    {
+      "pair": "link on canvas",
+      "fg": "#4C3FB8",
+      "bg": "#FBFAF7",
+      "ratio": 7.42,
+      "result": "AAA"
+    },
+    {
+      "pair": "link on sidebar",
+      "fg": "#4C3FB8",
+      "bg": "#EFEDE8",
+      "ratio": 6.62,
+      "result": "AA"
+    },
+    {
+      "pair": "accent.strong on wash",
+      "fg": "#3B2F99",
+      "bg": "#EEECFA",
+      "ratio": 8.78,
+      "result": "AAA"
+    },
+    {
+      "pair": "accent.strong on selected",
+      "fg": "#3B2F99",
+      "bg": "#F6F5FD",
+      "ratio": 9.45,
+      "result": "AAA"
+    },
+    {
+      "pair": "text.primary on selected-accent",
+      "fg": "#1C1B19",
+      "bg": "#F6F5FD",
+      "ratio": 15.9,
+      "result": "AAA"
+    },
+    {
+      "pair": "accent.on-dark on graphite",
+      "fg": "#B9B0F5",
+      "bg": "#1C1B19",
+      "ratio": 8.68,
+      "result": "AAA"
+    },
+    {
+      "pair": "inverse on graphite",
+      "fg": "#F4F1EA",
+      "bg": "#1C1B19",
+      "ratio": 15.26,
+      "result": "AAA"
+    },
+    {
+      "pair": "inverse-secondary on graphite",
+      "fg": "#B8B3A8",
+      "bg": "#1C1B19",
+      "ratio": 8.24,
+      "result": "AAA"
+    },
+    {
+      "pair": "primary button label",
+      "fg": "#FFFFFF",
+      "bg": "#1C1B19",
+      "ratio": 17.21,
+      "result": "AAA"
+    },
+    {
+      "pair": "pass fg on bg",
+      "fg": "#1E6B35",
+      "bg": "#EAF4EC",
+      "ratio": 5.81,
+      "result": "AA"
+    },
+    {
+      "pair": "exception fg on bg",
+      "fg": "#B42318",
+      "bg": "#FDECEA",
+      "ratio": 5.75,
+      "result": "AA"
+    },
+    {
+      "pair": "exception fg on panel",
+      "fg": "#B42318",
+      "bg": "#FFFFFF",
+      "ratio": 6.57,
+      "result": "AA"
+    },
+    {
+      "pair": "warning fg on bg",
+      "fg": "#8A4B06",
+      "bg": "#FDF3E2",
+      "ratio": 6.18,
+      "result": "AA"
+    },
+    {
+      "pair": "warning fg on attention row",
+      "fg": "#8A4B06",
+      "bg": "#FFFBF3",
+      "ratio": 6.58,
+      "result": "AA"
+    },
+    {
+      "pair": "inconclusive fg on bg",
+      "fg": "#3D3A35",
+      "bg": "#F3F1EC",
+      "ratio": 10.03,
+      "result": "AAA"
+    },
+    {
+      "pair": "diff added text on bg",
+      "fg": "#1C1B19",
+      "bg": "#E8E4DA",
+      "ratio": 13.56,
+      "result": "AAA"
+    },
+    {
+      "pair": "diff removed on page",
+      "fg": "#6F6B63",
+      "bg": "#FFFFFF",
+      "ratio": 5.3,
+      "result": "AA"
+    },
+    {
+      "pair": "UI: input border on panel",
+      "fg": "#8F8A7F",
+      "bg": "#FFFFFF",
+      "ratio": 3.44,
+      "result": "≥3:1 pass"
+    },
+    {
+      "pair": "UI: input border on canvas",
+      "fg": "#8F8A7F",
+      "bg": "#FBFAF7",
+      "ratio": 3.29,
+      "result": "≥3:1 pass"
+    },
+    {
+      "pair": "UI: focus ring on panel",
+      "fg": "#4C3FB8",
+      "bg": "#FFFFFF",
+      "ratio": 7.75,
+      "result": "≥3:1 pass"
+    },
+    {
+      "pair": "UI: focus ring on canvas",
+      "fg": "#4C3FB8",
+      "bg": "#FBFAF7",
+      "ratio": 7.42,
+      "result": "≥3:1 pass"
+    },
+    {
+      "pair": "UI: control border on panel",
+      "fg": "#CCC8BD",
+      "bg": "#FFFFFF",
+      "ratio": 1.67,
+      "result": "below 3:1"
+    },
+    {
+      "pair": "UI: inconclusive dashed border",
+      "fg": "#8C8578",
+      "bg": "#F3F1EC",
+      "ratio": 3.24,
+      "result": "≥3:1 pass"
+    },
+    {
+      "pair": "UI: symbol iris form on canvas",
+      "fg": "#4C3FB8",
+      "bg": "#FBFAF7",
+      "ratio": 7.42,
+      "result": "≥3:1 pass"
+    },
+    {
+      "pair": "UI: symbol iris-light on graphite",
+      "fg": "#B9B0F5",
+      "bg": "#1C1B19",
+      "ratio": 8.68,
+      "result": "≥3:1 pass"
+    }
+  ]
+}

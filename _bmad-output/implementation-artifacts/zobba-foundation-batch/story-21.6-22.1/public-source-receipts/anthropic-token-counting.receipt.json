@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://platform.claude.com/docs/en/build-with-claude/token-counting",
+  "effective_url": "https://platform.claude.com/docs/en/build-with-claude/token-counting",
+  "retrieved_at_utc": "2026-10-03T04:28:09.089417+00:00",
+  "completed_at_utc": "2026-10-03T04:28:09.660751+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html; charset=utf-8",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "anthropic-token-counting.html",
+  "bytes": 947476,
+  "sha256": "882789ddfc1fbb4f068e22d731e88478b7cd6a86a2aa17392d9b9e48e3867a73",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/anthropic-token-counting.txt",
+  "readable_extraction_sha256": "3fd3a5dee7e14018fe4147cd0a25caf0d118affba2d63cf70b3ce87c45d3a43d",
+  "raw_body_in_checkpoint": false
+}

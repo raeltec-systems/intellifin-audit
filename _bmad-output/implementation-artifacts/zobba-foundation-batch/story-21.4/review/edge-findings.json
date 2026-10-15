@@ -1,0 +1,20 @@
+[
+  {
+    "location": "zobba/crates/infrastructure/src/knowledge.rs:1204-1211",
+    "trigger_condition": "Same-engagement Tasks have different accountable actors, and the source Task sorts after the destination.",
+    "guard_snippet": "if destination.as_ref() == Some(&sc) && matches!(&c.action, KnowledgeAction::Reuse { destination_task_id, .. } if *destination_task_id == id) { destination_consumer = owner; }",
+    "potential_consequence": "Reuse commits using the source actor's permissions instead of the destination Task's accountable actor."
+  },
+  {
+    "location": "zobba/crates/infrastructure/src/knowledge.rs:582-583",
+    "trigger_condition": "An assertion from another engagement is inspected through authorized reuse.",
+    "guard_snippet": "let own_origin = r.scope == KnowledgeScope::engagement(s); let mut v = view(r, st, reason); v.can_correct &= own_origin; v.can_reuse &= own_origin; Ok(v)",
+    "potential_consequence": "The UI offers correction and reuse actions that fail, potentially clearing legitimate drafts."
+  },
+  {
+    "location": "zobba/crates/infrastructure/src/knowledge.rs:380",
+    "trigger_condition": "A Task owner sees their current private preference in working knowledge.",
+    "guard_snippet": "can_forget: current && !personal,",
+    "potential_consequence": "The offered Forget action always fails; the preference remains remembered."
+  }
+]

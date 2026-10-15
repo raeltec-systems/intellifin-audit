@@ -1,0 +1,20 @@
+{
+  "gate": "process-final-prewarm",
+  "command": [
+    "cargo",
+    "build",
+    "--workspace",
+    "--locked"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T05:47:49.974440+00:00",
+  "ended_at": "2026-10-03T05:48:32.536975+00:00",
+  "duration_seconds": 42.563,
+  "exit": 0,
+  "source_before": "process-final-prewarm-source-before.json",
+  "source_after": "process-final-prewarm-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "process-final-prewarm.log",
+  "log_sha256": "51e2ca037c036062092207adc950409e03e334b993c73f69d4ddb089b598b2fb"
+}

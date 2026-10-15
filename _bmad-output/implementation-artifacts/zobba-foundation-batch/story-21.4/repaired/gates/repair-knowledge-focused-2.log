@@ -1,0 +1,27 @@
+$ pnpm --filter @zobba/web test:browser --workers=1 --retries=0 --reporter=list,json knowledge.spec.ts knowledge-sources.spec.ts
+$ playwright test --workers=1 --retries=0 --reporter=list,json knowledge.spec.ts knowledge-sources.spec.ts
+
+Running 18 tests using 1 worker
+
+(node:1035959) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 tests/browser/knowledge-sources.spec.ts:53:1 › unsupported originals with no captured records can be corrected through an explicitly selected Task (8.3s)
+  ✓   2 tests/browser/knowledge-sources.spec.ts:80:1 › public excerpt capture survives source I/O beyond twelve seconds and retains exact nonzero UTF-8 bytes (19.3s)
+  ✓   3 tests/browser/knowledge.spec.ts:128:1 › real distinct Expand openings learn privately, apply later, and Undo consumes old observations (4.5s)
+  ✓   4 tests/browser/knowledge.spec.ts:151:1 › exact typed release is useful to another assigned reader without private preference events (5.5s)
+  ✓   5 tests/browser/knowledge.spec.ts:171:1 › verified acquisition and Guide automatically project distinct attributable knowledge with exact source navigation (4.7s)
+  ✓   6 tests/browser/knowledge.spec.ts:207:1 › assertion correction, exclusion and forget retain original attributable history (4.8s)
+  ✓   7 tests/browser/knowledge.spec.ts:222:1 › actual session outage remount preserves exact unsent draft only after its own current read (4.1s)
+  ✓   8 tests/browser/knowledge.spec.ts:241:1 › lost mutation reply and temporary retry capacity preserve one exact command through recovery (4.2s)
+  ✓   9 tests/browser/knowledge.spec.ts:269:1 › held successful knowledge response cannot restore a corrected assertion after fresh verification (3.7s)
+  ✓  10 tests/browser/knowledge.spec.ts:284:1 › source correction declares exact immutable replacement and invalidates derived context (5.9s)
+  ✓  11 tests/browser/knowledge.spec.ts:314:1 › named same-client reuse serves the destination and independently checks reader and accountable Task owner (5.9s)
+  ✓  12 tests/browser/knowledge.spec.ts:370:1 › assertion support can be added and replaced through current originals and exact knowledge while old basis stays inspectable (8.5s)
+  ✓  13 tests/browser/knowledge.spec.ts:412:1 › local layout stays usable while one exact observation is uncertain and recovery creates no competing events (4.5s)
+  ✓  14 tests/browser/knowledge.spec.ts:427:1 › private preference offers its supported Undo and retained outcome names every released destination exactly once (7.8s)
+  ✓  15 tests/browser/knowledge.spec.ts:469:58 › a real evidence source refusal withdraws enclosing knowledge while destination work and unrelated exact recovery survive (7.2s)
+  ✓  16 tests/browser/knowledge.spec.ts:469:58 › a real guide source refusal withdraws enclosing knowledge while destination work and unrelated exact recovery survive (5.9s)
+  ✓  17 tests/browser/knowledge.spec.ts:525:77 › confirmed scope denial clears an uncertain knowledge request without automatic retry or later resurrection (6.1s)
+  ✓  18 tests/browser/knowledge.spec.ts:525:77 › confirmed same-account replacement clears an uncertain knowledge request without automatic retry or later resurrection (6.7s)
+
+  18 passed (2.1m)

@@ -1,0 +1,10 @@
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.12s
+     Running tests/evidence.rs (target/debug/deps/evidence-6d090a118d740566)
+
+running 3 tests
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test immutable_scoped_custody_replay_and_post_lock_session_fence ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.12s

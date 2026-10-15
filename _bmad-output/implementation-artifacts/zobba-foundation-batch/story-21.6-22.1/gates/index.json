@@ -1,0 +1,555 @@
+[
+  {
+    "gate": "api-final-prewarm",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "api-final-prewarm-receipt.json"
+  },
+  {
+    "gate": "api-generate-final",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": false,
+    "receipt": "api-generate-final-receipt.json"
+  },
+  {
+    "gate": "bootstrap-initial",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": false,
+    "receipt": "bootstrap-initial-receipt.json"
+  },
+  {
+    "gate": "boundaries-accepted",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "boundaries-accepted-receipt.json"
+  },
+  {
+    "gate": "boundaries-final",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "boundaries-final-receipt.json"
+  },
+  {
+    "gate": "boundaries-initial",
+    "exit": 1,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "boundaries-initial-receipt.json"
+  },
+  {
+    "gate": "boundaries-repair-1",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "boundaries-repair-1-receipt.json"
+  },
+  {
+    "gate": "browser-api-prewarm",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "browser-api-prewarm-receipt.json"
+  },
+  {
+    "gate": "browser-full-clean",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "browser-full-clean-receipt.json"
+  },
+  {
+    "gate": "browser-full-final",
+    "exit": 1,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "browser-full-final-receipt.json"
+  },
+  {
+    "gate": "browser-preconditions-clean",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "browser-preconditions-clean-receipt.json"
+  },
+  {
+    "gate": "browser-preconditions-focused",
+    "exit": 1,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "browser-preconditions-focused-receipt.json"
+  },
+  {
+    "gate": "browser-prewarm",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "browser-prewarm-receipt.json"
+  },
+  {
+    "gate": "browser-search-clean-2",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "browser-search-clean-2-receipt.json"
+  },
+  {
+    "gate": "browser-search-clean",
+    "exit": 1,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "browser-search-clean-receipt.json"
+  },
+  {
+    "gate": "browser-search-review",
+    "exit": 1,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "browser-search-review-receipt.json"
+  },
+  {
+    "gate": "browser-upgrade-review",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "browser-upgrade-review-receipt.json"
+  },
+  {
+    "gate": "clippy-final-clean",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "clippy-final-clean-receipt.json"
+  },
+  {
+    "gate": "clippy-final-frozen",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "clippy-final-frozen-receipt.json"
+  },
+  {
+    "gate": "combined-check-repair-1",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": false,
+    "receipt": "combined-check-repair-1-receipt.json"
+  },
+  {
+    "gate": "evidence-review-repair",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "evidence-review-repair-receipt.json"
+  },
+  {
+    "gate": "fixture-final",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "fixture-final-receipt.json"
+  },
+  {
+    "gate": "fmt-accepted",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "fmt-accepted-receipt.json"
+  },
+  {
+    "gate": "fmt-final-clean",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "fmt-final-clean-receipt.json"
+  },
+  {
+    "gate": "fmt-final-frozen",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "fmt-final-frozen-receipt.json"
+  },
+  {
+    "gate": "fmt-final",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "fmt-final-receipt.json"
+  },
+  {
+    "gate": "fmt-tier-final",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "fmt-tier-final-receipt.json"
+  },
+  {
+    "gate": "full-rust-1",
+    "exit": 101,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "full-rust-1-receipt.json"
+  },
+  {
+    "gate": "full-rust-2",
+    "exit": 101,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "full-rust-2-receipt.json"
+  },
+  {
+    "gate": "full-rust-3",
+    "exit": 0,
+    "result": "passed, superseded by final cancellation source",
+    "source_unchanged": false,
+    "receipt": "full-rust-3-receipt.json"
+  },
+  {
+    "gate": "full-rust-4",
+    "exit": 101,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "full-rust-4-receipt.json"
+  },
+  {
+    "gate": "full-rust-5",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "full-rust-5-receipt.json"
+  },
+  {
+    "gate": "full-rust-final-prewarm",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "full-rust-final-prewarm-receipt.json"
+  },
+  {
+    "gate": "gateway-clean-1",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "gateway-clean-1-receipt.json"
+  },
+  {
+    "gate": "gateway-size-after",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "gateway-size-after-receipt.json"
+  },
+  {
+    "gate": "gateway-size-before",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "gateway-size-before-receipt.json"
+  },
+  {
+    "gate": "lib-repair-1",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "lib-repair-1-receipt.json"
+  },
+  {
+    "gate": "library-review-repair",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "library-review-repair-receipt.json"
+  },
+  {
+    "gate": "membership-failure-diagnosis",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "membership-failure-diagnosis-receipt.json"
+  },
+  {
+    "gate": "native-cancellation-clean",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "native-cancellation-clean-receipt.json"
+  },
+  {
+    "gate": "native-cancellation-repair",
+    "exit": 101,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "native-cancellation-repair-receipt.json"
+  },
+  {
+    "gate": "operations-clean-1",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "operations-clean-1-receipt.json"
+  },
+  {
+    "gate": "operations-diagnostic-1",
+    "exit": 101,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "operations-diagnostic-1-receipt.json"
+  },
+  {
+    "gate": "operations-diagnostic-2",
+    "exit": 101,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "operations-diagnostic-2-receipt.json"
+  },
+  {
+    "gate": "operations-diagnostic-3",
+    "exit": 101,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "operations-diagnostic-3-receipt.json"
+  },
+  {
+    "gate": "operations-lease-repair",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "operations-lease-repair-receipt.json"
+  },
+  {
+    "gate": "operations-repair-1",
+    "exit": 101,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "operations-repair-1-receipt.json"
+  },
+  {
+    "gate": "operations-repair-2",
+    "exit": 101,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "operations-repair-2-receipt.json"
+  },
+  {
+    "gate": "operations-repair-3",
+    "exit": 101,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "operations-repair-3-receipt.json"
+  },
+  {
+    "gate": "operations-repair-4",
+    "exit": 101,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "operations-repair-4-receipt.json"
+  },
+  {
+    "gate": "operations-repair-5",
+    "exit": 101,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "operations-repair-5-receipt.json"
+  },
+  {
+    "gate": "operations-repair-6",
+    "exit": 101,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "operations-repair-6-receipt.json"
+  },
+  {
+    "gate": "operations-repair-7",
+    "exit": 101,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "operations-repair-7-receipt.json"
+  },
+  {
+    "gate": "operations-review-repair",
+    "exit": 101,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "operations-review-repair-receipt.json"
+  },
+  {
+    "gate": "process-final-prewarm",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "process-final-prewarm-receipt.json"
+  },
+  {
+    "gate": "process-smoke-final",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "process-smoke-final-receipt.json"
+  },
+  {
+    "gate": "python-guards-accepted",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "python-guards-accepted-receipt.json"
+  },
+  {
+    "gate": "python-guards-initial",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "python-guards-initial-receipt.json"
+  },
+  {
+    "gate": "qualification-dry-run-review",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "qualification-dry-run-review-receipt.json"
+  },
+  {
+    "gate": "qualification-final-clean",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "qualification-final-clean-receipt.json"
+  },
+  {
+    "gate": "qualification-final-frozen",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "qualification-final-frozen-receipt.json"
+  },
+  {
+    "gate": "qualification-guards-final",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "qualification-guards-final-receipt.json"
+  },
+  {
+    "gate": "qualification-refusal-expected",
+    "exit": 1,
+    "result": "expected refusal (exit1)",
+    "source_unchanged": true,
+    "receipt": "qualification-refusal-expected-receipt.json"
+  },
+  {
+    "gate": "qualification-review-repair",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "qualification-review-repair-receipt.json"
+  },
+  {
+    "gate": "strict-clippy-accepted",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "strict-clippy-accepted-receipt.json"
+  },
+  {
+    "gate": "strict-clippy-initial",
+    "exit": 101,
+    "result": "failed",
+    "source_unchanged": true,
+    "receipt": "strict-clippy-initial-receipt.json"
+  },
+  {
+    "gate": "strict-clippy-repair-1",
+    "exit": 101,
+    "result": "failed",
+    "source_unchanged": false,
+    "receipt": "strict-clippy-repair-1-receipt.json"
+  },
+  {
+    "gate": "strict-clippy-repair-2",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "strict-clippy-repair-2-receipt.json"
+  },
+  {
+    "gate": "strict-clippy-review-repair",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "strict-clippy-review-repair-receipt.json"
+  },
+  {
+    "gate": "web-build-final-clean",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "web-build-final-clean-receipt.json"
+  },
+  {
+    "gate": "web-build-final-frozen",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "web-build-final-frozen-receipt.json"
+  },
+  {
+    "gate": "web-build-repair-1",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "web-build-repair-1-receipt.json"
+  },
+  {
+    "gate": "web-build-review-repair",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "web-build-review-repair-receipt.json"
+  },
+  {
+    "gate": "web-check-accepted",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "web-check-accepted-receipt.json"
+  },
+  {
+    "gate": "web-check-final-clean",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "web-check-final-clean-receipt.json"
+  },
+  {
+    "gate": "web-check-final-frozen",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "web-check-final-frozen-receipt.json"
+  },
+  {
+    "gate": "web-check-repair-1",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "web-check-repair-1-receipt.json"
+  },
+  {
+    "gate": "web-check-review-repair",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "web-check-review-repair-receipt.json"
+  },
+  {
+    "gate": "web-units-final",
+    "exit": 0,
+    "result": "passed",
+    "source_unchanged": true,
+    "receipt": "web-units-final-receipt.json"
+  }
+]

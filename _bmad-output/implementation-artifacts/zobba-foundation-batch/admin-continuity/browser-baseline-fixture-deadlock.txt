@@ -1,0 +1,11 @@
+Bounded diagnostic extraction for failed browser fixture restoration; SQL is fixed synthetic test text.
+2026-10-01 19:17:44.572 UTC [594265] ERROR:  deadlock detected
+2026-10-01 19:17:44.572 UTC [594265] DETAIL:  Process 594265 waits for ExclusiveLock on advisory lock [16386,1219075801,117574233,1]; blocked by process 594260.
+	Process 594260 waits for ShareLock on transaction 169018; blocked by process 594265.
+	Process 594265: UPDATE public.identities SET active=true WHERE id IN ('actor-a','actor-b');
+	Process 594260: SELECT id FROM public.identities WHERE id=$1 AND active FOR SHARE
+	PL/pgSQL function admin_continuity_lock() line 21 at PERFORM
+2026-10-01 19:19:08.136 UTC [595702] ERROR:  denied
+2026-10-01 19:19:08.136 UTC [595702] CONTEXT:  PL/pgSQL function membership_read(text,text,text,text,text,text) line 13 at RAISE
+2026-10-01 19:19:16.647 UTC [595758] ERROR:  invitation refused
+2026-10-01 19:19:16.647 UTC [595758] CONTEXT:  PL/pgSQL function membership_preview(text,text,text,text) line 13 at RAISE

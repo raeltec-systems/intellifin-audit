@@ -1,0 +1,52 @@
+{
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "documentWidth": 390,
+  "readingArea": {
+    "x": 13,
+    "y": 349.1875,
+    "width": 364,
+    "height": 283.640625
+  },
+  "sourcePreview": {
+    "x": 63,
+    "y": 459.390625,
+    "width": 286,
+    "height": 63.59375
+  },
+  "sourceText": "﻿  Source says 😀\r\nExact second line.\r\n",
+  "engagementHeading": {
+    "x": 12,
+    "y": 119.59375,
+    "width": 366,
+    "height": 25
+  },
+  "backNavigation": {
+    "x": 12,
+    "y": 56,
+    "width": 105.140625,
+    "height": 44
+  },
+  "pause": {
+    "x": 25,
+    "y": 667.015625,
+    "width": 94.625,
+    "height": 44
+  },
+  "stop": {
+    "x": 127.625,
+    "y": 667.015625,
+    "width": 86.703125,
+    "height": 44
+  },
+  "assertionsPassed": [
+    "exact registered source text",
+    "source preview fully in viewport",
+    "reading area at least 240px",
+    "Pause and Stop in viewport",
+    "engagement navigation in viewport",
+    "no horizontal overflow"
+  ]
+}

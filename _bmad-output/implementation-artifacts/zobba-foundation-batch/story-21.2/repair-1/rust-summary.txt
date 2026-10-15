@@ -1,0 +1,39 @@
+38 sections; 225 passed assertions/test cases (including doc tests).
+26: Running unittests src/lib.rs (target/debug/deps/zobba_api-aa83e70e5aefe8dd) — test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+32: Running unittests src/main.rs (target/debug/deps/zobba_api-3dff437d49934503) — test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+41: Running tests/evidence_contract.rs (target/debug/deps/evidence_contract-2f2c4d1d0ebaf912) — test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+52: Running tests/evidence_http.rs (target/debug/deps/evidence_http-6dcce35e241bcef1) — test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 9.84s
+64: Running tests/membership_contract.rs (target/debug/deps/membership_contract-205f01a5ba5d6b2f) — test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+73: Running tests/membership_http.rs (target/debug/deps/membership_http-9bf2310c04080123) — test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.22s
+90: Running tests/methodology_contract.rs (target/debug/deps/methodology_contract-195ec626e3cb96b3) — test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+99: Running tests/methodology_http.rs (target/debug/deps/methodology_http-271d468f995154ed) — test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.08s
+108: Running tests/operations_http.rs (target/debug/deps/operations_http-93c1f0e552e4ac83) — test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.94s
+117: Running tests/tasks_http.rs (target/debug/deps/tasks_http-8be75bbbc14e6972) — test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.78s
+132: Running unittests src/lib.rs (target/debug/deps/zobba_application-0ef0c30cf1eb2dc7) — test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+138: Running unittests src/main.rs (target/debug/deps/zobba_cli-bb50dd0fcb211625) — test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+189: Running unittests src/lib.rs (target/debug/deps/zobba_domain-e3cd4001b4dd28f1) — test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+213: Running unittests src/lib.rs (target/debug/deps/zobba_infrastructure-4bc84a058a5e8bcc) — test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.25s
+222: Running tests/admin_continuity.rs (target/debug/deps/admin_continuity-e04a7bbc44ee63ef) — test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.04s
+231: Running tests/bootstrap.rs (target/debug/deps/bootstrap-a737a4b6c06c9479) — test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 268.97s
+240: Running tests/conversation.rs (target/debug/deps/conversation-8e5bc408997b3cf1) — test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 48.90s
+249: Running tests/evidence.rs (target/debug/deps/evidence-486938067ae5dc7e) — test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.20s
+278: Running tests/evidence_s3.rs (target/debug/deps/evidence_s3-98959cbab7ced61c) — test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.29s
+288: Running tests/fixture.rs (target/debug/deps/fixture-7a77a737a8ba2018) — test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.72s
+297: Running tests/identity.rs (target/debug/deps/identity-155b4fded0d6fac9) — test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.72s
+306: Running tests/membership.rs (target/debug/deps/membership-fe9fa49acf6f4d98) — test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 34.01s
+315: Running tests/methodology.rs (target/debug/deps/methodology-af87dd7cfa906421) — test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.69s
+335: Running tests/oidc_protocol.rs (target/debug/deps/oidc_protocol-6c2bc2585a148928) — test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 32.92s
+346: Running tests/operations.rs (target/debug/deps/operations-68c6066810a36cbb) — test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 48.35s
+355: Running tests/scope.rs (target/debug/deps/scope-ba6112f8c1cc3c44) — test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.43s
+364: Running tests/task.rs (target/debug/deps/task-2d9032f895f6303b) — test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.37s
+377: Running unittests src/lib.rs (target/debug/deps/zobba_worker-e54df7e0e97ee733) — test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.22s
+383: Running unittests src/main.rs (target/debug/deps/zobba_worker-570974ecfa7dc189) — test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+392: Running tests/durable_process.rs (target/debug/deps/durable_process-0fdc4c21b60598ae) — test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 22.35s
+402: Running tests/gateway_process.rs (target/debug/deps/gateway_process-a72cd708b30020d9) — test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 14.86s
+420: Running tests/inert_process.rs (target/debug/deps/inert_process-18d35e050ef3a937) — test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.71s
+446: Running tests/reliability_process.rs (target/debug/deps/reliability_process-d3de0de5ba08258b) — test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 56.52s
+452: Doc-tests zobba_api — test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+458: Doc-tests zobba_application — test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+466: Doc-tests zobba_domain — test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+472: Doc-tests zobba_infrastructure — test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+478: Doc-tests zobba_worker — test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

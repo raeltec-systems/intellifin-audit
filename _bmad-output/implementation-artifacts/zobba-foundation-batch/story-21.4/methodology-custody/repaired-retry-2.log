@@ -1,0 +1,13 @@
+$ pnpm --filter @zobba/web test:browser --workers=1 --retries=0 tests/browser/methodology-custody.spec.ts
+$ playwright test --workers=1 --retries=0 tests/browser/methodology-custody.spec.ts
+
+Running 4 tests using 1 worker
+
+(node:968603) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/methodology-custody.spec.ts:91:1 › unsent exact edit and recall survive actual session outage/remount; recovery never submits (5.8s)
+  ✓  2 tests/browser/methodology-custody.spec.ts:149:1 › retained inner DOM and focus wait for this activation current-Admin read; cancelled success cannot authorize it (2.9s)
+  ✓  3 tests/browser/methodology-custody.spec.ts:178:1 › same-account session replacement, another identity and logout discard private methodology drafts (19.8s)
+  ✓  4 tests/browser/methodology-custody.spec.ts:202:1 › another current Admin membership cannot reveal retained edits before exact-org denial, and restoration cannot resurrect them (2.8s)
+
+  4 passed (37.4s)

@@ -1,0 +1,23 @@
+- [knowledge.rs:1125](../../../../../zobba/crates/infrastructure/src/knowledge.rs#L1125) returns no continuation when all 1,024 scanned candidates are filtered out. Later eligible matches become undiscoverable because retrying scans the same prefix. Provide an opaque continuation that advances past scanned candidates without revealing inaccessible IDs.
+
+- [knowledge.rs:1209](../../../../../zobba/crates/infrastructure/src/knowledge.rs#L1209) identifies the destination consumer by engagement scope alone. During same-engagement reuse, a source Task that sorts after the destination overwrites `destination_consumer`, allowing admission using the wrong accountable actor’s permissions. Match the destination Task ID as well.
+
+- [knowledge.rs:456](../../../../../zobba/crates/infrastructure/src/knowledge.rs#L456) checks dependency access and status but ignores dependency periods. A 2027 assertion supported by 2026-only knowledge can remain current for a 2027 Task because only the root period is filtered. Apply period eligibility throughout the dependency closure.
+
+- [knowledge.rs:1378](../../../../../zobba/crates/infrastructure/src/knowledge.rs#L1378) checks a fresh reuse’s dependencies against the destination consumer, while receipt replay additionally checks the source consumer. If the source Task owner loses access to a supporting engagement, initial admission can still disclose a record that an identical retry suppresses. Apply consistent consumer checks before first admission and replay.
+
+- [knowledge.rs:373](../../../../../zobba/crates/infrastructure/src/knowledge.rs#L373) advertises unsupported actions. Reused foreign assertions receive `can_correct` and `can_reuse`, although those mutations require the originating scope; personal preferences receive `can_forget`, although Task-bound Forget rejects personal records. Derive capabilities from the current scope and supported mutation route.
+
+- [App.tsx:248](../../../../../zobba/web/src/App.tsx#L248) deletes pending knowledge requests when the user switches engagements or returns to the engagement list. After a lost acknowledgement, this destroys the original idempotency key and exact recovery request. Preserve uncertain deliveries under their existing owner until resolved or explicitly discarded.
+
+- [TaskKnowledge.tsx:54](../../../../../zobba/web/src/TaskKnowledge.tsx#L54) exposes source correction only through a captured record containing `source`. An unsupported original with no populated assertions produces no such record, and [EvidenceKnowledge.tsx:23](../../../../../zobba/web/src/EvidenceKnowledge.tsx#L23) offers only capture/recovery controls. Provide a correction path directly from registered-original inspection.
+
+- [TaskKnowledge.tsx:144](../../../../../zobba/web/src/TaskKnowledge.tsx#L144) has no controls for adding, replacing, or removing assertion dependencies. New assertions always have none; corrections silently retain existing dependencies. Users cannot repair an incorrect citation through the interface despite the API supporting exact references.
+
+- [InspectionPreference.tsx:16](../../../../../zobba/web/src/InspectionPreference.tsx#L16) discards successful mutation receipts, including `affected_destinations`. Undo can withdraw releases across engagements without showing which destinations were affected, contrary to the implementation context’s explicit requirement. Display the withdrawal result and affected destinations.
+
+- [useKnowledgeCommands.ts:26](../../../../../zobba/web/src/useKnowledgeCommands.ts#L26) applies a 12-second timeout to excerpt and capture-recovery requests whose server lane allows 120 seconds. Every exact retry rereads the object before receipt recovery, so a consistently slower object read can leave recovery permanently unconfirmable. Use an appropriate I/O deadline or provide receipt recovery without repeating the slow read.
+
+- [ConversationWorkspace.tsx:352](../../../../../zobba/web/src/ConversationWorkspace.tsx#L352) disables the local Expand/Reduce control whenever preference delivery is pending. A lost acknowledgement therefore prevents users from changing their inspection layout until backend recovery succeeds. Keep the local display control usable while retaining the original observation request.
+
+- [knowledge.rs:595](../../../../../zobba/crates/api/src/knowledge.rs#L595) omits `after`, `text`, and `include_inactive` from the inspection endpoint’s OpenAPI parameters. These implemented pagination, search, and history inputs are consequently absent from generated client contracts. Declare and contract-test all supported query parameters.

@@ -1,0 +1,31 @@
+    Blocking waiting for file lock on build directory
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.24s
+     Running tests/admin_continuity.rs (target/debug/deps/admin_continuity-35cff535afdb9b97)
+
+running 3 tests
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test postgres_admin_continuity_contract ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.68s
+
+     Running tests/fixture.rs (target/debug/deps/fixture-fa69dcfd211bc84d)
+
+running 4 tests
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+test local_seed_refuses_nonlocal_destinations_before_connecting ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test local_seed_preserves_deleted_and_disabled_authority ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.44s
+
+     Running tests/membership.rs (target/debug/deps/membership-fe19023eac521dd6)
+
+running 3 tests
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test postgres_membership_contract ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 29.25s
+

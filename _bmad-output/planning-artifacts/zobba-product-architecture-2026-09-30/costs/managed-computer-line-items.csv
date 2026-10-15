@@ -1,0 +1,284 @@
+scenario,group,component,quantity,rate_id,unit_rate_usd,cost_usd
+Solo Linux active,computers,Linux running hours incl grace and prestart,70.0,linux_hour,0.096,6.72
+Solo Linux active,computers,Windows running hours incl grace and prestart,0.0,windows_hour,0.376,0.0
+Solo Linux active,shared_warm_capacity,Clean Linux spare running hours,0,linux_hour,0.096,0.0
+Solo Linux active,shared_warm_capacity,Clean Linux spare gp3 GB-month,0,ebs_gb_month,0.08,0.0
+Solo Linux active,storage,Private computer gp3 provisioned GB-month,40,ebs_gb_month,0.08,3.2
+Solo Linux active,storage,Incremental snapshot retained GB-month,10,snapshot_gb_month,0.05,0.5
+Solo Linux active,storage,S3 Standard retained artifact GB-month,20,s3_gb_month,0.023,0.45999999999999996
+Solo Linux active,storage,S3 PUT/COPY/POST/LIST requests,2000,s3_put,5e-06,0.01
+Solo Linux active,storage,S3 GET/other requests,20000,s3_get,4e-07,0.008
+Solo Linux active,traffic,"Internet outbound GB, gross before shared free allowance",11.9,egress_gb_first_10tb,0.09,1.071
+Solo Linux active,traffic,NAT processed source GB (display does not traverse NAT),5,nat_gb,0.045,0.22499999999999998
+Solo Linux active,traffic,ALB LCU-hour budget: byte dimension,11.9,alb_lcu_hour,0.008,0.0952
+Solo Linux active,shared_desktop_usage,ALB non-byte LCU headroom budget,50.0,alb_lcu_hour,0.008,0.4
+Solo Linux active,shared_desktop,Gateway/guacd vCPU-hours,2920,fargate_cpu_hour,0.04048,118.2016
+Solo Linux active,shared_desktop,Gateway/guacd GiB-hours,5840,fargate_gib_hour,0.004445,25.9588
+Solo Linux active,shared_desktop,Egress proxy vCPU-hours,365.0,fargate_cpu_hour,0.04048,14.7752
+Solo Linux active,shared_desktop,Egress proxy GiB-hours,730.0,fargate_gib_hour,0.004445,3.24485
+Solo Linux active,shared_desktop,"NAT gateway-hours, two AZs",1460,nat_hour,0.045,65.7
+Solo Linux active,shared_desktop,ALB hours,730,alb_hour,0.0225,16.425
+Solo Linux active,shared_desktop,"Public IPv4 address-hours, ALB and NAT",2920,ipv4_hour,0.005,14.6
+Solo Linux active,analysis,Analysis vCPU-hours,4,fargate_cpu_hour,0.04048,0.16192
+Solo Linux active,analysis,Analysis GiB-hours,8,fargate_gib_hour,0.004445,0.03556
+Solo Linux active,unpriced_allowance,Additional application/data/operations planning allowance,1,planning_allowance,300,300
+Solo Linux retained idle,computers,Linux running hours incl grace and prestart,0,linux_hour,0.096,0.0
+Solo Linux retained idle,computers,Windows running hours incl grace and prestart,0,windows_hour,0.376,0.0
+Solo Linux retained idle,shared_warm_capacity,Clean Linux spare running hours,0,linux_hour,0.096,0.0
+Solo Linux retained idle,shared_warm_capacity,Clean Linux spare gp3 GB-month,0,ebs_gb_month,0.08,0.0
+Solo Linux retained idle,storage,Private computer gp3 provisioned GB-month,40,ebs_gb_month,0.08,3.2
+Solo Linux retained idle,storage,Incremental snapshot retained GB-month,10,snapshot_gb_month,0.05,0.5
+Solo Linux retained idle,storage,S3 Standard retained artifact GB-month,20,s3_gb_month,0.023,0.45999999999999996
+Solo Linux retained idle,storage,S3 PUT/COPY/POST/LIST requests,0,s3_put,5e-06,0.0
+Solo Linux retained idle,storage,S3 GET/other requests,0,s3_get,4e-07,0.0
+Solo Linux retained idle,traffic,"Internet outbound GB, gross before shared free allowance",0.0,egress_gb_first_10tb,0.09,0.0
+Solo Linux retained idle,traffic,NAT processed source GB (display does not traverse NAT),0,nat_gb,0.045,0.0
+Solo Linux retained idle,traffic,ALB LCU-hour budget: byte dimension,0.0,alb_lcu_hour,0.008,0.0
+Solo Linux retained idle,shared_desktop_usage,ALB non-byte LCU headroom budget,0,alb_lcu_hour,0.008,0.0
+Solo Linux retained idle,shared_desktop,Gateway/guacd vCPU-hours,2920,fargate_cpu_hour,0.04048,118.2016
+Solo Linux retained idle,shared_desktop,Gateway/guacd GiB-hours,5840,fargate_gib_hour,0.004445,25.9588
+Solo Linux retained idle,shared_desktop,Egress proxy vCPU-hours,365.0,fargate_cpu_hour,0.04048,14.7752
+Solo Linux retained idle,shared_desktop,Egress proxy GiB-hours,730.0,fargate_gib_hour,0.004445,3.24485
+Solo Linux retained idle,shared_desktop,"NAT gateway-hours, two AZs",1460,nat_hour,0.045,65.7
+Solo Linux retained idle,shared_desktop,ALB hours,730,alb_hour,0.0225,16.425
+Solo Linux retained idle,shared_desktop,"Public IPv4 address-hours, ALB and NAT",2920,ipv4_hour,0.005,14.6
+Solo Linux retained idle,analysis,Analysis vCPU-hours,0,fargate_cpu_hour,0.04048,0.0
+Solo Linux retained idle,analysis,Analysis GiB-hours,0,fargate_gib_hour,0.004445,0.0
+Solo Linux retained idle,unpriced_allowance,Additional application/data/operations planning allowance,1,planning_allowance,300,300
+12 Linux active,computers,Linux running hours incl grace and prestart,840.0,linux_hour,0.096,80.64
+12 Linux active,computers,Windows running hours incl grace and prestart,0.0,windows_hour,0.376,0.0
+12 Linux active,shared_warm_capacity,Clean Linux spare running hours,200,linux_hour,0.096,19.2
+12 Linux active,shared_warm_capacity,Clean Linux spare gp3 GB-month,40,ebs_gb_month,0.08,3.2
+12 Linux active,storage,Private computer gp3 provisioned GB-month,480,ebs_gb_month,0.08,38.4
+12 Linux active,storage,Incremental snapshot retained GB-month,120,snapshot_gb_month,0.05,6.0
+12 Linux active,storage,S3 Standard retained artifact GB-month,240,s3_gb_month,0.023,5.52
+12 Linux active,storage,S3 PUT/COPY/POST/LIST requests,24000,s3_put,5e-06,0.12000000000000001
+12 Linux active,storage,S3 GET/other requests,240000,s3_get,4e-07,0.096
+12 Linux active,traffic,"Internet outbound GB, gross before shared free allowance",142.8,egress_gb_first_10tb,0.09,12.852
+12 Linux active,traffic,NAT processed source GB (display does not traverse NAT),60,nat_gb,0.045,2.6999999999999997
+12 Linux active,traffic,ALB LCU-hour budget: byte dimension,142.8,alb_lcu_hour,0.008,1.1424
+12 Linux active,shared_desktop_usage,ALB non-byte LCU headroom budget,50.0,alb_lcu_hour,0.008,0.4
+12 Linux active,shared_desktop,Gateway/guacd vCPU-hours,2920,fargate_cpu_hour,0.04048,118.2016
+12 Linux active,shared_desktop,Gateway/guacd GiB-hours,5840,fargate_gib_hour,0.004445,25.9588
+12 Linux active,shared_desktop,Egress proxy vCPU-hours,365.0,fargate_cpu_hour,0.04048,14.7752
+12 Linux active,shared_desktop,Egress proxy GiB-hours,730.0,fargate_gib_hour,0.004445,3.24485
+12 Linux active,shared_desktop,"NAT gateway-hours, two AZs",1460,nat_hour,0.045,65.7
+12 Linux active,shared_desktop,ALB hours,730,alb_hour,0.0225,16.425
+12 Linux active,shared_desktop,"Public IPv4 address-hours, ALB and NAT",2920,ipv4_hour,0.005,14.6
+12 Linux active,analysis,Analysis vCPU-hours,48,fargate_cpu_hour,0.04048,1.94304
+12 Linux active,analysis,Analysis GiB-hours,96,fargate_gib_hour,0.004445,0.42672
+12 Linux active,unpriced_allowance,Additional application/data/operations planning allowance,1,planning_allowance,300,300
+12 Linux retained idle,computers,Linux running hours incl grace and prestart,0,linux_hour,0.096,0.0
+12 Linux retained idle,computers,Windows running hours incl grace and prestart,0,windows_hour,0.376,0.0
+12 Linux retained idle,shared_warm_capacity,Clean Linux spare running hours,0,linux_hour,0.096,0.0
+12 Linux retained idle,shared_warm_capacity,Clean Linux spare gp3 GB-month,0,ebs_gb_month,0.08,0.0
+12 Linux retained idle,storage,Private computer gp3 provisioned GB-month,480,ebs_gb_month,0.08,38.4
+12 Linux retained idle,storage,Incremental snapshot retained GB-month,120,snapshot_gb_month,0.05,6.0
+12 Linux retained idle,storage,S3 Standard retained artifact GB-month,240,s3_gb_month,0.023,5.52
+12 Linux retained idle,storage,S3 PUT/COPY/POST/LIST requests,0,s3_put,5e-06,0.0
+12 Linux retained idle,storage,S3 GET/other requests,0,s3_get,4e-07,0.0
+12 Linux retained idle,traffic,"Internet outbound GB, gross before shared free allowance",0.0,egress_gb_first_10tb,0.09,0.0
+12 Linux retained idle,traffic,NAT processed source GB (display does not traverse NAT),0,nat_gb,0.045,0.0
+12 Linux retained idle,traffic,ALB LCU-hour budget: byte dimension,0.0,alb_lcu_hour,0.008,0.0
+12 Linux retained idle,shared_desktop_usage,ALB non-byte LCU headroom budget,0,alb_lcu_hour,0.008,0.0
+12 Linux retained idle,shared_desktop,Gateway/guacd vCPU-hours,2920,fargate_cpu_hour,0.04048,118.2016
+12 Linux retained idle,shared_desktop,Gateway/guacd GiB-hours,5840,fargate_gib_hour,0.004445,25.9588
+12 Linux retained idle,shared_desktop,Egress proxy vCPU-hours,365.0,fargate_cpu_hour,0.04048,14.7752
+12 Linux retained idle,shared_desktop,Egress proxy GiB-hours,730.0,fargate_gib_hour,0.004445,3.24485
+12 Linux retained idle,shared_desktop,"NAT gateway-hours, two AZs",1460,nat_hour,0.045,65.7
+12 Linux retained idle,shared_desktop,ALB hours,730,alb_hour,0.0225,16.425
+12 Linux retained idle,shared_desktop,"Public IPv4 address-hours, ALB and NAT",2920,ipv4_hour,0.005,14.6
+12 Linux retained idle,analysis,Analysis vCPU-hours,0,fargate_cpu_hour,0.04048,0.0
+12 Linux retained idle,analysis,Analysis GiB-hours,0,fargate_gib_hour,0.004445,0.0
+12 Linux retained idle,unpriced_allowance,Additional application/data/operations planning allowance,1,planning_allowance,300,300
+12 Linux always on,computers,Linux running hours incl grace and prestart,8760,linux_hour,0.096,840.96
+12 Linux always on,computers,Windows running hours incl grace and prestart,0,windows_hour,0.376,0.0
+12 Linux always on,shared_warm_capacity,Clean Linux spare running hours,0,linux_hour,0.096,0.0
+12 Linux always on,shared_warm_capacity,Clean Linux spare gp3 GB-month,0,ebs_gb_month,0.08,0.0
+12 Linux always on,storage,Private computer gp3 provisioned GB-month,480,ebs_gb_month,0.08,38.4
+12 Linux always on,storage,Incremental snapshot retained GB-month,120,snapshot_gb_month,0.05,6.0
+12 Linux always on,storage,S3 Standard retained artifact GB-month,240,s3_gb_month,0.023,5.52
+12 Linux always on,storage,S3 PUT/COPY/POST/LIST requests,24000,s3_put,5e-06,0.12000000000000001
+12 Linux always on,storage,S3 GET/other requests,240000,s3_get,4e-07,0.096
+12 Linux always on,traffic,"Internet outbound GB, gross before shared free allowance",142.8,egress_gb_first_10tb,0.09,12.852
+12 Linux always on,traffic,NAT processed source GB (display does not traverse NAT),60,nat_gb,0.045,2.6999999999999997
+12 Linux always on,traffic,ALB LCU-hour budget: byte dimension,142.8,alb_lcu_hour,0.008,1.1424
+12 Linux always on,shared_desktop_usage,ALB non-byte LCU headroom budget,50.0,alb_lcu_hour,0.008,0.4
+12 Linux always on,shared_desktop,Gateway/guacd vCPU-hours,2920,fargate_cpu_hour,0.04048,118.2016
+12 Linux always on,shared_desktop,Gateway/guacd GiB-hours,5840,fargate_gib_hour,0.004445,25.9588
+12 Linux always on,shared_desktop,Egress proxy vCPU-hours,365.0,fargate_cpu_hour,0.04048,14.7752
+12 Linux always on,shared_desktop,Egress proxy GiB-hours,730.0,fargate_gib_hour,0.004445,3.24485
+12 Linux always on,shared_desktop,"NAT gateway-hours, two AZs",1460,nat_hour,0.045,65.7
+12 Linux always on,shared_desktop,ALB hours,730,alb_hour,0.0225,16.425
+12 Linux always on,shared_desktop,"Public IPv4 address-hours, ALB and NAT",2920,ipv4_hour,0.005,14.6
+12 Linux always on,analysis,Analysis vCPU-hours,48,fargate_cpu_hour,0.04048,1.94304
+12 Linux always on,analysis,Analysis GiB-hours,96,fargate_gib_hour,0.004445,0.42672
+12 Linux always on,unpriced_allowance,Additional application/data/operations planning allowance,1,planning_allowance,300,300
+10 Linux + 2 Windows active,computers,Linux running hours incl grace and prestart,700.0,linux_hour,0.096,67.2
+10 Linux + 2 Windows active,computers,Windows running hours incl grace and prestart,140.0,windows_hour,0.376,52.64
+10 Linux + 2 Windows active,shared_warm_capacity,Clean Linux spare running hours,200,linux_hour,0.096,19.2
+10 Linux + 2 Windows active,shared_warm_capacity,Clean Linux spare gp3 GB-month,40,ebs_gb_month,0.08,3.2
+10 Linux + 2 Windows active,storage,Private computer gp3 provisioned GB-month,600,ebs_gb_month,0.08,48.0
+10 Linux + 2 Windows active,storage,Incremental snapshot retained GB-month,140,snapshot_gb_month,0.05,7.0
+10 Linux + 2 Windows active,storage,S3 Standard retained artifact GB-month,240,s3_gb_month,0.023,5.52
+10 Linux + 2 Windows active,storage,S3 PUT/COPY/POST/LIST requests,24000,s3_put,5e-06,0.12000000000000001
+10 Linux + 2 Windows active,storage,S3 GET/other requests,240000,s3_get,4e-07,0.096
+10 Linux + 2 Windows active,traffic,"Internet outbound GB, gross before shared free allowance",142.8,egress_gb_first_10tb,0.09,12.852
+10 Linux + 2 Windows active,traffic,NAT processed source GB (display does not traverse NAT),60,nat_gb,0.045,2.6999999999999997
+10 Linux + 2 Windows active,traffic,ALB LCU-hour budget: byte dimension,142.8,alb_lcu_hour,0.008,1.1424
+10 Linux + 2 Windows active,shared_desktop_usage,ALB non-byte LCU headroom budget,50.0,alb_lcu_hour,0.008,0.4
+10 Linux + 2 Windows active,shared_desktop,Gateway/guacd vCPU-hours,2920,fargate_cpu_hour,0.04048,118.2016
+10 Linux + 2 Windows active,shared_desktop,Gateway/guacd GiB-hours,5840,fargate_gib_hour,0.004445,25.9588
+10 Linux + 2 Windows active,shared_desktop,Egress proxy vCPU-hours,365.0,fargate_cpu_hour,0.04048,14.7752
+10 Linux + 2 Windows active,shared_desktop,Egress proxy GiB-hours,730.0,fargate_gib_hour,0.004445,3.24485
+10 Linux + 2 Windows active,shared_desktop,"NAT gateway-hours, two AZs",1460,nat_hour,0.045,65.7
+10 Linux + 2 Windows active,shared_desktop,ALB hours,730,alb_hour,0.0225,16.425
+10 Linux + 2 Windows active,shared_desktop,"Public IPv4 address-hours, ALB and NAT",2920,ipv4_hour,0.005,14.6
+10 Linux + 2 Windows active,windows_licensing,Office named-user full subscription month,2,office_standard_user_month,15.7,31.4
+10 Linux + 2 Windows active,windows_licensing,RDS SAL named-user month,2,rds_sal_user_month,10.0,20.0
+10 Linux + 2 Windows active,windows_tenant_fixed,Managed AD Standard domain-controller hours,1460,ad_dc_hour,0.06,87.6
+10 Linux + 2 Windows active,windows_tenant_fixed,"Endpoint AZ-hours, provisioning-count allowance",2920,endpoint_az_hour,0.01,29.2
+10 Linux + 2 Windows active,traffic,Endpoint processed GB allowance,2,endpoint_gb,0.01,0.02
+10 Linux + 2 Windows active,analysis,Analysis vCPU-hours,48,fargate_cpu_hour,0.04048,1.94304
+10 Linux + 2 Windows active,analysis,Analysis GiB-hours,96,fargate_gib_hour,0.004445,0.42672
+10 Linux + 2 Windows active,unpriced_allowance,Additional application/data/operations planning allowance,1,planning_allowance,300,300
+Solo Windows active,computers,Linux running hours incl grace and prestart,0.0,linux_hour,0.096,0.0
+Solo Windows active,computers,Windows running hours incl grace and prestart,70.0,windows_hour,0.376,26.32
+Solo Windows active,shared_warm_capacity,Clean Linux spare running hours,0,linux_hour,0.096,0.0
+Solo Windows active,shared_warm_capacity,Clean Linux spare gp3 GB-month,0,ebs_gb_month,0.08,0.0
+Solo Windows active,storage,Private computer gp3 provisioned GB-month,100,ebs_gb_month,0.08,8.0
+Solo Windows active,storage,Incremental snapshot retained GB-month,20,snapshot_gb_month,0.05,1.0
+Solo Windows active,storage,S3 Standard retained artifact GB-month,20,s3_gb_month,0.023,0.45999999999999996
+Solo Windows active,storage,S3 PUT/COPY/POST/LIST requests,2000,s3_put,5e-06,0.01
+Solo Windows active,storage,S3 GET/other requests,20000,s3_get,4e-07,0.008
+Solo Windows active,traffic,"Internet outbound GB, gross before shared free allowance",11.9,egress_gb_first_10tb,0.09,1.071
+Solo Windows active,traffic,NAT processed source GB (display does not traverse NAT),5,nat_gb,0.045,0.22499999999999998
+Solo Windows active,traffic,ALB LCU-hour budget: byte dimension,11.9,alb_lcu_hour,0.008,0.0952
+Solo Windows active,shared_desktop_usage,ALB non-byte LCU headroom budget,50.0,alb_lcu_hour,0.008,0.4
+Solo Windows active,shared_desktop,Gateway/guacd vCPU-hours,2920,fargate_cpu_hour,0.04048,118.2016
+Solo Windows active,shared_desktop,Gateway/guacd GiB-hours,5840,fargate_gib_hour,0.004445,25.9588
+Solo Windows active,shared_desktop,Egress proxy vCPU-hours,365.0,fargate_cpu_hour,0.04048,14.7752
+Solo Windows active,shared_desktop,Egress proxy GiB-hours,730.0,fargate_gib_hour,0.004445,3.24485
+Solo Windows active,shared_desktop,"NAT gateway-hours, two AZs",1460,nat_hour,0.045,65.7
+Solo Windows active,shared_desktop,ALB hours,730,alb_hour,0.0225,16.425
+Solo Windows active,shared_desktop,"Public IPv4 address-hours, ALB and NAT",2920,ipv4_hour,0.005,14.6
+Solo Windows active,windows_licensing,Office named-user full subscription month,1,office_standard_user_month,15.7,15.7
+Solo Windows active,windows_licensing,RDS SAL named-user month,1,rds_sal_user_month,10.0,10.0
+Solo Windows active,windows_tenant_fixed,Managed AD Standard domain-controller hours,1460,ad_dc_hour,0.06,87.6
+Solo Windows active,windows_tenant_fixed,"Endpoint AZ-hours, provisioning-count allowance",2920,endpoint_az_hour,0.01,29.2
+Solo Windows active,traffic,Endpoint processed GB allowance,1,endpoint_gb,0.01,0.01
+Solo Windows active,analysis,Analysis vCPU-hours,4,fargate_cpu_hour,0.04048,0.16192
+Solo Windows active,analysis,Analysis GiB-hours,8,fargate_gib_hour,0.004445,0.03556
+Solo Windows active,unpriced_allowance,Additional application/data/operations planning allowance,1,planning_allowance,300,300
+Solo Windows retained idle,computers,Linux running hours incl grace and prestart,0,linux_hour,0.096,0.0
+Solo Windows retained idle,computers,Windows running hours incl grace and prestart,0,windows_hour,0.376,0.0
+Solo Windows retained idle,shared_warm_capacity,Clean Linux spare running hours,0,linux_hour,0.096,0.0
+Solo Windows retained idle,shared_warm_capacity,Clean Linux spare gp3 GB-month,0,ebs_gb_month,0.08,0.0
+Solo Windows retained idle,storage,Private computer gp3 provisioned GB-month,100,ebs_gb_month,0.08,8.0
+Solo Windows retained idle,storage,Incremental snapshot retained GB-month,20,snapshot_gb_month,0.05,1.0
+Solo Windows retained idle,storage,S3 Standard retained artifact GB-month,20,s3_gb_month,0.023,0.45999999999999996
+Solo Windows retained idle,storage,S3 PUT/COPY/POST/LIST requests,0,s3_put,5e-06,0.0
+Solo Windows retained idle,storage,S3 GET/other requests,0,s3_get,4e-07,0.0
+Solo Windows retained idle,traffic,"Internet outbound GB, gross before shared free allowance",0.0,egress_gb_first_10tb,0.09,0.0
+Solo Windows retained idle,traffic,NAT processed source GB (display does not traverse NAT),0,nat_gb,0.045,0.0
+Solo Windows retained idle,traffic,ALB LCU-hour budget: byte dimension,0.0,alb_lcu_hour,0.008,0.0
+Solo Windows retained idle,shared_desktop_usage,ALB non-byte LCU headroom budget,0,alb_lcu_hour,0.008,0.0
+Solo Windows retained idle,shared_desktop,Gateway/guacd vCPU-hours,2920,fargate_cpu_hour,0.04048,118.2016
+Solo Windows retained idle,shared_desktop,Gateway/guacd GiB-hours,5840,fargate_gib_hour,0.004445,25.9588
+Solo Windows retained idle,shared_desktop,Egress proxy vCPU-hours,365.0,fargate_cpu_hour,0.04048,14.7752
+Solo Windows retained idle,shared_desktop,Egress proxy GiB-hours,730.0,fargate_gib_hour,0.004445,3.24485
+Solo Windows retained idle,shared_desktop,"NAT gateway-hours, two AZs",1460,nat_hour,0.045,65.7
+Solo Windows retained idle,shared_desktop,ALB hours,730,alb_hour,0.0225,16.425
+Solo Windows retained idle,shared_desktop,"Public IPv4 address-hours, ALB and NAT",2920,ipv4_hour,0.005,14.6
+Solo Windows retained idle,windows_licensing,Office named-user full subscription month,1,office_standard_user_month,15.7,15.7
+Solo Windows retained idle,windows_licensing,RDS SAL named-user month,1,rds_sal_user_month,10.0,10.0
+Solo Windows retained idle,windows_tenant_fixed,Managed AD Standard domain-controller hours,1460,ad_dc_hour,0.06,87.6
+Solo Windows retained idle,windows_tenant_fixed,"Endpoint AZ-hours, provisioning-count allowance",2920,endpoint_az_hour,0.01,29.2
+Solo Windows retained idle,traffic,Endpoint processed GB allowance,0,endpoint_gb,0.01,0.0
+Solo Windows retained idle,analysis,Analysis vCPU-hours,0,fargate_cpu_hour,0.04048,0.0
+Solo Windows retained idle,analysis,Analysis GiB-hours,0,fargate_gib_hour,0.004445,0.0
+Solo Windows retained idle,unpriced_allowance,Additional application/data/operations planning allowance,1,planning_allowance,300,300
+12 Windows active,computers,Linux running hours incl grace and prestart,0.0,linux_hour,0.096,0.0
+12 Windows active,computers,Windows running hours incl grace and prestart,840.0,windows_hour,0.376,315.84
+12 Windows active,shared_warm_capacity,Clean Linux spare running hours,0,linux_hour,0.096,0.0
+12 Windows active,shared_warm_capacity,Clean Linux spare gp3 GB-month,0,ebs_gb_month,0.08,0.0
+12 Windows active,storage,Private computer gp3 provisioned GB-month,1200,ebs_gb_month,0.08,96.0
+12 Windows active,storage,Incremental snapshot retained GB-month,240,snapshot_gb_month,0.05,12.0
+12 Windows active,storage,S3 Standard retained artifact GB-month,240,s3_gb_month,0.023,5.52
+12 Windows active,storage,S3 PUT/COPY/POST/LIST requests,24000,s3_put,5e-06,0.12000000000000001
+12 Windows active,storage,S3 GET/other requests,240000,s3_get,4e-07,0.096
+12 Windows active,traffic,"Internet outbound GB, gross before shared free allowance",142.8,egress_gb_first_10tb,0.09,12.852
+12 Windows active,traffic,NAT processed source GB (display does not traverse NAT),60,nat_gb,0.045,2.6999999999999997
+12 Windows active,traffic,ALB LCU-hour budget: byte dimension,142.8,alb_lcu_hour,0.008,1.1424
+12 Windows active,shared_desktop_usage,ALB non-byte LCU headroom budget,50.0,alb_lcu_hour,0.008,0.4
+12 Windows active,shared_desktop,Gateway/guacd vCPU-hours,2920,fargate_cpu_hour,0.04048,118.2016
+12 Windows active,shared_desktop,Gateway/guacd GiB-hours,5840,fargate_gib_hour,0.004445,25.9588
+12 Windows active,shared_desktop,Egress proxy vCPU-hours,365.0,fargate_cpu_hour,0.04048,14.7752
+12 Windows active,shared_desktop,Egress proxy GiB-hours,730.0,fargate_gib_hour,0.004445,3.24485
+12 Windows active,shared_desktop,"NAT gateway-hours, two AZs",1460,nat_hour,0.045,65.7
+12 Windows active,shared_desktop,ALB hours,730,alb_hour,0.0225,16.425
+12 Windows active,shared_desktop,"Public IPv4 address-hours, ALB and NAT",2920,ipv4_hour,0.005,14.6
+12 Windows active,windows_licensing,Office named-user full subscription month,12,office_standard_user_month,15.7,188.39999999999998
+12 Windows active,windows_licensing,RDS SAL named-user month,12,rds_sal_user_month,10.0,120.0
+12 Windows active,windows_tenant_fixed,Managed AD Standard domain-controller hours,1460,ad_dc_hour,0.06,87.6
+12 Windows active,windows_tenant_fixed,"Endpoint AZ-hours, provisioning-count allowance",2920,endpoint_az_hour,0.01,29.2
+12 Windows active,traffic,Endpoint processed GB allowance,12,endpoint_gb,0.01,0.12
+12 Windows active,analysis,Analysis vCPU-hours,48,fargate_cpu_hour,0.04048,1.94304
+12 Windows active,analysis,Analysis GiB-hours,96,fargate_gib_hour,0.004445,0.42672
+12 Windows active,unpriced_allowance,Additional application/data/operations planning allowance,1,planning_allowance,300,300
+12 Windows retained idle,computers,Linux running hours incl grace and prestart,0,linux_hour,0.096,0.0
+12 Windows retained idle,computers,Windows running hours incl grace and prestart,0,windows_hour,0.376,0.0
+12 Windows retained idle,shared_warm_capacity,Clean Linux spare running hours,0,linux_hour,0.096,0.0
+12 Windows retained idle,shared_warm_capacity,Clean Linux spare gp3 GB-month,0,ebs_gb_month,0.08,0.0
+12 Windows retained idle,storage,Private computer gp3 provisioned GB-month,1200,ebs_gb_month,0.08,96.0
+12 Windows retained idle,storage,Incremental snapshot retained GB-month,240,snapshot_gb_month,0.05,12.0
+12 Windows retained idle,storage,S3 Standard retained artifact GB-month,240,s3_gb_month,0.023,5.52
+12 Windows retained idle,storage,S3 PUT/COPY/POST/LIST requests,0,s3_put,5e-06,0.0
+12 Windows retained idle,storage,S3 GET/other requests,0,s3_get,4e-07,0.0
+12 Windows retained idle,traffic,"Internet outbound GB, gross before shared free allowance",0.0,egress_gb_first_10tb,0.09,0.0
+12 Windows retained idle,traffic,NAT processed source GB (display does not traverse NAT),0,nat_gb,0.045,0.0
+12 Windows retained idle,traffic,ALB LCU-hour budget: byte dimension,0.0,alb_lcu_hour,0.008,0.0
+12 Windows retained idle,shared_desktop_usage,ALB non-byte LCU headroom budget,0,alb_lcu_hour,0.008,0.0
+12 Windows retained idle,shared_desktop,Gateway/guacd vCPU-hours,2920,fargate_cpu_hour,0.04048,118.2016
+12 Windows retained idle,shared_desktop,Gateway/guacd GiB-hours,5840,fargate_gib_hour,0.004445,25.9588
+12 Windows retained idle,shared_desktop,Egress proxy vCPU-hours,365.0,fargate_cpu_hour,0.04048,14.7752
+12 Windows retained idle,shared_desktop,Egress proxy GiB-hours,730.0,fargate_gib_hour,0.004445,3.24485
+12 Windows retained idle,shared_desktop,"NAT gateway-hours, two AZs",1460,nat_hour,0.045,65.7
+12 Windows retained idle,shared_desktop,ALB hours,730,alb_hour,0.0225,16.425
+12 Windows retained idle,shared_desktop,"Public IPv4 address-hours, ALB and NAT",2920,ipv4_hour,0.005,14.6
+12 Windows retained idle,windows_licensing,Office named-user full subscription month,12,office_standard_user_month,15.7,188.39999999999998
+12 Windows retained idle,windows_licensing,RDS SAL named-user month,12,rds_sal_user_month,10.0,120.0
+12 Windows retained idle,windows_tenant_fixed,Managed AD Standard domain-controller hours,1460,ad_dc_hour,0.06,87.6
+12 Windows retained idle,windows_tenant_fixed,"Endpoint AZ-hours, provisioning-count allowance",2920,endpoint_az_hour,0.01,29.2
+12 Windows retained idle,traffic,Endpoint processed GB allowance,0,endpoint_gb,0.01,0.0
+12 Windows retained idle,analysis,Analysis vCPU-hours,0,fargate_cpu_hour,0.04048,0.0
+12 Windows retained idle,analysis,Analysis GiB-hours,0,fargate_gib_hour,0.004445,0.0
+12 Windows retained idle,unpriced_allowance,Additional application/data/operations planning allowance,1,planning_allowance,300,300
+12 Windows always on,computers,Linux running hours incl grace and prestart,0,linux_hour,0.096,0.0
+12 Windows always on,computers,Windows running hours incl grace and prestart,8760,windows_hour,0.376,3293.76
+12 Windows always on,shared_warm_capacity,Clean Linux spare running hours,0,linux_hour,0.096,0.0
+12 Windows always on,shared_warm_capacity,Clean Linux spare gp3 GB-month,0,ebs_gb_month,0.08,0.0
+12 Windows always on,storage,Private computer gp3 provisioned GB-month,1200,ebs_gb_month,0.08,96.0
+12 Windows always on,storage,Incremental snapshot retained GB-month,240,snapshot_gb_month,0.05,12.0
+12 Windows always on,storage,S3 Standard retained artifact GB-month,240,s3_gb_month,0.023,5.52
+12 Windows always on,storage,S3 PUT/COPY/POST/LIST requests,24000,s3_put,5e-06,0.12000000000000001
+12 Windows always on,storage,S3 GET/other requests,240000,s3_get,4e-07,0.096
+12 Windows always on,traffic,"Internet outbound GB, gross before shared free allowance",142.8,egress_gb_first_10tb,0.09,12.852
+12 Windows always on,traffic,NAT processed source GB (display does not traverse NAT),60,nat_gb,0.045,2.6999999999999997
+12 Windows always on,traffic,ALB LCU-hour budget: byte dimension,142.8,alb_lcu_hour,0.008,1.1424
+12 Windows always on,shared_desktop_usage,ALB non-byte LCU headroom budget,50.0,alb_lcu_hour,0.008,0.4
+12 Windows always on,shared_desktop,Gateway/guacd vCPU-hours,2920,fargate_cpu_hour,0.04048,118.2016
+12 Windows always on,shared_desktop,Gateway/guacd GiB-hours,5840,fargate_gib_hour,0.004445,25.9588
+12 Windows always on,shared_desktop,Egress proxy vCPU-hours,365.0,fargate_cpu_hour,0.04048,14.7752
+12 Windows always on,shared_desktop,Egress proxy GiB-hours,730.0,fargate_gib_hour,0.004445,3.24485
+12 Windows always on,shared_desktop,"NAT gateway-hours, two AZs",1460,nat_hour,0.045,65.7
+12 Windows always on,shared_desktop,ALB hours,730,alb_hour,0.0225,16.425
+12 Windows always on,shared_desktop,"Public IPv4 address-hours, ALB and NAT",2920,ipv4_hour,0.005,14.6
+12 Windows always on,windows_licensing,Office named-user full subscription month,12,office_standard_user_month,15.7,188.39999999999998
+12 Windows always on,windows_licensing,RDS SAL named-user month,12,rds_sal_user_month,10.0,120.0
+12 Windows always on,windows_tenant_fixed,Managed AD Standard domain-controller hours,1460,ad_dc_hour,0.06,87.6
+12 Windows always on,windows_tenant_fixed,"Endpoint AZ-hours, provisioning-count allowance",2920,endpoint_az_hour,0.01,29.2
+12 Windows always on,traffic,Endpoint processed GB allowance,12,endpoint_gb,0.01,0.12
+12 Windows always on,analysis,Analysis vCPU-hours,48,fargate_cpu_hour,0.04048,1.94304
+12 Windows always on,analysis,Analysis GiB-hours,96,fargate_gib_hour,0.004445,0.42672
+12 Windows always on,unpriced_allowance,Additional application/data/operations planning allowance,1,planning_allowance,300,300

@@ -1,0 +1,26 @@
+{
+  "schema_version": 10,
+  "files": [
+    {
+      "path": "zobba/migrations/0010_knowledge.sql",
+      "bytes": 15975,
+      "sha256": "243ba8519afadf46867aab40e98b8e7fa8cc3b66da25d2508f3fae400a8f3707",
+      "literal_carriage_returns": 0
+    },
+    {
+      "path": "zobba/crates/infrastructure/src/schema-v10.catalog",
+      "bytes": 235566,
+      "sha256": "9ee195604f4e31403c6fc64a1f2d2506fc930f2c07d4dcd2474948c237dc3ab7",
+      "literal_carriage_returns": 3
+    }
+  ],
+  "published_prefix_proof": "repair-prefix-proof.json",
+  "runtime_catalogue_verification": {
+    "state": "Passed",
+    "full_rust": "repair-rust-full.log",
+    "smoke": "repair-smoke.log",
+    "exit": 0,
+    "bootstrap_suite_tests": 3,
+    "coverage": "Fresh and repeated migration; populated upgrades; exact current catalogue and prefix; RLS/grants/function tamper guards; API/worker schema health."
+  }
+}

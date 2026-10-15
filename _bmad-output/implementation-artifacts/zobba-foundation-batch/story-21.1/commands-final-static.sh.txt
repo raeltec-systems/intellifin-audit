@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+. /workspace/zobba-build-tools/activate-tests.sh
+cd /workspace/intellifin-audit/zobba
+set +e
+cargo fmt --all --check > /tmp/zobba-21-1-repair-fmt-final.log 2>&1
+format_result=$?
+printf '%s\n' "$format_result" > /tmp/zobba-21-1-repair-fmt-final.exit
+if [ "$format_result" -ne 0 ]; then exit "$format_result"; fi
+cargo clippy --workspace --all-targets --locked --offline -- -D warnings > /tmp/zobba-21-1-repair-clippy-final.log 2>&1
+clippy_result=$?
+printf '%s\n' "$clippy_result" > /tmp/zobba-21-1-repair-clippy-final.exit
+exit "$clippy_result"

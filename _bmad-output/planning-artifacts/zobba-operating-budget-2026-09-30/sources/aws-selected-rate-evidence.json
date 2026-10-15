@@ -1,0 +1,1311 @@
+[
+  {
+    "rate_key": "rds_m9g_multi_hour",
+    "product": {
+      "sku": "E4F4ER7EVHAA7B8T",
+      "productFamily": "Database Instance",
+      "attributes": {
+        "servicecode": "AmazonRDS",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "instanceType": "db.m9g.large",
+        "currentGeneration": "Yes",
+        "instanceFamily": "General purpose",
+        "vcpu": "2",
+        "physicalProcessor": "AWS Graviton5",
+        "memory": "8 GiB",
+        "storage": "EBS Only",
+        "networkPerformance": "Up to 15 Gigabit",
+        "processorArchitecture": "64-bit",
+        "engineCode": "14",
+        "databaseEngine": "PostgreSQL",
+        "licenseModel": "No license required",
+        "deploymentOption": "Multi-AZ",
+        "usagetype": "Multi-AZUsage:db.m9g.large",
+        "operation": "CreateDBInstance:0014",
+        "instanceTypeFamily": "M9G",
+        "normalizationSizeFactor": "8",
+        "regionCode": "us-east-1",
+        "servicename": "Amazon Relational Database Service",
+        "unbundledLicensing": "FALSE"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "E4F4ER7EVHAA7B8T",
+      "effectiveDate": "2026-09-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "E4F4ER7EVHAA7B8T.JRTCKXETXF.6YS6EN2CT7",
+      "description": "USD 0.366 per RDS db.m9g.large Multi-AZ instance hour (or partial hour) running PostgreSQL",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "Hrs",
+      "pricePerUnit": {
+        "USD": "0.3660000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonRDS/20260929233006/us-east-1/index.json"
+  },
+  {
+    "rate_key": "rds_m9g_single_hour",
+    "product": {
+      "sku": "ARFJBNVA563K7YKA",
+      "productFamily": "Database Instance",
+      "attributes": {
+        "servicecode": "AmazonRDS",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "instanceType": "db.m9g.large",
+        "currentGeneration": "Yes",
+        "instanceFamily": "General purpose",
+        "vcpu": "2",
+        "physicalProcessor": "AWS Graviton5",
+        "memory": "8 GiB",
+        "storage": "EBS Only",
+        "networkPerformance": "Up to 15 Gigabit",
+        "processorArchitecture": "64-bit",
+        "engineCode": "14",
+        "databaseEngine": "PostgreSQL",
+        "licenseModel": "No license required",
+        "deploymentOption": "Single-AZ",
+        "usagetype": "InstanceUsage:db.m9g.large",
+        "operation": "CreateDBInstance:0014",
+        "instanceTypeFamily": "M9G",
+        "normalizationSizeFactor": "4",
+        "regionCode": "us-east-1",
+        "servicename": "Amazon Relational Database Service",
+        "unbundledLicensing": "FALSE"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "ARFJBNVA563K7YKA",
+      "effectiveDate": "2026-09-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "ARFJBNVA563K7YKA.JRTCKXETXF.6YS6EN2CT7",
+      "description": "USD 0.183 per RDS db.m9g.large Single-AZ instance hour (or partial hour) running PostgreSQL",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "Hrs",
+      "pricePerUnit": {
+        "USD": "0.1830000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonRDS/20260929233006/us-east-1/index.json"
+  },
+  {
+    "rate_key": "rds_gp3_multi_gb_month",
+    "product": {
+      "sku": "J7S7KD4WFDNQWKNX",
+      "productFamily": "Database Storage",
+      "attributes": {
+        "servicecode": "AmazonRDS",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "storageMedia": "SSD",
+        "volumeType": "General Purpose-GP3",
+        "minVolumeSize": "5 GB",
+        "maxVolumeSize": "16 TB",
+        "engineCode": "14",
+        "databaseEngine": "PostgreSQL",
+        "deploymentOption": "Multi-AZ",
+        "usagetype": "RDS:Multi-AZ-GP3-Storage",
+        "operation": "CreateDBInstance:0014",
+        "regionCode": "us-east-1",
+        "servicename": "Amazon Relational Database Service"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "J7S7KD4WFDNQWKNX",
+      "effectiveDate": "2026-09-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "J7S7KD4WFDNQWKNX.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$0.23 per GB-month of provisioned GP3 storage for Multi-AZ deployments running PostgreSQL",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "GB-Mo",
+      "pricePerUnit": {
+        "USD": "0.2300000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonRDS/20260929233006/us-east-1/index.json"
+  },
+  {
+    "rate_key": "rds_gp3_single_gb_month",
+    "product": {
+      "sku": "KYVYY29G957PKY3B",
+      "productFamily": "Database Storage",
+      "attributes": {
+        "servicecode": "AmazonRDS",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "storageMedia": "SSD",
+        "volumeType": "General Purpose-GP3",
+        "minVolumeSize": "5 GB",
+        "maxVolumeSize": "16 TB",
+        "engineCode": "14",
+        "databaseEngine": "PostgreSQL",
+        "deploymentOption": "Single-AZ",
+        "usagetype": "RDS:GP3-Storage",
+        "operation": "CreateDBInstance:0014",
+        "regionCode": "us-east-1",
+        "servicename": "Amazon Relational Database Service"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "KYVYY29G957PKY3B",
+      "effectiveDate": "2026-09-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "KYVYY29G957PKY3B.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$0.115 per GB-month of provisioned GP3 storage running PostgreSQL",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "GB-Mo",
+      "pricePerUnit": {
+        "USD": "0.1150000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonRDS/20260929233006/us-east-1/index.json"
+  },
+  {
+    "rate_key": "rds_backup_excess_gb_month",
+    "product": {
+      "sku": "6W8ECRFVDATCER7J",
+      "productFamily": "Storage Snapshot",
+      "attributes": {
+        "servicecode": "AmazonRDS",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "storageMedia": "AmazonS3",
+        "engineCode": "14",
+        "databaseEngine": "PostgreSQL",
+        "deploymentOption": "Single-AZ",
+        "usagetype": "RDS:ChargedBackupUsage",
+        "operation": "CreateDBInstance:0014",
+        "regionCode": "us-east-1",
+        "servicename": "Amazon Relational Database Service"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "6W8ECRFVDATCER7J",
+      "effectiveDate": "2026-09-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "6W8ECRFVDATCER7J.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$0.095 per additional GB-month of backup storage exceeding free allocation running PostgreSQL",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "GB-Mo",
+      "pricePerUnit": {
+        "USD": "0.0950000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonRDS/20260929233006/us-east-1/index.json"
+  },
+  {
+    "rate_key": "logs_ingest_gb",
+    "product": {
+      "sku": "S8QGXX5R2BKKMDSJ",
+      "productFamily": "Data Payload",
+      "attributes": {
+        "servicecode": "AmazonCloudWatch",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "group": "Ingested Logs",
+        "groupDescription": "Existing system, application, and custom log files",
+        "usagetype": "USE1-DataProcessing-Bytes",
+        "operation": "PutLogEvents",
+        "logsDestination": "Amazon CloudWatch Logs",
+        "regionCode": "us-east-1",
+        "servicename": "AmazonCloudWatch",
+        "version": "Current"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "S8QGXX5R2BKKMDSJ",
+      "effectiveDate": "2026-09-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "S8QGXX5R2BKKMDSJ.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$0.50 per GB custom log data ingested in Standard log class - US East (Northern Virginia)",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "GB",
+      "pricePerUnit": {
+        "USD": "0.5000000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonCloudWatch/20260922021715/us-east-1/index.json"
+  },
+  {
+    "rate_key": "logs_storage_gb_month",
+    "product": {
+      "sku": "6K9ADYQAHV5KX9KZ",
+      "productFamily": "Storage Snapshot",
+      "attributes": {
+        "servicecode": "AmazonCloudWatch",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "storageMedia": "Amazon S3",
+        "group": "Amazon CloudWatch Standard Storage pricing current",
+        "groupDescription": "Amazon CloudWatch Logs Storage Current version",
+        "usagetype": "USE1-TimedStorage-ByteHrs",
+        "operation": "",
+        "regionCode": "us-east-1",
+        "servicename": "AmazonCloudWatch",
+        "version": "Current"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "6K9ADYQAHV5KX9KZ",
+      "effectiveDate": "2026-09-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "6K9ADYQAHV5KX9KZ.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$0.03 per GB-mo of log storage - US East (Northern Virginia)",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "GB-Mo",
+      "pricePerUnit": {
+        "USD": "0.0300000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonCloudWatch/20260922021715/us-east-1/index.json"
+  },
+  {
+    "rate_key": "logs_query_gb",
+    "product": {
+      "sku": "466C636KV6VS3849",
+      "productFamily": "Data Payload",
+      "attributes": {
+        "servicecode": "AmazonCloudWatch",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "group": "Queried Logs",
+        "groupDescription": "Log data queried using CloudWatch Logs Insights",
+        "usagetype": "USE1-DataScanned-Bytes",
+        "operation": "StartQuery",
+        "regionCode": "us-east-1",
+        "servicename": "AmazonCloudWatch"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "466C636KV6VS3849",
+      "effectiveDate": "2026-09-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "466C636KV6VS3849.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$0.005 per GB log data scanned by CloudWatch Logs Insights queries - US East (Northern Virginia)",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "GB",
+      "pricePerUnit": {
+        "USD": "0.0050000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonCloudWatch/20260922021715/us-east-1/index.json"
+  },
+  {
+    "rate_key": "metric_month",
+    "product": {
+      "sku": "KG586CTNGQ4VRZKZ",
+      "productFamily": "Metric",
+      "attributes": {
+        "servicecode": "AmazonCloudWatch",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "group": "Metric",
+        "groupDescription": "CloudWatch Custom Metrics",
+        "usagetype": "CW:MetricMonitorUsage",
+        "operation": "",
+        "regionCode": "us-east-1",
+        "servicename": "AmazonCloudWatch"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "KG586CTNGQ4VRZKZ",
+      "effectiveDate": "2026-09-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "KG586CTNGQ4VRZKZ.JRTCKXETXF.A6VD9GXV7W",
+      "description": "$0.30 per metric-month for the first 10,000 metrics - US East (Northern Virginia)",
+      "beginRange": "0",
+      "endRange": "10000",
+      "unit": "Metrics",
+      "pricePerUnit": {
+        "USD": "0.3000000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonCloudWatch/20260922021715/us-east-1/index.json"
+  },
+  {
+    "rate_key": "alarm_month",
+    "product": {
+      "sku": "EVETVUGEN3MUTMXM",
+      "productFamily": "Alarm",
+      "attributes": {
+        "servicecode": "AmazonCloudWatch",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "group": "Alarm",
+        "groupDescription": "CloudWatch Alarms",
+        "usagetype": "CW:AlarmMonitorUsage",
+        "operation": "",
+        "alarmType": "Standard",
+        "regionCode": "us-east-1",
+        "servicename": "AmazonCloudWatch"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "EVETVUGEN3MUTMXM",
+      "effectiveDate": "2026-09-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "EVETVUGEN3MUTMXM.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$0.10 per alarm metric month (standard resolution) - US East (Northern Virginia)",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "Alarms",
+      "pricePerUnit": {
+        "USD": "0.1000000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonCloudWatch/20260922021715/us-east-1/index.json"
+  },
+  {
+    "rate_key": "cloudwatch_api_request",
+    "product": {
+      "sku": "UTXVGKBT732UDP5N",
+      "productFamily": "API Request",
+      "attributes": {
+        "servicecode": "AmazonCloudWatch",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "group": "CW-Requests",
+        "groupDescription": "CloudWatch API Requests",
+        "usagetype": "CW:Requests",
+        "operation": "",
+        "regionCode": "us-east-1",
+        "servicename": "AmazonCloudWatch"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "UTXVGKBT732UDP5N",
+      "effectiveDate": "2026-09-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "UTXVGKBT732UDP5N.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$0.01 per 1,000 requests",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "Requests",
+      "pricePerUnit": {
+        "USD": "0.0000100000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonCloudWatch/20260922021715/us-east-1/index.json"
+  },
+  {
+    "rate_key": "cloudtrail_data_event",
+    "product": {
+      "sku": "8QF7CPEM9ENRC6EA",
+      "productFamily": "Management Tools - AWS CloudTrail Data Events Recorded",
+      "attributes": {
+        "servicecode": "AWSCloudTrail",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "usagetype": "USE1-DataEventsRecorded",
+        "operation": "",
+        "regionCode": "us-east-1",
+        "servicename": "AWS CloudTrail"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "8QF7CPEM9ENRC6EA",
+      "effectiveDate": "2026-07-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "8QF7CPEM9ENRC6EA.JRTCKXETXF.6YS6EN2CT7",
+      "description": "0.000001 per data event recorded in US East (N.Virginia) region",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "Events",
+      "pricePerUnit": {
+        "USD": "0.0000010000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSCloudTrail/20260911124531/us-east-1/index.json"
+  },
+  {
+    "rate_key": "cognito_essentials_mau",
+    "product": {
+      "sku": "XVYWD6TWRYVQWN85",
+      "productFamily": "Amazon Cognito - Essentials",
+      "attributes": {
+        "servicecode": "AmazonCognito",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "usagetype": "USE1-CognitoEssentialsMAU",
+        "operation": "CognitoEssentialsOperation",
+        "regionCode": "us-east-1",
+        "servicename": "Amazon Cognito"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "XVYWD6TWRYVQWN85",
+      "effectiveDate": "2026-09-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "XVYWD6TWRYVQWN85.JRTCKXETXF.6YS6EN2CT7",
+      "description": "Cognito Essentials us-east-1 tier 1 pricing",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "CognitoUserPoolsMAU",
+      "pricePerUnit": {
+        "USD": "0.0150000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonCognito/20260925193108/us-east-1/index.json"
+  },
+  {
+    "rate_key": "cognito_enterprise_mau",
+    "product": {
+      "sku": "MJVKEDY4DD2B6Y58",
+      "productFamily": "User Pool Enterprise MAU",
+      "attributes": {
+        "servicecode": "AmazonCognito",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "usagetype": "USE1-CognitoEnterpriseMAU",
+        "operation": "CognitoEnterpriseOperation",
+        "regionCode": "us-east-1",
+        "servicename": "Amazon Cognito"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "MJVKEDY4DD2B6Y58",
+      "effectiveDate": "2026-09-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "MJVKEDY4DD2B6Y58.JRTCKXETXF.6YS6EN2CT7",
+      "description": "Cognito User Pools us-east-1 enterprise users tier 1 pricing",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "CognitoUserPoolsMAU",
+      "pricePerUnit": {
+        "USD": "0.0150000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonCognito/20260925193108/us-east-1/index.json"
+  },
+  {
+    "rate_key": "kms_key_version_month",
+    "product": {
+      "sku": "U553K98XGDXCYHWS",
+      "productFamily": "Encryption Key",
+      "attributes": {
+        "servicecode": "awskms",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "usagetype": "us-east-1-KMS-Keys",
+        "operation": "",
+        "regionCode": "us-east-1",
+        "servicename": "AWS Key Management Service"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "U553K98XGDXCYHWS",
+      "effectiveDate": "2025-07-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "U553K98XGDXCYHWS.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$1 per customer managed KMS key version in US East (N. Virginia)",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "Keys",
+      "pricePerUnit": {
+        "USD": "1.0000000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/awskms/20260911124601/us-east-1/index.json"
+  },
+  {
+    "rate_key": "kms_request",
+    "product": {
+      "sku": "MFEBZPX8NHM5FY7Z",
+      "productFamily": "API Request",
+      "attributes": {
+        "servicecode": "awskms",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "group": "awskms-APIRequest-All",
+        "groupDescription": "All AWS KMS API requests",
+        "usagetype": "us-east-1-KMS-Requests",
+        "operation": "",
+        "regionCode": "us-east-1",
+        "servicename": "AWS Key Management Service"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "MFEBZPX8NHM5FY7Z",
+      "effectiveDate": "2025-07-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "MFEBZPX8NHM5FY7Z.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$0.03 per 10000 KMS requests in US East (N. Virginia)",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "Requests",
+      "pricePerUnit": {
+        "USD": "0.0000030000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/awskms/20260911124601/us-east-1/index.json"
+  },
+  {
+    "rate_key": "secret_month",
+    "product": {
+      "sku": "BJ3PQ9BYGU6P632F",
+      "productFamily": "Secret",
+      "attributes": {
+        "servicecode": "AWSSecretsManager",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "group": "AWSSecretsManager-Secret",
+        "usagetype": "USE1-AWSSecretsManager-Secrets",
+        "operation": "",
+        "regionCode": "us-east-1",
+        "servicename": "AWS Secrets Manager"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "BJ3PQ9BYGU6P632F",
+      "effectiveDate": "2025-07-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "BJ3PQ9BYGU6P632F.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$0.40 per Secret",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "Secrets",
+      "pricePerUnit": {
+        "USD": "0.4000000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSSecretsManager/20260911124610/us-east-1/index.json"
+  },
+  {
+    "rate_key": "secret_request",
+    "product": {
+      "sku": "4MDZ5VNEJPMUTG9B",
+      "productFamily": "API Request",
+      "attributes": {
+        "servicecode": "AWSSecretsManager",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "group": "AWSSecretsManager-APIRequest",
+        "usagetype": "USE1-AWSSecretsManagerAPIRequest",
+        "operation": "",
+        "regionCode": "us-east-1",
+        "servicename": "AWS Secrets Manager"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "4MDZ5VNEJPMUTG9B",
+      "effectiveDate": "2025-07-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "4MDZ5VNEJPMUTG9B.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$0.05 per 10000 API Requests",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "API Requests",
+      "pricePerUnit": {
+        "USD": "0.0000050000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSSecretsManager/20260911124610/us-east-1/index.json"
+  },
+  {
+    "rate_key": "dns_zone_month",
+    "product": {
+      "sku": "KVPGEJE88UW8S779",
+      "productFamily": "DNS Zone",
+      "attributes": {
+        "servicecode": "AmazonRoute53",
+        "description": "Route53 Hosted Zone",
+        "location": "Any",
+        "locationType": "AWS Region",
+        "usagetype": "HostedZone",
+        "operation": "",
+        "regionCode": "",
+        "servicename": "Amazon Route 53"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "KVPGEJE88UW8S779",
+      "effectiveDate": "2026-08-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "KVPGEJE88UW8S779.JRTCKXETXF.G2A93NZ7DT",
+      "description": "$0.50 per Hosted Zone for the first 25 Hosted Zones",
+      "beginRange": "0",
+      "endRange": "25",
+      "unit": "HostedZone",
+      "pricePerUnit": {
+        "USD": "0.5000000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonRoute53/20260911124504/index.json"
+  },
+  {
+    "rate_key": "dns_query",
+    "product": {
+      "sku": "JHRA6QBEDT9FZVT5",
+      "productFamily": "DNS Query",
+      "attributes": {
+        "servicecode": "AmazonRoute53",
+        "location": "Any",
+        "locationType": "Other",
+        "routingType": "Standard",
+        "routingTarget": "External",
+        "usagetype": "DNS-Queries",
+        "operation": "",
+        "regionCode": "",
+        "servicename": "Amazon Route 53"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "JHRA6QBEDT9FZVT5",
+      "effectiveDate": "2026-08-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "JHRA6QBEDT9FZVT5.JRTCKXETXF.ZN357FEBCK",
+      "description": "$0.40 per 1,000,000 queries for the first 1 Billion queries",
+      "beginRange": "0",
+      "endRange": "1000000000",
+      "unit": "Queries",
+      "pricePerUnit": {
+        "USD": "0.0000004000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonRoute53/20260911124504/index.json"
+  },
+  {
+    "rate_key": "ecr_gb_month",
+    "product": {
+      "sku": "KJC988R4J65BDMTQ",
+      "productFamily": "EC2 Container Registry",
+      "attributes": {
+        "servicecode": "AmazonECR",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "usagetype": "TimedStorage-ByteHrs",
+        "operation": "",
+        "regionCode": "us-east-1",
+        "servicename": "Amazon EC2 Container Registry (ECR)",
+        "storageType": "S3"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "KJC988R4J65BDMTQ",
+      "effectiveDate": "2025-11-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "KJC988R4J65BDMTQ.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$0.10 per GB-month of data storage",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "GB-Mo",
+      "pricePerUnit": {
+        "USD": "0.1000000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonECR/20260911124425/us-east-1/index.json"
+  },
+  {
+    "rate_key": "codebuild_small_minute",
+    "product": {
+      "sku": "4Z79XP69AGHXE3C7",
+      "productFamily": "Compute",
+      "attributes": {
+        "servicecode": "CodeBuild",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "vcpu": "2",
+        "memory": "3 GB",
+        "operatingSystem": "Linux",
+        "usagetype": "USE1-Build-Min:Linux:g1.small",
+        "operation": "",
+        "architecture": "x86-64",
+        "computeFamily": "OnDemand-EC2",
+        "computeType": "general1.small",
+        "regionCode": "us-east-1",
+        "servicename": "CodeBuild"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "4Z79XP69AGHXE3C7",
+      "effectiveDate": "2026-08-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "4Z79XP69AGHXE3C7.JRTCKXETXF.6YS6EN2CT7",
+      "description": "AWS CodeBuild - Build minutes on build.general1.small - US East (Northern Virginia)",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "minutes",
+      "pricePerUnit": {
+        "USD": "0.0050000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/CodeBuild/20260911124625/us-east-1/index.json"
+  },
+  {
+    "rate_key": "codebuild_medium_minute",
+    "product": {
+      "sku": "4ZQKRUHAFVQH8MBM",
+      "productFamily": "Compute",
+      "attributes": {
+        "servicecode": "CodeBuild",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "vcpu": "4",
+        "memory": "7 GB",
+        "operatingSystem": "Linux",
+        "usagetype": "USE1-Build-Min:Linux:g1.medium",
+        "operation": "",
+        "architecture": "x86-64",
+        "computeFamily": "OnDemand-EC2",
+        "computeType": "general1.medium",
+        "regionCode": "us-east-1",
+        "servicename": "CodeBuild"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "4ZQKRUHAFVQH8MBM",
+      "effectiveDate": "2026-08-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "4ZQKRUHAFVQH8MBM.JRTCKXETXF.6YS6EN2CT7",
+      "description": "AWS CodeBuild - Build minutes on build.general1.medium - US East (Northern Virginia)",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "minutes",
+      "pricePerUnit": {
+        "USD": "0.0100000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/CodeBuild/20260911124625/us-east-1/index.json"
+  },
+  {
+    "rate_key": "ses_recipient",
+    "product": {
+      "sku": "XS8HMCKRA8RYJ5MF",
+      "attributes": {
+        "servicecode": "AmazonSES",
+        "description": "Charged for each email sent to an external recipient",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "origin": "Other",
+        "usagetype": "USE1-Recipients",
+        "operation": "Send",
+        "contentType": "Message Body",
+        "feature": "Recipients",
+        "recipient": "Other",
+        "regionCode": "us-east-1",
+        "servicename": "Amazon Simple Email Service"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "XS8HMCKRA8RYJ5MF",
+      "effectiveDate": "2026-07-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "XS8HMCKRA8RYJ5MF.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$0.0001 per Count for Recipients in US East (N. Virginia)",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "Count",
+      "pricePerUnit": {
+        "USD": "0.0001000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonSES/20260911124507/us-east-1/index.json"
+  },
+  {
+    "rate_key": "ses_attachment_gb",
+    "product": {
+      "sku": "DWHMJ4MCRQ9VB6RK",
+      "productFamily": "Sending Attachments",
+      "attributes": {
+        "servicecode": "AmazonSES",
+        "description": "Charged for attachments sent",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "origin": "Any",
+        "usagetype": "AttachmentsSize-Bytes",
+        "operation": "Send",
+        "contentType": "Mail Attachment",
+        "recipient": "Any",
+        "regionCode": "us-east-1",
+        "servicename": "Amazon Simple Email Service"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "DWHMJ4MCRQ9VB6RK",
+      "effectiveDate": "2026-07-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "DWHMJ4MCRQ9VB6RK.JRTCKXETXF.6YS6EN2CT7",
+      "description": "Cost per GB of attachments",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "GB",
+      "pricePerUnit": {
+        "USD": "0.1200000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonSES/20260911124507/us-east-1/index.json"
+  },
+  {
+    "rate_key": "waf_acl_month",
+    "product": {
+      "sku": "KF2QAJUBXF7XNYSM",
+      "productFamily": "Web Application Firewall",
+      "attributes": {
+        "servicecode": "awswaf",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "group": "Web ACL",
+        "groupDescription": "Web ACL Activated",
+        "usagetype": "USE1-WebACLV2",
+        "operation": "",
+        "regionCode": "us-east-1",
+        "servicename": "AWS WAF"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "KF2QAJUBXF7XNYSM",
+      "effectiveDate": "2025-12-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "KF2QAJUBXF7XNYSM.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$5.00 per web ACL created (prorated hourly)",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "Month",
+      "pricePerUnit": {
+        "USD": "5.0000000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/awswaf/20260914163921/us-east-1/index.json"
+  },
+  {
+    "rate_key": "waf_rule_month",
+    "product": {
+      "sku": "JGH3VFMTQFNJUV5W",
+      "productFamily": "Web Application Firewall",
+      "attributes": {
+        "servicecode": "awswaf",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "group": "Rule",
+        "groupDescription": "Rule Activated",
+        "usagetype": "USE1-RuleV2",
+        "operation": "",
+        "regionCode": "us-east-1",
+        "servicename": "AWS WAF"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "JGH3VFMTQFNJUV5W",
+      "effectiveDate": "2025-12-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "JGH3VFMTQFNJUV5W.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$1.00 per rule created (prorated hourly)",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "Month",
+      "pricePerUnit": {
+        "USD": "1.0000000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/awswaf/20260914163921/us-east-1/index.json"
+  },
+  {
+    "rate_key": "waf_request",
+    "product": {
+      "sku": "94S3KGQ8C7XGQFSJ",
+      "productFamily": "Web Application Firewall",
+      "attributes": {
+        "servicecode": "awswaf",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "group": "Request",
+        "groupDescription": "Request Processed Tier1",
+        "usagetype": "USE1-RequestV2-Tier1",
+        "operation": "",
+        "regionCode": "us-east-1",
+        "servicename": "AWS WAF"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "94S3KGQ8C7XGQFSJ",
+      "effectiveDate": "2025-12-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "94S3KGQ8C7XGQFSJ.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$0.60 per million requests processed",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "Request",
+      "pricePerUnit": {
+        "USD": "0.0000006000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/awswaf/20260914163921/us-east-1/index.json"
+  },
+  {
+    "rate_key": "guardduty_event",
+    "product": {
+      "sku": "KM3AH2Q87UZFX9MJ",
+      "productFamily": "GuardDuty",
+      "attributes": {
+        "servicecode": "AmazonGuardDuty",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "group": "Security Services - Amazon GuardDuty Paid CloudTrail Events Processed",
+        "usagetype": "USE1-PaidEventsAnalyzed",
+        "operation": "",
+        "regionCode": "us-east-1",
+        "servicename": "Amazon GuardDuty"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "KM3AH2Q87UZFX9MJ",
+      "effectiveDate": "2026-09-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "KM3AH2Q87UZFX9MJ.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$0.000004 per CloudTrail event analyzed in US East (N.Virginia) region",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "Events",
+      "pricePerUnit": {
+        "USD": "0.0000040000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonGuardDuty/20260917211048/us-east-1/index.json"
+  },
+  {
+    "rate_key": "guardduty_flow_dns_gb",
+    "product": {
+      "sku": "PXTAN6UDSEZEEUUP",
+      "productFamily": "GuardDuty",
+      "attributes": {
+        "servicecode": "AmazonGuardDuty",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "group": "Security Services - Amazon GuardDuty Paid Data Events Processed",
+        "usagetype": "USE1-PaidEventsAnalyzed-Bytes",
+        "operation": "",
+        "regionCode": "us-east-1",
+        "servicename": "Amazon GuardDuty"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "PXTAN6UDSEZEEUUP",
+      "effectiveDate": "2026-09-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "PXTAN6UDSEZEEUUP.JRTCKXETXF.C2QCTD4VXQ",
+      "description": "$1.00 per GB for the first 500 GB / month of data analyzed US East (N.Virginia) region",
+      "beginRange": "0",
+      "endRange": "500",
+      "unit": "GB",
+      "pricePerUnit": {
+        "USD": "1.0000000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonGuardDuty/20260917211048/us-east-1/index.json"
+  },
+  {
+    "rate_key": "inspector_ec2_hour",
+    "product": {
+      "sku": "G9G7KPAMSWEQPFST",
+      "productFamily": "Amazon Inspector",
+      "attributes": {
+        "servicecode": "AmazonInspectorV2",
+        "description": "EC2 Scanning including continuous vulnerability and network reachability checks",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "usagetype": "USE1-EC2-Scanning",
+        "operation": "",
+        "freeUsageIncluded": "None",
+        "regionCode": "us-east-1",
+        "servicename": "Amazon Inspector",
+        "usageVolume": "Continuous EC2 scans"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "G9G7KPAMSWEQPFST",
+      "effectiveDate": "2026-06-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "G9G7KPAMSWEQPFST.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$0.00174 per Instance-hrs for EC2-Scanning in US East (N. Virginia)",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "Instance-hrs",
+      "pricePerUnit": {
+        "USD": "0.0017400000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonInspectorV2/20260911124440/us-east-1/index.json"
+  },
+  {
+    "rate_key": "inspector_image_initial",
+    "product": {
+      "sku": "Y7CM555ZJ4UJKDNZ",
+      "productFamily": "Amazon Inspector",
+      "attributes": {
+        "servicecode": "AmazonInspectorV2",
+        "description": "Container Image scanning includes an initial scan when an image is pushed to the ECR or an automated re-scan or an ad-hoc image scan",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "usagetype": "USE1-container-image-initial-scan",
+        "operation": "",
+        "freeUsageIncluded": "None",
+        "regionCode": "us-east-1",
+        "scanType": "Initial Scan (on-push to ECR)",
+        "servicename": "Amazon Inspector"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "Y7CM555ZJ4UJKDNZ",
+      "effectiveDate": "2026-06-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "Y7CM555ZJ4UJKDNZ.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$0.09 per Resource-assessment for container-image-initial-scan in US East (N. Virginia)",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "Resource-assessment",
+      "pricePerUnit": {
+        "USD": "0.0900000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonInspectorV2/20260911124440/us-east-1/index.json"
+  },
+  {
+    "rate_key": "inspector_image_rescan",
+    "product": {
+      "sku": "TYJBDM7FPG7HK2SJ",
+      "productFamily": "Amazon Inspector",
+      "attributes": {
+        "servicecode": "AmazonInspectorV2",
+        "description": "Container Image scanning includes an initial scan when an image is pushed to the ECR or an automated re-scan or an ad-hoc image scan",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "usagetype": "USE1-container-image-re-scan",
+        "operation": "",
+        "freeUsageIncluded": "None",
+        "regionCode": "us-east-1",
+        "scanType": "Automated re-scan",
+        "servicename": "Amazon Inspector"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "TYJBDM7FPG7HK2SJ",
+      "effectiveDate": "2026-06-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "TYJBDM7FPG7HK2SJ.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$0.01 per Resource-assessment for container-image-re-scan in US East (N. Virginia)",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "Resource-assessment",
+      "pricePerUnit": {
+        "USD": "0.0100000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonInspectorV2/20260911124440/us-east-1/index.json"
+  },
+  {
+    "rate_key": "dashboard_month",
+    "product": {
+      "sku": "5P8PBB6MXV325TDC",
+      "productFamily": "Dashboard",
+      "attributes": {
+        "servicecode": "AmazonCloudWatch",
+        "location": "Any",
+        "locationType": "AWS Region",
+        "group": "Dashboard",
+        "groupDescription": "CloudWatch Dashboards",
+        "usagetype": "DashboardsUsageHour-Basic",
+        "operation": "DashboardHour",
+        "regionCode": "",
+        "servicename": "AmazonCloudWatch",
+        "version": "Basic"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "5P8PBB6MXV325TDC",
+      "effectiveDate": "2026-09-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "5P8PBB6MXV325TDC.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$3.00 per Dashboard per Month",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "Dashboards",
+      "pricePerUnit": {
+        "USD": "3.0000000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonCloudWatch/20260922021715/index.json"
+  },
+  {
+    "rate_key": "cross_az_gb_side",
+    "product": {
+      "sku": "PNUBVW4CPC8XA46W",
+      "productFamily": "Data Transfer",
+      "attributes": {
+        "servicecode": "AWSDataTransfer",
+        "transferType": "IntraRegion",
+        "fromLocation": "US East (N. Virginia)",
+        "fromLocationType": "AWS Region",
+        "toLocation": "US East (N. Virginia)",
+        "toLocationType": "AWS Region",
+        "usagetype": "DataTransfer-Regional-Bytes",
+        "operation": "",
+        "fromRegionCode": "us-east-1",
+        "servicename": "AWS Data Transfer",
+        "toRegionCode": "us-east-1"
+      }
+    },
+    "selected_term": {
+      "offerTermCode": "JRTCKXETXF",
+      "sku": "PNUBVW4CPC8XA46W",
+      "effectiveDate": "2026-06-01T00:00:00Z",
+      "termAttributes": {}
+    },
+    "selected_dimension": {
+      "rateCode": "PNUBVW4CPC8XA46W.JRTCKXETXF.6YS6EN2CT7",
+      "description": "$0.010 per GB - regional data transfer - in/out/between EC2 AZs or using elastic IPs or ELB",
+      "beginRange": "0",
+      "endRange": "Inf",
+      "unit": "GB",
+      "pricePerUnit": {
+        "USD": "0.0100000000"
+      },
+      "appliesTo": []
+    },
+    "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSDataTransfer/20260916132208/us-east-1/index.json"
+  }
+]

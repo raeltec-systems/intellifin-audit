@@ -1,0 +1,16 @@
+{
+  "exit_code": 130,
+  "planned": 123,
+  "passed": 47,
+  "failed": 1,
+  "interrupted": 1,
+  "did_not_run": 74,
+  "duration": "5.0 minutes",
+  "retries": 0,
+  "stop": "Sent SIGINT only to Playwright PID933164 descended from exact owned repair-1/run-browser.sh PID933128; runner completed graceful cleanup and end manifest. No protected service was signalled.",
+  "source_unchanged_during_run": true,
+  "private_log_sha256": "8bc98fb845bbfef905f206cd39ff017506608ed77a5a4385cd12bd022a467cd9",
+  "failed_case": "Account-binding mixed engagement/conversation recovery allowance: routed conversation expected412 but received200. Original causal request sequence was not captured; see disposition and the separate controlled chronology.",
+  "interrupted_case": "inner methodology disclosure survives cancelled reads and tab-away but withdraws on current failure; interrupted by deliberate suite stop, not classified as product failure.",
+  "disposition": "The original sequence was not recorded. Focused7 normal order passed; focused7b controlled real bound-postcheck-first order reproduced the exact conversation200 fixture assertion. Five App-only test gates were scoped to unbound App reads; product code unchanged."
+}

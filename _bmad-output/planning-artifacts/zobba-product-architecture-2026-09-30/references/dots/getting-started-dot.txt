@@ -1,0 +1,11 @@
+S10: selected official-source evidence
+Source: https://help.openai.com/en/articles/20001530-getting-started-with-your-dot
+Retrieved: 2026-09-30
+
+Selected quotation:
+Your dot cannot initiate calls to you at launch.
+
+Research summary (not a quotation):
+Help article covers profile/setup, task categories, channels, scheduling, memory and controls. Some labels and mobile behaviors differ from the learning guides.
+
+This package contains a short relevant excerpt, not the complete public page. See the source URL and public-official.md for interpretation and limits.

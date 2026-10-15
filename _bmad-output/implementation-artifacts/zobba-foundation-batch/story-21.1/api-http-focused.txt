@@ -1,0 +1,12 @@
+    Blocking waiting for file lock on build directory
+   Compiling zobba-api v0.1.0 (/workspace/intellifin-audit/zobba/crates/api)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 29.98s
+     Running tests/evidence_http.rs (target/debug/deps/evidence_http-6dcce35e241bcef1)
+
+running 4 tests
+test composition::production_constructor_child ... ignored, spawned with isolated synthetic configuration by the parent HTTP contract
+test evidence_http_proves_custody_replay_limits_and_authority_after_io ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 9.51s

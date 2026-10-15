@@ -1,0 +1,96 @@
+{
+  "created_date": "2026-09-30",
+  "scope": "Operating budget package; excludes this manifest. No raw public HTML captures or runtime secrets bundled.",
+  "files": [
+    {
+      "path": "MODEL-USAGE.md",
+      "bytes": 11955,
+      "sha256": "be76653fa16cd35e50974b3c629c2a16b4b1088595170ec27fe2689ea60d4282"
+    },
+    {
+      "path": "OPERATING-BUDGET.md",
+      "bytes": 22094,
+      "sha256": "74785ea869b8765f98a9c1b6b5fa0c42720ad815aaca07085a5e1bb5d6688ed0"
+    },
+    {
+      "path": "README.md",
+      "bytes": 1827,
+      "sha256": "63ead1881793fdfb99dca95ffd286b6a0fad1ad8cbc58d70fda8813fe517eea4"
+    },
+    {
+      "path": "assumptions.json",
+      "bytes": 6384,
+      "sha256": "948230277b11e68ba2a3f52f75546df8c11c5712697c2450cc4f64c6b5396fb0"
+    },
+    {
+      "path": "base-table.md",
+      "bytes": 426,
+      "sha256": "54644044dc6fc0a1c2833c91a77d2847f27a3826907dc795299284bb54035b24"
+    },
+    {
+      "path": "calculate_budget.py",
+      "bytes": 19693,
+      "sha256": "4c7adcfd8777ae70fe2e09a6b5e9db681ce1fc62bfbbb6df5fb591d866e85ee6"
+    },
+    {
+      "path": "line-items.csv",
+      "bytes": 233011,
+      "sha256": "84b1d2c729ace358fc3637f6047a1ce492bb197b3137dd8c466a266d90ba02d5"
+    },
+    {
+      "path": "model-quantities.json",
+      "bytes": 9243,
+      "sha256": "ed10c7240730c2596d961690465ffcfb56dbe517218ce33bbb37e157de27bb61"
+    },
+    {
+      "path": "model-rates.json",
+      "bytes": 4540,
+      "sha256": "cd89001fad7ace4f7294de51162eca55e11a746c2079f5b706e7786753876239"
+    },
+    {
+      "path": "rates.json",
+      "bytes": 51601,
+      "sha256": "a94883562f040dc805046e5b87431da1fb165d643ca774f5c84de9a066260edc"
+    },
+    {
+      "path": "results.csv",
+      "bytes": 1178,
+      "sha256": "49514a56817e533d35c58c1e4eec7bc59b181fe1509bc270893cf42ce880761f"
+    },
+    {
+      "path": "results.json",
+      "bytes": 11856,
+      "sha256": "2876ab738dcc58ead2009a5f5b9b8928e7f0f14decb1983125e9e9c934156d2a"
+    },
+    {
+      "path": "sensitivity.csv",
+      "bytes": 1350,
+      "sha256": "5dcce3dd073d04b4f6ec256960dd451ec88c6967d87364345ba6d708636c1f52"
+    },
+    {
+      "path": "sources/aws-selected-rate-evidence.json",
+      "bytes": 43434,
+      "sha256": "76561a710d1deecde409464c9bc66ddceac7453ee94e085565c0f8829ca2a6d3"
+    },
+    {
+      "path": "sources/aws-service-notes.md",
+      "bytes": 3002,
+      "sha256": "754b5b1108b9349eeb0deb09bc58e76af7edc5fa1d371525d6bddafafca8ea86"
+    },
+    {
+      "path": "sources/model-source-receipt.json",
+      "bytes": 7928,
+      "sha256": "3e14937aaf57e46091eb95fb3c3a9b3401ef2918530c55866d15652afa368d2c"
+    },
+    {
+      "path": "verify_budget.py",
+      "bytes": 5812,
+      "sha256": "2e78b991e94a4f67dd76fb7907a5c0303045b6d84ee682c8bce24e96bd51903a"
+    },
+    {
+      "path": "windows-option.csv",
+      "bytes": 421,
+      "sha256": "89b1c538a15eeae6e0c648983ae90f4ccd1d31cd76cb1f2e82a4d3b60cb2792a"
+    }
+  ]
+}

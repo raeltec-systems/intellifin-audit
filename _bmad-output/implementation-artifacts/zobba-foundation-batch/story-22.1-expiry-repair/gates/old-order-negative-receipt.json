@@ -1,0 +1,26 @@
+{
+  "gate": "old-order-negative",
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "zobba-worker",
+    "--test",
+    "gateway_process",
+    "final_validation_expiry",
+    "--",
+    "--nocapture"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T08:59:31.954449+00:00",
+  "ended_at": "2026-10-03T08:59:58.435243+00:00",
+  "duration_seconds": 26.481,
+  "exit": 101,
+  "source_before": "old-order-negative-source-before.json",
+  "source_after": "old-order-negative-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "old-order-negative.log",
+  "log_sha256": "c017420755bece54ed8ecd186f91339a18e4cd3a3d5599f83768ab6a69521fad"
+}

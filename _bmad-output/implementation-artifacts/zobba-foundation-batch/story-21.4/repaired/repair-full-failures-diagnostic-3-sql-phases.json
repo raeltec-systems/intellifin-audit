@@ -1,0 +1,76 @@
+{
+  "started_at": "2026-10-02T21:12:38.378Z",
+  "barrier_sleep_ms": 4000,
+  "observation_deadline_ms": 2000,
+  "child_deadline_ms": 10000,
+  "phases": {
+    "evidence-barrier-completion": "passed",
+    "evidence-observe-session-barrier": "passed",
+    "evidence-observe-metadata-lock": "passed",
+    "evidence-admin-completion": "passed",
+    "evidence-observe-admin-lock": "passed"
+  },
+  "metadata_status": 200,
+  "observations": [
+    {
+      "phase": "evidence-barrier-completion",
+      "state": "pending",
+      "elapsed_ms": 0
+    },
+    {
+      "phase": "evidence-observe-session-barrier",
+      "state": "pending",
+      "elapsed_ms": 8
+    },
+    {
+      "phase": "evidence-observe-session-barrier",
+      "state": "passed",
+      "elapsed_ms": 60
+    },
+    {
+      "phase": "metadata-request",
+      "state": "started",
+      "elapsed_ms": 60
+    },
+    {
+      "phase": "evidence-observe-metadata-lock",
+      "state": "pending",
+      "elapsed_ms": 61
+    },
+    {
+      "phase": "evidence-observe-metadata-lock",
+      "state": "passed",
+      "elapsed_ms": 91
+    },
+    {
+      "phase": "evidence-admin-completion",
+      "state": "pending",
+      "elapsed_ms": 91
+    },
+    {
+      "phase": "evidence-observe-admin-lock",
+      "state": "pending",
+      "elapsed_ms": 96
+    },
+    {
+      "phase": "evidence-observe-admin-lock",
+      "state": "passed",
+      "elapsed_ms": 112
+    },
+    {
+      "phase": "evidence-barrier-completion",
+      "state": "passed",
+      "elapsed_ms": 4061
+    },
+    {
+      "phase": "evidence-admin-completion",
+      "state": "passed",
+      "elapsed_ms": 4067
+    },
+    {
+      "phase": "metadata-response",
+      "state": "200",
+      "elapsed_ms": 4107
+    }
+  ]
+}

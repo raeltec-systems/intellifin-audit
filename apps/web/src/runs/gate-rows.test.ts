@@ -26,7 +26,7 @@ import {
 
 const PLANNING = '../../../../_bmad-output/planning-artifacts';
 const addendum = readFileSync(
-  fileURLToPath(new URL(`${PLANNING}/prds/prd-IntelliFin Audit-2026-08-31/addendum.md`, import.meta.url)),
+  fileURLToPath(new URL(`${PLANNING}/prds/prd-IntelliFin Audit-2026-08-31/archive/pre-revision-3-2026-09-30/addendum.md`, import.meta.url)),
   'utf8',
 );
 const experience = readFileSync(

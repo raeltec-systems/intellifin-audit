@@ -1,0 +1,53 @@
+
+Running 14 tests using 1 worker
+
+(node:1135728) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Source-library runtime ready; owned fixture build completed.
+  ✓   1 tests/browser/evidence-search.spec.ts:70:1 › bounded dense and sparse search pages disclose coverage and reset the cursor for Unicode queries (7.3s)
+  ✓   2 tests/browser/evidence-search.spec.ts:100:1 › late source search cannot replace a newer query and query navigation never mutates (4.5s)
+  ✓   3 tests/browser/evidence-search.spec.ts:118:3 › a held later source page is cancelled after selecting a new query (5.7s)
+  ✘   4 tests/browser/evidence-search.spec.ts:118:3 › a held later source page is cancelled after selecting another engagement (6.5s)
+(node:1136144) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Source-library runtime ready; owned fixture build completed.
+  ✓   5 tests/browser/evidence-search.spec.ts:190:3 › a held inspector preview never discloses stale private material after assignment revocation (5.4s)
+  ✓   6 tests/browser/evidence-search.spec.ts:190:3 › a held inspector preview never discloses stale private material after same-actor session replacement (6.1s)
+  ✓   7 tests/browser/evidence-search.spec.ts:242:1 › a held successful search is refused after actual assignment revocation (5.6s)
+  ✓   8 tests/browser/evidence-search.spec.ts:258:1 › an unavailable search withdraws results and focuses a permitted retry surface (2.4s)
+  ✓   9 tests/browser/evidence-search.spec.ts:269:3 › routine access checking preserves a held knowledge-source preview until current verification (6.5s)
+  ✓  10 tests/browser/evidence-search.spec.ts:269:3 › routine access checking preserves a held knowledge-source download until current verification (8.0s)
+  ✓  11 tests/browser/evidence-search.spec.ts:335:1 › 390px keyboard search traverses dense and sparse pages and returns from inspection to the exact result (3.9s)
+  ✓  12 tests/browser/evidence-search.spec.ts:363:1 › 390px keyboard inspection preserves exact provenance and verified original bytes, then returns to its opener (4.4s)
+  ✓  13 tests/browser/evidence-search.spec.ts:399:1 › Task knowledge opens its exact source in the library and restores the knowledge opener (6.1s)
+  ✓  14 tests/browser/evidence-search.spec.ts:419:1 › reused knowledge opens its exact original from another engagement and source-only revocation preserves destination work (5.7s)
+
+
+  1) tests/browser/evidence-search.spec.ts:118:3 › a held later source page is cancelled after selecting another engagement 
+
+    Error: response.json: Protocol error (Network.getResponseBody): No data found for resource with given identifier
+    Response body is not available for a response that was navigated away from. Read response.body() before triggering any navigation.
+
+      155 |         const current = page.waitForResponse(response => new URL(response.url()).pathname === `/api/engagements/${destination}/evidence`);
+      156 |         await open(page); const response = await current; expect(response.status()).toBe(200);
+    > 157 |         expect(new URL(response.url()).searchParams.has('after')).toBe(false); expect((await response.json()).items).toEqual([]);
+          |                                                                                                       ^
+      158 |         await expect(page.locator('.evidence-coverage')).toContainText('Reached the end');
+      159 |         await expect(page.getByLabel('Find registered sources', { exact: true })).toHaveValue('');
+      160 |         await expect(page.locator('.evidence-header').getByRole('heading', { name: 'Evidence', exact: true })).toBeFocused();
+        at /workspace/intellifin-audit/zobba/web/tests/browser/evidence-search.spec.ts:157:103
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-batch-21-6-22-1/browser-search-clean/evidence-search-a-held-lat-fcbbb-electing-another-engagement/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-batch-21-6-22-1/browser-search-clean/evidence-search-a-held-lat-fcbbb-electing-another-engagement/error-context.md
+
+    Error Context: ../../../../tmp/zobba-batch-21-6-22-1/browser-search-clean/evidence-search-a-held-lat-fcbbb-electing-another-engagement/error-context.md
+
+  1 failed
+    tests/browser/evidence-search.spec.ts:118:3 › a held later source page is cancelled after selecting another engagement 
+  13 passed (1.5m)
+undefined
+/workspace/intellifin-audit/zobba/web:
+[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command failed with exit code 1: playwright test tests/browser/evidence-search.spec.ts '--workers=1' '--retries=0'

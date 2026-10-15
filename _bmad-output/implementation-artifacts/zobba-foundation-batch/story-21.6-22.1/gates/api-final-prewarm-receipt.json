@@ -1,0 +1,24 @@
+{
+  "gate": "api-final-prewarm",
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "zobba-api",
+    "--test",
+    "evidence_fixture",
+    "--no-run"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T05:48:32.665315+00:00",
+  "ended_at": "2026-10-03T05:48:33.178035+00:00",
+  "duration_seconds": 0.513,
+  "exit": 0,
+  "source_before": "api-final-prewarm-source-before.json",
+  "source_after": "api-final-prewarm-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "api-final-prewarm.log",
+  "log_sha256": "1aad0fd8a6fe6967d8a338054d76f148551862db227a6171cbe3ab869e680da6"
+}

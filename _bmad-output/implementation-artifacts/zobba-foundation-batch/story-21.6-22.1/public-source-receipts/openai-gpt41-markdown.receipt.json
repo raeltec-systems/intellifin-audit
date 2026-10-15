@@ -1,0 +1,18 @@
+{
+  "requested_url": "https://developers.openai.com/api/docs/models/gpt-4.1.md",
+  "effective_url": "https://developers.openai.com/api/docs/models/gpt-4.1.md",
+  "retrieved_at_utc": "2026-10-03T04:30:50.262999+00:00",
+  "completed_at_utc": "2026-10-03T04:30:50.596049+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/markdown; charset=utf-8",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "openai-gpt41-markdown.md",
+  "bytes": 3816,
+  "sha256": "14b53095d54acc36d1346302259bc4d21e9f9de71f3859c11f1405087fa0da74",
+  "stderr": "",
+  "raw_body_in_checkpoint": false
+}

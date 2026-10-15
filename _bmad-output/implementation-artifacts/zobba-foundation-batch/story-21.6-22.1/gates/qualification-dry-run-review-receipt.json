@@ -1,0 +1,26 @@
+{
+  "gate": "qualification-dry-run-review",
+  "command": [
+    "cargo",
+    "run",
+    "--quiet",
+    "--locked",
+    "-p",
+    "zobba-infrastructure",
+    "--example",
+    "model_qualification",
+    "--",
+    "--dry-run"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T05:21:29.699310+00:00",
+  "ended_at": "2026-10-03T05:21:31.731238+00:00",
+  "duration_seconds": 2.032,
+  "exit": 0,
+  "source_before": "qualification-dry-run-review-source-before.json",
+  "source_after": "qualification-dry-run-review-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "qualification-dry-run-review.log",
+  "log_sha256": "786423f82d53214926b15ff3a5553671149544c0d6077d945caeee3bae35122f"
+}

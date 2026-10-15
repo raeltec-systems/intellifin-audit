@@ -1,0 +1,50 @@
+[
+  {
+    "gate": "rust-tests",
+    "exit": 0
+  },
+  {
+    "gate": "frozen-clippy",
+    "exit": 0
+  },
+  {
+    "gate": "frozen-rust-build",
+    "exit": 0
+  },
+  {
+    "gate": "frozen-fmt",
+    "exit": 0
+  },
+  {
+    "gate": "frozen-python",
+    "exit": 0
+  },
+  {
+    "gate": "frozen-boundaries",
+    "exit": 0
+  },
+  {
+    "gate": "frozen-fixtures",
+    "exit": 0
+  },
+  {
+    "gate": "frozen-smoke",
+    "exit": 0
+  },
+  {
+    "gate": "web-api-generate",
+    "exit": 0
+  },
+  {
+    "gate": "web-check",
+    "exit": 0
+  },
+  {
+    "gate": "web-build",
+    "exit": 0
+  },
+  {
+    "gate": "browser-full",
+    "exit": 0
+  }
+]

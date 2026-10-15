@@ -1,0 +1,39 @@
+{
+  "receipt": "browser-full-1/browser.exit",
+  "exit_code": 1,
+  "private_log_sha256": "3d429c42abd9404db3fda578be8a1302460323e5f507f76759e50022a8c16762",
+  "planned": 123,
+  "passed": 119,
+  "failed": 4,
+  "retries": 0,
+  "duration": "19.1 minutes",
+  "source_start_sha256": "ec8991ce98d62d590b8e9b8f3d2b57fc3885d1f2c60d089116e839338dd2fcf6",
+  "source_end_sha256": "43621c10f850357dbfbae6ebbe3b88638f844d36d313ec83d5751252919a72fa",
+  "source_files_unchanged": true,
+  "failures": [
+    {
+      "case": "account-binding: conversation mismatches after successful engagement reads share one bounded recovery budget",
+      "observed": "After explicit successful recovery, total session reads were 4 instead of 3. Earlier exact two-cycle and no-auto-retry assertions passed.",
+      "classification": "Harness combines unbound App recovery reads with the new impact projection bound session postcheck.",
+      "repair": "Separately count unbound and bound reads by header presence and prove required bound verification."
+    },
+    {
+      "case": "evidence R06: durable reservation saturation",
+      "observed": "Actual response status 409 and absent Retry-After passed. Chromium Network.getResponseBody returned No data found before body/UI checks.",
+      "classification": "Observed response-body lookup loss; no claim about an underlying CDP/navigation cause.",
+      "repair": "Capture the same actual UI request response through passthrough route.fetch and unchanged fulfillment, preserving body/UI/recovery/free-slot assertions."
+    },
+    {
+      "case": "methodology Admin Save, frozen retry, Undo and recall",
+      "observed": "Unconfirmed frozen request remained visible, but expected 429 retry explanation was absent.",
+      "classification": "Product regression: successful settings refresh cleared a command error.",
+      "repair": "Keep read errors separate from command errors so current read success cannot erase failure explanation."
+    },
+    {
+      "case": "skills structured installation",
+      "observed": "Installation, exact retry, provenance, digest and inertness assertions passed; document width exceeded 390 px after narrow resource disclosure.",
+      "classification": "Product layout failure: the full run exceeded390px after actual receipt display. A separate controlled valid43-character opaque-ID layout fixture proved the notice paragraph could expand the document to630px; its real randomID happened to fit in those probes.",
+      "repair": "Readable wrapping scoped to skills text; real receipt and explicit DOM-only stress both measure390px after repair. Separately measured real impact button also required scoped normal wrapping and max width."
+    }
+  ]
+}

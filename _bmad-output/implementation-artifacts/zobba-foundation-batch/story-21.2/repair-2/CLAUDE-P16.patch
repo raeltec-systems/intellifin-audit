@@ -1,0 +1,16 @@
+--- CLAUDE-before-P16.md
++++ CLAUDE.md
+@@ -61,6 +61,13 @@
+ additional details. Release held request gates and drain owned route handlers
+ with `unrouteAll({ behavior: 'wait' })` before changing interception phases or
+ teardown; keep callback errors visible instead of swallowing them.
++
++Intentional read cancellation must relinquish request ownership before aborting,
++so its rejection cannot destroy hidden same-owner inspection DOM during access
++revalidation or tab-away. Keep exact owner/session withdrawal and current-read
++failure or deadline handling distinct: genuine failures still remove stale
++content. Prove retention with the same marked inner disclosure, open state and
++focus; an unchanged outer panel alone does not prove its children survived.
+ 
+ ## 2026-10-01 — Approved Admin continuity policy
+ 

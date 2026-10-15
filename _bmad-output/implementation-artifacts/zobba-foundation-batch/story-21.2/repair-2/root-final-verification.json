@@ -1,0 +1,19 @@
+{
+  "source_files": 201,
+  "source_equals_freeze": true,
+  "published_prefix_unchanged": 14,
+  "prior_evidence_preserved": 431,
+  "gates": 12,
+  "all_exit_zero": true,
+  "fresh_browser_passed": 107,
+  "browser_retries": 0,
+  "docs_match": true,
+  "baseline": "38d76b019db1e5cb637f8c66e6cde3947c3415b2",
+  "independent_closures": [
+    "blind-P16-closure.md",
+    "verification-P16-closure.md",
+    "blind-harness-closure.md",
+    "verification-harness-closure.md"
+  ],
+  "cleanup_and_visual_receipts": "reviewed; 8 images allowlisted and hash-verified, 2 independently inspected by root; owned services stopped, development preserved"
+}

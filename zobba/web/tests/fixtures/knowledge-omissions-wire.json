@@ -1,0 +1,26 @@
+{
+  "page": {
+    "task_id": "task-a",
+    "revision": "9007199254740993",
+    "execution_epoch": "12",
+    "methodology_binding_id": "binding-a",
+    "items": [],
+    "next_after": null,
+    "omissions": [
+      "unavailable_support",
+      "unknown_period"
+    ]
+  },
+  "source_status": {
+    "evidence_id": "original-a",
+    "source_revision": "0",
+    "replacement_id": null,
+    "capture_revision": "2",
+    "omissions": [
+      "partial_source"
+    ],
+    "correction_actor_id": null,
+    "correction_recorded_at": null,
+    "correction_reason": null
+  }
+}

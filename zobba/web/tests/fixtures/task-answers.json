@@ -1,0 +1,324 @@
+{
+  "answers": [
+    {
+      "invocation_id": "invocation-1",
+      "limitations": [],
+      "segments": [
+        {
+          "sources": [],
+          "text": "I will read the scanned letter and total the trial balance."
+        }
+      ],
+      "text": "I will read the scanned letter and total the trial balance.",
+      "verification_failed": false
+    },
+    {
+      "invocation_id": "invocation-2",
+      "limitations": [
+        "Page 9 of the contract does not exist."
+      ],
+      "segments": [
+        {
+          "sources": [
+            {
+              "byte_end": null,
+              "byte_start": null,
+              "filename": "Trial balance.xlsx",
+              "location": "Sheet1!B4",
+              "locator": "cell:Sheet1!B4",
+              "original_id": "trial-balance",
+              "quote": "1,250.00",
+              "readable": true,
+              "reason": null,
+              "sha256": "da4a5e489b2b649156fa6a553fc32096f8ea5e95a558b721cc7ab1e61eafb110",
+              "verification": "verified",
+              "version": "version-1"
+            }
+          ],
+          "text": "The trial balance total is 1,250.00."
+        },
+        {
+          "sources": [
+            {
+              "byte_end": null,
+              "byte_start": null,
+              "filename": "Trial balance.xlsx",
+              "location": "Sheet1!B3",
+              "locator": "cell:Sheet1!B3",
+              "original_id": "trial-balance",
+              "quote": "500.00",
+              "readable": true,
+              "reason": "not_found_at_location",
+              "sha256": "da4a5e489b2b649156fa6a553fc32096f8ea5e95a558b721cc7ab1e61eafb110",
+              "verification": "unverified",
+              "version": "version-1"
+            }
+          ],
+          "text": " Receivables are 500.00."
+        },
+        {
+          "sources": [
+            {
+              "byte_end": null,
+              "byte_start": null,
+              "filename": "Contract.docx",
+              "location": "paragraph 2",
+              "locator": "paragraph:2",
+              "original_id": "contract-docx",
+              "quote": "Payment is due within 30 days",
+              "readable": true,
+              "reason": null,
+              "sha256": "53f31492537fbbb1b5a96ded61d46f87b944747367eb944d88a137704b2034a1",
+              "verification": "verified",
+              "version": "version-2"
+            },
+            {
+              "byte_end": null,
+              "byte_start": null,
+              "filename": "Payment terms.eml",
+              "location": "message part 1",
+              "locator": "part:1",
+              "original_id": "email",
+              "quote": "payment within 30 days",
+              "readable": true,
+              "reason": null,
+              "sha256": "e0ef153e53aa34a7a9566ec4931f069d8bfe8d80a27cf1f5cf062b93329d8479",
+              "verification": "verified",
+              "version": "version-3"
+            },
+            {
+              "byte_end": null,
+              "byte_start": null,
+              "filename": "Contract.pdf",
+              "location": "page 2",
+              "locator": "page:2",
+              "original_id": "contract-pdf",
+              "quote": "Payment is due within 30 days.",
+              "readable": true,
+              "reason": null,
+              "sha256": "b82138305a8e86c1fef0126aedb3dac02e800de331592655d3e22875ab2aec79",
+              "verification": "verified",
+              "version": "version-4"
+            }
+          ],
+          "text": " Payment is due within 30 days."
+        },
+        {
+          "sources": [
+            {
+              "byte_end": null,
+              "byte_start": null,
+              "filename": "Contract.docx",
+              "location": "table 1, row 1, column 2",
+              "locator": "table:1:1:2",
+              "original_id": "contract-docx",
+              "quote": "1,250.00",
+              "readable": true,
+              "reason": null,
+              "sha256": "53f31492537fbbb1b5a96ded61d46f87b944747367eb944d88a137704b2034a1",
+              "verification": "verified",
+              "version": "version-2"
+            }
+          ],
+          "text": " The fee is 1,250.00."
+        },
+        {
+          "sources": [
+            {
+              "byte_end": null,
+              "byte_start": null,
+              "filename": "Scanned letter.pdf",
+              "location": "page 3",
+              "locator": "page:3",
+              "original_id": "scan",
+              "quote": "Signed by A. Auditor",
+              "readable": true,
+              "reason": "page_only",
+              "sha256": "56dd220165dd627ee11b32f75017d2f055f1762bd18906637e02a20b56b3ba40",
+              "verification": "unverified",
+              "version": "version-5"
+            }
+          ],
+          "text": " The letter is signed."
+        },
+        {
+          "sources": [
+            {
+              "byte_end": null,
+              "byte_start": null,
+              "filename": "Payment terms.eml",
+              "location": "Subject header",
+              "locator": "header:Subject",
+              "original_id": "email",
+              "quote": "Payment terms",
+              "readable": true,
+              "reason": null,
+              "sha256": "e0ef153e53aa34a7a9566ec4931f069d8bfe8d80a27cf1f5cf062b93329d8479",
+              "verification": "verified",
+              "version": "version-3"
+            }
+          ],
+          "text": " The email is about payment terms."
+        },
+        {
+          "sources": [
+            {
+              "byte_end": 24,
+              "byte_start": 16,
+              "filename": "Notes.txt",
+              "location": "bytes 16–24",
+              "locator": "bytes:16-24",
+              "original_id": "notes",
+              "quote": "1,250.00",
+              "readable": true,
+              "reason": null,
+              "sha256": "dd45063f424fce5036ae0b45645d51a1c5585b1c5609fed1a92794be7d51dabc",
+              "verification": "verified",
+              "version": "version-6"
+            }
+          ],
+          "text": " The notes agree the balance."
+        },
+        {
+          "sources": [
+            {
+              "byte_end": null,
+              "byte_start": null,
+              "filename": "Contract.pdf",
+              "location": null,
+              "locator": null,
+              "original_id": "contract-pdf",
+              "quote": "Payment terms",
+              "readable": true,
+              "reason": "location_missing",
+              "sha256": "b82138305a8e86c1fef0126aedb3dac02e800de331592655d3e22875ab2aec79",
+              "verification": "unverified",
+              "version": "version-4"
+            }
+          ],
+          "text": " No location was given here."
+        },
+        {
+          "sources": [
+            {
+              "byte_end": null,
+              "byte_start": null,
+              "filename": "Zip bomb.xlsx",
+              "location": "Sheet1!A1",
+              "locator": "cell:Sheet1!A1",
+              "original_id": "zip-bomb",
+              "quote": "anything",
+              "readable": true,
+              "reason": "source_unreadable",
+              "sha256": "bc2682efd396faba6441942e243182b26ca0b692000bd19c392dce6601f0ba75",
+              "verification": "unverified",
+              "version": "version-7"
+            }
+          ],
+          "text": " The oversized workbook could not be checked."
+        },
+        {
+          "sources": [
+            {
+              "byte_end": null,
+              "byte_start": null,
+              "filename": "Encrypted.xlsx",
+              "location": "Sheet1!A1",
+              "locator": "cell:Sheet1!A1",
+              "original_id": "encrypted",
+              "quote": "anything",
+              "readable": true,
+              "reason": "source_unreadable",
+              "sha256": "a899fb4496afa7230c378d5be03cf3461990994993110fd2dad3257111081275",
+              "verification": "unverified",
+              "version": "version-8"
+            }
+          ],
+          "text": " The encrypted workbook could not be checked."
+        },
+        {
+          "sources": [
+            {
+              "byte_end": null,
+              "byte_start": null,
+              "filename": null,
+              "location": null,
+              "locator": null,
+              "original_id": "not-registered",
+              "quote": null,
+              "readable": false,
+              "reason": "source_unreadable",
+              "sha256": null,
+              "verification": "unverified",
+              "version": null
+            }
+          ],
+          "text": " An unregistered source is cited."
+        },
+        {
+          "sources": [
+            {
+              "byte_end": null,
+              "byte_start": null,
+              "filename": "Receipt photo.jpg",
+              "location": "page 1",
+              "locator": "page:1",
+              "original_id": "receipt",
+              "quote": "Receipt total 42.00",
+              "readable": true,
+              "reason": "page_only",
+              "sha256": "2a70f7a02ce4506b23ee4c8c368342f5105f1bf56ef17bb903e3b418ac5660a9",
+              "verification": "unverified",
+              "version": "version-9"
+            }
+          ],
+          "text": " The receipt photo shows 42.00."
+        },
+        {
+          "sources": [
+            {
+              "byte_end": null,
+              "byte_start": null,
+              "filename": "Macro workbook.xlsm",
+              "location": "Sheet1!B4",
+              "locator": "cell:Sheet1!B4",
+              "original_id": "macro",
+              "quote": "1,250.00",
+              "readable": true,
+              "reason": null,
+              "sha256": "5fa880f00442889917754949a664ddabb4bdcb2471f3e36bd892f8082820cea8",
+              "verification": "verified",
+              "version": "version-10"
+            }
+          ],
+          "text": " The macro workbook agrees the total."
+        },
+        {
+          "sources": [
+            {
+              "byte_end": null,
+              "byte_start": null,
+              "filename": "Trial balance.xlsx",
+              "location": "Sheet1!A4:B4",
+              "locator": "cell:Sheet1!A4:B4",
+              "original_id": "trial-balance",
+              "quote": "Total 1250",
+              "readable": true,
+              "reason": null,
+              "sha256": "da4a5e489b2b649156fa6a553fc32096f8ea5e95a558b721cc7ab1e61eafb110",
+              "verification": "verified",
+              "version": "version-1"
+            }
+          ],
+          "text": " The total row reads Total 1250."
+        },
+        {
+          "sources": [],
+          "text": " This closing sentence is not cited."
+        }
+      ],
+      "text": "The trial balance total is 1,250.00. Receivables are 500.00. Payment is due within 30 days. The fee is 1,250.00. The letter is signed. The email is about payment terms. The notes agree the balance. No location was given here. The oversized workbook could not be checked. The encrypted workbook could not be checked. An unregistered source is cited. The receipt photo shows 42.00. The macro workbook agrees the total. The total row reads Total 1250. This closing sentence is not cited.",
+      "verification_failed": false
+    }
+  ]
+}

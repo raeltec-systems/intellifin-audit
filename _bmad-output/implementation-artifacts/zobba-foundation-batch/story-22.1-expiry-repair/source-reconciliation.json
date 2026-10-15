@@ -1,0 +1,22 @@
+{
+  "baseline_commit": "6aaca7aab3463fb00e4f411e9b488eef5b2fa290",
+  "final_gates": [
+    "gateway-review-final",
+    "operations-review-final",
+    "fmt-review-final",
+    "boundaries-review-final",
+    "clippy-review-final"
+  ],
+  "final_gates_share_exact_zobba_source": true,
+  "final_source_manifest": "gates/gateway-review-final-source-after.json",
+  "negative_control": "old-order-review-final",
+  "negative_control_differs_only_in": [
+    "zobba/crates/infrastructure/src/operation.rs"
+  ],
+  "negative_control_production_file_is_baseline": true,
+  "negative_control_operation_sha256": "3e5abfd1e0a0b217849719bedd405d8af704a55774cecb081cfa16ad4a1e331e",
+  "source_fence_negative_differs_only_in": [
+    "zobba/crates/infrastructure/src/operation.rs"
+  ],
+  "source_fence_negative_operation_sha256": "fa0fb7bc82091ccd8bd78643450627bdf81f5ca5053a8043e81937b9242adb1f"
+}

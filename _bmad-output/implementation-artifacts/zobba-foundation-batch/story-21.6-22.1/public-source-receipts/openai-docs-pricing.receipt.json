@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://developers.openai.com/api/docs/pricing",
+  "effective_url": "https://developers.openai.com/api/docs/pricing",
+  "retrieved_at_utc": "2026-10-03T04:26:50.204321+00:00",
+  "completed_at_utc": "2026-10-03T04:26:50.658152+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html; charset=utf-8",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "openai-docs-pricing.html",
+  "bytes": 580801,
+  "sha256": "23b8742b0473206df972df71205a54c00e0711bf18c56cf2bb80846f0cb914ac",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/openai-docs-pricing.txt",
+  "readable_extraction_sha256": "30377af57a2afc85e2c9cb5bc6eab52ef78c8de630a926b8ce6a26ebaeb61540",
+  "raw_body_in_checkpoint": false
+}

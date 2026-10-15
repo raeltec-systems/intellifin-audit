@@ -1,0 +1,11 @@
+$ pnpm --filter @zobba/web test:browser --workers=1 --retries=0 --reporter=list,json evidence.spec.ts skills.spec.ts --grep 'asynchronous administration|actual inner skill disclosures'
+$ playwright test --workers=1 --retries=0 --reporter=list,json evidence.spec.ts skills.spec.ts --grep 'asynchronous administration|actual inner skill disclosures'
+
+Running 2 tests using 1 worker
+
+(node:1058787) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/evidence.spec.ts:389:1 › asynchronous administration allows a blocked evidence transaction to commit through the database proxy (6.8s)
+  ✓  2 tests/browser/skills.spec.ts:601:1 › actual inner skill disclosures retain open state and focus across cancelled reads, but current failures withdraw them (16.1s)
+
+  2 passed (30.4s)

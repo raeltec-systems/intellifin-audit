@@ -1,0 +1,25 @@
+{
+  "gate": "operations-lease-repair",
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "zobba-infrastructure",
+    "--test",
+    "operations",
+    "--",
+    "--test-threads=1"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T05:27:54.865511+00:00",
+  "ended_at": "2026-10-03T05:29:16.075338+00:00",
+  "duration_seconds": 81.21,
+  "exit": 0,
+  "source_before": "operations-lease-repair-source-before.json",
+  "source_after": "operations-lease-repair-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "operations-lease-repair.log",
+  "log_sha256": "f1473fed458d05e70019d504a79bb4442178b196908a271d5be45fde7246a6ae"
+}

@@ -1,0 +1,5 @@
+Invoice,Invoice date,Amount,Approved,Approved before payment,Currency,Note
+INV-C1,2026-02-01,"1,500.00",Yes,Yes,USD,"a note, with a comma"
+INV-C2,2026-02-02,"1,500.00",No,Yes,USD,"say ""hi"""
+INV-C3,2025-12-31,"1,500.00",Yes,Yes,USD,
+INV-C4,2026-02-03,980.00,Yes,Yes,USD,

@@ -1,0 +1,112 @@
+{
+  "created_at": "2026-10-02T13:30:17.695108+00:00",
+  "scope": "Only the explicitly listed files and this allowlist are approved for evidence publication. No directory-wide copy of the parent /tmp tree.",
+  "sanitization": "Passing Rust/browser/smoke logs and five full-run screenshots were inspected. Failed logs, auth/session headers, fixture configuration/credentials, traces and failed screenshots remain private. Screenshots contain synthetic fixtures only.",
+  "files": [
+    {
+      "path": "handoff.md",
+      "bytes": 4884,
+      "sha256": "80c4066bc6048a93841ac3a5eca147ef252e8d2310655b2dabc60e10a2a661c8"
+    },
+    {
+      "path": "integration-contract.md",
+      "bytes": 7174,
+      "sha256": "500505ed832831ab2a4ec3f3bf5f59c1181fcd23c2ea8ce4b34f031d7e149503"
+    },
+    {
+      "path": "matrix.md",
+      "bytes": 12307,
+      "sha256": "16880af98176828fb7ab5fc43dcb7163f4fbc19df44e1a204b0019145bde5ca3"
+    },
+    {
+      "path": "verification.md",
+      "bytes": 7290,
+      "sha256": "64f283b61f24554f968df0de4434fca97bc462604cd6475f30d4661c08bd115f"
+    },
+    {
+      "path": "gate-receipts.json",
+      "bytes": 14617,
+      "sha256": "af6ce31aa983aca72f1a3f8c52ef86f51dd2a0cdf1d4deeef69ed810c2fbbc41"
+    },
+    {
+      "path": "published-prefixes-1-8.json",
+      "bytes": 4681,
+      "sha256": "4abb2b496be6130eae99c0a1e8d195b23cd3be800468f824d96fcac0ca40aa91"
+    },
+    {
+      "path": "source-freeze-final.json",
+      "bytes": 25403,
+      "sha256": "30e153d32855d0f09838ef81f4f8636d9b8c2a4ea7525bae4fef8daead789aaf"
+    },
+    {
+      "path": "source-rust-full2-start.json",
+      "bytes": 25403,
+      "sha256": "d463bc3a45adb07b37fd8897525305c837a0a3b25ee046b4279e5616f56118e3"
+    },
+    {
+      "path": "source-browser-full-start.json",
+      "bytes": 25403,
+      "sha256": "9abbf23387596482fb90b02715f969c0d6e7aef9841ed35227ad995928122bc2"
+    },
+    {
+      "path": "source-reconciliation.json",
+      "bytes": 635,
+      "sha256": "63e3b0ac7d49ea17a06a7b94bb5fd803f94abeec5f6a311bf2701958db987794"
+    },
+    {
+      "path": "receipts/rust-tests.log",
+      "bytes": 32512,
+      "sha256": "e235cd974b97ea2d969106d6b80d7c8b1ab15e8b44b9eb532dba2e0206247c6a"
+    },
+    {
+      "path": "receipts/rust-tests.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "receipts/browser.log",
+      "bytes": 18068,
+      "sha256": "c8d06dfc3b1e1d5fa1467dbd2526e2786d06bb91736da49f92a5f70ef384ea81"
+    },
+    {
+      "path": "receipts/browser.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "receipts/smoke.log",
+      "bytes": 1222,
+      "sha256": "c1f13cdd84158389d4b1ec77a08e286a70215b18d55b7e372f5a321a6506f214"
+    },
+    {
+      "path": "receipts/smoke.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "screenshots/skills-narrow.png",
+      "bytes": 43745,
+      "sha256": "313428ef2cba5b77636d598fdc661447b3e0af97c5bcf71af6fe39b7483a52ba"
+    },
+    {
+      "path": "screenshots/skills-recalled-history-narrow.png",
+      "bytes": 64773,
+      "sha256": "f18b6e3f73e4ee12084eb8259093634d74e08f9a59adf80335b9763660152ec5"
+    },
+    {
+      "path": "screenshots/skills-selection-recalled-history.png",
+      "bytes": 115909,
+      "sha256": "20f3ff3f395840365896011f6dd1e1263ea075762b6a78c9754275c54ce0a2ad"
+    },
+    {
+      "path": "screenshots/skills-hostile-instructions-remain-evidence.png",
+      "bytes": 119055,
+      "sha256": "f6d4ef8bdf1cc8d3364e74b2eddba8eddf430c2284da39d406038ddb801a3456"
+    },
+    {
+      "path": "screenshots/skills-hostile-archive-download-only.png",
+      "bytes": 119510,
+      "sha256": "69e1c0fee4ddb50646b8af181dfd1a2865ce05270a76220adde4d82e80e55056"
+    }
+  ]
+}

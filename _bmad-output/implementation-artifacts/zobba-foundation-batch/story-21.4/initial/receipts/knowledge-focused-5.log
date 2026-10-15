@@ -1,0 +1,18 @@
+$ pnpm --filter @zobba/web test:browser --workers=1 --retries=0 knowledge.spec.ts --trace=retain-on-failure
+$ playwright test --workers=1 --retries=0 knowledge.spec.ts --trace=retain-on-failure
+
+Running 9 tests using 1 worker
+
+(node:995681) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/knowledge.spec.ts:128:1 › real distinct Expand openings learn privately, apply later, and Undo consumes old observations (6.3s)
+  ✓  2 tests/browser/knowledge.spec.ts:151:1 › exact typed release is useful to another assigned reader without private preference events (7.5s)
+  ✓  3 tests/browser/knowledge.spec.ts:171:1 › verified acquisition and Guide automatically project distinct attributable knowledge with exact source navigation (7.5s)
+  ✓  4 tests/browser/knowledge.spec.ts:207:1 › assertion correction, exclusion and forget retain original attributable history (7.2s)
+  ✓  5 tests/browser/knowledge.spec.ts:222:1 › actual session outage remount preserves exact unsent draft only after its own current read (4.8s)
+  ✓  6 tests/browser/knowledge.spec.ts:241:1 › lost mutation reply and temporary retry capacity preserve one exact command through recovery (3.8s)
+  ✓  7 tests/browser/knowledge.spec.ts:257:1 › held successful knowledge response cannot restore a corrected assertion after fresh verification (4.0s)
+  ✓  8 tests/browser/knowledge.spec.ts:272:1 › source correction declares exact immutable replacement and invalidates derived context (6.8s)
+  ✓  9 tests/browser/knowledge.spec.ts:302:1 › named same-client reuse serves the destination and independently checks reader and accountable Task owner (8.2s)
+
+  9 passed (1.1m)

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+. /workspace/zobba-build-tools/activate-tests.sh
+cd /workspace/intellifin-audit/zobba
+export ZOBBA_TEST_MIGRATION_DATABASE_URL=postgresql://zobba_patch20_3_owner@127.0.0.1:55434/zobba_patch20_3_test
+export ZOBBA_TEST_RUNTIME_DATABASE_URL=postgresql://zobba_patch20_3_app@127.0.0.1:55434/zobba_patch20_3_test
+export ZOBBA_TEST_ADMIN_DATABASE_URL=postgresql://zobba_local_admin@127.0.0.1:55434/zobba_patch20_3_test
+result=0
+python3 scripts/smoke.py > /tmp/zobba-admin-continuity/smoke.txt 2>&1 || result=$?
+printf '%s\n' "$result" > /tmp/zobba-admin-continuity/smoke.exit
+exit "$result"

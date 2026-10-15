@@ -1,0 +1,23 @@
+{
+  "locale": "en_US.utf8",
+  "provider": "libc",
+  "default_order_differs_from_literal_ascii": true,
+  "literal_identifier_sequence": "-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz",
+  "assignment_client_rows": 64,
+  "assignment_engagement_rows": 64,
+  "impact_rows_per_traversal": 192,
+  "impact_traversals": [
+    "restricted all versions",
+    "exact version"
+  ],
+  "page_limit": 50,
+  "within_task_cursor_exercised": true,
+  "probe_exit": 0,
+  "cleanup": {
+    "database": "zobba_skills_collation_test",
+    "created_by_this_run": true,
+    "dropped": true,
+    "absence_verified": true
+  },
+  "schema_sha256": "0729dc983091c43354fc5aea38a4c9c740ed6b50b091099119687a062ecf416a"
+}

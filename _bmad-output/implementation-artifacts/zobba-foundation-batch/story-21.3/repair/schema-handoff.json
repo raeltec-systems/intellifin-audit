@@ -1,0 +1,18 @@
+[
+  {
+    "path": "migrations/0009_skills.sql",
+    "sha256": "0729dc983091c43354fc5aea38a4c9c740ed6b50b091099119687a062ecf416a"
+  },
+  {
+    "path": "crates/infrastructure/src/lib.rs",
+    "sha256": "a17dfc2598318d61561ed7a092f54d083c64b41184c97fc3d4d6f07058042e64"
+  },
+  {
+    "path": "crates/infrastructure/src/schema-v9.catalog",
+    "sha256": "6285a6d96fa4633be14d8b24a7c41a5358d745adc0ba4ce9be3e95b30bac733c"
+  },
+  {
+    "path": "crates/infrastructure/tests/bootstrap.rs",
+    "sha256": "4c4f39aecbd039c7ee2bd67c5be770c5070513b1a501c984101ac7a6d7add570"
+  }
+]

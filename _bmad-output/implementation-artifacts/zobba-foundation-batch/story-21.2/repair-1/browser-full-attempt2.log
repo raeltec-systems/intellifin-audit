@@ -1,0 +1,145 @@
+$ pnpm --filter @zobba/web test:browser --workers=1 --retries=0 --reporter=list,/tmp/zobba-story-21-2/repair-1/cursor-reporter.cjs
+$ playwright test --workers=1 --retries=0 --reporter=list,/tmp/zobba-story-21-2/repair-1/cursor-reporter.cjs
+
+Running 106 tests using 1 worker
+
+(node:796864) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓    1 tests/browser/account-binding.spec.ts:54:1 › a completed old session response cannot re-expose another account draft in the same engagement (7.6s)
+  ✓    2 tests/browser/account-binding.spec.ts:119:1 › same-account session rotation retains the hidden draft, mounted editor and focus after verification (4.9s)
+  ✓    3 tests/browser/account-binding.spec.ts:146:1 › every protected GET refuses an obsolete session without expiring the replacement cookie (4.0s)
+  ✓    4 tests/browser/account-binding.spec.ts:166:1 › a delayed real unauthorized response cannot delete the newer manager session (3.8s)
+  ✓    5 tests/browser/account-binding.spec.ts:185:1 › repeated real session mismatches stop after one retry and withdraw the private workspace (2.7s)
+  ✓    6 tests/browser/account-binding.spec.ts:205:1 › live conversation polling withdraws the old actor before recovering a replacement session (8.9s)
+  ✓    7 tests/browser/account-binding.spec.ts:241:1 › conversation mismatches after successful engagement reads share one bounded recovery budget (3.4s)
+  ✓    8 tests/browser/account-binding.spec.ts:280:1 › read preconditions cannot change ordinary command, reserved control or logout CSRF contracts (2.7s)
+  ✓    9 tests/browser/account-binding.spec.ts:296:1 › an engagement mismatch and a later conversation mismatch consume the same recovery allowance (2.3s)
+  ✓   10 tests/browser/auth-database-endpoint.spec.ts:18:1 › portless PGPORT routes actual migration, admin SQL and authenticated recovery through an owned relay (7.0s)
+  ✓   11 tests/browser/auth.spec.ts:60:1 › HTTPS OIDC login opens only assigned scope, supports keyboard and narrow layouts (3.3s)
+  ✓   12 tests/browser/auth.spec.ts:108:1 › CSRF and Origin refusals preserve session; invalid callback cannot log out; POST logout revokes replay (2.3s)
+  ✓   13 tests/browser/auth.spec.ts:136:3 › admin-only signs in without access to client work (1.9s)
+  ✓   14 tests/browser/auth.spec.ts:136:3 › unassigned signs in without access to client work (1.8s)
+  ✓   15 tests/browser/auth.spec.ts:145:1 › manager with combined roles sees current audit authority (2.2s)
+  ✓   16 tests/browser/auth.spec.ts:152:1 › role demotion, membership expiry and session expiry clear previously opened scope (3.5s)
+  ✓   17 tests/browser/auth.spec.ts:187:1 › pending logout survives focus, periodic refresh, visibility changes and navigation (2.1s)
+  ✓   18 tests/browser/auth.spec.ts:219:1 › logout outage retains intent and retry uses fresh CSRF without reopening work (1.9s)
+  ✓   19 tests/browser/auth.spec.ts:238:1 › a lost successful logout response retries safely and does not reopen work (2.1s)
+  ✓   20 tests/browser/auth.spec.ts:252:1 › signing out an expired session completes without a failure state (2.0s)
+  ✓   21 tests/browser/auth.spec.ts:261:1 › stale CSRF is a real logout refusal and retry refreshes it before signing out (2.3s)
+  ✓   22 tests/browser/auth.spec.ts:275:1 › database loss clears protected content and retry restores verified access (2.4s)
+  ✓   23 tests/browser/auth.spec.ts:313:3 › actual authorization callback rejects state (1.5s)
+  ✓   24 tests/browser/auth.spec.ts:313:3 › actual authorization callback rejects missing-browser-binding (1.5s)
+  ✓   25 tests/browser/auth.spec.ts:313:3 › actual authorization callback rejects wrong-browser-binding (1.5s)
+  ✓   26 tests/browser/auth.spec.ts:329:1 › successful callback replaces fixation value and replay cannot mint another session (2.0s)
+  ✓   27 tests/browser/auth.spec.ts:348:1 › a second successful OIDC callback revokes the previous valid session (2.9s)
+  ✓   28 tests/browser/auth.spec.ts:364:1 › an unrelated callback preserves the valid in-flight browser binding and sign-in (2.3s)
+  ✓   29 tests/browser/auth.spec.ts:376:1 › a different organisation receives its own assignment only (2.2s)
+  ✓   30 tests/browser/auth.spec.ts:385:1 › more than 100 assignments paginate by full scope with fresh back navigation and direct opening (4.5s)
+  ✓   31 tests/browser/auth.spec.ts:452:1 › cold provider discovery failure bounds concurrent sign-in requests and recovers (13.0s)
+  ✓   32 tests/browser/auth.spec.ts:479:1 › missing evidence storage is explicit while the foundation conversation remains usable (4.0s)
+  ✓   33 tests/browser/auth.spec.ts:493:1 › failed restoration SQL still closes the owned fixture servers (1.3s)
+  ✓   34 tests/browser/conversation-locks.spec.ts:180:1 › R11 an actual IndexedDB transaction serializes near-quota tabs and preserves Pause/Stop slots (10.0s)
+  ✓   35 tests/browser/conversation-locks.spec.ts:283:1 › R12 repeated Enter during an actual blocked reservation creates one key, POST and durable command (3.0s)
+  ✓   36 tests/browser/conversation-locks.spec.ts:350:1 › R1 a reservation surviving same-scope revalidation hands off once without losing an independently edited draft (8.8s)
+  ✓   37 tests/browser/conversation-locks.spec.ts:417:1 › R11 global IndexedDB counts preserve four control places without reading other bindings (2.8s)
+  ✓   38 tests/browser/conversation-locks.spec.ts:437:1 › a notification failure after IndexedDB commit cannot undo the send handoff (2.9s)
+  ✓   39 tests/browser/conversation-races.spec.ts:90:1 › real replacement OIDC actor and scope cannot reveal or replay the previous recovery outbox (4.9s)
+  ✓   40 tests/browser/conversation-races.spec.ts:126:1 › two same-actor tabs retain both committed lost acknowledgements and recover each exact key (11.5s)
+  ✓   41 tests/browser/conversation-races.spec.ts:167:1 › later bounded Task page refreshes factual state and cycle while retaining an explicitly selected old composer target (18.2s)
+  ✓   42 tests/browser/conversation-races.spec.ts:208:1 › a held old-scope snapshot cannot restore protected projection or draft after explicit scope selection (4.8s)
+  ✓   43 tests/browser/conversation-races.spec.ts:232:1 › logout wins over an already fetched protected snapshot and later refresh callbacks (2.9s)
+  ✓   44 tests/browser/conversation-races.spec.ts:253:1 › reserved control and same-key receipt recovery do not wait on held ordinary session or scope reads (5.3s)
+  ✓   45 tests/browser/conversation-races.spec.ts:290:1 › an actual stale-cycle control returns 409 and dismissing its refusal preserves the independent next draft (3.2s)
+  ✘   46 tests/browser/conversation-review.spec.ts:73:1 › same-scope checks hide every protected surface and restore mounted Task controls, disclosure and focus (4.9s)
+(node:800933) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   47 tests/browser/conversation-review.spec.ts:125:1 › Follow uses current activity while reading older history without retargeting or stealing focus (13.2s)
+  ✓   48 tests/browser/conversation-review.spec.ts:147:1 › an unresolved exact send scrolls once and never pulls deliberately opened history to the bottom (11.8s)
+  ✓   49 tests/browser/conversation.spec.ts:59:1 › two attributed Tasks, Guide A while inspecting B, reload and real API/worker interruption retain guidance (8.8s)
+  ✓   50 tests/browser/conversation.spec.ts:95:1 › lost committed acknowledgement reloads original outbox meaning, recovers one receipt and refuses changed meaning (8.5s)
+  ✓   51 tests/browser/conversation.spec.ts:128:1 › actual worker Pause and Stop stay pending until observed; Resume retains cycle and Continue creates another (12.4s)
+  ✓   52 tests/browser/conversation.spec.ts:165:1 › consumed crash remains unresolved after worker restart without replay or false stopped success (13.2s)
+  ✓   53 tests/browser/conversation.spec.ts:182:1 › keyboard narrow views, pin and follow preserve explicit target, draft and focus across revalidation (7.0s)
+  ✓   54 tests/browser/conversation.spec.ts:219:1 › storage failure cannot transmit and a later identical next draft survives an in-flight acknowledgement (4.4s)
+  ✓   55 tests/browser/conversation.spec.ts:263:1 › held ordinary projection does not block named reserved control and failure withdraws inspection (11.2s)
+  ✓   56 tests/browser/conversation.spec.ts:285:1 › bounded burst/history and second actor/foreign scope preserve exact attributed audience (13.9s)
+  ✓   57 tests/browser/evidence-repairs.spec.ts:54:1 › R03 maximum escaped assertions survive a lost registered response and reload with the exact reservation key (7.3s)
+  ✓   58 tests/browser/evidence-repairs.spec.ts:93:1 › R04 invalid UTF-8 source and filename bounds remain editable without creating or persisting a reservation (5.3s)
+  ✓   59 tests/browser/evidence-repairs.spec.ts:115:1 › R05 an oversized local original gives size correction without network acquisition or a recovery draft (6.8s)
+  ✓   60 tests/browser/evidence-repairs.spec.ts:128:1 › R06 durable reservation saturation explains finishing existing custody and has no transient Retry-After (10.4s)
+  ✓   61 tests/browser/evidence-repairs.spec.ts:153:1 › R08 an accepted registration remains certain when only the following evidence list refresh fails (4.0s)
+  ✓   62 tests/browser/evidence-repairs.spec.ts:179:1 › R10 same-name incomplete originals expose distinct immutable expected identity and assertions before any upload (3.8s)
+  ✓   63 tests/browser/evidence-unicode.spec.ts:176:1 › mixed API-created normal and FEFF originals retain exact metadata and download bytes (8.0s)
+  ✓   64 tests/browser/evidence-unicode.spec.ts:207:1 › mixed API-created pending reservations recover exact drafts after reload and register the same originals (13.0s)
+  ✓   65 tests/browser/evidence-unicode.spec.ts:267:1 › new source entry trims Rust whitespace and preserves FEFF in all five assertion fields (6.2s)
+  ✓   66 tests/browser/evidence.spec.ts:69:1 › verified acquisition keeps source assertions distinct and preserves Task guidance, selection and return focus (6.6s)
+  ✓   67 tests/browser/evidence.spec.ts:127:1 › lost reservation acknowledgement recovers the exact key on reload and refuses a changed file (4.1s)
+  ✓   68 tests/browser/evidence.spec.ts:151:1 › lost upload acknowledgement retries the same registered original across API restart without overwrite (5.1s)
+  ✓   69 tests/browser/evidence.spec.ts:167:1 › narrow keyboard inspection caps plain text and keeps markup download-only (4.7s)
+  ✓   70 tests/browser/evidence.spec.ts:187:3 › completed metadata is withheld after same-actor session replacement (6.0s)
+  ✓   71 tests/browser/evidence.spec.ts:209:3 › completed download creates no Blob URL after same-actor session replacement (4.9s)
+  ✓   72 tests/browser/evidence.spec.ts:187:3 › completed metadata is withheld after same-engagement actor replacement (4.9s)
+  ✓   73 tests/browser/evidence.spec.ts:209:3 › completed download creates no Blob URL after same-engagement actor replacement (6.1s)
+  ✓   74 tests/browser/evidence.spec.ts:187:3 › completed metadata is withheld after foreign-scope account replacement (5.6s)
+  ✓   75 tests/browser/evidence.spec.ts:209:3 › completed download creates no Blob URL after foreign-scope account replacement (5.6s)
+  ✓   76 tests/browser/evidence.spec.ts:226:1 › revocation during object upload prevents registration and foreign scope discloses no metadata (3.5s)
+  ✓   77 tests/browser/evidence.spec.ts:247:1 › routine same-session access checks retain an in-flight upload, inspection, file control and focus (4.8s)
+  ✓   78 tests/browser/evidence.spec.ts:271:1 › registry and recovery pages stay bounded and new registration refreshes canonical ordering and cursor (16.2s)
+  ✓   79 tests/browser/evidence.spec.ts:347:1 › registered provenance remains inspectable when storage configuration or original bytes are unavailable (5.2s)
+  ✓   80 tests/browser/evidence.spec.ts:369:1 › failed current-authority recheck hides all evidence while retaining same-session retry (4.1s)
+  ✓   81 tests/browser/evidence.spec.ts:389:1 › asynchronous administration allows a blocked evidence transaction to commit through the database proxy (6.5s)
+  ✓   82 tests/browser/health.spec.ts:4:1 › real database loss is unavailable, then keyboard refresh restores Ready (3.4s)
+  ✓   83 tests/browser/membership.spec.ts:96:1 › Admin-only has separate keyboard-accessible membership, two current-version Saves and no audit authority (3.3s)
+  ✓   84 tests/browser/membership.spec.ts:144:1 › lost invitation and acceptance acknowledgements retry exactly; acceptance receipt cannot regrant later revoked access (5.5s)
+  ✓   85 tests/browser/membership.spec.ts:199:1 › private invitation can be revoked, and the signed recipient receives an honest refusal (3.5s)
+  ✓   86 tests/browser/membership.spec.ts:213:1 › acceptance needs a fresh verified callback and rejects a different signed recipient (6.3s)
+  ✓   87 tests/browser/membership.spec.ts:235:1 › stale Save and the last Admin are refused without automatic overwrite (2.6s)
+  ✓   88 tests/browser/membership.spec.ts:254:1 › ordinary Save refuses the last non-expiring Admin and permits temporary Admins after establishing a replacement (3.6s)
+  ✓   89 tests/browser/membership.spec.ts:337:1 › a combined role can narrow its own audit role while retaining only membership administration (2.7s)
+  ✓   90 tests/browser/membership.spec.ts:348:1 › replacing the account withdraws membership metadata and discards unsent invitation drafts (3.1s)
+  ✓   91 tests/browser/membership.spec.ts:379:1 › same-account session replacement clears drafts, private links and uncertain recovery without rebinding (16.2s)
+  ✓   92 tests/browser/membership.spec.ts:412:1 › same-document invitation navigation scrubs each secret and ignores a late previous preview (4.3s)
+  ✓   93 tests/browser/membership.spec.ts:446:1 › preview capacity, outage and timeout remain retryable connection states without suggesting reauthentication (12.2s)
+  ✓   94 tests/browser/membership.spec.ts:469:1 › new invitation fragments preserve pending, uncertain and completed sign-out guidance (3.8s)
+  ✓   95 tests/browser/membership.spec.ts:518:1 › expired membership is shown honestly and can be renewed or have its expiry explicitly cleared (2.7s)
+  ✓   96 tests/browser/membership.spec.ts:533:1 › multi-page member and invitation edits retain selections and preserve existing off-page assignments (5.2s)
+  ✓   97 tests/browser/membership.spec.ts:573:1 › legacy members with over 100 assignments preserve access during role edits and remove only selected scopes across pages (3.9s)
+  ✓   98 tests/browser/membership.spec.ts:595:1 › an opened legacy draft remains preserve-only when expiry changes 101 assignments to 100 on refresh (9.2s)
+  ✓   99 tests/browser/membership.spec.ts:625:1 › a loaded assignment that expires before Save stays expired until explicitly selected in a later draft (9.1s)
+  ✓  100 tests/browser/methodology-review.spec.ts:95:1 › explicit Create overrides firm defaults and a real active-task Save applies at the owned worker boundary (7.3s)
+  ✓  101 tests/browser/methodology-review.spec.ts:160:1 › Undo and conflict recovery keep independent overlapping lineages separate and historical Edit opens the current head (3.7s)
+  ✓  102 tests/browser/methodology-review.spec.ts:195:1 › field controls distinguish clear from inherit while mandatory inherited text and references remain in force (6.1s)
+  ✓  103 tests/browser/methodology-review.spec.ts:247:1 › later organisation pages and verified names survive quiet refresh, and revoked selection returns to the authorised chooser (17.4s)
+  ✓  104 tests/browser/methodology.spec.ts:61:1 › Guide supplies missing Task context with exact attribution and stages a binding without replacing the original (4.4s)
+  ✓  105 tests/browser/methodology.spec.ts:124:1 › Admin Save, frozen lost-receipt retry, Undo, exact Task templates, new-only notice, recall and draft withdrawal (37.7s)
+  ✓  106 tests/browser/methodology.spec.ts:309:1 › a real saved incomplete methodology retains more than 100 limitations in Task inspection (4.0s)
+
+
+  1) tests/browser/conversation-review.spec.ts:73:1 › same-scope checks hide every protected surface and restore mounted Task controls, disclosure and focus 
+
+    Error: route.fulfill: Route is already handled!
+
+       98 |   const access = gate(), projection = gate(); let accessHeld = false, projectionHeld = false;
+       99 |   await page.route('**/api/auth/session', async route => {
+    > 100 |     const response = await route.fetch(); accessHeld = true; await access.held; await route.fulfill({ response });
+          |                                                                                             ^
+      101 |   });
+      102 |   await page.route('**/api/engagements/engagement-a/conversation?*', async route => {
+      103 |     const response = await route.fetch(); projectionHeld = true; await projection.held; await route.fulfill({ response });
+        at /workspace/intellifin-audit/zobba/web/tests/browser/conversation-review.spec.ts:100:93
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-story-21-2/repair-1/browser-full-results/conversation-review-same-s-87183-ntrols-disclosure-and-focus/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-story-21-2/repair-1/browser-full-results/conversation-review-same-s-87183-ntrols-disclosure-and-focus/error-context.md
+
+    Error Context: ../../../../tmp/zobba-story-21-2/repair-1/browser-full-results/conversation-review-same-s-87183-ntrols-disclosure-and-focus/error-context.md
+
+  1 failed
+    tests/browser/conversation-review.spec.ts:73:1 › same-scope checks hide every protected surface and restore mounted Task controls, disclosure and focus 
+  105 passed (11.4m)
+/workspace/intellifin-audit/zobba/web:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @zobba/web@0.1.0 test:browser: `playwright test --workers=1 --retries=0 --reporter=list,/tmp/zobba-story-21-2/repair-1/cursor-reporter.cjs`
+Exit status 1
+[ELIFECYCLE] Command failed with exit code 1.

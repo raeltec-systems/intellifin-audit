@@ -1,0 +1,47 @@
+[
+  {
+    "file": "source-search-390.png",
+    "sha256": "caac21ae2cf7c82c5d2f81621a051c0cb3067ba814093ad6036c2d03d0706f3b",
+    "source_gate": "browser-full-clean",
+    "source_artifact": "evidence-search-390px-keyb-23e4e--then-returns-to-its-opener/source-search-390.png",
+    "visually_inspected": true,
+    "synthetic_only": true,
+    "inspection_date_utc": "2026-10-03"
+  },
+  {
+    "file": "source-preview-390.png",
+    "sha256": "833803160d4b3e63c2283e219fc5b3d453f7ca0b7340158b56dd2ccfa4589beb",
+    "source_gate": "browser-full-clean",
+    "source_artifact": "evidence-search-390px-keyb-23e4e--then-returns-to-its-opener/source-library-390.png",
+    "visually_inspected": true,
+    "synthetic_only": true,
+    "inspection_date_utc": "2026-10-03"
+  },
+  {
+    "file": "source-library-desktop.png",
+    "sha256": "ed427d858b381e7dd20dace43db437ecc0d6bcc0bbb1d31b19c101d7f133896c",
+    "source_gate": "browser-full-clean",
+    "source_artifact": "evidence-search-Task-knowl-745d3-stores-the-knowledge-opener/knowledge-source-library-desktop.png",
+    "visually_inspected": true,
+    "synthetic_only": true,
+    "inspection_date_utc": "2026-10-03"
+  },
+  {
+    "file": "destination-after-source-refusal.png",
+    "sha256": "f361599501f2316045824437836abb0913c57a4aa4c0a935f19bd37a1edf34b3",
+    "source_gate": "browser-full-clean",
+    "source_artifact": "evidence-search-reused-kno-db0c8--preserves-destination-work/cross-engagement-source-refusal-destination.png",
+    "visually_inspected": true,
+    "synthetic_only": true,
+    "inspection_date_utc": "2026-10-03"
+  },
+  {
+    "file": "keyboard-search-390.png",
+    "sha256": "2f19ab536c76274e96549e36ff03a3d9a2f31ce841d24d0aadf81f9273cd58e9",
+    "source_gate": "browser-full-clean",
+    "source_artifact": "evidence-search-390px-keyb-a9f85-pection-to-the-exact-result/source-search-continuation-390.png",
+    "visually_inspected": true,
+    "synthetic_only": true,
+    "inspection_date_utc": "2026-10-03"
+  }
+]

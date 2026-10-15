@@ -1,0 +1,5 @@
+{
+  "test": "mixed API-created pending reservations recover exact drafts after reload and register the same originals",
+  "status": "passed",
+  "unexpectedErrors": 0
+}

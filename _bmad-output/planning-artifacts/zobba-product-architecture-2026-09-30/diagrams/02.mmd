@@ -1,0 +1,21 @@
+flowchart TB
+  U[Web application] --> A[Rust API and control]
+  U --> G[Computer gateway]
+  A --> D[(PostgreSQL)]
+  A --> R[Rust task workers]
+  R --> D
+  R --> P[Permissions and dispatch]
+  P --> M[Native model adapters]
+  P --> B[Connection broker and tools]
+  P --> G
+  P --> X[Analysis supervisor]
+  G --> C[Isolated Linux or Windows computer]
+  X --> J[Disposable analysis or conversion job]
+  C --> F[Controlled file transfer]
+  J --> F
+  F --> E[Evidence and artifact registration]
+  B --> E
+  E --> O[(S3)]
+  E --> D
+  D --> V[Scoped event projections]
+  V --> U

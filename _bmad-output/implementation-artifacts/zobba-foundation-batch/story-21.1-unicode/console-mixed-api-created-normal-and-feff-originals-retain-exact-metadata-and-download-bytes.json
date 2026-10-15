@@ -1,0 +1,5 @@
+{
+  "test": "mixed API-created normal and FEFF originals retain exact metadata and download bytes",
+  "status": "passed",
+  "unexpectedErrors": 0
+}

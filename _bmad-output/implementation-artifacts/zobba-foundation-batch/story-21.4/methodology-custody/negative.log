@@ -1,0 +1,49 @@
+$ pnpm --filter @zobba/web test:browser --workers=1 --retries=0 tests/browser/methodology-custody.spec.ts --grep 'unsent exact edit and recall survive actual session outage/remount'
+$ playwright test --workers=1 --retries=0 tests/browser/methodology-custody.spec.ts --grep 'unsent exact edit and recall survive actual session outage/remount'
+
+Running 1 test using 1 worker
+
+(node:965835) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/browser/methodology-custody.spec.ts:91:1 › unsent exact edit and recall survive actual session outage/remount; recovery never submits (20.5s)
+
+
+  1) tests/browser/methodology-custody.spec.ts:91:1 › unsent exact edit and recall survive actual session outage/remount; recovery never submits 
+
+    Error: The exact unsent methodology edit must return after actual session outage and fresh scoped Admin authorization
+
+    expect(locator).toBeVisible() failed
+
+    Locator: getByRole('form', { name: 'Edit methodology', exact: true })
+    Expected: visible
+    Timeout: 12000ms
+    Error: element(s) not found
+
+    Call log:
+      - The exact unsent methodology edit must return after actual session outage and fresh scoped Admin authorization with timeout 12000ms
+      - waiting for getByRole('form', { name: 'Edit methodology', exact: true })
+
+
+      122 |     await expect(form).toBeHidden(); expect(await page.locator('body').innerText()).not.toContain('Exact recovered methodology 🧾'); expect(posts).toBe(0);
+      123 |     authorization.release();
+    > 124 |     await expect(form, 'The exact unsent methodology edit must return after actual session outage and fresh scoped Admin authorization').toBeVisible();
+          |                                                                                                                                          ^
+      125 |     expect(await values(form)).toEqual(fields);
+      126 |   } finally { authorization.release(); await page.unrouteAll({ behavior: 'wait' }); }
+      127 |   const recoveredOwner = await session(page); expect(recoveredOwner.identity.id).toBe(owner.identity.id); expect(recoveredOwner.csrf_token === owner.csrf_token).toBe(true);
+        at /workspace/intellifin-audit/zobba/web/tests/browser/methodology-custody.spec.ts:124:138
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-story-21-4/methodology-custody/negative-results/methodology-custody-unsent-4f227-ount-recovery-never-submits/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-story-21-4/methodology-custody/negative-results/methodology-custody-unsent-4f227-ount-recovery-never-submits/error-context.md
+
+    Error Context: ../../../../tmp/zobba-story-21-4/methodology-custody/negative-results/methodology-custody-unsent-4f227-ount-recovery-never-submits/error-context.md
+
+  1 failed
+    tests/browser/methodology-custody.spec.ts:91:1 › unsent exact edit and recall survive actual session outage/remount; recovery never submits 
+/workspace/intellifin-audit/zobba/web:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @zobba/web@0.1.0 test:browser: `playwright test --workers=1 --retries=0 tests/browser/methodology-custody.spec.ts --grep 'unsent exact edit and recall survive actual session outage/remount'`
+Exit status 1
+[ELIFECYCLE] Command failed with exit code 1.

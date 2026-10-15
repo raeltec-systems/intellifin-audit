@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://openai.com/policies/services-agreement/",
+  "effective_url": "https://openai.com/policies/services-agreement/",
+  "retrieved_at_utc": "2026-10-03T04:36:08.315035+00:00",
+  "completed_at_utc": "2026-10-03T04:36:08.668479+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html; charset=utf-8",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "openai-services-terms.html",
+  "bytes": 538779,
+  "sha256": "fdb07f9494d29b39a6cdce934846d32f58680b4ea81c4af040247e31f80f656c",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/openai-services-terms.txt",
+  "readable_extraction_sha256": "cb51ab54bca8ae603f6ab9d973e118a0faf9289a8a182966aae6553832b1c640",
+  "raw_body_in_checkpoint": false
+}

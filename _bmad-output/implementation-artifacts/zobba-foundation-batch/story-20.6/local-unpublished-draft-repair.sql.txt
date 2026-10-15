@@ -1,0 +1,279 @@
+-- Explicit local development incident repair. Original draft and backups remain preserved.
+-- old draft SHA384 0006d307a6fb84b7a30f916fceca29ff4266dbf1c24d4ac9827bf358ee850743b0c554584c83f125a377018755216c84
+-- candidate final SHA384 f37f620b90745b6e2e86f886df697ffe1be074a70372a77194109a12713a9f341cfd2ab1abcadd71ed271e221bee3ba3
+BEGIN;
+SET LOCAL lock_timeout='5s';
+SET LOCAL statement_timeout='30s';
+DO $target$ BEGIN
+ IF current_database() IS DISTINCT FROM 'zobba_story_20' OR current_user IS DISTINCT FROM 'zobba_local_admin' OR inet_server_addr() IS DISTINCT FROM '127.0.0.1'::inet OR inet_server_port() IS DISTINCT FROM 55434 THEN RAISE EXCEPTION 'wrong recovery target'; END IF;
+END $target$;
+DO $locks$ DECLARE r record; BEGIN
+ FOR r IN SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public' ORDER BY tablename LOOP
+  EXECUTE format('LOCK TABLE public.%I IN ACCESS EXCLUSIVE MODE',r.tablename);
+ END LOOP;
+END $locks$;
+DO $guard$ DECLARE observed text; BEGIN
+ IF (SELECT count(*) FROM public.zobba_bootstrap)<>1 OR NOT EXISTS(SELECT 1 FROM public.zobba_bootstrap WHERE singleton AND product='zobba' AND schema_version=5) OR (SELECT count(*) FROM public._sqlx_migrations)<>5 THEN RAISE EXCEPTION 'unexpected version'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM public._sqlx_migrations WHERE version=5 AND success AND description='membership administration' AND installed_on='2026-10-01T11:44:55.735656Z'::timestamptz AND checksum=decode('0006d307a6fb84b7a30f916fceca29ff4266dbf1c24d4ac9827bf358ee850743b0c554584c83f125a377018755216c84','hex')) THEN RAISE EXCEPTION 'unexpected draft ledger'; END IF;
+ IF EXISTS(SELECT 1 FROM (VALUES (1,'bootstrap','fcf405cb5426720ee06ab11dde666ab7ebdb4541b9659b1ebad28c58ad4f2cf10246b3a7635831003882031a616a23a9','2026-09-30T20:58:38.959294+00:00'::timestamptz),(2,'identity scope','a53de301c5252b9073498893b584b301e760a7f4d2405cc0bfd6a2e8ae7c7ea6470e0ed206848cdf7ff31afc060cd04a','2026-09-30T20:58:38.959294+00:00'::timestamptz),(3,'tasks','344486aff7cb3d5c609c58ac6341b0b4da7684210d5336b32fe3b5ae11b45703bcc4369a25405a6c8f1f920c8f9da0b5','2026-09-30T20:58:38.959294+00:00'::timestamptz),(4,'permissions operations','0ea11198808a97d6fe8fa46eb53c248b56ef85079cbe932c6271312e05224d52d3c8629f55d832da4442bc53ff57d323','2026-10-01T11:44:55.735656+00:00'::timestamptz),(5,'membership administration','0006d307a6fb84b7a30f916fceca29ff4266dbf1c24d4ac9827bf358ee850743b0c554584c83f125a377018755216c84','2026-10-01T11:44:55.735656+00:00'::timestamptz)) expected(version,description,checksum,installed_on)
+ WHERE NOT EXISTS(SELECT 1 FROM public._sqlx_migrations m WHERE m.version=expected.version AND m.description=expected.description AND m.success AND m.checksum=decode(expected.checksum,'hex') AND m.installed_on=expected.installed_on)) THEN RAISE EXCEPTION 'unexpected original migration ledger'; END IF;
+ IF EXISTS(SELECT 1 FROM public.membership_events) OR EXISTS(SELECT 1 FROM public.membership_versions) OR EXISTS(SELECT 1 FROM public.membership_invitations) OR EXISTS(SELECT 1 FROM public.sessions WHERE verified_email IS NOT NULL OR verified_issuer IS NOT NULL OR verified_at IS NOT NULL) THEN RAISE EXCEPTION 'draft already used'; END IF;
+ SELECT encode(sha256(convert_to(string_agg(signature,E'\n' ORDER BY signature COLLATE "C")||E'\n','UTF8')),'hex') FROM (WITH objects AS (
+ SELECT 'table|' || c.relname || '|' || c.relkind::text || '|' || c.relpersistence::text || '|' || c.relrowsecurity || '|' || c.relforcerowsecurity AS signature
+ FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind <> 'i'
+ UNION ALL
+ SELECT 'column|' || c.relname || '|' || a.attnum || '|' || a.attname || '|' || pg_catalog.format_type(a.atttypid,a.atttypmod) || '|' || a.attnotnull || '|' || COALESCE(pg_catalog.left(pg_catalog.pg_get_expr(d.adbin,d.adrelid),2048),'') || '|' || a.attidentity::text || '|' || a.attgenerated::text
+ FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
+ WHERE n.nspname='public' AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped
+ UNION ALL
+ SELECT 'constraint|' || c.relname || '|' || k.conname || '|' || k.convalidated || '|' || pg_catalog.left(pg_catalog.pg_get_constraintdef(k.oid),2048)
+ FROM pg_catalog.pg_constraint k JOIN pg_catalog.pg_class c ON c.oid=k.conrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public'
+ UNION ALL
+ SELECT 'index|' || c.relname || '|' || i.indisvalid || '|' || i.indisready || '|' || pg_catalog.left(pg_catalog.pg_get_indexdef(i.indexrelid),2048)
+ FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid=i.indrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public'
+ UNION ALL
+ SELECT 'trigger|' || c.relname || '|' || COALESCE(k.conname::text,'') || '|' || t.tgenabled::text || '|' || t.tgtype || '|' || t.tgdeferrable || '|' || t.tginitdeferred || '|' || t.tgfoid::pg_catalog.regproc::text || '|' || COALESCE(referenced.relname::text,'') || '|' || pg_catalog.encode(t.tgargs,'hex') || '|' || COALESCE(pg_catalog.left(pg_catalog.pg_get_expr(t.tgqual,t.tgrelid),2048),'')
+ FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_catalog.pg_constraint k ON k.oid=t.tgconstraint LEFT JOIN pg_catalog.pg_class referenced ON referenced.oid=t.tgconstrrelid WHERE n.nspname='public' AND t.tgisinternal
+ UNION ALL
+ SELECT 'policy|' || c.relname || '|' || p.polname || '|' || p.polcmd::text || '|' || p.polpermissive || '|' || p.polroles::text || '|' || COALESCE(pg_catalog.left(pg_catalog.pg_get_expr(p.polqual,p.polrelid),8192),'') || '|' || COALESCE(pg_catalog.left(pg_catalog.pg_get_expr(p.polwithcheck,p.polrelid),8192),'')
+ FROM pg_catalog.pg_policy p JOIN pg_catalog.pg_class c ON c.oid=p.polrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public'
+ UNION ALL
+ SELECT 'function|' || p.proname || '|' || pg_catalog.pg_get_function_identity_arguments(p.oid) || '|' || pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid))
+ FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public'
+
+) SELECT pg_catalog.replace(signature, pg_catalog.chr(10), ' ') AS signature FROM objects ORDER BY signature COLLATE "C" LIMIT 1025) observed INTO observed;
+ IF observed<>'9f92296f59dc6d5d44ba4d3b2fb21243a82596875a2eb84bbccfcce21a3f460e' THEN RAISE EXCEPTION 'unexpected draft catalogue'; END IF;
+END $guard$;
+CREATE TEMP TABLE repair_data_before(relation text PRIMARY KEY, records bigint, digest text) ON COMMIT DROP;
+CREATE TEMP TABLE repair_prefix_before ON COMMIT DROP AS SELECT * FROM public._sqlx_migrations WHERE version<=4;
+CREATE TEMP TABLE repair_function_attrs_before ON COMMIT DROP AS SELECT to_jsonb(p)-'prosrc'-'prosqlbody' AS attrs FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public';
+DO $data$ DECLARE r record; n bigint; d text; BEGIN
+ FOR r IN SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public' AND tablename<>'_sqlx_migrations' ORDER BY tablename LOOP
+  EXECUTE format('SELECT count(*), encode(sha256(convert_to(coalesce(string_agg(to_jsonb(t)::text, E''\n'' ORDER BY to_jsonb(t)::text),''''),''UTF8'')),''hex'') FROM public.%I t',r.tablename) INTO n,d;
+  INSERT INTO repair_data_before VALUES(r.tablename,n,d);
+ END LOOP;
+END $data$;
+CREATE OR REPLACE FUNCTION public.membership_validate(org text, command jsonb) RETURNS void
+LANGUAGE plpgsql SET search_path=pg_catalog,public AS $body$
+DECLARE role_count integer;
+BEGIN
+ IF jsonb_typeof(command->'roles') IS DISTINCT FROM 'array' OR jsonb_typeof(command->'assignments') IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'invalid' USING ERRCODE='Z0001'; END IF;
+ SELECT count(DISTINCT v)::integer INTO role_count FROM jsonb_array_elements_text(command->'roles') AS r(v);
+ IF role_count NOT BETWEEN 0 AND 3 OR (role_count=0 AND coalesce((command->>'active')::boolean,true)) OR role_count<>jsonb_array_length(command->'roles')
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(command->'roles') AS r(v) WHERE v NOT IN ('auditor','audit_manager','admin'))
+ OR jsonb_array_length(command->'assignments')>100
+ OR (command->>'expires_at' IS NOT NULL AND (command->>'expires_at')::bigint NOT BETWEEN 1 AND 253402300799)
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements(command->'assignments') AS a(v) WHERE NOT EXISTS(SELECT 1 FROM public.engagements e WHERE e.organisation_id=org AND e.client_id=v->>'client_id' AND e.id=v->>'engagement_id'))
+ OR (SELECT count(DISTINCT (v->>'client_id',v->>'engagement_id')) FROM jsonb_array_elements(command->'assignments') a(v))<>jsonb_array_length(command->'assignments')
+ THEN RAISE EXCEPTION 'invalid' USING ERRCODE='Z0001'; END IF;
+END
+$body$;
+CREATE OR REPLACE FUNCTION public.membership_read(actor text, session_hash text, org text, members_after text, invitations_after text, engagements_after text) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $body$
+DECLARE result jsonb; members jsonb; invitations jsonb; engagements jsonb; orgs jsonb;
+BEGIN
+ IF actor IS DISTINCT FROM current_setting('zobba.actor_id',true) OR NOT public.membership_session(actor,session_hash) THEN RAISE EXCEPTION 'denied' USING ERRCODE='Z0002'; END IF;
+ IF org IS NULL THEN
+  SELECT coalesce(jsonb_agg(v ORDER BY id),'[]'::jsonb) INTO orgs FROM
+  (SELECT o.id,jsonb_build_object('organisation_id',o.id,'organisation_name',o.name,'version',coalesce(v.version,0)::text) v FROM public.organisation_memberships m JOIN public.organisations o ON o.id=m.organisation_id LEFT JOIN public.membership_versions v ON v.organisation_id=m.organisation_id WHERE m.actor_id=actor AND m.active AND 'admin'=ANY(m.roles) AND (m.expires_at IS NULL OR m.expires_at>extract(epoch FROM clock_timestamp())::bigint) AND m.organisation_id>coalesce(members_after,'') ORDER BY m.organisation_id LIMIT 51) page;
+  RETURN jsonb_build_object('organisations',orgs - 50,'next_cursor',CASE WHEN jsonb_array_length(orgs)>50 THEN orgs->49->>'organisation_id' END);
+ END IF;
+ -- Read responses share the same organisation fence as role changes. After
+ -- waiting, recheck the current actor before projecting any membership metadata.
+ PERFORM pg_advisory_xact_lock(hashtextextended(org,205));
+ IF NOT public.membership_admin(actor,org) OR NOT public.membership_session(actor,session_hash) THEN RAISE EXCEPTION 'denied' USING ERRCODE='Z0002'; END IF;
+ SELECT coalesce(jsonb_agg(v ORDER BY actor_id),'[]'::jsonb) INTO members FROM
+ (SELECT m.actor_id,jsonb_build_object('actor_id',m.actor_id,'display_name',left(i.display_name,200),'roles',m.roles,'active',m.active,'expires_at',m.expires_at,'assignments_count',assignment_total.total,'assignments_complete',assignment_total.total<=100,'assignments',
+  coalesce((SELECT jsonb_agg(jsonb_build_object('client_id',a.client_id,'engagement_id',a.engagement_id) ORDER BY a.client_id,a.engagement_id) FROM (SELECT a.client_id,a.engagement_id FROM public.engagement_assignments a WHERE a.organisation_id=org AND a.actor_id=m.actor_id AND a.active AND (a.expires_at IS NULL OR a.expires_at>extract(epoch FROM clock_timestamp())::bigint) ORDER BY a.client_id,a.engagement_id LIMIT 100) a),'[]'::jsonb)) v
+ FROM public.organisation_memberships m JOIN public.identities i ON i.id=m.actor_id CROSS JOIN LATERAL (SELECT count(*) total FROM public.engagement_assignments a WHERE a.organisation_id=org AND a.actor_id=m.actor_id AND a.active AND (a.expires_at IS NULL OR a.expires_at>extract(epoch FROM clock_timestamp())::bigint)) assignment_total WHERE m.organisation_id=org AND m.actor_id>coalesce(members_after,'') ORDER BY m.actor_id LIMIT 51) page;
+ SELECT coalesce(jsonb_agg(v ORDER BY id),'[]'::jsonb) INTO invitations FROM
+ (SELECT id,jsonb_build_object('id',id,'recipient_email',recipient_email,'roles',roles,'assignments',assignments,'inviter_actor_id',inviter_actor_id,'expires_at',expires_at,'status',CASE WHEN status='pending' AND expires_at<=extract(epoch FROM clock_timestamp())::bigint THEN 'expired' ELSE status END) v FROM public.membership_invitations WHERE organisation_id=org AND id>coalesce(invitations_after,'') ORDER BY id LIMIT 51) page;
+ SELECT coalesce(jsonb_agg(v ORDER BY cursor),'[]'::jsonb) INTO engagements FROM
+ (SELECT e.client_id||'.'||e.id cursor,jsonb_build_object('client_id',e.client_id,'client_name',c.name,'engagement_id',e.id,'engagement_name',e.name) v FROM public.engagements e JOIN public.clients c ON c.organisation_id=e.organisation_id AND c.id=e.client_id WHERE e.organisation_id=org AND e.client_id||'.'||e.id>coalesce(engagements_after,'') ORDER BY e.client_id||'.'||e.id LIMIT 51) page;
+ SELECT jsonb_build_object('organisation_id',o.id,'organisation_name',o.name,'version',coalesce(v.version,0)::text,
+ 'members',members-50,'members_next_cursor',CASE WHEN jsonb_array_length(members)>50 THEN members->49->>'actor_id' END,
+ 'invitations',invitations-50,'invitations_next_cursor',CASE WHEN jsonb_array_length(invitations)>50 THEN invitations->49->>'id' END,
+ 'engagements',engagements-50,'engagements_next_cursor',CASE WHEN jsonb_array_length(engagements)>50 THEN (engagements->49->>'client_id')||'.'||(engagements->49->>'engagement_id') END)
+ INTO result FROM public.organisations o LEFT JOIN public.membership_versions v ON v.organisation_id=o.id WHERE o.id=org;
+ RETURN result;
+END
+$body$;
+CREATE OR REPLACE FUNCTION public.membership_fence(org text, target text, old_roles text[], command jsonb, all_scopes boolean, editor text) RETURNS void
+LANGUAGE plpgsql SET search_path=pg_catalog,public AS $body$
+DECLARE affected record; delegation record; changed_task record; next_cursor bigint; doc jsonb;
+BEGIN
+ FOR affected IN SELECT e.client_id,e.id FROM public.engagements e WHERE e.organisation_id=org AND
+ (all_scopes OR EXISTS(SELECT 1 FROM public.engagement_assignments a WHERE a.organisation_id=org AND a.client_id=e.client_id AND a.engagement_id=e.id AND a.actor_id=target AND
+  CASE coalesce(command->>'assignment_mode','replace')
+   WHEN 'preserve' THEN false
+   WHEN 'remove' THEN a.active AND EXISTS(SELECT 1 FROM jsonb_array_elements(command->'assignments') x(v) WHERE v->>'client_id'=a.client_id AND v->>'engagement_id'=a.engagement_id)
+   ELSE (NOT a.active AND EXISTS(SELECT 1 FROM jsonb_array_elements(command->'assignments') x(v) WHERE v->>'client_id'=a.client_id AND v->>'engagement_id'=a.engagement_id)) OR (a.expires_at IS NOT NULL AND (a.expires_at<=extract(epoch FROM clock_timestamp())::bigint OR EXISTS(SELECT 1 FROM jsonb_array_elements(command->'assignments') x(v) WHERE v->>'client_id'=a.client_id AND v->>'engagement_id'=a.engagement_id AND v->'renew'='true'::jsonb))) OR (a.active AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(command->'assignments') x(v) WHERE v->>'client_id'=a.client_id AND v->>'engagement_id'=a.engagement_id))
+  END)) ORDER BY e.client_id,e.id LOOP
+  FOR changed_task IN UPDATE public.tasks t SET execution_epoch=execution_epoch+1,revision=revision+1,owner_id=NULL,owner_until=NULL,
+   state=CASE WHEN state='stopped' THEN 'stopped' ELSE 'paused' END,
+   cessation=CASE WHEN cessation='reconciliation_required' THEN cessation WHEN EXISTS(SELECT 1 FROM public.task_claims c WHERE c.task_id=t.id AND c.state='consumed' AND NOT EXISTS(SELECT 1 FROM public.task_observations r WHERE r.claim_id=c.id)) OR EXISTS(SELECT 1 FROM public.operation_claims c JOIN public.operations o ON o.id=c.operation_id WHERE o.task_id=t.id AND c.state='consumed' AND NOT EXISTS(SELECT 1 FROM public.operation_receipts r WHERE r.attempt_id=c.attempt_id AND r.outcome IN ('completed','absent'))) THEN 'pending' ELSE 'confirmed' END
+   WHERE t.organisation_id=org AND t.client_id=affected.client_id AND t.engagement_id=affected.id AND t.accountable_actor=target RETURNING t.id,t.cycle_id LOOP
+   INSERT INTO public.task_counters(organisation_id,client_id,engagement_id,cursor) VALUES(org,affected.client_id,affected.id,1) ON CONFLICT(organisation_id,client_id,engagement_id) DO UPDATE SET cursor=task_counters.cursor+1 RETURNING cursor INTO next_cursor;
+   INSERT INTO public.task_events(organisation_id,client_id,engagement_id,cursor,task_id,cycle_id,kind) VALUES(org,affected.client_id,affected.id,next_cursor,changed_task.id,changed_task.cycle_id,'waiting');
+   UPDATE public.task_wakeups SET pending=true,available_at=clock_timestamp() WHERE task_id=changed_task.id;
+  END LOOP;
+  UPDATE public.task_claims c SET state='abandoned' WHERE c.organisation_id=org AND c.client_id=affected.client_id AND c.engagement_id=affected.id AND c.state='admitted' AND (c.actor_id=target OR EXISTS(SELECT 1 FROM public.tasks t WHERE t.id=c.task_id AND t.accountable_actor=target));
+  UPDATE public.operation_claims c SET state='abandoned' WHERE c.organisation_id=org AND c.client_id=affected.client_id AND c.engagement_id=affected.id AND c.state='admitted' AND EXISTS(SELECT 1 FROM public.operations o JOIN public.tasks t ON t.id=o.task_id WHERE o.id=c.operation_id AND (o.actor_id=target OR t.accountable_actor=target));
+  -- Follow stable Task ancestry and include descendants of the removed
+  -- member's own delegated grants, regardless of a later Admin editor.
+  FOR delegation IN WITH RECURSIVE heads AS (
+   SELECT v.* FROM public.permission_heads h JOIN public.permission_versions v ON (v.organisation_id,v.policy_key,v.version)=(h.organisation_id,h.policy_key,h.current_version)
+   WHERE v.organisation_id=org AND v.client_id=affected.client_id AND v.engagement_id=affected.id AND v.kind='delegation'
+  ), affected_delegations(policy_key,subject_id) AS (
+   SELECT v.policy_key,v.subject_id FROM heads v WHERE EXISTS(
+    SELECT 1 FROM public.tasks t WHERE t.organisation_id=org AND t.client_id=affected.client_id AND t.engagement_id=affected.id AND t.accountable_actor=target AND v.document::jsonb->'parent'->>'kind'='task' AND v.document::jsonb->'parent'->>'subject_id'=t.id)
+   UNION
+   SELECT v.policy_key,v.subject_id FROM heads v JOIN affected_delegations a ON v.document::jsonb->'parent'->>'kind'='delegation' AND v.document::jsonb->'parent'->>'subject_id'=a.subject_id
+  ) SELECT v.* FROM heads v JOIN affected_delegations a USING(policy_key,subject_id) WHERE NOT coalesce((v.document::jsonb->>'revoked')::boolean,false) LOOP
+   doc=delegation.document::jsonb || jsonb_build_object('version',delegation.version+1,'revoked',true,'actor_id',editor,'created_at',extract(epoch FROM clock_timestamp())::bigint);
+   INSERT INTO public.permission_versions(organisation_id,policy_key,client_id,engagement_id,kind,subject_id,version,document,actor_id) VALUES(org,delegation.policy_key,delegation.client_id,delegation.engagement_id,'delegation',delegation.subject_id,delegation.version+1,doc::text,editor);
+   UPDATE public.permission_heads SET current_version=delegation.version+1 WHERE organisation_id=org AND policy_key=delegation.policy_key;
+  END LOOP;
+ END LOOP;
+END
+$body$;
+CREATE OR REPLACE FUNCTION public.membership_write(actor text, session_hash text, org text, kind text, command jsonb, event_id text, invitation_id text, issuer text) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $body$
+DECLARE previous public.membership_events; receipt jsonb; next_version bigint; old public.organisation_memberships; new_roles text[]; target text; assignment jsonb; narrow boolean; assignment_mode text; previous_meaning jsonb;
+BEGIN
+ IF actor IS DISTINCT FROM current_setting('zobba.actor_id',true) OR kind NOT IN ('save_member','invite','revoke_invitation') OR octet_length(command::text)>32768 OR length(command->>'key') NOT BETWEEN 1 AND 128 THEN RAISE EXCEPTION 'invalid' USING ERRCODE='Z0001'; END IF;
+ -- Normalize only explicit defaults; historical event rows remain immutable.
+ IF kind='save_member' THEN
+  IF jsonb_typeof(command->'assignments') IS DISTINCT FROM 'array' OR EXISTS(SELECT 1 FROM jsonb_array_elements(command->'assignments') x(v) WHERE v ? 'renew' AND jsonb_typeof(v->'renew') IS DISTINCT FROM 'boolean') THEN RAISE EXCEPTION 'invalid' USING ERRCODE='Z0001'; END IF;
+  command=jsonb_set(command,'{assignments}',(SELECT coalesce(jsonb_agg(CASE WHEN v->'renew'='false'::jsonb THEN v-'renew' ELSE v END ORDER BY n),'[]'::jsonb) FROM jsonb_array_elements(command->'assignments') WITH ORDINALITY x(v,n)));
+  IF command->>'assignment_mode'='replace' THEN command=command-'assignment_mode'; END IF;
+ END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(org,205));
+ IF NOT public.membership_admin(actor,org) OR NOT public.membership_session(actor,session_hash) THEN RAISE EXCEPTION 'denied' USING ERRCODE='Z0002'; END IF;
+ SELECT * INTO previous FROM public.membership_events e WHERE e.organisation_id=org AND e.actor_id=actor AND e.command_key=command->>'key';
+ IF FOUND THEN
+  previous_meaning=previous.meaning;
+  IF kind='save_member' AND previous_meaning->>'kind'='save_member' THEN
+   previous_meaning=jsonb_set(previous_meaning,'{command,assignments}',(SELECT coalesce(jsonb_agg(CASE WHEN v->'renew'='false'::jsonb THEN v-'renew' ELSE v END ORDER BY n),'[]'::jsonb) FROM jsonb_array_elements(previous_meaning->'command'->'assignments') WITH ORDINALITY x(v,n)));
+   IF previous_meaning->'command'->>'assignment_mode'='replace' THEN previous_meaning=previous_meaning #- '{command,assignment_mode}'; END IF;
+  END IF;
+  IF previous_meaning<>jsonb_build_object('kind',kind,'command',command) THEN RAISE EXCEPTION 'conflict' USING ERRCODE='Z0003'; END IF;
+  RETURN previous.receipt;
+ END IF;
+ INSERT INTO public.membership_versions VALUES(org,0) ON CONFLICT DO NOTHING;
+ SELECT v.version INTO next_version FROM public.membership_versions v WHERE v.organisation_id=org FOR UPDATE;
+ IF next_version::text IS DISTINCT FROM command->>'expected_version' THEN RAISE EXCEPTION 'conflict' USING ERRCODE='Z0003'; END IF;
+ -- Required lock order, shared with dispatch, controls and delegation mutation.
+ PERFORM e.id FROM public.engagements e WHERE e.organisation_id=org ORDER BY e.client_id,e.id FOR UPDATE;
+ IF NOT public.membership_admin(actor,org) OR NOT public.membership_session(actor,session_hash) THEN RAISE EXCEPTION 'denied' USING ERRCODE='Z0002'; END IF;
+ IF kind IN ('save_member','invite') THEN
+  PERFORM public.membership_validate(org,command);
+  SELECT coalesce(array_agg(v ORDER BY v),ARRAY[]::text[]) INTO new_roles FROM jsonb_array_elements_text(command->'roles') r(v);
+ END IF;
+ IF kind='save_member' THEN
+  target=command->>'actor_id';
+  SELECT * INTO old FROM public.organisation_memberships WHERE organisation_id=org AND actor_id=target;
+  IF NOT FOUND THEN RAISE EXCEPTION 'denied' USING ERRCODE='Z0002'; END IF;
+  assignment_mode=coalesce(command->>'assignment_mode','replace');
+  IF assignment_mode NOT IN ('replace','preserve','remove') OR (assignment_mode='preserve' AND jsonb_array_length(command->'assignments')<>0) OR (assignment_mode='remove' AND (jsonb_array_length(command->'assignments')=0 OR EXISTS(SELECT 1 FROM jsonb_array_elements(command->'assignments') x(v) WHERE v->'renew'='true'::jsonb))) THEN RAISE EXCEPTION 'invalid' USING ERRCODE='Z0001'; END IF;
+  IF assignment_mode='replace' AND (SELECT count(*) FROM public.engagement_assignments a WHERE a.organisation_id=org AND a.actor_id=target AND a.active AND (a.expires_at IS NULL OR a.expires_at>extract(epoch FROM clock_timestamp())::bigint))>100 THEN RAISE EXCEPTION 'capacity' USING ERRCODE='Z0006'; END IF;
+  IF assignment_mode='replace' AND EXISTS(SELECT 1 FROM public.engagement_assignments a JOIN jsonb_array_elements(command->'assignments') x(v) ON v->>'client_id'=a.client_id AND v->>'engagement_id'=a.engagement_id WHERE a.organisation_id=org AND a.actor_id=target AND NOT a.active AND NOT coalesce((v->>'renew')::boolean,false)) THEN RAISE EXCEPTION 'conflict' USING ERRCODE='Z0003'; END IF;
+  IF old.active AND 'admin'=ANY(old.roles) AND (old.expires_at IS NULL OR old.expires_at>extract(epoch FROM clock_timestamp())::bigint)
+   AND (NOT (command->>'active')::boolean OR NOT ('admin'=ANY(new_roles)) OR command->>'expires_at' IS NOT NULL)
+   AND NOT EXISTS(SELECT 1 FROM public.organisation_memberships m JOIN public.identities i ON i.id=m.actor_id WHERE m.organisation_id=org AND m.actor_id<>target AND m.active AND i.active AND 'admin'=ANY(m.roles) AND (m.expires_at IS NULL OR m.expires_at>extract(epoch FROM clock_timestamp())::bigint))
+  THEN RAISE EXCEPTION 'last admin' USING ERRCODE='Z0004'; END IF;
+  -- Widening a finite membership also fences before its deadline can pass
+  -- between this classification and the subsequent membership UPDATE.
+  narrow=NOT old.active OR (old.expires_at IS NOT NULL AND old.expires_at<=extract(epoch FROM clock_timestamp())::bigint) OR NOT (command->>'active')::boolean OR NOT old.roles<@new_roles OR ((command->>'expires_at')::bigint IS NOT NULL AND (old.expires_at IS NULL OR (command->>'expires_at')::bigint<old.expires_at)) OR (old.expires_at IS NOT NULL AND (command->>'expires_at' IS NULL OR (command->>'expires_at')::bigint>old.expires_at));
+  PERFORM public.membership_fence(org,target,old.roles,command,narrow,actor);
+  UPDATE public.organisation_memberships SET roles=new_roles,active=(command->>'active')::boolean,expires_at=(command->>'expires_at')::bigint WHERE organisation_id=org AND actor_id=target;
+  IF assignment_mode='remove' THEN
+   UPDATE public.engagement_assignments a SET active=false WHERE a.organisation_id=org AND a.actor_id=target AND a.active AND EXISTS(SELECT 1 FROM jsonb_array_elements(command->'assignments') x(v) WHERE v->>'client_id'=a.client_id AND v->>'engagement_id'=a.engagement_id);
+  ELSIF assignment_mode='replace' THEN
+   -- Retained expiry survives even when it passes while a draft is open.
+   -- Only explicit renewal of an expired/inactive selected scope clears it.
+   UPDATE public.engagement_assignments a SET active=false WHERE a.organisation_id=org AND a.actor_id=target AND a.active AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(command->'assignments') x(v) WHERE v->>'client_id'=a.client_id AND v->>'engagement_id'=a.engagement_id);
+   FOR assignment IN SELECT v FROM jsonb_array_elements(command->'assignments') a(v) LOOP
+    INSERT INTO public.engagement_assignments(organisation_id,client_id,engagement_id,actor_id) VALUES(org,assignment->>'client_id',assignment->>'engagement_id',target) ON CONFLICT(organisation_id,client_id,engagement_id,actor_id) DO UPDATE SET active=true,expires_at=CASE WHEN coalesce((assignment->>'renew')::boolean,false) AND (NOT engagement_assignments.active OR engagement_assignments.expires_at<=extract(epoch FROM clock_timestamp())::bigint) THEN NULL ELSE engagement_assignments.expires_at END;
+   END LOOP;
+  END IF;
+ ELSIF kind='invite' THEN
+  IF (command->>'expires_in_seconds')::bigint NOT BETWEEN 300 AND 604800 OR (command->>'secret_hash') !~ '^[0-9a-f]{64}$' THEN RAISE EXCEPTION 'invalid' USING ERRCODE='Z0001'; END IF;
+  IF EXISTS(SELECT 1 FROM public.membership_invitations WHERE secret_hash=command->>'secret_hash') THEN RAISE EXCEPTION 'conflict' USING ERRCODE='Z0003'; END IF;
+  INSERT INTO public.membership_invitations(id,organisation_id,recipient_issuer,recipient_email,secret_hash,roles,assignments,inviter_actor_id,expires_at,status) VALUES(invitation_id,org,issuer,command->>'recipient_email',command->>'secret_hash',new_roles,command->'assignments',actor,extract(epoch FROM clock_timestamp())::bigint+(command->>'expires_in_seconds')::bigint,'pending');
+ ELSE
+  invitation_id=command->>'invitation_id';
+  UPDATE public.membership_invitations SET status='revoked' WHERE id=invitation_id AND organisation_id=org AND status='pending';
+  IF NOT FOUND THEN RAISE EXCEPTION 'conflict' USING ERRCODE='Z0003'; END IF;
+ END IF;
+ next_version=next_version+1;
+ UPDATE public.membership_versions v SET version=next_version WHERE v.organisation_id=org;
+ receipt=jsonb_build_object('event_id',event_id,'organisation_id',org,'actor_id',actor,'subject_actor_id',target,'invitation_id',CASE WHEN kind='save_member' THEN NULL ELSE invitation_id END,'version',next_version::text,'kind',kind);
+ INSERT INTO public.membership_events(id,organisation_id,actor_id,command_key,meaning,receipt) VALUES(event_id,org,actor,command->>'key',jsonb_build_object('kind',kind,'command',command),receipt);
+ RETURN receipt;
+END
+$body$;
+ALTER TABLE public.organisation_memberships ADD CONSTRAINT organisation_memberships_expiry_range CHECK(expires_at IS NULL OR expires_at BETWEEN 1 AND 253402300799);
+ALTER TABLE public.engagement_assignments ADD CONSTRAINT engagement_assignments_expiry_range CHECK(expires_at IS NULL OR expires_at BETWEEN 1 AND 253402300799);
+CREATE INDEX organisation_memberships_admin_actor ON public.organisation_memberships(actor_id,organisation_id) INCLUDE(expires_at) WHERE active AND 'admin'=ANY(roles);
+CREATE INDEX engagement_assignments_member_page ON public.engagement_assignments(organisation_id,actor_id,client_id,engagement_id) INCLUDE(expires_at) WHERE active;
+CREATE FUNCTION public.membership_assignments(actor text, session_hash text, org text, target text, after_cursor text) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $body$
+DECLARE assignments jsonb; total bigint; version text;
+BEGIN
+ IF actor IS DISTINCT FROM current_setting('zobba.actor_id',true) THEN RAISE EXCEPTION 'denied' USING ERRCODE='Z0002'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(org,205));
+ IF NOT public.membership_admin(actor,org) OR NOT public.membership_session(actor,session_hash) OR NOT EXISTS(SELECT 1 FROM public.organisation_memberships m WHERE m.organisation_id=org AND m.actor_id=target) THEN RAISE EXCEPTION 'denied' USING ERRCODE='Z0002'; END IF;
+ SELECT count(*) INTO total FROM public.engagement_assignments a WHERE a.organisation_id=org AND a.actor_id=target AND a.active AND (a.expires_at IS NULL OR a.expires_at>extract(epoch FROM clock_timestamp())::bigint);
+ SELECT coalesce(v.version,0)::text INTO version FROM public.organisations o LEFT JOIN public.membership_versions v ON v.organisation_id=o.id WHERE o.id=org;
+ SELECT coalesce(jsonb_agg(v ORDER BY client_id,engagement_id),'[]'::jsonb) INTO assignments FROM
+ (SELECT a.client_id,a.engagement_id,jsonb_build_object('client_id',a.client_id,'client_name',c.name,'engagement_id',a.engagement_id,'engagement_name',e.name,'expires_at',a.expires_at) v
+ FROM public.engagement_assignments a JOIN public.engagements e ON (e.organisation_id,e.client_id,e.id)=(a.organisation_id,a.client_id,a.engagement_id) JOIN public.clients c ON (c.organisation_id,c.id)=(a.organisation_id,a.client_id)
+ WHERE a.organisation_id=org AND a.actor_id=target AND a.active AND (a.expires_at IS NULL OR a.expires_at>extract(epoch FROM clock_timestamp())::bigint) AND (a.client_id,a.engagement_id)>(coalesce(split_part(after_cursor,'.',1),''),coalesce(split_part(after_cursor,'.',2),'')) ORDER BY a.client_id,a.engagement_id LIMIT 51) page;
+ RETURN jsonb_build_object('organisation_id',org,'actor_id',target,'version',version,'total',total,'assignments',assignments-50,'next_cursor',CASE WHEN jsonb_array_length(assignments)>50 THEN (assignments->49->>'client_id')||'.'||(assignments->49->>'engagement_id') END);
+END
+$body$;
+REVOKE ALL ON FUNCTION public.membership_assignments(text,text,text,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.membership_assignments(text,text,text,text,text) TO zobba_app;
+
+DO $verify$ DECLARE observed text; affected bigint; BEGIN
+ SELECT encode(sha256(convert_to(string_agg(signature,E'\n' ORDER BY signature COLLATE "C")||E'\n','UTF8')),'hex') FROM (WITH objects AS (
+ SELECT 'table|' || c.relname || '|' || c.relkind::text || '|' || c.relpersistence::text || '|' || c.relrowsecurity || '|' || c.relforcerowsecurity AS signature
+ FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind <> 'i'
+ UNION ALL
+ SELECT 'column|' || c.relname || '|' || a.attnum || '|' || a.attname || '|' || pg_catalog.format_type(a.atttypid,a.atttypmod) || '|' || a.attnotnull || '|' || COALESCE(pg_catalog.left(pg_catalog.pg_get_expr(d.adbin,d.adrelid),2048),'') || '|' || a.attidentity::text || '|' || a.attgenerated::text
+ FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
+ WHERE n.nspname='public' AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped
+ UNION ALL
+ SELECT 'constraint|' || c.relname || '|' || k.conname || '|' || k.convalidated || '|' || pg_catalog.left(pg_catalog.pg_get_constraintdef(k.oid),2048)
+ FROM pg_catalog.pg_constraint k JOIN pg_catalog.pg_class c ON c.oid=k.conrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public'
+ UNION ALL
+ SELECT 'index|' || c.relname || '|' || i.indisvalid || '|' || i.indisready || '|' || pg_catalog.left(pg_catalog.pg_get_indexdef(i.indexrelid),2048)
+ FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid=i.indrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public'
+ UNION ALL
+ SELECT 'trigger|' || c.relname || '|' || COALESCE(k.conname::text,'') || '|' || t.tgenabled::text || '|' || t.tgtype || '|' || t.tgdeferrable || '|' || t.tginitdeferred || '|' || t.tgfoid::pg_catalog.regproc::text || '|' || COALESCE(referenced.relname::text,'') || '|' || pg_catalog.encode(t.tgargs,'hex') || '|' || COALESCE(pg_catalog.left(pg_catalog.pg_get_expr(t.tgqual,t.tgrelid),2048),'')
+ FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_catalog.pg_constraint k ON k.oid=t.tgconstraint LEFT JOIN pg_catalog.pg_class referenced ON referenced.oid=t.tgconstrrelid WHERE n.nspname='public' AND t.tgisinternal
+ UNION ALL
+ SELECT 'policy|' || c.relname || '|' || p.polname || '|' || p.polcmd::text || '|' || p.polpermissive || '|' || p.polroles::text || '|' || COALESCE(pg_catalog.left(pg_catalog.pg_get_expr(p.polqual,p.polrelid),8192),'') || '|' || COALESCE(pg_catalog.left(pg_catalog.pg_get_expr(p.polwithcheck,p.polrelid),8192),'')
+ FROM pg_catalog.pg_policy p JOIN pg_catalog.pg_class c ON c.oid=p.polrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public'
+ UNION ALL
+ SELECT 'function|' || p.proname || '|' || pg_catalog.pg_get_function_identity_arguments(p.oid) || '|' || pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.pg_get_functiondef(p.oid),'UTF8')),'hex')
+ FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public'
+
+) SELECT pg_catalog.replace(signature, pg_catalog.chr(10), ' ') AS signature FROM objects ORDER BY signature COLLATE "C" LIMIT 1025) observed INTO observed;
+ IF observed<>'b23577d5beda191b0d2cae44dd742d9655ed75d732218f1d4ccdaf3cd0c48fc8' THEN RAISE EXCEPTION 'final catalogue differs'; END IF;
+ UPDATE public._sqlx_migrations SET checksum=decode('f37f620b90745b6e2e86f886df697ffe1be074a70372a77194109a12713a9f341cfd2ab1abcadd71ed271e221bee3ba3','hex') WHERE version=5 AND checksum=decode('0006d307a6fb84b7a30f916fceca29ff4266dbf1c24d4ac9827bf358ee850743b0c554584c83f125a377018755216c84','hex');
+ GET DIAGNOSTICS affected=ROW_COUNT;
+ IF affected<>1 THEN RAISE EXCEPTION 'ledger repair did not match one unpublished draft'; END IF;
+END $verify$;
+DO $data$ DECLARE r record; n bigint; d text; BEGIN
+ FOR r IN SELECT * FROM repair_data_before LOOP
+  EXECUTE format('SELECT count(*), encode(sha256(convert_to(coalesce(string_agg(to_jsonb(t)::text, E''\n'' ORDER BY to_jsonb(t)::text),''''),''UTF8'')),''hex'') FROM public.%I t',r.relation) INTO n,d;
+  IF n<>r.records OR d<>r.digest THEN RAISE EXCEPTION 'application data changed: %',r.relation; END IF;
+ END LOOP;
+ IF EXISTS((SELECT * FROM repair_prefix_before EXCEPT SELECT * FROM public._sqlx_migrations WHERE version<=4) UNION ALL (SELECT * FROM public._sqlx_migrations WHERE version<=4 EXCEPT SELECT * FROM repair_prefix_before)) THEN RAISE EXCEPTION 'published ledger changed'; END IF;
+ IF EXISTS((SELECT attrs FROM repair_function_attrs_before EXCEPT SELECT to_jsonb(p)-'prosrc'-'prosqlbody' FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname<>'membership_assignments') UNION ALL (SELECT to_jsonb(p)-'prosrc'-'prosqlbody' FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname<>'membership_assignments' EXCEPT SELECT attrs FROM repair_function_attrs_before)) THEN RAISE EXCEPTION 'existing function ownership, ACL or attributes changed'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname='membership_assignments' AND pg_catalog.pg_get_userbyid(p.proowner)=current_user AND p.prosecdef AND pg_catalog.has_function_privilege('zobba_app',p.oid,'EXECUTE') AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(p.proacl) a WHERE a.grantee=0 OR (a.grantee<>p.proowner AND (a.grantee<>(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='zobba_app') OR a.privilege_type<>'EXECUTE' OR a.is_grantable)))) THEN RAISE EXCEPTION 'new function authority differs'; END IF;
+END $data$;
+SELECT relation,records,digest FROM repair_data_before ORDER BY relation;
+COMMIT;

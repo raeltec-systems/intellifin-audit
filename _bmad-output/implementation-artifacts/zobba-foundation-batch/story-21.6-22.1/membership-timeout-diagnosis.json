@@ -1,0 +1,27 @@
+{
+  "gate": "full-rust-4",
+  "result": "failed",
+  "failure_location": "zobba/crates/infrastructure/tests/membership/legacy_upgrade.rs:319",
+  "public_result": "MembershipError::Unavailable",
+  "postgres_observation": {
+    "timestamp_utc": "2026-10-03T06:07:07.588Z",
+    "backend_pid": 1159817,
+    "sqlstate": "57014",
+    "classification": "statement timeout",
+    "timeout_ms": 4000,
+    "function_stack": [
+      "membership_write",
+      "membership_fence"
+    ],
+    "stage": "UPDATE task_claims"
+  },
+  "scope": {
+    "assignment_payload_count": 100,
+    "all_scopes_fenced_count": 101,
+    "trigger": "Membership expiry changed from unlimited to the maximum supported finite expiry"
+  },
+  "limits": "The server log confirms cancellation; it does not establish CPU, lock or another delay as the cause. No query text, parameters or secrets are copied. No deadline or production-code change was made.",
+  "focused_gate": "membership-failure-diagnosis",
+  "focused_result": "3 passed, source unchanged",
+  "final_action": "Run final database and browser gates sequentially; preserve this failed invocation."
+}

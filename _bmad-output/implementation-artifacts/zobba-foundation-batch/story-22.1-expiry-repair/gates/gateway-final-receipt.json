@@ -1,0 +1,25 @@
+{
+  "gate": "gateway-final",
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "zobba-worker",
+    "--test",
+    "gateway_process",
+    "--",
+    "--nocapture"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T09:02:44.407749+00:00",
+  "ended_at": "2026-10-03T09:03:33.823222+00:00",
+  "duration_seconds": 49.416,
+  "exit": 0,
+  "source_before": "gateway-final-source-before.json",
+  "source_after": "gateway-final-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "gateway-final.log",
+  "log_sha256": "2e032d1b2af90819f7561950c234d93e4d9c57ea58c1bb3b14dd91163d1cca54"
+}

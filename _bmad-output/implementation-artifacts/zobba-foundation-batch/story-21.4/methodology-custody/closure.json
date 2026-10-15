@@ -1,0 +1,68 @@
+{
+  "scope": "Focused Story21.2 batch follow-up; distinct from Story21.4 knowledge semantics",
+  "valid_old_source_negative": {
+    "valid_negative_control": true,
+    "selected_tests": 1,
+    "passed": 0,
+    "expected_failure": 1,
+    "test_duration_seconds": 20.5,
+    "failed_assertion": "restored exact unsent Edit methodology form must be visible after actual auth/session 503 unmount and successful current scoped Admin read",
+    "source_changes_during_negative": [],
+    "substitution": {
+      "baseline_commit": "d38e1daed736415ef13e7606345dac71bd1d9f01",
+      "path": "zobba/web/src/MethodologyWorkspace.tsx",
+      "baseline_sha256": "c5b2b3f943cafc9c7b29f7f1c196e73df71c6458943c7a3e737ca777c84b304b",
+      "repaired_sha256": "0ba509698ea541e5288adf566cb34dcea78f27f415df8c6843f49372a4cdcde6",
+      "substitution_performed": true,
+      "installed_sha256": "c5b2b3f943cafc9c7b29f7f1c196e73df71c6458943c7a3e737ca777c84b304b",
+      "installed_at": "2026-10-02T17:51:43.279088+00:00",
+      "restored_sha256": "0ba509698ea541e5288adf566cb34dcea78f27f415df8c6843f49372a4cdcde6",
+      "restored_at": "2026-10-02T17:52:12.815825+00:00",
+      "negative_process_exit": 1,
+      "restoration_exact": true
+    }
+  },
+  "final_browser": {
+    "command": "pnpm test:browser --workers=1 --retries=0 tests/browser/methodology-custody.spec.ts",
+    "log": "repaired-retry-2.log",
+    "exit": 0,
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "retries": 0,
+    "workers": 1,
+    "elapsed_seconds": 37.4,
+    "browser": "Chromium via repository Playwright; Browser plugin unavailable",
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "source_changes_during_invocation": [],
+    "source_manifest": "repaired-retry-2-source-start.json",
+    "component_sha256": "0ba509698ea541e5288adf566cb34dcea78f27f415df8c6843f49372a4cdcde6",
+    "browser_test_sha256": "e1c89897d87dc687279164d47cab9d2347497166e7ea19c09278fe267c5d0657"
+  },
+  "component_still_exact_restored": true,
+  "earlier_attempts": [
+    {
+      "path": "negative-harness-1",
+      "result": "zero tests selected; runner grep fixed; not negative-control proof"
+    },
+    {
+      "path": "negative-harness-2",
+      "result": "fixture reached editor but select exact-label locator timed out; combobox locator fixed; not negative-control proof"
+    },
+    {
+      "path": "repaired.log",
+      "result": "3 passed, 1 failed only at post-logout explicit IdP account form; completed-logout/SSO fixture setup corrected"
+    },
+    {
+      "path": "repaired-retry-1.log",
+      "result": "beforeAll exceeded 90s due combined cold Rust rebuild; no case bodies executed; separately prebuilt workspace/harness before final run; deadlines unchanged"
+    }
+  ],
+  "limitations": [
+    "Chromium only; no native OS tab qualification",
+    "Focused custody/lifecycle verification; full Story21.4 regression remains lead owned"
+  ]
+}

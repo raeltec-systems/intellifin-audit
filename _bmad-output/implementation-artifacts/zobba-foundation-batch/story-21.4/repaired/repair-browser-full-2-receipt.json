@@ -1,0 +1,17 @@
+{
+  "invocation": "repair-browser-full-2",
+  "exit": 1,
+  "workers": 1,
+  "retries": 0,
+  "passed": 144,
+  "failed": 1,
+  "skipped": 0,
+  "flaky": 0,
+  "duration_ms": 1028708.5889999999,
+  "started_at": "2026-10-02T21:27:12.178Z",
+  "source_files": 245,
+  "source_unchanged": true,
+  "source_start": "repair-browser-full-2-source-before.json",
+  "source_end": "repair-browser-full-2-source-after.json",
+  "log": "repair-browser-full-2.log"
+}

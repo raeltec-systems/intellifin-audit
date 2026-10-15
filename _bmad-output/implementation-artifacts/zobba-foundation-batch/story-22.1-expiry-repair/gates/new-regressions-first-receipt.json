@@ -1,0 +1,26 @@
+{
+  "gate": "new-regressions-first",
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "zobba-worker",
+    "--test",
+    "gateway_process",
+    "final_validation_expiry",
+    "--",
+    "--nocapture"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T08:56:36.166811+00:00",
+  "ended_at": "2026-10-03T08:56:57.963896+00:00",
+  "duration_seconds": 21.797,
+  "exit": 101,
+  "source_before": "new-regressions-first-source-before.json",
+  "source_after": "new-regressions-first-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "new-regressions-first.log",
+  "log_sha256": "4435672196690edcefb40c17b8cd6bf9537c280148bee4845ca37d182da1c60d"
+}

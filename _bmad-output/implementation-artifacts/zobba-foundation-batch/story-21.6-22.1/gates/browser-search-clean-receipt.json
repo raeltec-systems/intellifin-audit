@@ -1,0 +1,25 @@
+{
+  "gate": "browser-search-clean",
+  "command": [
+    "pnpm",
+    "--filter",
+    "@zobba/web",
+    "exec",
+    "playwright",
+    "test",
+    "tests/browser/evidence-search.spec.ts",
+    "--workers=1",
+    "--retries=0"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T05:29:53.858192+00:00",
+  "ended_at": "2026-10-03T05:31:28.019229+00:00",
+  "duration_seconds": 94.161,
+  "exit": 1,
+  "source_before": "browser-search-clean-source-before.json",
+  "source_after": "browser-search-clean-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "browser-search-clean.log",
+  "log_sha256": "95ea4b75aaedb8193d02886333fd25d8a13006a9b8bbc1b3c168cc710abb87dc"
+}

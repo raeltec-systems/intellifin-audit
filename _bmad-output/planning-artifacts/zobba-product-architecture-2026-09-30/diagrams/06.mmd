@@ -1,0 +1,12 @@
+sequenceDiagram
+  participant P as Permissions authority
+  participant D as Context lineage and task state
+  participant R as Runtime and delivery
+  participant M as Model provider
+  P->>D: Revoke source, advance access generation
+  D->>D: Invalidate dependent extracts, summaries and memories
+  D->>R: Cancel pending disclosure, reauthorise live projections
+  R->>R: Drop affected opaque continuation
+  R->>D: Rebuild permitted context and durable facts
+  R->>M: New request only after current-generation admission
+  Note over R,M: Prior disclosure cannot be undone

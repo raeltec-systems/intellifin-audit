@@ -1,0 +1,11 @@
+{
+  "from": "source-freeze-8.json",
+  "to": "source-freeze-9.json",
+  "files": [
+    {
+      "path": "zobba/web/tests/browser/skills.spec.ts",
+      "before": "a30c282bfa71dee3e3a36ca9bfc8f90ade6229f5fcc4475c15b145a78b66ef57",
+      "after": "694b1257098a323b1424409b52977564852fa61589397b2d914965d5de698004"
+    }
+  ]
+}

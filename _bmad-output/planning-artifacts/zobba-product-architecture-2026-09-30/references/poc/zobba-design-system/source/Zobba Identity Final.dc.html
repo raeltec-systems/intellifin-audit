@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300..800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: #E9E7E1; font-family: 'Hanken Grotesk', 'Segoe UI', sans-serif; color: #1C1B19; }
+    a { color: #4C3FB8; text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { color: #3B2F99; }
+  </style>
+</helmet>
+
+<section id="rationale" data-screen-label="01 Rationale" style="padding: 72px 72px 32px; width: 2100px; box-sizing: border-box; display: grid; grid-template-columns: 1000px 1000px; gap: 100px;">
+  <div style="display: flex; flex-direction: column; gap: 22px;">
+    <div style="font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #5E5A52;">Zobba identity · final · 25 Sep 2026</div>
+    <dc-import name="Zobba Wordmark" size="96" hint-size="440px,100px"></dc-import>
+    <div style="font-size: 32px; line-height: 42px; font-weight: 500; letter-spacing: -.015em; max-width: 900px;">Two things, considered together.</div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 14px; padding-top: 40px; font-size: 17px; line-height: 28px; color: #3D3A35;">
+    <div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #1C1B19;">What Pair means</div>
+    <p style="margin: 0; text-wrap: pretty;">Zobba's work is always a relationship: a claim and its evidence, the conversation and the artifact, the auditor and Zobba, what was expected and what actually happened, a source and the conclusion drawn from it. The symbol is two forms held against the same line, offset so that neither completes the other. Zobba's job is to bring them level, and to show you where they don't agree.</p>
+    <p style="margin: 0; text-wrap: pretty;">The same pair runs through the wordmark (the two b's, the second one stepped down), the working state (the forms move toward each other while Zobba compares) and the layout (conversation beside the work). The accent is <b style="color: #4C3FB8;">Iris</b>, chosen because it is the one hue family audit semantics don't use.</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 14px; font-size: 14px; line-height: 20px;"><a href="#logo">Logo</a><a href="#icon">App icon</a><a href="#accent">Accent</a><a href="#colour">Colour</a><a href="#type">Type</a><a href="#motion">Motion</a><a href="#screens">Screens</a><a href="#narrow">Narrow</a><a href="#permissions">Permissions</a><a href="#artifact">Artifact</a><a href="#raeltec">Raeltec and Kobba</a><a href="#nav">Navigation</a><a href="#hero">Hero</a><a href="#tokens">Tokens</a><a href="#rules">Component rules</a><a href="#dodont">Do and don't</a><a href="#test">Final test</a><a href="#open">Open questions</a></div>
+  </div>
+</section>
+
+<section id="logo" data-screen-label="02 Logo" style="padding: 48px 72px; width: 2100px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px;">
+  <h2 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -.015em;">Logo</h2>
+  <div style="display: grid; grid-template-columns: 620px 1fr 1fr; gap: 24px;">
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 16px;">
+      <div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #5E5A52;">Symbol geometry · 32-unit grid</div>
+      <svg width="256" height="256" viewBox="0 0 256 256" style="align-self: center;">
+        <defs><pattern id="g8" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M8 0H0V8" fill="none" stroke="#EFEDE8" stroke-width="1"></path></pattern></defs>
+        <rect width="256" height="256" fill="url(#g8)"></rect>
+        <rect x="0" y="80" width="256" height="96" fill="#EEECFA" opacity=".6"></rect>
+        <path d="M76 32 H110.4 Q120 32 120 41.6 V166.4 Q120 176 110.4 176 H76 Q32 176 32 132 V76 Q32 32 76 32 Z" fill="#1C1B19"></path>
+        <path d="M145.6 80 H180 Q224 80 224 124 V180 Q224 224 180 224 H145.6 Q136 224 136 214.4 V89.6 Q136 80 145.6 80 Z" fill="#4C3FB8"></path>
+        <path d="M128 8 V248" stroke="#4C3FB8" stroke-width="1" stroke-dasharray="4 4"></path>
+      </svg>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 20px; color: #3D3A35;">
+        <span><b style="color: #1C1B19;">Forms.</b> Two 11 × 18 units. Outer corners radius 5.5 (fully round), inner corners radius 1.2, so each form has one flat face.</span>
+        <span><b style="color: #1C1B19;">Channel.</b> The flat faces meet a shared centre line, 2 units apart. It widens to 2.8 at 16px and 3.6 at 12px and below, so the forms never merge.</span>
+        <span><b style="color: #1C1B19;">Offset.</b> 6 units. The tinted band is the 12 units where the forms overlap: where the two things are compared.</span>
+        <span><b style="color: #1C1B19;">Not.</b> Two separate pills (a pause button), links, quotation marks or two figures. The flat inner faces and the step prevent all four readings.</span>
+      </div>
+    </div>
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 20px;">
+      <div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #5E5A52;">Sizes · 96, 48, 32, 16, 10 (provenance)</div>
+      <div style="display: flex; align-items: flex-end; gap: 26px;"><dc-import name="Zobba Pair Mark" size="96" hint-size="96px,96px"></dc-import><dc-import name="Zobba Pair Mark" size="48" hint-size="48px,48px"></dc-import><dc-import name="Zobba Pair Mark" size="32" hint-size="32px,32px"></dc-import><dc-import name="Zobba Pair Mark" size="16" hint-size="16px,16px"></dc-import><dc-import name="Zobba Pair Mark" tone="mono" size="10" hint-size="10px,10px"></dc-import></div>
+      <div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #5E5A52; padding-top: 6px;">Full colour · one colour · light · dark</div>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;">
+        <div style="background: #FBFAF7; border: 1px solid #E3E0D8; border-radius: 10px; height: 110px; display: flex; align-items: center; justify-content: center;"><dc-import name="Zobba Pair Mark" size="48" hint-size="48px,48px"></dc-import></div>
+        <div style="background: #FBFAF7; border: 1px solid #E3E0D8; border-radius: 10px; height: 110px; display: flex; align-items: center; justify-content: center;"><dc-import name="Zobba Pair Mark" tone="mono" size="48" hint-size="48px,48px"></dc-import></div>
+        <div style="background: #1C1B19; border-radius: 10px; height: 110px; display: flex; align-items: center; justify-content: center;"><dc-import name="Zobba Pair Mark" tone="reverse" size="48" hint-size="48px,48px"></dc-import></div>
+        <div style="background: #1C1B19; border-radius: 10px; height: 110px; display: flex; align-items: center; justify-content: center;"><dc-import name="Zobba Pair Mark" tone="reverseMono" size="48" hint-size="48px,48px"></dc-import></div>
+      </div>
+      <div style="font-size: 13px; line-height: 20px; color: #3D3A35;">One colour is the default for print, provenance footers, OS menu-bar and notification templates. Full colour is for app icon, sidebar and marketing.</div>
+    </div>
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 18px;">
+      <div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #5E5A52;">Wordmark · title case, stepped bb</div>
+      <dc-import name="Zobba Wordmark" size="88" mark="false" hint-size="300px,90px"></dc-import>
+      <div style="font-size: 13px; line-height: 20px; color: #3D3A35;">Outlined from Hanken Grotesk 600, tracked −2.8%, the bb set tighter than the rest. The second b keeps half of its ascender above x-height: the same step as the symbol, still read as bb. Supplied as SVG; a type designer should redraw the final letterforms.</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; padding-top: 6px; border-top: 1px solid #E3E0D8;">
+        <div style="display: flex; flex-direction: column; gap: 6px;"><dc-import name="Zobba Wordmark" size="34" mark="false" hint-size="120px,36px"></dc-import><span style="font-size: 12px; line-height: 16px; color: #1E6B35; font-weight: 600;">Final · Zobba</span><span style="font-size: 12px; line-height: 17px; color: #3D3A35;">Matches "Zobba is analysing" in chrome. Credible in a bank; the step keeps the bb.</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px;"><dc-import name="Zobba Wordmark" size="34" mark="false" lower="true" hint-size="120px,36px"></dc-import><span style="font-size: 12px; line-height: 16px; color: #5E5A52; font-weight: 600;">Validation · zobba</span><span style="font-size: 12px; line-height: 17px; color: #3D3A35;">Warmer, bb more visible, but the logo would differ from every sentence it appears in.</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px;"><dc-import name="Zobba Wordmark" size="34" mark="false" plain="true" hint-size="120px,36px"></dc-import><span style="font-size: 12px; line-height: 16px; color: #5E5A52; font-weight: 600;">Typed · no step</span><span style="font-size: 12px; line-height: 17px; color: #3D3A35;">Reads as the font. The step is what makes it a wordmark.</span></div>
+      </div>
+    </div>
+  </div>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 18px;">
+      <div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #5E5A52;">Lockup and clear space</div>
+      <div style="display: flex; gap: 40px; align-items: center;">
+        <div style="padding: 30px; outline: 1px dashed #B9B0F5; outline-offset: 0; background: repeating-linear-gradient(45deg, #F6F5FD 0 6px, #fff 6px 12px);"><div style="background: #fff; padding: 2px;"><dc-import name="Zobba Wordmark" size="56" hint-size="260px,60px"></dc-import></div></div>
+        <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px; line-height: 20px; color: #3D3A35; max-width: 380px;"><span><b style="color: #1C1B19;">Clear space</b> = the width of one form (a third of the symbol) on all sides.</span><span><b style="color: #1C1B19;">Symbol to wordmark gap</b> = 0.28 × wordmark size.</span><span><b style="color: #1C1B19;">Symbol height</b> = 0.92 × wordmark size, centred on the x-height band.</span></div>
+      </div>
+    </div>
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #5E5A52;">Minimum sizes</div>
+      <div style="display: flex; gap: 40px; align-items: flex-end;">
+        <div style="display: flex; flex-direction: column; gap: 8px;"><dc-import name="Zobba Pair Mark" size="12" hint-size="12px,12px"></dc-import><span style="font-size: 12px; line-height: 16px; color: #3D3A35;">Symbol, screen · 12px</span></div>
+        <div style="display: flex; flex-direction: column; gap: 8px;"><dc-import name="Zobba Pair Mark" tone="mono" size="10" hint-size="10px,10px"></dc-import><span style="font-size: 12px; line-height: 16px; color: #3D3A35;">Symbol, print provenance · 10px one colour</span></div>
+        <div style="display: flex; flex-direction: column; gap: 8px;"><dc-import name="Zobba Wordmark" size="16" hint-size="80px,18px"></dc-import><span style="font-size: 12px; line-height: 16px; color: #3D3A35;">Lockup · 16px wordmark</span></div>
+        <div style="display: flex; flex-direction: column; gap: 8px;"><dc-import name="Zobba Wordmark" size="24" endorse="true" hint-size="200px,26px"></dc-import><span style="font-size: 12px; line-height: 16px; color: #3D3A35;">Endorsed lockup · 24px (keeps "by Raeltec" ≥ 11px)</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="icon" data-screen-label="03 App icon" style="padding: 48px 72px; width: 2100px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px;">
+  <h2 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -.015em;">App icon</h2>
+  <div style="display: grid; grid-template-columns: 1fr 1fr 560px; gap: 24px;">
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 16px;"><div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #5E5A52;">Dark (default) · 96, 48, 32, 16</div><div style="display: flex; align-items: flex-end; gap: 26px;"><dc-import name="Zobba Pair Mark" tone="iconDark" size="96" hint-size="96px,96px"></dc-import><dc-import name="Zobba Pair Mark" tone="iconDark" size="48" hint-size="48px,48px"></dc-import><dc-import name="Zobba Pair Mark" tone="iconDark" size="32" hint-size="32px,32px"></dc-import><dc-import name="Zobba Pair Mark" tone="iconDark" size="16" hint-size="16px,16px"></dc-import></div></div>
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 16px;"><div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #5E5A52;">Light · 96, 48, 32, 16</div><div style="display: flex; align-items: flex-end; gap: 26px;"><dc-import name="Zobba Pair Mark" tone="iconLight" size="96" hint-size="96px,96px"></dc-import><dc-import name="Zobba Pair Mark" tone="iconLight" size="48" hint-size="48px,48px"></dc-import><dc-import name="Zobba Pair Mark" tone="iconLight" size="32" hint-size="32px,32px"></dc-import><dc-import name="Zobba Pair Mark" tone="iconLight" size="16" hint-size="16px,16px"></dc-import></div></div>
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 14px;"><div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #5E5A52;">In place</div><div style="display: inline-flex; align-self: flex-start; align-items: center; gap: 8px; background: #F1F0EC; border-radius: 8px 8px 0 0; padding: 8px 14px; font-size: 12px;"><dc-import name="Zobba Pair Mark" size="16" hint-size="16px,16px"></dc-import>Leaver access · Zobba</div><div style="display: flex; gap: 14px; align-items: center; background: #2A2926; border-radius: 10px; padding: 10px 14px;"><dc-import name="Zobba Pair Mark" tone="iconDark" size="32" hint-size="32px,32px"></dc-import><span style="font-size: 13px; line-height: 18px; color: #F4F1EA;"><b style="font-weight: 600;">Zobba completed the weekly check</b><br><span style="color: #B8B3A8;">Leaver check · inconclusive · not reviewed</span></span></div><span style="font-size: 13px; line-height: 20px; color: #3D3A35;">Dark icon is the default in docks and launchers. The notification names the result in words; the icon never carries it.</span></div>
+  </div>
+</section>
+
+<section id="accent" data-screen-label="04 Accent" style="padding: 48px 72px; width: 2100px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px;">
+  <h2 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -.015em;">Accent · five candidates on the same elements</h2>
+  <p style="margin: 0; font-size: 16px; line-height: 26px; color: #3D3A35; max-width: 1200px;">Graphite, linen and the warm neutrals are fixed. Only the Zobba presence colour changes. Moss is included as the baseline being replaced.</p>
+  <div style="display: grid; grid-template-columns: 170px 90px 220px 220px 280px 120px 290px 250px 1fr; background: #fff; border-radius: 14px; overflow: hidden; font-size: 12px; line-height: 16px; color: #5E5A52; font-weight: 600;">
+    <span style="padding: 14px 18px;">Accent</span><span style="padding: 14px 10px;">Mark</span><span style="padding: 14px 10px;">Active nav</span><span style="padding: 14px 10px;">Presence</span><span style="padding: 14px 10px;">Selected claim</span><span style="padding: 14px 10px;">Link</span><span style="padding: 14px 10px;">Composer focus</span><span style="padding: 14px 10px;">Dark marketing</span><span style="padding: 14px 18px;">Verdict</span>
+    <sc-for list="{{ accents }}" as="c" hint-placeholder-count="5">
+      <div style="padding: 18px; border-top: 1px solid #E3E0D8; display: flex; flex-direction: column; gap: 6px; background: {{ c.rowBg }};"><span style="font-size: 15px; line-height: 20px; color: #1C1B19;">{{ c.name }}</span><span style="display: flex; gap: 4px;"><span style="width: 26px; height: 26px; border-radius: 6px; background: {{ c.a }};"></span><span style="width: 26px; height: 26px; border-radius: 6px; background: {{ c.light }};"></span><span style="width: 26px; height: 26px; border-radius: 6px; background: {{ c.wash }};"></span></span><span style="font-weight: 400; font-family: 'IBM Plex Mono', monospace; font-size: 11px;">{{ c.a }}</span></div>
+      <div style="padding: 18px 10px; border-top: 1px solid #E3E0D8; display: flex; align-items: center; background: {{ c.rowBg }};"><dc-import name="Zobba Pair Mark" size="36" accent="{{ c.a }}" accent-light="{{ c.light }}" hint-size="36px,36px"></dc-import></div>
+      <div style="padding: 18px 10px; border-top: 1px solid #E3E0D8; display: flex; align-items: center; background: {{ c.rowBg }};"><div style="background: #EFEDE8; padding: 8px; border-radius: 10px; width: 196px;"><div style="background: #fff; box-shadow: 0 0 0 1px #E3E0D8; border-radius: 8px; padding: 7px 10px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: #1C1B19;"><span style="flex: 1;">Test leaver access</span><dc-import name="Zobba Pair Mark" state="working" size="14" accent="{{ c.a }}" hint-size="14px,14px"></dc-import></div></div></div>
+      <div style="padding: 18px 10px; border-top: 1px solid #E3E0D8; display: flex; align-items: center; background: {{ c.rowBg }};"><span style="display: flex; align-items: center; gap: 7px; color: {{ c.strong }}; background: {{ c.wash }}; border-radius: 999px; padding: 4px 10px 4px 8px; white-space: nowrap;"><dc-import name="Zobba Pair Mark" state="working" size="14" accent="{{ c.a }}" hint-size="14px,14px"></dc-import>Zobba is analysing</span></div>
+      <div style="padding: 18px 10px; border-top: 1px solid #E3E0D8; display: flex; align-items: center; background: {{ c.rowBg }};"><span style="font-size: 13px; line-height: 20px; font-weight: 400; color: #1C1B19; box-shadow: 0 0 0 2px {{ c.a }}; background: {{ c.wash }}; border-radius: 2px; padding: 4px 6px;">Two retained access after exit. <span style="color: #B42318; font-weight: 600;">2 exceptions</span> · <span style="color: #1E6B35; font-weight: 600;">21 no exception</span></span></div>
+      <div style="padding: 18px 10px; border-top: 1px solid #E3E0D8; display: flex; align-items: center; background: {{ c.rowBg }};"><span style="font-size: 14px; font-weight: 500; color: {{ c.a }}; text-decoration: underline; text-underline-offset: 2px;">View changes</span></div>
+      <div style="padding: 18px 10px; border-top: 1px solid #E3E0D8; display: flex; align-items: center; background: {{ c.rowBg }};"><div style="width: 260px; height: 40px; box-sizing: border-box; background: #fff; border: 1.5px solid {{ c.a }}; box-shadow: 0 0 0 4px {{ c.wash }}; border-radius: 14px; padding: 0 12px; display: flex; align-items: center; font-size: 13px; font-weight: 400; color: #7A766D;">Describe what you want to check</div></div>
+      <div style="padding: 18px 10px; border-top: 1px solid #E3E0D8; display: flex; align-items: center; background: {{ c.rowBg }};"><div style="width: 230px; height: 64px; background: #1C1B19; border-radius: 10px; display: flex; align-items: center; gap: 10px; padding: 0 14px; box-sizing: border-box;"><dc-import name="Zobba Pair Mark" tone="reverse" size="28" accent="{{ c.a }}" accent-light="{{ c.light }}" hint-size="28px,28px"></dc-import><span style="font-size: 14px; line-height: 18px; font-weight: 600; color: {{ c.light }};">Request a pilot</span></div></div>
+      <div style="padding: 18px; border-top: 1px solid #E3E0D8; display: flex; flex-direction: column; gap: 4px; justify-content: center; background: {{ c.rowBg }};"><span style="font-size: 14px; line-height: 20px; font-weight: 600; color: {{ c.vColor }};">{{ c.verdict }}</span><span style="font-size: 13px; line-height: 19px; font-weight: 400; color: #3D3A35;">{{ c.why }}</span></div>
+    </sc-for>
+  </div>
+  <div style="background: #fff; border-radius: 14px; padding: 28px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 28px; font-size: 15px; line-height: 24px; color: #3D3A35;">
+    <div><b style="color: #4C3FB8;">Recommendation: Iris #4C3FB8.</b> A deep blue-violet that sits between the link-blue convention and the reds, and outside all five audit meanings. Beside "2 exceptions" and "21 no exception" it is plainly neither. It reads as Zobba within a day.</div>
+    <div><b style="color: #1C1B19;">The purple risk.</b> Violet is common in AI branding when it is used as gradients, glows and large fields. Here it is flat, deep, and limited to presence, selection, links and focus; graphite carries the brand weight. No gradients, ever.</div>
+    <div><b style="color: #1C1B19;">Accessibility.</b> Iris on white ≈ 7.7:1, on linen ≈ 6.5:1 (AA for body text). Iris strong #3B2F99 on iris wash ≈ 9:1. Iris light #B9B0F5 on graphite ≈ 8.6:1. Never used as the only signal: presence always has words.</div>
+  </div>
+</section>
+
+<section id="colour" data-screen-label="05 Colour system" style="padding: 48px 72px; width: 2100px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px;">
+  <h2 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -.015em;">Colour system · brand beside semantics</h2>
+  <div style="background: #1C1B19; color: #F4F1EA; border-radius: 14px; padding: 22px 28px; font-size: 18px; line-height: 28px; font-weight: 500;">The rule: Iris means "Zobba is here, or you can act on this." It never describes the audit result. Results always use a semantic colour with a glyph and a word. Changes are typographic and use no colour.</div>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 16px;">
+      <div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #5E5A52;">Brand and interaction</div>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; font-size: 12px; line-height: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 6px;"><div style="height: 72px; border-radius: 8px; background: #1C1B19;"></div><b>Graphite #1C1B19</b><span style="color: #3D3A35;">Text, primary buttons, symbol left form</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px;"><div style="height: 72px; border-radius: 8px; background: #4C3FB8;"></div><b>Iris #4C3FB8</b><span style="color: #3D3A35;">Presence, links, focus, selection, symbol right form</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px;"><div style="height: 72px; border-radius: 8px; background: #3B2F99;"></div><b>Iris strong #3B2F99</b><span style="color: #3D3A35;">Text on iris wash, link hover</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px;"><div style="height: 72px; border-radius: 8px; background: #EEECFA;"></div><b>Iris wash #EEECFA</b><span style="color: #3D3A35;">Presence chip, citation chip, focus ring</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px;"><div style="height: 72px; border-radius: 8px; background: #EFEDE8;"></div><b>Linen #EFEDE8</b><span style="color: #3D3A35;">Sidebar, your messages</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px;"><div style="height: 72px; border-radius: 8px; background: #FBFAF7; border: 1px solid #E3E0D8; box-sizing: border-box;"></div><b>Canvas #FBFAF7</b><span style="color: #3D3A35;">Conversation surface</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px;"><div style="height: 72px; border-radius: 8px; background: #FFFFFF; border: 1px solid #E3E0D8; box-sizing: border-box;"></div><b>Paper #FFFFFF</b><span style="color: #3D3A35;">Workspace panel, artifact page</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px;"><div style="height: 72px; border-radius: 8px; background: #B9B0F5;"></div><b>Iris light #B9B0F5</b><span style="color: #3D3A35;">Accent on dark surfaces only</span></div>
+      </div>
+      <div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #5E5A52; padding-top: 6px;">Text and lines</div>
+      <div style="display: flex; gap: 16px; font-size: 13px; line-height: 18px;"><span style="color: #1C1B19;">Primary #1C1B19</span><span style="color: #3D3A35;">Secondary #3D3A35</span><span style="color: #5E5A52;">Tertiary #5E5A52</span><span style="color: #7A766D;">Placeholder #7A766D</span><span style="display: flex; align-items: center; gap: 6px;"><span style="width: 22px; height: 0; border-top: 1px solid #E3E0D8;"></span>Hairline #E3E0D8</span><span style="display: flex; align-items: center; gap: 6px;"><span style="width: 22px; height: 0; border-top: 1px solid #CCC8BD;"></span>Control #CCC8BD</span></div>
+      <div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #5E5A52; padding-top: 6px;">Dark surfaces (marketing, notifications, future dark mode)</div>
+      <div style="display: flex; gap: 8px; background: #1C1B19; border-radius: 10px; padding: 14px; font-size: 12px; line-height: 16px; color: #F4F1EA;"><span style="flex: 1; display: flex; flex-direction: column; gap: 4px;"><span style="height: 36px; border-radius: 6px; background: #2A2926;"></span>Raised #2A2926</span><span style="flex: 1; display: flex; flex-direction: column; gap: 4px;"><span style="height: 36px; border-radius: 6px; background: #3A3935;"></span>Line #3A3935</span><span style="flex: 1; display: flex; flex-direction: column; gap: 4px;"><span style="height: 36px; border-radius: 6px; background: #F4F1EA;"></span>Text #F4F1EA</span><span style="flex: 1; display: flex; flex-direction: column; gap: 4px;"><span style="height: 36px; border-radius: 6px; background: #B8B3A8;"></span>Secondary #B8B3A8</span><span style="flex: 1; display: flex; flex-direction: column; gap: 4px;"><span style="height: 36px; border-radius: 6px; background: #B9B0F5;"></span>Iris light</span></div>
+    </div>
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 12px;">
+      <div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #5E5A52;">Semantic audit states · independent of the brand</div>
+      <div style="display: grid; grid-template-columns: 250px 1fr; gap: 14px; align-items: center; font-size: 13px; line-height: 19px; color: #3D3A35;">
+        <span style="justify-self: start; display: flex; gap: 6px; align-items: center; font-weight: 600; color: #1E6B35; background: #EAF4EC; border-radius: 999px; padding: 4px 11px;">✓ No exception</span><span>#1E6B35 on #EAF4EC. Green is free for this meaning because the brand isn't green.</span>
+        <span style="justify-self: start; display: flex; gap: 6px; align-items: center; font-weight: 600; color: #B42318; background: #FDECEA; border-radius: 999px; padding: 4px 11px;">! Exception</span><span>#B42318 on #FDECEA. Also used for "Still active" and failure counts.</span>
+        <span style="justify-self: start; display: flex; gap: 6px; align-items: center; font-weight: 600; color: #8A4B06; background: #FDF3E2; border-radius: 999px; padding: 4px 11px;">▲ Warning</span><span>#8A4B06 on #FDF3E2. Something needs attention but doesn't change the result: a late extract, a stale connection.</span>
+        <span style="justify-self: start; display: flex; gap: 6px; align-items: center; font-weight: 600; color: #3D3A35; background: #F3F1EC; border: 1px dashed #8C8578; border-radius: 999px; padding: 3px 10px;">◐ Inconclusive · coverage</span><span>Neutral with a dashed edge and a half-filled glyph: visibly incomplete, not alarming. Separated from warning on purpose; they mean different things.</span>
+        <span style="justify-self: start; display: flex; gap: 6px; align-items: center; font-weight: 600; color: #3D3A35; border: 1px solid #CCC8BD; border-radius: 999px; padding: 3px 10px;">○ Not reviewed</span><span>Pending review. Outline only. Becomes "Reviewed by [name]" in graphite once signed.</span>
+      </div>
+      <div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #5E5A52; padding-top: 10px;">Changes</div>
+      <div style="font-size: 15px; line-height: 26px; color: #1C1B19;">The control did not operate effectively for <span style="color: #6F6B63; text-decoration: line-through;">Q3 leavers</span> <span style="background: #E8E4DA; border-bottom: 1.5px solid #1C1B19;">the 23 employee leavers on the HR list</span>.</div>
+      <div style="font-size: 13px; line-height: 19px; color: #3D3A35;">Removed: struck, #6F6B63. Added: 1.5px graphite underline on #E8E4DA. No red or green, so a change is never mistaken for a result.</div>
+      <div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #5E5A52; padding-top: 10px;">Where Iris may and may not appear</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13px; line-height: 20px; color: #3D3A35;"><span><b style="color: #1C1B19;">May:</b> symbol · presence chip · working rows · links · citations · focus · selection · active evidence reference.</span><span><b style="color: #1C1B19;">Never:</b> result chips · counts of exceptions or passes · buttons that approve work · artifact body · charts of results.</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="type" data-screen-label="06 Typography" style="padding: 48px 72px; width: 2100px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px;">
+  <h2 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -.015em;">Typography</h2>
+  <div style="display: grid; grid-template-columns: 1.3fr 1fr; gap: 24px;">
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: grid; grid-template-columns: 170px 1fr; gap: 14px; align-items: baseline;"><span style="font-size: 12px; color: #5E5A52;">Display · 60/66 · 600</span><span style="font-size: 60px; line-height: 66px; font-weight: 600; letter-spacing: -.035em;">Every finding, next to its evidence.</span></div>
+      <div style="display: grid; grid-template-columns: 170px 1fr; gap: 14px; align-items: baseline;"><span style="font-size: 12px; color: #5E5A52;">Greeting · 38/46 · 600</span><span style="font-size: 38px; line-height: 46px; font-weight: 600; letter-spacing: -.022em;">What are we auditing today?</span></div>
+      <div style="display: grid; grid-template-columns: 170px 1fr; gap: 14px; align-items: baseline;"><span style="font-size: 12px; color: #5E5A52;">Result · 20/30 · 500</span><span style="font-size: 20px; line-height: 30px; font-weight: 500;">Analysis completed. Three supported exceptions were identified.</span></div>
+      <div style="display: grid; grid-template-columns: 170px 1fr; gap: 14px; align-items: baseline;"><span style="font-size: 12px; color: #5E5A52;">Heading · 15/20 · 600</span><span style="font-size: 15px; line-height: 20px; font-weight: 600;">Working data · leavers matched to accounts</span></div>
+      <div style="display: grid; grid-template-columns: 170px 1fr; gap: 14px; align-items: baseline;"><span style="font-size: 12px; color: #5E5A52;">Conversation · 15/24 · 400</span><span style="font-size: 15px; line-height: 24px; max-width: 620px;">I couldn't establish that the contractor population is complete, so I've limited the conclusion to the 23 employee leavers and added limitation L2.</span></div>
+      <div style="display: grid; grid-template-columns: 170px 1fr; gap: 14px; align-items: baseline;"><span style="font-size: 12px; color: #5E5A52;">UI · 14/20 · 400–600</span><span style="font-size: 14px; line-height: 20px;">Scheduled checks · Northstar · Q3 2026 ITGC</span></div>
+      <div style="display: grid; grid-template-columns: 170px 1fr; gap: 14px; align-items: baseline;"><span style="font-size: 12px; color: #5E5A52;">Meta · 12/16 · 400</span><span style="font-size: 12px; line-height: 16px; color: #5E5A52;">From Test leaver access for Q3 · working copy</span></div>
+      <div style="display: grid; grid-template-columns: 170px 1fr; gap: 14px; align-items: baseline;"><span style="font-size: 12px; color: #5E5A52;">Identifiers · Plex Mono 12</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 18px;">AG-91002 · LC-4471 · ZB-7F3A</span></div>
+    </div>
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 14px; font-size: 15px; line-height: 24px; color: #3D3A35;">
+      <div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #5E5A52;">Decision: keep Hanken Grotesk</div>
+      <span>Tested against the Big Four and bank concern, it holds up once three things change. Title case replaces lowercase. UI tops out at weight 600, never 700. Tracking is only tightened at 20px and above. The start-up feel in the exploration came from the lowercase wordmark and heavy weights, not from the typeface.</span>
+      <span>It stays warm: open apertures, a friendly a and g, and good figures for tables. It is open source (OFL), with no licensing cost across desktop, web and PDF.</span>
+      <span><b style="color: #1C1B19;">No serif.</b> Documentary authority comes from the firm's own template, not from Zobba.</span>
+      <span><b style="color: #1C1B19;">Rules.</b> One family in chrome. IBM Plex Mono only for identifiers and references, never for labels. Reading measure 60–75 characters. Tabular figures in tables. The artifact uses the methodology's fonts.</span>
+    </div>
+  </div>
+</section>
+
+<section id="motion" data-screen-label="07 Motion" style="padding: 48px 72px; width: 2100px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px;">
+  <h2 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -.015em;">Motion · the pair as working state</h2>
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px;">
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 14px;"><div style="height: 110px; display: flex; align-items: center; justify-content: center; background: #FBFAF7; border-radius: 10px;"><dc-import name="Zobba Pair Mark" state="idle" size="64" hint-size="64px,64px"></dc-import></div><b style="font-size: 16px;">Idle</b><span style="font-size: 14px; line-height: 22px; color: #3D3A35;">Offset, still. The two things are apart: nothing has been compared yet.</span><span style="font-size: 13px; line-height: 19px; color: #5E5A52;">Sidebar, Home, provenance.</span></div>
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 14px;"><div style="height: 110px; display: flex; align-items: center; justify-content: center; background: #FBFAF7; border-radius: 10px;"><dc-import name="Zobba Pair Mark" state="working" size="64" hint-size="64px,64px"></dc-import></div><b style="font-size: 16px;">Working</b><span style="font-size: 14px; line-height: 22px; color: #3D3A35;">The forms slide toward level, hold, and return: a 3.6s cycle, 3 units of travel, eased. It's the motion of checking one thing against another.</span><span style="font-size: 13px; line-height: 19px; color: #5E5A52;">Always beside the activity text: "Comparing 23 leavers against 1,516 accounts". Only the current step animates.</span></div>
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 14px;"><div style="height: 110px; display: flex; align-items: center; justify-content: center; background: #FBFAF7; border-radius: 10px;"><dc-import name="Zobba Pair Mark" state="waiting" size="64" hint-size="64px,64px"></dc-import></div><b style="font-size: 16px;">Waiting for you</b><span style="font-size: 14px; line-height: 22px; color: #3D3A35;">Level and still, right form open. Zobba has done its half; the other half is your decision. No pulse, no colour change.</span><span style="font-size: 13px; line-height: 19px; color: #5E5A52;">"Zobba needs your permission", "Zobba needs your input".</span></div>
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 14px;"><div style="height: 110px; display: flex; align-items: center; justify-content: center; background: #FBFAF7; border-radius: 10px;"><dc-import name="Zobba Pair Mark" state="complete" size="64" hint-size="64px,64px"></dc-import></div><b style="font-size: 16px;">Complete</b><span style="font-size: 14px; line-height: 22px; color: #3D3A35;">Settles once from level back to the offset rest, then stops. Complete means the work finished, not that the control passed.</span><span style="font-size: 13px; line-height: 19px; color: #5E5A52;">Plays once per task. The result chip carries the outcome.</span></div>
+  </div>
+  <div style="background: #fff; border-radius: 14px; padding: 22px 28px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 28px; font-size: 14px; line-height: 22px; color: #3D3A35;">
+    <span><b style="color: #1C1B19;">Quiet enough for four hours.</b> One animated mark per view, 14px in work screens. Respects reduced-motion: working becomes level and still, with the activity text unchanged.</span>
+    <span><b style="color: #1C1B19;">Never encoded:</b> pass, exception, inconclusive. The mark has no red, green or amber state, and no ✓ appears inside or beside it.</span>
+    <span><b style="color: #1C1B19;">Activity text does the work.</b> Present tense with a real object: Reading control documentation · Checking population completeness · Reviewing sign-in activity · Preparing working paper · Validating conclusions. No percentages.</span>
+  </div>
+</section>
+
+<section id="screens" data-screen-label="08 Desktop screens" style="padding: 48px 72px; width: 2100px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px;">
+  <h2 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -.015em;">Desktop screens</h2>
+  <div style="display: grid; grid-template-columns: 1024px 1024px; gap: 32px 36px;">
+    <div style="display: flex; flex-direction: column; gap: 10px;"><div style="width: 1024px; height: 640px; overflow: hidden; border-radius: 10px; border: 1px solid #CCC8BD;"><div style="width: 1280px; height: 800px; transform: scale(.8); transform-origin: top left;"><dc-import name="Zobba Final Screen" screen="home" hint-size="1280px,800px"></dc-import></div></div><div style="font-size: 14px; line-height: 22px; color: #3D3A35;"><b style="color: #1C1B19;">Home.</b> Symbol, greeting, composer shown focused (iris border and wash ring). Engagement and permissions as plain chips. Continue list with state glyphs. No tiles, no in-app marketing.</div></div>
+    <div style="display: flex; flex-direction: column; gap: 10px;"><div style="width: 1024px; height: 640px; overflow: hidden; border-radius: 10px; border: 1px solid #CCC8BD;"><div style="width: 1280px; height: 800px; transform: scale(.8); transform-origin: top left;"><dc-import name="Zobba Final Screen" screen="running" hint-size="1280px,800px"></dc-import></div></div><div style="font-size: 14px; line-height: 22px; color: #3D3A35;"><b style="color: #1C1B19;">Active work.</b> The brand is three 14px working marks and one iris chip. Guide through the composer, Stop beside it, Inspect on the current step. The limitation uses the coverage glyph, not amber.</div></div>
+    <div style="display: flex; flex-direction: column; gap: 10px;"><div style="width: 1024px; height: 640px; overflow: hidden; border-radius: 10px; border: 1px solid #CCC8BD;"><div style="width: 1280px; height: 800px; transform: scale(.8); transform-origin: top left;"><dc-import name="Zobba Final Screen" screen="changes" hint-size="1280px,800px"></dc-import></div></div><div style="font-size: 14px; line-height: 22px; color: #3D3A35;"><b style="color: #1C1B19;">Working paper and Changes.</b> The page is the firm's template (Arial, firm reference scheme). Zobba contributes only the iris selection, the typographic diff, citations and the evidence list. Prepared by names Daniel.</div></div>
+    <div style="display: flex; flex-direction: column; gap: 10px;"><div style="width: 1024px; height: 640px; overflow: hidden; border-radius: 10px; border: 1px solid #CCC8BD;"><div style="width: 1280px; height: 800px; transform: scale(.8); transform-origin: top left;"><dc-import name="Zobba Final Screen" screen="permission" hint-size="1280px,800px"></dc-import></div></div><div style="font-size: 14px; line-height: 22px; color: #3D3A35;"><b style="color: #1C1B19;">Waiting for permission.</b> One decision surface with sender, recipient, email, meeting time, calendar and invitees. The waiting mark is still and neutral. Graphite "Allow and send"; the drafts are open beside it for checking.</div></div>
+    <div style="display: flex; flex-direction: column; gap: 10px;"><div style="width: 1024px; height: 640px; overflow: hidden; border-radius: 10px; border: 1px solid #CCC8BD;"><div style="width: 1280px; height: 800px; transform: scale(.8); transform-origin: top left;"><dc-import name="Zobba Final Screen" screen="scheduled" hint-size="1280px,800px"></dc-import></div></div><div style="font-size: 14px; line-height: 22px; color: #3D3A35;"><b style="color: #1C1B19;">Scheduled check.</b> A one-colour mark identifies the actor ("Zobba ran this unattended"). The result chip is visually independent: dashed, neutral, half-filled. Readable conclusion first, details folded.</div></div>
+    <div style="background: #fff; border-radius: 10px; padding: 28px; display: flex; flex-direction: column; gap: 12px; font-size: 14px; line-height: 22px; color: #3D3A35; align-self: start;">
+      <b style="font-size: 16px; color: #1C1B19;">Voice in these screens</b>
+      <span><b style="color: #1C1B19;">Chrome:</b> Zobba is analysing · Zobba needs your permission · Zobba ran this unattended · Zobba completed the weekly check.</span>
+      <span><b style="color: #1C1B19;">Conversation:</b> "I found the control definition…" · "I can't treat it as the complete population yet." · "I've limited the AccessGate conclusion…" · "I need your permission before sending these."</span>
+      <span>Zobba never refers to itself in the third person inside the conversation.</span>
+    </div>
+  </div>
+</section>
+
+<section id="narrow" data-screen-label="09 Narrow screen" style="padding: 48px 72px; width: 2100px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px;">
+  <h2 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -.015em;">Narrow screen</h2>
+  <div style="display: flex; gap: 48px; align-items: flex-start;">
+    <div style="width: 390px; flex-shrink: 0; height: 800px; border-radius: 44px; border: 10px solid #1C1B19; background: #FBFAF7; overflow: hidden; display: flex; flex-direction: column;">
+      <div style="height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 0 26px; font-size: 14px; font-weight: 600;"><span>10:42</span><span style="width: 24px; height: 11px; border: 1.5px solid #1C1B19; border-radius: 3px;"></span></div>
+      <div style="padding: 10px 20px 14px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #E3E0D8;"><span style="font-size: 22px; color: #3D3A35;">‹</span><div style="flex: 1; display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 15px; line-height: 20px; font-weight: 600;">Test leaver access for Q3</span><span style="align-self: flex-start; font-size: 12px; line-height: 16px; font-weight: 600; color: #3B2F99; background: #EEECFA; border-radius: 999px; padding: 2px 8px 2px 6px; display: flex; align-items: center; gap: 6px;"><dc-import name="Zobba Pair Mark" state="working" size="12" hint-size="12px,12px"></dc-import>Zobba is analysing</span></div></div>
+      <div style="padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; font-size: 15px; line-height: 23px;">
+        <div style="align-self: flex-end; max-width: 270px; background: #EFEDE8; border-radius: 16px; padding: 10px 14px;">Test leaver access for Q3 using the material in the shared folder.</div>
+        <div>I found the control definition, the HR leaver population and two access extracts. The LoanCore extract covers new accounts only, so I can't treat it as complete yet.</div>
+        <div style="display: flex; flex-direction: column; gap: 9px; font-size: 14px; line-height: 20px; color: #5E5A52;"><span>✓  Read control documentation</span><span>✓  Reconciled HR leavers to cover sheet</span><span>◐  LoanCore covers new accounts only</span><span style="display: flex; gap: 8px; align-items: center; color: #1C1B19; font-weight: 600;"><dc-import name="Zobba Pair Mark" state="working" size="14" hint-size="14px,14px"></dc-import>Comparing 23 leavers against 1,516 accounts</span></div>
+        <div style="background: #fff; border: 1px solid #E3E0D8; border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; gap: 10px; font-size: 14px; line-height: 20px;"><span style="flex: 1;"><b style="font-weight: 600;">Working data</b><br><span style="color: #5E5A52; font-size: 13px;">Leavers matched to accounts · working copy</span></span><span style="color: #4C3FB8; font-weight: 600;">Open</span></div>
+      </div>
+      <div style="flex: 1;"></div>
+      <div style="padding: 12px 16px 28px; display: flex; gap: 8px;"><div style="flex: 1; background: #fff; border: 1px solid #CCC8BD; border-radius: 24px; height: 48px; display: flex; align-items: center; padding: 0 18px; font-size: 15px; color: #7A766D;">Add guidance</div><div style="height: 48px; border: 1px solid #CCC8BD; border-radius: 24px; padding: 0 18px; display: flex; align-items: center; font-size: 15px; font-weight: 600;">Stop</div></div>
+    </div>
+    <div style="width: 390px; flex-shrink: 0; height: 800px; border-radius: 44px; border: 10px solid #1C1B19; background: #FBFAF7; overflow: hidden; display: flex; flex-direction: column;">
+      <div style="height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 0 26px; font-size: 14px; font-weight: 600;"><span>06:31</span><span style="width: 24px; height: 11px; border: 1.5px solid #1C1B19; border-radius: 3px;"></span></div>
+      <div style="padding: 10px 20px 14px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #E3E0D8;"><span style="font-size: 22px; color: #3D3A35;">‹</span><div style="flex: 1; display: flex; flex-direction: column;"><span style="font-size: 15px; line-height: 20px; font-weight: 600;">Weekly leaver check</span><span style="font-size: 12px; line-height: 16px; color: #5E5A52;">Northstar · Mon 5 Oct, 06:14 UTC</span></div><span style="font-size: 11px; line-height: 14px; font-weight: 600; color: #3D3A35; border: 1px solid #CCC8BD; border-radius: 999px; padding: 2px 8px;">○ Not reviewed</span></div>
+      <div style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: #3D3A35;"><dc-import name="Zobba Pair Mark" tone="mono" size="12" hint-size="12px,12px"></dc-import>Zobba ran this unattended</div>
+        <span style="align-self: flex-start; font-size: 12px; line-height: 16px; font-weight: 600; color: #3D3A35; background: #F3F1EC; border: 1px dashed #8C8578; border-radius: 999px; padding: 3px 10px;">◐ Inconclusive · coverage incomplete</span>
+        <div style="font-size: 19px; line-height: 28px; font-weight: 500;">Analysis completed. Three supported exceptions were identified, but the overall assessment is inconclusive because the application population was incomplete.</div>
+        <div style="display: flex; flex-direction: column; border-top: 1px solid #E3E0D8; font-size: 14px; line-height: 20px;">
+          <div style="display: flex; padding: 14px 0; border-bottom: 1px solid #E3E0D8;"><span style="flex: 1; font-weight: 600;">Exceptions · <span style="color: #B42318;">3</span></span><span style="color: #5E5A52;">›</span></div>
+          <div style="display: flex; padding: 14px 0; border-bottom: 1px solid #E3E0D8;"><span style="flex: 1; font-weight: 600;">Coverage</span><span style="color: #5E5A52;">›</span></div>
+          <div style="display: flex; padding: 14px 0; border-bottom: 1px solid #E3E0D8;"><span style="flex: 1; font-weight: 600;">Evidence</span><span style="color: #5E5A52;">›</span></div>
+          <div style="display: flex; padding: 14px 0; border-bottom: 1px solid #E3E0D8;"><span style="flex: 1; font-weight: 600;">How it ran</span><span style="color: #5E5A52;">›</span></div>
+        </div>
+      </div>
+      <div style="flex: 1;"></div>
+      <div style="padding: 12px 16px 28px; display: flex; flex-direction: column; gap: 10px;"><div style="background: #1C1B19; color: #fff; border-radius: 12px; height: 48px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600;">Request a complete LoanCore export</div><div style="background: #fff; border: 1px solid #CCC8BD; border-radius: 24px; height: 48px; display: flex; align-items: center; padding: 0 18px; font-size: 15px; color: #7A766D;">Ask about this result</div></div>
+    </div>
+    <div style="width: 440px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; font-size: 15px; line-height: 24px; color: #3D3A35; padding-top: 24px;">
+      <b style="color: #1C1B19;">Notes</b>
+      <span>The workspace becomes a card that opens full-screen; conversation is the default view.</span>
+      <span>Stop sits beside the composer, a 48px target.</span>
+      <span>One mark per screen. On the result it is one colour and small, so it names the actor without touching the result.</span>
+    </div>
+  </div>
+</section>
+
+<section id="permissions" data-screen-label="10 Permissions" style="padding: 48px 72px; width: 2100px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px;">
+  <h2 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -.015em;">Permissions</h2>
+  <p style="margin: 0; font-size: 16px; line-height: 26px; color: #3D3A35; max-width: 1200px;">Answers one question: what has Zobba been permitted to do in this engagement? The word is always Permissions. We don't use Mandate, and we don't use Access for the agent's authority, because Access already means user access in the audit itself.</p>
+  <div style="display: flex; gap: 48px; align-items: flex-start;">
+    <div style="width: 500px; flex-shrink: 0; display: flex; flex-direction: column; gap: 18px;">
+      <div style="background: #fff; border: 1px solid #E3E0D8; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="font-size: 14px; line-height: 20px; font-weight: 600;">Permissions</div>
+        <div style="font-size: 15px; line-height: 24px;">Can read selected sources and work on copies.<br>Asks before sending messages or invitations.</div>
+        <a href="#permissions" style="font-size: 14px; line-height: 20px; font-weight: 500;">View permissions</a>
+      </div>
+      <span style="font-size: 13px; line-height: 20px; color: #3D3A35;">Appears in the engagement header, the composer chip ("Permissions: reads selected sources") and at the foot of every permission request.</span>
+    </div>
+    <div style="width: 620px; flex-shrink: 0; background: #fff; border: 1px solid #E3E0D8; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 12px 32px rgba(28,27,25,.08);">
+      <div style="padding: 18px 22px; border-bottom: 1px solid #E3E0D8; display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 16px; line-height: 22px; font-weight: 600;">Permissions · Northstar Q3 2026 ITGC</span><span style="font-size: 12px; line-height: 16px; color: #5E5A52;">Set by Daniel Okonjo on 1 Sep 2026 · within limits set by your administrator</span></div>
+      <div style="padding: 4px 22px 10px; display: flex; flex-direction: column; font-size: 14px; line-height: 21px;">
+        <div style="display: grid; grid-template-columns: 170px 1fr; gap: 16px; padding: 14px 0; border-bottom: 1px solid #EFEDE8;"><b style="font-weight: 600;">Can read</b><span>Northstar shared folder · Q3 ITGC<br>AccessGate, read-only<br>LoanCore extracts provided by the client</span></div>
+        <div style="display: grid; grid-template-columns: 170px 1fr; gap: 16px; padding: 14px 0; border-bottom: 1px solid #EFEDE8;"><b style="font-weight: 600;">Can write</b><span>Working copies and drafts inside this engagement. Originals are never changed.</span></div>
+        <div style="display: grid; grid-template-columns: 170px 1fr; gap: 16px; padding: 14px 0; border-bottom: 1px solid #EFEDE8;"><b style="font-weight: 600;">Asks first</b><span>Sending email · sending calendar invitations · sharing a working paper outside the team</span></div>
+        <div style="display: grid; grid-template-columns: 170px 1fr; gap: 16px; padding: 14px 0; border-bottom: 1px solid #EFEDE8;"><b style="font-weight: 600;">Never</b><span>Changes client systems · signs off or approves work · contacts anyone outside the engagement contact list</span></div>
+        <div style="display: grid; grid-template-columns: 170px 1fr; gap: 16px; padding: 14px 0; border-bottom: 1px solid #EFEDE8;"><b style="font-weight: 600;">Scheduled checks</b><span>Run with these same permissions. Results wait for your review.</span></div>
+        <div style="display: grid; grid-template-columns: 170px 1fr; gap: 16px; padding: 14px 0; border-bottom: 1px solid #EFEDE8;"><b style="font-weight: 600;">Connections</b><span>Outlook, as daniel.okonjo@northstar-audit.com<br>AccessGate, connected 1 Sep</span></div>
+        <div style="display: grid; grid-template-columns: 170px 1fr; gap: 16px; padding: 14px 0;"><b style="font-weight: 600;">Administrator limits</b><span style="color: #3D3A35;">Client data stays in the EU region. External sharing is off for this organisation.</span></div>
+      </div>
+      <div style="padding: 14px 22px; border-top: 1px solid #E3E0D8; display: flex; gap: 10px; background: #FBFAF7;"><span style="border: 1px solid #CCC8BD; background: #fff; border-radius: 8px; padding: 6px 14px; font-size: 13px; line-height: 18px; font-weight: 600;">Change permissions</span><span style="padding: 7px 10px; font-size: 13px; line-height: 18px; font-weight: 600; color: #3D3A35;">Activity record</span></div>
+    </div>
+    <div style="width: 520px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; font-size: 14px; line-height: 22px; color: #3D3A35;">
+      <b style="color: #1C1B19;">Notes</b>
+      <span>Rows are verbs auditors already use. No scopes, tokens or roles in this view.</span>
+      <span>"Never" is explicit because it's what reviewers and regulators ask first. The Activity record answers "what did it actually do", with every external action and who allowed it.</span>
+      <span>No lock or shield. No brand colour. This is a statement of fact.</span>
+    </div>
+  </div>
+</section>
+
+<section id="artifact" data-screen-label="11 Artifact" style="padding: 48px 72px; width: 2100px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px;">
+  <h2 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -.015em;">Working paper · chrome is Zobba, the artifact is the methodology's</h2>
+  <div style="display: flex; gap: 48px; align-items: flex-start;">
+    <div style="width: 900px; flex-shrink: 0; background: #F6F5F1; border: 1px solid #E3E0D8; border-radius: 12px; overflow: hidden;">
+      <div style="height: 52px; display: flex; align-items: center; padding: 0 18px; gap: 12px; border-bottom: 1px solid #E3E0D8; background: #fff;"><div style="flex: 1; display: flex; flex-direction: column;"><span style="font-size: 14px; line-height: 19px; font-weight: 600;">Working paper · draft 2</span><span style="font-size: 12px; line-height: 16px; color: #5E5A52;">From Test leaver access for Q3 · pinned</span></div><span style="font-size: 12px; color: #5E5A52;">Pin  ·  Expand  ·  Close</span></div>
+      <div style="padding: 28px;">
+        <div style="background: #fff; box-shadow: 0 1px 3px rgba(28,27,25,.08); padding: 48px 56px; font-family: Arial, Helvetica, sans-serif; color: #111; display: flex; flex-direction: column; gap: 16px;">
+          <div style="display: flex; justify-content: space-between; font-size: 11px; line-height: 15px; color: #444; border-bottom: 2px solid #111; padding-bottom: 10px;"><span><b>Northstar Bank plc · Internal Audit</b><br>Q3 2026 IT General Controls</span><span style="text-align: right;">WP ref ITGC-AC-07<br>Template IA-WP-03 v4</span></div>
+          <div style="font-size: 20px; line-height: 26px; font-weight: 700;">Leaver access removal, Q3 2026</div>
+          <div style="display: grid; grid-template-columns: 110px 1fr 110px 1fr; gap: 6px 12px; font-size: 11px; line-height: 16px;"><b>Prepared by</b><span>Daniel Okonjo, 5 Oct 2026</span><b>Reviewed by</b><span style="color: #666;">Pending</span><b>Control</b><span>AC-07 Leaver access removal</span><b>Period</b><span>1 Jul to 30 Sep 2026</span></div>
+          <div style="font-size: 12px; line-height: 18px; font-weight: 700; margin-top: 6px;">1 Objective</div>
+          <div style="font-size: 12px; line-height: 19px;">To determine whether access to AccessGate and LoanCore was removed within five working days of exit for leavers in the period.</div>
+          <div style="font-size: 12px; line-height: 18px; font-weight: 700;">2 Results</div>
+          <div style="font-size: 11px; line-height: 16px; border: 1px solid #999;">
+            <div style="display: grid; grid-template-columns: 1.3fr 1fr 1fr 1.2fr .6fr; background: #EEE; font-weight: 700; border-bottom: 1px solid #999;"><span style="padding: 6px 8px;">Leaver</span><span style="padding: 6px 8px;">Exit date</span><span style="padding: 6px 8px;">System</span><span style="padding: 6px 8px;">Result</span><span style="padding: 6px 8px;">Ref</span></div>
+            <div style="display: grid; grid-template-columns: 1.3fr 1fr 1fr 1.2fr .6fr; border-bottom: 1px solid #DDD;"><span style="padding: 6px 8px;">Joseph Mwale</span><span style="padding: 6px 8px;">18 Jul 2026</span><span style="padding: 6px 8px;">AccessGate</span><span style="padding: 6px 8px;">Exception</span><span style="padding: 6px 8px;">E6.1</span></div>
+            <div style="display: grid; grid-template-columns: 1.3fr 1fr 1fr 1.2fr .6fr;"><span style="padding: 6px 8px;">Kelvin Chanda</span><span style="padding: 6px 8px;">12 Sep 2026</span><span style="padding: 6px 8px;">AccessGate</span><span style="padding: 6px 8px;">Exception</span><span style="padding: 6px 8px;">E6.2</span></div>
+          </div>
+          <div style="font-size: 12px; line-height: 18px; font-weight: 700;">3 Conclusion</div>
+          <div style="font-size: 12px; line-height: 19px;">AccessGate: the control did not operate effectively for the 23 employee leavers on the HR list. Two retained access after exit. LoanCore: no conclusion until the full population is available (L1).</div>
+          <div style="font-size: 12px; line-height: 18px; font-weight: 700;">4 Limitations</div>
+          <div style="font-size: 12px; line-height: 19px;">L1 LoanCore listing covers accounts created in the period only.<br>L2 Contractor leavers are not on the HR list. Their population has not been established.</div>
+          <div style="margin-top: 18px; padding-top: 8px; border-top: 1px solid #CCC; display: flex; align-items: center; gap: 6px; font-size: 9px; line-height: 12px; color: #666;"><span style="flex: 1;">Page 1 of 3 · Draft, not reviewed</span><dc-import name="Zobba Pair Mark" tone="mono" size="10" hint-size="10px,10px"></dc-import><span>Prepared with Zobba · draft 2 · 14 evidence items linked · ref ZB-7F3A</span></div>
+        </div>
+      </div>
+    </div>
+    <div style="width: 520px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; font-size: 15px; line-height: 24px; color: #3D3A35; padding-top: 12px;">
+      <div><b style="color: #1C1B19;">Chrome is Zobba.</b> The panel header, controls and warm surround follow the identity.</div>
+      <div><b style="color: #1C1B19;">The page is the methodology's.</b> Firm template, typeface, headings, reference scheme and colours. No Iris, no Hanken, no symbol in the body. Results say "Exception" in the firm's style.</div>
+      <div><b style="color: #1C1B19;">People are accountable.</b> Prepared by and Reviewed by name auditors. Zobba is never listed as preparer.</div>
+      <div><b style="color: #1C1B19;">Provenance is metadata.</b> A 10px one-colour mark and "Prepared with Zobba" in the footer, with a reference that resolves to the evidence record. Firms can turn off the footer line in export settings; the record remains in Zobba.</div>
+      <div><b style="color: #1C1B19;">In Zobba only.</b> Iris selection, the typographic diff and citation chips are overlays in the workspace. They never export into the document.</div>
+    </div>
+  </div>
+</section>
+
+<section id="raeltec" data-screen-label="12 Raeltec and Kobba" style="padding: 48px 72px; width: 2100px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px;">
+  <h2 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -.015em;">Raeltec endorsement and Kobba</h2>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 18px;">
+      <div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #5E5A52;">Endorsed lockup</div>
+      <dc-import name="Zobba Wordmark" size="56" endorse="true" hint-size="420px,60px"></dc-import>
+      <div style="background: #1C1B19; border-radius: 10px; padding: 22px 26px; align-self: flex-start;"><dc-import name="Zobba Wordmark" size="40" endorse="true" dark="true" hint-size="300px,44px"></dc-import></div>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 22px; color: #3D3A35;">
+        <span><b style="color: #1C1B19;">Construction.</b> "by Raeltec" in Hanken Grotesk 500 at 42% of the wordmark size, tertiary colour (#5E5A52; #B8B3A8 on dark). Gap = 0.28 × wordmark size, the same gap as symbol to wordmark. It sits on the wordmark's x-height band.</span>
+        <span><b style="color: #1C1B19;">Use.</b> Marketing, sign-in, About, proposals, external PDFs and the installer. <b style="color: #1C1B19;">Not</b> in the product sidebar, app icon, notifications or working-paper footer.</span>
+      </div>
+    </div>
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #5E5A52;">Kobba comparison</div>
+      <div style="font-size: 14px; line-height: 22px; color: #8A4B06; background: #FDF3E2; border-radius: 8px; padding: 10px 14px;">Kobba's identity isn't in the material supplied, and I couldn't find it publicly. The table sets what Zobba owns and what to check on Kobba's side before freezing.</div>
+      <div style="display: grid; grid-template-columns: 150px 1fr 1fr; font-size: 13px; line-height: 19px; border: 1px solid #E3E0D8; border-radius: 10px; overflow: hidden;">
+        <span style="padding: 9px 12px; background: #FBFAF7; font-weight: 600;"></span><span style="padding: 9px 12px; background: #FBFAF7; font-weight: 600;">Zobba owns</span><span style="padding: 9px 12px; background: #FBFAF7; font-weight: 600;">Check on Kobba</span>
+        <span style="padding: 9px 12px; border-top: 1px solid #EFEDE8; font-weight: 600;">Wordmark</span><span style="padding: 9px 12px; border-top: 1px solid #EFEDE8;">Title case, Hanken Grotesk 650</span><span style="padding: 9px 12px; border-top: 1px solid #EFEDE8;">Must not share the typeface for its wordmark</span>
+        <span style="padding: 9px 12px; border-top: 1px solid #EFEDE8; font-weight: 600;">Doubled letter</span><span style="padding: 9px 12px; border-top: 1px solid #EFEDE8;">Second b stepped down</span><span style="padding: 9px 12px; border-top: 1px solid #EFEDE8;">Must not modify its bb (no step, ligature or colour split)</span>
+        <span style="padding: 9px 12px; border-top: 1px solid #EFEDE8; font-weight: 600;">Symbol</span><span style="padding: 9px 12px; border-top: 1px solid #EFEDE8;">Two offset forms on a shared line</span><span style="padding: 9px 12px; border-top: 1px solid #EFEDE8;">Must not be a paired or two-part mark</span>
+        <span style="padding: 9px 12px; border-top: 1px solid #EFEDE8; font-weight: 600;">Palette</span><span style="padding: 9px 12px; border-top: 1px solid #EFEDE8;">Graphite, linen, Iris</span><span style="padding: 9px 12px; border-top: 1px solid #EFEDE8;">If Kobba is violet or blue-violet, revisit Petrol as the fallback</span>
+        <span style="padding: 9px 12px; border-top: 1px solid #EFEDE8; font-weight: 600;">Icon shape</span><span style="padding: 9px 12px; border-top: 1px solid #EFEDE8;">Graphite rounded square, radius 22.5%</span><span style="padding: 9px 12px; border-top: 1px solid #EFEDE8;">Different ground colour so docks don't pair them</span>
+        <span style="padding: 9px 12px; border-top: 1px solid #EFEDE8; font-weight: 600;">Endorsement</span><span style="padding: 9px 12px; border-top: 1px solid #EFEDE8;">"by Raeltec" lockup as defined</span><span style="padding: 9px 12px; border-top: 1px solid #EFEDE8;">Should be identical: this is the only shared family signal</span>
+      </div>
+      <span style="font-size: 13px; line-height: 20px; color: #3D3A35;">The intended result: the names rhyme and the endorsement matches, and nothing else. Told they're both Raeltec, people believe it; untold, nobody assumes one is a module of the other.</span>
+    </div>
+  </div>
+</section>
+
+<section id="nav" data-screen-label="13 Navigation" style="padding: 48px 72px; width: 2100px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px;">
+  <h2 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -.015em;">Product shell · Library and Skills</h2>
+  <div style="display: grid; grid-template-columns: 300px 1fr; gap: 36px; align-items: start;">
+    <div style="background: #EFEDE8; border-radius: 12px; padding: 14px 10px; display: flex; flex-direction: column; font-size: 14px; line-height: 20px; height: 520px; box-sizing: border-box;">
+      <div style="padding: 4px 8px 16px;"><dc-import name="Zobba Wordmark" size="20" hint-size="92px,22px"></dc-import></div>
+      <span style="padding: 7px 10px; font-weight: 600;">New task</span><span style="padding: 7px 10px;">Search</span><span style="padding: 7px 10px;">Scheduled checks</span>
+      <span style="padding: 16px 10px 6px; font-size: 12px; font-weight: 600; color: #5E5A52;">Engagements</span><span style="padding: 7px 10px;">Northstar · Q3 2026 ITGC</span>
+      <span style="padding: 16px 10px 6px; font-size: 12px; font-weight: 600; color: #5E5A52;">Recent tasks</span><span style="padding: 7px 10px;">Test leaver access for Q3</span>
+      <div style="flex: 1;"></div>
+      <span style="padding: 7px 10px; font-size: 13px; color: #3D3A35;">Connections</span><span style="padding: 7px 10px; font-size: 13px; color: #3D3A35;">Settings</span>
+    </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+      <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 10px; font-size: 15px; line-height: 24px; color: #3D3A35;"><b style="color: #1C1B19; font-size: 17px;">Library: remove from first level</b><span>Its jobs are covered elsewhere. Past working papers and evidence live in their engagement and are found through Search. Firm templates and methodology documents belong in Settings › Methodology. A separate Library would be a second filing system beside Engagements, which is the GRC pattern we're avoiding.</span><span style="font-size: 13px; color: #5E5A52;">Revisit only if users need cross-engagement reuse that Search can't serve.</span></div>
+      <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 10px; font-size: 15px; line-height: 24px; color: #3D3A35;"><b style="color: #1C1B19; font-size: 17px;">Skills: move under Settings › Methodology and skills</b><span>Skills are fundamental to the harness, but ordinary auditors use them rather than manage them. They appear where they're used: in the composer's + menu, in the activity line ("Using Leaver access test, v3") and in "How it ran". Methodology owners and administrators maintain them in Settings.</span></div>
+      <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 10px; font-size: 15px; line-height: 24px; color: #3D3A35; grid-column: span 2;"><b style="color: #1C1B19; font-size: 17px;">Final first level</b><span>New task · Search · Scheduled checks · Engagements · Recent tasks. At the bottom: Connections, Settings (Methodology and skills, Permission defaults, Administration for admins), and the user. Permissions per engagement live on the engagement, not in navigation.</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="hero" data-screen-label="14 Hero" style="padding: 48px 72px; width: 2100px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px;">
+  <h2 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -.015em;">Marketing hero</h2>
+  <div style="width: 1400px; height: 860px; background: #1C1B19; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; align-items: center; color: #F4F1EA;">
+    <div style="align-self: stretch; height: 72px; display: flex; align-items: center; padding: 0 44px; gap: 10px;"><dc-import name="Zobba Wordmark" size="24" endorse="true" dark="true" hint-size="200px,26px"></dc-import><div style="flex: 1;"></div><span style="font-size: 14px; line-height: 20px; color: #B8B3A8; padding-right: 22px;">How it works</span><span style="font-size: 14px; line-height: 20px; color: #B8B3A8; padding-right: 22px;">Permissions</span><span style="font-size: 14px; line-height: 20px; font-weight: 600; color: #1C1B19; background: #F4F1EA; border-radius: 8px; padding: 8px 14px;">Request a pilot</span></div>
+    <div style="margin-top: 52px; font-size: 13px; line-height: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #B9B0F5;">The audit agent</div>
+    <div style="margin-top: 16px; font-size: 64px; line-height: 70px; font-weight: 600; letter-spacing: -.035em; text-align: center;">Every finding, next to its evidence.</div>
+    <div style="margin-top: 18px; font-size: 19px; line-height: 30px; color: #D6D2C8; text-align: center; max-width: 780px; text-wrap: pretty;">Zobba works alongside auditors, inside the sources and systems it has been permitted to use. It tests controls, analyses populations and drafts working papers, and shows what supports each result. The conclusion stays yours.</div>
+    <div style="margin-top: 40px; width: 1120px; height: 700px; overflow: hidden; border-radius: 12px 12px 0 0; box-shadow: 0 24px 70px rgba(0,0,0,.45);"><div style="width: 1280px; height: 800px; transform: scale(.875); transform-origin: top left;"><dc-import name="Zobba Final Screen" screen="changes" hint-size="1280px,800px"></dc-import></div></div>
+  </div>
+</section>
+
+<section id="tokens" data-screen-label="15 Tokens" style="padding: 48px 72px; width: 2100px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px;">
+  <h2 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -.015em;">Design tokens</h2>
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px;">
+    <sc-for list="{{ tokenGroups }}" as="g" hint-placeholder-count="6">
+      <div style="background: #fff; border-radius: 14px; padding: 22px 24px; display: flex; flex-direction: column; gap: 4px;">
+        <div style="font-size: 13px; line-height: 18px; font-weight: 600; color: #5E5A52; padding-bottom: 8px;">{{ g.name }}</div>
+        <sc-for list="{{ g.rows }}" as="t" hint-placeholder-count="5">
+          <div style="display: grid; grid-template-columns: 1fr 1.25fr; gap: 12px; padding: 6px 0; border-top: 1px solid #EFEDE8; font-size: 13px; line-height: 19px;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #1C1B19;">{{ t.k }}</span><span style="color: #3D3A35;">{{ t.v }}</span></div>
+        </sc-for>
+      </div>
+    </sc-for>
+  </div>
+</section>
+
+<section id="rules" data-screen-label="16 Component rules" style="padding: 48px 72px; width: 2100px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px;">
+  <h2 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -.015em;">Component rules</h2>
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px;">
+    <sc-for list="{{ components }}" as="c" hint-placeholder-count="11">
+      <div style="background: #fff; border-radius: 14px; padding: 22px 24px; display: flex; flex-direction: column; gap: 8px;"><b style="font-size: 16px; line-height: 22px;">{{ c.name }}</b><span style="font-size: 14px; line-height: 22px; color: #3D3A35;">{{ c.rule }}</span></div>
+    </sc-for>
+  </div>
+</section>
+
+<section id="dodont" data-screen-label="17 Do and don't" style="padding: 48px 72px; width: 2100px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px;">
+  <h2 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -.015em;">Do and don't</h2>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 4px;"><b style="font-size: 17px; padding-bottom: 8px;">Do</b><sc-for list="{{ dos }}" as="d" hint-placeholder-count="8"><span style="font-size: 14px; line-height: 22px; color: #3D3A35; padding: 8px 0; border-top: 1px solid #EFEDE8;">{{ d }}</span></sc-for></div>
+    <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 4px;"><b style="font-size: 17px; padding-bottom: 8px;">Don't</b><sc-for list="{{ donts }}" as="d" hint-placeholder-count="8"><span style="font-size: 14px; line-height: 22px; color: #3D3A35; padding: 8px 0; border-top: 1px solid #EFEDE8;">{{ d }}</span></sc-for></div>
+  </div>
+</section>
+
+<section id="test" data-screen-label="18 Final test" style="padding: 48px 72px; width: 2100px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px;">
+  <h2 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -.015em;">Final test</h2>
+  <div style="display: grid; grid-template-columns: 420px 1fr; background: #fff; border-radius: 14px; overflow: hidden;">
+    <sc-for list="{{ tests }}" as="t" hint-placeholder-count="9">
+      <span style="padding: 14px 22px; border-top: 1px solid #EFEDE8; font-size: 15px; line-height: 22px; font-weight: 600;">{{ t.s }}</span><span style="padding: 14px 22px; border-top: 1px solid #EFEDE8; font-size: 14px; line-height: 22px; color: #3D3A35;">{{ t.r }}</span>
+    </sc-for>
+  </div>
+</section>
+
+<section id="open" data-screen-label="19 Open questions" style="padding: 48px 72px 100px; width: 2100px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px;">
+  <h2 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -.015em;">Remaining implementation questions</h2>
+  <div style="background: #fff; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 4px; max-width: 1400px;">
+    <sc-for list="{{ questions }}" as="q" hint-placeholder-count="6"><span style="font-size: 15px; line-height: 24px; color: #3D3A35; padding: 10px 0; border-top: 1px solid #EFEDE8;">{{ q }}</span></sc-for>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const accents = [
+      { name: 'Moss (baseline)', a: '#2F6B3A', light: '#A9D6A0', wash: '#EAF2E7', strong: '#24552E', verdict: 'Rejected', vColor: '#B42318', why: 'Beside "21 no exception" it reads as the same meaning. The rule "moss means presence" would be broken by perception, not by designers.' },
+      { name: 'Cobalt', a: '#2F4BC4', light: '#A9B8FF', wash: '#ECEFFB', strong: '#233A9E', verdict: 'Rejected', vColor: '#B42318', why: 'Clean and safe, but indistinguishable from default link and information blue. Least ownable.' },
+      { name: 'Iris', a: '#4C3FB8', light: '#B9B0F5', wash: '#EEECFA', strong: '#3B2F99', verdict: 'Recommended', vColor: '#1E6B35', why: 'Outside every audit meaning, distinct from link blue, calm at 14px, strong on graphite. Ownable.', rowBg: '#FBFAFE' },
+      { name: 'Petrol', a: '#1F5F75', light: '#8FCADB', wash: '#E6F1F4', strong: '#174A5C', verdict: 'Fallback', vColor: '#8A4B06', why: 'Serious and calm, but cooler, and drifts toward teal and information states. Use if Kobba owns violet.' },
+      { name: 'Damson', a: '#7A2E63', light: '#EBB1D8', wash: '#F5EAF1', strong: '#5F2350', verdict: 'Rejected', vColor: '#B42318', why: 'Distinctive, but at 14px beside "Still active" it sits too close to exception red.' }
+    ].map(c => ({ rowBg: '#FFFFFF', ...c }));
+    const tokenGroups = [
+      { name: 'Colour · brand and surfaces', rows: [
+        { k: 'color.graphite', v: '#1C1B19 · text, primary button' }, { k: 'color.iris', v: '#4C3FB8 · presence, link, focus' }, { k: 'color.iris.strong', v: '#3B2F99 · text on wash, hover' }, { k: 'color.iris.wash', v: '#EEECFA · chips, ring' }, { k: 'color.iris.select', v: '#F6F5FD · selected block fill' }, { k: 'color.iris.light', v: '#B9B0F5 · dark surfaces only' }, { k: 'surface.sidebar', v: '#EFEDE8 linen' }, { k: 'surface.conversation', v: '#FBFAF7 canvas' }, { k: 'surface.panel / artifact', v: '#FFFFFF' }, { k: 'surface.artifact.surround', v: '#F6F5F1' } ] },
+      { name: 'Colour · text, lines, semantics', rows: [
+        { k: 'text.1 / 2 / 3', v: '#1C1B19 / #3D3A35 / #5E5A52' }, { k: 'text.placeholder', v: '#7A766D' }, { k: 'line.hairline / control', v: '#E3E0D8 / #CCC8BD' }, { k: 'state.pass', v: '#1E6B35 on #EAF4EC · ✓' }, { k: 'state.exception', v: '#B42318 on #FDECEA · !' }, { k: 'state.warning', v: '#8A4B06 on #FDF3E2 · ▲' }, { k: 'state.inconclusive', v: '#3D3A35 on #F3F1EC, 1px dashed #8C8578 · ◐' }, { k: 'state.pending', v: '#3D3A35, 1px #CCC8BD outline · ○' }, { k: 'diff.added', v: 'bg #E8E4DA + 1.5px #1C1B19 underline' }, { k: 'diff.removed', v: '#6F6B63 line-through' } ] },
+      { name: 'Type · Hanken Grotesk', rows: [
+        { k: 'type.display', v: '60/66 · 600 · −0.035em' }, { k: 'type.greeting', v: '38/46 · 600 · −0.022em' }, { k: 'type.result', v: '20/30 · 500' }, { k: 'type.heading', v: '15/20 · 600' }, { k: 'type.body', v: '15/24 · 400' }, { k: 'type.ui', v: '14/20 · 400, 500, 600' }, { k: 'type.meta', v: '13/18 and 12/16 · 400' }, { k: 'type.id', v: 'IBM Plex Mono 12/18' }, { k: 'type.wordmark', v: '650 · −0.028em · bb −0.05em · step 0.215em' } ] },
+      { name: 'Space, radius, border', rows: [
+        { k: 'space', v: '4 · 8 · 12 · 16 · 20 · 24 · 32 · 48' }, { k: 'layout.sidebar', v: '248px (rail 52px)' }, { k: 'layout.panel', v: '480–540px, or flex beside a 430px conversation' }, { k: 'layout.header', v: '52px (60px for scheduled)' }, { k: 'radius.xs', v: '4 · citation chip' }, { k: 'radius.sm', v: '6 · selection tag' }, { k: 'radius.md', v: '8 · buttons, tables' }, { k: 'radius.lg', v: '12 · cards, confirmation' }, { k: 'radius.composer', v: '18' }, { k: 'radius.pill', v: '999 · status, suggestions' }, { k: 'border', v: '1px hairline; 1px control; 1.5px focused composer' } ] },
+      { name: 'Elevation, icons', rows: [
+        { k: 'shadow.composer', v: '0 2px 10px rgba(28,27,25,.05)' }, { k: 'shadow.page', v: '0 1px 3px rgba(28,27,25,.08)' }, { k: 'shadow.popover', v: '0 12px 32px rgba(28,27,25,.14)' }, { k: 'icon.grid', v: '24px, 20px in dense UI' }, { k: 'icon.stroke', v: '2px, round caps and joins, corner radius 2.5' }, { k: 'icon.color', v: 'text.2; Iris only when the icon is a link' } ] },
+      { name: 'Focus, selection, motion', rows: [
+        { k: 'focus.ring', v: '2px #4C3FB8, offset 2px' }, { k: 'focus.composer', v: '1.5px #4C3FB8 border + 4px #EEECFA ring' }, { k: 'select.block', v: '2px #4C3FB8 outline + #F6F5FD fill, radius 2' }, { k: 'select.text', v: '#DAD5FA' }, { k: 'select.tag', v: '#3B2F99 on #EEECFA' }, { k: 'motion.working', v: '3.6s loop · 3 units · cubic-bezier(.45,0,.25,1)' }, { k: 'motion.complete', v: '1.1s once · cubic-bezier(.2,.7,.2,1)' }, { k: 'motion.ui', v: '160ms ease-out panels; 120ms hover' }, { k: 'motion.reduced', v: 'working → level, still' } ] }
+    ];
+    const components = [
+      { name: 'Composer', rule: 'White on canvas, radius 18, control border. Focus: Iris border and wash ring. Graphite send. Engagement and permissions chips inside. While Zobba works: placeholder "Add guidance or ask a question" plus Stop.' },
+      { name: 'Conversation', rule: 'Your messages on linen, right-aligned, radius 16. Zobba\u2019s replies are unboxed text at 15/24 with no avatar. The symbol is not repeated per message. First person only.' },
+      { name: 'Activity', rule: 'A list under the reply: ✓ done in tertiary, ◐ limitation, the working mark on the current step only (one line, 600 weight, a real object, Inspect link), then "Next:" in placeholder colour. No percentages.' },
+      { name: 'Workspace panel', rule: 'White, left hairline. Header: title, "From [task]", Pin · Expand · Close. Opens when there is something to see; closes without losing conversation. Never branded.' },
+      { name: 'Artifact', rule: 'Rendered in the firm template on a white page with a page shadow on the warm surround. Zobba overlays (selection, diff, citations) are workspace-only and never export.' },
+      { name: 'Evidence', rule: 'Numbered E-references in Iris strong, one line each, "Open" link opens a drawer with the source excerpt and location. Evidence is listed for the current selection.' },
+      { name: 'Citation', rule: 'Inline chip: 12px 600, Iris strong on wash, radius 4. Hover previews the excerpt; click opens the evidence drawer.' },
+      { name: 'Permissions', rule: 'Two plain sentences plus "View permissions". Detail rows: Can read, Can write, Asks first, Never, Scheduled checks, Connections, Administrator limits. No scopes, tokens or lock icons.' },
+      { name: 'Confirmation', rule: 'One card in the conversation: what, from, to, content, time and calendar. Buttons: Allow and send (graphite), Edit first, Don\u2019t send. Permissions footer. Drafts open in the panel. Never a second modal.' },
+      { name: 'Status', rule: 'Semantic chips always carry a glyph and a word. The Zobba presence chip (mark + "Zobba is …") is the only Iris status. Result, review and presence are separate chips that never merge.' },
+      { name: 'Changes', rule: 'Typographic diff: struck removed text, underlined added text on #E8E4DA. Summary line "1 edit, 1 addition". Undo beside "Draft n saved". Corrections are never auto-accepted.' }
+    ];
+    const dos = [
+      'Use Iris only for Zobba\u2019s presence and for things you can act on.',
+      'Pair every result with a glyph and a word.',
+      'Keep one animated mark per view, beside real activity text.',
+      'Write chrome as "Zobba is …" and conversation as "I …".',
+      'Let the firm\u2019s template own the artifact. Keep provenance to the footer.',
+      'Name the accountable auditor wherever work is prepared or reviewed.',
+      'Use the one-colour mark for print, provenance and OS templates.',
+      'Keep the stepped second b in every wordmark reproduction.'
+    ];
+    const donts = [
+      'Colour a result, count or approval button with Iris.',
+      'Put a ✓, colour state or badge on or beside the symbol.',
+      'Use gradients, glows or large Iris fields anywhere.',
+      'Set the wordmark in lowercase, uppercase, or as plain typed text.',
+      'Put the symbol, Iris or Hanken inside the working-paper body.',
+      'Show percentages or fake progress to suggest work.',
+      'Add "by Raeltec" to the sidebar, icon or notifications.',
+      'Call it Mandate, or use Access for Zobba\u2019s authority.'
+    ];
+    const tests = [
+      { s: 'A new auditor opens Zobba', r: 'Symbol, one question, a composer. Title-case Zobba and graphite feel like a serious tool; the permissions chip answers "what can it touch?" before they ask.' },
+      { s: 'Four hours analysing a population', r: 'The brand is a 14px mark on the current step and one chip. Warm neutrals, no brand fields, and the motion is slow and small. Reduced motion stops it entirely.' },
+      { s: 'A manager reviews a working paper', r: 'They see the firm\u2019s template with the preparer named. Zobba appears as a footer line and, in the app, as selection and evidence tools.' },
+      { s: 'An auditor challenges a conclusion', r: 'Selection in Iris, reply in first person, typographic diff and an Undo. No colour suggests the correction was good or bad.' },
+      { s: 'Zobba asks to send an email', r: 'The mark is level, still and open: waiting, not warning. One card lists exactly what will leave, from whom, to whom and when.' },
+      { s: 'A check runs unattended at 06:00', r: 'A one-colour mark names the actor. The result is a separate dashed Inconclusive chip plus a sentence. The notification states the result in words.' },
+      { s: 'A Head of Internal Audit sees a demo', r: 'Graphite hero, the evidence-beside-finding line, the permissions view. No AI clichés. Pair explains the product rather than decorating it.' },
+      { s: 'A Big Four partner sees the output', r: 'It looks like their own methodology, not a vendor\u2019s. Provenance is discreet and traceable.' },
+      { s: 'A regulator asks what the agent could do', r: 'Permissions in plain rows, including "Never", with administrator limits and the Activity record of each external action and who allowed it.' }
+    ];
+    const questions = [
+      'Kobba: please share its current wordmark, symbol and palette so the comparison can be completed. If Kobba uses violet, switch the accent to Petrol before freezing.',
+      'Wordmark: commission final drawing of the stepped b (and optical sizes for 16–24px) from a type designer. The construction here is approved but produced from the font.',
+      'Firm templates: confirm the default for the "Prepared with Zobba" footer (on by default, firm can disable) and whether provenance is also embedded in document metadata.',
+      'Dark mode for the working application: tokens exist for dark surfaces. Decide whether it ships in v1 or later.',
+      'Notifications: confirm how the OS renders the one-colour template icon on Windows and macOS, and the wording for each result state.',
+      'Clearance: trademark and domain checks for Zobba, and a search for the symbol in software classes.'
+    ];
+    return { accents, tokenGroups, components, dos, donts, tests, questions };
+  }
+}
+</script>
+</body>
+</html>

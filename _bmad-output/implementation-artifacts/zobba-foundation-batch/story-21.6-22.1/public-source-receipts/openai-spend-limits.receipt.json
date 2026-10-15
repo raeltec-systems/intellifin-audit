@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://developers.openai.com/api/docs/guides/spend-limits",
+  "effective_url": "https://developers.openai.com/api/docs/guides/spend-limits",
+  "retrieved_at_utc": "2026-10-03T04:28:09.080126+00:00",
+  "completed_at_utc": "2026-10-03T04:28:09.284039+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html; charset=utf-8",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "openai-spend-limits.html",
+  "bytes": 373742,
+  "sha256": "22d4ba2359d312df50cdd01e544f543610363d86f3e702df44a3f9750c6e6b70",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/openai-spend-limits.txt",
+  "readable_extraction_sha256": "325ca9776a28cae56588aadae2e6a4a293d0092dbaa4438cd253048e3947d502",
+  "raw_body_in_checkpoint": false
+}

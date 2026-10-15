@@ -1,0 +1,14 @@
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+   Compiling zobba-api v0.1.0 (/workspace/intellifin-audit/zobba/crates/api)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 30.95s
+     Running tests/knowledge_contract.rs (target/debug/deps/knowledge_contract-f8e1f9324c967109)
+
+running 5 tests
+test knowledge_wire_preserves_exact_prose_and_canonical_revision_strings ... ok
+test knowledge_query_bounds_count_unicode_scalars_and_keep_exact_inputs ... ok
+test typed_preference_release_cannot_declassify_free_text ... ok
+test generated_knowledge_contract_keeps_current_session_and_mutation_fences ... ok
+test knowledge_inspection_declares_exact_query_parameters_and_bounds ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+

@@ -1,0 +1,13 @@
+{
+  "path": "zobba/crates/infrastructure/src/knowledge.rs",
+  "before_sha256": "a3906375bf0d42f8e6b2734b81f46546cdd438536ce94fea87ba89a2a8ab31de",
+  "after_sha256": "074a15f557996974e7d62d98ad92d45495e25591d8f13e3c56fafde4740ec94d",
+  "before_bytes": 91136,
+  "after_bytes": 91137,
+  "only_change": {
+    "before": "// affected engagement only once, in first-release order.",
+    "after": "// affected engagement only once, in publication-ID order."
+  },
+  "behavior_change": false,
+  "verification": "Exact byte replacement and reversal match; full Rust/smoke behavioral evidence retained; current binaries rebuilt before final browser startup."
+}

@@ -1,0 +1,12 @@
+Selected secondary-source evidence
+Source: https://indianexpress.com/article/technology/artificial-intelligence/openai-dots-always-on-ai-agents-explained-10900652/
+Published: Updated Sep 30, 2026, 05:05 PM IST
+Retrieved: 2026-09-30
+
+Selected quotation:
+OpenAI’s Dots explained: How its ‘always on’ AI agents work, what they can do
+
+Research summary (not a quotation):
+Explainer describes ongoing responsibilities and proactive work. Launch availability and multi-dot wording should defer to official guides.
+
+This is a short relevant excerpt, not the complete article. See public-secondary.md for source-specific limits.

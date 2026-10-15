@@ -1,0 +1,145 @@
+{
+  "actor_id": "identity-admin",
+  "citations": [
+    {
+      "field": "name",
+      "location": {
+        "end": "30",
+        "line": "1",
+        "start": "2"
+      },
+      "quote": "Accounts payable method 2025"
+    },
+    {
+      "field": "requirements[0].label",
+      "location": {
+        "end": "53",
+        "line": "3",
+        "start": "32"
+      },
+      "quote": "AP-1 Invoice approval"
+    },
+    {
+      "field": "requirements[0].mandatory",
+      "location": {
+        "end": "65",
+        "line": "3",
+        "start": "32"
+      },
+      "quote": "AP-1 Invoice approval (mandatory)"
+    },
+    {
+      "field": "requirements[0].criteria[0]",
+      "location": {
+        "end": "116",
+        "line": "4",
+        "start": "76"
+      },
+      "quote": "Payments over 10,000 have two approvals."
+    },
+    {
+      "field": "requirements[0].evidence_checks[0]",
+      "location": {
+        "end": "158",
+        "line": "5",
+        "start": "127"
+      },
+      "quote": "the approval log for the period"
+    },
+    {
+      "field": "requirements[1].label",
+      "location": {
+        "end": "187",
+        "line": "7",
+        "start": "161"
+      },
+      "quote": "AP-2 Vendor master changes"
+    },
+    {
+      "field": "requirements[1].mandatory",
+      "location": {
+        "end": "199",
+        "line": "7",
+        "start": "161"
+      },
+      "quote": "AP-2 Vendor master changes (mandatory)"
+    }
+  ],
+  "conflicts": [
+    {
+      "location": {
+        "end": "267",
+        "line": "8",
+        "start": "200"
+      },
+      "quote": "The change threshold is 5,000 in section 2 but 10,000 in section 4.",
+      "text": "Two different change thresholds are stated."
+    }
+  ],
+  "definition": {
+    "default_context": {
+      "audit_area": null,
+      "period_end": null,
+      "period_start": null
+    },
+    "name": "Accounts payable method 2025",
+    "neutral_starter": false,
+    "requirements": [
+      {
+        "criteria": [
+          "Payments over 10,000 have two approvals"
+        ],
+        "evidence_checks": [
+          "Approval log for the period"
+        ],
+        "id": "AP-1",
+        "label": "Invoice approval",
+        "mandatory": true,
+        "populations": null,
+        "ratings": null,
+        "review_rules": null,
+        "suitable_skills": null,
+        "templates": null
+      },
+      {
+        "criteria": null,
+        "evidence_checks": null,
+        "id": "AP-2",
+        "label": "Vendor master changes",
+        "mandatory": true,
+        "populations": null,
+        "ratings": null,
+        "review_rules": null,
+        "suitable_skills": null,
+        "templates": null
+      }
+    ],
+    "templates": []
+  },
+  "disclosure": {
+    "document_sha256": "55b43990ae33d5ed29397548e9cf0956cc84a7ebdee012bacfb7dff2b63846b3",
+    "document_size": "268",
+    "filename": "AP method 2025.md",
+    "media_type": "text/markdown",
+    "model": "fixture-model",
+    "profile_id": "loopback",
+    "profile_revision": "1",
+    "provider": "openai"
+  },
+  "id": "proposal-1",
+  "key": "ap-method",
+  "missing_criteria": [
+    "AP-2"
+  ],
+  "reason": null,
+  "source": {
+    "kind": "imported_proposal",
+    "note": "Drafted by profile loopback revision 1; every field must be reviewed before Save.",
+    "reference": "AP method 2025.md (SHA-256 55b43990ae33d5ed29397548e9cf0956cc84a7ebdee012bacfb7dff2b63846b3)"
+  },
+  "status": "drafted",
+  "unverified": [
+    "requirements[0].criteria (proposed item 1)",
+    "proposed requirement 2 (AP-7)"
+  ]
+}

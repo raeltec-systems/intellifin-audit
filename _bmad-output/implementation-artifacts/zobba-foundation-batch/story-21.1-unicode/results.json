@@ -1,0 +1,49 @@
+{
+  "scope": "Story 21.1 Unicode compatibility repair",
+  "baseline_commit": "26271284b03d5114f6ead2146092c5e1a50fdd7c",
+  "counts": {
+    "shared_metadata_cases_per_runtime": 2196,
+    "web_passed": 107,
+    "rust_api_contract_passed": 3,
+    "rust_domain_unit_passed": 20,
+    "rust_domain_doc_passed": 2,
+    "chromium_passed": 57,
+    "chromium_failed": 0,
+    "chromium_skipped": 0,
+    "chromium_retries": 0,
+    "published_schema_files_unchanged": 12,
+    "focused_final_capture_passed": 3
+  },
+  "checks": {
+    "formatter": "passed, exit 0",
+    "api_contract": "passed, exit 0",
+    "domain": "passed, exit 0",
+    "clippy_all_targets": "passed, exit 0",
+    "frontend_check": "passed, exit 0",
+    "frontend_build": "passed, exit 0",
+    "browser": "passed, exit 0",
+    "focused_final_capture": "passed, exit 0",
+    "publication_whitespace": "passed for source/docs/JSON/replay scripts; verbatim .txt tool receipts/captured snapshots excluded, preserving raw bytes"
+  },
+  "negative_controls": {
+    "web": "six groups fail on 42 server-accepted FEFF values; exit 1",
+    "browser": "all three fail against unchanged production baseline; exit 1",
+    "initial_browser_harness": "expected anonymous 401 wording mismatch fixed before clean negative control"
+  },
+  "limits": [
+    "Chromium and local S3 protocol fixture only",
+    "Full historical Rust workspace and fixture/Python suites were not rerun for this frontend-only production patch",
+    "Admin continuity policy proposal remains unapproved and unimplemented"
+  ],
+  "execution_snapshots": {
+    "full_selected_57_cases": "selected-run-source-manifest.sha256",
+    "final_three_unicode_cases": "source-manifest.json",
+    "only_later_test_change": "capture-only-source-delta.txt"
+  },
+  "intermediate_failure": {
+    "file": "filename-fallback-run/browser.txt",
+    "outcome": "55 passed, 2 expected-name assertion failures; exit 1",
+    "repair": "Observe Chromium suggested-name fallback download for sanitized underscore; production unchanged"
+  },
+  "review": "Three independent initial layers; follow-up source and final archive review found no remaining repair blocker or verification gap"
+}

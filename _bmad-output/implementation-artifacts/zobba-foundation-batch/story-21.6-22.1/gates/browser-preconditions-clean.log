@@ -1,0 +1,10 @@
+
+Running 3 tests using 1 worker
+
+(node:1166712) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/auth.spec.ts:408:1 › more than 100 assignments paginate by full scope with fresh back navigation and direct opening (4.8s)
+  ✓  2 tests/browser/conversation-review.spec.ts:251:1 › inner methodology disclosure survives cancelled reads and tab-away but withdraws on current failure (9.6s)
+  ✓  3 tests/browser/evidence-unicode.spec.ts:176:1 › mixed API-created normal and FEFF originals retain exact metadata and download bytes (7.3s)
+
+  3 passed (31.3s)

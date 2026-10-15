@@ -1,0 +1,82 @@
+[
+  {
+    "gate": "boundaries-final",
+    "receipt": "boundaries-final-receipt.json",
+    "result": "Earlier pass; superseded source"
+  },
+  {
+    "gate": "boundaries-review-final",
+    "receipt": "boundaries-review-final-receipt.json",
+    "result": "Final checkpoint pass"
+  },
+  {
+    "gate": "clippy-final",
+    "receipt": "clippy-final-receipt.json",
+    "result": "Earlier pass; superseded source"
+  },
+  {
+    "gate": "clippy-review-final",
+    "receipt": "clippy-review-final-receipt.json",
+    "result": "Final checkpoint pass"
+  },
+  {
+    "gate": "fmt-final",
+    "receipt": "fmt-final-receipt.json",
+    "result": "Earlier pass; superseded source"
+  },
+  {
+    "gate": "fmt-review-final",
+    "receipt": "fmt-review-final-receipt.json",
+    "result": "Final checkpoint pass"
+  },
+  {
+    "gate": "gateway-final",
+    "receipt": "gateway-final-receipt.json",
+    "result": "Earlier pass; superseded source"
+  },
+  {
+    "gate": "gateway-review-final",
+    "receipt": "gateway-review-final-receipt.json",
+    "result": "Final checkpoint pass"
+  },
+  {
+    "gate": "new-regressions-first",
+    "receipt": "new-regressions-first-receipt.json",
+    "result": "Failed fixture; retained and repaired"
+  },
+  {
+    "gate": "new-regressions-scheduler-repair",
+    "receipt": "new-regressions-scheduler-repair-receipt.json",
+    "result": "Earlier pass; superseded source"
+  },
+  {
+    "gate": "old-order-negative",
+    "receipt": "old-order-negative-receipt.json",
+    "result": "Earlier partial negative: request/approval detect defect; lease fixture fails preparation"
+  },
+  {
+    "gate": "old-order-negative-runway-repair",
+    "receipt": "old-order-negative-runway-repair-receipt.json",
+    "result": "Earlier expected negative: all three fail; superseded test proof"
+  },
+  {
+    "gate": "old-order-review-final",
+    "receipt": "old-order-review-final-receipt.json",
+    "result": "Expected negative control: all three expiry cases fail against baseline production"
+  },
+  {
+    "gate": "operations-final",
+    "receipt": "operations-final-receipt.json",
+    "result": "Earlier pass; superseded source"
+  },
+  {
+    "gate": "operations-review-final",
+    "receipt": "operations-review-final-receipt.json",
+    "result": "Final checkpoint pass"
+  },
+  {
+    "gate": "source-fence-negative",
+    "receipt": "source-fence-negative-receipt.json",
+    "result": "Expected negative: source expiry escapes when only validation order is repaired"
+  }
+]

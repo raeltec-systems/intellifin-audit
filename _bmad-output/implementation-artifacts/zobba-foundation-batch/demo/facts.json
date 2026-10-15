@@ -1,0 +1,17 @@
+{
+  "source": "Actual local OIDC, Rust API, PostgreSQL and browser; synthetic accounts and objectives",
+  "objectiveA": "Review leaver access for June 2026",
+  "objectiveB": "Investigate shared accounts",
+  "guidance": "Use the contractual termination date as the cutoff. Keep exceptions and missing evidence separate.",
+  "captures": [
+    "two-tasks-guide-a-inspect-b-1280.png",
+    "two-active-tasks-1280.png",
+    "retained-working-brief-1280.png",
+    "conversation-390.png",
+    "workspace-390.png",
+    "conversation-320.png",
+    "workspace-320.png"
+  ],
+  "result": "PASS",
+  "page_errors": 0
+}

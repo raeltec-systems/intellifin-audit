@@ -1,0 +1,207 @@
+{
+  "method_status": "incomplete",
+  "method_version_ids": [
+    "method-version-1"
+  ],
+  "methodology_binding_id": "id-1",
+  "notes": [
+    {
+      "execution_epoch": "1",
+      "invocation_id": "id-2",
+      "kind": "question",
+      "methodology_binding_id": "id-1",
+      "open": true,
+      "ordinal": 0,
+      "reason": null,
+      "requirement_id": "AP-2",
+      "segments": [],
+      "source": "agent",
+      "text": "Which vendor master applies to the 2025 payments?"
+    },
+    {
+      "execution_epoch": "1",
+      "invocation_id": "id-2",
+      "kind": "gap",
+      "methodology_binding_id": "id-1",
+      "open": false,
+      "ordinal": 1,
+      "reason": "criteria_missing",
+      "requirement_id": "AP-2",
+      "segments": [],
+      "source": "platform",
+      "text": "This mandatory requirement has no criteria in the bound method; no conclusion that depends on them can be reached."
+    },
+    {
+      "execution_epoch": "1",
+      "invocation_id": "id-2",
+      "kind": "gap",
+      "methodology_binding_id": "id-1",
+      "open": false,
+      "ordinal": 2,
+      "reason": "skill_unavailable",
+      "requirement_id": "AP-1",
+      "segments": [],
+      "source": "platform",
+      "text": "Skill Send confirmations v1 could not be loaded (tool_unavailable)."
+    },
+    {
+      "execution_epoch": "1",
+      "invocation_id": "id-3",
+      "kind": "gap",
+      "methodology_binding_id": "id-1",
+      "open": false,
+      "ordinal": 0,
+      "reason": "evidence_unavailable",
+      "requirement_id": "AP-2",
+      "segments": [],
+      "source": "agent",
+      "text": "The vendor master population is not registered."
+    },
+    {
+      "execution_epoch": "1",
+      "invocation_id": "id-3",
+      "kind": "statement",
+      "methodology_binding_id": "id-1",
+      "open": false,
+      "ordinal": 1,
+      "reason": null,
+      "requirement_id": "AP-1",
+      "segments": [
+        0
+      ],
+      "source": "agent",
+      "text": "Payments in the sample agree to the ledger."
+    }
+  ],
+  "open_questions": 1,
+  "record": {
+    "catalogue_id": "no-tools",
+    "catalogue_revision": "1",
+    "discarded_requests": 0,
+    "execution_epoch": "1",
+    "gaps": 1,
+    "invocation_id": "id-3",
+    "method_status": "incomplete",
+    "method_version_ids": [
+      "method-version-1"
+    ],
+    "methodology_binding_id": "id-1",
+    "model": "fixture-model",
+    "omitted_items": 0,
+    "omitted_notes": 0,
+    "profile_id": "loopback",
+    "profile_revision": "1",
+    "provider": "openai",
+    "questions": 0,
+    "skills": [
+      {
+        "digest": "7d0d92d63a9e1f89284ff2ffc709c3e68c4e7f69438c8f7a1d88f4fa701d7c66",
+        "skill_id": "ap-matching",
+        "skill_version": "v1",
+        "version_id": "id-4"
+      }
+    ],
+    "statements": 1,
+    "tools": []
+  },
+  "skills": [
+    {
+      "digest": "7d0d92d63a9e1f89284ff2ffc709c3e68c4e7f69438c8f7a1d88f4fa701d7c66",
+      "execution_epoch": "1",
+      "invocation_id": "id-2",
+      "job_id": null,
+      "kind": "load",
+      "methodology_binding_id": "id-1",
+      "name": "AP matching",
+      "ordinal": 0,
+      "outcome": "loaded",
+      "reason": null,
+      "resource_id": null,
+      "skill_id": "ap-matching",
+      "skill_version": "v1",
+      "version_id": "id-4"
+    },
+    {
+      "digest": "8926dd6a3ba586e383225e44b66c8f756836aa35435f8889c235f6915e200a1e",
+      "execution_epoch": "1",
+      "invocation_id": "id-2",
+      "job_id": null,
+      "kind": "load",
+      "methodology_binding_id": "id-1",
+      "name": "Send confirmations",
+      "ordinal": 1,
+      "outcome": "unavailable",
+      "reason": "tool_unavailable",
+      "resource_id": null,
+      "skill_id": "send-confirmations",
+      "skill_version": "v1",
+      "version_id": "id-5"
+    },
+    {
+      "digest": "7d0d92d63a9e1f89284ff2ffc709c3e68c4e7f69438c8f7a1d88f4fa701d7c66",
+      "execution_epoch": "1",
+      "invocation_id": "id-6",
+      "job_id": null,
+      "kind": "resource",
+      "methodology_binding_id": "id-1",
+      "name": "AP matching",
+      "ordinal": 0,
+      "outcome": "fetched",
+      "reason": null,
+      "resource_id": "checklist",
+      "skill_id": "ap-matching",
+      "skill_version": "v1",
+      "version_id": "id-4"
+    },
+    {
+      "digest": "7d0d92d63a9e1f89284ff2ffc709c3e68c4e7f69438c8f7a1d88f4fa701d7c66",
+      "execution_epoch": "1",
+      "invocation_id": "id-6",
+      "job_id": "id-7",
+      "kind": "script",
+      "methodology_binding_id": "id-1",
+      "name": "AP matching",
+      "ordinal": 0,
+      "outcome": "completed",
+      "reason": null,
+      "resource_id": "summarise",
+      "skill_id": "ap-matching",
+      "skill_version": "v1",
+      "version_id": "id-4"
+    },
+    {
+      "digest": "7d0d92d63a9e1f89284ff2ffc709c3e68c4e7f69438c8f7a1d88f4fa701d7c66",
+      "execution_epoch": "1",
+      "invocation_id": "id-6",
+      "job_id": "id-8",
+      "kind": "script",
+      "methodology_binding_id": "id-1",
+      "name": "AP matching",
+      "ordinal": 1,
+      "outcome": "failed",
+      "reason": "program_failed",
+      "resource_id": "fail",
+      "skill_id": "ap-matching",
+      "skill_version": "v1",
+      "version_id": "id-4"
+    },
+    {
+      "digest": "7d0d92d63a9e1f89284ff2ffc709c3e68c4e7f69438c8f7a1d88f4fa701d7c66",
+      "execution_epoch": "1",
+      "invocation_id": "id-9",
+      "job_id": "id-10",
+      "kind": "script",
+      "methodology_binding_id": "id-1",
+      "name": "AP matching",
+      "ordinal": 0,
+      "outcome": "failed",
+      "reason": "program_limit",
+      "resource_id": "flood",
+      "skill_id": "ap-matching",
+      "skill_version": "v1",
+      "version_id": "id-4"
+    }
+  ],
+  "total_notes": "5",
+  "total_skills": "6"
+}

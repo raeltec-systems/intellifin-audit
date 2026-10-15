@@ -1,0 +1,3 @@
+.local/
+.local-tmp-*/
+node_modules/

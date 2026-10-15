@@ -1,0 +1,49 @@
+    Checking zobba-domain v0.1.0 (/workspace/intellifin-audit/zobba/crates/domain)
+    Checking zobba-application v0.1.0 (/workspace/intellifin-audit/zobba/crates/application)
+error: large size difference between variants
+   --> crates/application/src/model.rs:291:1
+    |
+291 | / pub enum PreparedInvocation {
+292 | |     Dispatch(DispatchPermit),
+    | |     ------------------------ the second-largest variant contains at least 48 bytes
+293 | |     Recovered(Invocation),
+    | |     --------------------- the largest variant contains at least 1080 bytes
+294 | | }
+    | |_^ the entire enum is at least 1080 bytes
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#large_enum_variant
+    = note: `-D clippy::large-enum-variant` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::large_enum_variant)]`
+help: consider boxing the large fields or introducing indirection in some other way to reduce the total size of the enum
+    |
+293 -     Recovered(Invocation),
+293 +     Recovered(Box<Invocation>),
+    |
+
+error: this `if` statement can be collapsed
+   --> crates/application/src/model.rs:469:9
+    |
+469 | /         if let EventKind::ToolProposal {
+470 | |             call_id: actual,
+471 | |             name,
+472 | |             arguments,
+...   |
+485 | |         }
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#collapsible_if
+    = note: `-D clippy::collapsible-if` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::collapsible_if)]`
+help: collapse nested if block
+    |
+473 ~         } = &event.kind
+474 ~             && actual == call_id {
+475 |                 let descriptor = invocation
+...
+482 |                 return Ok((descriptor.clone(), descriptor.resolve(arguments)?));
+483 ~             }
+    |
+
+error: could not compile `zobba-application` (lib) due to 2 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `zobba-application` (lib test) due to 2 previous errors

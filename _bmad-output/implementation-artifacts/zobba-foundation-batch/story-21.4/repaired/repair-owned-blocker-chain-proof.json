@@ -1,0 +1,56 @@
+{
+  "child_deadline_ms": 10000,
+  "observation_deadline_ms": 2000,
+  "metadata_status": 200,
+  "holder_pid": 1060395,
+  "metadata_pid": 1060393,
+  "admin_pid": 1060397,
+  "idle": {
+    "api_connections": 4,
+    "api_unsettled": 0,
+    "metadata": [],
+    "admin_waiting": false,
+    "admin_blockers": []
+  },
+  "metadata": {
+    "api_connections": 4,
+    "api_unsettled": 1,
+    "metadata": [
+      {
+        "pid": 1060393,
+        "blockers": [
+          1060395
+        ]
+      }
+    ],
+    "admin_waiting": false,
+    "admin_blockers": []
+  },
+  "chain": {
+    "api_connections": 4,
+    "api_unsettled": 1,
+    "metadata": [
+      {
+        "pid": 1060393,
+        "blockers": [
+          1060395
+        ]
+      }
+    ],
+    "admin_waiting": true,
+    "admin_blockers": [
+      1060393
+    ]
+  },
+  "holder_completed": true,
+  "admin_completed": true,
+  "release": "commit",
+  "phases": [
+    "idle-observed",
+    "session-lock-ready",
+    "metadata-observed",
+    "admin-started",
+    "chain-observed",
+    "owned-chain-commit"
+  ]
+}

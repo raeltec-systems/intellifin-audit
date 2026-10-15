@@ -1,0 +1,89 @@
+[
+  {
+    "gate": "rust-tests",
+    "exit": 0,
+    "receipt": "../repair-1/rust-tests.exit",
+    "execution": "retained repair-1; applicable source/tests unchanged",
+    "receipt_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  {
+    "gate": "frozen-clippy",
+    "exit": 0,
+    "receipt": "../repair-1/frozen-clippy.exit",
+    "execution": "retained repair-1; applicable source/tests unchanged",
+    "receipt_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  {
+    "gate": "frozen-rust-build",
+    "exit": 0,
+    "receipt": "../repair-1/frozen-rust-build.exit",
+    "execution": "retained repair-1; applicable source/tests unchanged",
+    "receipt_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  {
+    "gate": "frozen-fmt",
+    "exit": 0,
+    "receipt": "../repair-1/frozen-fmt.exit",
+    "execution": "retained repair-1; applicable source/tests unchanged",
+    "receipt_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  {
+    "gate": "frozen-python",
+    "exit": 0,
+    "receipt": "../repair-1/frozen-python.exit",
+    "execution": "retained repair-1; applicable source/tests unchanged",
+    "receipt_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  {
+    "gate": "frozen-boundaries",
+    "exit": 0,
+    "receipt": "../repair-1/frozen-boundaries.exit",
+    "execution": "retained repair-1; applicable source/tests unchanged",
+    "receipt_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  {
+    "gate": "frozen-fixtures",
+    "exit": 0,
+    "receipt": "../repair-1/frozen-fixtures.exit",
+    "execution": "retained repair-1; applicable source/tests unchanged",
+    "receipt_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  {
+    "gate": "frozen-smoke",
+    "exit": 0,
+    "receipt": "../repair-1/frozen-smoke.exit",
+    "execution": "retained repair-1; applicable source/tests unchanged",
+    "receipt_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  {
+    "gate": "web-api-generate",
+    "exit": 0,
+    "receipt": "../repair-1/web-api-generate.exit",
+    "execution": "retained repair-1; applicable source/tests unchanged",
+    "receipt_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  {
+    "gate": "web-check",
+    "exit": 0,
+    "execution": "fresh repair-2",
+    "receipt": "web-check.exit",
+    "log": "web-check.log",
+    "log_sha256": "4a525935ad15deb3a213dcfd2d94ed437c846a723f089881f0ed09cabf715fc9"
+  },
+  {
+    "gate": "web-build",
+    "exit": 0,
+    "execution": "fresh repair-2",
+    "receipt": "web-build.exit",
+    "log": "web-build.log",
+    "log_sha256": "490accafabea935fcfb4a2b66fa710062c3d15341f3116c724f6094d4f774f05"
+  },
+  {
+    "gate": "browser-full",
+    "exit": 0,
+    "execution": "fresh repair-2",
+    "receipt": "browser-full.exit",
+    "log": "browser-full.log",
+    "log_sha256": "47a0900aa8bb58e8aa73767ad9b831dc64c127170ea346a03b1d2bb9a85b4f77"
+  }
+]

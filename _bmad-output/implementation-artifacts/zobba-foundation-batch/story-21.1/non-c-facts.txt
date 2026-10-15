@@ -1,0 +1,6 @@
+zobba_evidence_r02_test|en_US.utf8|en_US.utf8
+{a,A,z,Z}|{A,Z,a,z}
+zobba_patch20_3_app|f|f
+zobba_patch20_3_owner|f|f
+CREATE INDEX evidence_originals_scope ON public.evidence_originals USING btree (organisation_id, client_id, engagement_id, id COLLATE "C")
+CREATE INDEX evidence_reservations_owner ON public.evidence_reservations USING btree (organisation_id, client_id, engagement_id, actor_id, id COLLATE "C")

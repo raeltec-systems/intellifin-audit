@@ -1,0 +1,9 @@
+packages:
+  - web
+  - fixtures/oidc
+
+engineStrict: true
+minimumReleaseAge: 1440
+blockExoticSubdeps: true
+onlyBuiltDependencies:
+  - esbuild

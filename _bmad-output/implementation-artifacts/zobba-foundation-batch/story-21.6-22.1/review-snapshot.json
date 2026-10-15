@@ -1,0 +1,14 @@
+{
+  "baseline": "67a290173dea7212b600d00ec5bad3f5bd52a6c0",
+  "diff_bytes": 849719,
+  "diff_sha256": "a7ca8237a3c9ccbd9d14426e643f978692da49eff5e445a8bf0d20d678351503",
+  "reviewers": [
+    "batch_blind_final",
+    "batch_edges_final",
+    "batch_verification_final"
+  ],
+  "context_free": true,
+  "all_launched_before_triage": true,
+  "staged_before_review": false,
+  "repairs_require_targeted_independent_recheck_and_executed_gates": true
+}

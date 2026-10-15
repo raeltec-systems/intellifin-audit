@@ -1,0 +1,11 @@
+tests/browser/membership.spec.ts(276,38): error TS18048: 'upstream' is possibly 'undefined'.
+tests/browser/membership.spec.ts(277,61): error TS18048: 'upstream' is possibly 'undefined'.
+tests/browser/membership.spec.ts(289,60): error TS18048: 'temporaryResponse' is possibly 'undefined'.
+tests/browser/membership.spec.ts(290,34): error TS18048: 'temporaryResponse' is possibly 'undefined'.
+tests/browser/membership.spec.ts(299,52): error TS18048: 'refused' is possibly 'undefined'.
+tests/browser/membership.spec.ts(300,10): error TS18048: 'refused' is possibly 'undefined'.
+tests/browser/membership.spec.ts(301,16): error TS18048: 'refused' is possibly 'undefined'.
+tests/browser/membership.spec.ts(313,66): error TS18048: 'replacementResponse' is possibly 'undefined'.
+tests/browser/membership.spec.ts(314,36): error TS18048: 'replacementResponse' is possibly 'undefined'.
+tests/browser/membership.spec.ts(322,52): error TS18048: 'selfResponse' is possibly 'undefined'.
+tests/browser/membership.spec.ts(323,29): error TS18048: 'selfResponse' is possibly 'undefined'.

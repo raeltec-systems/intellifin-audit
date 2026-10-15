@@ -1,0 +1,74 @@
+{
+  "baseline": "9a76c5c8aa38f8e7c16ab95bb1f47b7d70f4057a",
+  "phase": "post-independent-review repairs",
+  "source_file_count": 184,
+  "rust": {
+    "passed": 176,
+    "failed": 0,
+    "ignored": 3,
+    "filtered": 0,
+    "result_blocks": 35
+  },
+  "checks": [
+    {
+      "check": "rust-tests",
+      "exit": 0,
+      "log": "review-repair-rust-tests.txt"
+    },
+    {
+      "check": "focused",
+      "exit": 0,
+      "log": "review-repair-focused.txt"
+    },
+    {
+      "check": "smoke",
+      "exit": 0,
+      "log": "review-repair-smoke.txt"
+    },
+    {
+      "check": "fixture-tests",
+      "exit": 0,
+      "log": "review-repair-fixture-tests.txt"
+    },
+    {
+      "check": "python-guards",
+      "exit": 0,
+      "log": "review-repair-python-guards.txt"
+    },
+    {
+      "check": "fmt",
+      "exit": 0,
+      "log": "review-repair-fmt.txt"
+    },
+    {
+      "check": "clippy",
+      "exit": 0,
+      "log": "review-repair-clippy.txt"
+    },
+    {
+      "check": "build",
+      "exit": 0,
+      "log": "review-repair-build.txt"
+    },
+    {
+      "check": "boundaries",
+      "exit": 0,
+      "log": "review-repair-boundaries.txt"
+    },
+    {
+      "check": "web-check",
+      "exit": 0,
+      "log": "review-repair-web-check.txt"
+    },
+    {
+      "check": "web-build",
+      "exit": 0,
+      "log": "review-repair-web-build.txt"
+    },
+    {
+      "check": "browser",
+      "exit": 0,
+      "log": "review-repair-browser-verified.txt"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "gate": "web-build-repair-1",
+  "command": [
+    "pnpm",
+    "--filter",
+    "@zobba/web",
+    "build"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T04:16:25.452143+00:00",
+  "ended_at": "2026-10-03T04:16:40.959876+00:00",
+  "duration_seconds": 15.508,
+  "exit": 0,
+  "source_before": "web-build-repair-1-source-before.json",
+  "source_after": "web-build-repair-1-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "web-build-repair-1.log",
+  "log_sha256": "05266b07cb7fa63fe37a44f8696114c8aa47b5770414f25cabddbf8fb3d91590"
+}

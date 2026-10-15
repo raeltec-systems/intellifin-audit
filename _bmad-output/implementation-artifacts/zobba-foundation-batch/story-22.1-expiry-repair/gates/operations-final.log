@@ -1,0 +1,14 @@
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 17.98s
+     Running tests/operations.rs (target/debug/deps/operations-c15f0a4016247673)
+
+running 5 tests
+test owned_storage_roundtrips_and_refuses_ambiguous_durable_fields ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test maximal_valid_owned_wire_values_fit_durable_byte_envelopes ... ok
+test standing_permissions_exact_operations_and_transaction_cutoffs has been running for over 60 seconds
+test standing_permissions_exact_operations_and_transaction_cutoffs ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 78.82s
+

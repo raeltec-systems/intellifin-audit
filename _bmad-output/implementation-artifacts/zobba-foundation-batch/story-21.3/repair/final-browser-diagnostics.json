@@ -1,0 +1,425 @@
+{
+  "scope": "Final complete 123-pass invocation on freeze 9. Copied diagnostics contain only timing/phase/path-category/status, header-presence classification, counters or numerical geometry; no token/header values, callbacks, bodies or cookies.",
+  "records": {
+    "skills-narrow-impact-button-geometry.json": {
+      "source": "browser-results/skills-repair-P4-P5-persis-432b4-rs-to-scoped-affected-Tasks/skills-narrow-impact-button-geometry.json",
+      "sha256": "28f72c0d40fa1b2e622fb7acf1b07053aafa5afd65fabd4a8e5bda574afbe589",
+      "data": {
+        "viewport": 390,
+        "left": 52,
+        "right": 363,
+        "width": 311,
+        "clientWidth": 309,
+        "scrollWidth": 309,
+        "textLength": 83
+      }
+    },
+    "skills-narrow-impact-geometry.json": {
+      "source": "browser-results/skills-repair-P4-P5-persis-432b4-rs-to-scoped-affected-Tasks/skills-narrow-impact-geometry.json",
+      "sha256": "8e872110ce598d2155b6283ecf27bf9f3f8a45b315ae58771f8050ba51732a76",
+      "data": {
+        "viewport": 390,
+        "documentWidth": 390,
+        "elements": [
+          {
+            "tag": "div",
+            "classes": "evidence-composition",
+            "left": 12,
+            "right": 378,
+            "width": 366,
+            "clientWidth": 366,
+            "scrollWidth": 370,
+            "textLength": 9105
+          },
+          {
+            "tag": "div",
+            "classes": "evidence-layout",
+            "left": 12,
+            "right": 378,
+            "width": 366,
+            "clientWidth": 366,
+            "scrollWidth": 370,
+            "textLength": 9048
+          },
+          {
+            "tag": "div",
+            "classes": "continuing-conversation",
+            "left": 12,
+            "right": 378,
+            "width": 366,
+            "clientWidth": 366,
+            "scrollWidth": 370,
+            "textLength": 8462
+          },
+          {
+            "tag": "section",
+            "classes": "conversation-workspace",
+            "left": 12,
+            "right": 378,
+            "width": 366,
+            "clientWidth": 366,
+            "scrollWidth": 370,
+            "textLength": 8462
+          },
+          {
+            "tag": "div",
+            "classes": "conversation-content",
+            "left": 12,
+            "right": 378,
+            "width": 366,
+            "clientWidth": 366,
+            "scrollWidth": 370,
+            "textLength": 8462
+          },
+          {
+            "tag": "input",
+            "classes": "",
+            "left": 12,
+            "right": 198,
+            "width": 186,
+            "clientWidth": 182,
+            "scrollWidth": 362,
+            "textLength": 0
+          },
+          {
+            "tag": "label",
+            "classes": "composer-input-label",
+            "left": 23,
+            "right": 24,
+            "width": 1,
+            "clientWidth": 1,
+            "scrollWidth": 49,
+            "textLength": 14
+          }
+        ]
+      }
+    },
+    "skills-narrow-fixture-geometry.json": {
+      "source": "browser-results/skills-structured-Admin-in-3c3ad-rozen-lost-receipt-recovery/skills-narrow-fixture-geometry.json",
+      "sha256": "e8265718d0cc6c531f594fbed35d5ad79014ec89a516100477d698e117142da4",
+      "data": {
+        "viewport": 390,
+        "documentWidth": 390,
+        "elements": [
+          {
+            "tag": "section",
+            "classes": "notice",
+            "left": 36,
+            "right": 354,
+            "width": 318,
+            "clientWidth": 314,
+            "scrollWidth": 314,
+            "textLength": 324
+          },
+          {
+            "tag": "p",
+            "classes": "",
+            "left": 57,
+            "right": 335,
+            "width": 278,
+            "clientWidth": 278,
+            "scrollWidth": 278,
+            "textLength": 103
+          },
+          {
+            "tag": "p",
+            "classes": "",
+            "left": 57,
+            "right": 335,
+            "width": 278,
+            "clientWidth": 278,
+            "scrollWidth": 278,
+            "textLength": 95
+          },
+          {
+            "tag": "p",
+            "classes": "skill-opaque-id-layout-fixture",
+            "left": 57,
+            "right": 335,
+            "width": 278,
+            "clientWidth": 278,
+            "scrollWidth": 278,
+            "textLength": 96
+          }
+        ]
+      }
+    },
+    "skills-narrow-actual-geometry.json": {
+      "source": "browser-results/skills-structured-Admin-in-3c3ad-rozen-lost-receipt-recovery/skills-narrow-actual-geometry.json",
+      "sha256": "87d145b48313dedaa82141dc6ad1ef30eeb6e3cb456e4a13492db7a58feb8a92",
+      "data": {
+        "viewport": 390,
+        "documentWidth": 390,
+        "elements": [
+          {
+            "tag": "section",
+            "classes": "notice",
+            "left": 36,
+            "right": 354,
+            "width": 318,
+            "clientWidth": 314,
+            "scrollWidth": 314,
+            "textLength": 228
+          },
+          {
+            "tag": "p",
+            "classes": "",
+            "left": 57,
+            "right": 335,
+            "width": 278,
+            "clientWidth": 278,
+            "scrollWidth": 278,
+            "textLength": 103
+          },
+          {
+            "tag": "p",
+            "classes": "",
+            "left": 57,
+            "right": 335,
+            "width": 278,
+            "clientWidth": 278,
+            "scrollWidth": 278,
+            "textLength": 95
+          }
+        ]
+      }
+    },
+    "mixed-recovery-chronology.json": {
+      "source": "browser-results/account-binding-an-engagem-f5043-the-same-recovery-allowance/mixed-recovery-chronology.json",
+      "sha256": "ea61fb6cb9e4374a6007e30a4ab5e439d404aa0a2a1b6163ee3b409f66e3fa13",
+      "data": [
+        {
+          "sequence": 1,
+          "elapsedMs": 2542,
+          "phase": "installing-routes",
+          "event": "sign-in-complete"
+        },
+        {
+          "sequence": 2,
+          "elapsedMs": 2572,
+          "phase": "installing-routes",
+          "event": "initial-impact-response",
+          "status": 200
+        },
+        {
+          "sequence": 3,
+          "elapsedMs": 2655,
+          "phase": "releasing-initial-impact",
+          "event": "initial-impact-delivered"
+        },
+        {
+          "sequence": 4,
+          "elapsedMs": 2659,
+          "phase": "releasing-initial-impact",
+          "event": "session-request",
+          "bound": true
+        },
+        {
+          "sequence": 5,
+          "elapsedMs": 2670,
+          "phase": "releasing-initial-impact",
+          "event": "session-response",
+          "bound": true,
+          "status": 200
+        },
+        {
+          "sequence": 6,
+          "elapsedMs": 2673,
+          "phase": "releasing-initial-impact",
+          "event": "bound-session-delivered",
+          "boundSessionReads": 1
+        },
+        {
+          "sequence": 7,
+          "elapsedMs": 2817,
+          "phase": "ordinary-conversation-poll",
+          "event": "conversation-request",
+          "bound": true,
+          "injected": false
+        },
+        {
+          "sequence": 8,
+          "elapsedMs": 2850,
+          "phase": "ordinary-conversation-poll",
+          "event": "conversation-response",
+          "status": 200,
+          "injected": false
+        },
+        {
+          "sequence": 9,
+          "elapsedMs": 2941,
+          "phase": "refresh",
+          "event": "refresh-click-before"
+        },
+        {
+          "sequence": 10,
+          "elapsedMs": 3026,
+          "phase": "refresh",
+          "event": "session-request",
+          "bound": false
+        },
+        {
+          "sequence": 11,
+          "elapsedMs": 3052,
+          "phase": "waiting-for-interruption",
+          "event": "refresh-click-after"
+        },
+        {
+          "sequence": 12,
+          "elapsedMs": 3062,
+          "phase": "waiting-for-interruption",
+          "event": "session-response",
+          "bound": false,
+          "status": 200
+        },
+        {
+          "sequence": 13,
+          "elapsedMs": 3062,
+          "phase": "waiting-for-interruption",
+          "event": "session-count",
+          "bound": false,
+          "sessionReads": 1
+        },
+        {
+          "sequence": 14,
+          "elapsedMs": 3062,
+          "phase": "waiting-for-interruption",
+          "event": "scope-rotation-before",
+          "bound": false,
+          "sessionReads": 1
+        },
+        {
+          "sequence": 15,
+          "elapsedMs": 3084,
+          "phase": "waiting-for-interruption",
+          "event": "scope-rotation-after",
+          "bound": false,
+          "sessionReads": 1
+        },
+        {
+          "sequence": 16,
+          "elapsedMs": 3095,
+          "phase": "waiting-for-interruption",
+          "event": "engagements-request",
+          "bound": true
+        },
+        {
+          "sequence": 17,
+          "elapsedMs": 3107,
+          "phase": "waiting-for-interruption",
+          "event": "engagements-response",
+          "status": 412
+        },
+        {
+          "sequence": 18,
+          "elapsedMs": 3112,
+          "phase": "waiting-for-interruption",
+          "event": "session-request",
+          "bound": false
+        },
+        {
+          "sequence": 19,
+          "elapsedMs": 3124,
+          "phase": "waiting-for-interruption",
+          "event": "session-response",
+          "bound": false,
+          "status": 200
+        },
+        {
+          "sequence": 20,
+          "elapsedMs": 3124,
+          "phase": "waiting-for-interruption",
+          "event": "session-count",
+          "bound": false,
+          "sessionReads": 2
+        },
+        {
+          "sequence": 21,
+          "elapsedMs": 3129,
+          "phase": "waiting-for-interruption",
+          "event": "engagements-request",
+          "bound": true
+        },
+        {
+          "sequence": 22,
+          "elapsedMs": 3145,
+          "phase": "waiting-for-interruption",
+          "event": "engagements-response",
+          "status": 200
+        },
+        {
+          "sequence": 23,
+          "elapsedMs": 3170,
+          "phase": "waiting-for-interruption",
+          "event": "scope-request",
+          "bound": true
+        },
+        {
+          "sequence": 24,
+          "elapsedMs": 3233,
+          "phase": "waiting-for-interruption",
+          "event": "scope-response",
+          "status": 200
+        },
+        {
+          "sequence": 25,
+          "elapsedMs": 3235,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-rotation-before",
+          "scopeReads": 1
+        },
+        {
+          "sequence": 26,
+          "elapsedMs": 3268,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-rotation-after",
+          "scopeReads": 1
+        },
+        {
+          "sequence": 27,
+          "elapsedMs": 3350,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-request",
+          "bound": true,
+          "injected": true
+        },
+        {
+          "sequence": 28,
+          "elapsedMs": 3364,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-response",
+          "status": 412,
+          "injected": true
+        },
+        {
+          "sequence": 29,
+          "elapsedMs": 3497,
+          "phase": "cleanup",
+          "event": "cleanup-before",
+          "sessionReads": 2,
+          "boundSessionReads": 1,
+          "scopeReads": 1,
+          "refusals": 2,
+          "engagementMismatches": 1,
+          "conversationMismatches": 1,
+          "ordinaryConversationReads": 1,
+          "posts": 0
+        },
+        {
+          "sequence": 30,
+          "elapsedMs": 3500,
+          "phase": "cleanup",
+          "event": "cleanup-after",
+          "sessionReads": 2,
+          "boundSessionReads": 1,
+          "scopeReads": 1,
+          "refusals": 2,
+          "engagementMismatches": 1,
+          "conversationMismatches": 1,
+          "ordinaryConversationReads": 1,
+          "posts": 0
+        }
+      ]
+    }
+  }
+}

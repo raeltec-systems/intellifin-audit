@@ -1,0 +1,22 @@
+{
+  "observed_at": "2026-10-02T16:32:28.072976+00:00",
+  "attempt": "browser-full-3",
+  "command": "pnpm test:browser --workers=1 --retries=0",
+  "working_directory": "/workspace/intellifin-audit/zobba",
+  "passed": 123,
+  "failed": 0,
+  "interrupted": 0,
+  "unrun": 0,
+  "duration": "17.9 minutes",
+  "exit_code": 0,
+  "workers": 1,
+  "retries": 0,
+  "source_freeze": "source-freeze-9.json",
+  "source_files": 221,
+  "source_unchanged_during_run": true,
+  "log_sha256": "907213f43275601d6584e93c78a5920e84974d27302c249b4c21412f8380ffdd",
+  "exit_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+  "source_start_sha256": "5516e4655d301095e07b702961b2eabb55427413cd4d5ce902a73bdfe7b02814",
+  "source_end_sha256": "3084ce1af7404d0fa6e6b472db23892c5d1e6583e3b80a439d8a0cc9293eb0ac",
+  "note": "Complete final suite; earlier failed and interrupted attempts remain preserved independently. No automatic retry or weakened counts/timeouts."
+}

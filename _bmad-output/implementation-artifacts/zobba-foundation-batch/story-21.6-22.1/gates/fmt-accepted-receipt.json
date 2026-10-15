@@ -1,0 +1,21 @@
+{
+  "gate": "fmt-accepted",
+  "command": [
+    "cargo",
+    "fmt",
+    "--all",
+    "--",
+    "--check"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T05:35:52.749705+00:00",
+  "ended_at": "2026-10-03T05:35:53.922539+00:00",
+  "duration_seconds": 1.173,
+  "exit": 0,
+  "source_before": "fmt-accepted-source-before.json",
+  "source_after": "fmt-accepted-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "fmt-accepted.log",
+  "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

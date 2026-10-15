@@ -1,0 +1,10 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.41s
+     Running tests/methodology_http.rs (target/debug/deps/methodology_http-271d468f995154ed)
+
+running 3 tests
+test methodology_http_save_replay_scope_context_and_session_fences ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.19s
+

@@ -1,0 +1,9 @@
+$ playwright test evidence.spec.ts --grep 'registry and recovery' --max-failures=1
+
+Running 1 test using 1 worker
+
+(node:519973) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/evidence.spec.ts:265:1 › registry and recovery pages stay bounded and new registration refreshes canonical ordering and cursor (22.8s)
+
+  1 passed (29.8s)

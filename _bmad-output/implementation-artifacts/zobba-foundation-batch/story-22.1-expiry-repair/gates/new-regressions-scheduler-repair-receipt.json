@@ -1,0 +1,26 @@
+{
+  "gate": "new-regressions-scheduler-repair",
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "zobba-worker",
+    "--test",
+    "gateway_process",
+    "final_validation_expiry",
+    "--",
+    "--nocapture"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T08:59:05.701336+00:00",
+  "ended_at": "2026-10-03T08:59:25.114254+00:00",
+  "duration_seconds": 19.413,
+  "exit": 0,
+  "source_before": "new-regressions-scheduler-repair-source-before.json",
+  "source_after": "new-regressions-scheduler-repair-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "new-regressions-scheduler-repair.log",
+  "log_sha256": "ad4b24ace10ac1503840b9c1630e0355f33d08cd5a131cfd55658a76be532ebe"
+}

@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://platform.claude.com/docs/en/api/service-tiers",
+  "effective_url": "https://platform.claude.com/docs/en/api/service-tiers",
+  "retrieved_at_utc": "2026-10-03T04:37:22.623562+00:00",
+  "completed_at_utc": "2026-10-03T04:37:22.953441+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html; charset=utf-8",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "anthropic-service-tiers.html",
+  "bytes": 460930,
+  "sha256": "1b3cd425bc5a20cc434bce7e63a88c43dab6373bb451dd228818dba85db425db",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/anthropic-service-tiers.txt",
+  "readable_extraction_sha256": "c02d2fc694be176b065f4d8569d604c85e16b9cd7503f90db0c5fcc180ce44e4",
+  "raw_body_in_checkpoint": false
+}

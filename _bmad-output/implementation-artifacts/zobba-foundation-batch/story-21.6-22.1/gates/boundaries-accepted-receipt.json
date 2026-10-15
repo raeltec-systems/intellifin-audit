@@ -1,0 +1,18 @@
+{
+  "gate": "boundaries-accepted",
+  "command": [
+    "python3",
+    "scripts/check-boundaries.py"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T05:36:14.139109+00:00",
+  "ended_at": "2026-10-03T05:36:16.990221+00:00",
+  "duration_seconds": 2.851,
+  "exit": 0,
+  "source_before": "boundaries-accepted-source-before.json",
+  "source_after": "boundaries-accepted-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "boundaries-accepted.log",
+  "log_sha256": "f0a6a67f082db9c88d9258aa2c5bb329389182a2e2bd8cb50f81160f38808a78"
+}

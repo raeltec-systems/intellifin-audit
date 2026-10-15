@@ -1,0 +1,10 @@
+--- selected-57-case-test-source
++++ final-3-case-capture-test-source
+@@ -195,6 +195,7 @@
+   await page.locator('.evidence-pane').evaluate(element => { element.scrollTop = 0; });
+   await expect(page.locator('vite-error-overlay')).toHaveCount(0);
+   expect(errors).toEqual([]);
++  await page.mouse.move(0, 0);
+   await page.screenshot({ path: info.outputPath('mixed-registered-originals.png'), fullPage: true });
+   await page.locator('.evidence-registry').evaluate(element => element.scrollIntoView({ block: 'start' }));
+   for (const item of registered) {

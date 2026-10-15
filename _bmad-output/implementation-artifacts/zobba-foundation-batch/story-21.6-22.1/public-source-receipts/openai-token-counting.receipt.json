@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://developers.openai.com/api/docs/guides/token-counting",
+  "effective_url": "https://developers.openai.com/api/docs/guides/token-counting",
+  "retrieved_at_utc": "2026-10-03T04:28:09.078255+00:00",
+  "completed_at_utc": "2026-10-03T04:28:09.360928+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html; charset=utf-8",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "openai-token-counting.html",
+  "bytes": 561072,
+  "sha256": "945c0fb282ff3c0b842b24bc057ecd50a9ab24b12acd79a28cc27fdefb0e8773",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/openai-token-counting.txt",
+  "readable_extraction_sha256": "88fecfb9ddb99370a81ff7de40aba8cf34c075ee3ce4e2647ae0ec398d7bc843",
+  "raw_body_in_checkpoint": false
+}

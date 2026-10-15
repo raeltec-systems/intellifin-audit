@@ -1,0 +1,194 @@
+=== B2 — cargo test -j 3 -p codex-execpolicy -p codex-apply-patch (2026-09-29; paths sanitised) ===
+
+toolchain: rustc 1.95.0 (59807616e 2026-04-14)
+commit: 8ffd91e42aa001b7e897bea812b02f89264f9fa0
+start: 2026-09-29T19:27:57Z
+  23: block_on<core::pin::Pin<&mut dyn core::future::future::Future<Output=()>>>
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:193:9
+  24: tokio::runtime::runtime::Runtime::block_on_inner
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/runtime.rs:371:52
+  25: block_on<core::pin::Pin<&mut dyn core::future::future::Future<Output=()>>>
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/runtime.rs:345:18
+  26: test_failed_move_returns_committed_destination_delta
+             at ./src/lib.rs:1159:65
+  27: codex_apply_patch::tests::test_failed_move_returns_committed_destination_delta::{{closure}}
+             at ./src/lib.rs:1109:68
+  28: core::ops::function::FnOnce::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+  29: <fn() -> core::result::Result<(), alloc::string::String> as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+
+failures:
+    tests::test_apply_patch_fails_on_write_error
+    tests::test_failed_move_returns_committed_destination_delta
+
+test result: FAILED. 67 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.70s
+
+error: test failed, to rerun pass `-p codex-apply-patch --lib`
+     Running unittests src/main.rs (<study-target-dir>/debug/deps/apply_patch-e5f305c1a356c692)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/all.rs (<study-target-dir>/debug/deps/all-c0ed1e24d405987e)
+
+running 30 tests
+test suite::no_follow::no_follow_rechecks_paths_after_verification ... ok
+test suite::no_follow::no_follow_applies_regular_files_and_default_still_follows_links ... ok
+test suite::cli::test_apply_patch_cli_stdin_add_and_update ... ok
+test suite::tool::test_apply_patch_cli_add_overwrites_existing_file ... ok
+test suite::cli::test_apply_patch_cli_add_and_update ... ok
+test suite::tool::test_apply_patch_cli_appends_after_trailing_blank_crlf_line ... ok
+test suite::tool::test_apply_patch_cli_allows_overlapping_eof_chunks_in_legacy_mode ... ok
+test suite::tool::test_apply_patch_cli_applies_multiple_chunks ... ok
+test suite::tool::test_apply_patch_cli_applies_multiple_operations ... ok
+test suite::tool::test_apply_patch_cli_failure_after_partial_success_leaves_changes ... ok
+test suite::tool::test_apply_patch_cli_delete_directory_fails ... ok
+test suite::no_follow::no_follow_rejects_leaf_and_ancestor_links_for_every_patch_operation ... ok
+test suite::tool::test_apply_patch_cli_move_overwrites_existing_destination ... ok
+test suite::tool::test_apply_patch_cli_moves_file_to_new_directory ... ok
+test suite::tool::test_apply_patch_cli_preserves_change_order_with_repeated_lines ... ok
+test suite::tool::test_apply_patch_cli_preserves_cr_from_target_file ... ok
+test suite::tool::test_apply_patch_cli_preserves_crlf_from_target_file ... ok
+test suite::tool::test_apply_patch_cli_rejects_empty_patch ... ok
+test suite::tool::test_apply_patch_cli_preserves_repeated_context_line_ending ... ok
+test suite::tool::test_apply_patch_cli_preserves_untouched_mixed_line_endings ... ok
+test suite::tool::test_apply_patch_cli_rejects_invalid_hunk_header ... ok
+test suite::tool::test_apply_patch_cli_rejects_empty_update_hunk ... ok
+test suite::tool::test_apply_patch_cli_rejects_missing_file_delete ... ok
+test suite::tool::test_apply_patch_cli_reports_missing_context ... ok
+test suite::tool::test_apply_patch_cli_rejects_overlapping_end_of_file_chunks ... ok
+test suite::tool::test_apply_patch_cli_requires_existing_file_for_update ... ok
+test suite::tool::test_apply_patch_cli_uses_crlf_for_new_trailing_newline ... ok
+test suite::tool::test_apply_patch_cli_updates_file_appends_trailing_newline ... ok
+test suite::tool::test_apply_patch_cli_uses_legacy_line_handling_without_rollout_env ... ok
+test suite::scenarios::test_apply_patch_scenarios ... ok
+
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+
+     Running unittests src/lib.rs (<study-target-dir>/debug/deps/codex_execpolicy-b38620f021116c56)
+
+running 7 tests
+test amend::tests::appends_rule_without_duplicate_newline ... ok
+test amend::tests::appends_network_rule ... ok
+test amend::tests::appends_rule_and_creates_directories ... ok
+test amend::tests::inserts_newline_when_missing_before_append ... ok
+test amend::tests::appends_prefix_and_network_rules ... ok
+test amend::tests::rejects_wildcard_network_rule_host ... ok
+test sandbox_migration::tests::removes_banned_allow_rules_once ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/main.rs (<study-target-dir>/debug/deps/codex_execpolicy-7b560cc2aa379826)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/basic.rs (<study-target-dir>/debug/deps/basic-3f846372408d683c)
+
+running 27 tests
+test add_prefix_rule_rejects_empty_prefix ... ok
+test heuristics_match_is_returned_when_no_policy_matches ... ok
+test add_prefix_rule_extends_policy ... ok
+test append_allow_prefix_rule_dedupes_existing_rule ... ok
+test basic_match ... ok
+test host_executable_rejects_non_absolute_path ... ok
+test host_executable_rejects_name_with_path_separator ... ok
+test host_executable_last_definition_wins ... ok
+test host_executable_resolution_does_not_override_exact_match ... ok
+test host_executable_rejects_path_with_wrong_basename ... ok
+test host_executable_resolution_falls_back_without_mapping ... ok
+test host_executable_resolution_ignores_path_not_in_allowlist ... ok
+test host_executable_resolution_uses_basename_rule_when_allowed ... ok
+test justification_can_be_used_with_allow_decision ... ok
+test host_executable_resolution_respects_explicit_empty_allowlist ... ok
+test justification_is_attached_to_forbidden_matches ... ok
+test network_rule_rejects_wildcard_hosts ... ok
+test justification_cannot_be_empty ... ok
+test match_and_not_match_examples_are_enforced ... ok
+test network_rules_compile_into_domain_lists ... ok
+test only_first_token_alias_expands_to_multiple_rules ... ok
+test parses_host_executable_paths ... ok
+test strictest_decision_across_multiple_commands ... ok
+test parses_multiple_policy_files ... ok
+test prefix_rule_examples_honor_host_executable_resolution ... ok
+test strictest_decision_wins_across_matches ... ok
+test tail_aliases_are_not_cartesian_expanded ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+error: 1 target failed:
+    `-p codex-apply-patch --lib`
+
+real	8m15.846s
+user	15m48.611s
+sys	4m51.147s
+CARGO_EXIT=101
+end: 2026-09-29T19:36:13Z
+
+=== Focused re-run of the two failing apply-patch unit tests (root-environment artefact: uid 0 bypasses 0o555) ===
+
+running 2 tests
+tests::test_failed_move_returns_committed_destination_delta --- FAILED
+tests::test_apply_patch_fails_on_write_error --- FAILED
+failures:
+---- tests::test_failed_move_returns_committed_destination_delta stdout ----
+thread 'tests::test_failed_move_returns_committed_destination_delta' (8043) panicked at apply-patch/src/lib.rs:1136:10:
+source removal should fail after destination write: AppliedPatchDelta { changes: [AppliedPatchChange { path: PathUri(Url { scheme: "file", cannot_be_a_base: false, username: "", password: None, host: None, port: None, path: "/tmp/.tmp9T7zgu/locked/src.txt", query: None, fragment: None }), change: Update { move_path: Some(PathUri(Url { scheme: "file", cannot_be_a_base: false, username: "", password: None, host: None, port: None, path: "/tmp/.tmp9T7zgu/out/dst.txt", query: None, fragment: None })), old_content: "line\n", overwritten_move_content: None, new_content: "line2\n" } }], exact: true }
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/panicking.rs:80:14
+   2: core::result::unwrap_failed
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/result.rs:1867:5
+   3: core::result::Result<T,E>::expect_err
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/result.rs:1298:22
+   4: {async_block#0}
+             at ./src/lib.rs:1136:10
+   5: poll<&mut dyn core::future::future::Future<Output=()>>
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/future/future.rs:133:9
+   6: poll<&mut core::pin::Pin<&mut dyn core::future::future::Future<Output=()>>>
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/future/future.rs:133:9
+   7: {closure#0}<core::pin::Pin<&mut core::pin::Pin<&mut dyn core::future::future::Future<Output=()>>>>
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:778:70
+   8: with_budget<core::task::poll::Poll<()>, tokio::runtime::scheduler::current_thread::{impl#9}::block_on::{closure#0}::{closure#0}::{closure_env#0}<core::pin::Pin<&mut core::pin::Pin<&mut dyn core::future::future::Future<Output=()>>>>>
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/task/coop/mod.rs:167:5
+   9: budget<core::task::poll::Poll<()>, tokio::runtime::scheduler::current_thread::{impl#9}::block_on::{closure#0}::{closure#0}::{closure_env#0}<core::pin::Pin<&mut core::pin::Pin<&mut dyn core::future::future::Future<Output=()>>>>>
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/task/coop/mod.rs:133:5
+  10: {closure#0}<core::pin::Pin<&mut core::pin::Pin<&mut dyn core::future::future::Future<Output=()>>>>
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:778:25
+  11: tokio::runtime::scheduler::current_thread::Context::enter
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:451:19
+  12: {closure#0}<core::pin::Pin<&mut core::pin::Pin<&mut dyn core::future::future::Future<Output=()>>>>
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:777:44
+  13: tokio::runtime::scheduler::current_thread::CoreGuard::enter::{{closure}}
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:865:68
+  14: tokio::runtime::context::scoped::Scoped<T>::set
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/context/scoped.rs:40:9
+  15: tokio::runtime::context::set_scheduler::{{closure}}
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/context.rs:181:38
+  16: try_with<tokio::runtime::context::Context, tokio::runtime::context::set_scheduler::{closure_env#0}<(alloc::boxed::Box<tokio::runtime::scheduler::current_thread::Core, alloc::alloc::Global>, core::option::Option<()>), tokio::runtime::scheduler::current_thread::{impl#9}::enter::{closure_env#0}<tokio::runtime::scheduler::current_thread::{impl#9}::block_on::{closure_env#0}<core::pin::Pin<&mut core::pin::Pin<&mut dyn core::future::future::Future<Output=()>>>>, core::option::Option<()>>>, (alloc::boxed::Box<tokio::runtime::scheduler::current_thread::Core, alloc::alloc::Global>, core::option::Option<()>)>
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/thread/local.rs:513:12
+  17: std::thread::local::LocalKey<T>::with
+             at /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/std/src/thread/local.rs:477:20
+  18: tokio::runtime::context::set_scheduler
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/context.rs:181:17
+  19: tokio::runtime::scheduler::current_thread::CoreGuard::enter
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:865:27
+  20: tokio::runtime::scheduler::current_thread::CoreGuard::block_on
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:765:24
+  21: {closure#0}<core::pin::Pin<&mut dyn core::future::future::Future<Output=()>>>
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:205:33
+  22: tokio::runtime::context::runtime::enter_runtime
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/context/runtime.rs:65:16
+  23: block_on<core::pin::Pin<&mut dyn core::future::future::Future<Output=()>>>
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/scheduler/current_thread/mod.rs:193:9
+  24: tokio::runtime::runtime::Runtime::block_on_inner
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/runtime.rs:371:52
+  25: block_on<core::pin::Pin<&mut dyn core::future::future::Future<Output=()>>>
+             at <cargo-home>/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.3/src/runtime/runtime.rs:345:18

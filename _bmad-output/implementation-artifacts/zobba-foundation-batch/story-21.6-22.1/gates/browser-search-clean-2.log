@@ -1,0 +1,22 @@
+
+Running 14 tests using 1 worker
+
+(node:1137083) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Source-library runtime ready; owned fixture build completed.
+  ✓   1 tests/browser/evidence-search.spec.ts:70:1 › bounded dense and sparse search pages disclose coverage and reset the cursor for Unicode queries (4.9s)
+  ✓   2 tests/browser/evidence-search.spec.ts:100:1 › late source search cannot replace a newer query and query navigation never mutates (2.4s)
+  ✓   3 tests/browser/evidence-search.spec.ts:118:3 › a held later source page is cancelled after selecting a new query (4.2s)
+  ✓   4 tests/browser/evidence-search.spec.ts:118:3 › a held later source page is cancelled after selecting another engagement (4.8s)
+  ✓   5 tests/browser/evidence-search.spec.ts:203:3 › a held inspector preview never discloses stale private material after assignment revocation (2.5s)
+  ✓   6 tests/browser/evidence-search.spec.ts:203:3 › a held inspector preview never discloses stale private material after same-actor session replacement (3.9s)
+  ✓   7 tests/browser/evidence-search.spec.ts:255:1 › a held successful search is refused after actual assignment revocation (2.2s)
+  ✓   8 tests/browser/evidence-search.spec.ts:271:1 › an unavailable search withdraws results and focuses a permitted retry surface (2.3s)
+  ✓   9 tests/browser/evidence-search.spec.ts:282:3 › routine access checking preserves a held knowledge-source preview until current verification (7.2s)
+  ✓  10 tests/browser/evidence-search.spec.ts:282:3 › routine access checking preserves a held knowledge-source download until current verification (9.4s)
+  ✓  11 tests/browser/evidence-search.spec.ts:348:1 › 390px keyboard search traverses dense and sparse pages and returns from inspection to the exact result (6.0s)
+  ✓  12 tests/browser/evidence-search.spec.ts:376:1 › 390px keyboard inspection preserves exact provenance and verified original bytes, then returns to its opener (4.8s)
+  ✓  13 tests/browser/evidence-search.spec.ts:412:1 › Task knowledge opens its exact source in the library and restores the knowledge opener (7.3s)
+  ✓  14 tests/browser/evidence-search.spec.ts:432:1 › reused knowledge opens its exact original from another engagement and source-only revocation preserves destination work (6.5s)
+
+  14 passed (1.2m)

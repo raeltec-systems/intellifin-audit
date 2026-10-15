@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://platform.claude.com/docs/en/build-with-claude/thinking",
+  "effective_url": "https://platform.claude.com/docs/en/build-with-claude/thinking",
+  "retrieved_at_utc": "2026-10-03T04:29:19.647974+00:00",
+  "completed_at_utc": "2026-10-03T04:29:20.450292+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html; charset=utf-8",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "anthropic-thinking.html",
+  "bytes": 1073692,
+  "sha256": "24fb09a0d85d15aec18e53289aacccc4eb23f704eed5426bf5f8d6afb9a0c3ca",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/anthropic-thinking.txt",
+  "readable_extraction_sha256": "b471246221df98fd9c366e311849a607e256c387e34f39d38e932a1ae897be8b",
+  "raw_body_in_checkpoint": false
+}
