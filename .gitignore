@@ -3,6 +3,7 @@ dist/
 .next/
 out/
 coverage/
+!zobba/crates/*/src/coverage/
 *.tsbuildinfo
 .turbo/
 

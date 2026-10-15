@@ -510,6 +510,22 @@ impl ReadingStore for CitationRepository {
         tx.commit().await.map_err(unavailable)?;
         Ok(stored)
     }
+    async fn document_jobs(
+        &self,
+        actor: &str,
+        s: &Scope,
+        task_id: &str,
+        program_sha256: &str,
+    ) -> Result<(u64, Option<String>), ReadingError> {
+        let mut tx = begin(&self.pool, actor, s).await?;
+        let (count, newest): (i64, Option<String>) = sqlx::query_as("SELECT count(*),(SELECT id FROM public.analysis_jobs WHERE task_id=$1 AND environment_id='document-python-3-13' AND program_sha256=$2 ORDER BY admitted_us DESC,id COLLATE \"C\" DESC LIMIT 1) FROM public.analysis_jobs WHERE task_id=$1 AND environment_id='document-python-3-13' AND program_sha256=$2")
+            .bind(task_id).bind(program_sha256).fetch_one(&mut *tx).await.map_err(unavailable)?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok((
+            u64::try_from(count).map_err(|_| ReadingError::Unavailable)?,
+            newest,
+        ))
+    }
     async fn job_failure(
         &self,
         actor: &str,

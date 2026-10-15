@@ -362,6 +362,23 @@ pub(crate) struct Jobs {
 }
 impl Jobs {
     /// Descendants registered for a job (Story 22.5 reading tests).
+    /// Jobs of one Task with exactly this program, and the newest of them.
+    pub(crate) fn with_program(
+        &self,
+        task_id: &str,
+        program_sha256: &str,
+    ) -> (u64, Option<String>) {
+        let jobs = self.jobs.lock().unwrap();
+        let matching: Vec<&String> = jobs
+            .iter()
+            .filter(|j| j.0.task_id == task_id && j.0.request.program_sha256 == program_sha256)
+            .map(|j| &j.0.id)
+            .collect();
+        (
+            matching.len() as u64,
+            matching.last().map(|id| (*id).clone()),
+        )
+    }
     pub(crate) fn descendants_of(&self, job_id: &str) -> Vec<Descendant> {
         self.jobs
             .lock()

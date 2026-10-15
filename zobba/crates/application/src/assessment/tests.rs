@@ -241,11 +241,10 @@ impl CitationReader for Reader {
                                 let i =
                                     headers.iter().position(|h| h == c).expect("a named column");
                                 let letter = (b'A' + i as u8) as char;
-                                CellRead {
-                                    texts: (!cells[i].is_empty())
-                                        .then(|| vec![cells[i].to_string()]),
-                                    locator: Locator::parse(&format!("cell:{sheet}!{letter}{row}")),
-                                }
+                                CellRead::text_cell(
+                                    (!cells[i].is_empty()).then(|| vec![cells[i].to_string()]),
+                                    Locator::parse(&format!("cell:{sheet}!{letter}{row}")),
+                                )
                             })
                             .collect(),
                     })
@@ -754,6 +753,7 @@ impl coverage::CoverageStore for Store {
     ) -> Result<coverage::CoverageSnapshot, ReadingError> {
         let state = self.state.lock().unwrap();
         Ok(coverage::CoverageSnapshot {
+            referenced: vec![],
             populations: state.populations.clone(),
             samples: state.samples.clone(),
             summaries: state.summaries.clone(),
@@ -2597,9 +2597,8 @@ fn every_row_is_counted_by_trusted_code_and_the_summary_partitions_subjects() {
     assert_eq!(summary.failing_opportunities, 1);
     assert_eq!(summary.conclusion, Conclusion::ExceptionsFoundInconclusive);
     assert_eq!(state.summaries[0].summary_digest, summary.digest());
-    // The read named the population record it was for.
+    // The read named the population's sheet and columns.
     let request = &reader.enumerations.lock().unwrap()[0];
-    assert_eq!(request.record, population.id);
     assert_eq!(
         request.columns,
         [

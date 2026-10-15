@@ -55,7 +55,9 @@ CREATE TABLE public.assessment_populations (
    WHEN truncated OR last_row < header_row OR rows_read <> last_row - header_row THEN 'row_bound'
    WHEN declared_count IS NOT NULL AND declared_count <> distinct_subjects THEN 'count_mismatch' END),
  CHECK(reconciliation = CASE WHEN declared_count IS NULL THEN 'not_declared' WHEN declared_count = distinct_subjects THEN 'matched' ELSE 'mismatch' END),
- CHECK(document->>'record'='population' AND document->>'id'=id AND document->>'task_id'=task_id AND document->>'cycle_id'=cycle_id
+ -- Every document CHECK is wrapped in coalesce(..., false): a missing key
+ -- makes a comparison NULL, and a CHECK that is NULL would pass.
+ CHECK(coalesce(document->>'record'='population' AND document->>'id'=id AND document->>'task_id'=task_id AND document->>'cycle_id'=cycle_id
    AND document->>'invocation_id'=invocation_id AND (document->>'ordinal')::integer=ordinal
    AND document->>'methodology_binding_id'=methodology_binding_id AND (document->>'execution_epoch')::bigint=execution_epoch
    AND document->>'basis_id'=basis_id AND document->>'supersedes' IS NOT DISTINCT FROM supersedes
@@ -74,7 +76,14 @@ CREATE TABLE public.assessment_populations (
    AND document->>'completeness'=completeness AND document->>'completeness_reason' IS NOT DISTINCT FROM completeness_reason
    AND document->>'reconciliation'=reconciliation
    AND jsonb_typeof(document->'grain')='array' AND jsonb_array_length(document->'grain') BETWEEN 1 AND 3
-   AND jsonb_typeof(document->'value_columns')='array' AND jsonb_array_length(document->'value_columns') <= 8),
+   AND jsonb_typeof(document->'value_columns')='array' AND jsonb_array_length(document->'value_columns') <= 8
+   AND document ?& ARRAY['supersedes','declared_count','job_id','completeness_reason','sheet','control','columns','naive_date_times']
+   AND jsonb_typeof(document->'columns')='array' AND jsonb_array_length(document->'columns') BETWEEN 1 AND 12
+   AND (document->'columns') @> (document->'grain')
+   AND jsonb_typeof(document->'naive_date_times')='number' AND (document->>'naive_date_times')::bigint >= 0, false)),
+ -- A workbook population (one that names a sheet) was read by a trusted
+ -- enumeration job; CSV and plain text are read in process, with no job.
+ CHECK((job_id IS NULL) = (document->'sheet' = 'null'::jsonb)),
  -- A declared count is a control the 22.5 verifier verified at its location.
  CHECK((declared_count IS NULL) = (document->'control' = 'null'::jsonb)),
  CHECK(declared_count IS NULL OR (document->'control'->>'verification'='verified' AND document->'control'->>'original_sha256' ~ '^[0-9a-f]{64}$')),
@@ -111,12 +120,13 @@ CREATE TABLE public.assessment_population_members (
    WHEN 'scope_unknown' THEN reason IN ('period_unparsed','period_missing','conflicting_duplicate')
    ELSE reason IS NULL END),
  CHECK((disposition='duplicate_row') = (duplicate_of IS NOT NULL) AND (duplicate_of IS NULL OR duplicate_of BETWEEN 0 AND ordinal-1)),
- CHECK(document->>'record'='member' AND document->>'population_id'=population_id AND (document->>'ordinal')::integer=ordinal
+ CHECK(coalesce(document->>'record'='member' AND document->>'population_id'=population_id AND (document->>'ordinal')::integer=ordinal
    AND (document->>'row')::integer=row_number AND document->>'subject' IS NOT DISTINCT FROM subject
    AND document->>'disposition'=disposition AND document->>'reason' IS NOT DISTINCT FROM reason
    AND (document->>'duplicate_of')::integer IS NOT DISTINCT FROM duplicate_of
    AND jsonb_typeof(document->'cells')='array' AND jsonb_array_length(document->'cells') <= 12
-   AND jsonb_typeof(document->'values')='array' AND jsonb_array_length(document->'values') <= 8),
+   AND jsonb_typeof(document->'values')='array' AND jsonb_array_length(document->'values') <= 8
+   AND document ?& ARRAY['subject','reason','duplicate_of'], false)),
  PRIMARY KEY(organisation_id,client_id,engagement_id,population_id,ordinal),
  FOREIGN KEY(organisation_id,client_id,engagement_id,population_id) REFERENCES public.assessment_populations(organisation_id,client_id,engagement_id,id)
 );
@@ -143,13 +153,14 @@ CREATE TABLE public.assessment_samples (
  digest text NOT NULL CHECK(digest ~ '^[0-9a-f]{64}$'),
  created_us bigint NOT NULL DEFAULT floor(extract(epoch FROM clock_timestamp())*1000000)::bigint,
  CHECK((method='seeded_random') = (seed IS NOT NULL) AND (seed IS NULL) = (algorithm IS NULL)),
- CHECK(document->>'record'='sample' AND document->>'id'=id AND document->>'task_id'=task_id AND document->>'cycle_id'=cycle_id
+ CHECK(coalesce(document->>'record'='sample' AND document->>'id'=id AND document->>'task_id'=task_id AND document->>'cycle_id'=cycle_id
    AND document->>'invocation_id'=invocation_id AND (document->>'ordinal')::integer=ordinal
    AND document->>'methodology_binding_id'=methodology_binding_id AND (document->>'execution_epoch')::bigint=execution_epoch
    AND document->>'population_id'=population_id AND document->>'method'=method AND document->>'seed' IS NOT DISTINCT FROM seed
    AND document->>'algorithm' IS NOT DISTINCT FROM algorithm AND (document->>'size')::integer=size
    AND (document->>'statistical_inference')::boolean=statistical_inference
-   AND (document->>'selected_count')::integer=size AND document->>'selected_sha256' ~ '^[0-9a-f]{64}$'),
+   AND (document->>'selected_count')::integer=size AND document->>'selected_sha256' ~ '^[0-9a-f]{64}$'
+   AND document ?& ARRAY['seed','algorithm'], false)),
  PRIMARY KEY(organisation_id,client_id,engagement_id,id),
  UNIQUE(organisation_id,client_id,engagement_id,invocation_id,ordinal),
  FOREIGN KEY(organisation_id,client_id,engagement_id,task_id,cycle_id) REFERENCES public.task_cycles(organisation_id,client_id,engagement_id,task_id,id),
@@ -240,7 +251,7 @@ CREATE TABLE public.assessment_summaries (
  CHECK((sample_id IS NULL) = (selected IS NULL)),
  CHECK((completeness='complete') = (completeness_reason IS NULL)),
  CHECK(failing_subjects + meets_every_applicable + unresolved_subjects + not_applicable_to_any = coalesce(selected, in_scope)),
- CHECK(document->>'record'='summary' AND document->>'id'=id AND document->>'task_id'=task_id AND document->>'cycle_id'=cycle_id
+ CHECK(coalesce(document->>'record'='summary' AND document->>'id'=id AND document->>'task_id'=task_id AND document->>'cycle_id'=cycle_id
    AND document->>'invocation_id'=invocation_id AND (document->>'ordinal')::integer=ordinal
    AND document->>'methodology_binding_id'=methodology_binding_id AND (document->>'execution_epoch')::bigint=execution_epoch
    AND document->>'basis_id'=basis_id AND document->>'population_id'=population_id AND document->>'sample_id' IS NOT DISTINCT FROM sample_id
@@ -259,7 +270,11 @@ CREATE TABLE public.assessment_summaries (
    AND (document->'summary'->>'unresolved')::integer=unresolved_subjects AND (document->'summary'->>'not_applicable_to_any')::integer=not_applicable_to_any
    AND (document->'summary'->>'failing_opportunities')::integer=failing_opportunities
    AND (document->'summary'->>'statistical_inference')::boolean=statistical_inference
-   AND jsonb_typeof(document->'summary'->'criteria')='array' AND jsonb_array_length(document->'summary'->'criteria') BETWEEN 1 AND 16),
+   AND jsonb_typeof(document->'summary'->'criteria')='array' AND jsonb_array_length(document->'summary'->'criteria') BETWEEN 1 AND 16
+   AND document ?& ARRAY['sample_id'] AND document->'summary' ?& ARRAY['completeness_reason','selected']
+   -- Limitations are closed codes (said in words beside their counts).
+   AND jsonb_typeof(document->'summary'->'limitations')='array'
+   AND NOT jsonb_path_exists(document->'summary'->'limitations', '$[*] ? (!(@.code == "not_evaluated" || @.code == "judgment_not_recorded" || @.code == "unreviewed_model_judgments" || @.code == "sample_selected_only" || @.code == "scope_unknown" || @.code == "unkeyed_rows" || @.code == "period_not_checked" || @.code == "naive_date_times"))'), false)),
  PRIMARY KEY(organisation_id,client_id,engagement_id,id),
  UNIQUE(organisation_id,client_id,engagement_id,invocation_id,ordinal),
  UNIQUE NULLS NOT DISTINCT (organisation_id,client_id,engagement_id,population_id,sample_id),
@@ -278,6 +293,7 @@ CREATE FUNCTION public.coverage_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
 DECLARE population public.assessment_populations%ROWTYPE;
  recount record; partitioned record; entry jsonb; position_in_basis integer; expected text; unresolved integer; subjects integer; criteria integer;
+ unreviewed bigint := 0; program text; literal text; request jsonb; code integer;
 BEGIN
  IF TG_TABLE_NAME IN ('assessment_populations','assessment_samples','assessment_summaries') THEN
   IF NOT EXISTS(SELECT 1 FROM public.model_invocations i WHERE (i.organisation_id,i.client_id,i.engagement_id,i.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.invocation_id)
@@ -298,14 +314,34 @@ BEGIN
    RAISE EXCEPTION 'a population reads a registered original by its digest' USING ERRCODE='23514';
   END IF;
   -- A workbook was read by a collected trusted enumeration job of this Task
-  -- over exactly this original.
-  IF NEW.job_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.analysis_jobs j JOIN public.analysis_job_events e ON e.job_id=j.id AND e.status='collected'
-     WHERE j.id=NEW.job_id AND j.task_id=NEW.task_id AND j.environment_id='document-python-3-13'
-       -- The request is the program's one JSON string literal, its quotes
-       -- written as \u0022 escapes.
-       AND position('\u0022mode\u0022:\u0022enumerate\u0022' IN j.program) > 0
-       AND j.inputs=jsonb_build_array(jsonb_build_object('original_id',NEW.original_id,'digest',NEW.original_sha256))) THEN
-   RAISE EXCEPTION 'a population names a collected enumeration job over its exact original' USING ERRCODE='23514';
+  -- over exactly this original, whose program completed (no failure).
+  IF NEW.job_id IS NOT NULL THEN
+   SELECT j.program INTO program FROM public.analysis_jobs j
+    WHERE j.id=NEW.job_id AND j.task_id=NEW.task_id AND j.environment_id='document-python-3-13'
+      AND j.inputs=jsonb_build_array(jsonb_build_object('original_id',NEW.original_id,'digest',NEW.original_sha256))
+      AND EXISTS(SELECT 1 FROM public.analysis_job_events e WHERE e.job_id=j.id AND e.status='collected')
+      AND NOT EXISTS(SELECT 1 FROM public.analysis_job_events e WHERE e.job_id=j.id AND e.status IN ('failed','limit_exceeded'));
+   IF program IS NULL THEN
+    RAISE EXCEPTION 'a population names a collected enumeration job over its exact original' USING ERRCODE='23514';
+   END IF;
+   -- The job's request is the program's one string literal (written by the
+   -- trusted encoder: \uXXXX and \UXXXXXXXX escapes). Decoded, it names this
+   -- population's mode, original, sheet, header row and columns exactly.
+   literal := substring(program FROM '\nmain\(_zobba_json\.loads\("((?:[A-Za-z0-9 _:.,{}\[\]-]|\\u[0-9a-f]{4}|\\U[0-9a-f]{8})*)"\)\)\n$');
+   BEGIN
+    WHILE literal ~ '\\U[0-9a-f]{8}' LOOP
+     code := ('x' || substring(literal FROM '\\U([0-9a-f]{8})'))::bit(32)::integer;
+     literal := regexp_replace(literal, '\\U[0-9a-f]{8}', chr(code));
+    END LOOP;
+    request := ((('"' || literal || '"')::jsonb) #>> '{}')::jsonb;
+   EXCEPTION WHEN others THEN
+    request := NULL;
+   END;
+   IF request IS NULL OR request->>'mode' IS DISTINCT FROM 'enumerate' OR request->>'original' IS DISTINCT FROM NEW.original_id
+      OR request->'sheet' IS DISTINCT FROM NEW.document->'sheet' OR request->'header_row' IS DISTINCT FROM to_jsonb(NEW.header_row)
+      OR request->'columns' IS DISTINCT FROM NEW.document->'columns' THEN
+    RAISE EXCEPTION 'a population names the enumeration job that read its sheet, header row and columns' USING ERRCODE='23514';
+   END IF;
   END IF;
  ELSIF TG_TABLE_NAME='assessment_samples' THEN
   IF NOT EXISTS(SELECT 1 FROM public.assessment_populations p WHERE (p.organisation_id,p.client_id,p.engagement_id,p.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id) AND p.task_id=NEW.task_id) THEN
@@ -323,6 +359,10 @@ BEGIN
   IF NEW.completeness <> population.completeness OR NEW.completeness_reason IS DISTINCT FROM population.completeness_reason OR NEW.reconciliation <> population.reconciliation THEN
    RAISE EXCEPTION 'a summary states its population''s completeness and reconciliation' USING ERRCODE='23514';
   END IF;
+  -- One population's opportunities and summaries are serialised (the
+  -- opportunity batch guard takes the same lock): a summary reads every
+  -- opportunity, and no opportunity is added once a summary exists.
+  PERFORM pg_advisory_xact_lock(hashtextextended('coverage:'||NEW.population_id,0));
   -- Every population count, recounted from the stored members.
   SELECT count(*) AS received_rows,
     count(*) FILTER (WHERE m.disposition='unkeyed') AS unkeyed,
@@ -335,16 +375,16 @@ BEGIN
     count(*) FILTER (WHERE m.disposition='in_scope') AS in_scope
    INTO recount FROM public.assessment_population_members m
    WHERE (m.organisation_id,m.client_id,m.engagement_id,m.population_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id);
-  IF recount.received_rows <> NEW.received_rows THEN RAISE EXCEPTION 'a summary count is not the stored count: received_rows' USING ERRCODE='23514'; END IF;
-  IF recount.unkeyed <> NEW.unkeyed THEN RAISE EXCEPTION 'a summary count is not the stored count: unkeyed' USING ERRCODE='23514'; END IF;
-  IF recount.duplicate_rows <> NEW.duplicate_rows THEN RAISE EXCEPTION 'a summary count is not the stored count: duplicate_rows' USING ERRCODE='23514'; END IF;
-  IF recount.distinct_subjects <> NEW.distinct_subjects THEN RAISE EXCEPTION 'a summary count is not the stored count: distinct_subjects' USING ERRCODE='23514'; END IF;
-  IF recount.excluded_out_of_period <> NEW.excluded_out_of_period THEN RAISE EXCEPTION 'a summary count is not the stored count: excluded_out_of_period' USING ERRCODE='23514'; END IF;
-  IF recount.period_unparsed <> NEW.scope_unknown_period_unparsed THEN RAISE EXCEPTION 'a summary count is not the stored count: scope_unknown_period_unparsed' USING ERRCODE='23514'; END IF;
-  IF recount.period_missing <> NEW.scope_unknown_period_missing THEN RAISE EXCEPTION 'a summary count is not the stored count: scope_unknown_period_missing' USING ERRCODE='23514'; END IF;
-  IF recount.conflicting <> NEW.scope_unknown_conflicting_duplicate THEN RAISE EXCEPTION 'a summary count is not the stored count: scope_unknown_conflicting_duplicate' USING ERRCODE='23514'; END IF;
-  IF recount.in_scope <> NEW.in_scope THEN RAISE EXCEPTION 'a summary count is not the stored count: in_scope' USING ERRCODE='23514'; END IF;
-  IF NEW.sample_id IS NOT NULL AND NEW.selected <> (SELECT count(*) FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id)) THEN
+  IF recount.received_rows IS DISTINCT FROM NEW.received_rows THEN RAISE EXCEPTION 'a summary count is not the stored count: received_rows' USING ERRCODE='23514'; END IF;
+  IF recount.unkeyed IS DISTINCT FROM NEW.unkeyed THEN RAISE EXCEPTION 'a summary count is not the stored count: unkeyed' USING ERRCODE='23514'; END IF;
+  IF recount.duplicate_rows IS DISTINCT FROM NEW.duplicate_rows THEN RAISE EXCEPTION 'a summary count is not the stored count: duplicate_rows' USING ERRCODE='23514'; END IF;
+  IF recount.distinct_subjects IS DISTINCT FROM NEW.distinct_subjects THEN RAISE EXCEPTION 'a summary count is not the stored count: distinct_subjects' USING ERRCODE='23514'; END IF;
+  IF recount.excluded_out_of_period IS DISTINCT FROM NEW.excluded_out_of_period THEN RAISE EXCEPTION 'a summary count is not the stored count: excluded_out_of_period' USING ERRCODE='23514'; END IF;
+  IF recount.period_unparsed IS DISTINCT FROM NEW.scope_unknown_period_unparsed THEN RAISE EXCEPTION 'a summary count is not the stored count: scope_unknown_period_unparsed' USING ERRCODE='23514'; END IF;
+  IF recount.period_missing IS DISTINCT FROM NEW.scope_unknown_period_missing THEN RAISE EXCEPTION 'a summary count is not the stored count: scope_unknown_period_missing' USING ERRCODE='23514'; END IF;
+  IF recount.conflicting IS DISTINCT FROM NEW.scope_unknown_conflicting_duplicate THEN RAISE EXCEPTION 'a summary count is not the stored count: scope_unknown_conflicting_duplicate' USING ERRCODE='23514'; END IF;
+  IF recount.in_scope IS DISTINCT FROM NEW.in_scope THEN RAISE EXCEPTION 'a summary count is not the stored count: in_scope' USING ERRCODE='23514'; END IF;
+  IF NEW.sample_id IS NOT NULL AND NEW.selected IS DISTINCT FROM (SELECT count(*) FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id)) THEN
    RAISE EXCEPTION 'a summary count is not the stored count: selected' USING ERRCODE='23514';
   END IF;
   -- A sample's selected subjects are read once per statement (a hashed,
@@ -356,8 +396,16 @@ BEGIN
      AND m.disposition='in_scope'
      AND (NEW.sample_id IS NULL OR m.subject IN (SELECT x.subject FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id)));
   SELECT count(*) INTO criteria FROM public.assessment_basis_criteria k WHERE (k.organisation_id,k.client_id,k.engagement_id,k.basis_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.basis_id);
-  IF jsonb_array_length(NEW.document->'summary'->'criteria') <> criteria THEN
+  IF jsonb_array_length(NEW.document->'summary'->'criteria') IS DISTINCT FROM criteria THEN
    RAISE EXCEPTION 'a summary counts every criterion of its basis' USING ERRCODE='23514';
+  END IF;
+  -- A summary reads every opportunity: each criterion of its basis has
+  -- exactly one per in-scope member before any summary is recorded.
+  IF EXISTS(SELECT 1 FROM public.assessment_basis_criteria k
+     WHERE (k.organisation_id,k.client_id,k.engagement_id,k.basis_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.basis_id)
+       AND (SELECT count(*) FROM public.assessment_opportunities o WHERE (o.organisation_id,o.client_id,o.engagement_id,o.population_id,o.criterion_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id,k.criterion_id))
+           IS DISTINCT FROM population.in_scope::bigint) THEN
+   RAISE EXCEPTION 'a summary reads every opportunity of every criterion of its basis' USING ERRCODE='23514';
   END IF;
   -- Per criterion, in basis order, recounted from the stored opportunities.
   FOR position_in_basis, entry IN SELECT k.ordinal, NEW.document->'summary'->'criteria'->k.ordinal FROM public.assessment_basis_criteria k
@@ -370,6 +418,7 @@ BEGIN
      count(*) FILTER (WHERE o.applicability='applicable' AND o.execution='completed' AND o.verdict='undetermined') AS undetermined,
      count(*) FILTER (WHERE o.applicability='applicable' AND o.execution='failed') AS execution_failed,
      count(*) FILTER (WHERE o.applicability='applicable' AND o.execution='completed' AND o.verdict IS NULL) AS not_evaluated,
+     count(*) FILTER (WHERE o.applicability='applicable' AND o.verdict='met' AND o.origin='model_proposal') AS met_unreviewed,
      coalesce((SELECT jsonb_object_agg(r.reason, r.n) FROM (SELECT coalesce(o2.reason,'stated_in_words') AS reason, count(*) AS n
         FROM public.assessment_opportunities o2
         WHERE (o2.organisation_id,o2.client_id,o2.engagement_id,o2.population_id,o2.criterion_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id,k.criterion_id)
@@ -381,14 +430,22 @@ BEGIN
       AND (NEW.sample_id IS NULL OR o.subject IN (SELECT x.subject FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id)))
     WHERE (k.organisation_id,k.client_id,k.engagement_id,k.basis_id,k.ordinal)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.basis_id,position_in_basis)
     GROUP BY k.criterion_id;
+   -- IS DISTINCT FROM: a missing or non-numeric count is refused, never
+   -- compared to NULL (which would let it pass).
    IF entry->>'criterion_id' IS DISTINCT FROM recount.criterion_id
-      OR (entry->>'applicable')::bigint <> recount.applicable OR (entry->>'not_applicable')::bigint <> recount.not_applicable
-      OR (entry->>'applicability_unknown')::bigint <> subjects - recount.applicable - recount.not_applicable
-      OR (entry->>'met')::bigint <> recount.met OR (entry->>'not_met')::bigint <> recount.not_met
-      OR (entry->>'undetermined')::bigint <> recount.undetermined OR (entry->>'execution_failed')::bigint <> recount.execution_failed
-      OR (entry->>'not_evaluated')::bigint <> recount.not_evaluated OR entry->'undetermined_by_reason' <> recount.by_reason THEN
+      OR jsonb_typeof(entry->'applicable') IS DISTINCT FROM 'number' OR (entry->>'applicable')::bigint IS DISTINCT FROM recount.applicable
+      OR jsonb_typeof(entry->'not_applicable') IS DISTINCT FROM 'number' OR (entry->>'not_applicable')::bigint IS DISTINCT FROM recount.not_applicable
+      OR jsonb_typeof(entry->'applicability_unknown') IS DISTINCT FROM 'number' OR (entry->>'applicability_unknown')::bigint IS DISTINCT FROM subjects - recount.applicable - recount.not_applicable
+      OR jsonb_typeof(entry->'met') IS DISTINCT FROM 'number' OR (entry->>'met')::bigint IS DISTINCT FROM recount.met
+      OR jsonb_typeof(entry->'not_met') IS DISTINCT FROM 'number' OR (entry->>'not_met')::bigint IS DISTINCT FROM recount.not_met
+      OR jsonb_typeof(entry->'undetermined') IS DISTINCT FROM 'number' OR (entry->>'undetermined')::bigint IS DISTINCT FROM recount.undetermined
+      OR jsonb_typeof(entry->'execution_failed') IS DISTINCT FROM 'number' OR (entry->>'execution_failed')::bigint IS DISTINCT FROM recount.execution_failed
+      OR jsonb_typeof(entry->'not_evaluated') IS DISTINCT FROM 'number' OR (entry->>'not_evaluated')::bigint IS DISTINCT FROM recount.not_evaluated
+      OR jsonb_typeof(entry->'met_unreviewed') IS DISTINCT FROM 'number' OR (entry->>'met_unreviewed')::bigint IS DISTINCT FROM recount.met_unreviewed
+      OR entry->'undetermined_by_reason' IS DISTINCT FROM recount.by_reason THEN
     RAISE EXCEPTION 'a summary count is not the stored count: criterion %', recount.criterion_id USING ERRCODE='23514';
    END IF;
+   unreviewed := unreviewed + recount.met_unreviewed;
   END LOOP;
   -- The subject partitioned, one grain: failing (any not met), else unresolved
   -- (any unknown, undetermined, failed, not evaluated, or a criterion with no
@@ -413,21 +470,23 @@ BEGIN
     WHERE (o.organisation_id,o.client_id,o.engagement_id,o.population_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id)
       AND (NEW.sample_id IS NULL OR o.subject IN (SELECT x.subject FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id)))
     GROUP BY o.member_ordinal) s;
-  IF partitioned.failing <> NEW.failing_subjects THEN RAISE EXCEPTION 'a summary count is not the stored count: failing_subjects' USING ERRCODE='23514'; END IF;
-  IF partitioned.unresolved <> NEW.unresolved_subjects THEN RAISE EXCEPTION 'a summary count is not the stored count: unresolved_subjects' USING ERRCODE='23514'; END IF;
-  IF partitioned.meets <> NEW.meets_every_applicable THEN RAISE EXCEPTION 'a summary count is not the stored count: meets_every_applicable' USING ERRCODE='23514'; END IF;
-  IF partitioned.not_applicable <> NEW.not_applicable_to_any THEN RAISE EXCEPTION 'a summary count is not the stored count: not_applicable_to_any' USING ERRCODE='23514'; END IF;
-  IF partitioned.failing_opportunities <> NEW.failing_opportunities THEN RAISE EXCEPTION 'a summary count is not the stored count: failing_opportunities' USING ERRCODE='23514'; END IF;
+  IF partitioned.failing IS DISTINCT FROM NEW.failing_subjects THEN RAISE EXCEPTION 'a summary count is not the stored count: failing_subjects' USING ERRCODE='23514'; END IF;
+  IF partitioned.unresolved IS DISTINCT FROM NEW.unresolved_subjects THEN RAISE EXCEPTION 'a summary count is not the stored count: unresolved_subjects' USING ERRCODE='23514'; END IF;
+  IF partitioned.meets IS DISTINCT FROM NEW.meets_every_applicable THEN RAISE EXCEPTION 'a summary count is not the stored count: meets_every_applicable' USING ERRCODE='23514'; END IF;
+  IF partitioned.not_applicable IS DISTINCT FROM NEW.not_applicable_to_any THEN RAISE EXCEPTION 'a summary count is not the stored count: not_applicable_to_any' USING ERRCODE='23514'; END IF;
+  IF partitioned.failing_opportunities IS DISTINCT FROM NEW.failing_opportunities THEN RAISE EXCEPTION 'a summary count is not the stored count: failing_opportunities' USING ERRCODE='23514'; END IF;
   -- The closed conclusion its counts allow. A sample never concludes that
-  -- the population has no exception; scope-unknown subjects are unresolved.
-  unresolved := NEW.unresolved_subjects + CASE WHEN NEW.sample_id IS NULL THEN NEW.scope_unknown_period_unparsed + NEW.scope_unknown_period_missing + NEW.scope_unknown_conflicting_duplicate ELSE 0 END;
+  -- the population has no exception; scope-unknown subjects and rows with no
+  -- usable key are unresolved; a met that is an unreviewed model proposal
+  -- never proves that no exception exists.
+  unresolved := NEW.unresolved_subjects + CASE WHEN NEW.sample_id IS NULL THEN NEW.scope_unknown_period_unparsed + NEW.scope_unknown_period_missing + NEW.scope_unknown_conflicting_duplicate + NEW.unkeyed ELSE 0 END;
   expected := CASE
    WHEN NEW.completeness <> 'complete' AND NEW.received_rows = 0 THEN 'no_items_found_absence_not_proven'
    WHEN NEW.failing_subjects > 0 THEN CASE WHEN unresolved > 0 OR NEW.completeness <> 'complete' THEN 'exceptions_found_inconclusive' ELSE 'exceptions_found' END
    WHEN NEW.completeness = 'complete' AND unresolved = 0 AND NEW.meets_every_applicable = 0 THEN 'no_eligible_items'
-   WHEN NEW.completeness = 'complete' AND NEW.sample_id IS NULL AND unresolved = 0 THEN 'no_exception_found'
+   WHEN NEW.completeness = 'complete' AND NEW.sample_id IS NULL AND unresolved = 0 AND unreviewed = 0 THEN 'no_exception_found'
    ELSE 'inconclusive' END;
-  IF NEW.conclusion <> expected THEN
+  IF NEW.conclusion IS DISTINCT FROM expected THEN
    RAISE EXCEPTION 'a summary concludes only what its counts allow: %', expected USING ERRCODE='23514';
   END IF;
  END IF;
@@ -475,6 +534,16 @@ BEGIN
    RAISE EXCEPTION 'a selected item is an in-scope member of the sampled population' USING ERRCODE='23514';
   END IF;
  ELSE
+  -- Serialised with the summaries of the same population (the summary
+  -- guard takes the same lock): once a population is summarised its
+  -- opportunities are complete, and a stored summary always recounts true.
+  PERFORM pg_advisory_xact_lock(hashtextextended('coverage:'||x.population_id,0))
+   FROM (SELECT DISTINCT population_id FROM added ORDER BY population_id COLLATE "C") x;
+  IF EXISTS(SELECT 1 FROM public.assessment_summaries s
+     WHERE (s.organisation_id,s.client_id,s.engagement_id) IN (SELECT DISTINCT organisation_id,client_id,engagement_id FROM added)
+       AND s.population_id IN (SELECT DISTINCT population_id FROM added)) THEN
+   RAISE EXCEPTION 'a summarised population takes no further opportunities' USING ERRCODE='23514';
+  END IF;
   IF EXISTS(SELECT 1 FROM added a
      LEFT JOIN public.assessment_populations p ON (p.organisation_id,p.client_id,p.engagement_id,p.id)=(a.organisation_id,a.client_id,a.engagement_id,a.population_id)
      LEFT JOIN public.assessment_criteria c ON (c.organisation_id,c.client_id,c.engagement_id,c.id)=(a.organisation_id,a.client_id,a.engagement_id,a.criterion_id)
@@ -616,9 +685,9 @@ BEGIN
    program := convert_to(NEW.program,'UTF8');
    -- Story 24.2: the trusted program (with its enumerate mode), or the Story
    -- 22.5 program it extends (a job admitted by an earlier release).
-   IF NOT ((octet_length(program) > 23068
-        AND encode(sha256(substring(program FROM 1 FOR 23068)),'hex') = '1846ee7d4af990f846ff29880656c399cc4965101d02838d512ca74581a77219'
-        AND convert_from(substring(program FROM 23068+1),'UTF8') ~ '^\nimport json as _zobba_json\nmain\(_zobba_json\.loads\("([A-Za-z0-9 _:.,{}\[\]-]|\\u[0-9a-f]{4}|\\U[0-9a-f]{8})*"\)\)\n$')
+   IF NOT ((octet_length(program) > 25140
+        AND encode(sha256(substring(program FROM 1 FOR 25140)),'hex') = '235ceba4f29bcf6ad48d7f8c860937333356bf0eb0b0ecc6a43a8261e9ba008f'
+        AND convert_from(substring(program FROM 25140+1),'UTF8') ~ '^\nimport json as _zobba_json\nmain\(_zobba_json\.loads\("([A-Za-z0-9 _:.,{}\[\]-]|\\u[0-9a-f]{4}|\\U[0-9a-f]{8})*"\)\)\n$')
       OR (octet_length(program) > 19327
         AND encode(sha256(substring(program FROM 1 FOR 19327)),'hex') = '8abd34b8ef01866706cb18717a95ace272cedf55ce675cb0d7796553983ca849'
         AND convert_from(substring(program FROM 19327+1),'UTF8') ~ '^\nimport json as _zobba_json\nmain\(_zobba_json\.loads\("([A-Za-z0-9 _:.,{}\[\]-]|\\u[0-9a-f]{4}|\\U[0-9a-f]{8})*"\)\)\n$')) THEN
@@ -631,8 +700,8 @@ BEGIN
   -- prefix, as admitted to the document environment).
   IF NOT EXISTS(SELECT 1 FROM public.analysis_jobs j JOIN public.analysis_job_events e ON e.job_id=j.id AND e.status='collected'
      WHERE j.id=NEW.job_id AND j.environment_id='document-python-3-13'
-       AND ((octet_length(convert_to(j.program,'UTF8')) > 23068
-         AND encode(sha256(substring(convert_to(j.program,'UTF8') FROM 1 FOR 23068)),'hex')='1846ee7d4af990f846ff29880656c399cc4965101d02838d512ca74581a77219')
+       AND ((octet_length(convert_to(j.program,'UTF8')) > 25140
+         AND encode(sha256(substring(convert_to(j.program,'UTF8') FROM 1 FOR 25140)),'hex')='235ceba4f29bcf6ad48d7f8c860937333356bf0eb0b0ecc6a43a8261e9ba008f')
         OR (octet_length(convert_to(j.program,'UTF8')) > 19327
          AND encode(sha256(substring(convert_to(j.program,'UTF8') FROM 1 FOR 19327)),'hex')='8abd34b8ef01866706cb18717a95ace272cedf55ce675cb0d7796553983ca849'))
        AND j.program_sha256=encode(sha256(convert_to(j.program,'UTF8')),'hex')

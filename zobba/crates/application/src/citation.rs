@@ -315,7 +315,9 @@ pub fn widened(bytes: &[u8], start: usize, end: usize) -> Option<String> {
 /// Story 24.2: an RFC 4180 CSV (or plain text, one column per line) read in
 /// process from the exact original bytes: UTF-8 only (a leading byte-order
 /// mark is skipped), records end with CRLF or LF, a quoted field keeps its
-/// commas, line breaks and doubled quotes. Record 1 is the header; each named
+/// commas, line breaks and doubled quotes. Every record must have exactly
+/// the header's fields (a record that does not is refused, never shifted);
+/// trailing blank lines are not records. Record 1 is the header; each named
 /// column must appear exactly once. At most `max_rows` data records are read
 /// and more is `truncated`. A field over [`MAX_CELL_TEXT_BYTES`] is not
 /// usable (`None`), never shortened. Each cell's locator is its exact byte
@@ -388,11 +390,29 @@ pub fn enumerate_text(
         }
         records.push(record);
     }
+    // Trailing blank lines are not records.
+    while records
+        .last()
+        .is_some_and(|r| r.len() == 1 && r[0].0.is_empty())
+    {
+        records.pop();
+    }
     let Some(header) = records.first() else {
-        return Err(EnumerationFailure::HeaderMismatch {
-            column: columns.first().cloned().unwrap_or_default(),
-        });
+        return Err(EnumerationFailure::Empty);
     };
+    // Every record is as wide as its header (RFC 4180): a wider or narrower
+    // record would shift its columns, so nothing is read.
+    if let Some((index, record)) = records
+        .iter()
+        .enumerate()
+        .find(|(_, r)| r.len() != header.len())
+    {
+        return Err(EnumerationFailure::RaggedRecord {
+            record: index as u32 + 1,
+            fields: record.len() as u32,
+            header: header.len() as u32,
+        });
+    }
     let mut indices = Vec::with_capacity(columns.len());
     for column in columns {
         let found: Vec<usize> = header
@@ -417,18 +437,15 @@ pub fn enumerate_text(
             row: i as u32 + 2,
             cells: indices
                 .iter()
-                .map(|&index| match record.get(index) {
-                    None => CellRead {
-                        texts: Some(vec![]),
-                        locator: None,
-                    },
-                    Some((value, start, end)) => CellRead {
-                        texts: (value.len() <= MAX_CELL_TEXT_BYTES).then(|| vec![value.clone()]),
-                        locator: (start < end).then_some(Locator::Bytes {
+                .map(|&index| {
+                    let (value, start, end) = &record[index];
+                    CellRead::text_cell(
+                        (value.len() <= MAX_CELL_TEXT_BYTES).then(|| vec![value.clone()]),
+                        (start < end).then_some(Locator::Bytes {
                             start: *start as u64,
                             end: *end as u64,
                         }),
-                    },
+                    )
                 })
                 .collect(),
         })

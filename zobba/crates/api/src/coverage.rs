@@ -121,6 +121,9 @@ pub struct CoveragePopulationResponse {
     pub last_row: u32,
     pub rows_read: u32,
     pub truncated: bool,
+    /// Excel date or date-time cells (no time zone) read as UTC.
+    #[schema(pattern = "^[0-9]+$")]
+    pub naive_date_times: String,
     /// `complete` or `incomplete`.
     pub completeness: String,
     /// `not_exhaustive`, `row_bound` or `count_mismatch` when incomplete.
@@ -202,6 +205,24 @@ pub struct CriterionCountsResponse {
     pub execution_failed: String,
     #[schema(pattern = "^[0-9]+$")]
     pub not_evaluated: String,
+    /// Among `met`: unreviewed model proposals (24.1 judgments). They never
+    /// show that no exception exists.
+    #[schema(pattern = "^[0-9]+$")]
+    pub met_unreviewed: String,
+}
+
+/// One closed limitation of a summary, in words beside its exact count.
+#[derive(Serialize, ToSchema)]
+pub struct LimitationResponse {
+    /// `not_evaluated`, `judgment_not_recorded`, `unreviewed_model_judgments`,
+    /// `sample_selected_only`, `scope_unknown`, `unkeyed_rows`,
+    /// `period_not_checked` or `naive_date_times`.
+    pub code: String,
+    #[schema(required = true)]
+    pub criterion_id: Option<String>,
+    #[schema(required = true, pattern = "^[0-9]+$")]
+    pub count: Option<String>,
+    pub text: String,
 }
 
 /// One immutable coverage summary version, recounted by the database.
@@ -242,7 +263,8 @@ pub struct CoverageSummaryResponse {
     #[schema(pattern = "^[0-9]+$")]
     pub failing_opportunities: String,
     pub statistical_inference: bool,
-    pub limitations: Vec<String>,
+    #[schema(max_items = 16)]
+    pub limitations: Vec<LimitationResponse>,
     #[schema(pattern = "^[0-9a-f]{64}$")]
     pub summary_sha256: String,
     pub methodology_binding_id: String,
@@ -263,7 +285,7 @@ pub struct CoverageParts {
 /// Every original a coverage snapshot references.
 pub fn originals(view: &CoverageSnapshot) -> Vec<String> {
     let mut ids = std::collections::BTreeSet::new();
-    for p in &view.populations {
+    for p in view.populations.iter().chain(&view.referenced) {
         ids.insert(p.population.original_id.clone());
         if let Some(control) = &p.control {
             ids.insert(control.source.original_id.clone());
@@ -326,6 +348,7 @@ pub fn population(p: &PopulationRecord, originals: &Originals) -> CoveragePopula
         last_row: p.last_row,
         rows_read: p.rows_read,
         truncated: p.truncated,
+        naive_date_times: p.naive_date_times.to_string(),
         completeness: p.completeness.as_str().into(),
         incomplete_reason: p.completeness.reason().map(|r| r.as_str().into()),
         reconciliation: p.reconciliation.as_str().into(),
@@ -340,10 +363,12 @@ fn sample(
     view: &CoverageSnapshot,
     originals: &Originals,
 ) -> CoverageSampleResponse {
-    // The keys are cell texts of the sampled population's original.
+    // The keys are cell texts of the sampled population's original (listed,
+    // or an older one read exactly by ID).
     let shown = view
         .populations
         .iter()
+        .chain(&view.referenced)
         .find(|p| p.id == s.population_id)
         .is_some_and(|p| readable(originals, p));
     CoverageSampleResponse {
@@ -425,6 +450,7 @@ fn summary(r: &SummaryRecord) -> CoverageSummaryResponse {
                     .collect(),
                 execution_failed: c.execution_failed.to_string(),
                 not_evaluated: c.not_evaluated.to_string(),
+                met_unreviewed: c.met_unreviewed.to_string(),
             })
             .collect(),
         failing_subjects: s.partition.failing.to_string(),
@@ -433,7 +459,16 @@ fn summary(r: &SummaryRecord) -> CoverageSummaryResponse {
         not_applicable_to_any: s.partition.not_applicable_to_any.to_string(),
         failing_opportunities: s.failing_opportunities.to_string(),
         statistical_inference: false,
-        limitations: s.limitations.clone(),
+        limitations: s
+            .limitations
+            .iter()
+            .map(|l| LimitationResponse {
+                code: l.code.as_str().into(),
+                criterion_id: l.criterion_id.clone(),
+                count: l.count.map(|n| n.to_string()),
+                text: l.words(),
+            })
+            .collect(),
         summary_sha256: r.summary_digest.clone(),
         methodology_binding_id: r.methodology_binding_id.clone(),
         execution_epoch: r.execution_epoch.to_string(),
@@ -470,6 +505,9 @@ pub struct MemberCellResponse {
     pub text: Option<String>,
     #[schema(required = true)]
     pub location: Option<String>,
+    /// How the original stored it: `text`, `excel_date` or `excel_datetime`
+    /// (an Excel date-time has no time zone).
+    pub kind: String,
 }
 
 /// One typed value of a member, re-parsed by trusted code.
@@ -521,7 +559,8 @@ pub struct PopulationMembersResponse {
     pub values_withheld: bool,
     #[schema(max_items = 50)]
     pub members: Vec<MemberResponse>,
-    /// Opaque cursor of the next page in receipt order, when there is one.
+    /// Opaque cursor of the next page (members are C-ordered by key, then
+    /// receipt order), when there is one.
     #[schema(required = true, pattern = "^[0-9]{1,10}$")]
     pub next_cursor: Option<String>,
 }
@@ -538,10 +577,11 @@ fn member(m: &MemberRecord, columns: &[String], names: &[String], shown: bool) -
         cells: columns
             .iter()
             .zip(&member.cells)
-            .map(|(column, (text, locator))| MemberCellResponse {
+            .map(|(column, cell)| MemberCellResponse {
                 column: column.clone(),
-                text: text.clone().filter(|_| shown),
-                location: locator.as_ref().map(|l| l.label()),
+                text: cell.text.clone().filter(|_| shown),
+                location: cell.locator.as_ref().map(|l| l.label()),
+                kind: cell.kind.as_str().into(),
             })
             .collect(),
         values: names
@@ -564,11 +604,13 @@ fn member(m: &MemberRecord, columns: &[String], names: &[String], shown: bool) -
                         *measure_grounded,
                     ),
                 };
+                // The measure is read from a currency or unit cell of the
+                // original: withheld with the other cell values.
                 MemberValueResponse {
                     name: name.clone(),
                     state: state.into(),
                     value: value.filter(|_| shown),
-                    measure,
+                    measure: measure.filter(|_| shown),
                     measure_grounded: grounded,
                 }
             })
@@ -588,7 +630,7 @@ pub(crate) struct MembersQuery {
 #[utoipa::path(get,path="/engagements/{engagement_id}/tasks/{task_id}/assessment/populations/{population_id}/members",operation_id="get_population_members",security(("server_session"=[])),
     params(("X-Expected-Session"=Option<String>,Header,description="Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",min_length=1,max_length=128),("engagement_id"=String,Path),("task_id"=String,Path),("population_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query),
         ("disposition"=Option<String>,Query,description="in_scope, excluded, scope_unknown, duplicate_row or unkeyed"),("cursor"=Option<String>,Query,description="next_cursor of the previous page",pattern="^[0-9]{1,10}$")),
-    responses((status=412,description="Session changed",body=ErrorResponse),(status=200,description="The exact count of a population's members of one disposition and one page of them, in receipt order",body=PopulationMembersResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=400,body=ErrorResponse),(status=429,body=ErrorResponse),(status=503,body=ErrorResponse)))]
+    responses((status=412,description="Session changed",body=ErrorResponse),(status=200,description="The exact count of a population's members of one disposition and one page of them, C-ordered by key (a row with no key first), then receipt order",body=PopulationMembersResponse),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=400,body=ErrorResponse),(status=429,body=ErrorResponse),(status=503,body=ErrorResponse)))]
 pub(crate) async fn members(
     State(state): State<TaskHttpState>,
     headers: HeaderMap,

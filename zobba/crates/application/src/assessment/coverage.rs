@@ -31,12 +31,12 @@ use zobba_domain::{
     },
     citation::{CitedAnswer, Locator, Verification, VerifiedSource},
     coverage::{
-        Completeness, Conclusion, ControlCount, CriterionOpportunities, Disposition,
+        CellKind, Completeness, Conclusion, ControlCount, CriterionOpportunities, Disposition,
         DispositionKind, DispositionReason, Enumeration, EnumerationFailure, IncompleteReason,
-        Member, MemberValue, OpportunityFacts, PopulationCounts, PopulationFacts,
-        ProposedPopulation, ProposedSample, Reconciliation, SampleMethod, SampleMethodKind,
-        SampleRefusal, Substitution, Summary, ValueColumn, build_members, check_sample,
-        completeness, summarise,
+        Limitation, LimitationCode, Member, MemberCell, MemberValue, OpportunityFacts,
+        PopulationCounts, PopulationFacts, ProposedPopulation, ProposedSample, Reconciliation,
+        SampleMethod, SampleMethodKind, SampleRefusal, Substitution, Summary, ValueColumn,
+        build_members, check_sample, completeness, naive_date_times, summarise,
     },
     model::JsonValue,
     task::ClaimBasis,
@@ -71,6 +71,8 @@ pub struct PopulationRecord {
     pub counts: PopulationCounts,
     pub completeness: Completeness,
     pub reconciliation: Reconciliation,
+    /// Excel date-time cells (no time zone) read as UTC under an instant rule.
+    pub naive_date_times: u64,
     pub digest: String,
     pub recorded_us: Option<i64>,
 }
@@ -148,6 +150,8 @@ pub struct InvocationCoverage {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CoverageSnapshot {
     pub populations: Vec<PopulationRecord>,
+    /// Older populations a listed sample or summary reads (exact, by ID).
+    pub referenced: Vec<PopulationRecord>,
     pub samples: Vec<SampleRecord>,
     pub summaries: Vec<SummaryRecord>,
     pub total_populations: u64,
@@ -289,6 +293,8 @@ impl PopulationRecord {
             ("original_sha256", s(&self.original_sha256)),
             ("sheet", opt(p.sheet.as_deref())),
             ("header_row", int(u64::from(p.header_row))),
+            // The named columns in the order the trusted read requested them.
+            ("columns", list(&p.columns())),
             ("subject_unit", s(&p.subject_unit)),
             ("grain", list(&p.grain)),
             (
@@ -337,6 +343,7 @@ impl PopulationRecord {
             ("last_row", int(u64::from(self.last_row))),
             ("rows_read", int(u64::from(self.rows_read))),
             ("truncated", JsonValue::Bool(self.truncated)),
+            ("naive_date_times", int(self.naive_date_times)),
             ("counts", counts_doc(&self.counts)),
             ("completeness", s(self.completeness.as_str())),
             (
@@ -449,6 +456,7 @@ impl PopulationRecord {
             counts,
             completeness,
             reconciliation,
+            naive_date_times: u64::try_from(get_int(map, "naive_date_times")?).ok()?,
             digest: document_digest(document),
             recorded_us,
         };
@@ -460,6 +468,8 @@ impl PopulationRecord {
             completeness: self.completeness,
             reconciliation: self.reconciliation,
             counts: self.counts,
+            period_checked: self.population.period.is_some(),
+            naive_date_times: self.naive_date_times,
         }
     }
 }
@@ -548,14 +558,17 @@ impl MemberRecord {
                     columns
                         .iter()
                         .zip(&m.cells)
-                        .map(|(header, (text, locator))| {
+                        .map(|(header, cell)| {
                             obj(vec![
                                 ("header", s(header)),
-                                ("text", opt(text.as_deref())),
+                                ("text", opt(cell.text.as_deref())),
                                 (
                                     "locator",
-                                    locator.as_ref().map_or(JsonValue::Null, |l| s(&l.render())),
+                                    cell.locator
+                                        .as_ref()
+                                        .map_or(JsonValue::Null, |l| s(&l.render())),
                                 ),
+                                ("kind", s(cell.kind.as_str())),
                             ])
                         })
                         .collect(),
@@ -597,13 +610,14 @@ impl MemberRecord {
             .iter()
             .map(|cell| {
                 let cell = as_obj(cell)?;
-                Some((
-                    get_opt(cell, "text")?,
-                    match get_opt(cell, "locator")? {
+                Some(MemberCell {
+                    text: get_opt(cell, "text")?,
+                    locator: match get_opt(cell, "locator")? {
                         Some(text) => Some(Locator::parse(&text)?),
                         None => None,
                     },
-                ))
+                    kind: CellKind::parse(get_str(cell, "kind")?)?,
+                })
             })
             .collect::<Option<Vec<_>>>()?;
         let values = get_array(map, "values")?
@@ -815,6 +829,7 @@ pub fn summary_from(map: &Map) -> Option<Summary> {
                 },
                 execution_failed: n(c, "execution_failed")?,
                 not_evaluated: n(c, "not_evaluated")?,
+                met_unreviewed: n(c, "met_unreviewed")?,
             })
         })
         .collect::<Option<Vec<_>>>()?;
@@ -836,7 +851,21 @@ pub fn summary_from(map: &Map) -> Option<Summary> {
         },
         failing_opportunities: n(map, "failing_opportunities")?,
         conclusion: Conclusion::parse(get_str(map, "conclusion")?)?,
-        limitations: get_list(map, "limitations")?,
+        limitations: get_array(map, "limitations")?
+            .iter()
+            .map(|l| {
+                let l = as_obj(l)?;
+                Some(Limitation {
+                    code: LimitationCode::parse(get_str(l, "code")?)?,
+                    criterion_id: get_opt(l, "criterion_id")?,
+                    count: match l.get("count")? {
+                        JsonValue::Null => None,
+                        JsonValue::Integer(v) => Some(u64::try_from(*v).ok()?),
+                        _ => return None,
+                    },
+                })
+            })
+            .collect::<Option<Vec<_>>>()?,
     };
     (summary.document() == JsonValue::Object(map.clone())).then_some(summary)
 }
@@ -856,6 +885,7 @@ impl OpportunityRecord {
     pub fn facts(&self) -> OpportunityFacts {
         OpportunityFacts {
             subject: self.subject.clone(),
+            origin: self.outcome.origin,
             applicability: self.outcome.applicability,
             execution: self.outcome.execution,
             verdict: self.outcome.verdict,
@@ -868,6 +898,14 @@ impl OpportunityRecord {
 
 fn failure_words(failure: &EnumerationFailure) -> String {
     match failure {
+        EnumerationFailure::RaggedRecord {
+            record,
+            fields,
+            header,
+        } => format!(
+            "record {record} has {fields} fields where the header has {header}, so its columns would shift (an unquoted comma inside a value, for example 1,250.00, must be quoted)"
+        ),
+        EnumerationFailure::Empty => "the file is empty: it has no header record".into(),
         EnumerationFailure::HeaderMismatch { column } => format!(
             "the header row has no column exactly named \"{}\" (or more than one)",
             bounded(column, 128)
@@ -882,26 +920,43 @@ fn failure_words(failure: &EnumerationFailure) -> String {
     }
 }
 
+/// A count with its unit; on an incomplete population, a lower bound.
+fn found(n: u64, unit: &str, complete: bool) -> String {
+    let unit = if n == 1 {
+        unit.to_string()
+    } else {
+        format!("{unit}s")
+    };
+    if complete {
+        format!("{n} {unit}")
+    } else {
+        format!("at least {n} {unit}")
+    }
+}
+
 /// How a population is said: never a count as a total when incomplete.
+/// Rows are received; subjects (its unit) are resolved from rows.
 pub fn population_line(record: &PopulationRecord) -> String {
     let c = &record.counts;
-    let at_least = if record.completeness.complete() {
-        ""
-    } else {
-        "at least "
-    };
+    let complete = record.completeness.complete();
+    let unit = record.population.subject_unit.as_str();
     format!(
-        "Population {} recorded as {} for basis {}: {at_least}{} rows received, {at_least}{} subjects ({} unkeyed rows, {} duplicate rows collapsed), {} out of period, {} with an unknown scope, {at_least}{} in scope; {}{}; control count {}.",
+        "Population {} recorded as {} for basis {}: {} received ({} with no usable key, {} collapsed as exact duplicates), {} ({} out of period, {} with an unknown scope, {} in scope){}; {}{}; control count {}.",
         record.population.key,
         record.id,
         record.basis_id,
-        c.received_rows,
-        c.distinct_subjects,
-        c.unkeyed,
-        c.duplicate_rows,
-        c.excluded_out_of_period,
-        c.scope_unknown(),
-        c.in_scope,
+        found(c.received_rows, "row", complete),
+        found(c.unkeyed, "row", complete),
+        found(c.duplicate_rows, "row", complete),
+        found(c.distinct_subjects, unit, complete),
+        found(c.excluded_out_of_period, unit, complete),
+        found(c.scope_unknown(), unit, complete),
+        found(c.in_scope, unit, complete),
+        if complete {
+            ""
+        } else {
+            "; the total is not known"
+        },
         record.completeness.as_str(),
         record
             .completeness
@@ -919,8 +974,18 @@ pub fn population_line(record: &PopulationRecord) -> String {
 pub fn summary_line(record: &SummaryRecord) -> String {
     let m = &record.summary;
     let p = &m.partition;
+    // A population summary over an incomplete population counts at least
+    // these; a sample's selected items are known exactly.
+    let exact = m.completeness.complete() || record.sample_id.is_some();
+    let n = |v: u64| {
+        if exact {
+            v.to_string()
+        } else {
+            format!("at least {v}")
+        }
+    };
     format!(
-        "Summary {} of population {}{}: conclusion {}; subjects failing {} · meeting every applicable criterion {} · unresolved {} · not applicable to any {}; failing opportunities {} (not records).",
+        "Summary {} of population {}{}: conclusion {}; subjects failing {} · meeting every applicable criterion {} · unresolved {} · not applicable to any {}; failing opportunities {} (not records){}{}",
         record.id,
         record.population_id,
         record
@@ -929,11 +994,28 @@ pub fn summary_line(record: &SummaryRecord) -> String {
             .map(|s| format!(" over the selected items of sample {s}"))
             .unwrap_or_default(),
         m.conclusion.as_str(),
-        p.failing,
-        p.meets_every_applicable,
-        p.unresolved,
-        p.not_applicable_to_any,
-        m.failing_opportunities
+        n(p.failing),
+        n(p.meets_every_applicable),
+        n(p.unresolved),
+        n(p.not_applicable_to_any),
+        n(m.failing_opportunities),
+        if exact {
+            ""
+        } else {
+            "; the total is not known"
+        },
+        if m.limitations.is_empty() {
+            ".".to_string()
+        } else {
+            format!(
+                ". Limitations: {}",
+                m.limitations
+                    .iter()
+                    .map(Limitation::words)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )
+        }
     )
 }
 
@@ -1087,7 +1169,7 @@ where
         let id = record_id("pop", &basis.task_id, &invocation.id, 0);
         let enumerated = self
             .reader
-            .enumerate(basis, &original, &proposed.request(&id), cancellation)
+            .enumerate(basis, &original, &proposed.request(), cancellation)
             .await?;
         let job = enumerated
             .job_id
@@ -1095,6 +1177,14 @@ where
             .map(|j| format!(" (analysis job {j})"))
             .unwrap_or_default();
         let enumeration: Enumeration = match enumerated.outcome {
+            // The read is of the header row the manifest names, or nothing.
+            Ok(e) if e.header_row != proposed.header_row => {
+                feedback.push(format!(
+                    "Population {key} was not recorded: {}{job}. Nothing was counted; propose it again as a new request.",
+                    failure_words(&EnumerationFailure::Unreadable)
+                ));
+                return Ok(false);
+            }
             Ok(e) => e,
             Err(failure) => {
                 feedback.push(format!(
@@ -1115,6 +1205,7 @@ where
             .iter()
             .map(|m| (m.subject.as_deref(), m.disposition))
             .collect();
+        let naive = naive_date_times(proposed, &members_built);
         let counts = PopulationCounts::of(&pairs);
         let (completeness, reconciliation) = completeness(
             proposed.exhaustive,
@@ -1150,6 +1241,7 @@ where
             counts,
             completeness,
             reconciliation,
+            naive_date_times: naive,
             digest: String::new(),
             recorded_us: None,
         };
@@ -1380,7 +1472,12 @@ where
             match self.store.record_opportunities(basis, &records).await {
                 Ok(()) => {
                     progress = true;
-                    feedback.push(opportunities_line(&criterion.id, &population.id, &records));
+                    feedback.push(opportunities_line(
+                        &criterion.id,
+                        &population.id,
+                        population.completeness.complete(),
+                        &records,
+                    ));
                 }
                 Err(ReadingError::Invalid) => feedback.push(format!(
                     "{} over population {} was not recorded: the platform refused it as proposed.",
@@ -1563,10 +1660,18 @@ pub fn sample_line(record: &SampleRecord) -> String {
     )
 }
 
-fn opportunities_line(criterion: &str, population: &str, records: &[OpportunityRecord]) -> String {
-    let count = |f: &dyn Fn(&Outcome) -> bool| records.iter().filter(|r| f(&r.outcome)).count();
+fn opportunities_line(
+    criterion: &str,
+    population: &str,
+    complete: bool,
+    records: &[OpportunityRecord],
+) -> String {
+    let at = if complete { "" } else { "at least " };
+    let count = |f: &dyn Fn(&Outcome) -> bool| {
+        format!("{at}{}", records.iter().filter(|r| f(&r.outcome)).count())
+    };
     format!(
-        "{criterion} evaluated over population {population}: {} opportunities · applicable {} · not applicable {} · applicability unknown {} · met {} · not met {} · undetermined {} · execution failed {} · not evaluated {}.",
+        "{criterion} evaluated over population {population}: {at}{} opportunities · applicable {} · not applicable {} · applicability unknown {} · met {} · not met {} · undetermined {} · execution failed {} · not evaluated {}{}.",
         records.len(),
         count(&|o| o.applicability == Applicability::Applicable),
         count(&|o| o.applicability == Applicability::NotApplicable),
@@ -1579,6 +1684,11 @@ fn opportunities_line(criterion: &str, population: &str, records: &[OpportunityR
         count(&|o| o.applicability == Applicability::Applicable
             && o.execution == Execution::Completed
             && o.verdict.is_none()),
+        if complete {
+            ""
+        } else {
+            "; the population is incomplete, so the total is not known"
+        },
     )
 }
 
@@ -1602,12 +1712,7 @@ pub fn coverage_lines(snapshot: &CoverageSnapshot) -> Vec<String> {
     for s in snapshot.summaries.iter().take(MAX_OUTLINE_COVERAGE) {
         lines.push(format!("- {}", summary_line(s)));
     }
-    let unlisted = (snapshot.total_populations + snapshot.total_samples + snapshot.total_summaries)
-        .saturating_sub(lines.len() as u64);
-    if unlisted > 0 {
-        lines.push(format!(
-            "{unlisted} further coverage records are not listed."
-        ));
-    }
+    // One line per record: the outline counts the records it lists and says
+    // exactly how many of every kind are not listed.
     lines
 }

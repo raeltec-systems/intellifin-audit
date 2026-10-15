@@ -2294,13 +2294,14 @@ pub fn outline_with(
             .into(),
     ];
     let mut bytes = lines[0].len();
-    let mut omitted = 0u64;
+    // Every record line pushed is counted, so the "further records" count is
+    // exact: every record of the Task minus those actually listed.
+    let mut listed = 0u64;
     let mut push = |lines: &mut Vec<String>, line: String| {
-        if bytes + line.len() + 1 > MAX_ASSESSMENT_OUTLINE_BYTES - 128 {
-            omitted += 1;
-        } else {
+        if bytes + line.len() + 1 <= MAX_ASSESSMENT_OUTLINE_BYTES - 128 {
             bytes += line.len() + 1;
             lines.push(line);
+            listed += 1;
         }
     };
     for b in snapshot.bases.iter().take(MAX_OUTLINE_RECORDS) {
@@ -2370,12 +2371,16 @@ pub fn outline_with(
             ),
         );
     }
-    let total = snapshot.total_bases + snapshot.total_criteria + snapshot.total_evaluations;
-    let listed = (lines.len() - 1) as u64;
     for line in coverage::coverage_lines(covered) {
         push(&mut lines, line);
     }
-    let unlisted = total.saturating_sub(listed).max(omitted);
+    let total = snapshot.total_bases
+        + snapshot.total_criteria
+        + snapshot.total_evaluations
+        + covered.total_populations
+        + covered.total_samples
+        + covered.total_summaries;
+    let unlisted = total.saturating_sub(listed);
     if unlisted > 0 {
         lines.push(format!("{unlisted} further records are not listed."));
     }

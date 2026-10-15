@@ -40,7 +40,7 @@ use zobba_domain::{
     },
     context::{InputClass, envelope},
     coverage::{
-        CellRead, EnumerateRequest, Enumerated, Enumeration, EnumerationFailure,
+        CellKind, CellRead, EnumerateRequest, Enumerated, Enumeration, EnumerationFailure,
         MAX_CELL_TEXT_BYTES, MAX_POPULATION_ROWS, RowRead,
     },
     identity::{Scope, valid_scope_id},
@@ -86,10 +86,6 @@ pub const DOCUMENT_LIMITS: AnalysisLimits = AnalysisLimits {
 pub const PROGRAM_LIMITS: AnalysisLimits = AnalysisLimits::DEFAULT;
 /// Rows of one enumeration output file (Story 24.2): each file stays within
 /// the bounded manifest reader and the per-file output bound.
-/// The key suffix of a population read (see `run_job`).
-const POPULATION_KEY: &str = "-p";
-/// Fresh population reads a reclaim may admit under a conflicting key.
-const MAX_POPULATION_READ_RETRIES: u32 = 8;
 pub const ENUMERATE_CHUNK_ROWS: u32 = 500;
 /// Limits of one trusted enumeration job (inside the owner-approved
 /// ceiling): every row of a sheet up to `MAX_POPULATION_ROWS`, written as at
@@ -456,6 +452,15 @@ pub trait ReadingStore: Send + Sync {
         basis: &ClaimBasis,
         batch: &RenderBatch,
     ) -> impl Future<Output = Result<RenderBatch, ReadingError>> + Send;
+    /// How many document-environment jobs this Task admitted with exactly
+    /// this program, and the newest of them (an exact read, never bounded).
+    fn document_jobs(
+        &self,
+        actor: &str,
+        scope: &Scope,
+        task_id: &str,
+        program_sha256: &str,
+    ) -> impl Future<Output = Result<(u64, Option<String>), ReadingError>> + Send;
     /// Every validated descendant of one collected job.
     fn job_outputs(
         &self,
@@ -1019,21 +1024,30 @@ pub fn enumeration_manifest(
                 .iter()
                 .zip(&columns)
                 .map(|(cell, &column)| {
-                    let texts = match cell {
-                        manifest::Value::Null => None,
-                        manifest::Value::Array(texts) => Some(
-                            texts
-                                .iter()
-                                .map(|t| {
-                                    t.str()
-                                        .filter(|t| t.len() <= MAX_CELL_TEXT_BYTES)
-                                        .map(String::from)
-                                })
-                                .collect::<Option<Vec<_>>>()?,
-                        ),
+                    let bounded = |texts: &[manifest::Value]| {
+                        texts
+                            .iter()
+                            .map(|t| {
+                                t.str()
+                                    .filter(|t| t.len() <= MAX_CELL_TEXT_BYTES)
+                                    .map(String::from)
+                            })
+                            .collect::<Option<Vec<_>>>()
+                    };
+                    // A text cell is its texts; a typed Excel date or
+                    // date-time cell names its kind beside them.
+                    let (texts, kind) = match cell {
+                        manifest::Value::Null => (None, CellKind::Text),
+                        manifest::Value::Array(texts) => (Some(bounded(texts)?), CellKind::Text),
+                        manifest::Value::Object(fields) if fields.len() == 2 => {
+                            let kind = CellKind::parse(cell.get("kind")?.str()?)
+                                .filter(|k| *k != CellKind::Text)?;
+                            (Some(bounded(cell.get("texts")?.array()?)?), kind)
+                        }
                         _ => return None,
                     };
                     Some(CellRead {
+                        kind,
                         texts,
                         locator: Some(Locator::Cell {
                             sheet: sheet.into(),
@@ -1177,34 +1191,19 @@ where
         cancellation: &ModelCancellation,
     ) -> Result<JobRecord, ReadingError> {
         let analysis = self.analysis();
-        let mut record = match analysis
+        let record = analysis
             .admit(&self.settings.analysis, basis, key, request)
-            .await
-        {
-            Ok(record) => record,
-            // A population read (key `...-p`) admitted under this key by an
-            // earlier run of the same answer carries that run's operation
-            // expiry, so the same request is a conflict, not a replay: the
-            // read runs again as its own job under the next bounded suffix.
-            Err(AnalysisError::Conflict) if key.ends_with(POPULATION_KEY) => {
-                let mut admitted = Err(AnalysisError::Conflict);
-                for n in 1..=MAX_POPULATION_READ_RETRIES {
-                    admitted = analysis
-                        .admit(
-                            &self.settings.analysis,
-                            basis,
-                            &format!("{key}{n}"),
-                            request,
-                        )
-                        .await;
-                    if !matches!(admitted, Err(AnalysisError::Conflict)) {
-                        break;
-                    }
-                }
-                admitted?
-            }
-            Err(error) => return Err(error.into()),
-        };
+            .await?;
+        self.finish_job(basis, record, cancellation).await
+    }
+    /// Run an admitted job until it settles (bounded polls).
+    async fn finish_job(
+        &self,
+        basis: &ClaimBasis,
+        mut record: JobRecord,
+        cancellation: &ModelCancellation,
+    ) -> Result<JobRecord, ReadingError> {
+        let analysis = self.analysis();
         for _ in 0..3 {
             if matches!(
                 record.latest.status,
@@ -1243,34 +1242,42 @@ where
             };
             let record = self.run_job(basis, &key, request, cancellation).await?;
             match record.latest.status {
-                JobStatus::Collected => {
-                    let failure = self
-                        .store
-                        .job_failure(&basis.actor_id, &basis.scope, &record.job.id)
-                        .await?;
-                    if failure.is_none()
-                        && record.latest.reason.as_deref() == Some(COLLECTION_UNAVAILABLE)
-                    {
-                        continue;
-                    }
-                    let outputs = if failure.is_none() {
-                        self.store
-                            .job_outputs(&basis.actor_id, &basis.scope, &record.job.id)
-                            .await?
-                    } else {
-                        vec![]
-                    };
-                    return Ok(Settled {
-                        job_id: record.job.id,
-                        failure,
-                        outputs,
-                    });
-                }
+                JobStatus::Collected => match self.collected(basis, &record).await? {
+                    Some(settled) => return Ok(settled),
+                    None => continue,
+                },
                 JobStatus::Stopped if !cancellation.is_cancelled() => continue,
                 _ => return Err(ReadingError::Unavailable),
             }
         }
         Err(ReadingError::Unavailable)
+    }
+    /// The settled facts of a collected job, or None when its outputs could
+    /// not be collected (a fresh job is needed).
+    async fn collected(
+        &self,
+        basis: &ClaimBasis,
+        record: &JobRecord,
+    ) -> Result<Option<Settled>, ReadingError> {
+        let failure = self
+            .store
+            .job_failure(&basis.actor_id, &basis.scope, &record.job.id)
+            .await?;
+        if failure.is_none() && record.latest.reason.as_deref() == Some(COLLECTION_UNAVAILABLE) {
+            return Ok(None);
+        }
+        let outputs = if failure.is_none() {
+            self.store
+                .job_outputs(&basis.actor_id, &basis.scope, &record.job.id)
+                .await?
+        } else {
+            vec![]
+        };
+        Ok(Some(Settled {
+            job_id: record.job.id.clone(),
+            failure,
+            outputs,
+        }))
     }
 
     /// One trusted document job over one exact original, in the trusted
@@ -1282,8 +1289,15 @@ where
         request: &str,
         cancellation: &ModelCancellation,
     ) -> Result<Settled, ReadingError> {
-        self.document_job_with(basis, original, request, DOCUMENT_LIMITS, "", cancellation)
-            .await
+        self.document_job_with(
+            basis,
+            original,
+            request,
+            DOCUMENT_LIMITS,
+            false,
+            cancellation,
+        )
+        .await
     }
     async fn document_job_with(
         &self,
@@ -1291,7 +1305,7 @@ where
         original: &ReadingOriginal,
         request: &str,
         limits: AnalysisLimits,
-        record: &str,
+        population: bool,
         cancellation: &ModelCancellation,
     ) -> Result<Settled, ReadingError> {
         let program = document_program(request);
@@ -1306,21 +1320,49 @@ where
             }],
             limits,
         };
-        // A job admitted once is never resubmitted under its key (its
-        // operation carries its own expiry): a read for a record names it.
-        let identity = if record.is_empty() {
-            format!("{}\0{}\0{}", basis.task_id, original.sha256, request)
-        } else {
-            format!(
-                "{}\0{}\0{}\0{}",
-                basis.task_id, original.sha256, request, record
+        let identity = format!("{}\0{}\0{}", basis.task_id, original.sha256, request);
+        if !population {
+            let key = format!("document-{}", self.hash(&identity));
+            return self
+                .settle(basis, &key, &analysis_request, cancellation)
+                .await;
+        }
+        // A population read (Story 24.2) reuses the newest job of this Task
+        // that ran exactly this program (the same original version, sheet,
+        // header row and columns): a collected result is read again, and an
+        // unfinished one is run on, so a reclaimed answer never starts a
+        // second read of the same rows. Only a job that stopped, ended
+        // unknown, failed, hit a limit or could not be collected is followed
+        // by a fresh one, under a key naming how many came before it (a job
+        // admitted once is never resubmitted under its key, whose operation
+        // carries its own expiry), so repeated reclaims never run out of keys.
+        let (earlier, newest) = self
+            .store
+            .document_jobs(
+                &basis.actor_id,
+                &basis.scope,
+                &basis.task_id,
+                &analysis_request.program_sha256,
             )
-        };
-        let key = if record.is_empty() {
-            format!("document-{}", self.hash(&identity))
-        } else {
-            format!("document-{}{POPULATION_KEY}", self.hash(&identity))
-        };
+            .await?;
+        if let Some(id) = newest {
+            let record = self
+                .jobs
+                .job(&basis.actor_id, &basis.scope, &id)
+                .await
+                .map_err(ReadingError::from)?;
+            let record = match record.latest.status {
+                JobStatus::Collected | JobStatus::Stopped | JobStatus::Unknown => record,
+                _ => self.finish_job(basis, record, cancellation).await?,
+            };
+            if record.latest.status == JobStatus::Collected
+                && let Some(settled) = self.collected(basis, &record).await?
+                && settled.failure.is_none()
+            {
+                return Ok(settled);
+            }
+        }
+        let key = format!("document-{}-p{earlier}", self.hash(&identity));
         self.settle(basis, &key, &analysis_request, cancellation)
             .await
     }
@@ -2348,7 +2390,7 @@ where
                 &reading,
                 &enumerate_request(&reading.id, sheet, request.header_row, &request.columns),
                 ENUMERATE_LIMITS,
-                &request.record,
+                true,
                 cancellation,
             )
             .await?;

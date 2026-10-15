@@ -522,6 +522,45 @@ def locate(original, locators):
 # ------------------------------------------------------------- enumerate
 
 
+def enumerate_cell(cell):
+    """One named cell as the enumeration reads it: its texts (the display
+    text first), or, for a typed Excel date or date-time value, an object
+    naming that kind beside its texts. An Excel date-time carries no time
+    zone: its instant form is written as UTC and the kind records that."""
+    import datetime
+
+    value = cell.value
+    fmt = cell.number_format or ""
+    if isinstance(value, datetime.datetime):
+        day = value.date()
+        fraction = ".%06d" % value.microsecond if value.microsecond else ""
+        clock = value.strftime("%H:%M:%S") + fraction
+        midnight = value.time() == datetime.time(0)
+        timed = not midnight or "h" in fmt.lower()
+        display = "%s %s" % (day.isoformat(), clock) if timed else day.isoformat()
+        texts = [display, day.isoformat(), day.strftime("%d/%m/%Y"), "%sT%sZ" % (day.isoformat(), clock)]
+        return {"kind": "excel_datetime" if timed else "excel_date", "texts": texts}
+    if isinstance(value, datetime.date):
+        return {"kind": "excel_date", "texts": [value.isoformat(), value.strftime("%d/%m/%Y"), "%sT00:00:00Z" % value.isoformat()]}
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and (isinstance(value, int) or value.is_integer()):
+        whole = int(value)
+        # A whole number shown with a zero-padded format (for example 000000)
+        # keeps its displayed leading zeros as its first text.
+        if whole >= 0 and fmt and set(fmt) == {"0"} and len(fmt) > len(str(whole)):
+            return [str(whole).zfill(len(fmt))] + number_text(value, fmt)
+    return cell_texts(cell)
+
+
+def data_end(sheet, header_row):
+    """The last row holding any value (styled or formatted empty cells are not
+    data), never before the header row."""
+    last = header_row
+    for (row, _column), cell in sheet._cells.items():
+        if row > last and cell.value is not None and cell.value != "":
+            last = row
+    return last
+
+
 def enumerate_xlsx(path, sheet_name, header_row, columns, max_rows, chunk_rows, max_text):
     import openpyxl
 
@@ -533,11 +572,11 @@ def enumerate_xlsx(path, sheet_name, header_row, columns, max_rows, chunk_rows, 
     if sheet_name not in workbook.sheetnames:
         return {"status": "sheet_missing", "reason": None}
     sheet = workbook[sheet_name]
-    last_row = sheet.max_row
     width = sheet.max_column
     headers = []
-    if header_row <= last_row:
+    if header_row <= sheet.max_row:
         headers = [cell_texts(sheet.cell(row=header_row, column=c))[0] for c in range(1, width + 1)]
+    last_row = data_end(sheet, header_row)
     indices = []
     for column in columns:
         found = [i + 1 for i, text in enumerate(headers) if text == column]
@@ -557,11 +596,12 @@ def enumerate_xlsx(path, sheet_name, header_row, columns, max_rows, chunk_rows, 
     for number in range(header_row + 1, header_row + 1 + read):
         cells = []
         for index in indices:
-            texts = cell_texts(sheet.cell(row=number, column=index))
+            entry = enumerate_cell(sheet.cell(row=number, column=index))
+            texts = entry["texts"] if isinstance(entry, dict) else entry
             if any(len(t.encode("utf-8")) > max_text for t in texts):
                 cells.append(None)
             else:
-                cells.append(texts)
+                cells.append(entry)
         rows.append([number, cells])
         if len(rows) == chunk_rows:
             flush()

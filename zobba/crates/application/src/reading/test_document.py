@@ -127,6 +127,43 @@ class Enumerate(unittest.TestCase):
         self.assertEqual(len(rows), expected["received_rows"])
         self.assertFalse(manifest["truncated"])
 
+    def test_typed_dates_padded_numbers_and_styled_trailing_rows(self):
+        with open(os.path.join(FIXTURES, "AP population.xlsx"), "rb") as handle:
+            data = handle.read()
+        manifest, rows = self.run_enumerate(data, "Dated", 1, ["Invoice", "Invoice date", "Approved at"])
+        self.assertEqual(manifest["status"], "read")
+        # Rows 5-40 are only formatted: the data ends at row 4, every data row
+        # is read and nothing is truncated (no phantom rows, no row bound).
+        self.assertEqual((manifest["last_row"], manifest["rows_read"], manifest["truncated"]), (4, 3, False))
+        self.assertEqual([r[0] for r in rows], [2, 3, 4])
+        key, date, approved = rows[0][1]
+        # A number shown as 000123 keeps its displayed leading zeros first.
+        self.assertEqual(key[0], "000123")
+        # A genuine Excel date: its kind, its date (ISO and day-first) and its
+        # instant written as UTC (an Excel date carries no time zone).
+        self.assertEqual(date, {"kind": "excel_date", "texts": ["2026-03-05", "2026-03-05", "05/03/2026", "2026-03-05T00:00:00Z"]})
+        self.assertEqual(approved["kind"], "excel_datetime")
+        self.assertEqual(approved["texts"][0], "2026-03-05 10:30:00")
+        self.assertIn("2026-03-05T10:30:00Z", approved["texts"])
+        self.assertEqual(rows[2][1][0], ["INV-D3"])
+
+    def test_the_data_end_ignores_formatted_empty_rows(self):
+        import openpyxl
+
+        book = openpyxl.Workbook()
+        ws = book.active
+        ws.title = "Invoices"
+        ws.append(("Invoice",))
+        ws.append(("INV-1",))
+        for row in range(3, 30001):
+            ws.cell(row=row, column=1).number_format = "0.00"
+        buffer = io.BytesIO()
+        book.save(buffer)
+        manifest, rows = self.run_enumerate(buffer.getvalue(), "Invoices", 1, ["Invoice"])
+        # Formatting to row 30,000 is neither data nor a row bound.
+        self.assertEqual((manifest["last_row"], manifest["rows_read"], manifest["truncated"]), (2, 1, False))
+        self.assertEqual(rows, [[2, [["INV-1"]]]])
+
 
 if __name__ == "__main__":
     unittest.main()

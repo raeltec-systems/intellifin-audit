@@ -18,8 +18,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::{
     assessment::{
         Applicability, CivilDate, EvaluationReason, Execution, FactState, FactSupport, FactType,
-        FactValue, InputFact, MAX_SUBJECT_BYTES, Measure, ParseRule, UnsupportedReason, Verdict,
-        record_shaped, text_ok, valid_currency, valid_name, valid_subject,
+        FactValue, InputFact, MAX_SUBJECT_BYTES, Measure, Origin, ParseRule, UnsupportedReason,
+        Verdict, record_shaped, text_ok, valid_currency, valid_name, valid_subject,
     },
     citation::{CitationSource, Locator, MAX_LOCATOR_BYTES, MAX_QUOTE_BYTES, normalize},
     context::canonical_json,
@@ -106,6 +106,27 @@ vocabulary!(Conclusion {
     NoExceptionFound => "no_exception_found",
     Inconclusive => "inconclusive",
     NoItemsFoundAbsenceNotProven => "no_items_found_absence_not_proven",
+});
+
+// How a cell's value was stored in the original: text, or a typed Excel
+// date or date-time value (an Excel date-time has no time zone).
+vocabulary!(CellKind {
+    Text => "text",
+    Date => "excel_date",
+    DateTime => "excel_datetime",
+});
+
+// A closed limitation of a summary: each is said in words with its exact
+// count, never shown as a number alone or left out.
+vocabulary!(LimitationCode {
+    NotEvaluated => "not_evaluated",
+    JudgmentNotRecorded => "judgment_not_recorded",
+    UnreviewedModelJudgments => "unreviewed_model_judgments",
+    SampleSelectedOnly => "sample_selected_only",
+    ScopeUnknown => "scope_unknown",
+    UnkeyedRows => "unkeyed_rows",
+    PeriodNotChecked => "period_not_checked",
+    NaiveDateTimes => "naive_date_times",
 });
 
 // The partition of subjects, one grain.
@@ -339,8 +360,18 @@ pub struct CellRead {
     pub texts: Option<Vec<String>>,
     /// Its exact location in the original.
     pub locator: Option<Locator>,
+    /// Text, or a typed Excel date or date-time value.
+    pub kind: CellKind,
 }
 impl CellRead {
+    /// A text cell (CSV, plain text, or a workbook cell that is not a date).
+    pub fn text_cell(texts: Option<Vec<String>>, locator: Option<Locator>) -> Self {
+        Self {
+            texts,
+            locator,
+            kind: CellKind::Text,
+        }
+    }
     /// The display text, or None for a blank or over-bound cell.
     pub fn text(&self) -> Option<&str> {
         self.texts
@@ -381,6 +412,15 @@ pub struct Enumeration {
 /// Why the trusted read produced no rows. Nothing is fabricated after it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EnumerationFailure {
+    /// A CSV record has more or fewer fields than its header: its columns
+    /// would shift, so nothing is read (RFC 4180 records are all as wide).
+    RaggedRecord {
+        record: u32,
+        fields: u32,
+        header: u32,
+    },
+    /// The file has no header record at all.
+    Empty,
     /// A named header was not found exactly once in the header row.
     HeaderMismatch { column: String },
     /// The sheet is not in the workbook.
@@ -402,23 +442,20 @@ pub struct Enumerated {
 }
 
 /// What to read: a workbook sheet (None for CSV/plain text, the whole file),
-/// its 1-based header row, and the named columns in order. `record` names the
-/// population record the read is for: a reclaim of the same answer reuses its
-/// read, and a later request for the same sheet is a new read of its own.
+/// its 1-based header row, and the named columns in order. The same read of
+/// the same original version reuses the trusted job that already read it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EnumerateRequest {
     pub sheet: Option<String>,
     pub header_row: u32,
     pub columns: Vec<String>,
-    pub record: String,
 }
 impl ProposedPopulation {
-    pub fn request(&self, record: &str) -> EnumerateRequest {
+    pub fn request(&self) -> EnumerateRequest {
         EnumerateRequest {
             sheet: self.sheet.clone(),
             header_row: self.header_row,
             columns: self.columns(),
-            record: record.into(),
         }
     }
 }
@@ -441,6 +478,14 @@ pub enum MemberValue {
     Unsupported,
 }
 
+/// One named cell of a member row.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MemberCell {
+    pub text: Option<String>,
+    pub locator: Option<Locator>,
+    pub kind: CellKind,
+}
+
 /// One received row of a population, as trusted code decided it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Member {
@@ -451,8 +496,9 @@ pub struct Member {
     /// unkeyed.
     pub subject: Option<String>,
     pub disposition: Disposition,
-    /// The named cells' display texts and locations (None: blank or over).
-    pub cells: Vec<(Option<String>, Option<Locator>)>,
+    /// The named cells' display texts, locations and kinds (text None:
+    /// blank or over its bound).
+    pub cells: Vec<MemberCell>,
     /// One per value column, in manifest order.
     pub values: Vec<MemberValue>,
 }
@@ -632,12 +678,45 @@ pub fn build_members(
                 cells: row
                     .cells
                     .iter()
-                    .map(|c| (c.text().map(String::from), c.locator.clone()))
+                    .map(|c| MemberCell {
+                        text: c.text().map(String::from),
+                        locator: c.locator.clone(),
+                        kind: c.kind,
+                    })
                     .collect(),
                 values,
             }
         })
         .collect()
+}
+
+/// Typed Excel date or date-time cells (they carry no time zone) that a
+/// column read under an instant rule: trusted code reads them as UTC and the
+/// summary says so with this exact count.
+pub fn naive_date_times(spec: &ProposedPopulation, members: &[Member]) -> u64 {
+    let instant: Vec<bool> = spec
+        .columns()
+        .iter()
+        .map(|h| {
+            spec.period
+                .as_ref()
+                .is_some_and(|(p, r)| p == h && r.produces() == FactType::Instant)
+                || spec
+                    .values
+                    .iter()
+                    .any(|v| &v.header == h && v.kind == FactType::Instant)
+        })
+        .collect();
+    members
+        .iter()
+        .map(|m| {
+            m.cells
+                .iter()
+                .zip(&instant)
+                .filter(|(c, i)| **i && c.kind != CellKind::Text && c.text.is_some())
+                .count() as u64
+        })
+        .sum()
 }
 
 fn within(date: CivilDate, from: CivilDate, to: CivilDate) -> Disposition {
@@ -1007,6 +1086,8 @@ pub fn check_sample(
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OpportunityFacts {
     pub subject: String,
+    /// `model_proposal` for a 24.1 judgment: a proposal nobody has reviewed.
+    pub origin: Origin,
     pub applicability: Applicability,
     pub execution: Execution,
     pub verdict: Option<Verdict>,
@@ -1043,6 +1124,9 @@ pub struct CriterionCounts {
     pub undetermined_by_reason: BTreeMap<String, u64>,
     pub execution_failed: u64,
     pub not_evaluated: u64,
+    /// Among `met`: verdicts that are unreviewed model proposals (24.1
+    /// judgments). They are counted as met but never prove "no exception".
+    pub met_unreviewed: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1051,6 +1135,53 @@ pub struct Partition {
     pub meets_every_applicable: u64,
     pub unresolved: u64,
     pub not_applicable_to_any: u64,
+}
+
+/// One closed limitation of a summary, with its exact count (where it has
+/// one) and its words. The words are derived from the code and the count.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Limitation {
+    pub code: LimitationCode,
+    pub criterion_id: Option<String>,
+    pub count: Option<u64>,
+}
+impl Limitation {
+    pub fn new(code: LimitationCode, criterion_id: Option<&str>, count: Option<u64>) -> Self {
+        Self {
+            code,
+            criterion_id: criterion_id.map(String::from),
+            count,
+        }
+    }
+    /// The sentence the auditor and the agent read.
+    pub fn words(&self) -> String {
+        let n = self.count.unwrap_or(0);
+        let c = self.criterion_id.as_deref().unwrap_or("");
+        match self.code {
+            LimitationCode::NotEvaluated => {
+                format!("Criterion {c} was not evaluated for {n} of these items.")
+            }
+            LimitationCode::JudgmentNotRecorded => format!(
+                "Judgment criterion {c} has no recorded judgment for {n} applicable items at this population's subject unit; judgments recorded at another unit or basis are not counted."
+            ),
+            LimitationCode::UnreviewedModelJudgments => format!(
+                "Judgment criterion {c}: {n} met verdicts are model proposals nobody has reviewed; they cannot show that no exception exists."
+            ),
+            LimitationCode::SampleSelectedOnly => format!(
+                "A sample of {n} selected items: the counts describe the selected items only, never the population."
+            ),
+            LimitationCode::ScopeUnknown => {
+                format!("{n} subjects have an unknown scope; they are unresolved.")
+            }
+            LimitationCode::UnkeyedRows => format!(
+                "{n} received rows have no usable key; they were not assessed, so no conclusion covers them."
+            ),
+            LimitationCode::PeriodNotChecked => "No period column was named: whether each item falls in the basis period was not checked.".into(),
+            LimitationCode::NaiveDateTimes => format!(
+                "{n} Excel date or date-time cells carry no time zone; they were read as UTC."
+            ),
+        }
+    }
 }
 
 /// The coverage summary: exact counts, a closed conclusion and limitations
@@ -1068,7 +1199,7 @@ pub struct Summary {
     /// never of failing records.
     pub failing_opportunities: u64,
     pub conclusion: Conclusion,
-    pub limitations: Vec<String>,
+    pub limitations: Vec<Limitation>,
 }
 
 /// The population facts a summary reads.
@@ -1077,6 +1208,10 @@ pub struct PopulationFacts {
     pub completeness: Completeness,
     pub reconciliation: Reconciliation,
     pub counts: PopulationCounts,
+    /// Whether a period column decided each item's scope.
+    pub period_checked: bool,
+    /// Excel date-time cells read as UTC (see [`naive_date_times`]).
+    pub naive_date_times: u64,
 }
 
 /// One criterion of the summary's basis: its ID, whether it is a judgment
@@ -1088,16 +1223,35 @@ pub struct CriterionOpportunities {
     pub opportunities: Vec<OpportunityFacts>,
 }
 
+/// What, besides the partition, keeps a summary from concluding.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Unproven {
+    /// Subjects whose scope is unknown (a population summary only).
+    pub scope_unknown: u64,
+    /// Received rows with no usable key (a population summary only): never
+    /// assessed, so they are unresolved.
+    pub unkeyed: u64,
+    /// Met verdicts that are unreviewed model proposals.
+    pub unreviewed_met: u64,
+}
+
 /// The closed conclusion rule. `unresolved` includes, for a population,
-/// subjects whose scope is unknown.
+/// subjects whose scope is unknown and rows with no usable key. "No
+/// exception found" also needs every counted met to be proven, never an
+/// unreviewed model proposal.
 pub fn conclusion(
     complete: bool,
     sample: bool,
     received_rows: u64,
     partition: &Partition,
-    scope_unknown: u64,
+    unproven: Unproven,
 ) -> Conclusion {
-    let unresolved = partition.unresolved + if sample { 0 } else { scope_unknown };
+    let unresolved = partition.unresolved
+        + if sample {
+            0
+        } else {
+            unproven.scope_unknown + unproven.unkeyed
+        };
     if !complete && received_rows == 0 {
         Conclusion::NoItemsFoundAbsenceNotProven
     } else if partition.failing > 0 {
@@ -1108,7 +1262,7 @@ pub fn conclusion(
         }
     } else if complete && unresolved == 0 && partition.meets_every_applicable == 0 {
         Conclusion::NoEligibleItems
-    } else if complete && !sample && unresolved == 0 {
+    } else if complete && !sample && unresolved == 0 && unproven.unreviewed_met == 0 {
         Conclusion::NoExceptionFound
     } else {
         Conclusion::Inconclusive
@@ -1157,7 +1311,12 @@ pub fn summarise(
                         c.execution_failed += 1;
                     } else {
                         match o.verdict {
-                            Some(Verdict::Met) => c.met += 1,
+                            Some(Verdict::Met) => {
+                                c.met += 1;
+                                if o.origin == Origin::ModelProposal {
+                                    c.met_unreviewed += 1;
+                                }
+                            }
                             Some(Verdict::NotMet) => c.not_met += 1,
                             Some(Verdict::Undetermined) => {
                                 c.undetermined += 1;
@@ -1193,15 +1352,24 @@ pub fn summarise(
                     entry.1 = true;
                 }
             }
-            limitations.push(format!(
-                "Criterion {} was not evaluated for {missing} of these items.",
-                criterion.criterion_id
+            limitations.push(Limitation::new(
+                LimitationCode::NotEvaluated,
+                Some(&criterion.criterion_id),
+                Some(missing),
             ));
         }
         if criterion.judgment && c.not_evaluated > 0 {
-            limitations.push(format!(
-                "Judgment criterion {} has no recorded judgment for {} applicable items at this population's subject unit; judgments recorded at another unit or basis are not counted.",
-                criterion.criterion_id, c.not_evaluated
+            limitations.push(Limitation::new(
+                LimitationCode::JudgmentNotRecorded,
+                Some(&criterion.criterion_id),
+                Some(c.not_evaluated),
+            ));
+        }
+        if c.met_unreviewed > 0 {
+            limitations.push(Limitation::new(
+                LimitationCode::UnreviewedModelJudgments,
+                Some(&criterion.criterion_id),
+                Some(c.met_unreviewed),
             ));
         }
         failing_opportunities += c.not_met;
@@ -1221,23 +1389,51 @@ pub fn summarise(
     }
     let complete = population.completeness.complete();
     if let Some(selected) = sample {
-        limitations.push(format!(
-            "A sample of {} selected items: the counts describe the selected items only, never the population.",
-            selected.len()
+        limitations.push(Limitation::new(
+            LimitationCode::SampleSelectedOnly,
+            None,
+            Some(selected.len() as u64),
         ));
     }
     if population.counts.scope_unknown() > 0 && sample.is_none() {
-        limitations.push(format!(
-            "{} subjects have an unknown scope; they are unresolved.",
-            population.counts.scope_unknown()
+        limitations.push(Limitation::new(
+            LimitationCode::ScopeUnknown,
+            None,
+            Some(population.counts.scope_unknown()),
         ));
     }
+    if population.counts.unkeyed > 0 && sample.is_none() {
+        limitations.push(Limitation::new(
+            LimitationCode::UnkeyedRows,
+            None,
+            Some(population.counts.unkeyed),
+        ));
+    }
+    if !population.period_checked {
+        limitations.push(Limitation::new(
+            LimitationCode::PeriodNotChecked,
+            None,
+            None,
+        ));
+    }
+    if population.naive_date_times > 0 {
+        limitations.push(Limitation::new(
+            LimitationCode::NaiveDateTimes,
+            None,
+            Some(population.naive_date_times),
+        ));
+    }
+    let unreviewed_met = counts.iter().map(|k| k.met_unreviewed).sum();
     let conclusion = conclusion(
         complete,
         sample.is_some(),
         population.counts.received_rows,
         &partition,
-        population.counts.scope_unknown(),
+        Unproven {
+            scope_unknown: population.counts.scope_unknown(),
+            unkeyed: population.counts.unkeyed,
+            unreviewed_met,
+        },
     );
     limitations.truncate(MAX_SUMMARY_LIMITATIONS);
     Summary {
@@ -1328,6 +1524,7 @@ impl Summary {
                                 ),
                                 ("execution_failed", int(k.execution_failed)),
                                 ("not_evaluated", int(k.not_evaluated)),
+                                ("met_unreviewed", int(k.met_unreviewed)),
                             ])
                         })
                         .collect(),
@@ -1347,7 +1544,22 @@ impl Summary {
             ("conclusion", string(self.conclusion.as_str())),
             (
                 "limitations",
-                JsonValue::Array(self.limitations.iter().map(|l| string(l)).collect()),
+                JsonValue::Array(
+                    self.limitations
+                        .iter()
+                        .map(|l| {
+                            object(vec![
+                                ("code", string(l.code.as_str())),
+                                (
+                                    "criterion_id",
+                                    l.criterion_id.as_deref().map_or(JsonValue::Null, string),
+                                ),
+                                ("count", l.count.map_or(JsonValue::Null, int)),
+                                ("text", string(&l.words())),
+                            ])
+                        })
+                        .collect(),
+                ),
             ),
             ("statistical_inference", JsonValue::Bool(false)),
         ])
@@ -1368,6 +1580,7 @@ impl Summary {
                     && k.met + k.not_met + k.undetermined + k.execution_failed + k.not_evaluated
                         == k.applicable
                     && k.undetermined_by_reason.values().sum::<u64>() == k.undetermined
+                    && k.met_unreviewed <= k.met
             })
             && self.failing_opportunities == self.criteria.iter().map(|k| k.not_met).sum::<u64>()
             && self.conclusion
@@ -1376,7 +1589,11 @@ impl Summary {
                     self.selected.is_some(),
                     self.counts.received_rows,
                     p,
-                    self.counts.scope_unknown(),
+                    Unproven {
+                        scope_unknown: self.counts.scope_unknown(),
+                        unkeyed: self.counts.unkeyed,
+                        unreviewed_met: self.criteria.iter().map(|k| k.met_unreviewed).sum(),
+                    },
                 )
     }
 }

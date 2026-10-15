@@ -1296,16 +1296,45 @@ async fn coverage_snapshot(tx: &mut Tx, task_id: &str) -> Result<CoverageSnapsho
     for row in &sample_rows {
         samples.push(sample_of(tx, row).await?);
     }
-    Ok(CoverageSnapshot {
-        populations: populations
+    let populations: Vec<PopulationRecord> = populations
+        .iter()
+        .map(population_from)
+        .collect::<Result<_, _>>()?;
+    let summaries: Vec<SummaryRecord> = summaries
+        .iter()
+        .map(summary_from)
+        .collect::<Result<_, _>>()?;
+    // Populations a listed sample or summary reads that are older than the
+    // listed ones, read exactly by ID (at most one per listed record).
+    let missing: Vec<String> = samples
+        .iter()
+        .map(|s| s.population_id.clone())
+        .chain(summaries.iter().map(|s| s.population_id.clone()))
+        .filter(|id| populations.iter().all(|p| &p.id != id))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let referenced = if missing.is_empty() {
+        vec![]
+    } else {
+        sqlx::query("SELECT document,digest,created_us FROM public.assessment_populations WHERE task_id=$1 AND id=ANY($2) ORDER BY id COLLATE \"C\"")
+            .bind(task_id)
+            .bind(&missing)
+            .fetch_all(&mut **tx)
+            .await
+            .map_err(unavailable)?
             .iter()
             .map(population_from)
-            .collect::<Result<_, _>>()?,
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    if referenced.len() != missing.len() {
+        return Err(ReadingError::Unavailable);
+    }
+    Ok(CoverageSnapshot {
+        populations,
+        referenced,
         samples,
-        summaries: summaries
-            .iter()
-            .map(summary_from)
-            .collect::<Result<_, _>>()?,
+        summaries,
         total_populations,
         total_samples,
         total_summaries,
@@ -1357,7 +1386,8 @@ impl AssessmentRepository {
         Ok(snapshot)
     }
     /// Viewer read: the exact count of a population's members of one
-    /// disposition and one page of them, in receipt order after `after`.
+    /// disposition and one page of them, C-ordered by key then receipt order,
+    /// after the member `after`.
     pub async fn member_page(
         &self,
         actor: &str,
@@ -1390,8 +1420,11 @@ impl AssessmentRepository {
         let total: i64 = sqlx::query_scalar("SELECT count(*) FROM public.assessment_population_members WHERE population_id=$1 AND ($2::text IS NULL OR disposition=$2)")
             .bind(population_id).bind(kind)
             .fetch_one(&mut *tx).await.map_err(|_| TaskError::Unavailable)?;
-        let rows = sqlx::query("SELECT document,digest FROM public.assessment_population_members WHERE population_id=$1 AND ($2::text IS NULL OR disposition=$2) AND ordinal > $3 ORDER BY ordinal LIMIT $4")
-            .bind(population_id).bind(kind).bind(after.map_or(-1, |a| a as i64))
+        // C-ordered by key (bytes; a row with no key first), then receipt
+        // order. The cursor is the ordinal of the last row shown: the page
+        // continues after that row's (key, ordinal).
+        let rows = sqlx::query("SELECT m.document,m.digest FROM public.assessment_population_members m WHERE m.population_id=$1 AND ($2::text IS NULL OR m.disposition=$2) AND ($3::integer IS NULL OR (coalesce(m.subject,'') COLLATE \"C\", m.ordinal) > ((SELECT coalesce(x.subject,'') FROM public.assessment_population_members x WHERE x.population_id=$1 AND x.ordinal=$3) COLLATE \"C\", $3)) ORDER BY coalesce(m.subject,'') COLLATE \"C\", m.ordinal LIMIT $4")
+            .bind(population_id).bind(kind).bind(after.map(|a| i32::try_from(a).unwrap_or(i32::MAX)))
             .bind(MEMBER_PAGE as i64 + 1)
             .fetch_all(&mut *tx).await.map_err(|_| TaskError::Unavailable)?;
         let mut members = Vec::new();

@@ -318,6 +318,22 @@ def ap_population():
     for invoice in ("INV-00251", "INV-00300", "INV-00301"):
         for line in ("1", "2"):
             lines.append((invoice, line, "2026-03-05", 1500, "Yes", "Yes", "USD"))
+    # Story 24.2 review: genuine typed cells, not text. Invoice numbers are
+    # numbers shown with a zero-padded format; dates are Excel date values;
+    # "Approved at" is an Excel date-time (no time zone). Rows after the data
+    # are only formatted (no value): they are not data rows.
+    dated = book.create_sheet("Dated")
+    dated.append(POPULATION_HEADERS + ("Approved at",))
+    dated.append((123, datetime.datetime(2026, 3, 5), 1500, "Yes", "Yes", "USD", datetime.datetime(2026, 3, 5, 10, 30)))
+    dated.append((124, datetime.datetime(2025, 12, 15), 1500, "Yes", "Yes", "USD", datetime.datetime(2025, 12, 15, 9, 0)))
+    dated.append(("INV-D3", datetime.datetime(2026, 4, 1), 1500, "Yes", "Yes", "USD", datetime.datetime(2026, 4, 1, 8, 15)))
+    for row in range(2, 5):
+        dated.cell(row=row, column=1).number_format = "000000"
+        dated.cell(row=row, column=2).number_format = "dd/mm/yyyy"
+        dated.cell(row=row, column=7).number_format = "yyyy-mm-dd hh:mm"
+    for row in range(5, 41):
+        for column in range(1, 8):
+            dated.cell(row=row, column=column).number_format = "dd/mm/yyyy"
     book.properties.created = FIXED
     book.properties.modified = FIXED
     buffer = io.BytesIO()

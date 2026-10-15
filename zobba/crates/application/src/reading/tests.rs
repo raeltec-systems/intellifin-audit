@@ -251,6 +251,15 @@ impl ReadingStore for Store<'_> {
     ) -> Result<Option<String>, ReadingError> {
         Ok(self.facts.failure.lock().unwrap().clone())
     }
+    async fn document_jobs(
+        &self,
+        _: &str,
+        _: &Scope,
+        task_id: &str,
+        program_sha256: &str,
+    ) -> Result<(u64, Option<String>), ReadingError> {
+        Ok(self.world.jobs.with_program(task_id, program_sha256))
+    }
     async fn page_attempts(
         &self,
         _: &str,
@@ -1512,7 +1521,6 @@ fn enumeration_manifests_are_accepted_only_in_their_exact_shape() {
         sheet: Some("Invoices".into()),
         header_row: 3,
         columns: vec!["Invoice".into(), "Amount".into()],
-        record: "pop-1".into(),
     };
     let head = |rows_read: u32, last: u32, truncated: bool| {
         manifest::parse(format!(r#"{{"status":"read","header_row":3,"last_row":{last},"rows_read":{rows_read},"truncated":{truncated},"columns":[1,3],"chunks":["rows/0000.json"]}}"#).as_bytes()).unwrap()
