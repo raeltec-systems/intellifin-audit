@@ -30,7 +30,17 @@ const NOTE: &str = "Invoice INV-0060 total 12,500.00 USD, dated 15/03/2026. Nota
 impl Reader {
     fn new() -> Self {
         let mut cells = BTreeMap::new();
-        let rows: [(u32, &str, &str, &str, &str, &str, &str, &str); 9] = [
+        type Row<'a> = (
+            u32,
+            &'a str,
+            &'a str,
+            &'a str,
+            &'a str,
+            &'a str,
+            &'a str,
+            &'a str,
+        );
+        let rows: [Row<'_>; 9] = [
             (
                 2,
                 "INV-0042",
@@ -634,8 +644,8 @@ fn feedback_of<S: AssessmentStore, C: CitationReader>(assessment: &Assessment<'_
     );
     body
 }
-fn row<'a>(
-    ev: &'a [EvaluationRecord],
+fn row(
+    ev: &[EvaluationRecord],
     c: &str,
     s: &str,
 ) -> (
@@ -1108,6 +1118,34 @@ fn a_changed_binding_and_unknown_references_are_never_guessed() {
         (InputClass::ModelOutput, "assessment-outline")
     );
     assert!(body.contains("authority unverified"));
+    // After the active change, a turn produced under the new binding records
+    // with that binding and its epoch, and its method authority is verified;
+    // the earlier record keeps binding-1.
+    let later = CitedAnswer {
+        propose_criteria: vec![approval("c2")],
+        ..CitedAnswer::default()
+    };
+    run(assessment.after_answer(
+        &basis("p1"),
+        &binding("binding-2"),
+        &invocation("turn-2", "binding-2"),
+        &later,
+        &cancel,
+    ))
+    .unwrap();
+    let state = store.state.lock().unwrap();
+    let newer = state
+        .criteria
+        .iter()
+        .find(|c| c.invocation_id == "turn-2")
+        .unwrap();
+    assert_eq!(
+        (newer.methodology_binding_id.as_str(), newer.execution_epoch),
+        ("binding-2", 1)
+    );
+    assert!(newer.authority.verified);
+    assert_eq!(newer.authority.binding_id.as_deref(), Some("binding-2"));
+    assert_eq!(state.criteria[0].methodology_binding_id, "binding-1");
 }
 
 #[test]

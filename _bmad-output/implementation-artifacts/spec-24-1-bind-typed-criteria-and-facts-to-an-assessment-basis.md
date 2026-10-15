@@ -4,7 +4,7 @@ type: 'feature'
 created: '2026-10-14'
 status: 'review'
 baseline_commit: '2be8298686e5ab98fddfe0045ddcad5ab4d19ca8'
-review_loop_iteration: 0
+review_loop_iteration: 1
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/spec-22-5-extract-usable-facts-with-stable-source-locations.md'
   - '{project-root}/_bmad-output/implementation-artifacts/spec-22-6-use-methods-and-installed-skills-during-investigation.md'
@@ -99,6 +99,10 @@ record_facts[0] = {subject:"INV-0042", unit:"invoice", name:"amount",
   sources:[{original:"orig_tb", locator:"Sheet1!B4", quote:"1,250.00"}]}
 ```
 
+**Grounding (review round 1).** A verified quote proves the text exists at its location, not that it is the whole value or that it belongs to the stated subject and currency. So a fact's value source must be the whole value there (`partial_value` otherwise), and its subject and a decimal's measure are *grounded* only when the source shows them beside the value: as whole tokens in the located text, in a wider byte range that contains it, or as the exact quote of another cell in the same row. An ungrounded subject or measure is a claim, so any evaluation reading it is `undetermined` (`subject_unverified`, `unit_unverified`). This is deliberately simple: same row for sheets, same location or a containing range for text; no layout or header inference.
+
+**Named follow-up (not built): rule-to-authority link.** The platform evaluates a rule and verifies the authority text the agent cites, but nothing ties the rule's operator, threshold, measure and fact names to that text. The panel says "Platform evaluated the rule Zobba proposed" and "Rule proposed by Zobba", never "decided by a platform rule". Tying operator/threshold to the authority text (or a human acceptance of the rule, 24.3/24.5) is a later story.
+
 ## Verification
 
 **Commands:**
@@ -118,13 +122,35 @@ record_facts[0] = {subject:"INV-0042", unit:"invoice", name:"amount",
 
 ## Suggested Review Order
 
-1. `zobba/crates/domain/src/assessment.rs` (+ `assessment/tests.rs`) — closed vocabularies, exact decimal, civil date, instant with offset, parse rules, and the pure `evaluate` and `output_digest`. Read the order of checks in `evaluate`: failed analysis, effective period, applicability, authority, facts, then the predicate.
-2. `zobba/crates/domain/src/citation.rs` — the five optional answer fields, their bounds, `assessment_schema()` (only when assessing) and discard counting; old answers decode unchanged.
-3. `zobba/crates/application/src/assessment.rs` (+ `assessment/tests.rs`) — `Assessment::after_answer`: criteria authority checks, basis pinning, fact verification through `citation::verify` and re-parse, rule evaluation on request, judgments; the reclaim rule (a re-run of the same answer continues the work and writes nothing).
-4. `zobba/crates/application/src/work.rs` — the `A = NoAssessment` parameter, outline/feedback in tier 2, and the hook after reading and investigation.
-5. `zobba/migrations/0018_assessment_basis.sql` — tables, CHECKs that mirror the documents, `assessment_guard` (invocation/binding/epoch, same-Task references, job outcome = a `completed` event, decided verdicts on supported facts only), deferred `assessment_complete`, immutability/retention triggers, RLS. Then `schema-v18.catalog` and `infrastructure/src/lib.rs` (inventory, grants, catalogue chain).
-6. `zobba/crates/infrastructure/src/assessment.rs` — the repository under claim custody and the scoped view.
-7. `zobba/crates/worker/src/work.rs` and `zobba/crates/worker/tests/assessment.rs` — composition and the end-to-end proof (loopback model, real PostgreSQL, S3-protocol originals, Docker sandbox, failing job, database guards, recorded fixture).
-8. `zobba/crates/api/src/work.rs`, `openapi.json`, `web/src/generated/api.ts` — the `assessment` section and `assessment_unavailable`.
-9. `zobba/web/src/assessment.ts`, `web/src/AssessmentBasis.tsx`, `web/src/TaskWorkPanel.tsx`, `web/tests/assessment.test.mjs`, `web/tests/browser/assessment.spec.ts` — strict parsing and the read-only display with four separate evaluation words.
-10. `zobba/fixtures/documents/generate.py` (AP invoices and policy fixtures), schema-18 updates in `scripts/smoke.py`, `web/src/health.ts` and browser runtime helpers, and `zobba/README.md`.
+1. `zobba/crates/domain/src/assessment.rs` (+ `assessment/tests.rs`) — closed vocabularies (now with `partial_value`, `subject_unverified`, `unit_unverified`), exact decimal, civil date, instant with offset (`-00:00` refused), `whole_token`/`whole_value`, and the pure `evaluate`/`judge`. Read the order of checks in `prepare`: unverified authority, effective period (basis period and each consulted fact's effective date), applicability (keeping its real cause), failed analysis, then required facts and the predicate; `usable` refuses ungrounded subjects and measures. A judgment that cites no facts is `undetermined{missing_fact}`; `Outcome::is_valid` refuses a decided verdict without inputs.
+2. `zobba/crates/domain/src/citation.rs` (+ tests) — the five answer fields, criterion-key de-duplication before the bound, schema bounds and the pre-24.1 schema digests.
+3. `zobba/crates/application/src/citation.rs` and `reading.rs` — `verify_located` returns the located text; `byte_context` reads two characters around a verified byte range.
+4. `zobba/crates/application/src/assessment.rs` (+ `assessment/tests.rs`) — `assess_value` (value, grounding and context sources; whole-value check; grounding), and `Assessment::after_answer`: criteria, basis, facts (per-basis bound, ended jobs only, refused writes as feedback, deferred subjects), evaluation (already-evaluated subjects set aside before the 64-subject bound), judgments; `feedback_text` inside the untrusted-content envelope; exact outline counts.
+5. `zobba/migrations/0018_assessment_basis.sql` — `subject_grounded`/`measure_grounded`, the new closed reasons, `to_char` period checks, explicit control-character range, and `assessment_guard` (per-basis advisory lock and 1,024-fact bound, a job's latest non-collection outcome, decided verdicts on supported, grounded facts). Then `schema-v18.catalog` and `crates/infrastructure/tests/published.rs`.
+6. `zobba/crates/infrastructure/src/assessment.rs` — `job_state` (completed / failed / pending), `evaluations_of`, grounding columns, exact per-basis fact counts.
+7. `zobba/crates/worker/tests/assessment.rs` — the end-to-end proof and the forged-row guard checks.
+8. `zobba/crates/api/src/work.rs` (value withholding and its unit test), `openapi.json`, `web/src/generated/api.ts`.
+9. `zobba/web/src/assessment.ts`, `web/src/AssessmentBasis.tsx`, `web/tests/assessment.test.mjs`, `web/tests/work.test.mjs`, `web/tests/browser/assessment.spec.ts` — strict parsing (unknown keys refused, one defect per case), wording, contrast.
+10. `zobba/fixtures/documents/generate.py` and `AP invoices.xlsx` (one row per matrix invoice), `web/tests/fixtures/task-assessment.json`, `zobba/README.md`.
+
+## Review round 1 (2026-10-15)
+
+Three reviews (`review-24-1-blind-hunter.md`, `review-24-1-edge-case-hunter.md`, `review-24-1-verification-gap.md`). Lead triage A–M; each fix has a test that fails without it.
+
+| Finding | Outcome |
+|---|---|
+| A — substring quotes (Blind H1) | Fixed. `whole_value`/`whole_token` require value boundaries; byte ranges are read with two characters of context (`byte_context`). Refused quotes are `unsupported{partial_value}`. Domain, application and worker tests (`2,500.00`, `5/03/2026`, `INV-006`, `No`, `000.00` of `1,000.00`). |
+| B — judgment with no facts (Blind H2, Edge H1) | Fixed. `judge` gives `undetermined{missing_fact}`; `Outcome::is_valid` and the web parser refuse a decided verdict with no inputs. End-to-end with reclaim (application test). |
+| C — fact-per-basis cap (Blind M3, Edge H2) | Fixed. Enforced in `after_answer` (refused with feedback) and in `assessment_guard` under a per-basis advisory lock. Application boundary test (1,023 + 2) and worker test filling a basis to 1,024 then refusing the next. |
+| D — running/unknown job (Blind M6, Edge M1) | Fixed. `JobState::{Completed, Failed, Pending}` from the latest non-collection event (also Edge L8). A pending job records nothing and gives retry feedback; the guard refuses any fact of an unended job and checks the true outcome; a guard refusal is feedback, not a failed cycle. Worker test with a completing job; application tests for pending, unknown and the race. |
+| E — same-answer evaluate (Edge M4) | Fixed for the same answer: records are processed criteria → basis → facts → evaluate → judgments, and subjects whose facts of this answer were deferred are not evaluated or judged. Deferred: an evaluation pinned in one answer before facts arrive in a *later* answer still stays (immutable; a new basis version is the remedy). |
+| F — subject and unit/currency grounding (Blind M1, Edge M5) | Fixed (see Design Notes). `subject_grounded`/`measure_grounded` stored and guarded; `subject_unverified`/`unit_unverified`. Worker and application tests, including a EUR amount labelled USD. |
+| G — authority wording (Blind M2) | Fixed wording; rule-to-authority link recorded as a named follow-up in Design Notes. |
+| H — prompt injection (Blind M4) | Fixed. Feedback goes inside `envelope(ModelOutput, "assessment-feedback", …)`, escaped; the "(platform facts)" heading is gone. Application test with a hostile closing tag; worker body check. |
+| I — viewer scoping (Blind M5) | Fixed. A fact's value fields are withheld (`value_withheld`) unless one of its sources is an exact original the viewer may read now. API unit test. |
+| J — applicability cause (Edge M2) | Fixed. Undecidable applicability keeps `missing_fact`, `fact_unsupported`, `fact_unavailable`, `unit_mismatch`, …; tests that asserted `unknown_applicability` updated. |
+| K — subject cap (Edge M3) | Fixed. `evaluations_of` sets evaluated subjects aside before the 64 bound; test with 65 subjects over two requests. |
+| L — Lows | Fixed: `member_of` normalisation (Blind L1/Edge L2), fact effective date within the criterion window (Blind L2), check order (Blind L3), `-00:00` refused (Blind L4), exact outline counts and newest evaluations (Blind L5, Edge L6), U+FEFF blank parity in the web parser (Edge L5), unverified authority never `not_applicable` (Edge L1), `to_char` period check (Edge L3), explicit control range (Edge L4), record-ID-shaped keys refused (Edge L9), bound feedback once (Edge L10), criterion keys de-duplicated before the bound (Edge L11). Skipped: ISO 4217 code list and `0,123` grouping (would need a list or change accepted values; low risk); fact `effective` is still the agent's statement (used only to make a criterion not apply); 22.4 descendant sources stay `source_unverified` until the citation reader resolves descendants (Edge L7); feedback stays in memory across a restart (Edge L11). |
+| M — verification gaps | Added: completed-job positive path and the collected-not-completed precondition (H1, M1); quote not at its location at both layers (H2); identity UPDATEs refused with the message, also under the reset; TRUNCATE allowed only under the reset; owner UPDATE/DELETE affect no rows and TRUNCATE is refused (M2); forged-row guard cases each with its message (M3); published migration/catalogue digests (M4); transient read failure records nothing and a reclaim completes (M5); one-defect web parser cases, unknown keys refused, deterministic `undetermined` needs a reason, a valid assessment in the mutual-exclusion case (M6); answer bounds, schema `maxItems` and migration CHECK agreement (M7); contrast in the browser case (M8); outline/feedback bounds and the 65-subject case (M9); pre-24.1 schema digests (L1); full-store reclaim comparison (L2); golden output digest (L3); new binding after an active change (L4); API scoping (L5). Skipped with reason: populated v17→v18 upgrade (0018 is additive; reproducing the exact v17 grant set duplicates `migrate`'s cumulative grants; the catalogue chain and pinned digests cover the published prefix); the `LIKE '%\_test'` escape (needs a second database named like `xtest`); a claim-fencing repository test for these writers (they share `claimed()` with the 22.x repositories); keyboard reach of truncated IDs (the full ID is in `title` only — a later accessibility pass); ambiguous/descendant/unregistered-population recording paths and a judgment provider failure (L6–L8: covered by domain tests or the generic work loop). |
+
+The 2 IPv6 `database-endpoint` web tests fail in this sandbox (no `::1`); known, unchanged.

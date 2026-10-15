@@ -60,7 +60,10 @@ test('the work panel shows the basis, typed facts and evaluations with separate 
   await expect(region.getByRole('list', { name: 'Population references' })).toContainText('AP invoices.xlsx · invoice');
   // Authority is shown as checked or not, with its reason.
   await expect(region.locator('.assessment-criteria')).toContainText('unverified · not found at location');
-  await expect(region.locator('.assessment-criteria')).toContainText('Method AP-1 criterion 1 · verified');
+  await expect(region.locator('.assessment-criteria')).toContainText('Authority: method AP-1 criterion 1 · cited text verified');
+  // The rule's parameters are Zobba's proposal, not the platform's choice.
+  await expect(region.locator('.assessment-criteria')).toContainText('Rule proposed by Zobba: ');
+  await expect(region).toContainText('does not prove that the rule follows from that text');
   // Typed facts: exact subject, measure, source offset and support.
   const facts = region.locator('.assessment-facts li');
   await expect(facts).toHaveCount(assessment.facts.length);
@@ -69,6 +72,9 @@ test('the work panel shows the basis, typed facts and evaluations with separate 
   await expect(facts.filter({ hasText: 'INV-0042 · approved_at' })).toContainText('2026-03-05T23:30:00-05:00 (UTC 2026-03-06 04:30:00');
   await expect(facts.filter({ hasText: 'INV-0050 · amount' })).toContainText('Unsupported · the source does not show this value');
   await expect(facts.filter({ hasText: 'INV-0053 · approver' })).toContainText('Unsupported · the analysis it depends on failed');
+  await expect(facts.filter({ hasText: 'INV-0042 · threshold' })).toContainText('Unsupported · the quote is only part of a longer value');
+  // A currency the source does not show is said to be only claimed.
+  await expect(facts.filter({ hasText: 'INV-0057 · amount' })).toContainText('USD only claimed');
   // Applicability, execution, verdict and origin are four separate words.
   const evaluations = region.locator('.assessment-evaluations > li');
   await expect(evaluations).toHaveCount(assessment.evaluations.length);
@@ -76,7 +82,8 @@ test('the work panel shows the basis, typed facts and evaluations with separate 
   await expect(exception).toHaveCount(1);
   await expect(exception).toContainText('history · INV-0054');
   await expect(exception.locator('dt')).toHaveText(['Applicability', 'Execution', 'Verdict', 'Origin']);
-  await expect(exception.locator('dd')).toHaveText(['Applies', 'Evaluation completed', 'Not met (exception)', 'Decided by a platform rule']);
+  await expect(exception.locator('dd')).toHaveText(['Applies', 'Evaluation completed', 'Not met (exception)', 'Platform evaluated the rule Zobba proposed']);
+  await expect(region).not.toContainText('Decided by a platform rule');
   const failed = evaluations.filter({ hasText: 'approval · INV-0053' });
   await expect(failed.locator('dd').nth(2)).toHaveText('No verdict · the analysis failed');
   const missing = evaluations.filter({ hasText: 'approval · INV-0051' });
@@ -95,6 +102,34 @@ test('the work panel shows the basis, typed facts and evaluations with separate 
   await page.keyboard.press('Escape');
   await expect(card).toBeHidden();
   await expect(chip).toBeFocused();
+  // WCAG 2.2 AA: unverified and unsupported states are said in words, and
+  // their text (and the panel's secondary text) keeps 4.5:1 contrast against
+  // its effective background.
+  const ratios = await region.evaluate(root => {
+    const rgba = (color: string) => color.match(/[\d.]+/g)!.map(Number);
+    const luminance = (color: string) => {
+      const channels = rgba(color).slice(0, 3).map(value => value / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
+      return channels[0]! * .2126 + channels[1]! * .7152 + channels[2]! * .0722;
+    };
+    const background = (element: Element | null): string => {
+      for (let node = element; node; node = node.parentElement) {
+        const color = getComputedStyle(node).backgroundColor;
+        const parts = rgba(color);
+        if (parts.length < 4 || parts[3]! > 0) return color;
+      }
+      return 'rgb(255, 255, 255)';
+    };
+    return ['.authority-unverified', '.fact-unsupported .fact-value', '.fact-value', 'dt', '.context-note', '.fact-grounding']
+      .flatMap(selector => [...root.querySelectorAll(selector)].slice(0, 3).map(element => {
+        const foreground = luminance(getComputedStyle(element).color);
+        const back = luminance(background(element));
+        return { selector, ratio: (Math.max(foreground, back) + .05) / (Math.min(foreground, back) + .05) };
+      }));
+  });
+  for (const selector of ['.authority-unverified', '.fact-unsupported .fact-value', 'dt', '.context-note', '.fact-grounding']) {
+    expect(ratios.some(r => r.selector === selector), selector).toBe(true);
+  }
+  for (const { selector, ratio } of ratios) expect(ratio, selector).toBeGreaterThanOrEqual(4.5);
   await capture(page, info, 'assessment-basis.png');
   expect(errors).toEqual([]);
 });

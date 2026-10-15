@@ -1939,18 +1939,46 @@ answer keep their bytes. Trusted code records only what it can re-check:
   source offset) or `unavailable`/`ambiguous`, and its quoted sources. Each
   quote is verified at its exact location and re-parsed under the declared
   closed rule; a value the source does not show is `unsupported{type_mismatch}`.
-  A fact that names a 22.4 job that did not complete is
-  `unsupported{analysis_failed}`. No floats; no currency or time-zone
-  conversion.
+  The quote must be the whole value at its location, not part of a longer
+  one (`2,500.00` inside `12,500.00`, `No` inside `Notarised`): for a byte
+  range trusted code reads two characters on each side; otherwise it is
+  `unsupported{partial_value}`. The subject and a decimal's currency or unit
+  are **grounded** only when the source shows them beside the value: as whole
+  tokens in the value's located text, in a wider byte range that contains it,
+  or as the exact quote of another cell in the same spreadsheet row. An
+  ungrounded subject or measure is only the agent's claim: any evaluation that
+  reads it is `undetermined` (`subject_unverified`, `unit_unverified`), so a EUR
+  amount labelled USD never yields `met` or `not_met`. A fact that names a 22.4
+  job is recorded only once the job has ended: `unsupported{analysis_failed}`
+  when it ended without completing; while it is still running nothing is
+  recorded and the agent is told to record it again. A basis holds at most
+  1,024 facts, enforced when a fact is written. No floats; no currency or
+  time-zone conversion; RFC 3339 `-00:00` (offset unknown) is refused.
 - **Evaluations** (`assessment_evaluations`): applicability, execution,
   verdict and origin are separate fields, with a closed reason and the input
   fact IDs and digests. Rule criteria are decided only by the pure
   `domain::assessment::evaluate`; the same inputs give the same output digest.
   Missing, unavailable, ambiguous or unsupported input is `undetermined`, a
   failed analysis is `execution failed` with no verdict, and only an applicable
-  evaluation on supported facts can be `not_met`. A judgment criterion records
-  the model's verdict, supporting and contrary facts, rationale and uncertainty
-  as a `model_proposal`. There is no numeric confidence anywhere.
+  evaluation on supported, grounded facts can be `not_met`. The checks run in
+  order: an unverified authority decides nothing (not even "does not apply");
+  a criterion version not in effect for the basis period or a consulted
+  fact's stated effective date does not apply; an undecidable applicability
+  keeps its real cause; then a failed analysis fails the execution. Already
+  evaluated subjects are set aside before the 64-subject request bound. A
+  judgment criterion records the model's verdict, supporting and contrary
+  facts, rationale and uncertainty as a `model_proposal`; a judgment that
+  cites no facts is `undetermined{missing_fact}`. A database refusal of a
+  proposal becomes feedback, never a failed cycle. There is no numeric
+  confidence anywhere.
+
+A rule's operator, threshold and fact names are proposed by the agent. The
+platform evaluates the rule and verifies the cited authority text, but does
+not prove that the rule follows from that text; the panel says "Platform
+evaluated the rule Zobba proposed". What became of an answer's proposals
+returns to the agent inside the untrusted-content envelope, never as
+platform text. The work read withholds a fact's value (and quote) from a
+viewer who cannot open any of its originals now.
 
 All six tables refuse UPDATE, DELETE and TRUNCATE, including for the owner;
 only an explicit `zobba.disposable_fixture_reset=on` session in a `*_test`
@@ -1963,8 +1991,12 @@ the work panel shows it read-only with the four evaluation words separate.
 What is proven offline: the worker suite drives the real coordinator with a
 loopback OpenAI-format model, real PostgreSQL custody, S3-protocol originals
 (`fixtures/documents/AP invoices.xlsx`, `AP policy.txt`) verified cell by cell
-in the test-only Docker sandbox, and a failing analysis job. No live provider is
-called.
+in the test-only Docker sandbox, a failing and a completing analysis job, a
+partial quote, a quote not at its location and a EUR amount labelled USD. It
+forges rows to check each insert guard, immutability (including under the
+fixture reset and for the migration owner) and the 1,024-fact bound by its
+own message. `crates/infrastructure/tests/published.rs` pins the bytes of
+migrations 0001–0017 and catalogues v1–v17. No live provider is called.
 
 ```sh
 cargo test -p zobba-domain assessment
