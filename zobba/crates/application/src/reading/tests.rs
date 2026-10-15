@@ -1518,8 +1518,13 @@ fn enumeration_manifests_are_accepted_only_in_their_exact_shape() {
         manifest::parse(format!(r#"{{"status":"read","header_row":3,"last_row":{last},"rows_read":{rows_read},"truncated":{truncated},"columns":[1,3],"chunks":["rows/0000.json"]}}"#).as_bytes()).unwrap()
     };
     let chunk = br#"[[4,[["INV-1"],["1,250.00","1250"]]],[5,[null,["980.00"]]]]"#.to_vec();
-    let read =
-        enumeration_manifest(&head(2, 5, false), &[chunk.clone()], "Invoices", &request).unwrap();
+    let read = enumeration_manifest(
+        &head(2, 5, false),
+        std::slice::from_ref(&chunk),
+        "Invoices",
+        &request,
+    )
+    .unwrap();
     assert_eq!((read.rows_read, read.last_row), (2, 5));
     assert_eq!(
         read.rows[1].cells[0].texts, None,
@@ -1533,10 +1538,22 @@ fn enumeration_manifests_are_accepted_only_in_their_exact_shape() {
     // rows out of order; a cell count that is not the columns; another
     // header row; a text over the cell bound.
     assert!(
-        enumeration_manifest(&head(2, 6, false), &[chunk.clone()], "Invoices", &request).is_none()
+        enumeration_manifest(
+            &head(2, 6, false),
+            std::slice::from_ref(&chunk),
+            "Invoices",
+            &request
+        )
+        .is_none()
     );
     assert!(
-        enumeration_manifest(&head(3, 6, true), &[chunk.clone()], "Invoices", &request).is_none()
+        enumeration_manifest(
+            &head(3, 6, true),
+            std::slice::from_ref(&chunk),
+            "Invoices",
+            &request
+        )
+        .is_none()
     );
     let unordered = br#"[[5,[["INV-1"],["1"]]],[4,[["INV-2"],["2"]]]]"#.to_vec();
     assert!(enumeration_manifest(&head(2, 5, false), &[unordered], "Invoices", &request).is_none());
@@ -1547,7 +1564,13 @@ fn enumeration_manifests_are_accepted_only_in_their_exact_shape() {
         ..request.clone()
     };
     assert!(
-        enumeration_manifest(&head(2, 5, false), &[chunk.clone()], "Invoices", &other).is_none()
+        enumeration_manifest(
+            &head(2, 5, false),
+            std::slice::from_ref(&chunk),
+            "Invoices",
+            &other
+        )
+        .is_none()
     );
     let long = format!(
         r#"[[4,[["{}"],["1"]]],[5,[["INV-2"],["2"]]]]"#,

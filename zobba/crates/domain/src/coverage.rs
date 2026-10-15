@@ -488,8 +488,8 @@ fn parse_cell(cell: &CellRead, rule: ParseRule, measure: Option<&Measure>) -> Op
 fn measure_of(cell: &CellRead, declared: &Measure) -> Option<Measure> {
     let text = normalize(cell.text()?);
     match declared {
-        Measure::Currency(_) => valid_currency(&text).then(|| Measure::Currency(text)),
-        Measure::Unit(_) => valid_name(&text).then(|| Measure::Unit(text)),
+        Measure::Currency(_) => valid_currency(&text).then_some(Measure::Currency(text)),
+        Measure::Unit(_) => valid_name(&text).then_some(Measure::Unit(text)),
     }
 }
 

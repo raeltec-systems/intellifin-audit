@@ -424,7 +424,7 @@ pub fn enumerate_text(
                     },
                     Some((value, start, end)) => CellRead {
                         texts: (value.len() <= MAX_CELL_TEXT_BYTES).then(|| vec![value.clone()]),
-                        locator: (start < end).then(|| Locator::Bytes {
+                        locator: (start < end).then_some(Locator::Bytes {
                             start: *start as u64,
                             end: *end as u64,
                         }),

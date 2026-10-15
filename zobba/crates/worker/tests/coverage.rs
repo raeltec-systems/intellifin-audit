@@ -233,8 +233,6 @@ fn text_reply(text: &str) -> Vec<u8> {
     ])
 }
 
-/// One structured answer with every field present (strict output).
-
 async fn image_present() {
     let image = format!("{REPOSITORY}@{GENERAL_IMAGE_DIGEST}");
     let present = tokio::process::Command::new("docker")
@@ -480,6 +478,23 @@ type SummaryRow = (
     i32,
     i32,
 );
+
+/// A population row: key, completeness, reason, reconciliation, received,
+/// duplicates, distinct, excluded, in scope, declared count.
+type PopulationRow = (
+    String,
+    String,
+    Option<String>,
+    String,
+    i32,
+    i32,
+    i32,
+    i32,
+    i32,
+    Option<i32>,
+);
+/// A summary's words and its counts in column order.
+type SummaryWords = (String, String, Option<String>, String, Vec<Option<i32>>);
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn every_row_is_counted_by_trusted_code_and_recounted_by_the_database() {
@@ -797,7 +812,7 @@ async fn every_row_is_counted_by_trusted_code_and_recounted_by_the_database() {
     );
 
     // AC1: rows, duplicates, exclusions and scope, counted by trusted code.
-    let populations: Vec<(String, String, Option<String>, String, i32, i32, i32, i32, i32, Option<i32>)> = sqlx::query_as(
+    let populations: Vec<PopulationRow> = sqlx::query_as(
         "SELECT document->>'key',completeness,completeness_reason,reconciliation,received_rows,duplicate_rows,distinct_subjects,excluded_out_of_period,in_scope,declared_count::integer FROM public.assessment_populations ORDER BY created_us",
     )
     .fetch_all(&mut admin)
@@ -900,7 +915,7 @@ async fn every_row_is_counted_by_trusted_code_and_recounted_by_the_database() {
     .await
     .unwrap();
     // Words, then the counts in their column order.
-    let rows: Vec<(String, String, Option<String>, String, Vec<Option<i32>>)> = raw
+    let rows: Vec<SummaryWords> = raw
         .into_iter()
         .map(|r| {
             (

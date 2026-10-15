@@ -2,7 +2,7 @@
 title: '24.2 — Show exact population, sample and coverage denominators'
 type: 'feature'
 created: '2026-10-15'
-status: 'ready-for-dev'
+status: 'review'
 baseline_commit: '0400e7a35a52d7723e3950bf004f2b954daa67ff'
 review_loop_iteration: 0
 context:
@@ -76,16 +76,16 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `zobba/crates/domain/src/coverage.rs` (+ tests, `lib.rs`) -- types, dispositions, completeness, sample recomputation, `summarise`, digests; set arithmetic tests for every matrix row, duplicates, partial history, changed grain, zero population, sample limitation; summary recomputed twice gives the same digest.
-- [ ] `zobba/crates/domain/src/citation.rs` -- four answer fields, bounds, schema, old-answer decode and schema digests unchanged.
-- [ ] `zobba/crates/application/src/reading/document.py` + `reading.rs` -- `enumerate` mode and request, `ENUMERATE_LIMITS`, output parsing; Python unit over the fixture workbooks.
-- [ ] `zobba/crates/application/src/citation.rs` -- defaulted `enumerate` read; in-process CSV/plain text.
-- [ ] `zobba/crates/application/src/assessment.rs` (+ tests) -- build manifest, verify control count, record sample, bulk evaluate, summarise, feedback in the untrusted envelope, outline counts.
-- [ ] `zobba/migrations/0019_assessment_coverage.sql`, `infrastructure/src/assessment.rs`, `schema-v19.catalog`, `lib.rs` lists/grants, `published.rs` -- tables, guards (including the recomputing summary guard), immutability; PostgreSQL tests for refusals, RLS, forged counts and the reset exception.
-- [ ] `zobba/crates/worker/tests/assessment.rs` -- synthetic-model end-to-end over `AP population.xlsx`: AC1 and AC2 numbers, zero-applicable and non-exhaustive cases.
-- [ ] `zobba/crates/api/src/work.rs`, members route, `openapi.json`, generated client -- bounded view, exact totals, cursor page, withholding.
-- [ ] `zobba/web/src/Coverage.tsx`, `assessment.ts` (+ unit, browser case with contrast) -- read-only display in words.
-- [ ] `zobba/fixtures/documents/generate.py` and outputs; `zobba/README.md` -- what is proven offline.
+- [x] `zobba/crates/domain/src/coverage.rs` (+ tests, `lib.rs`) -- types, dispositions, completeness, sample recomputation, `summarise`, digests; set arithmetic tests for every matrix row, duplicates, partial history, changed grain, zero population, sample limitation; summary recomputed twice gives the same digest.
+- [x] `zobba/crates/domain/src/citation.rs` -- four answer fields, bounds, schema, old-answer decode and schema digests unchanged.
+- [x] `zobba/crates/application/src/reading/document.py` + `reading.rs` -- `enumerate` mode and request, `ENUMERATE_LIMITS`, output parsing; Python unit over the fixture workbooks.
+- [x] `zobba/crates/application/src/citation.rs` -- defaulted `enumerate` read; in-process CSV/plain text.
+- [x] `zobba/crates/application/src/assessment.rs` (+ tests) -- build manifest, verify control count, record sample, bulk evaluate, summarise, feedback in the untrusted envelope, outline counts.
+- [x] `zobba/migrations/0019_assessment_coverage.sql`, `infrastructure/src/assessment.rs`, `schema-v19.catalog`, `lib.rs` lists/grants, `published.rs` -- tables, guards (including the recomputing summary guard), immutability; PostgreSQL tests for refusals, RLS, forged counts and the reset exception.
+- [x] `zobba/crates/worker/tests/assessment.rs` -- synthetic-model end-to-end over `AP population.xlsx`: AC1 and AC2 numbers, zero-applicable and non-exhaustive cases.
+- [x] `zobba/crates/api/src/work.rs`, members route, `openapi.json`, generated client -- bounded view, exact totals, cursor page, withholding.
+- [x] `zobba/web/src/Coverage.tsx`, `assessment.ts` (+ unit, browser case with contrast) -- read-only display in words.
+- [x] `zobba/fixtures/documents/generate.py` and outputs; `zobba/README.md` -- what is proven offline.
 
 **Acceptance Criteria:**
 - Given a stored summary, when its member and opportunity rows are re-counted with SQL, then every count and the conclusion agree, and a forged summary is refused at insert.
@@ -107,6 +107,16 @@ AP population.xlsx  rows 1,256 → subjects 1,250 (6 duplicate rows collapsed)
 ```
 
 The model never counts. It names *where* and *how* (sheet, grain, columns, exhaustive or not); trusted code reads every row and counts; PostgreSQL counts again. The enumeration read is itself the trusted read of the exact original digest, so member cells need no separate 22.5 verification per cell. `exhaustive` is the agent's statement and can only *lower* the conclusion: `true` still needs end-of-sheet and reconciliation proof; `false` always means absence not proven.
+
+## Suggested Review Order
+
+1. `zobba/crates/domain/src/coverage.rs` — dispositions, completeness, SplitMix64 selection, the pure `summarise` and its conclusion rule (tests in `coverage/tests.rs`).
+2. `zobba/migrations/0019_assessment_coverage.sql` — the six immutable tables, the row guard (populations, samples, summaries), the statement-level `coverage_batch` guard, the summary recount and the `reading_guard` replacement that admits the new document program.
+3. `zobba/crates/application/src/reading/document.py` (`enumerate` mode) and `reading.rs` (`enumeration_manifest`, `enumerate`, population read keys); `citation.rs` (`enumerate_text`).
+4. `zobba/crates/application/src/assessment/coverage.rs` and the call order in `assessment.rs` `after_answer`.
+5. `zobba/crates/infrastructure/src/assessment.rs` (CoverageStore, batch inserts, member page) and `lib.rs` (inventory, grants, schema 19).
+6. `zobba/crates/worker/tests/coverage.rs` — the end-to-end proof and the forged-summary guard checks.
+7. `zobba/crates/api/src/coverage.rs` (work-view parts, members route, withholding) and `zobba/web/src/coverage.ts`, `Coverage.tsx`, `tests/browser/coverage.spec.ts`.
 
 ## Verification
 

@@ -1319,7 +1319,7 @@ where
         let key = if record.is_empty() {
             format!("document-{}", self.hash(&identity))
         } else {
-            format!("document-{}{POPULATION_KEY}", &self.hash(&identity))
+            format!("document-{}{POPULATION_KEY}", self.hash(&identity))
         };
         self.settle(basis, &key, &analysis_request, cancellation)
             .await
