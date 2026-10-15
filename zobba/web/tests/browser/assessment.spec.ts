@@ -93,12 +93,14 @@ test('the work panel shows the basis, typed facts and evaluations with separate 
   await expect(judged).toContainText('Uncertainty: The organisation chart in the evidence is dated 2025.');
   // No numeric confidence anywhere.
   await expect(region).not.toContainText(/confiden|probab|%/i);
-  // A fact's source is the ordinary keyboard-reachable citation chip.
-  const chip = facts.filter({ hasText: 'INV-0042 · amount' }).getByRole('button', { name: /^Citation: AP invoices\.xlsx$/ });
+  // A fact's sources are the ordinary keyboard-reachable citation chip. A
+  // grounded amount cites its value cell, the subject's cell and the unit's
+  // cell in the same row, so the chip names three sources.
+  const chip = facts.filter({ hasText: 'INV-0042 · amount' }).getByRole('button', { name: 'Citation: AP invoices.xlsx, AP invoices.xlsx, AP invoices.xlsx', exact: true });
   await chip.focus();
   const card = facts.filter({ hasText: 'INV-0042 · amount' }).getByRole('group', { name: 'Citation sources', exact: true });
   await expect(card).toBeVisible();
-  await expect(card).toContainText('Sheet1!B2');
+  for (const cell of ['Sheet1!B2', 'Sheet1!A2', 'Sheet1!C2']) await expect(card).toContainText(cell);
   await page.keyboard.press('Escape');
   await expect(card).toBeHidden();
   await expect(chip).toBeFocused();
